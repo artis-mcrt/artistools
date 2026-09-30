@@ -52,6 +52,7 @@ from artistools.viewertools import add_figure_section
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import add_series_list
 from artistools.viewertools import add_window_actions
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
@@ -81,15 +82,11 @@ from artistools.viewertools import get_series_style
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_command_tokens
-from artistools.viewertools import make_completer
-from artistools.viewertools import make_elided_label
-from artistools.viewertools import make_glyph_button
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_readout_tag
-from artistools.viewertools import make_reorder_list
 from artistools.viewertools import make_series_swatch
 from artistools.viewertools import make_sidebar
 from artistools.viewertools import make_status_bar
@@ -98,13 +95,15 @@ from artistools.viewertools import make_window
 from artistools.viewertools import move_series_styles
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
+from artistools.viewertools import ReferenceData
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
 from artistools.viewertools import SERIES_LINE_FLAGS
 from artistools.viewertools import SERIES_STYLE_FLAGS
+from artistools.viewertools import SeriesListActions
+from artistools.viewertools import SeriesRow
 from artistools.viewertools import set_command_text
-from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_row_values
 from artistools.viewertools import set_series_rows
@@ -112,6 +111,7 @@ from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
 from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
+from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
 from artistools.viewertools import split_option_rows
@@ -688,33 +688,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     helptexts = viewer.helptexts
 
     _, lightcurvegrid = add_section(panellayout, "Light curves")
-    # this function defines the handler later, thus the lambda finds the handler when the user presses the key
-    lightcurvelist = make_reorder_list(lambda step: on_move_lightcurve(step))  # ruff:ignore[unnecessary-lambda]
-    # the widget of each row shows the text beside its ✕, thus the list draws no text of its own
-    lightcurvelist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    lightcurvelist.setToolTip(
-        "The ARTIS models and the reference light curves of the plot, in the order of the command. The order sets the"
-        " -label and the style of each series. Drag a row, or press Alt-Up or Alt-Down (Option on a Mac), to change"
-        " the order. The command gives a file from the reference data of artistools by its name alone."
-    )
-    addmodelbutton = QtWidgets.QPushButton("Add Model…")
-    addmodelbutton.setToolTip("Add the folder of an ARTIS run")
-    referenceedit = QtWidgets.QLineEdit()
-    referenceedit.setPlaceholderText("Add a reference light curve, e.g. AT2017gfo")
-    referenceedit.setToolTip(
-        "Type part of the name of a bolometric light curve in the data of artistools, then press Return. A name of a"
-        " file in the working folder also works."
-    )
-    referencecompleter = make_completer(get_reference_lightcurve_names(), referenceedit)
-    referenceedit.setCompleter(referencecompleter)
-    openreferencebutton = QtWidgets.QPushButton("Open…")
-    openreferencebutton.setToolTip("Add the file of a bolometric reference light curve from a folder")
-    addrow = QtWidgets.QHBoxLayout()
-    addrow.addWidget(referenceedit, 1)
-    addrow.addWidget(openreferencebutton)
-    addrow.addWidget(addmodelbutton)
-    lightcurvegrid.addWidget(lightcurvelist, 0, 0, 1, -1)
-    lightcurvegrid.addLayout(addrow, 1, 0, 1, -1)
     # the index of an item: 0 for the UVOIR light curve of the r-packets, and 1 for the gamma packets (--gamma)
     packetbox = QtWidgets.QComboBox()
     for text, tooltip in (
@@ -931,9 +904,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         low, high = logtrange
         return float(10.0 ** (low + (high - low) * position / SLIDER_STEPS))
 
-    # the light curves and the series styles of the rows that show_lightcurves made
-    shownlightcurves: tuple[t.Any, ...] | None = None
-
     def get_lightcurves_key(values: ControlValues) -> tuple[t.Any, ...]:
         """Return the parts of the values that the rows of the list of light curves show."""
         return (values.lightcurves, tuple(get_row_values(values.otheroptions, flag) for flag in SERIES_STYLE_FLAGS))
@@ -943,67 +913,35 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         label = get_series_style(values.otheroptions, values.lightcurves, path)["-label"]
         return label or (Path(path).name if path_is_reference_lightcurve(path) else get_model_name(path))
 
-    def show_lightcurves(values: ControlValues) -> None:
-        """Show a row for each light curve, with the image of its line, its path, and a ✕ that removes it.
-
-        A click on the image of the line opens the style dialog. The context menu of a row also gives the dialog.
-        """
-        nonlocal shownlightcurves
+    def make_lightcurve_rows(values: ControlValues) -> list[SeriesRow]:
+        """Return a row for each light curve."""
         lightcurves = values.lightcurves
-        lightcurvelist.clear()
         models = [path for path in lightcurves if get_artis_run_folders([path])]
         colours = get_path_colours(
             lightcurves, [path_is_reference_lightcurve(path) for path in lightcurves], values.otheroptions
         )
-        rowheight = lightcurvelist.fontMetrics().lineSpacing() + 4
+        rows: list[SeriesRow] = []
         for path in lightcurves:
-            item = QtWidgets.QListWidgetItem()
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
-            name = get_lightcurve_name(values, path)
-            swatch = QtWidgets.QToolButton()
-            swatch.setAutoRaise(True)
-            swatch.setIconSize(QtCore.QSize(36, 14))
-            swatch.setIcon(
-                QtGui.QIcon(
-                    make_series_swatch(
-                        mplcolors.to_hex(colours[path]), get_series_style(values.otheroptions, lightcurves, path)
-                    )
+            style = get_series_style(values.otheroptions, lightcurves, path)
+            itemtext = get_lightcurve_item_text(path)
+            rows.append(
+                SeriesRow(
+                    path=path,
+                    name=get_lightcurve_name(values, path),
+                    labelled=style["-label"] is not None,
+                    itemtext=itemtext,
+                    tooltip=itemtext,
+                    swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
+                    removereason=(
+                        "The plot needs one ARTIS model at least. Add a different model first"
+                        if models == [path]
+                        else None
+                    ),
+                    mark=None,
+                    extraactions=(),
                 )
             )
-            swatch.setToolTip("The colour and the line style of the light curve in the plot. Click to change them")
-            swatch.setAccessibleName(f"Set the style of {name}")
-            swatch.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(on_edit_style, path)))
-            removebutton = make_glyph_button("✕", f"Remove {name} from the plot", f"Remove {name}")
-            if models == [path]:
-                removebutton.setEnabled(False)
-                removebutton.setToolTip("The plot needs one ARTIS model at least. Add a different model first")
-            # the new list replaces this row, thus the removal waits until the click ends
-            removebutton.clicked.connect(
-                partial(QtCore.QTimer.singleShot, 0, window, partial(on_remove_lightcurve, path))
-            )
-            row = QtWidgets.QWidget()
-            rowlayout = QtWidgets.QHBoxLayout(row)
-            # a long path shows its start and its end, and the width of the box sets the length
-            rowlayout.setContentsMargins(4, 0, 2, 0)
-            rowlayout.addWidget(swatch)
-            rowlayout.addWidget(make_elided_label(get_lightcurve_item_text(path)), 1)
-            rowlayout.addWidget(removebutton)
-            row.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
-            for text, action in (("Set Label…", on_edit_label), ("Set Style…", on_edit_style)):
-                rowaction = QtGui.QAction(text, row)
-                # the new list replaces this row, thus each action waits until the menu closes
-                rowaction.triggered.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(action, path)))
-                row.addAction(rowaction)
-            rowheight = max(rowheight, row.sizeHint().height())
-            lightcurvelist.addItem(item)
-            lightcurvelist.setItemWidget(item, row)
-        for index in range(lightcurvelist.count()):
-            if (item := lightcurvelist.item(index)) is not None:
-                item.setSizeHint(QtCore.QSize(0, rowheight))
-        # the list has the height of its light curves, from 2 to 4 rows, and a longer list scrolls
-        shownrows = min(max(lightcurvelist.count(), 2), 4)
-        lightcurvelist.setFixedHeight(shownrows * rowheight + 2 * lightcurvelist.frameWidth() + 4)
-        shownlightcurves = get_lightcurves_key(values)
+        return rows
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
@@ -1014,12 +952,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             viewer.load_runs(values.lightcurves)
         if viewer.runlightcurves != shownruns:
             show_run_ranges()
-        # a drag moves the rows of the list, thus the order of the rows can also differ from the values
-        roworder = [
-            lightcurvelist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(lightcurvelist.count())
-        ]
-        if get_lightcurves_key(values) != shownlightcurves or roworder != list(values.lightcurves):
-            show_lightcurves(values)
+        show_series_rows(get_lightcurves_key(values), partial(make_lightcurve_rows, values))
         packetbox.setCurrentIndex(1 if values.gamma else 0)
         # -topnucs reads the packets, thus the box shows that and takes no choice
         datasourcebox.setCurrentIndex(1 if values.frompackets or values.topnucs else 0)
@@ -1245,87 +1178,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             values = dc.replace(values, directionkind="", directionbins=())
         apply(values)
 
-    def add_lightcurves(paths: "Sequence[str]") -> None:
-        """Add each light curve whose full path the list does not hold yet, e.g. "." for the working folder.
-
-        A cancelled dialog gives no path, and the list then stays with no message.
-        """
-        if not paths:
-            return
-        lightcurves = viewer.values.lightcurves
-        shown = {get_lightcurve_path(path) for path in lightcurves}
-        newpaths: list[str] = []
-        for path in paths:
-            if (fullpath := get_lightcurve_path(path)) not in shown:
-                shown.add(fullpath)
-                newpaths.append(path)
-        if not newpaths:
-            show_error("The list of light curves already holds each of these light curves")
-            return
-        apply_lightcurves((*lightcurves, *newpaths))
-
-    def on_add_model() -> None:
-        # the dialog shows only local folders, thus it opens in the working folder if the first run is on a different host
-        startfolder = (
-            Path.cwd() if is_remote_path(viewer.runfolders[0]) else Path(viewer.runfolders[0]).absolute().parent
-        )
-        folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Add an ARTIS model", str(startfolder))
-        if not folder:
-            return
-        if not get_artis_run_folders([folder]):
-            show_error(f"{folder} is not the folder of an ARTIS run, which holds input.txt")
-            return
-        add_lightcurves([folder])
-
-    referencefolder = get_path("artistools_dir") / "data" / "lightcurves" / "bollightcurves"
-
-    def on_open_reference() -> None:
-        filenames, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            window, "Add reference light curves", str(referencefolder)
-        )
-        add_lightcurves([get_reference_token(filename) for filename in filenames])
-
-    def add_reference_name(name: str) -> None:
-        name = name.strip()
-        if not name:
-            return
-        if find_bol_reflightcurve_file(name) is None:
-            show_error(f"No reference light curve {name} is in the working folder or in the reference data")
-            return
-        referenceedit.clear()
-        add_lightcurves([name])
-
-    def on_complete_reference(name: str) -> None:
-        # the completer puts the name in the field after this handler, thus clear the field after the event
-        QtCore.QTimer.singleShot(0, referenceedit.clear)
-        add_reference_name(name)
-
-    def on_lightcurves_moved() -> None:
-        """Apply the order of the rows after a drag in the list of light curves."""
-        order = [
-            lightcurvelist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(lightcurvelist.count())
-        ]
-        if order != list(viewer.values.lightcurves):
-            apply_lightcurves(order)
-
-    def on_move_lightcurve(step: int) -> None:
-        """Move the selected light curve one row up or down, and keep the selection on it."""
-        lightcurves = list(viewer.values.lightcurves)
-        row = lightcurvelist.currentRow()
-        if row < 0 or not 0 <= row + step < len(lightcurves):
-            return
-        lightcurves.insert(row + step, lightcurves.pop(row))
-        apply_lightcurves(lightcurves)
-        lightcurvelist.setCurrentRow(row + step)
-
-    def on_remove_lightcurve(path: str) -> None:
-        lightcurves = tuple(other for other in viewer.values.lightcurves if other != path)
-        # the time controls and the energy rates read a run, thus the plot needs an ARTIS model
-        if not get_artis_run_folders(lightcurves):
-            show_error("The plot needs one ARTIS model at least. Add a different model before you remove this one")
-            return
-        apply_lightcurves(lightcurves)
-
     def on_edit_label(path: str) -> None:
         """Ask for the -label of a light curve. An empty label gives the automatic label of plotlightcurves."""
         values = viewer.values
@@ -1365,13 +1217,34 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             rows = set_series_rows(values.otheroptions, values.lightcurves, path, changes)
             apply(dc.replace(viewer.values, otheroptions=rows))
 
-    def on_drop(paths: list[str]) -> None:
-        """Add each dropped ARTIS run and each dropped reference file to the light curves of the plot."""
-        folders = [path for path in paths if Path(path).is_dir()]
-        runs = [folder for folder in folders if get_artis_run_folders([folder])]
-        if len(runs) < len(folders):
-            show_error("A dropped folder is not the folder of an ARTIS run, which holds input.txt")
-        add_lightcurves([*runs, *(get_reference_token(path) for path in paths if Path(path).is_file())])
+    def is_run_folder(path: str) -> bool:
+        return bool(get_artis_run_folders([path]))
+
+    show_series_rows = add_series_list(
+        lightcurvegrid,
+        window,
+        partial(show_status_note, statusbar),
+        "The ARTIS models and the reference light curves of the plot, in the order of the command. The order sets the"
+        " -label and the style of each series. Click ▲ or ▼, drag a row, or press Alt-Up or Alt-Down (Option on a Mac)"
+        " to change the order. The command gives a file from the reference data of artistools by its name alone.",
+        ReferenceData(
+            kind="reference light curve",
+            names=get_reference_lightcurve_names(),
+            folder=get_path("artistools_dir") / "data" / "lightcurves" / "bollightcurves",
+            find=find_bol_reflightcurve_file,
+            get_token=get_reference_token,
+            example="AT2017gfo",
+        ),
+        SeriesListActions(
+            get_paths=lambda: viewer.values.lightcurves,
+            apply_paths=apply_lightcurves,
+            edit_label=on_edit_label,
+            edit_style=on_edit_style,
+            get_full_path=get_lightcurve_path,
+            is_run=is_run_folder,
+            show_error=show_error,
+        ),
+    )
 
     def on_closed() -> None:
         print(viewer.get_command())
@@ -1411,7 +1284,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
 
-    set_drop_handler(window, on_drop)
     follow_colour_scheme(window, viewer, queue)
 
     # the window keeps its command at a quit, and the next start opens the window again
@@ -1440,12 +1312,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     yminedit.editingFinished.connect(on_yedit)
     ymaxedit.editingFinished.connect(on_yedit)
     figscalebox.valueChanged.connect(on_figscale)
-    addmodelbutton.clicked.connect(on_add_model)
-    # the list moves the row at the end of the drop, thus the new order applies after the drop
-    lightcurvelist.model().rowsMoved.connect(lambda: QtCore.QTimer.singleShot(0, window, on_lightcurves_moved))
-    openreferencebutton.clicked.connect(on_open_reference)
-    referencecompleter.activated.connect(on_complete_reference)
-    referenceedit.returnPressed.connect(lambda: add_reference_name(referenceedit.text()))
     window.destroyed.connect(on_closed)
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,

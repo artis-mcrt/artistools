@@ -54,10 +54,10 @@ from artistools.viewertools import add_figure_section
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import add_series_list
 from artistools.viewertools import add_window_actions
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
-from artistools.viewertools import copy_text
 from artistools.viewertools import DirectionChoice
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import edit_series_style
@@ -80,17 +80,13 @@ from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_path_colours
 from artistools.viewertools import get_python_call
-from artistools.viewertools import get_recent_models
 from artistools.viewertools import get_row_values
 from artistools.viewertools import get_series_style
 from artistools.viewertools import get_series_value
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_command_tokens
-from artistools.viewertools import make_completer
-from artistools.viewertools import make_elided_label
 from artistools.viewertools import make_fps_box
-from artistools.viewertools import make_glyph_button
 from artistools.viewertools import make_option_table
 from artistools.viewertools import make_parser
 from artistools.viewertools import make_play_button
@@ -98,7 +94,6 @@ from artistools.viewertools import make_play_row
 from artistools.viewertools import make_plot_area
 from artistools.viewertools import make_range_slider
 from artistools.viewertools import make_readout_tag
-from artistools.viewertools import make_reorder_list
 from artistools.viewertools import make_row_layout
 from artistools.viewertools import make_segmented_control
 from artistools.viewertools import make_series_swatch
@@ -111,14 +106,16 @@ from artistools.viewertools import make_window
 from artistools.viewertools import move_series_styles
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
+from artistools.viewertools import ReferenceData
 from artistools.viewertools import remove_options
 from artistools.viewertools import ROW_SPACING
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
 from artistools.viewertools import SERIES_STYLE_FLAGS
+from artistools.viewertools import SeriesListActions
+from artistools.viewertools import SeriesRow
 from artistools.viewertools import set_command_text
-from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
 from artistools.viewertools import set_row_values
 from artistools.viewertools import set_series_rows
@@ -1427,39 +1424,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         box.setKeyboardTracking(False)
 
     _, spectragrid = add_section(panellayout, "Spectra")
-    # the handler comes later in this function, thus the lambda reads it at the time of the key
-    spectralist = make_reorder_list(lambda step: on_move_spectrum(step))  # ruff:ignore[unnecessary-lambda]
-    # the widget of each row shows the text beside its ✕, thus the list draws no text of its own
-    spectralist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    spectralist.setToolTip(
-        "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
-        " -label and the style of each series. The time controls read the timesteps of the first ARTIS model (⏱)."
-        " Click ▲ or ▼, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the order. The command"
-        " gives a file from the reference data of artistools by its name alone."
-    )
-    # a click opens the dialog, and the arrow opens the menu of the recent models
-    addmodelbutton = QtWidgets.QToolButton()
-    addmodelbutton.setText("Add Model…")
-    addmodelbutton.setToolTip("Add the folder of an ARTIS model. The arrow shows the recent models")
-    addmodelbutton.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-    recentmodelsmenu = QtWidgets.QMenu(addmodelbutton)
-    addmodelbutton.setMenu(recentmodelsmenu)
-    referenceedit = QtWidgets.QLineEdit()
-    referenceedit.setPlaceholderText("Add a reference spectrum, e.g. AT2017gfo")
-    referenceedit.setToolTip(
-        "Type part of the name of a reference spectrum in the data of artistools, then press Return. A name of a file"
-        " in the working folder also works."
-    )
-    referencecompleter = make_completer(get_reference_spectrum_names(), referenceedit)
-    referenceedit.setCompleter(referencecompleter)
-    openreferencebutton = QtWidgets.QPushButton("Open…")
-    openreferencebutton.setToolTip("Add the file of a reference spectrum from a folder")
-    addrow = QtWidgets.QHBoxLayout()
-    addrow.addWidget(referenceedit, 1)
-    addrow.addWidget(openreferencebutton)
-    addrow.addWidget(addmodelbutton)
-    spectragrid.addWidget(spectralist, 0, 0, 1, -1)
-    spectragrid.addLayout(addrow, 1, 0, 1, -1)
     datasourcebox = QtWidgets.QComboBox()
     for text, source, tooltip in (
         ("Auto", "auto", "Read the packets files only when an option needs them"),
@@ -1475,7 +1439,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     assert isinstance(datasourcemodel, QtGui.QStandardItemModel)
     autoitem, textitem = datasourcemodel.item(0), datasourcemodel.item(1)
     add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox])
-    referencefolder = get_path("artistools_dir") / "data" / "refspectra"
     _, appearancegrid = add_section(panellayout, "Appearance")
     # the box edits the row of -figscale in the other options, as the box of the estimator viewer does
     figscalebox = QtWidgets.QDoubleSpinBox()
@@ -1690,121 +1653,58 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             checkbox.setEnabled(reason is None)
             checkbox.setToolTip(reason or helptexts.get(dest, ""))
 
-    # the spectra, the time grid, and the series styles of the rows that show_spectra made. A drag moves the rows in
-    # the list, and the rows then show old numbers and old buttons until show_spectra makes them again
-    shownspectra: tuple[t.Any, ...] | None = None
-
     def get_spectra_key(values: ControlValues) -> tuple[t.Any, ...]:
         """Return the parts of the values that the rows of the list of spectra show."""
         styles = tuple(get_row_values(values.otheroptions, flag) for flag in SERIES_STYLE_FLAGS)
         return (values.spectra, values.timegrid, styles)
 
-    def add_row_actions(row: QtWidgets.QWidget, index: int, path: str, gridpath: str) -> None:
-        """Give the row of a spectrum a context menu. The keyboard and VoiceOver can then also reach the actions."""
-        spectra = viewer.values.spectra
-        ismodel = path in viewer.runtimes
-        islocal = not is_remote_path(path)
-        row.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
-        for text, enabled, action in (
-            ("Move to Top", index > 0, partial(on_move_row, index, -index)),
-            ("Move to Bottom", index < len(spectra) - 1, partial(on_move_row, index, len(spectra) - 1 - index)),
-            ("Use for the Time Controls", ismodel and path != gridpath, partial(on_use_timegrid, path)),
-            ("Set Label…", True, partial(on_edit_label, path)),
-            ("Set Style…", True, partial(on_edit_style, path)),
-            ("Copy Path", True, partial(on_copy_path, path)),
-            ("Open Folder", islocal, partial(on_open_spectrum_folder, path)),
-            ("Remove", path not in viewer.runtimes or len(viewer.runtimes) > 1, partial(on_remove_spectrum, path)),
-        ):
-            rowaction = QtGui.QAction(text, row)
-            rowaction.setEnabled(enabled)
-            # the new list replaces this row, thus each action waits until the menu closes
-            rowaction.triggered.connect(partial(QtCore.QTimer.singleShot, 0, window, action))
-            row.addAction(rowaction)
-
-    def show_spectra(values: ControlValues) -> None:
-        """Show a row for each spectrum, with its colour, its name, and buttons that move it and remove it.
-
-        The row of the model that gives the timesteps of the time controls shows a mark. The tooltip of the row of a
-        model gives the times of the model.
-        """
-        nonlocal shownspectra
-        spectra = values.spectra
-        spectralist.clear()
+    def make_spectrum_rows(values: ControlValues) -> list[SeriesRow]:
+        """Return a row for each spectrum. The model that gives the timesteps of the time controls has a mark."""
         models = list(viewer.runtimes)
         gridpath = get_timegrid_path(values)
-        colours = get_series_colours(spectra, values.otheroptions)
-        labels = get_row_values(values.otheroptions, "-label") or ()
-        rowheight = spectralist.fontMetrics().lineSpacing() + 4
-        for index, path in enumerate(spectra):
-            item = QtWidgets.QListWidgetItem()
-            item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
-            label = get_series_value(labels, index)
-            name = get_series_name(path) if label is None else label
-            row = QtWidgets.QWidget()
-            itemtext = get_spectrum_item_text(path)
-            row.setToolTip(
-                f"{itemtext}\n{get_run_times_text(viewer.runtimes[path])}" if path in viewer.runtimes else itemtext
-            )
-            rowlayout = QtWidgets.QHBoxLayout(row)
-            rowlayout.setContentsMargins(4, 0, 2, 0)
-            rowlayout.setSpacing(2)
-            rowlayout.addWidget(QtWidgets.QLabel(f"<b>{index + 1}</b>"))
+        colours = get_series_colours(values.spectra, values.otheroptions)
+        rows: list[SeriesRow] = []
+        for path in values.spectra:
             style = get_series_style(values.otheroptions, values.spectra, path)
-            swatch = QtWidgets.QToolButton()
-            swatch.setAutoRaise(True)
-            swatch.setIconSize(QtCore.QSize(36, 14))
-            swatch.setIcon(QtGui.QIcon(make_series_swatch(mplcolors.to_hex(colours[path]), style)))
-            swatch.setToolTip("The colour and the line style of the spectrum in the plot. Click to change them")
-            swatch.setAccessibleName(f"Set the style of {name}")
-            swatch.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(on_edit_style, path)))
-            rowlayout.addWidget(swatch)
-            namelabel = QtWidgets.QLabel(name)
-            namelabel.setToolTip(
-                f"The -label of the spectrum: {name}. Double-click the row to change it"
-                if label is not None
-                else f"The name of the spectrum in the legend: {name}. Double-click the row to give it a -label"
-            )
-            rowlayout.addWidget(namelabel)
-            rowlayout.addSpacing(6)
-            # a long path shows its start and its end, and the width of the box sets the length
-            pathlabel = make_elided_label(itemtext)
-            pathlabel.setEnabled(False)
-            rowlayout.addWidget(pathlabel, 1)
-            if path == gridpath:
-                timemark = QtWidgets.QLabel("⏱")
-                timemark.setToolTip(
-                    "The time controls read the timesteps of this model. To use a different model, select it in the"
-                    ' "Timesteps of" box or in the context menu of its row'
+            itemtext = get_spectrum_item_text(path)
+            rows.append(
+                SeriesRow(
+                    path=path,
+                    name=style["-label"] or get_series_name(path),
+                    labelled=style["-label"] is not None,
+                    itemtext=itemtext,
+                    tooltip=(
+                        f"{itemtext}\n{get_run_times_text(viewer.runtimes[path])}"
+                        if path in viewer.runtimes
+                        else itemtext
+                    ),
+                    swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
+                    removereason=(
+                        "The plot needs one ARTIS model at least. Add a different model first"
+                        if models == [path]
+                        else None
+                    ),
+                    mark=(
+                        (
+                            "⏱",
+                            (
+                                "The time controls read the timesteps of this model. To use a different model, select"
+                                ' it in the "Timesteps of" box or in the context menu of its row'
+                            ),
+                        )
+                        if path == gridpath
+                        else None
+                    ),
+                    extraactions=(
+                        (
+                            "Use for the Time Controls",
+                            path in viewer.runtimes and path != gridpath,
+                            partial(on_use_timegrid, path),
+                        ),
+                    ),
                 )
-                rowlayout.addWidget(timemark)
-            # the new list replaces this row, thus each action of a button waits until the click ends
-            for glyph, tooltip, enabled, action in (
-                ("▲", f"Move {name} up (Alt-Up)", index > 0, partial(on_move_row, index, -1)),
-                ("▼", f"Move {name} down (Alt-Down)", index < len(spectra) - 1, partial(on_move_row, index, 1)),
-                ("✕", f"Remove {name} from the plot", models != [path], partial(on_remove_spectrum, path)),
-            ):
-                button = make_glyph_button(glyph, tooltip, tooltip)
-                button.setEnabled(enabled)
-                if glyph == "✕" and not enabled:
-                    button.setToolTip("The plot needs one ARTIS model at least. Add a different model first")
-                button.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, action))
-                rowlayout.addWidget(button)
-            grip = QtWidgets.QLabel("≡")
-            grip.setEnabled(False)
-            grip.setToolTip("Drag the row to move the spectrum")
-            grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
-            rowlayout.addWidget(grip)
-            add_row_actions(row, index, path, gridpath)
-            rowheight = max(rowheight, row.sizeHint().height())
-            spectralist.addItem(item)
-            spectralist.setItemWidget(item, row)
-        for index in range(spectralist.count()):
-            if (item := spectralist.item(index)) is not None:
-                item.setSizeHint(QtCore.QSize(0, rowheight))
-        # the list has the height of its spectra, from 2 to 4 rows, and a longer list scrolls
-        shownrows = min(max(spectralist.count(), 2), 4)
-        spectralist.setFixedHeight(shownrows * rowheight + 2 * spectralist.frameWidth() + 4)
-        shownspectra = get_spectra_key(values)
+            )
+        return rows
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
@@ -1886,8 +1786,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             thermalitem.setEnabled(thermalavailable)
         thermalitem.setToolTip(thermaltooltip if thermalreason is None else thermalreason)
         show_direction()
-        if shownspectra != get_spectra_key(values):
-            show_spectra(values)
+        show_series_rows(get_spectra_key(values), partial(make_spectrum_rows, values))
         set_option_rows(values.otheroptions)
         set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
         set_spin_value(
@@ -2220,104 +2119,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         """
         apply(set_runs(viewer, spectra, viewer.values.timegrid))
 
-    def add_spectra(paths: "Sequence[str]") -> None:
-        """Add each spectrum whose full path the list does not hold yet, e.g. "." for the working folder.
-
-        A cancelled dialog gives no path, and the list then stays with no message.
-        """
-        if not paths:
-            return
-        spectra = viewer.values.spectra
-        shown = {get_spectrum_path(path) for path in spectra}
-        newpaths: list[str] = []
-        for path in paths:
-            if (fullpath := get_spectrum_path(path)) not in shown:
-                shown.add(fullpath)
-                newpaths.append(path)
-        if not newpaths:
-            show_error("The list of spectra already holds each of these spectra")
-            return
-        apply_spectra((*spectra, *newpaths))
-
-    def on_add_model() -> None:
-        # the dialog shows only local folders, thus it opens in the working folder if the first run is on a different host
-        startfolder = (
-            Path.cwd() if is_remote_path(viewer.runfolders[0]) else Path(viewer.runfolders[0]).absolute().parent
-        )
-        folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Add an ARTIS model", str(startfolder))
-        if not folder:
-            return
-        if not get_artis_run_folders([Path(folder)]):
-            show_error(f"{folder} is not the folder of an ARTIS run, which holds input.txt and spec.out")
-            return
-        add_recent_model(folder)
-        add_spectra([folder])
-
-    def show_recent_models() -> None:
-        """Fill the menu of Add Model with the recent models that the list does not hold."""
-        recentmodelsmenu.clear()
-        shown = {get_spectrum_path(path) for path in viewer.values.spectra}
-        folders = [folder for folder in get_recent_models() if get_spectrum_path(folder) not in shown]
-        for folder in folders:
-            action = recentmodelsmenu.addAction(Path(folder).name)
-            action.setToolTip(folder)
-            # a test of a remote folder starts ssh, thus the menu enables each remote model and does not test its folder
-            action.setEnabled(is_remote_path(folder) or Path(folder).is_dir())
-            action.triggered.connect(partial(add_spectra, [folder]))
-        if not folders:
-            recentmodelsmenu.addAction("No Recent Models").setEnabled(False)
-
-    def on_open_reference() -> None:
-        filenames, _ = QtWidgets.QFileDialog.getOpenFileNames(window, "Add reference spectra", str(referencefolder))
-        add_spectra([get_reference_token(filename) for filename in filenames])
-
-    def add_reference_name(name: str) -> None:
-        name = name.strip()
-        if not name:
-            return
-        if find_reference_spectrum_file_or_none(name) is None:
-            show_error(f"No reference spectrum {name} is in the working folder or in the reference data of artistools")
-            return
-        referenceedit.clear()
-        add_spectra([name])
-
-    def on_complete_reference(name: str) -> None:
-        # the completer puts the name in the field after this handler, thus clear the field after the event
-        QtCore.QTimer.singleShot(0, referenceedit.clear)
-        add_reference_name(name)
-
-    def on_spectra_dropped() -> None:
-        """Apply the order of the rows after a drag in the list of spectra, and make the rows again.
-
-        Qt can move a dropped row, or it can insert a copy and then remove the source row. Until the removal, the
-        list holds one spectrum two times, thus the function waits for the removal. A copy has no row widget, thus the
-        function makes the rows again. When show_spectra inserts and removes rows, each row has its widget, and the
-        function does nothing.
-        """
-        nonlocal shownspectra
-        items = [spectralist.item(index) for index in range(spectralist.count())]
-        order = [item.data(QtCore.Qt.ItemDataRole.UserRole) for item in items]
-        if sorted(order) != sorted(viewer.values.spectra):
-            return
-        if (
-            shownspectra is not None
-            and tuple(order) == shownspectra[0]
-            and all(spectralist.itemWidget(item) is not None for item in items)
-        ):
-            return
-        # the rows show the numbers and the buttons of the old order, thus None makes show_values call show_spectra
-        shownspectra = None
-        apply_spectra(order)
-
-    def on_move_row(row: int, step: int) -> None:
-        """Move the spectrum of a row one row up or down, and select it."""
-        spectra = list(viewer.values.spectra)
-        if row < 0 or not 0 <= row + step < len(spectra):
-            return
-        spectra.insert(row + step, spectra.pop(row))
-        apply_spectra(spectra)
-        spectralist.setCurrentRow(row + step)
-
     def on_use_timegrid(path: str) -> None:
         apply(set_runs(viewer, viewer.values.spectra, path))
 
@@ -2351,31 +2152,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if changes is not None:
             apply(set_series_values(viewer.values, path, changes))
 
-    def on_copy_path(path: str) -> None:
-        copy_text(str(get_spectrum_path(path)))
-        show_status_note(statusbar, "Copied the path")
-
-    def on_open_spectrum_folder(path: str) -> None:
-        """Open the folder of a model, or the folder that holds a reference file, in the file manager."""
-        fullpath = get_spectrum_path(path)
-        folder = fullpath if fullpath.is_dir() else fullpath.parent
-        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
-
-    def on_spectrum_double_clicked(item: QtWidgets.QListWidgetItem) -> None:
-        on_edit_label(item.data(QtCore.Qt.ItemDataRole.UserRole))
-
-    def on_move_spectrum(step: int) -> None:
-        """Move the selected spectrum one row up or down, e.g. for Alt-Up."""
-        on_move_row(spectralist.currentRow(), step)
-
-    def on_remove_spectrum(path: str) -> None:
-        spectra = tuple(other for other in viewer.values.spectra if other != path)
-        # the time controls read the timesteps of a run, thus the plot needs an ARTIS model
-        if not get_artis_run_folders([Path(other) for other in spectra]):
-            show_error("The plot needs one ARTIS model at least. Add a different model before you remove this one")
-            return
-        apply_spectra(spectra)
-
     def get_animation_frames() -> "tuple[int, Callable[[int], list[str]]]":
         """Return the count of the steps of Play, from the first valid timestep to the last, and the command of each."""
         values = viewer.values
@@ -2404,13 +2180,35 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             viewer.parser,
         )
 
-    def on_drop(paths: list[str]) -> None:
-        """Add each dropped ARTIS run and each dropped reference file to the spectra of the plot."""
-        folders = [path for path in paths if Path(path).is_dir()]
-        runs = [folder for folder in folders if get_artis_run_folders([Path(folder)])]
-        if len(runs) < len(folders):
-            show_error("A dropped folder is not the folder of an ARTIS run, which holds input.txt and spec.out")
-        add_spectra([*runs, *(get_reference_token(path) for path in paths if Path(path).is_file())])
+    def is_run_folder(path: str) -> bool:
+        return bool(get_artis_run_folders([Path(path)]))
+
+    show_series_rows = add_series_list(
+        spectragrid,
+        window,
+        partial(show_status_note, statusbar),
+        "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
+        " -label and the style of each series. The time controls read the timesteps of the first ARTIS model (⏱)."
+        " Click ▲ or ▼, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the order. The command"
+        " gives a file from the reference data of artistools by its name alone.",
+        ReferenceData(
+            kind="reference spectrum",
+            names=get_reference_spectrum_names(),
+            folder=get_path("artistools_dir") / "data" / "refspectra",
+            find=find_reference_spectrum_file_or_none,
+            get_token=get_reference_token,
+            example="AT2017gfo",
+        ),
+        SeriesListActions(
+            get_paths=lambda: viewer.values.spectra,
+            apply_paths=apply_spectra,
+            edit_label=on_edit_label,
+            edit_style=on_edit_style,
+            get_full_path=get_spectrum_path,
+            is_run=is_run_folder,
+            show_error=show_error,
+        ),
+    )
 
     def on_closed() -> None:
         print(viewer.get_command())
@@ -2451,7 +2249,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
 
-    set_drop_handler(window, on_drop)
     follow_colour_scheme(window, viewer, queue)
 
     # the window keeps its command at a quit, and the next start opens the window again
@@ -2497,16 +2294,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     thermalbox.currentIndexChanged.connect(on_emission_options)
     yvariablebox.currentTextChanged.connect(on_axes)
     normalisedcheck.toggled.connect(on_axes)
-    addmodelbutton.clicked.connect(on_add_model)
-    recentmodelsmenu.aboutToShow.connect(show_recent_models)
     timegridbox.currentIndexChanged.connect(on_timegrid)
-    spectralist.itemDoubleClicked.connect(on_spectrum_double_clicked)
-    # the list changes its rows at the end of the drop, thus the new order applies after the drop
-    for rowsignal in (spectralist.model().rowsMoved, spectralist.model().rowsInserted, spectralist.model().rowsRemoved):
-        rowsignal.connect(lambda: QtCore.QTimer.singleShot(0, window, on_spectra_dropped))
-    openreferencebutton.clicked.connect(on_open_reference)
-    referencecompleter.activated.connect(on_complete_reference)
-    referenceedit.returnPressed.connect(lambda: add_reference_name(referenceedit.text()))
     window.destroyed.connect(on_closed)
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
