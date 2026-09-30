@@ -27,9 +27,11 @@ from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import match_closest_time
+from artistools.misc import path_is_file
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
+from artistools.misc.fileio import folder_holds_match
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
 from artistools.plottools import make_colorbar_viewingangles
@@ -46,9 +48,9 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
     modelpath = Path(modelpath)
     check_averaging_angles(args.average_over_phi_angle, args.average_over_theta_angle)
 
-    viewing_angle_data_exists = args.frompackets or bool(list(modelpath.glob("*_res.out*")))
+    viewing_angle_data_exists = args.frompackets or folder_holds_match(modelpath, "*_res.out*")
     dirbins: list[int] = []
-    if args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
+    if args.plotvspecpol and path_is_file(modelpath / "vpkt.txt"):
         dirbins = args.plotvspecpol
     elif args.plotviewingangle and args.plotviewingangle[0] == -2 and viewing_angle_data_exists:
         dirbins = get_dirbins(

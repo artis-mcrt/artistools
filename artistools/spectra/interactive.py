@@ -23,9 +23,12 @@ from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
+from artistools.misc import path_is_file
 from artistools.misc import separate_trailing_folders
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
-from artistools.packets.core import get_packets_textfilename
+from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.remote import is_remote_path
+from artistools.packets.core import has_packets_files
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
@@ -329,19 +332,14 @@ def has_gamma_spectrum(runfolders: "Sequence[Path]") -> bool:
     Thus a run with gamma_spec.out alone and a run with packets alone give no plot. A run can keep only the parquet
     cache of its packets.
     """
-
-    def has_packets(runfolder: Path) -> bool:
-        textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=runfolder)
-        return textfile is not None or any((runfolder / "packets").glob("packetsbatch00_*.parquet.tmp"))
-
     return all(
         firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None for runfolder in runfolders
-    ) or all(has_packets(runfolder) for runfolder in runfolders)
+    ) or all(has_packets_files(runfolder) for runfolder in runfolders)
 
 
 def get_direction_kinds(runfolder: Path) -> list[str]:
     """Return the kinds of viewing direction of the run. A run with a configuration of virtual packets has observers."""
-    return ["", "bin", "phi", "theta", *(["vpkt"] if (runfolder / "vpkt.txt").is_file() else [])]
+    return ["", "bin", "phi", "theta", *(["vpkt"] if path_is_file(runfolder / "vpkt.txt") else [])]
 
 
 def format_days(value: float) -> str:
@@ -487,11 +485,12 @@ DEFAULT_SPECTRA: t.Final = (".",)
 def get_spectrum_path(path: str) -> Path:
     """Return the full path of the folder or the file of a spectrum, e.g. of "." or of a name of a reference spectrum.
 
-    Two spellings of one spectrum, e.g. "." and the full path of the working folder, then give the same path.
+    Two spellings of one spectrum, e.g. "." and the full path of the working folder, then give the same path. A model
+    on a different host keeps its path.
     """
     if path_is_reference_spectrum(path):
         return (find_reference_spectrum_file_or_none(path) or Path(path)).resolve()
-    return Path(path).resolve()
+    return resolve_modelpath(path)
 
 
 def get_spectrum_item_text(path: str) -> str:
@@ -501,7 +500,7 @@ def get_spectrum_item_text(path: str) -> str:
     """
     if path_is_reference_spectrum(path):
         return f"Reference: {(find_reference_spectrum_file_or_none(path) or Path(path)).absolute()}"
-    return f"Model: {Path(path).absolute()}"
+    return f"Model: {path if is_remote_path(path) else Path(path).absolute()}"
 
 
 def get_reference_spectrum_names() -> list[str]:
@@ -1071,7 +1070,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     window = make_window(APPLICATION_NAME)
     # a command with no path reads the model of the working folder
-    modelnames = [Path(path).resolve().name for path in viewer.modelpathtokens] or [viewer.runfolders[0].resolve().name]
+    modelnames = [resolve_modelpath(path).name for path in viewer.modelpathtokens] or [
+        resolve_modelpath(viewer.runfolders[0]).name
+    ]
     set_window_document(window, viewer.runfolders[0], ", ".join(modelnames))
     canvas = FigureCanvasQTAgg(viewer.fig)
     viewer.darkcolours = get_dark_plot_colours()
@@ -2132,7 +2133,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply_spectra((*spectra, *newpaths))
 
     def on_add_model() -> None:
-        startfolder = Path(viewer.runfolders[0]).absolute().parent
+        # the dialog shows only local folders, thus it opens in the working folder if the first run is on a different host
+        startfolder = (
+            Path.cwd() if is_remote_path(viewer.runfolders[0]) else Path(viewer.runfolders[0]).absolute().parent
+        )
         folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Add an ARTIS model", str(startfolder))
         if not folder:
             return

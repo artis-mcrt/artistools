@@ -22,6 +22,7 @@ from artistools.constants import km_to_cm
 from artistools.estimators.core import convert_estimator_batch_caches
 from artistools.estimators.core import format_units
 from artistools.estimators.core import get_estimator_batch_states
+from artistools.estimators.core import get_plot_estimator_rows
 from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
@@ -54,6 +55,7 @@ from artistools.estimators.plotestimators import TIME_XVARIABLES
 from artistools.estimators.plotestimators import VARIABLE_ALIASES
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import get_modelmeta
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_runfolders
@@ -63,9 +65,12 @@ from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
 from artistools.misc import separate_trailing_folders
+from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.general import call_in_child_process
 from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+from artistools.misc.remote import is_remote_path
+from artistools.misc.remote import on_model_host
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
@@ -372,12 +377,24 @@ class RunData(t.NamedTuple):
     skippeddefaults: tuple[str, ...]
 
 
+@on_model_host
+def read_remote_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
+    """Read the data of a remote run on its host, which also converts the stale estimator caches there.
+
+    The caches of the batches stay on the host, and each plot asks the host for its columns.
+    """
+    return read_run(modelpath, args, ntimesteps)._replace(batchcaches=None)
+
+
 def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
     """Read the data of the run that the controls of the viewer need.
 
     The viewer checks and converts the estimator caches of the run one time. Each plot then reads the caches of its
     own timesteps and cells, as the command does. The function changes no viewer, thus a worker thread can run it.
     """
+    if is_remote_path(modelpath):
+        return read_remote_run(modelpath, args, ntimesteps)
+
     isartisrun = not args.classicartis and not path_is_codecomparison(modelpath)
     batchcaches = get_batch_caches(modelpath) if isartisrun else None
     estimators, modelmeta = join_cell_modeldata(
@@ -419,10 +436,19 @@ def read_run_again(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -
     These caches hold the files of the last read. A kept scan also holds the metadata of its file, e.g. 8 MB for a
     cache of 5335 columns. Thus the scans of the replaced caches must go.
     """
+    clear_run_caches(modelpath)
+    # the columns of a remote run that the last plots fetched
+    get_plot_estimator_rows.cache_clear()
+    return read_run(modelpath, args, ntimesteps)
+
+
+@on_model_host
+def clear_run_caches(modelpath: Path) -> None:
+    """Clear the caches of the scans of a run. The host of a remote run clears its own caches."""
+    del modelpath
     scan_parquet_file.cache_clear()
     get_runfolder_timesteps_cached.cache_clear()
     read_classic_estimators_cached.cache_clear()
-    return read_run(modelpath, args, ntimesteps)
 
 
 def set_run(viewer: "EstimatorViewer", run: RunData) -> None:
@@ -829,7 +855,7 @@ class EstimatorViewer:
             flag for flag, action in get_actions_by_flag(parser).items() if action.dest in RUN_DESTS
         )
         # the size of the grid, which gives the edges of the cells that a selection of the window reads
-        self.modelmeta: dict[str, t.Any] = get_modeldata(self.modelpath)[1]
+        self.modelmeta: dict[str, t.Any] = get_modelmeta(self.modelpath)
         self.dimensions = int(self.modelmeta["dimensions"])
         # the types of series that the run can plot from its NLTE populations. Only a 1D model gives the width in
         # velocity of each shell for the population for each unit of velocity
@@ -1823,7 +1849,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
     viewer = EstimatorViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     window = make_window(APPLICATION_NAME)
-    set_window_document(window, viewer.modelpath, viewer.modelpath.resolve().name)
+    set_window_document(window, viewer.modelpath, resolve_modelpath(viewer.modelpath).name)
     canvas = FigureCanvasQTAgg(viewer.fig)
     viewer.darkcolours = get_dark_plot_colours()
     if (message := viewer.draw(quiet=False)) is not None:

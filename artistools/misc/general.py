@@ -48,6 +48,12 @@ def savgol_coeffs(window_length: int, polyorder: int) -> npt.NDArray[np.float64]
     return np.asarray(np.linalg.pinv(np.vander(xwindow, polyorder + 1, increasing=True))[0], dtype=np.float64)
 
 
+def moving_average_filter(ylist: npt.ArrayLike, n: int) -> npt.NDArray[np.float64]:
+    """Return the moving average over n points. The edge values repeat to fill the windows at the ends."""
+    arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
+    return np.asarray(np.convolve(arr_padded, np.ones((n,)) / n, mode="valid"), dtype=np.float64)
+
+
 def savgol_filter(ylist: npt.ArrayLike, window_length: int, polyorder: int) -> npt.NDArray[np.float64]:
     """Apply Savitzky-Golay smoothing to a 1D array, fitting polynomials to the edge windows.
 

@@ -51,6 +51,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.remote import on_model_host
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
@@ -163,6 +164,7 @@ def get_dfspectrum_x_y_with_units(
     return dfspectrum.sort("x")
 
 
+@on_model_host
 def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> npt.NDArray[np.floating]:
     """Get the wavelength bins for the emergent spectrum."""
     try:
@@ -449,6 +451,7 @@ def get_spectrum_at_time(
         timestepmax=timestep,
         average_over_phi=average_over_phi,
         average_over_theta=average_over_theta,
+        directionbins=[dirbin],
     )[dirbin]
 
 
@@ -538,6 +541,7 @@ def filter_packets_by_time(
     )
 
 
+@on_model_host
 def get_from_packets(
     modelpath: Path | str,
     timelowdays: float,
@@ -760,6 +764,7 @@ def read_emission_absorption_file_cached(emabsfilename: Path, filestate: tuple[i
     return drop_trailing_null_column(dfemabs).collect()
 
 
+@on_model_host
 def get_spectra(
     modelpath: Path,
     timestepmin: int,
@@ -768,23 +773,31 @@ def get_spectra(
     average_over_theta: bool = False,
     average_over_phi: bool = False,
     gamma: bool = False,
+    directionbins: Sequence[int] | None = None,
 ) -> dict[int, pl.LazyFrame]:
-    """Get a mapping direction bins to polars LazyFrames containing ARTIS emergent UVOIR spectra."""
+    """Return the emergent ultraviolet, optical, and infrared (UVOIR) spectra, with one LazyFrame for each direction bin.
+
+    directionbins selects the bins, and None gives every bin. A 3D model has 100 bins in spec_res.out, and a remote
+    model sends each bin through ssh, thus a caller asks for its own bins. A request of bin -1 alone reads no
+    spec_res.out.
+    """
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
     check_averaging_angles(average_over_phi, average_over_theta)
 
     specdata_alltimesteps: dict[int, pl.LazyFrame] = {}
-    with suppress(FileNotFoundError):
-        # the direction-resolved file must match the packet type of the spherically averaged one below,
-        # otherwise the dirbins would silently hold UVOIR spectra while dirbin -1 holds gamma spectra
-        res_specdata = read_spec_res(modelpath, gamma=gamma)
-        if average_over_theta:
-            res_specdata = average_direction_bins(res_specdata, overangle="theta")
-        if average_over_phi:
-            res_specdata = average_direction_bins(res_specdata, overangle="phi")
-        specdata_alltimesteps |= res_specdata
+    readsresbins = directionbins is None or any(dirbin >= 0 for dirbin in directionbins)
+    if readsresbins:
+        with suppress(FileNotFoundError):
+            # the direction-resolved file must match the packet type of the spherically averaged one below,
+            # otherwise the dirbins would silently hold UVOIR spectra while dirbin -1 holds gamma spectra
+            res_specdata = read_spec_res(modelpath, gamma=gamma)
+            if average_over_theta:
+                res_specdata = average_direction_bins(res_specdata, overangle="theta")
+            if average_over_phi:
+                res_specdata = average_direction_bins(res_specdata, overangle="phi")
+            specdata_alltimesteps |= res_specdata
 
     # spherically averaged spectra
     try:
@@ -796,12 +809,16 @@ def get_spectra(
             raise FileNotFoundError(msg) from e
         if not specdata_alltimesteps:
             # a run with specpol.out alone has no spec.out, thus only a run with no spectrum file fails here
-            msg = f"{modelpath} holds no spec.out and no spec_res.out"
+            msg = (
+                f"{modelpath} holds no spec.out and no spec_res.out"
+                if readsresbins
+                else f"{modelpath} holds no spec.out"
+            )
             raise FileNotFoundError(msg) from e
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     specdataout: dict[int, pl.LazyFrame] = {}
-    for dirbin in specdata_alltimesteps:
+    for dirbin in specdata_alltimesteps if directionbins is None else set(specdata_alltimesteps) & set(directionbins):
         dfspectrum = (
             specdata_alltimesteps[dirbin]
             .select(
@@ -832,6 +849,7 @@ def get_spectra(
     return specdataout
 
 
+@on_model_host
 def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     """Sum the per-rank virtual packet spectra into one vspecpol_total file per observer direction."""
     nprocs = get_nprocs(modelpath)
@@ -955,6 +973,7 @@ def read_specpol_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
     return read_specpol_res_cached(resolve_modelpath(modelpath))
 
 
+@on_model_host
 def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U spectra of one direction bin.
 
@@ -982,6 +1001,7 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> d
 # maxsize is small because this reads eagerly and every cached entry retains a whole vspecpol_total file.
 # Callers collect the frames once per timestep, so a cache miss on each call would parse the file again.
 @lru_cache(maxsize=2)
+@on_model_host
 def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
 
@@ -1116,6 +1136,7 @@ def get_emabs_timeblock_count(dfemabs: pl.DataFrame, n_nu: int, n_timesteps: int
 
 
 @lru_cache(maxsize=4)
+@on_model_host
 def get_flux_contributions_cached(
     modelpath: Path,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
@@ -1403,6 +1424,7 @@ SHELLCOLUMNS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
 DEFAULT_YE_SHELLS: t.Final[tuple[float, ...]] = (*(index * 0.05 for index in range(11)), 1.0)
 
 
+@on_model_host
 def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tuple[list[float], t.Literal["kmps", "c"]]:
     """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the grid corner, and the unit.
 
@@ -1635,6 +1657,7 @@ def check_gamma_emission_record(lzdfpackets: pl.LazyFrame) -> None:
         raise ValueError(msg)
 
 
+@on_model_host
 def get_flux_contributions_from_packets(
     modelpath: Path,
     timelowdays: float,

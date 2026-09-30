@@ -27,11 +27,15 @@ from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import zopen
+from artistools.misc.remote import check_local_path
+from artistools.misc.remote import is_remote_path
+from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping
 
 
+@on_model_host
 def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
     """Return the virtual packet settings from a model's vpkt.txt."""
     from artistools.make_vpkt_input import parse_vpkt_input
@@ -116,6 +120,7 @@ def get_nu_grid(modelpath: Path | str) -> npt.NDArray[np.floating]:
 
 
 @lru_cache(maxsize=16)
+@on_model_host
 def get_nu_grid_cached(modelpath: Path) -> npt.NDArray[np.floating]:
     """Return the frequency grid of the model at an absolute path."""
     specfile = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
@@ -160,10 +165,11 @@ def get_model_name(path: Path | str) -> str:
 
     # resolve the path before the cache. The default model path is the relative Path(".").
     # A cache that holds the relative path keeps the first answer after the user changes the working folder
-    return get_model_name_cached(path.resolve())
+    return get_model_name_cached(resolve_modelpath(path))
 
 
 @lru_cache(maxsize=8)
+@on_model_host
 def get_model_name_cached(abspath: Path) -> str:
     """Return the name of the ARTIS model at an absolute path."""
     modelpath = abspath if abspath.is_dir() else abspath.parent
@@ -183,7 +189,9 @@ def print_modelpath(modelpath: Path | str) -> None:
     The name of a model says nothing about the folder that holds it, and a user runs a command over
     many folders. The full path answers that, because "." says nothing on a run inside the model.
     """
-    folder = Path(modelpath) if path_is_codecomparison(modelpath) else Path(modelpath).resolve()
+    folder = (
+        Path(modelpath) if path_is_codecomparison(modelpath) or is_remote_path(modelpath) else Path(modelpath).resolve()
+    )
     print_detail(f"modelpath: {folder}")
 
 
@@ -193,12 +201,21 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
     return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
+@lru_cache(maxsize=16)
+@on_model_host
+def get_remote_model_logname(path: Path, label: str | None) -> str:
+    """Return the log name of a remote model. The host gives it, and the cache keeps it for each plot of a viewer."""
+    return get_model_logname(path, label)
+
+
 def get_model_logname(path: Path | str, label: str | None = None) -> str:
     """Return the label of an ARTIS model and the name of its folder, for a log message.
 
     The label comes from the caller (e.g. the -label argument) or from get_model_name.
     """
     path = Path(path)
+    if is_remote_path(path):
+        return get_remote_model_logname(path, label)
     modelname = get_model_name(path)
     label = label or modelname
     if path_is_codecomparison(path):
@@ -243,6 +260,7 @@ def get_npts_model_cached(modelpath: Path) -> int:
 
 def get_inputfilepath(modelpath: Path | str) -> Path:
     """Return the path to input.txt, raising a helpful error if it does not exist."""
+    check_local_path(modelpath)
     inputfilepath = Path(modelpath, "input.txt")
     if not inputfilepath.is_file():
         msg = f"{inputfilepath} not found. Is {Path(modelpath).resolve()} an ARTIS folder?"

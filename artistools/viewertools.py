@@ -32,6 +32,8 @@ from artistools.misc import import_optional
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.misc import write_gif
+from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.remote import is_remote_path
 from artistools.plottools import plain_label
 
 if t.TYPE_CHECKING:
@@ -989,8 +991,9 @@ def get_recent_models() -> list[str]:
 
 def add_recent_model(folder: Path | str) -> None:
     """Put the folder of a model at the start of the recent models of File > Open Recent."""
-    # resolve() gives ".." the real name of its folder, thus two spellings of one folder give one entry in the list
-    path = str(Path(folder).resolve())
+    # resolve_modelpath gives ".." the real name of its folder, thus two spellings of one folder give one entry in the
+    # list. A model on a different host keeps its path
+    path = str(resolve_modelpath(folder))
     recent = [path, *(other for other in get_recent_models() if other != path)][:RECENT_LIMIT]
     get_settings().setValue(get_recent_setting_key(), recent)
 
@@ -2687,7 +2690,8 @@ def add_recent_menu(filemenu: "QtWidgets.QMenu", open_folder: "Callable[[str], o
         for folder in get_recent_models():
             action = recentmenu.addAction(Path(folder).name)
             action.setToolTip(folder)
-            action.setEnabled(Path(folder).is_dir())
+            # a test of a remote folder starts ssh, thus the menu enables a remote model with no test
+            action.setEnabled(is_remote_path(folder) or Path(folder).is_dir())
             action.triggered.connect(partial(open_folder, folder))
         recentmenu.addSeparator()
         clearaction = recentmenu.addAction("Clear Menu")
@@ -2745,7 +2749,8 @@ def set_window_document(window: "QtWidgets.QMainWindow", folder: Path, title: st
     of the icon gives the folder to a different app.
     """
     window.setWindowTitle(title)
-    window.setWindowFilePath(str(folder.absolute()))
+    # a model on a different host has no local folder, thus its window shows no folder icon
+    window.setWindowFilePath("" if is_remote_path(folder) else str(folder.absolute()))
 
 
 def show_settings_window() -> None:

@@ -42,6 +42,7 @@ from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
 from artistools.misc import zopenpl
+from artistools.misc.remote import on_model_host
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
@@ -75,6 +76,7 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floati
         return Mbol_sun - (2.5 * np.log10(lum_lsun))
 
 
+@on_model_host
 def scan_lightcurve(
     filepath: str | Path, average_over_phi: bool = False, average_over_theta: bool = False
 ) -> dict[int, pl.LazyFrame]:
@@ -120,6 +122,7 @@ def scan_lightcurve(
     return {dirbin: lzdf.with_columns(unitcols) for dirbin, lzdf in lcdata.items()}
 
 
+@on_model_host
 def get_from_packets(
     modelpath: str | Path,
     escape_type: str = "TYPE_RPKT",
@@ -237,6 +240,40 @@ def args_from_kwargs(
     return args
 
 
+@on_model_host
+def get_top_nuclides(
+    modelpath: Path,
+    escape_type: str,
+    count: int,
+    maxpacketfiles: int | None = None,
+    timemindays: float | None = None,
+    timemaxdays: float | None = None,
+    *,
+    use_pellet_decay_time: bool = False,
+) -> pl.DataFrame:
+    """Return the nuclides whose decays give the most energy to the escaped packets, with the energy of each one.
+
+    The host of a remote model reads the packets, and only the table of the nuclides comes back.
+    """
+    dfnuclides = get_nuclides(modelpath=modelpath)
+    _, dfpackets = get_packets(modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type)
+    return (
+        df_filter_minmax_bracketed(
+            dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
+            "tdecay_d" if use_pellet_decay_time else "t_arrive_d",
+            timemindays,
+            timemaxdays,
+        )
+        .group_by("pellet_nucindex")
+        .agg(pl.sum("e_rf").alias("e_rf_sum"))
+        .top_k(by="e_rf_sum", k=count)
+        .join(dfnuclides, on="pellet_nucindex", how="left", maintain_order="left")
+        .select(["e_rf_sum", "nucname", "pellet_nucindex"])
+        .collect()
+    )
+
+
+@on_model_host
 def generate_band_lightcurve_data(
     modelpath: Path | str,
     args: argparse.Namespace | None = None,
@@ -375,7 +412,8 @@ def get_bolometric_luminosities(
     the timesteps of one direction bin. Thus the frames of every bin do not stay in memory together.
     """
     lazyspectra = [
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep) for timestep in timesteps
+        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=dirbins)
+        for timestep in timesteps
     ]
 
     return {

@@ -35,6 +35,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
 from artistools import viewertools
+from artistools.misc.remote import model_path_from_text
 
 modelpath = at.get_path("testdata") / "testmodel"
 # each retired top-level name, with the module that its inputmodel command runs
@@ -441,7 +442,8 @@ def test_shared_cli_args_consistent() -> None:
             flags = flagsbycommand[command][dest]
             label = f"{command}: {dest} {sorted(flags)}"
             if dest == "modelpath" and "-modelpath" in flags:
-                assert action.type is Path, label
+                # a model path is a Path, and a remote path follows the rule of rsync
+                assert action.type is model_path_from_text, label
             elif dest == "timestep" and "-timestep" in flags:
                 assert "-ts" in flags, label
             elif dest == "timedays" and "-timedays" in flags:

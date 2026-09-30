@@ -15,6 +15,7 @@ from types import MappingProxyType
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
+from artistools.misc.remote import model_path_from_text
 
 if t.TYPE_CHECKING:
     from collections.abc import Collection
@@ -138,10 +139,12 @@ class KeepGivenPaths(argparse.Action):
 def trailing_folder_count(values: list[t.Any]) -> int:
     """Return how many values at the end of a list name an ARTIS run folder."""
     from artistools.misc.fileio import folder_is_artis_run
+    from artistools.misc.remote import names_a_remote_folder
 
     count = 0
+    # a remote path counts with no test, because a test of the folder asks the host through ssh
     for value in reversed(values):
-        if not isinstance(value, str) or not folder_is_artis_run(value):
+        if not isinstance(value, str) or not (names_a_remote_folder(value) or folder_is_artis_run(value)):
             break
         count += 1
 
@@ -245,7 +248,7 @@ def addarg_pathoption(parser: argparse.ArgumentParser, flag: str, dest: str, *, 
     """
     optionkwargs: dict[str, t.Any] = {
         "dest": dest,
-        "type": Path,
+        "type": model_path_from_text,
         "default": argparse.SUPPRESS,
         "help": argparse.SUPPRESS,
     }
@@ -265,7 +268,7 @@ def addarg_modelpath(
     helptext: str = "Path to ARTIS folder",
 ) -> None:
     """Add the ARTIS model path argument (-modelpath option, or a positional path when positional=True)."""
-    kwargs: dict[str, t.Any] = {"type": Path, "default": default, "help": helptext}
+    kwargs: dict[str, t.Any] = {"type": model_path_from_text, "default": default, "help": helptext}
     if multiplepaths:
         kwargs["nargs"] = "*"
     if positional:
@@ -300,7 +303,10 @@ def item_names_a_folder(item: str) -> bool:
     A folder that exists names the model, even when the command has an item of the same name. A name
     that is not last stays an item. A variable thus keeps its meaning when a folder has the same name.
     """
-    return bool(item) and (Path(item).is_dir() or item_names_a_path(item))
+    from artistools.misc.remote import is_remote_path
+
+    # a name of an item has no colon, thus a last item of the form host:path names a remote folder
+    return bool(item) and (is_remote_path(item) or Path(item).is_dir() or item_names_a_path(item))
 
 
 def addarg_positional_items(
@@ -335,7 +341,9 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
     items: list[str] = list(getattr(args, dest))
 
     if items and item_names_a_folder(items[-1]):
-        givenpath = Path(items.pop())
+        from artistools.misc.remote import get_canonical_path
+
+        givenpath = get_canonical_path(model_path_from_text(items.pop()))
         # the default of such a command is None, thus a different value is one that the user wrote.
         # A command can also take many paths, and then only the positional argument names the model
         given_modelpath = getattr(args, "modelpath", None)
@@ -1326,43 +1334,45 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
 
 
 def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]:
-    """Return a flat list of Paths from a scalar or (possibly nested) sequence of paths, using the default if none given."""
+    """Return a flat list of Paths from a scalar or (possibly nested) sequence of paths, using the default if none given.
+
+    A remote path gets the canonical form of get_canonical_path, thus its parent keeps the host.
+    """
+    from artistools.misc.remote import get_canonical_path
+
+    def to_path(path: str | Path) -> Path:
+        return get_canonical_path(model_path_from_text(path) if isinstance(path, str) else Path(path))
+
     if not paths:
         return [Path(default)]
     if isinstance(paths, str | Path):
-        return [Path(paths)]
-    return [Path(p) for p in flatten_list(list(paths))]
+        return [to_path(paths)]
+    return [to_path(p) for p in flatten_list(list(paths))]
 
 
 def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.NDArray[np.float64]] | None":
-    """Use command line arguments to determine the appropriate filter function."""
+    """Return the filter function that the command-line arguments select, or None.
+
+    The function is a partial of a module function, thus pickle can send it to the server of a remote model.
+    """
+    import functools
+
+    from artistools.misc.general import moving_average_filter
+    from artistools.misc.general import savgol_filter
+
     filterfunc = None
     dictargs = vars(args)
 
     if dictargs.get("filtermovingavg", False):
-
-        def movavgfilterfunc(ylist: "npt.ArrayLike") -> "npt.NDArray[np.float64]":
-            import numpy as np
-
-            n = args.filtermovingavg
-            arr_padded = np.pad(ylist, (n // 2, n - 1 - n // 2), mode="edge")
-            return np.convolve(arr_padded, np.ones((n,)) / n, mode="valid")
-
-        filterfunc = movavgfilterfunc
+        filterfunc = functools.partial(moving_average_filter, n=args.filtermovingavg)
 
     if dictargs.get("filtersavgol", False):
         if filterfunc is not None:
             msg = "Give only one of -filtermovingavg and -filtersavgol"
             raise ValueError(msg)
 
-        from artistools.misc.general import savgol_filter
-
         window_length, polyorder = (int(x) for x in args.filtersavgol)
-
-        def savgolfilterfunc(ylist: "npt.ArrayLike") -> "npt.NDArray[np.float64]":
-            return savgol_filter(ylist, window_length=window_length, polyorder=polyorder)
-
-        filterfunc = savgolfilterfunc
+        filterfunc = functools.partial(savgol_filter, window_length=window_length, polyorder=polyorder)
 
         print("Applying Savitzky-Golay filter")
 

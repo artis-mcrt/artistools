@@ -18,7 +18,6 @@ import polars as pl
 from polars import selectors as cs
 
 from artistools import misc
-from artistools.atomic import get_nuclides
 from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -32,6 +31,7 @@ from artistools.lightcurve.core import generate_band_lightcurve_data
 from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag
 from artistools.lightcurve.core import get_from_packets
+from artistools.lightcurve.core import get_top_nuclides
 from artistools.lightcurve.core import lum_lsun_to_mag
 from artistools.lightcurve.core import path_is_reference_lightcurve
 from artistools.lightcurve.core import read_bol_reflightcurve_data
@@ -75,6 +75,8 @@ from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import path_is_dir
+from artistools.misc import path_is_file
 from artistools.misc import print_detail
 from artistools.misc import print_heading
 from artistools.misc import print_product
@@ -84,7 +86,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
-from artistools.packets import get_packets
+from artistools.misc.remote import on_model_host
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import get_next_color
@@ -274,6 +276,17 @@ def plot_bol_reflightcurve(
     return plotlabel
 
 
+@on_model_host
+def get_model_mass_and_kinetic_energy(modelpath: Path) -> tuple[float, float]:
+    """Return the mass [g] and the kinetic energy [erg] of the ejecta. The host of a remote model reads the model."""
+    dfmodel, modelmeta = get_modeldata(modelpath)
+    dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+
+    # one collect for both sums: get_modeldata returns a plan, so a second one reads the model again
+    model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
+    return float(model_mass_grams), float(ejecta_ke_erg)
+
+
 def plot_deposition_thermalisation(
     axis: mplax.Axes,
     axistherm: mplax.Axes | None,
@@ -290,11 +303,7 @@ def plot_deposition_thermalisation(
     lumunit = get_plot_lum_unit(args)
 
     if args.plotthermalisation:
-        dfmodel, modelmeta = get_modeldata(modelpath)
-        dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
-
-        # one collect for both sums: get_modeldata returns a plan, so a second one reads the model again
-        model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
+        model_mass_grams, ejecta_ke_erg = get_model_mass_and_kinetic_energy(Path(modelpath))
         print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
     depdata = get_deposition(modelpath).collect()
@@ -420,10 +429,10 @@ def plot_artis_lightcurve(
 
     # handle e.g. modelpath = 'modelpath/light_curve.out'
     inputpath = Path(modelpath)
-    lcfilename = inputpath.name if inputpath.is_file() else None
+    lcfilename = inputpath.name if path_is_file(inputpath) else None
     modelpath = inputpath.parent if lcfilename else inputpath
 
-    if not modelpath.is_dir():
+    if not path_is_dir(modelpath):
         print_warning(f"Skipping because {modelpath} does not exist")
         return None
 
@@ -720,23 +729,14 @@ def make_lightcurve_plot(
                 pellet_nucnames: list[str | None] = [None]
                 if topnucs > 0:
                     try:
-                        dfnuclides = get_nuclides(modelpath=modelpath)
-                        _, dfpackets = get_packets(
-                            modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
-                        )
-                        top_nuclides = (
-                            df_filter_minmax_bracketed(
-                                dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
-                                "tdecay_d" if args.use_pellet_decay_time else "t_arrive_d",
-                                args.timemin,
-                                args.timemax,
-                            )
-                            .group_by("pellet_nucindex")
-                            .agg(pl.sum("e_rf").alias("e_rf_sum"))
-                            .top_k(by="e_rf_sum", k=topnucs)
-                            .join(dfnuclides, on="pellet_nucindex", how="left", maintain_order="left")
-                            .select(["e_rf_sum", "nucname", "pellet_nucindex"])
-                            .collect()
+                        top_nuclides = get_top_nuclides(
+                            Path(modelpath),
+                            escape_type,
+                            topnucs,
+                            maxpacketfiles,
+                            args.timemin,
+                            args.timemax,
+                            use_pellet_decay_time=args.use_pellet_decay_time,
                         )
                         print(f"Top nuclides by energy release: {top_nuclides['nucname'].to_list()}")
                         pellet_nucnames.extend(top_nuclides["nucname"])

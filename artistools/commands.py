@@ -61,7 +61,8 @@ DISPATCHERSCRIPTS = ("at", "artistools")
 class CommandSpec:
     """A subcommand definition: the implementing module and the static help text shown in command listings.
 
-    A hidden command still works but is left out of the --help listing (used for deprecated duplicate names).
+    The --help listing leaves out a hidden command, but the command still works. Examples are a deprecated duplicate
+    name and the server.
     """
 
     module: str
@@ -292,6 +293,16 @@ subcommandtree: CommandTree = {
         "plotviewingangles",
         helptext="Plot a 3D view of a model.",
         note="The view holds an isosurface of the density and the direction bins.",
+    ),
+    "server": CommandSpec(
+        "misc.remote",
+        helptext="Run the readers of a command for a model on this host.",
+        note=(
+            "A command on a different host starts this server through ssh when it gets a model path of the"
+            " form host:path, e.g. vae26:~/scratch/mymodel. Do not run it yourself."
+        ),
+        # a user does not run the server, thus the listing of the commands leaves it out
+        hidden=True,
     ),
     "spencerfano": CommandSpec(
         "nonthermal.spencerfano",

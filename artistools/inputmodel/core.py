@@ -35,6 +35,8 @@ from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.modelinfo import parse_npts_line
+from artistools.misc.remote import check_local_path
+from artistools.misc.remote import on_model_host
 
 CREATED_COMMENT_PREFIX = "created:"
 CREATED_TIME_FORMAT = "%Y-%m-%d %H:%M:%S UTC"
@@ -542,6 +544,15 @@ def get_model_text_folder(modelpath: Path | str) -> Path:
     return inputpath
 
 
+@on_model_host
+def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
+    """Return the metadata of the model, e.g. the dimensions and the time of the model.
+
+    The host of a remote model reads the model and sends back the metadata alone.
+    """
+    return get_modeldata(modelpath, printwarningsonly=True)[1]
+
+
 def get_modeldata(
     modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
@@ -562,6 +573,7 @@ def get_modeldata(
         if True, print warnings but skip informational progress messages
 
     """
+    check_local_path(modelpath)
     inputpath = Path(modelpath)
 
     if inputpath.is_dir():

@@ -21,6 +21,10 @@ from pathlib import Path
 import polars as pl
 import polars.selectors as cs
 
+from artistools.misc.remote import check_local_path
+from artistools.misc.remote import is_remote_path
+from artistools.misc.remote import on_model_host
+
 COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
 
 # polars can read these compressed formats directly from a path
@@ -143,6 +147,7 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, e
     This is the same precedence that read_wsv and firstexisting use. The errors argument takes the value
     that the open functions take, e.g. "replace" for a file that holds a bad byte.
     """
+    check_local_path(filename)
     filepath = Path(filename)
     if not filepath.is_file():
         found = find_compressed(filename)
@@ -164,6 +169,7 @@ def polars_source(filename: Path | str, mode: str = "r") -> t.IO[bytes] | Path:
     polars reads a plain file, a zstd file, and a gzip file from the path. It cannot read an xz file.
     The caller gives the name of a file that exists. Use zopenpl to also find a compressed sibling.
     """
+    check_local_path(filename)
     filepath = Path(filename)
     if filepath.suffix not in COMPRESSED_EXTENSIONS or filepath.suffix in POLARS_READABLE_EXTENSIONS:
         return filepath
@@ -425,6 +431,7 @@ def read_wsv(
         return parse_with_inference_fallback()
 
 
+@on_model_host
 def firstexisting(
     filelist: Sequence[str | Path] | str | Path,
     folder: Path | str = ".",
@@ -499,6 +506,34 @@ def firstexisting_or_none(
     return filepath
 
 
+@lru_cache(maxsize=256)
+@on_model_host
+def get_remote_path_kind(path: Path) -> tuple[bool, bool, bool]:
+    """Return whether a remote path is a folder, whether it is a file, and whether it is the folder of an ARTIS run.
+
+    The host gives the three answers in one ssh round trip. The spectrum viewer asks about the same paths at each
+    plot, and 10 round trips took 0.33 s of the 0.5 s of a plot. The kind of a model path does not change while the
+    process runs, thus the cache keeps the answers until the process stops.
+    """
+    return path.is_dir(), path.is_file(), path.is_dir() and (path / "input.txt").is_file()
+
+
+def path_is_file(path: Path) -> bool:
+    """Return whether the path is a file. The host of a remote path gives the answer."""
+    return get_remote_path_kind(path)[1] if is_remote_path(path) else path.is_file()
+
+
+def path_is_dir(path: Path) -> bool:
+    """Return whether the path is a folder. The host of a remote path gives the answer."""
+    return get_remote_path_kind(path)[0] if is_remote_path(path) else path.is_dir()
+
+
+@on_model_host
+def folder_holds_match(folder: Path, pattern: str) -> bool:
+    """Return whether a file in the folder matches the glob pattern. The host of a remote path gives the answer."""
+    return any(folder.glob(pattern))
+
+
 @cache
 def find_bundled_data_file(filename: Path | str, bundledsubfolder: str) -> Path | None:
     """Return the path of a file in the named data folder of the package, or None when the folder holds none."""
@@ -551,21 +586,21 @@ def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
     name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files.
     """
     path = Path(filepath)
-    if path.is_dir() or find_reference_data_file(path, bundledsubfolder) is None:
+    if path_is_dir(path) or find_reference_data_file(path, bundledsubfolder) is None:
         return False
 
     if not path_is_artis_model(path):
         return True
 
     # a run folder holds the output of ARTIS, and a run of the cluster writes into a subfolder of it
-    return not any((folder / "input.txt").is_file() for folder in (path.parent, path.parent.parent))
+    return not any(folder_is_artis_run(folder) for folder in (path.parent, path.parent.parent))
 
 
 def get_model_folder(modelpath: str | Path) -> Path:
     """Return the model folder, whether modelpath names the folder itself or a file inside it."""
     path = Path(modelpath)
 
-    return path.parent if path.is_file() else path
+    return path.parent if path_is_file(path) else path
 
 
 def path_is_artis_model(filepath: Path | str) -> bool:
@@ -575,16 +610,19 @@ def path_is_artis_model(filepath: Path | str) -> bool:
     """
     filepath = Path(filepath)
 
-    return filepath.is_dir() or filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS)))
+    # the test of the name comes first, because the test of a remote folder asks its host
+    return filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS))) or path_is_dir(filepath)
 
 
 def folder_is_artis_run(folder: Path | str) -> bool:
     """Return whether this folder holds the input of an ARTIS run.
 
     An ARTIS run holds input.txt beside its output files. Every reader of a run needs that file, thus
-    this function tests for it.
+    this function tests for it. The host of a remote path gives the answer.
     """
     folder = Path(folder)
+    if is_remote_path(folder):
+        return get_remote_path_kind(folder)[2]
 
     return folder.is_dir() and (folder / "input.txt").is_file()
 
@@ -626,12 +664,12 @@ def resolve_path_cached(pathstr: str, workingfolder: str) -> Path:
 def resolve_modelpath(modelpath: Path | str) -> Path:
     """Return the absolute path of a model.
 
-    A virtual codecomparison path stays as it is. A cached function takes the absolute path. The
+    A virtual codecomparison path and a remote path stay as they are. A cached function takes the absolute path. The
     default model path is the relative Path("."), thus the working folder belongs to the key of the
     cache. The answer would otherwise stay after the user changes that folder.
     """
     path = Path(modelpath)
-    if path_is_codecomparison(path):
+    if path_is_codecomparison(path) or is_remote_path(path):
         return path
 
     return resolve_path_cached(str(path), "" if path.is_absolute() else str(Path.cwd()))

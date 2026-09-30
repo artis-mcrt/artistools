@@ -14,6 +14,7 @@ from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
+from artistools.misc.remote import split_remote_path
 from artistools.spectra.core import get_spectra
 
 
@@ -37,7 +38,16 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
     outdirectory, or to the spectra folder of the model when the caller gives none.
     """
     if outdirectory is None:
-        outdirectory = Path(modelpath, "spectra")
+        # a folder below a remote path would make a local folder of the same name, and that folder would then hide
+        # the remote model. Thus the files of a remote model go to the working folder. The host and the whole path
+        # give each model its own folder, e.g. spectra/vae26/home/scratch/mymodel
+        if (remote := split_remote_path(modelpath)) is not None:
+            host, hostpath = remote
+            outdirectory = Path(
+                "spectra", host, *("home" if part == "~" else part for part in hostpath.parts if part != "/")
+            )
+        else:
+            outdirectory = Path(modelpath, "spectra")
 
     outdirectory.mkdir(parents=True, exist_ok=True)
 
@@ -50,7 +60,8 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
     lzspectra_of_timestep = [
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep) for timestep in timesteps
+        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=[-1])
+        for timestep in timesteps
     ]
     if any(-1 not in lzspectra for lzspectra in lzspectra_of_timestep):
         msg = f"{modelpath} holds no spec.out, thus there is no angle-averaged spectrum to write"
@@ -62,7 +73,9 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
     lzspectra_polar = [
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True)
+        get_spectra(
+            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
+        )
         for timestep in timesteps
     ]
     if lzspectra_polar and 0 in lzspectra_polar[0]:

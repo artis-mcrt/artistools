@@ -24,8 +24,11 @@ import pytest
 import yaml
 
 import artistools as at
+from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import scan_remote_plot_estimators
 from artistools.misc import dirbins
 from artistools.misc import fileio
+from artistools.misc import remote
 
 
 def write_timesteps_out(modeldir: Path) -> None:
@@ -1202,6 +1205,174 @@ def test_set_args_from_dict() -> None:
 
     with pytest.raises(ValueError, match="Unknown argument names"):
         at.misc.set_args_from_dict(parser, {"nonexistent": 1})
+
+
+def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A colon before the first slash makes a remote path, whether a local file of that name exists or not.
+
+    Path removes the "./" that marks a local path, thus the text of the argument decides.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "run:2").mkdir()
+    assert remote.split_remote_path("user@vae26:model") == ("user@vae26", Path("~/model"))
+    assert remote.split_remote_path(Path("vae26:/lustre/model")) == ("vae26", Path("/lustre/model"))
+    assert remote.is_remote_path("run:2")
+    assert not remote.is_remote_path("./run:2")
+    assert not remote.is_remote_path("runs/run:2")
+    assert remote.model_path_from_text("./run:2") == tmp_path / "run:2"
+    assert at.misc.normalize_path_list(["./run:2", "vae26:model"]) == [tmp_path / "run:2", Path("vae26:~/model")]
+    # rsync takes an IPv6 address in brackets, and ssh takes it with no brackets
+    assert remote.split_remote_path("user@[2001:db8::1]:/model") == ("user@[2001:db8::1]", Path("/model"))
+    assert remote.get_server_argv("user@[2001:db8::1]")[1:3] == ["--", "user@2001:db8::1"]
+    # a label of a list option can have the form host:path, thus only a remote path that is clearly a folder counts
+    assert remote.names_a_remote_folder("vae26:~/model")
+    assert not remote.names_a_remote_folder("second:label")
+    # a band plot of two hosts gives each call the Namespace with both models. Only the argument of the model counts
+    commandargs = argparse.Namespace(modelpath=[Path("hosta:~/x"), Path("hostb:~/y")], stream=sys.stdout)
+    host, (serverargs, _) = remote.to_server_arguments(((Path("hosta:~/x"), commandargs), {}))
+    assert host == "hosta"
+    assert not hasattr(serverargs[1], "stream")
+
+
+def test_reply_of_the_server_cannot_call_a_function(tmp_path: Path) -> None:
+    """The client refuses a reply that calls a function, because a different user can control the remote host.
+
+    subprocess is a module of the replies, because a reply can hold its CalledProcessError. Its functions stay out.
+    numpy.memmap is a class of numpy that writes a file, thus only the numpy classes of a result pass.
+    """
+    import pickle  # ruff:ignore[suspicious-pickle-import]
+
+    class CommandOnClient:
+        def __reduce__(self) -> tuple[t.Any, ...]:
+            return (subprocess.call, (["true"],))
+
+    with pytest.raises(pickle.UnpicklingError, match="does not accept"):
+        remote.load_reply(pickle.dumps((True, CommandOnClient())))
+
+    class FileOnClient:
+        def __reduce__(self) -> tuple[t.Any, ...]:
+            return (np.memmap, (str(tmp_path / "overwritten"), "float64", "w+", 0, (1,)))
+
+    with pytest.raises(pickle.UnpicklingError, match="does not accept"):
+        remote.load_reply(pickle.dumps((True, FileOnClient())))
+    assert not (tmp_path / "overwritten").exists()
+
+    # the __setstate__ of a polars frame unpickles a plan with the plain unpickler, thus a reply holds no polars object
+    with pytest.raises(pickle.UnpicklingError, match="does not accept"):
+        remote.load_reply(pickle.dumps((True, pl.LazyFrame({"a": [1]}))))
+    succeeded, frames = remote.load_reply(
+        remote.dump_message((True, {-1: pl.LazyFrame({"a": [1.0]}), 0: pl.DataFrame()}))
+    )
+    assert isinstance(frames[-1], pl.LazyFrame)
+    assert isinstance(frames[0], pl.DataFrame)
+
+    result = {"array": np.arange(3.0), "value": np.float64(2.5), "dtype": np.dtype("f8")}
+    succeeded, reply = remote.load_reply(remote.dump_message((True, result)))
+    assert succeeded
+    np.testing.assert_array_equal(reply["array"], result["array"])
+    assert reply["value"] == result["value"]
+    assert reply["dtype"] == result["dtype"]
+
+
+def test_server_command_of_a_git_install_names_its_commit() -> None:
+    """A git install gives the commit for the server command, and a release gives no suggestion.
+
+    uvx --from git+... records the commit in direct_url.json. An install of a clone gives the commit of the folder
+    of the code that runs, which can differ from the folder in direct_url.json.
+    """
+    import json
+
+    def mock_direct_url(directurl: str | None) -> t.Any:
+        distribution = mock.Mock()
+        distribution.read_text.return_value = directurl
+        return mock.patch("importlib.metadata.distribution", return_value=distribution)
+
+    vcsinstall = {"url": "https://github.com/fork/artistools", "vcs_info": {"vcs": "git", "commit_id": "abc123"}}
+    with mock_direct_url(json.dumps(vcsinstall)):
+        assert remote.get_git_source() == ("https://github.com/fork/artistools", "abc123", [])
+        suggestion = remote.get_git_server_suggestion("vae26")
+    assert suggestion is not None
+    expected = (
+        'export ARTISTOOLS_REMOTE_COMMAND=\'uvx --from "artistools @ git+https://github.com/fork/artistools@abc123"'
+    )
+    assert f"{expected} artistools server'" in suggestion
+
+    with mock_direct_url(None):
+        assert remote.get_git_source() is None
+        assert remote.get_git_server_suggestion("vae26") is None
+
+    packagefolder = Path(remote.__file__).resolve().parents[2]
+    headcommit = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        ["git", "-C", str(packagefolder), "rev-parse", "HEAD"],  # ruff:ignore[start-process-with-partial-path]
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if headcommit.returncode != 0:
+        pytest.skip("artistools does not run from a git clone")
+    with mock_direct_url(json.dumps({"url": "file:///somewhere/else", "dir_info": {"editable": True}})):
+        gitsource = remote.get_git_source()
+    assert gitsource is not None
+    # the URL is the one of the remote that holds the commit, which can be a fork
+    assert gitsource[1] == headcommit.stdout.strip()
+
+
+def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
+    """A reader that gets a host:path runs on the server, and it gives the same data as for the local path.
+
+    A local server process takes the place of ssh. The filter function and the exception must go
+    through pickle, and the LazyFrames come back collected. The command runs through the dispatcher,
+    because its Namespace holds the parser and, with --quiet, a stream that pickle cannot send. The
+    folder comes after a list option, thus the dispatcher must see that it names the model.
+    """
+    from artistools.__main__ import main
+
+    modelpath = at.get_path("testartismodel").resolve()
+    remotepath = Path(f"testhost:{modelpath}")
+    filterfunc = at.misc.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
+
+    remote.forget_server("testhost")
+    with mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]):
+        process, _ = remote.get_server("testhost")
+        try:
+            assert at.misc.path_is_dir(remotepath)
+            assert not at.misc.path_is_file(remotepath)
+            remotespectra = at.spectra.get_spectra(remotepath, timestepmin=40, fluxfilterfunc=filterfunc)
+            remotelightcurve = at.lightcurve.scan_lightcurve(remotepath / "light_curve.out")
+            # a caller skips a model on FileNotFoundError, thus the server must give back the same type
+            with pytest.raises(FileNotFoundError, match="nosuchfile"):
+                at.misc.firstexisting("nosuchfile.out", folder=remotepath, search_subfolders=False)
+            main(argsraw=["plotlightcurve", "-label", "mylabel", str(remotepath), "--quiet", "-o", str(tmp_path)])
+            # plotestimators takes the rows of the estimators from the host, and polars filters them here
+            remoteestimators, _ = scan_remote_plot_estimators(remotepath, None, [40, 41], classicartis=False)
+            remoterows = remoteestimators.filter(pl.col("Te") > 5000.0).select(
+                "timestep", "modelgridindex", "Te", "rho"
+            )
+            dfremoteestimators = remoterows.collect()
+            # the band light curves take the Namespace of the command as an argument
+            main(argsraw=["plotlightcurve", str(remotepath), "-filter", "B", "--quiet", "-o", str(tmp_path)])
+        finally:
+            assert process.stdin is not None
+            process.stdin.close()
+            assert process.wait(timeout=30) == 0
+            remote.forget_server("testhost")
+
+    assert (tmp_path / "plotlightcurves.pdf").is_file()
+    localestimators, _ = join_cell_modeldata(at.estimators.scan_estimators(modelpath, timestep=[40, 41]), modelpath)
+    pltest.assert_frame_equal(
+        dfremoteestimators,
+        localestimators.filter(pl.col("Te") > 5000.0).select("timestep", "modelgridindex", "Te", "rho").collect(),
+        abs_tol=0.0,
+    )
+    assert (tmp_path / "plotBlightcurves.pdf").is_file()
+    localspectra = at.spectra.get_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
+    # the fluxes are far below the default absolute tolerance, thus the comparison has none
+    pltest.assert_frame_equal(remotespectra[-1].collect(), localspectra[-1].collect(), abs_tol=0.0)
+    pltest.assert_frame_equal(
+        remotelightcurve[-1].collect(),
+        at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")[-1].collect(),
+        abs_tol=0.0,
+    )
 
 
 def test_get_filterfunc() -> None:
