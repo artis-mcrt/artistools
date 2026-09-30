@@ -597,9 +597,17 @@ def set_legend(
 
     The legend does not cover the data. At each draw, LegendRoom moves the top or the bottom of the y axis to give
     the legend room. A limit that the user gave stays: -ymax and -ymin of args, or keeptop and keepbottom.
+
+    -legendcols of args gives the number of columns. Without it, a caller can give ncol. With neither, a long legend
+    takes more columns, thus it does not push the data into a small part of the frame.
     """
     if getattr(args, "nolegend", False):
         return None
+
+    if (legendcols := getattr(args, "legendcols", None)) is not None:
+        legendkwargs["ncols"] = legendcols
+        legendkwargs.pop("ncol", None)
+    fitcolumns = "ncol" not in legendkwargs and "ncols" not in legendkwargs
 
     legendkwargs.setdefault("labelcolor", "linecolor")
 
@@ -617,7 +625,7 @@ def set_legend(
         return None
 
     isbest = legendkwargs.get("loc", plt.rcParams["legend.loc"]) in {"best", 0}
-    legend = ax.legend(**legendkwargs)
+    legend = add_fitted_legend(ax, legendkwargs) if fitcolumns else ax.legend(**legendkwargs)
     fig = ax.get_figure(root=True)
     if fig is not None:
         room = next((artist for artist in fig.artists if isinstance(artist, LegendRoom)), None)
@@ -634,6 +642,53 @@ def set_legend(
             )
         )
     return legend
+
+
+# a legend with more columns is shorter. A legend in one column that is taller than this part of the frame takes more
+# columns, until it is no taller or its width reaches the width of the frame
+MAX_LEGEND_HEIGHT_FRACTION: t.Final = 0.5
+
+
+def add_fitted_legend(ax: mplax.Axes, legendkwargs: dict[str, t.Any]) -> "mpllegend.Legend":
+    """Add a legend to the axes with the number of columns that fits it in MAX_LEGEND_HEIGHT_FRACTION of the frame.
+
+    The rule measures a trial legend that the axes do not hold, thus the axes get one legend. The measurement needs a
+    canvas that draws, e.g. of pyplot or of a viewer. A figure with no such canvas gets one column.
+    """
+    return ax.legend(**legendkwargs, ncols=get_fitted_legend_columns(ax, legendkwargs))
+
+
+def get_fitted_legend_columns(ax: mplax.Axes, legendkwargs: dict[str, t.Any]) -> int:
+    """Return the fewest columns that make the legend no taller than MAX_LEGEND_HEIGHT_FRACTION of the frame.
+
+    A legend that would become wider than the frame keeps the columns before that.
+    """
+    import matplotlib.legend as mpllegend
+
+    fig = ax.get_figure(root=True)
+    get_renderer = getattr(fig.canvas, "get_renderer", None) if fig is not None else None
+    if get_renderer is None:
+        return 1
+    renderer = get_renderer()
+    # the locator of a frame of make_frame_figure sets its position at the draw of the axes, which comes later
+    if (locator := ax.get_axes_locator()) is not None:
+        ax.apply_aspect(locator(ax, renderer))
+    if ax.bbox.height <= 0.0:
+        return 1
+
+    handles, labels = legendkwargs["handles"], legendkwargs["labels"]
+    otherkwargs = {key: value for key, value in legendkwargs.items() if key not in {"handles", "labels"}}
+
+    def get_frame(ncols: int) -> "mpltransforms.Bbox":
+        return get_legend_frame(mpllegend.Legend(ax, handles, labels, **otherkwargs, ncols=ncols), renderer)
+
+    ncols = 1
+    while ncols < len(handles) and get_frame(ncols).height > MAX_LEGEND_HEIGHT_FRACTION:
+        if get_frame(ncols + 1).width > 1.0:
+            # the frame has no room for one more column
+            break
+        ncols += 1
+    return ncols
 
 
 # the space between the data and a legend, in units of the font size of the legend

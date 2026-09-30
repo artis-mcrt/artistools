@@ -29,8 +29,8 @@ from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_maxpacketfiles
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_pathoption
@@ -1855,7 +1855,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--inset_title", action="store_true", help="Place title inside the plot")
 
-    addarg_nolegend(parser)
+    addarg_legend(parser)
 
     parser.add_argument("--reverselegendorder", action="store_true", help="Reverse the order of legend items")
 

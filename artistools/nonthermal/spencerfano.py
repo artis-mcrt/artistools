@@ -21,6 +21,7 @@ from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -65,7 +66,7 @@ def write_ntstats_file(ntstatfile: str | Path, rows: Sequence[dict[str, float]])
         )
 
 
-def make_ntstats_plot(ntstatfile: str | Path) -> None:
+def make_ntstats_plot(ntstatfile: str | Path, args: argparse.Namespace) -> None:
     """Plot the fractions of nonthermal energy going to heating, ionisation, and excitation over time."""
     fig, axesgrid = make_frame_figure(fullwidth=False)
     ax = axesgrid[0][0]
@@ -90,7 +91,7 @@ def make_ntstats_plot(ntstatfile: str | Path) -> None:
 
     ax.set_ylabel(r"Energy fraction")
     ax.set_xlabel(r"log x$_e$")
-    set_legend(ax)
+    set_legend(ax, args)
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
     save_figure(fig, outputfilename, format="pdf")
@@ -142,6 +143,7 @@ def x_e_of_sweep_step(x_e_start: float, atomic_number: int, step: int, stepcount
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    addarg_legend(parser)
     addarg_modelpath(parser, default=Path())
 
     addarg_timedays(parser, kind="str")
@@ -221,7 +223,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.plotstats:
         # this plot reads a stats file that a former run wrote, thus it calls no solver
-        make_ntstats_plot(args.plotstats)
+        make_ntstats_plot(args.plotstats, args)
         return
 
     if args.differentialform:
@@ -378,4 +380,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.ostat:
         write_ntstats_file(args.ostat, ostatrows)
-        make_ntstats_plot(args.ostat)
+        make_ntstats_plot(args.ostat, args)

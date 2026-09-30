@@ -464,7 +464,6 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         handler_map={tuple: HandlerTuple(ndivide=None)},
         loc="upper right",
         fontsize="x-small",
-        ncol=args.ncolslegend,
         columnspacing=1,
         frameon=False,
     )

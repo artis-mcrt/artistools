@@ -48,9 +48,9 @@ from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
 from artistools.misc import addarg_labelfontsize
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_residuals
@@ -1019,10 +1019,10 @@ def set_lightcurveplot_legend(ax: AxesTree, args: argparse.Namespace) -> None:
 
     if args.subplots:
         axis = iter_axes(ax)[args.legendsubplotnumber]
-        set_legend(axis, args, loc=args.legendposition, frameon=False, ncol=args.ncolslegend)
+        set_legend(axis, args, loc=args.legendposition, frameon=False)
     else:
         assert isinstance(ax, mplax.Axes)
-        set_legend(ax, args, loc=args.legendposition, frameon=False, ncol=args.ncolslegend, handlelength=0.7)
+        set_legend(ax, args, loc=args.legendposition, frameon=False, handlelength=0.7)
 
 
 def set_lightcurve_plot_labels(
@@ -1438,7 +1438,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_seriesstyle(parser)
 
-    addarg_nolegend(parser)
+    addarg_legend(parser)
 
     parser.add_argument(
         "-title",
@@ -1722,9 +1722,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-legendposition", type=str, default="best", help="Position of legend in plot. Default is best")
 
-    parser.add_argument("-ncolslegend", type=int, default=1, help="Number of columns in legend")
+    # the old spelling of -legendcols, which addarg_legend adds
+    parser.add_argument("-ncolslegend", dest="legendcols", type=int, help=argparse.SUPPRESS)
 
-    # the old spelling of --legendframe, which addarg_nolegend adds
+    # the old spelling of --legendframe, which addarg_legend adds
     parser.add_argument("--legendframeon", dest="legendframe", action="store_true", help=argparse.SUPPRESS)
 
     addarg_labelfontsize(parser)

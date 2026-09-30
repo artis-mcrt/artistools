@@ -9,6 +9,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import firstexisting_or_none
@@ -88,6 +89,8 @@ def make_plot(
     outputfile: Path | str,
     modelname: str = "",
     modellogname: str = "",
+    *,
+    args: argparse.Namespace,
 ) -> None:
     """Write one page per timestep of stage duration versus mpi rank to a multi-page PDF."""
     from matplotlib.backends.backend_pdf import PdfPages
@@ -111,7 +114,7 @@ def make_plot(
             axis.set_xlabel("mpi rank")
             axis.set_ylabel("Time [s]")
             axis.set_title(f"{modelname} timestep {timestep}" if modelname else f"timestep {timestep}")
-            set_legend(axis)
+            set_legend(axis, args)
             # save_figure holds this rule for a figure of its own, and this pdf writes its own pages
             pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02)
             plt.close(fig)
@@ -121,6 +124,7 @@ def make_plot(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    addarg_legend(parser)
     addarg_modelpath(
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )
@@ -144,4 +148,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             outputfile=str(outputfile).format(modelname),
             modelname=modelname,
             modellogname=get_model_logname(modelpath),
+            args=args,
         )

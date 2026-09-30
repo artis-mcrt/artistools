@@ -51,9 +51,9 @@ from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
 from artistools.misc import addarg_labelfontsize
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
@@ -2296,7 +2296,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=argparse.SUPPRESS,
     )
 
-    addarg_nolegend(parser)
+    addarg_legend(parser)
 
     addarg_labelfontsize(parser)
 

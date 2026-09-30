@@ -23,9 +23,9 @@ from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
@@ -396,7 +396,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--normalised", action="store_true", help="Normalise the spectra to their peak values")
 
     addarg_notitle(parser)
-    addarg_nolegend(parser)
+    addarg_legend(parser)
     addarg_show(parser)
     addarg_verbose(parser)
 

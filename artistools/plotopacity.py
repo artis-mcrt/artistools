@@ -28,9 +28,9 @@ from artistools.ejectaopacity import print_planck_mean_method
 from artistools.inputmodel import get_cell_selection
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
@@ -452,7 +452,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_excitationtemperature(parser)
     addarg_yscale(parser, default="log")
     addarg_notitle(parser)
-    addarg_nolegend(parser)
+    addarg_legend(parser)
     addarg_figscale(parser, helptext="Scale factor for plot area. 1.0 fills one column of a page")
     addarg_show(parser)
     addarg_output(parser, kind="file", defaultname="plotopacity.pdf", helptext="Path/filename for PDF file")

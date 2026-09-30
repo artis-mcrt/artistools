@@ -29,8 +29,8 @@ from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_labelfontsize
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
@@ -547,10 +547,10 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
                 ymin, _ = axis.get_ylim()
                 _, xmax = axis.get_xlim()
                 axis.text(xmax * 0.85, ymin * 50, f"{args.timedayslist[plotnumber]} days")
-        plottools.set_legend(ax[0], args, loc="best", frameon=True, fontsize="x-small", ncol=1)
+        plottools.set_legend(ax[0], args, loc="best", frameon=True, fontsize="x-small")
     else:
         assert isinstance(ax, mplax.Axes)
-        plottools.set_legend(ax, args, loc="best", frameon=True, fontsize="x-small", ncol=1)
+        plottools.set_legend(ax, args, loc="best", frameon=True, fontsize="x-small")
         ax.set_yscale("log")
 
     title = f"Z={Z}, ion_stage={ion_stage}"
@@ -883,7 +883,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_notitle(parser)
 
-    addarg_nolegend(parser)
+    addarg_legend(parser)
     addarg_show(parser)
     addarg_verbose(parser)
 

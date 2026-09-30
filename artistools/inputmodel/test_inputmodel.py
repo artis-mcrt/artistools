@@ -2006,7 +2006,7 @@ def test_make1dslice_plot(tmp_path: Path) -> None:
     from artistools.inputmodel.make1dslicefrom3d import make_plot
 
     pdfpath = tmp_path / "slice.pdf"
-    make_plot([1000.0, 2000.0], [[1e-10, 1e-12], [0.1, 0.05], [0.0, 0.01]], str(pdfpath))
+    make_plot([1000.0, 2000.0], [[1e-10, 1e-12], [0.1, 0.05], [0.0, 0.01]], str(pdfpath), argparse.Namespace())
 
     assert pdfpath.is_file()
 
