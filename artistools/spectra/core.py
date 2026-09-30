@@ -398,18 +398,6 @@ def convert_xlimits_to_lambda_range(xmin: float, xmax: float, xunit: str) -> tup
     return lambda_min, lambda_max
 
 
-def weighted_average_spectra(
-    spectra_and_factors: list[tuple[npt.NDArray[np.floating], float]],
-) -> npt.NDArray[np.floating]:
-    """Average spectra using (normalised) weighting factors, i.e., specout[nu] = (spec1[nu] * factor1 + spec2[nu] * factor2 + ...) / (factor1 + factor2 + ...).
-
-    spectra_and_factors should be a list of tuples: spectra[], factor.
-    """
-    spectra, factors = zip(*spectra_and_factors, strict=True)
-
-    return np.average(spectra, axis=0, weights=factors)
-
-
 def bin_spectrum(dfspectrum: pl.DataFrame, nbins: int, xcol: str, ycols: str | Sequence[str]) -> pl.DataFrame:
     """Return the mean x and the mean of each y column, for each group of nbins consecutive rows.
 
@@ -1135,6 +1123,30 @@ def get_emabs_timeblock_count(dfemabs: pl.DataFrame, n_nu: int, n_timesteps: int
     return n_timeblocks
 
 
+def get_emabs_average(
+    dfemabs_of_dbin: Mapping[int, pl.DataFrame],
+    timeblocks_of_dbin: Mapping[int, int],
+    timesteps: range,
+    arr_tdelta: Sequence[float],
+    n_nu: int,
+) -> npt.NDArray[np.float64]:
+    """Return f_nu of each column of an emission or absorption file, with the shape (frequency bin, column).
+
+    The mean takes each timestep with its duration as the weight, and each direction bin with an equal weight. A
+    slice of a DataFrame with a step runs one polars collect. One slice for each of the 970 series of a 3D kilonova
+    model took 1.3 s, thus one gather takes the rows of every series.
+    """
+    tdeltas = np.array([arr_tdelta[timestep] for timestep in timesteps], dtype=np.float64)
+    total = np.zeros((n_nu, next(iter(dfemabs_of_dbin.values())).width), dtype=np.float64)
+    for dbin, dfemabs in dfemabs_of_dbin.items():
+        # the frequency varies slowest, thus the row of a frequency bin and a timestep is nu * timeblocks + timestep
+        rowindices = np.arange(n_nu)[:, np.newaxis] * timeblocks_of_dbin[dbin] + np.array(timesteps)[np.newaxis, :]
+        rows = dfemabs[rowindices.ravel()].to_numpy().astype(np.float64).reshape(n_nu, len(timesteps), -1)
+        total += np.einsum("t,ntc->nc", tdeltas, rows)
+
+    return total / (tdeltas.sum() * len(dfemabs_of_dbin))
+
+
 @lru_cache(maxsize=4)
 @on_model_host
 def get_flux_contributions_cached(
@@ -1258,6 +1270,17 @@ def get_flux_contributions_cached(
         print("Applying filter to ARTIS spectrum")
 
     assert maxion is not None
+    timesteps = range(timestepmin, timestepmax + 1)
+    fnu_emission_of_column = (
+        get_emabs_average(emissiondata, emission_timeblocks, timesteps, arr_tdelta, len(arraynu_full))[nu_select]
+        if getemission
+        else None
+    )
+    fnu_absorption_of_column = (
+        get_emabs_average(absorptiondata, absorption_timeblocks, timesteps, arr_tdelta, len(arraynu_full))[nu_select]
+        if absorptiondata
+        else None
+    )
     for elementindex in range(nelements):
         nions = elementlist["nions"][elementindex]
         for ion in range(nions):
@@ -1271,29 +1294,17 @@ def get_flux_contributions_cached(
                 ionserieslist.append((2 * nelements * maxion, "free-free"))
 
             for selectedcolumn, emissiontypeclass in ionserieslist:
-                if getemission:
-                    array_fnu_emission = weighted_average_spectra([
-                        (
-                            emissiondata[dbin][timestep :: emission_timeblocks[dbin], selectedcolumn].to_numpy(),
-                            arr_tdelta[timestep] / len(dbinlist),
-                        )
-                        for timestep in range(timestepmin, timestepmax + 1)
-                        for dbin in dbinlist
-                    ])[nu_select]
-                else:
-                    array_fnu_emission = np.zeros_like(arraylambda, dtype=float)
-
-                if absorptiondata and selectedcolumn < nelements * maxion:  # bound-bound process
-                    array_fnu_absorption = weighted_average_spectra([
-                        (
-                            absorptiondata[dbin][timestep :: absorption_timeblocks[dbin], selectedcolumn].to_numpy(),
-                            arr_tdelta[timestep] / len(dbinlist),
-                        )
-                        for timestep in range(timestepmin, timestepmax + 1)
-                        for dbin in dbinlist
-                    ])[nu_select]
-                else:
-                    array_fnu_absorption = np.zeros_like(arraylambda, dtype=float)
+                array_fnu_emission = (
+                    fnu_emission_of_column[:, selectedcolumn]
+                    if fnu_emission_of_column is not None
+                    else np.zeros_like(arraylambda, dtype=float)
+                )
+                # only a bound-bound process has an absorption column
+                array_fnu_absorption = (
+                    fnu_absorption_of_column[:, selectedcolumn]
+                    if fnu_absorption_of_column is not None and selectedcolumn < nelements * maxion
+                    else np.zeros_like(arraylambda, dtype=float)
+                )
 
                 if filterfunc:
                     array_fnu_emission = filterfunc(array_fnu_emission)
