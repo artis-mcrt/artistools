@@ -200,7 +200,7 @@ def resolve_energy_rate_args(args: argparse.Namespace) -> None:
 
     --plotdeposition drew the deposition rates of the gamma rays and the electrons, and the emission rate of the
     electrons. --plotalphadeposition added the three rates of the alpha particles. --plotthermalisation added the
-    thermalisation ratios of the gamma rays, the electrons, and the alpha particles.
+    thermalisation ratios of the gamma rays, the electrons, and the alpha particles, with the curves of Barnes et al.
     """
     named: dict[str, set[str]] = {dest: set(getattr(args, dest, None) or ()) for dest in ENERGYRATEDESTS}
     if args.plotdeposition or args.plotalphadeposition or args.plotthermalisation:
@@ -211,6 +211,7 @@ def resolve_energy_rate_args(args: argparse.Namespace) -> None:
             named[dest].add("alpha")
     if args.plotthermalisation:
         named["thermalisation"] |= {"gamma", "betaminus", "alpha"}
+        args.showbarnes = True
     for dest, particles in named.items():
         setattr(args, dest, [particle for particle in DEPOSITIONCHOICES if particle in particles])
     args.plotdeposition = args.plotalphadeposition = args.plotthermalisation = False
@@ -441,7 +442,11 @@ def plot_thermalisation(
     particlecolours: dict[str, str],
     linewidth: float | str | None,
 ) -> None:
-    """Plot the deposition rate over the emission rate of each particle of -thermalisation, and the Barnes curves."""
+    """Plot the deposition rate over the emission rate of each particle of -thermalisation.
+
+    --showbarnes adds the curves of Barnes et al. (2016, ApJ, 829, 110) for the gamma rays, the electrons, and the alpha
+    particles.
+    """
     if "betaplus" in args.thermalisation:
         print_detail(
             "the thermalisation ratio of the positrons divides by the analytical emission rate, because"
@@ -469,7 +474,7 @@ def plot_thermalisation(
 
     # the curves of Barnes et al. (2016, ApJ, 829, 110) describe the gamma rays, the electrons, and the alpha particles
     barnesparticles = [particle for particle in ("gamma", "betaminus", "alpha") if particle in args.thermalisation]
-    if not barnesparticles:
+    if not (args.showbarnes and barnesparticles):
         return
 
     model_mass_grams, ejecta_ke_erg = get_model_mass_and_kinetic_energy(Path(modelpath))
@@ -1524,8 +1529,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=ENERGYPARTICLES,
         metavar="PARTICLE",
         help=(
-            "Plot the deposition rate over the emission rate of each particle in a panel below the light curves,"
-            f" with the curves of Barnes et al. (2016, ApJ, 829, 110): {', '.join(ENERGYPARTICLES)}"
+            "Plot the deposition rate over the emission rate of each particle in a panel below the light curves:"
+            f" {', '.join(ENERGYPARTICLES)}. --showbarnes adds the curves of Barnes et al. (2016)"
+        ),
+    )
+
+    parser.add_argument(
+        "--showbarnes",
+        action="store_true",
+        help=(
+            "With -thermalisation, also plot the thermalisation efficiencies of Barnes et al. (2016, ApJ, 829, 110)"
+            " for gamma, betaminus, and alpha"
         ),
     )
 

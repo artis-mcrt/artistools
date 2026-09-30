@@ -146,6 +146,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "emission",
     "analyticemission",
     "thermalisation",
+    "showbarnes",
     # the older flags of the energy rates, which the lists of particles replace
     "plotdeposition",
     "plotalphadeposition",
@@ -231,6 +232,8 @@ class ControlValues:
     emission: tuple[str, ...]
     analyticemission: tuple[str, ...]
     thermalisation: tuple[str, ...]
+    # the curves of Barnes et al. (2016) in the thermalisation panel
+    showbarnes: bool
     # the kind of viewing direction:
     # - "" for all directions;
     # - "bin" for -plotviewingangle;
@@ -445,6 +448,7 @@ class LightCurveViewer:
             emission=tuple(args.emission),
             analyticemission=tuple(args.analyticemission),
             thermalisation=tuple(args.thermalisation),
+            showbarnes=bool(args.showbarnes),
             directionkind=directionkind,
             directionbins=directionbins,
             usedegrees=bool(args.usedegrees),
@@ -523,6 +527,9 @@ class LightCurveViewer:
             options += ["-figwidthscale", format(values.figwidthscale, "g")]
         if values.dpi is not None:
             options += ["-dpi", str(values.dpi)]
+        # the curves go in the thermalisation panel, thus the flag has no effect without the panel
+        if values.showbarnes and values.thermalisation:
+            options.append("--showbarnes")
         # a list option takes each word that follows it, thus the lists of particles come after every other option
         for dest in ENERGYRATEDESTS:
             if particles := getattr(values, dest):
@@ -780,6 +787,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             # the grid has no text in a cell, thus the check box takes the middle of its column
             energygrid.addWidget(check, row, column, QtCore.Qt.AlignmentFlag.AlignHCenter)
             energychecks[dest, particle] = check
+    barnescheck = QtWidgets.QCheckBox("--showbarnes")
+    add_row(energygrid, len(DEPOSITIONCHOICES) + 2, [barnescheck])
 
     _, timegrid = add_section(panellayout, "Time [d]")
     timerangeslider, set_timerange_positions, connect_timerange, _ = make_range_slider(SLIDER_STEPS)
@@ -893,7 +902,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         checklayout.setContentsMargins(6, 4, 6, 4)
         checklayout.setSpacing(2)
         directionchecks.clear()
-        for dirbin, label in get_direction_choices_of_kind(directionkind, usedegrees):
+        # the average over all the directions is bin -1. An observer of the virtual packets has no such average
+        allchoice = [] if directionkind == "vpkt" else [(-1, "All directions")]
+        for dirbin, label in [*allchoice, *get_direction_choices_of_kind(directionkind, usedegrees)]:
             check = QtWidgets.QCheckBox(f"{dirbin}: {label}")
             check.clicked.connect(on_direction)
             checklayout.addWidget(check)
@@ -950,6 +961,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         cmfcheck,
         invalidcheck,
         *energychecks.values(),
+        barnescheck,
         timerangeslider,
         xscalebox,
         lumunitbox,
@@ -1056,6 +1068,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             # a rate that the plot has stays available, thus the user can remove it
             check.setEnabled(reason is None or ischecked)
             check.setToolTip(reason or f"-{dest} {particle}: {helptexts.get(dest, '')}")
+        barnescheck.setChecked(values.showbarnes)
+        # Barnes et al. (2016) give the curves of the gamma rays, the electrons, and the alpha particles
+        hasbarnescurve = any(particle in values.thermalisation for particle in ("gamma", "betaminus", "alpha"))
+        barnescheck.setEnabled(hasbarnescurve or values.showbarnes)
+        barnescheck.setToolTip(
+            helptexts.get("showbarnes", "")
+            if hasbarnescurve
+            else "Select the thermalisation of gamma, betaminus, or alpha first. Barnes et al. (2016) give only these"
+        )
         set_timerange_positions(
             to_position(float(values.timemin) if values.timemin else viewer.timebounds[0]),
             to_position(float(values.timemax) if values.timemax else viewer.timebounds[1]),
@@ -1163,6 +1184,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 emission=get_checked_particles("emission"),
                 analyticemission=get_checked_particles("analyticemission"),
                 thermalisation=get_checked_particles("thermalisation"),
+                showbarnes=barnescheck.isChecked(),
             )
         )
 
@@ -1229,7 +1251,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_direction() -> None:
         directionkind: str = directionkindbox.currentData()
         usedegrees = usedegreescheck.isChecked()
-        dirbins = [dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind, usedegrees)]
+        # a kind of direction other than the observers has the average over all the directions as bin -1
+        averagebin = [] if directionkind in {"", "vpkt"} else [-1]
+        dirbins = [*averagebin, *(dirbin for dirbin, _ in get_direction_choices_of_kind(directionkind, usedegrees))]
         if directionkind == viewer.values.directionkind:
             directionbins = tuple(dirbin for dirbin, check in directionchecks.items() if check.isChecked())
             if directionkind and not directionbins:
@@ -1438,6 +1462,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     topnucsbox.valueChanged.connect(on_series)
     for check in energychecks.values():
         check.toggled.connect(on_energy_rates)
+    barnescheck.toggled.connect(on_energy_rates)
     connect_timerange(on_timerange)
     timeminedit.editingFinished.connect(on_timeedit)
     timemaxedit.editingFinished.connect(on_timeedit)

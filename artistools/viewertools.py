@@ -3996,6 +3996,7 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--plotcmf": "Comoving frame",
     "--plotinvalidpart": "Partial times",
     "--showabsorption": "Show absorption",
+    "--showbarnes": "Barnes et al. (2016)",
     "--showemission": "Show emission",
     "--use_pellet_decay_time": "Pellet decay time",
     "--use_thermalemissiontype": "Event",
