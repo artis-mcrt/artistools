@@ -100,8 +100,10 @@ FRAME_MARKER = "artistools polars frame"
 MAX_MESSAGE_BYTES = 16 * 1024**3
 
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
-# standard output first, thus the client ignores each line before this one
-SERVER_START_LINE = b"artistools server protocol 1\n"
+# standard output first, thus the client ignores each line before this one. Protocol 2 sends the version of polars
+# and the standard error of a quiet request
+SERVER_PROTOCOL_PREFIX = b"artistools server protocol "
+SERVER_START_LINE = SERVER_PROTOCOL_PREFIX + b"2\n"
 
 # each message starts with the length of its data in this number of bytes. One byte then shows whether zlib
 # compressed the data, and the pickle data comes last. The receiver reads a full message before it unpickles it,
@@ -401,7 +403,7 @@ def read_message(stream: t.IO[bytes]) -> bytes:
     return data
 
 
-def get_uvx_pins() -> str:
+def get_polars_pin() -> str:
     """Return the option of uvx that gives the server the polars of this process.
 
     The filter of a query of a remote model goes to the host as a serialised polars expression, see
@@ -427,7 +429,7 @@ def get_server_argv(host: str) -> list[str]:
         msg = f"The host {host} starts with -, and ssh would read it as an option"
         raise ValueError(msg)
     defaultcommand = (
-        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_uvx_pins()} artistools@{version('artistools')} server"
+        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_polars_pin()} artistools@{version('artistools')} server"
     )
     # ssh takes an IPv6 address with no brackets
     sshhost = re.sub(r"\[([^\]]*)\]", r"\1", host)
@@ -437,12 +439,17 @@ def get_server_argv(host: str) -> list[str]:
 def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
     """Return the versions of artistools and polars that the server sends after its start line.
 
-    Raise EOFError if the server stops first.
+    Raise EOFError if the server stops first, and ConnectionError for the start line of a different protocol. That
+    server then waits for a request, thus a search for the next line would wait for ever.
     """
     assert process.stdout is not None
     while not (line := process.stdout.readline(64 * 1024)).endswith(SERVER_START_LINE):
         if not line:
             raise EOFError
+        if SERVER_PROTOCOL_PREFIX in line:
+            serverprotocol = line[line.index(SERVER_PROTOCOL_PREFIX) :].strip().decode(errors="replace")
+            msg = f"uses '{serverprotocol}', and this artistools needs '{SERVER_START_LINE.strip().decode()}'"
+            raise ConnectionError(msg)
 
     versions = load_reply(read_message(process.stdout))
     assert isinstance(versions, tuple)
@@ -514,7 +521,7 @@ def get_git_server_suggestion(host: str) -> str | None:
 
     url, commit, notes = gitsource
     servercommand = (
-        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_uvx_pins()}"
+        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_polars_pin()}"
         f' --from "artistools @ git+{url}@{commit}" artistools server'
     )
     return "\n".join([
@@ -593,17 +600,22 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")
     process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
 
+    starthelp = (
+        f"Set {SERVER_COMMAND_ENVVAR} as the warning above shows"
+        if gitsuggestion is not None
+        else f"Install uv on {host}. The default command needs a release {localversion} of artistools with the"
+        f" server command. As an alternative, set {SERVER_COMMAND_ENVVAR} to a command that starts such a server"
+    )
     try:
         serverversion, serverpolarsversion = read_server_versions(process)
+    except ConnectionError as exc:
+        process.kill()
+        exit_with_error(f"the artistools server on {host} {exc}", starthelp)
     except Exception:  # ruff:ignore[blind-except]
-        # text of a shell or a server of a different protocol can give any error of the unpickle
+        # text of a shell can give any error of the unpickle
         process.kill()
         exit_with_error(
-            f"the artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}",
-            f"Set {SERVER_COMMAND_ENVVAR} as the warning above shows"
-            if gitsuggestion is not None
-            else f"Install uv on {host}. The default command needs a release {localversion} of artistools with the"
-            f" server command. As an alternative, set {SERVER_COMMAND_ENVVAR} to a command that starts such a server",
+            f"the artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}", starthelp
         )
 
     atexit.register(close_server_pipes, process)
@@ -613,7 +625,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
             f"the artistools server on {host} has polars {serverpolarsversion}, and this artistools has polars"
             f" {pl.__version__}. The server reads the polars expressions of the client, and these expressions need the"
             " same version of polars",
-            f"Add {get_uvx_pins()} to the uvx command of {SERVER_COMMAND_ENVVAR}",
+            f"Add {get_polars_pin()} to the uvx command of {SERVER_COMMAND_ENVVAR}",
         )
     if serverversion != localversion:
         print_warning(
@@ -628,7 +640,7 @@ def output_is_hidden() -> bool:
     """Return whether the standard output of the calling thread goes elsewhere than to the terminal of the process.
 
     --quiet sends it to the null device, and the worker thread of a viewer sends it to a buffer. The server then
-    hides the output of the reader too. The ThreadOutput of a viewer gives the target of each thread.
+    hides the standard output of the reader, and it sends back the standard error, e.g. an error or a warning. The ThreadOutput of a viewer gives the target of each thread.
     """
     import sys
 
@@ -640,6 +652,8 @@ def output_is_hidden() -> bool:
 
 def call_on_host(host: str, modulename: str, qualname: str, args: tuple[t.Any, ...], kwargs: dict[str, t.Any]) -> t.Any:
     """Run the function on the artistools server of the host, and return its result."""
+    import sys
+
     process, lock = get_server(host)
     assert process.stdin is not None
     assert process.stdout is not None
@@ -660,7 +674,9 @@ def call_on_host(host: str, modulename: str, qualname: str, args: tuple[t.Any, .
                 raise OSError(msg) from exc
             raise
 
-    succeeded, result = load_reply(response)
+    succeeded, result, errortext = load_reply(response)
+    # a viewer shows the first line of an error and the last warning of the buffer of its thread
+    sys.stderr.write(errortext)
     if not succeeded:
         assert isinstance(result, BaseException)
         result.add_note(f"The error came from {qualname} on the artistools server of {host}")
@@ -744,8 +760,11 @@ def collect_lazyframes(value: t.Any) -> t.Any:
     return map_leaves(value, to_collected)
 
 
-def run_function(request: tuple[str, str, tuple[t.Any, ...], dict[str, t.Any], bool]) -> t.Any:
-    """Return the result of the function of an unpickled request. With quiet, the function prints nothing."""
+def run_function(request: tuple[str, str, tuple[t.Any, ...], dict[str, t.Any], bool], errorstream: t.TextIO) -> t.Any:
+    """Return the result of the function of an unpickled request.
+
+    With quiet, the function prints nothing to the standard output, and its standard error goes to errorstream.
+    """
     import contextlib
     import os
 
@@ -755,16 +774,26 @@ def run_function(request: tuple[str, str, tuple[t.Any, ...], dict[str, t.Any], b
         if quiet:
             devnull = stack.enter_context(Path(os.devnull).open("w", encoding="utf-8"))
             stack.enter_context(contextlib.redirect_stdout(devnull))
+            stack.enter_context(contextlib.redirect_stderr(errorstream))
         return collect_lazyframes(func(*map_leaves(args, expand_home), **map_leaves(kwargs, expand_home)))
 
 
 def run_request(request: bytes) -> bytes:
-    """Run one request of a client, and return the message with the result or the exception."""
+    """Run one request of a client, and return the message with the result or the exception, and the error text.
+
+    The error text holds the standard error of a quiet request, which the client writes to its own standard error.
+    """
     import contextlib
+    import io
     import traceback
 
+    errorstream = io.StringIO()
     try:
-        return dump_message((True, run_function(restore_frames(pickle.loads(request)))))
+        return dump_message((
+            True,
+            run_function(restore_frames(pickle.loads(request)), errorstream),
+            errorstream.getvalue(),
+        ))
     except BaseException as exc:
         # a panic of polars or of rustext is a BaseException. The client gets it as an error, and the server keeps
         # its state for the next request
@@ -775,12 +804,12 @@ def run_request(request: bytes) -> bytes:
         exc.add_note("The traceback on the server:\n" + "".join(traceback.format_exception(exc)).rstrip())
         if is_reply_exception(exc):
             with contextlib.suppress(Exception):
-                return dump_message((False, exc))
+                return dump_message((False, exc, errorstream.getvalue()))
         msg = f"{type(exc).__name__}: {exc}"
         replyexc = RuntimeError(msg)
         for note in getattr(exc, "__notes__", []):
             replyexc.add_note(note)
-        return dump_message((False, replyexc))
+        return dump_message((False, replyexc, errorstream.getvalue()))
 
 
 def serve(requeststream: t.IO[bytes], resultstream: t.IO[bytes]) -> None:

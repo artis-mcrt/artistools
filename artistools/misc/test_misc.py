@@ -16,6 +16,7 @@ import typing as t
 from pathlib import Path
 from unittest import mock
 
+import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
@@ -30,6 +31,7 @@ from artistools.misc import dirbins
 from artistools.misc import fileio
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
+from artistools.viewertools import run_command_step_with_warning
 
 
 def write_timesteps_out(modeldir: Path) -> None:
@@ -1319,6 +1321,23 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
     assert gitsource[1] == headcommit.stdout.strip()
 
 
+def test_server_of_a_different_protocol_stops_the_start() -> None:
+    """The start line of a different protocol must give an error at once.
+
+    That server waits for a request after its start line, thus a search for the next line would wait for ever.
+    """
+    fakescript = (
+        "import sys, time; sys.stdout.buffer.write(b'motd\\nartistools server protocol 1\\n'); sys.stdout.flush()"
+    )
+    fakeserver = subprocess.Popen([sys.executable, "-c", f"{fakescript}; time.sleep(60)"], stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
+    try:
+        with pytest.raises(ConnectionError, match="protocol 1"):
+            remote.read_server_versions(fakeserver)
+    finally:
+        fakeserver.kill()
+        fakeserver.wait()
+
+
 def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
     """A reader that gets a host:path runs on the server, and it gives the same data as for the local path.
 
@@ -1372,6 +1391,20 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             emptymodelpath, emptytimesteps = plotestimators.resolve_plot_args(emptyargs)
             with pytest.raises(plotestimators.NoEstimatorRowsError):
                 plotestimators.get_figures_data(emptymodelpath, emptyargs, emptytimesteps)
+            # a window reads the first line of an error and the last warning from the buffer of its thread, thus a quiet
+            # request brings back the standard error of the host
+            for tokens, expected in (
+                (["nosuchvariable"], ("'nosuchvariable' is not an estimator variable", "")),
+                (["-plot", "populations", "Fe II", "Zz IX"], (None, "Can't plot populations for {(-1, 9)}")),
+            ):
+
+                def draw_remote_plot(plottokens: list[str] = tokens) -> None:
+                    plotargs = parse_cli_args(plotestimators.addargs, None, None, [*plottokens, str(remotepath)])
+                    plotestimators.draw_plot(plotargs, mplfig.Figure())
+
+                message, warning = run_command_step_with_warning(draw_remote_plot, quiet=True)
+                assert message == expected[0]
+                assert warning.startswith(expected[1])
             estimatorscore = sys.modules["artistools.estimators.core"]
             read_estimator_rows_on_host = estimatorscore.read_estimator_rows_on_host
             hostframes: list[pl.DataFrame] = []

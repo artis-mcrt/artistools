@@ -1141,7 +1141,8 @@ def get_emabs_average(
     for dbin, dfemabs in dfemabs_of_dbin.items():
         # the frequency varies slowest, thus the row of a frequency bin and a timestep is nu * timeblocks + timestep
         rowindices = np.arange(n_nu)[:, np.newaxis] * timeblocks_of_dbin[dbin] + np.array(timesteps)[np.newaxis, :]
-        rows = dfemabs[rowindices.ravel()].to_numpy().astype(np.float64).reshape(n_nu, len(timesteps), -1)
+        rows = dfemabs[rowindices.ravel()].to_numpy().reshape(n_nu, len(timesteps), -1)
+        # the float64 weights make einsum sum in float64, with no float64 copy of the float32 rows
         total += np.einsum("t,ntc->nc", tdeltas, rows)
 
     return total / (tdeltas.sum() * len(dfemabs_of_dbin))

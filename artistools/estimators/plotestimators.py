@@ -2922,10 +2922,13 @@ def get_figures_data(
     selection with no row gives NoEstimatorRowsError. batchcaches gives the current parquet caches of the run, e.g. for
     a window that draws many plots.
     """
+    import copy
+
     from artistools.misc.remote import is_plain_value
 
-    # a path of the arguments comes back with the name of the host, thus only the changed values come back
-    plainargs = {key: value for key, value in vars(args).items() if is_plain_value(value)}
+    # a path of the arguments comes back with the name of the host, thus only the changed values come back. The copy
+    # keeps each list as it was, e.g. for a change of one item
+    plainargs = copy.deepcopy({key: value for key, value in vars(args).items() if is_plain_value(value)})
 
     def get_changed_args() -> dict[str, t.Any]:
         return {key: value for key, value in vars(args).items() if key in plainargs and plainargs[key] != value}
