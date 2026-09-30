@@ -1937,25 +1937,6 @@ def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock, 
     assert POPTYPE_YLABELS["elpop"] in labels
 
 
-def test_estimator_plot_collects_all_subplots_in_one_call(tmp_path: Path) -> None:
-    """Each collect of a remote model is a round trip through ssh, thus a plot must not collect for each subplot.
-
-    The command counts the rows, get_xlist collects its statistics and its unique values, and the subplots share one
-    collect. Before, this plot made 7 collects. On a remote model, each collect took 0.15 s more than its query.
-    """
-    with mock.patch.object(plotestimators, "collect_on_host", wraps=plotestimators.collect_on_host) as mockcollect:
-        at.estimators.plot(
-            argsraw=[],
-            modelpath=modelpath,
-            outputfile=tmp_path,
-            timedays=260,
-            x="velocity",
-            plotlist=[["Te"], ["TR", "nne"], [["populations", ["Fe II", "Fe III"]]], [["averageionisation", ["Fe"]]]],
-        )
-
-    assert mockcollect.call_count == 3
-
-
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
 def test_estimator_ionpoptype_default_is_absolute(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
     """A population series with no directive gives an absolute number density."""
@@ -2724,7 +2705,7 @@ def test_estimator_image_with_a_log_scale_and_no_value_above_zero(tmp_path: Path
 def test_image_values_leave_out_a_nan_and_take_an_empty_frame() -> None:
     """One NaN value must not remove the mean of its ring, and a frame with no estimators gives an empty grid."""
     plotestimators = at.estimators.plotestimators
-    panels = [plotestimators.ImagePanel(pl.col("Te"), "Te", None, None, None)]
+    panels = [plotestimators.ImagePanel(pl.col("Te"), plotestimators.PanelStyle("Te", None, None, None))]
     # a 2D model of 2 rings and 2 layers, where ring 0 of layer 1 holds a NaN in one of its two timesteps
     vmax_cmps = 1.0e9
     modelmeta = {"dimensions": 2, "ncoordgridrcyl": 2, "ncoordgridz": 2, "vmax_cmps": vmax_cmps}
@@ -2736,12 +2717,12 @@ def test_image_values_leave_out_a_nan_and_take_an_empty_frame() -> None:
         "deltavol_deltat": [1.0, 3.0, 1.0, 3.0, 1.0],
         "Te": [1000.0, 2000.0, float("nan"), 4000.0, 3000.0],
     })
-    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, None, [5, 6], Path())
+    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, None, [5, 6])
     assert plotaxes == ("rcyl", "z")
     assert np.allclose(grid, [[1000.0, 2000.0], [3000.0, 4000.0]])
 
     estimators1d = estimators.with_columns(vel_r_min=pl.lit(0.0), vel_r_max=pl.lit(vmax_cmps))
-    (emptygrid,) = plotestimators.get_shell_values_on_rz_grid(estimators1d, panels, vmax_cmps, [999], Path())
+    (emptygrid,) = plotestimators.get_shell_values_on_rz_grid(estimators1d, panels, vmax_cmps, [999])
     assert np.isnan(emptygrid).all()
 
 
@@ -3260,11 +3241,10 @@ def test_average_ionisation_ylim_covers_every_element() -> None:
         "nnion_Ni_I": [1.0, 1.0],
     })
 
-    _, ax = plt.subplots()
+    settings: plotestimators.SubplotSettings = {}
     # Ni comes last and reaches charge 0, but the Fe curve reaches charge 5
-    at.estimators.plotestimators.plot_average_ionisation(ax, ["Fe", "Ni"], estimators)
-    assert ax.get_ylim()[1] > 5.0
-    plt.close()
+    plotestimators.plot_average_ionisation(settings, ["Fe", "Ni"], estimators)
+    assert settings["ylim"][1] > 5.0
 
 
 def test_an_archived_run_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None:
@@ -4581,7 +4561,7 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
 
     A plane of -slice gives one cell for each pixel, and a projection reads every cell of the line.
     """
-    panels = [plotestimators.ImagePanel(pl.col("Te"), "Te", None, None, None)]
+    panels = [plotestimators.ImagePanel(pl.col("Te"), plotestimators.PanelStyle("Te", None, None, None))]
     vmax_cmps = 1.0e9
     modelmeta = {"dimensions": 3, "ncoordgridx": 2, "ncoordgridy": 2, "ncoordgridz": 2, "vmax_cmps": vmax_cmps}
     # the line at x layer 0 and y layer 1 holds two cells, and the line at x layer 1 and y layer 0 holds one
@@ -4594,7 +4574,7 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
         "deltavol_deltat": [1.0, 3.0, 1.0],
         "Te": [1000.0, 5000.0, 7000.0],
     })
-    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5], Path())
+    (grid,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5])
     assert plotaxes == ("x", "y")
     # the grid holds [y layer][x layer]
     assert np.isclose(grid[1, 0], (1000.0 * 1.0 + 5000.0 * 3.0) / 4.0, rtol=1e-12)

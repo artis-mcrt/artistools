@@ -57,7 +57,8 @@ These commands accept a model path of the form `host:path`, where `host` is a na
 
 - plotestimators and its `--interactive` viewer;
 - plotlightcurve;
-- plotspectra and its `--interactive` viewer.
+- plotspectra and its `--interactive` viewer;
+- `at.scan_estimators` in a Python script.
 
 ```sh
 artistools plotspectra -t 300 vae26:~/scratch/mymodel
@@ -65,7 +66,7 @@ artistools plotspectra -t 300 vae26:~/scratch/mymodel
 
 The rule of rsync decides whether a path is remote: a colon before the first slash makes a remote path. A local folder with such a colon in its name needs "./" at the start, e.g. `./run:2`.
 
-artistools starts `uvx artistools@<version> server` on that host through ssh, with the versions of the local artistools, polars, and Python. Thus the host needs only [uv](https://docs.astral.sh/uv/). The server reads the polars queries of the client, and polars reads such a query only with the same versions of polars and Python. The command sets `POLARS_MAX_THREADS=16`, because a login node can have hundreds of cores, and other users share them. The server reads the files and processes the data, e.g. it puts the packets into bins. Only the results come back, and the parquet caches stay beside the data on the host.
+artistools starts `uvx artistools@<version> server` on that host through ssh, with the versions of the local artistools and polars. Thus the host needs only [uv](https://docs.astral.sh/uv/). The command sets `POLARS_MAX_THREADS=16`, because a login node can have hundreds of cores, and other users share them. The server reads the files and makes the data of each plot, e.g. it puts the packets into bins. Only the data to draw comes back, and the parquet caches stay beside the data on the host. A script sends the filter and the columns of each query to the host, and only the rows of the query come back.
 
 An option that reads its files on the local host stops with an error. To start the server with a different command on the host, e.g. an artistools in a clone, set `ARTISTOOLS_REMOTE_COMMAND`:
 
@@ -73,7 +74,7 @@ An option that reads its files on the local host stops with an error. To start t
 export ARTISTOOLS_REMOTE_COMMAND='POLARS_MAX_THREADS=16 ~/artistools/.venv/bin/artistools server'
 ```
 
-The environment of such a command must have the same versions of polars and Python as the client. If not, the client stops with an error that gives the uvx options.
+The environment of such a command must have the same version of polars as the client. The filter of a query goes to the host as a polars expression, and the format of an expression changes between two versions. If the versions differ, the client stops with an error that gives the uvx option.
 
 ## Use from Python
 

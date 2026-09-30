@@ -9,7 +9,6 @@ import math
 import string
 import tempfile
 import typing as t
-from collections.abc import Callable
 from collections.abc import Collection
 from collections.abc import Mapping
 from collections.abc import Sequence
@@ -43,7 +42,6 @@ from artistools.estimators.core import get_variablelongunits
 from artistools.estimators.core import get_varname_formatted
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
-from artistools.estimators.core import scan_remote_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
@@ -90,8 +88,6 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
-from artistools.misc.remote import collect_on_host
-from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
@@ -258,8 +254,37 @@ class SeriesPlan(t.NamedTuple):
     plotkwargs: dict[str, t.Any]
 
 
-# the series of one plot item, and the step that runs after the draw of those series
-type SubplotItem = tuple[list[SeriesPlan], Callable[[], None] | None]
+class SeriesData(t.NamedTuple):
+    """The collected data of one series of a subplot, which the plot draws.
+
+    dflinepoints comes from get_line_points, and it is None for -xbins 0. dfpoints holds the xvalue and the yvalue
+    of every point for --markers, and it is None without them.
+    """
+
+    label: str | None
+    plotkwargs: dict[str, t.Any]
+    dflinepoints: pl.DataFrame | None
+    dfpoints: pl.DataFrame | None
+
+
+class SubplotSettings(t.TypedDict, total=False):
+    """The settings of the axes of a subplot, which the functions of its series give before the draw.
+
+    The host of a remote model runs these functions, thus the settings are values and not calls on the axes.
+    """
+
+    ylabel: str
+    yscale: str
+    ylim: tuple[float, float]
+    # move the power-of-ten offset of the y axis into the label, see set_exponent_label
+    exponentlabel: bool
+    # after the draw, clip the bottom of a log axis to ten decades below the top
+    cliplogbottom: bool
+    # the directives ymin= and ymax=, which apply after the draw
+    ymin: float
+    ymax: float
+    showlegend: bool
+    legendncols: int
 
 
 def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.LazyFrame:
@@ -343,48 +368,66 @@ def draw_series(
         )
 
 
-def get_subplot_queries(items: Sequence[SubplotItem], args: argparse.Namespace) -> list[pl.LazyFrame]:
+def get_subplot_queries(plans: Sequence[SeriesPlan], args: argparse.Namespace) -> list[pl.LazyFrame]:
     """Return the queries of the average lines and then of the points of every series of the subplot."""
-    plans = [plan for series, _ in items for plan in series]
     # -xbins 0 draws the points alone, thus it needs no average line
     linequeries = [get_line_points(plan.dfseries, args) for plan in plans] if args.xbins != 0 else []
     pointqueries = [plan.dfseries.select("xvalue", "yvalue") for plan in plans] if args.markers else []
     return [*linequeries, *pointqueries]
 
 
-def draw_subplot_items(
-    ax: mplax.Axes,
-    items: Sequence[SubplotItem],
-    frames: Sequence[pl.DataFrame],
-    args: argparse.Namespace,
-    startfromzero: bool,
-) -> None:
-    """Draw the items of the subplot in order, from the frames of the queries of get_subplot_queries."""
-    plans = [plan for series, _ in items for plan in series]
+def get_series_data(
+    plans: Sequence[SeriesPlan], frames: Sequence[pl.DataFrame], args: argparse.Namespace
+) -> list[SeriesData]:
+    """Return the data of each series of the subplot, from the frames of the queries of get_subplot_queries."""
     linecount = len(plans) if args.xbins != 0 else 0
     dflinepoints_of_plan: Sequence[pl.DataFrame | None] = frames[:linecount] or [None] * len(plans)
     dfpoints_of_plan: Sequence[pl.DataFrame | None] = frames[linecount:] or [None] * len(plans)
+    return [
+        SeriesData(plan.label, plan.plotkwargs, dflinepoints, dfpoints)
+        for plan, dflinepoints, dfpoints in zip(plans, dflinepoints_of_plan, dfpoints_of_plan, strict=True)
+    ]
 
-    planindex = 0
-    for series, finish in items:
-        for plan in series:
-            draw_series(
-                dflinepoints_of_plan[planindex],
-                dfpoints_of_plan[planindex],
-                ax=ax,
-                label=plan.label,
-                args=args,
-                startfromzero=startfromzero,
-                **plan.plotkwargs,
-            )
-            planindex += 1
 
-        if finish is not None:
-            finish()
+def draw_subplot(
+    ax: mplax.Axes,
+    series: Sequence[SeriesData],
+    settings: SubplotSettings,
+    args: argparse.Namespace,
+    startfromzero: bool,
+) -> None:
+    """Apply the settings of the subplot to the axes, draw its series in order, and add the limits and the legend."""
+    # the scale and the limits come before the data, so that the axis autoscales in the right space
+    if "yscale" in settings:
+        ax.set_yscale(settings["yscale"])
+    if "ylim" in settings:
+        ax.set_ylim(*settings["ylim"])
+    if "ylabel" in settings:
+        ax.set_ylabel(settings["ylabel"])
+    if settings.get("exponentlabel"):
+        set_exponent_label(ax)
+
+    for seriesdata in series:
+        draw_series(
+            seriesdata.dflinepoints,
+            seriesdata.dfpoints,
+            ax=ax,
+            label=seriesdata.label,
+            args=args,
+            startfromzero=startfromzero,
+            **seriesdata.plotkwargs,
+        )
+
+    if settings.get("cliplogbottom") and ax.get_yscale() == "log":
+        # set_legend gives the legend its room
+        ymin, ymax = ax.get_ylim()
+        ax.set_ylim(bottom=max(ymin, ymax / 1e10))
+
+    finish_subplot(ax, args, settings)
 
 
 def plot_init_abundances(
-    ax: mplax.Axes, specieslist: list[str], estimators: pl.LazyFrame, seriestype: str, **plotkwargs: t.Any
+    settings: SubplotSettings, specieslist: list[str], estimators: pl.LazyFrame, seriestype: str, **plotkwargs: t.Any
 ) -> list[SeriesPlan]:
     """Return the series of the initial abundance or mass of each species in specieslist."""
     if seriestype == "initmasses":
@@ -395,12 +438,12 @@ def plot_init_abundances(
             for massfraccol in estimators.collect_schema().names()
             if massfraccol.startswith("init_X_")
         )
-        ax.set_ylabel(r"Initial mass per x point [M$_\odot$]")
+        settings["ylabel"] = r"Initial mass per x point [M$_\odot$]"
         valuetype = "init_mass_"
     else:
         assert seriestype == "initabundances"
-        ax.set_ylim(1e-20, 1.0)
-        ax.set_ylabel("Initial mass fraction")
+        settings["ylim"] = (1e-20, 1.0)
+        settings["ylabel"] = "Initial mass fraction"
         valuetype = "init_X_"
 
     columnnames = set(estimators.collect_schema().names())
@@ -465,10 +508,10 @@ def get_average_charge_expr(element: str, colnames: Collection[str]) -> tuple[pl
 
 
 def plot_average_ionisation(
-    ax: mplax.Axes, params: Sequence[str], estimators: pl.LazyFrame, **plotkwargs: t.Any
+    settings: SubplotSettings, params: Sequence[str], estimators: pl.LazyFrame, **plotkwargs: t.Any
 ) -> list[SeriesPlan]:
     """Return the series of the mean ion charge of each element in params."""
-    ax.set_ylabel("Average ion charge")
+    settings["ylabel"] = "Average ion charge"
 
     # a lazy plan resolves its schema on each call, thus read the names one time for the whole loop
     colnames = estimators.collect_schema().names()
@@ -491,7 +534,7 @@ def plot_average_ionisation(
         plans.append(SeriesPlan(label=paramvalue, dfseries=dfplotdata, plotkwargs={"color": color} | plotkwargs))
 
     # the limit must cover every element, thus set it after the loop over the elements
-    ax.set_ylim(0.0, maxioncharge + 0.1)
+    settings["ylim"] = (0.0, maxioncharge + 0.1)
 
     return plans
 
@@ -508,7 +551,7 @@ def read_nltepops_of_estimators(modelpath: str | Path, timesteps: Sequence[int],
 
 
 def plot_average_excitation(
-    ax: mplax.Axes,
+    settings: SubplotSettings,
     params: Sequence[str],
     timestepslist: Sequence[int],
     mgilist: Sequence[int],
@@ -517,7 +560,7 @@ def plot_average_excitation(
     **plotkwargs: t.Any,
 ) -> list[SeriesPlan]:
     """Return the series of the population-weighted mean level excitation energy of each requested ion."""
-    ax.set_ylabel("Average excitation energy [eV]")
+    settings["ylabel"] = "Average excitation energy [eV]"
 
     estimatorcolumns = estimators.collect_schema().names()
     # the superlevel population is spread over the levels it stands in for at the electron temperature
@@ -563,7 +606,7 @@ def plot_average_excitation(
 
 
 def plot_levelpop(
-    ax: mplax.Axes,
+    settings: SubplotSettings,
     seriestype: str,
     params: Sequence[str],
     timestepslist: Sequence[int],
@@ -574,13 +617,13 @@ def plot_levelpop(
 ) -> list[SeriesPlan]:
     """Return the series of the population of each level in params, directly or per unit velocity."""
     if seriestype == "levelpopulation_dn_on_dvel":
-        ax.set_ylabel("dN/dV [{}km$^{{-1}}$ s]")
+        settings["ylabel"] = "dN/dV [{}km$^{{-1}}$ s]"
     elif seriestype == "levelpopulation":
-        ax.set_ylabel("X$_{{i}}$ [{}/cm³]")
+        settings["ylabel"] = "X$_{{i}}$ [{}/cm³]"
     else:
         raise ValueError
 
-    set_exponent_label(ax)
+    settings["exponentlabel"] = True
 
     # only the levelpopulation_dn_on_dvel series reads the shell velocities, which only a 1D model gives
     modeldata, t_model_init_days = get_levelpop_modeldata(Path(modelpath))
@@ -597,7 +640,7 @@ def plot_levelpop(
 
     # this series draws one point for each cell, thus the horizontal axis must give one value for
     # each cell. A time axis gives one value for each timestep instead
-    dfxofmgi = collect_on_host(Path(modelpath), [estimators.select("modelgridindex", "xvalue").unique()])[0]
+    dfxofmgi = estimators.select("modelgridindex", "xvalue").unique().collect()
     if dfxofmgi.height != dfxofmgi["modelgridindex"].n_unique():
         exit_with_error(
             "a level population plot draws one point for each cell, thus the horizontal axis must"
@@ -977,7 +1020,7 @@ def get_population_normfactor(seriestype: str, poptype: str, atomic_number: int)
 
 
 def plot_multi_ion_series(
-    ax: mplax.Axes,
+    settings: SubplotSettings,
     seriestype: str,
     ionlist: Sequence[str],
     estimators: pl.LazyFrame,
@@ -985,7 +1028,7 @@ def plot_multi_ion_series(
     poptype: str,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
-) -> SubplotItem:
+) -> list[SeriesPlan]:
     """Return the series of an ion-specific property, e.g. populations.
 
     The poptype parameter sets the normalisation of a population series. Each subplot carries its own
@@ -1111,22 +1154,18 @@ def plot_multi_ion_series(
         if ylabel is None:
             msg = f"Unknown poptype: {poptype}"
             raise ValueError(msg)
-        ax.set_ylabel(ylabel)
+        settings["ylabel"] = ylabel
     else:
-        ax.set_ylabel(get_varname_formatted(seriestype))
+        settings["ylabel"] = get_varname_formatted(seriestype)
 
-    def clip_log_bottom() -> None:
-        """Clip the bottom of a log axis to ten decades below the top. set_legend gives the legend its room."""
-        if ax.get_yscale() != "log":
-            return
-        ymin, ymax = ax.get_ylim()
-        ax.set_ylim(bottom=max(ymin, ymax / 1e10))
+    if plans:
+        settings["cliplogbottom"] = True
 
-    return plans, clip_log_bottom if plans else None
+    return plans
 
 
 def plot_series(
-    ax: mplax.Axes,
+    settings: SubplotSettings,
     variable: str | pl.Expr,
     showlegend: bool,
     estimators: pl.LazyFrame,
@@ -1155,7 +1194,7 @@ def plot_series(
         if not nounits:
             linelabel += units_string
     else:
-        ax.set_ylabel(serieslabel + units_string)
+        settings["ylabel"] = serieslabel + units_string
         linelabel = None
 
     series = estimators.with_columns(celltsweight=pl.col("deltavol_deltat"), yvalue=colexpr)
@@ -1199,8 +1238,8 @@ def get_xlist(
 
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
 
-    # one collect gives the statistics and the unique values, because each collect of a remote model is a round trip
-    # through ssh. The command line can give the statistics, and then the query leaves them out
+    # one collect gives the statistics and the unique values. The command line can give the statistics, and then the
+    # query leaves them out
     statexprs: dict[str, pl.Expr] = {}
     if args.xmin is None:
         statexprs["xmin"] = pl.col("xvalue").min()
@@ -1230,7 +1269,7 @@ def get_xlist(
         for suffix, rowfilter in (("", inxrange), ("_binned", inbin))
     }
 
-    stats = collect_on_host(Path(args.modelpath), [estimators.select(**statexprs, **uniqueexprs)])[0].row(0, named=True)
+    stats = estimators.select(**statexprs, **uniqueexprs).collect().row(0, named=True)
     xstats = {name: stats[name] for name in statexprs}
 
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
@@ -1346,25 +1385,20 @@ def get_data_range(ax: mplax.Axes) -> tuple[float, float] | None:
     return (float(finite.min()), float(finite.max())) if finite.size > 0 else None
 
 
-def plot_subplot(
-    ax: mplax.Axes,
+def get_subplot_plans(
     timestepslist: list[int],
-    startfromzero: bool,
     plotitems: list[t.Any],
     mgilist: list[int],
     modelpath: str | Path,
     estimators: pl.LazyFrame,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
-) -> tuple[list[pl.LazyFrame], Callable[[Sequence[pl.DataFrame]], None]]:
-    """Prepare a subplot of the ARTIS estimators, and return its queries and the function that draws it.
+) -> tuple[list[SeriesPlan], SubplotSettings]:
+    """Return the series of a subplot of the ARTIS estimators before the collection, and the settings of its axes.
 
-    The caller collects the queries of all the subplots in one call, because each collect of a remote model is a
-    round trip through ssh. The function then draws the subplot from the frames of its queries.
+    The caller collects the series of all the subplots in one call.
     """
-    # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
-    showlegend = False
-    legend_ncols = 1
+    settings: SubplotSettings = {"showlegend": False, "legendncols": 1}
     ylabel = None
     sameylabel = True
     seriesvars = [var for var in plotitems if isinstance(var, str | pl.Expr)]
@@ -1379,8 +1413,6 @@ def plot_subplot(
             break
 
     remaining_plotitems: list[t.Any] = []
-    ymin, ymax = None, None
-    yscalegiven = False
     # the -ionpoptype argument gives the type for the whole figure. A directive of a subplot replaces it
     poptype = args.poptype
     for plotitem in plotitems:
@@ -1390,12 +1422,12 @@ def plot_subplot(
         seriestype, params = plotitem
         seriestype = get_directive_name(seriestype) or seriestype
         if seriestype == "ymin":
-            # only record it. set_ylim turns the autoscaling of the whole axis off, thus applying it here
+            # only record it. set_ylim turns the autoscaling of the whole axis off, thus applying it before the draw
             # would leave the other side at the value it held before the data arrived
-            ymin = float(params)
+            settings["ymin"] = float(params)
 
         elif seriestype == "ymax":
-            ymax = float(params)
+            settings["ymax"] = float(params)
 
         elif seriestype == "ionpoptype":
             poptype = str(params)
@@ -1407,100 +1439,76 @@ def plot_subplot(
                 )
 
         elif seriestype == "yscale":
-            # the scale must be set before the data, so that the axis autoscales in the right space.
             # "lin" is the alias that the -yscale argument of the light curve commands also accepts
-            ax.set_yscale("linear" if params == "lin" else params)
-            yscalegiven = True
+            settings["yscale"] = "linear" if params == "lin" else str(params)
         else:
             remaining_plotitems.append(plotitem)
 
-    # each plot item gives its series before the draw, thus one collect_all reads the estimators one
-    # time for the whole subplot. The draw keeps the order of the items and of their series
-    items: list[SubplotItem] = []
+    # the draw keeps the order of the items and of their series
+    plans: list[SeriesPlan] = []
     for plotitem in remaining_plotitems:
         if isinstance(plotitem, str | pl.Expr):
             variablename = plotitem.meta.output_name() if isinstance(plotitem, pl.Expr) else plotitem
             assert isinstance(variablename, str)
             showlegend = seriescount > 1 or len(variablename) > 35 or not sameylabel
-            items.append((
-                plot_series(
-                    ax=ax,
-                    variable=plotitem,
-                    showlegend=showlegend,
-                    estimators=estimators,
-                    nounits=sameylabel,
-                    **plotkwargs,
-                ),
-                None,
-            ))
+            settings["showlegend"] = showlegend
+            plans += plot_series(
+                settings=settings,
+                variable=plotitem,
+                showlegend=showlegend,
+                estimators=estimators,
+                nounits=sameylabel,
+                **plotkwargs,
+            )
             if showlegend and sameylabel and ylabel is not None:
-                ax.set_ylabel(ylabel)
+                settings["ylabel"] = ylabel
         else:  # it's a sequence of values
             seriestype, params = plotitem
-            showlegend = True
+            settings["showlegend"] = True
 
             if seriestype in {"initabundances", "initmasses"}:
                 assert isinstance(params, list)
-                items.append((
-                    plot_init_abundances(
-                        ax=ax, specieslist=params, estimators=estimators, seriestype=seriestype, **plotkwargs
-                    ),
-                    None,
-                ))
+                plans += plot_init_abundances(
+                    settings=settings, specieslist=params, estimators=estimators, seriestype=seriestype, **plotkwargs
+                )
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
-                items.append((
-                    plot_levelpop(ax, seriestype, params, timestepslist, mgilist, modelpath, estimators),
-                    None,
-                ))
+                plans += plot_levelpop(settings, seriestype, params, timestepslist, mgilist, modelpath, estimators)
 
             elif seriestype == "averageionisation":
-                items.append((plot_average_ionisation(ax, params, estimators, **plotkwargs), None))
+                plans += plot_average_ionisation(settings, params, estimators, **plotkwargs)
 
             elif seriestype == "averageexcitation":
-                items.append((
-                    plot_average_excitation(ax, params, timestepslist, mgilist, estimators, modelpath, **plotkwargs),
-                    None,
-                ))
+                plans += plot_average_excitation(
+                    settings, params, timestepslist, mgilist, estimators, modelpath, **plotkwargs
+                )
 
             else:
                 seriestype, ionlist = plotitem
                 # an ion population plot reads best on a log scale, thus that is the default here. A
                 # yscale directive of the plot item wins over it
-                if not yscalegiven:
-                    ax.set_yscale("log")
-                if seriestype == "populations" and len(ionlist) > 2 and ax.get_yscale() == "log":
-                    legend_ncols = 2
+                settings.setdefault("yscale", "log")
+                if seriestype == "populations" and len(ionlist) > 2 and settings["yscale"] == "log":
+                    settings["legendncols"] = 2
 
-                items.append(
-                    plot_multi_ion_series(
-                        ax=ax,
-                        seriestype=seriestype,
-                        ionlist=ionlist,
-                        estimators=estimators,
-                        modelpath=modelpath,
-                        poptype=poptype,
-                        args=args,
-                        **plotkwargs,
-                    )
+                plans += plot_multi_ion_series(
+                    settings=settings,
+                    seriestype=seriestype,
+                    ionlist=ionlist,
+                    estimators=estimators,
+                    modelpath=modelpath,
+                    poptype=poptype,
+                    args=args,
+                    **plotkwargs,
                 )
 
-    def draw(frames: Sequence[pl.DataFrame]) -> None:
-        draw_subplot_items(ax, items, frames, args, startfromzero)
-        finish_subplot(ax, args, ymin, ymax, showlegend, legend_ncols)
-
-    return get_subplot_queries(items, args), draw
+    return plans, settings
 
 
-def finish_subplot(
-    ax: mplax.Axes,
-    args: argparse.Namespace,
-    ymin: float | None,
-    ymax: float | None,
-    showlegend: bool,
-    legend_ncols: int,
-) -> None:
+def finish_subplot(ax: mplax.Axes, args: argparse.Namespace, settings: SubplotSettings) -> None:
     """Apply the limits of the vertical axis and add the legend, after the draw of the data."""
+    ymin = settings.get("ymin")
+    ymax = settings.get("ymax")
     # Apply the requested limits now that the data has set the range of the axis. A fixed limit of the
     # plot list, e.g. the rho floor of the default list, suits one range of models. A limit outside the
     # data of this model would give an empty panel, thus test each one against the data range first.
@@ -1522,7 +1530,7 @@ def finish_subplot(
             else:
                 print_warning(f"every {quantity} value is above the requested maximum of {ymax}. Using the data range")
 
-    if showlegend:
+    if settings.get("showlegend"):
         set_legend(
             ax,
             args,
@@ -1532,7 +1540,7 @@ def finish_subplot(
             handlelength=2,
             frameon=False,
             numpoints=1,
-            ncols=legend_ncols,
+            ncols=settings.get("legendncols", 1),
             markerscale=3,
         )
 
@@ -1574,74 +1582,49 @@ def get_subplot_grid(nsubplots: int, subplotsperrow: int) -> tuple[int, int]:
 SUBPLOT_FRAMESCALE: t.Final = 0.7
 
 
-def draw_figure(
+class LineFigureData(t.NamedTuple):
+    """The data of a figure of line subplots, which the host of the model gives and the client draws."""
+
+    subplots: list[tuple[list[SeriesData], SubplotSettings]]
+    # the limits of the x axis. A range of zero width gives no limits, so that matplotlib keeps its own padding
+    xlimits: tuple[float | None, float | None]
+    title: str
+    # the fields of the name of the file, see make_figure
+    framefields: dict[str, int | str]
+
+
+def get_line_figure_data(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
     estimators: pl.LazyFrame,
     xvariable: str,
     plotlist: list[list[t.Any]],
     args: argparse.Namespace,
-    fig: "mplfig.Figure | None" = None,
-) -> "tuple[mplfig.Figure, dict[str, int | str]]":
-    """Plot one subplot per entry in plotlist, and return the figure and the fields of the name of its file.
+) -> LineFigureData:
+    """Return the data of a figure with one subplot per entry in plotlist.
 
     A plot of one cell against time gives the field cell, and a snapshot gives the fields timestep and timedays.
-    If the caller gives an empty figure as fig, the function draws on it, e.g. for a window that stays open.
     """
-    modelname = get_model_name(modelpath)
-
-    # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
-    nrows, ncols = get_subplot_grid(len(plotlist), args.subplotsperrow)
-    fig, axesgrid = make_frame_figure(
-        args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, framescale=SUBPLOT_FRAMESCALE, fig=fig
-    )
-    axes = axesgrid.ravel()[: len(plotlist)]
-    for emptyaxis in axesgrid.ravel()[len(plotlist) :]:
-        emptyaxis.set_visible(False)
-
-    assert isinstance(axes, np.ndarray)
-
-    # the lowest subplot of each column carries the x labels, also above an empty place of the last row
-    for index, ax in enumerate(axes):
-        if index + ncols >= len(axes):
-            ax.tick_params(axis="x", which="both", labelbottom=True)
-            if not args.hidexlabel:
-                ax.set_xlabel(f"{get_varname_formatted(xvariable)}{get_units_string(xvariable)}")
-
     xlist, mgilist, timestepslist, estimators = get_xlist(
         xvariable=xvariable, estimators=estimators, timestepslist=timestepslist, args=args
     )
-
-    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
     xmin = args.xmin if args.xmin is not None else min(xlist)
     xmax = args.xmax if args.xmax is not None else max(xlist)
 
-    # the x range comes from the data when the user gives no -xmin/-xmax. A degenerate range goes to
-    # matplotlib as no limit at all, so that it keeps its own padding around the single value.
-    xlimits = (xmin, xmax, "-xmin") if xmin != xmax else (None, None, "-xmin")
-    set_axis_properties(axes, args, xlimits=xlimits)
-
-    subplots = [
-        plot_subplot(
-            ax=ax,
-            timestepslist=timestepslist,
-            plotitems=plotitems,
-            mgilist=mgilist,
-            modelpath=modelpath,
-            estimators=estimators,
-            startfromzero=startfromzero,
-            args=args,
-        )
-        for ax, plotitems in zip(axes, plotlist, strict=False)
+    subplotplans = [
+        get_subplot_plans(timestepslist, plotitems, mgilist, modelpath, estimators, args) for plotitems in plotlist
     ]
-    frames = collect_on_host(Path(modelpath), [query for queries, _ in subplots for query in queries])
+    queries = [get_subplot_queries(plans, args) for plans, _ in subplotplans]
+    # one collect_all runs the series of all the subplots in parallel
+    frames = pl.collect_all([query for subplotqueries in queries for query in subplotqueries])
+    subplots: list[tuple[list[SeriesData], SubplotSettings]] = []
     firstframe = 0
-    for ax, (queries, draw) in zip(axes, subplots, strict=False):
-        draw(frames[firstframe : firstframe + len(queries)])
-        firstframe += len(queries)
-        # a stacked subplot puts its lowest label beside the highest label of the subplot below
-        prune_log_ticks(ax.yaxis)
+    for (plans, settings), subplotqueries in zip(subplotplans, queries, strict=True):
+        subplotframes = frames[firstframe : firstframe + len(subplotqueries)]
+        subplots.append((get_series_data(plans, subplotframes, args), settings))
+        firstframe += len(subplotqueries)
 
+    modelname = get_model_name(modelpath)
     framefields: dict[str, int | str]
     if len(set(mgilist)) == 1 and len(timestepslist) > 1:
         figure_title = f"{modelname}\nCell {mgilist[0]}"
@@ -1654,27 +1637,67 @@ def draw_figure(
         print("  plotting " + figure_title.replace("\n", " "))
         framefields = {"timestep": strtimestep, "timedays": strtimedays}
 
-    set_plot_title(axes[0], figure_title, args)
+    return LineFigureData(
+        subplots=subplots,
+        xlimits=(xmin, xmax) if xmin != xmax else (None, None),
+        title=figure_title,
+        framefields=framefields,
+    )
 
-    return fig, framefields
+
+def draw_line_figure(
+    figuredata: LineFigureData, args: argparse.Namespace, fig: "mplfig.Figure | None" = None
+) -> "mplfig.Figure":
+    """Draw the line subplots of the data, and return the figure.
+
+    If the caller gives an empty figure as fig, the function draws on it, e.g. for a window that stays open.
+    """
+    xvariable = args.x
+    # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
+    nrows, ncols = get_subplot_grid(len(figuredata.subplots), args.subplotsperrow)
+    fig, axesgrid = make_frame_figure(
+        args, rows=nrows, cols=ncols, aspect=0.468, sharex=True, framescale=SUBPLOT_FRAMESCALE, fig=fig
+    )
+    axes = axesgrid.ravel()[: len(figuredata.subplots)]
+    for emptyaxis in axesgrid.ravel()[len(figuredata.subplots) :]:
+        emptyaxis.set_visible(False)
+
+    assert isinstance(axes, np.ndarray)
+
+    # the lowest subplot of each column carries the x labels, also above an empty place of the last row
+    for index, ax in enumerate(axes):
+        if index + ncols >= len(axes):
+            ax.tick_params(axis="x", which="both", labelbottom=True)
+            if not args.hidexlabel:
+                ax.set_xlabel(f"{get_varname_formatted(xvariable)}{get_units_string(xvariable)}")
+
+    set_axis_properties(axes, args, xlimits=(*figuredata.xlimits, "-xmin"))
+
+    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
+    for ax, (series, settings) in zip(axes, figuredata.subplots, strict=True):
+        draw_subplot(ax, series, settings, args, startfromzero)
+        # a stacked subplot puts its lowest label beside the highest label of the subplot below
+        prune_log_ticks(ax.yaxis)
+
+    set_plot_title(axes[0], figuredata.title, args)
+
+    return fig
 
 
 def make_figure(
-    modelpath: Path | str,
-    timestepslist: Collection[int] | None,
-    estimators: pl.LazyFrame,
-    xvariable: str,
-    plotlist: list[list[t.Any]],
-    args: argparse.Namespace,
-    frameset: "FrameSet | None" = None,
+    figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, frameset: "FrameSet | None" = None
 ) -> str:
-    """Plot one subplot per entry in plotlist, save the figure, and return the output filename.
+    """Draw the figure of the data, save it, and return the output filename.
 
     A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
     and --open leave it alone. The caller opens the file that holds every frame.
     """
-    fig, framefields = draw_figure(modelpath, timestepslist, estimators, xvariable, plotlist, args)
-    if "cell" in framefields:
+    fig = draw_figure_data(figuredata, args)
+    framefields = figuredata.framefields
+    if isinstance(figuredata, ImageFigureData):
+        assert frameset is not None
+        outfilename = format_frame_path(frameset.frametemplate, **framefields, format=args.format)
+    elif "cell" in framefields:
         # a plot of one cell against time is no frame of a set, thus it names itself
         outpath = resolve_outputfile(args.outputfile, CELLEVOLUTIONFRAMENAME)
         outfilename = format_frame_path(outpath, **framefields, format=args.format)
@@ -1693,19 +1716,47 @@ def make_figure(
     return outfilename
 
 
-class ImagePanel(t.NamedTuple):
-    """One variable of a colour image, with the colour scale that the directives of its subplot give."""
+def draw_figure_data(
+    figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, fig: "mplfig.Figure | None" = None
+) -> "mplfig.Figure":
+    """Draw the line subplots or the colour image of the data, and return the figure."""
+    if isinstance(figuredata, ImageFigureData):
+        return draw_image_figure(figuredata, args, fig)
+    return draw_line_figure(figuredata, args, fig)
 
-    colexpr: pl.Expr
+
+class PanelStyle(t.NamedTuple):
+    """The label and the colour scale of one panel of a colour image, which the directives of its subplot give."""
+
     label: str
     colourscale: str | None
     vmin: float | None
     vmax: float | None
     # the position of the subplot in the plot list, which get_panel_axes_label names
     subplotindex: int = 0
+
+
+class ImagePanel(t.NamedTuple):
+    """One variable of a colour image, and its style."""
+
+    colexpr: pl.Expr
+    style: PanelStyle
     # the weight of each cell in the mean of a pixel, with the volume and the duration. None gives the volume and the
     # duration alone, e.g. the number density of an element gives the mean charge of its nuclei
     weightexpr: pl.Expr | None = None
+
+
+class ImageFigureData(t.NamedTuple):
+    """The data of a colour image of a snapshot, which the host of the model gives and the client draws."""
+
+    grids: "list[npt.NDArray[np.float64]]"
+    styles: list[PanelStyle]
+    # the axes of the image, e.g. ("rcyl", "z") or ("x", "y")
+    plotaxes: tuple[str, str]
+    vmax_cmps: float
+    title: str
+    # the fields of the name of the file, see make_figure
+    framefields: dict[str, int | str]
 
 
 def get_panel_axes_label(subplotindex: int) -> str:
@@ -1801,7 +1852,7 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
         vmin = float(directives["ymin"]) if "ymin" in directives else None
         vmax = float(directives["ymax"]) if "ymax" in directives else None
         panels += [
-            ImagePanel(colexpr, label, colourscale, vmin, vmax, subplotindex, weights.get(colname))
+            ImagePanel(colexpr, PanelStyle(label, colourscale, vmin, vmax, subplotindex), weights.get(colname))
             for colexpr, colname, label in columns
         ]
 
@@ -1837,11 +1888,7 @@ def get_panel_means(panels: Sequence[ImagePanel]) -> list[pl.Expr]:
 
 
 def get_shell_values_on_rz_grid(
-    estimators: pl.LazyFrame,
-    panels: Sequence[ImagePanel],
-    vmax_cmps: float,
-    timesteps: Collection[int],
-    modelpath: Path,
+    estimators: pl.LazyFrame, panels: Sequence[ImagePanel], vmax_cmps: float, timesteps: Collection[int]
 ) -> "list[npt.NDArray[np.float64]]":
     """Return the grid of values of each panel for a 1D model, which gives each point the value of its shell."""
     shellquery = (
@@ -1851,7 +1898,7 @@ def get_shell_values_on_rz_grid(
         .agg(pl.col("vel_r_min").first(), pl.col("vel_r_max").first(), *get_panel_means(panels))
         .sort("vel_r_min")
     )
-    dfshells = collect_on_host(modelpath, [shellquery])[0]
+    dfshells = shellquery.collect()
     # two points across the thinnest shell of a model with equal shells, and 200 for a smooth circle
     nradialpoints = max(200, 2 * dfshells.height)
     pointwidth = vmax_cmps / nradialpoints
@@ -1882,7 +1929,6 @@ def get_image_values(
     modelmeta: dict[str, t.Any],
     sliceaxis: str | None,
     timesteps: Collection[int],
-    modelpath: Path,
 ) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
     """Return the grid of values of each panel, and the two plot axes.
 
@@ -1899,7 +1945,7 @@ def get_image_values(
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     if modelmeta["dimensions"] == 1:
-        return get_shell_values_on_rz_grid(estimators, panels, vmax_cmps, timesteps, modelpath), ("rcyl", "z")
+        return get_shell_values_on_rz_grid(estimators, panels, vmax_cmps, timesteps), ("rcyl", "z")
 
     def cellindex(axisname: str) -> pl.Expr:
         ncells = int(modelmeta[f"ncoordgrid{axisname}"])
@@ -1925,7 +1971,7 @@ def get_image_values(
         .group_by("cellindex1", "cellindex2")
         .agg(get_panel_means(panels))
     )
-    dfcells = collect_on_host(modelpath, [cellquery])[0]
+    dfcells = cellquery.collect()
 
     grids = []
     for panelindex in range(len(panels)):
@@ -1938,7 +1984,7 @@ def get_image_values(
     return grids, (plotaxis1, plotaxis2)
 
 
-def get_colour_norm(panel: ImagePanel, grid: "npt.NDArray[np.float64]") -> mc.Normalize:
+def get_colour_norm(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> mc.Normalize:
     """Return the colour scale of a panel, which is log only when the panel holds a value above zero."""
     colourscale = panel.colourscale or ("log" if wants_log_scale(grid.ravel()) else "linear")
     with np.errstate(invalid="ignore"):
@@ -1955,30 +2001,60 @@ def get_colour_norm(panel: ImagePanel, grid: "npt.NDArray[np.float64]") -> mc.No
     return mc.Normalize(vmin=panel.vmin, vmax=panel.vmax)
 
 
-def draw_image_figure(
+def get_image_figure_data(
     modelpath: Path | str,
     timestepslist: Sequence[int],
     estimators: pl.LazyFrame,
     panels: Sequence[ImagePanel],
     modelmeta: dict[str, t.Any],
     args: argparse.Namespace,
-    fig: "mplfig.Figure | None" = None,
-) -> "tuple[mplfig.Figure, dict[str, int | str]]":
-    """Plot each panel as a colour image of a snapshot, and return the figure and the fields of the name of its file.
+) -> ImageFigureData:
+    """Return the data of a colour image of a snapshot, with one grid for each panel.
 
-    The image shows a plane of a 3D model for -slice, and the model at each cylindrical radius and each
-    z without it. If the caller gives an empty figure as fig, the function draws on it, e.g. for a window
-    that stays open.
+    The image shows a plane of a 3D model for -slice, and the model at each cylindrical radius and each z without it.
+    """
+    grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
+    isplane = plotaxis1 != "rcyl"
+
+    strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
+    projection = args.projection
+    strimage = f"plane {args.slicelabel}" if isplane else "cylindrical radius and z"
+    if projection is not None:
+        strimage = f"mean along the {projection} axis"
+    elif not isplane and modelmeta["dimensions"] == 3:
+        strimage = "average around the z axis"
+    figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
+    print("  plotting " + figure_title.replace("\n", " "))
+
+    return ImageFigureData(
+        grids=grids,
+        styles=[panel.style for panel in panels],
+        plotaxes=(plotaxis1, plotaxis2),
+        vmax_cmps=float(modelmeta["vmax_cmps"]),
+        title=figure_title,
+        framefields={
+            "kind": "projection" if projection is not None else "slice" if isplane else "cylindrical",
+            "plane": projection if projection is not None else get_slice_filetag(args) if isplane else "rz",
+            "timestep": strtimestep,
+            "timedays": strtimedays,
+        },
+    )
+
+
+def draw_image_figure(
+    figuredata: ImageFigureData, args: argparse.Namespace, fig: "mplfig.Figure | None" = None
+) -> "mplfig.Figure":
+    """Draw each panel of the data as a colour image, and return the figure.
+
+    If the caller gives an empty figure as fig, the function draws on it, e.g. for a window that stays open.
     """
     import matplotlib.pyplot as plt
 
     set_mpl_style()
-    grids, (plotaxis1, plotaxis2) = get_image_values(
-        estimators, panels, modelmeta, args.sliceaxis, timestepslist, Path(modelpath)
-    )
+    plotaxis1, plotaxis2 = figuredata.plotaxes
     isplane = plotaxis1 != "rcyl"
 
-    nrows, ncols = get_subplot_grid(len(panels), args.subplotsperrow)
+    nrows, ncols = get_subplot_grid(len(figuredata.styles), args.subplotsperrow)
     # the image at each cylindrical radius has half the width of a plane
     figscale = args.figscale * SUBPLOT_FRAMESCALE
     panelwidth = (4.6 if isplane else 3.8) * figscale * (getattr(args, "figwidthscale", None) or 1.0)
@@ -1989,13 +2065,13 @@ def draw_image_figure(
         fig.set_size_inches(*figsize, forward=True)
     fig.set_layout_engine("constrained")
     axesgrid = fig.subplots(nrows, ncols, squeeze=False)
-    vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
+    vmax_on_c = figuredata.vmax_cmps / C_cm_per_s
     # the axis of an image holds v/c. -x velocity takes km/s, and every other x variable takes v/c already
     xscale_to_c = km_to_cm / C_cm_per_s if args.x == "velocity" else 1.0
     xmin_on_c = None if args.xmin is None else args.xmin * xscale_to_c
     xmax_on_c = None if args.xmax is None else args.xmax * xscale_to_c
-    for ax, panel, grid in zip(axesgrid.flat, panels, grids, strict=False):
-        norm = get_colour_norm(panel, grid)
+    for ax, style, grid in zip(axesgrid.flat, figuredata.styles, figuredata.grids, strict=False):
+        norm = get_colour_norm(style, grid)
         values = np.ma.masked_invalid(grid)
         if isinstance(norm, mc.LogNorm):
             # a log colour scale cannot show a value of zero or below, thus such a cell stays empty
@@ -2004,9 +2080,9 @@ def draw_image_figure(
         edges2 = np.linspace(-vmax_on_c, vmax_on_c, grid.shape[0] + 1)
         # the grid of a 1D model has 80 000 points, which are slow and large as vector shapes
         image = ax.pcolormesh(edges1, edges2, values, norm=norm, rasterized=True)
-        ax.set_label(get_panel_axes_label(panel.subplotindex))
+        ax.set_label(get_panel_axes_label(style.subplotindex))
         colourbar = fig.colorbar(image, ax=ax)
-        colourbar.set_label(panel.label, fontsize=args.labelfontsize)
+        colourbar.set_label(style.label, fontsize=args.labelfontsize)
         # an empty cell has no value, and black sets it apart from the lowest colour of the scale
         ax.set_facecolor("black")
         ax.tick_params(which="both", color="white")
@@ -2020,44 +2096,13 @@ def draw_image_figure(
         ax.set_ylabel(rf"v$_{plotaxis2}$ [$c$]", fontsize=args.labelfontsize)
         if xmin_on_c is not None or xmax_on_c is not None:
             ax.set_xlim(xmin_on_c, xmax_on_c)
-    for ax in list(axesgrid.flat)[len(panels) :]:
+    for ax in list(axesgrid.flat)[len(figuredata.styles) :]:
         ax.set_visible(False)
 
-    strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
-    projection = args.projection
-    strimage = f"plane {args.slicelabel}" if isplane else "cylindrical radius and z"
-    if projection is not None:
-        strimage = f"mean along the {projection} axis"
-    elif not isplane and modelmeta["dimensions"] == 3:
-        strimage = "average around the z axis"
-    figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
-    print("  plotting " + figure_title.replace("\n", " "))
     if not args.notitle:
-        fig.suptitle(figure_title)
+        fig.suptitle(figuredata.title)
 
-    framefields: dict[str, int | str] = {
-        "kind": "projection" if projection is not None else "slice" if isplane else "cylindrical",
-        "plane": projection if projection is not None else get_slice_filetag(args) if isplane else "rz",
-        "timestep": strtimestep,
-        "timedays": strtimedays,
-    }
-    return fig, framefields
-
-
-def make_image_figure(
-    modelpath: Path | str,
-    timestepslist: Sequence[int],
-    estimators: pl.LazyFrame,
-    panels: Sequence[ImagePanel],
-    modelmeta: dict[str, t.Any],
-    args: argparse.Namespace,
-    frameset: "FrameSet",
-) -> str:
-    """Plot each panel as a colour image of a snapshot, save the figure, and return its name."""
-    fig, framefields = draw_image_figure(modelpath, timestepslist, estimators, panels, modelmeta, args)
-    outfilename = format_frame_path(frameset.frametemplate, **framefields, format=args.format)
-    save_figure(fig, outfilename, args=args, isframe=frameset.combines, dpi=args.dpi)
-    return outfilename
+    return fig
 
 
 def get_slice_filetag(args: argparse.Namespace) -> str:
@@ -2597,6 +2642,7 @@ def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]
 
 
 @on_model_host
+@on_model_host
 def report_data_available(modelpath: Path, *, classicartis: bool) -> None:
     """Name the cells and the timesteps for which the model holds estimator data."""
     print("No data was found for the requested timesteps/cells.")
@@ -2720,64 +2766,26 @@ def prepare_snapshot(
 
 
 def write_snapshot_figures(
-    args: argparse.Namespace,
-    modelpath: Path,
-    estimators: pl.LazyFrame,
-    modelmeta: dict[str, t.Any],
-    timesteps_included: list[int],
-    plotlist: list[list[t.Any]],
+    args: argparse.Namespace, figures: "Sequence[LineFigureData | ImageFigureData]", timesteps_included: list[int]
 ) -> None:
-    """Plot a range of cells at one time, which shows the internal structure. Write one file per frame.
+    """Draw the figures of a range of cells at one time, which show the internal structure. Write one file per frame.
 
     With --multiplot each timestep gives one frame. artistools then joins the frames into a gif or into
     one PDF file.
     """
-    estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
-    isimage = args.dimensionreduce == 2
-
-    # a gif needs one frame per timestep in a format that imageio reads, thus --makegif implies both
-    if args.makegif:
-        args.multiplot = True
-        args.format = "png"
-
-    frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # the copy of a remote model would bring every row of the host, and the host runs each frame of it
-        if len(frames) > 1 and not is_remote_path(modelpath):
-            # each frame collects a few columns of the estimators several times. A streamed copy of the selected
-            # timesteps reads the source files one time, and a scan of it keeps the column selection of each frame
-            estimatorsfile = Path(tmpdir, "estimators.parquet")
-            estimators.sink_parquet(estimatorsfile)
-            estimators = pl.scan_parquet(estimatorsfile)
-
-        # a gif or a merged pdf holds every frame, thus one product comes out of many figures
-        firstts, lastts = timesteps_included[0], timesteps_included[-1]
-        frameset = resolve_frameset_paths(
-            args.outputfile,
-            framecount=len(frames),
-            framename=IMAGEFRAMENAME if isimage or args.slice is not None else SNAPSHOTFRAMENAME,
-            productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
-            combines=len(frames) > 1 and (args.makegif or args.format == "pdf"),
-            gifduration=1000.0 if args.makegif else None,
-        )
-
-        outputfiles = [
-            make_image_figure(modelpath, frame, estimators, panels, modelmeta, args, frameset)
-            if isimage
-            else make_figure(
-                frameset=frameset,
-                modelpath=modelpath,
-                timestepslist=frame,
-                estimators=estimators,
-                xvariable=args.x,
-                plotlist=plotlist,
-                args=args,
-            )
-            for frame in frames
-        ]
-
-        frameset.finish(outputfiles, args)
+    isimage = isinstance(figures[0], ImageFigureData)
+    # a gif or a merged pdf holds every frame, thus one product comes out of many figures
+    firstts, lastts = timesteps_included[0], timesteps_included[-1]
+    frameset = resolve_frameset_paths(
+        args.outputfile,
+        framecount=len(figures),
+        framename=IMAGEFRAMENAME if isimage or args.slice is not None else SNAPSHOTFRAMENAME,
+        productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
+        combines=len(figures) > 1 and (args.makegif or args.format == "pdf"),
+        gifduration=1000.0 if args.makegif else None,
+    )
+    outputfiles = [make_figure(figuredata, args, frameset) for figuredata in figures]
+    frameset.finish(outputfiles, args)
 
 
 def resolve_positional_args(args: argparse.Namespace) -> None:
@@ -2865,16 +2873,6 @@ def get_plot_estimators(
     batchcaches gives the current parquet caches of all the batches of the run, e.g. for a window that draws many
     plots. The scan then checks and converts no file.
     """
-    if is_remote_path(modelpath):
-        return scan_remote_estimators(
-            modelpath,
-            args.modelgridindex,
-            timesteps_included,
-            classicartis=args.classicartis,
-            join_modeldata=True,
-            batchcaches=batchcaches,
-        )
-
     estimators = scan_estimators(
         modelpath=modelpath,
         modelgridindex=args.modelgridindex,
@@ -2898,6 +2896,73 @@ def add_plot_columns(
     return estimators, estimators.collect_schema().names()
 
 
+@on_model_host
+def get_plot_columns(modelpath: Path, args: argparse.Namespace, timesteps_included: list[int]) -> list[str]:
+    """Return the names of the columns that a plot can read, for --listvariables and --listnuclides."""
+    estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included)
+    return add_plot_columns(args, estimators, modelmeta)[1]
+
+
+@on_model_host
+def get_figures_data(
+    modelpath: Path,
+    args: argparse.Namespace,
+    timesteps_included: list[int],
+    batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
+) -> "tuple[list[LineFigureData | ImageFigureData], dict[str, t.Any]]":
+    """Return the data of each figure of the arguments, and the arguments that the data code changed.
+
+    The host of a remote model runs this function, thus it reads the estimators there and only the data to draw
+    comes back. The data code changes some arguments, e.g. -xbins, and the client draws with the new values. The list
+    of figures is empty if the estimators hold no row for the selection. batchcaches gives the current parquet caches
+    of the run, e.g. for a window that draws many plots.
+    """
+    from artistools.misc.remote import is_plain_value
+
+    # a path of the arguments comes back with the name of the host, thus only the changed values come back
+    plainargs = {key: value for key, value in vars(args).items() if is_plain_value(value)}
+
+    def get_changed_args() -> dict[str, t.Any]:
+        return {key: value for key, value in vars(args).items() if key in plainargs and plainargs[key] != value}
+
+    estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
+    # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
+    if estimators.select(pl.len()).collect().item() == 0:
+        return [], get_changed_args()
+
+    estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
+    plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
+
+    assert args.x is not None
+    if args.x in TIME_XVARIABLES:
+        figuredata = get_line_figure_data(modelpath, timesteps_included, estimators, args.x, plotlist, args)
+        return [figuredata], get_changed_args()
+
+    estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
+    # a gif needs one frame per timestep in a format that imageio reads, thus --makegif implies both
+    if args.makegif:
+        args.multiplot = True
+        args.format = "png"
+
+    frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
+    with tempfile.TemporaryDirectory() as tmpdir:
+        if len(frames) > 1:
+            # each frame collects a few columns of the estimators several times. A streamed copy of the selected
+            # timesteps reads the source files one time, and a scan of it keeps the column selection of each frame
+            estimatorsfile = Path(tmpdir, "estimators.parquet")
+            estimators.sink_parquet(estimatorsfile)
+            estimators = pl.scan_parquet(estimatorsfile)
+
+        figures: list[LineFigureData | ImageFigureData] = [
+            get_image_figure_data(modelpath, frame, estimators, panels, modelmeta, args)
+            if args.dimensionreduce == 2
+            else get_line_figure_data(modelpath, frame, estimators, args.x, plotlist, args)
+            for frame in frames
+        ]
+
+    return figures, get_changed_args()
+
+
 def draw_plot(
     args: argparse.Namespace, fig: "mplfig.Figure", batchcaches: "Sequence[EstimatorBatchCache] | None" = None
 ) -> None:
@@ -2908,23 +2973,11 @@ def draw_plot(
     one plot. A list of the variables, a gif, and a set of frames each give a different action.
     """
     modelpath, timesteps_included = resolve_plot_args(args)
-    estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
-    estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
-    plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
-
-    assert args.x is not None
-    if args.x in TIME_XVARIABLES:
-        draw_figure(modelpath, timesteps_included, estimators, args.x, plotlist, args, fig=fig)
-        return
-
-    estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
-    if args.dimensionreduce == 2:
-        # get_xlist checks the rows of a line plot, and an image reads the estimators without it
-        if collect_on_host(modelpath, [estimators.select(pl.len())])[0].item() == 0:
-            raise ValueError(get_no_rows_message(timesteps_included, args))
-        draw_image_figure(modelpath, timesteps_included, estimators, panels, modelmeta, args, fig=fig)
-    else:
-        draw_figure(modelpath, timesteps_included, estimators, args.x, plotlist, args, fig=fig)
+    figures, changedargs = get_figures_data(modelpath, args, timesteps_included, batchcaches)
+    vars(args).update(changedargs)
+    if not figures:
+        raise ValueError(get_no_rows_message(timesteps_included, args))
+    draw_figure_data(figures[0], args, fig)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -2948,32 +3001,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     modelpath, timesteps_included = resolve_plot_args(args)
-    wantslisting = args.listvariables or args.listnuclides
-    estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included)
+    if args.listvariables or args.listnuclides:
+        # a listing of the variables reads the schema only, thus it must not pay for a count of the rows
+        print_listing(args, get_plot_columns(modelpath, args, timesteps_included))
+        return
 
-    # a listing of the variables reads the schema only, thus it must not pay for a count of the rows.
-    # pl.len() lets projection pushdown read 2 columns; head(1) would force every column to materialise
-    if not wantslisting and collect_on_host(modelpath, [estimators.select(pl.len())])[0].item() == 0:
+    figures, changedargs = get_figures_data(modelpath, args, timesteps_included)
+    vars(args).update(changedargs)
+    if not figures:
         report_data_available(modelpath, classicartis=args.classicartis)
         return
 
-    estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
-
-    if wantslisting:
-        print_listing(args, estimatorcolumns)
-        return
-
-    plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
-
-    assert args.x is not None
     if args.x in TIME_XVARIABLES:
-        make_figure(
-            modelpath=modelpath,
-            timestepslist=timesteps_included,
-            estimators=estimators,
-            xvariable=args.x,
-            plotlist=plotlist,
-            args=args,
-        )
+        make_figure(figures[0], args)
     else:
-        write_snapshot_figures(args, modelpath, estimators, modelmeta, timesteps_included, plotlist)
+        write_snapshot_figures(args, figures, timesteps_included)

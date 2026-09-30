@@ -926,22 +926,6 @@ def get_remote_estimator_schema(
     return estimators.clear().collect(), modelmeta, source
 
 
-def collect_estimator_rows(
-    hostpath: Path,
-    source: RemoteEstimatorSource,
-    with_columns: list[str] | None,
-    predicate: pl.Expr | None,
-    n_rows: int | None,
-) -> pl.DataFrame:
-    """Return the rows of the source of a remote model that a query reads. This runs on the host of the model."""
-    estimators, _ = get_remote_source_query(hostpath, source)
-    if predicate is not None:
-        estimators = estimators.filter(predicate)
-    if with_columns is not None:
-        estimators = estimators.select(with_columns)
-    return (estimators if n_rows is None else estimators.head(n_rows)).collect()
-
-
 @on_model_host
 def read_estimator_rows_on_host(
     modelpath: Path,
@@ -956,8 +940,12 @@ def read_estimator_rows_on_host(
     """
     import io
 
-    expression = None if predicate is None else pl.Expr.deserialize(io.BytesIO(predicate))
-    return collect_estimator_rows(modelpath, source, with_columns, expression, n_rows)
+    estimators, _ = get_remote_source_query(modelpath, source)
+    if predicate is not None:
+        estimators = estimators.filter(pl.Expr.deserialize(io.BytesIO(predicate)))
+    if with_columns is not None:
+        estimators = estimators.select(with_columns)
+    return (estimators if n_rows is None else estimators.head(n_rows)).collect()
 
 
 def read_remote_estimator_rows(
@@ -968,26 +956,14 @@ def read_remote_estimator_rows(
     n_rows: int | None,
     batch_size: int | None,
 ) -> "Iterator[pl.DataFrame]":
-    """Yield the estimators of a remote model for the polars IO source of the model.
+    """Yield the rows of a query of a remote model, for the polars IO source of the model.
 
-    polars gives the projection, the filter, and the row limit of the query. collect_on_host sends a query to the host,
-    and the server then reads the files of the host here. A collect in the client, e.g. in a script, asks the host for
-    the rows of the query, and only these rows come back. The plan holds this function by its name.
+    polars gives the projection, the filter, and the row limit of the query. The host applies them, and only the rows
+    of the query come back through ssh.
     """
-    import os
-
-    from artistools.misc.remote import SERVER_PROCESS_ENVVAR
-    from artistools.misc.remote import split_remote_path
-
     del batch_size
-    if not os.environ.get(SERVER_PROCESS_ENVVAR):
-        predicatedata = None if predicate is None else predicate.meta.serialize()
-        yield read_estimator_rows_on_host(modelpath, source, with_columns, predicatedata, n_rows)
-        return
-
-    remote = split_remote_path(modelpath)
-    hostpath = remote[1].expanduser() if remote is not None else modelpath
-    yield collect_estimator_rows(hostpath, source, with_columns, predicate, n_rows)
+    predicatedata = None if predicate is None else predicate.meta.serialize()
+    yield read_estimator_rows_on_host(modelpath, source, with_columns, predicatedata, n_rows)
 
 
 def scan_remote_estimators(
@@ -1001,9 +977,8 @@ def scan_remote_estimators(
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Return a LazyFrame of the estimators of a remote model, and the metadata of the model if the model data joins.
 
-    The code builds its queries on this frame as for a local model. collect_on_host sends a query to the host, which
-    runs it whole. A plain collect asks the host for the rows of the query. batchcaches gives the caches of the run on
-    the host, e.g. for a window.
+    A script builds its queries on this frame as for a local model. A collect asks the host for the rows and the
+    columns of the query. batchcaches gives the caches of the run on the host.
     """
     import functools
 

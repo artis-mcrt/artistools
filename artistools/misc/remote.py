@@ -33,10 +33,6 @@ REMOTEPATH_PATTERN = re.compile(r"^(?P<host>(?:[^/:@\[]*@)?\[[^\]/]*\]|[^/:\[]+)
 # a user can give a different command to start the server, e.g. the path of an artistools in a clone
 SERVER_COMMAND_ENVVAR = "ARTISTOOLS_REMOTE_COMMAND"
 
-# the server process sets this variable. A reader in a plan of the client then reads the files of the process itself
-SERVER_PROCESS_ENVVAR = "ARTISTOOLS_SERVER_PROCESS"
-
-
 # the repository that a host can get a commit of a clone from
 REPOSITORY_URL = "https://github.com/artis-mcrt/artistools"
 
@@ -289,6 +285,9 @@ def restore_frames(value: t.Any) -> t.Any:
         return [restore_frames(item) for item in value]
     if type(value) is tuple:
         return tuple(restore_frames(item) for item in value)
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        # a NamedTuple of a result, e.g. the data of a figure, can hold frames
+        return type(value)(*(restore_frames(item) for item in value))
     if type(value) is dict:
         return {key: restore_frames(item) for key, item in value.items()}
     return value
@@ -402,22 +401,15 @@ def read_message(stream: t.IO[bytes]) -> bytes:
     return data
 
 
-def get_python_version() -> str:
-    """Return the version of this Python, e.g. 3.14.7."""
-    import sys
-
-    return ".".join(str(number) for number in sys.version_info[:3])
-
-
 def get_uvx_pins() -> str:
-    """Return the options of uvx that give the server the Python and the polars of this process.
+    """Return the option of uvx that gives the server the polars of this process.
 
-    The server reads the plans of the queries of this process, and a plan holds Python functions. polars reads such a
-    plan only with the same version of polars and the same version of Python, down to the micro number.
+    The filter of a query of a remote model goes to the host as a serialised polars expression, see
+    read_remote_estimator_rows. The format of such an expression changes between two versions of polars.
     """
     import polars as pl
 
-    return f"--python {get_python_version()} --with polars=={pl.__version__}"
+    return f"--with polars=={pl.__version__}"
 
 
 def get_server_argv(host: str) -> list[str]:
@@ -442,8 +434,8 @@ def get_server_argv(host: str) -> list[str]:
     return ["ssh", "--", sshhost, os.environ.get(SERVER_COMMAND_ENVVAR) or defaultcommand]
 
 
-def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str, str]:
-    """Return the versions of artistools, polars, and Python that the server sends after its start line.
+def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
+    """Return the versions of artistools and polars that the server sends after its start line.
 
     Raise EOFError if the server stops first.
     """
@@ -454,7 +446,7 @@ def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str, 
 
     versions = load_reply(read_message(process.stdout))
     assert isinstance(versions, tuple)
-    assert len(versions) == 3
+    assert len(versions) == 2
     assert all(isinstance(serverversion, str) for serverversion in versions)
     return versions
 
@@ -602,7 +594,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
 
     try:
-        serverversion, serverpolarsversion, serverpythonversion = read_server_versions(process)
+        serverversion, serverpolarsversion = read_server_versions(process)
     except Exception:  # ruff:ignore[blind-except]
         # text of a shell or a server of a different protocol can give any error of the unpickle
         process.kill()
@@ -615,12 +607,11 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         )
 
     atexit.register(close_server_pipes, process)
-    if (serverpolarsversion, serverpythonversion) != (pl.__version__, get_python_version()):
+    if serverpolarsversion != pl.__version__:
         process.kill()
         exit_with_error(
-            f"the artistools server on {host} has polars {serverpolarsversion} and Python {serverpythonversion}, and"
-            f" this artistools has polars {pl.__version__} and Python {get_python_version()}. The server runs the"
-            " plans of polars, which need the same versions",
+            f"the artistools server on {host} has polars {serverpolarsversion}, and this artistools has polars"
+            f" {pl.__version__}. The server reads the polars expressions of the client, which need the same version",
             f"Add {get_uvx_pins()} to the uvx command of {SERVER_COMMAND_ENVVAR}",
         )
     if serverversion != localversion:
@@ -700,32 +691,6 @@ def on_model_host[**P, R](func: Callable[P, R]) -> Callable[P, R]:
         )
 
     return run_on_model_host
-
-
-def collect_on_host(modelpath: Path, queries: "Sequence[pl.LazyFrame]") -> "list[pl.DataFrame]":
-    """Collect the queries, on the host of a remote model.
-
-    A query of a remote model reads its rows from a polars IO source, see scan_remote_estimators. The host runs
-    the whole query, e.g. a group_by over the cells, and only the result comes back. The server has the polars of the
-    client, see start_server, thus it can read the plans.
-    """
-    import polars as pl
-
-    if not is_remote_path(modelpath) or not queries:
-        return pl.collect_all(queries)
-
-    return collect_plans(modelpath, [query.serialize() for query in queries])
-
-
-@on_model_host
-def collect_plans(modelpath: Path, plans: list[bytes]) -> "list[pl.DataFrame]":
-    """Collect the serialised plans of a client with the default engine. The model path selects the host."""
-    import io
-
-    import polars as pl
-
-    del modelpath
-    return pl.collect_all([pl.LazyFrame.deserialize(io.BytesIO(plan)) for plan in plans])
 
 
 def get_server_function(modulename: str, qualname: str) -> Callable[..., t.Any]:
@@ -819,15 +784,12 @@ def run_request(request: bytes) -> bytes:
 
 def serve(requeststream: t.IO[bytes], resultstream: t.IO[bytes]) -> None:
     """Run each request of the request stream, and write each result to the result stream."""
-    import os
     from importlib.metadata import version
 
     import polars as pl
 
-    # a reader in a plan of a client then reads the files of this process
-    os.environ[SERVER_PROCESS_ENVVAR] = "1"
     resultstream.write(SERVER_START_LINE)
-    write_message(resultstream, dump_message((version("artistools"), pl.__version__, get_python_version())))
+    write_message(resultstream, dump_message((version("artistools"), pl.__version__)))
     while True:
         try:
             request = read_message(requeststream)

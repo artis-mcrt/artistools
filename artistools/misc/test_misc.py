@@ -1292,8 +1292,7 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
         suggestion = remote.get_git_server_suggestion("vae26")
     assert suggestion is not None
     expected = (
-        f"export ARTISTOOLS_REMOTE_COMMAND='POLARS_MAX_THREADS=16 uvx --python {remote.get_python_version()}"
-        f" --with polars=={pl.__version__}"
+        f"export ARTISTOOLS_REMOTE_COMMAND='POLARS_MAX_THREADS=16 uvx --with polars=={pl.__version__}"
         ' --from "artistools @ git+https://github.com/fork/artistools@abc123"'
     )
     assert f"{expected} artistools server'" in suggestion
@@ -1344,16 +1343,23 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             with pytest.raises(FileNotFoundError, match="nosuchfile"):
                 at.misc.firstexisting("nosuchfile.out", folder=remotepath, search_subfolders=False)
             main(argsraw=["plotlightcurve", "-label", "mylabel", str(remotepath), "--quiet", "-o", str(tmp_path)])
-            # collect_on_host runs the whole query on the host. A plain collect, e.g. in a script, asks the host for
-            # the rows of the filter and the columns of the query
-            remoterows = (
+            # a collect, e.g. in a script, asks the host for the rows of the filter and the columns of the query
+            dfremoteestimators = (
                 at
                 .scan_estimators(remotepath, timestep=[40, 41], join_modeldata=True)
                 .filter(pl.col("Te") > 5000.0)
                 .select("timestep", "modelgridindex", "Te", "rho")
+                .collect()
             )
-            [dfremoteestimators] = remote.collect_on_host(remotepath, [remoterows])
-            pltest.assert_frame_equal(remoterows.collect(), dfremoteestimators)
+            # the host collects the data of all the subplots of plotestimators in one call, and the client draws
+            with mock.patch.object(remote, "call_on_host", wraps=remote.call_on_host) as mockcall:
+                main(
+                    argsraw=[
+                        *("plotestimators", "Te", "-plot", "TR", "nne", "-plot", "populations", "Fe II", "Fe III"),
+                        *(str(remotepath), "-timestep", "40", "-x", "velocity", "-o", str(tmp_path / "est.pdf")),
+                    ]
+                )
+            assert [call.args[2] for call in mockcall.call_args_list].count("get_figures_data") == 1
             estimatorscore = sys.modules["artistools.estimators.core"]
             read_estimator_rows_on_host = estimatorscore.read_estimator_rows_on_host
             hostframes: list[pl.DataFrame] = []
@@ -1382,6 +1388,7 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
             remote.forget_server("testhost")
 
     assert (tmp_path / "plotlightcurves.pdf").is_file()
+    assert (tmp_path / "est.pdf").is_file()
     localestimators, _ = join_cell_modeldata(at.estimators.scan_estimators(modelpath, timestep=[40, 41]), modelpath)
     pltest.assert_frame_equal(
         dfremoteestimators,
