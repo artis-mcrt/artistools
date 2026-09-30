@@ -45,6 +45,7 @@ from artistools.estimators.plotestimators import get_ylabel
 from artistools.estimators.plotestimators import is_ionseriestype
 from artistools.estimators.plotestimators import is_seriestype
 from artistools.estimators.plotestimators import is_valid_ion
+from artistools.estimators.plotestimators import main as plotestimators_main
 from artistools.estimators.plotestimators import POPTYPE_YLABELS
 from artistools.estimators.plotestimators import require_artis_folder
 from artistools.estimators.plotestimators import resolve_positional_args
@@ -78,14 +79,12 @@ from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
 from artistools.viewertools import add_default_options
 from artistools.viewertools import add_figure_section
-from artistools.viewertools import add_menus
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import add_window_actions
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
-from artistools.viewertools import copy_figure_of_command
-from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
@@ -96,10 +95,8 @@ from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_actions_by_flag
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
-from artistools.viewertools import get_figure_format
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
-from artistools.viewertools import get_keyboard_help
 from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_nearest_range_start
 from artistools.viewertools import get_new_figwidthscale
@@ -129,14 +126,12 @@ from artistools.viewertools import make_step_button
 from artistools.viewertools import make_timer
 from artistools.viewertools import make_window
 from artistools.viewertools import open_model_folder
-from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
-from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import set_command_text
 from artistools.viewertools import set_drop_handler
 from artistools.viewertools import set_edit_text
@@ -146,10 +141,10 @@ from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
 from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
-from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import split_option_rows
 from artistools.viewertools import start_play_timer
+from artistools.viewertools import ViewerCommand
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -3162,43 +3157,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         words = text.split()
         add_new_subplot(make_new_subplot(text, viewer.estimatorcolumns, get_levelnames(words[0] if words else "")))
 
-    def on_copy() -> None:
-        copy_text(viewer.get_command())
-        show_status_note(statusbar, "Copied the command")
-
-    def get_figure_tokens() -> list[str]:
-        """Return the command of the plot with no -dpi. The Figure section gives the resolution."""
-        return viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None))
-
-    def get_figure_choice() -> tuple[str, int]:
-        """Return the format of the Figure section and the resolution of the command."""
-        return get_figure_format(), viewer.values.dpi or defaultdpi
-
-    def on_resolution(resolution: int) -> None:
-        apply(dc.replace(viewer.values, dpi=None if resolution == defaultdpi else resolution))
-
-    def on_copy_figure() -> None:
-        from artistools.estimators.plotestimators import main as plotestimators_main
-
-        plottokens = get_figure_tokens()
-        copy_figure_of_command(queue, statusbar, plotestimators_main, viewer.parser, plottokens, get_figure_choice())
-
-    def on_copy_python() -> None:
-        copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
-        show_status_note(statusbar, "Copied the Python code")
-
-    def on_save() -> None:
-        from artistools.estimators.plotestimators import main as plotestimators_main
-
-        plottokens = get_figure_tokens()
-        save_figure_of_command(
-            window, statusbar, plotestimators_main, "plotestimators", plottokens, viewer.parser, get_figure_choice()
-        )
-
-    def on_open_model() -> None:
-        if (message := open_model_window(window, open_window, windows)) is not None:
-            show_error(message)
-
     def on_reload() -> None:
         """Read the run again in the worker thread.
 
@@ -3222,11 +3180,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         if not queue.run_task(lambda: run_command_step(read, quiet=False), "Reload in progress...", show_reloaded_run):
             show_error("A reload of the run is in progress")
-
-    def on_help() -> None:
-        QtWidgets.QMessageBox.information(
-            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menutexts)
-        )
 
     def get_frame_readout(event: t.Any, frame: "mplax.Axes") -> str:
         if not viewer.isimage:
@@ -3329,9 +3282,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # a context menu of a Mac app gives the actions on the object under the pointer, here the figure
         if menu.actions():
             menu.addSeparator()
-        menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
-        menu.addAction("Save Figure…").triggered.connect(on_save)
-        menu.addAction("Export Animation…").triggered.connect(on_export_animation)
+        add_figure_actions(menu)
         if menu.actions():
             menu.exec(QtGui.QCursor.pos())
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
@@ -3357,8 +3308,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
 
     def on_export_animation() -> None:
-        from artistools.estimators.plotestimators import main as plotestimators_main
-
         export_animation(
             window,
             queue,
@@ -3369,10 +3318,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             fpsbox.value(),
             viewer.parser,
         )
-
-    def on_open_recent(folder: str) -> None:
-        if (message := open_model_folder(folder, open_window, windows)) is not None:
-            show_error(message)
 
     def on_drop(paths: list[str]) -> None:
         """Open a new window for each dropped folder of a run."""
@@ -3393,18 +3338,29 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # leaves the list
         windows.remove(window)
 
-    menucallbacks = {
-        "Open Model…": on_open_model,
-        "Reload Data": on_reload,
-        "Save Figure…": on_save,
-        "Export Animation…": on_export_animation,
-        "Close Window": window.close,
-        "Copy Figure": on_copy_figure,
-        "Copy Command": on_copy,
-        "Copy Python": on_copy_python,
-        "Keys and Mouse Actions": on_help,
-    }
-    menutexts = add_menus(window, menucallbacks, queue, playbutton, open_folder=on_open_recent)
+    command = ViewerCommand(
+        name="plotestimators",
+        main=plotestimators_main,
+        parser=viewer.parser,
+        get_figure_tokens=lambda: viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None)),
+        get_command=viewer.get_command,
+        get_python_code=lambda: get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns),
+    )
+    add_figure_actions = add_window_actions(
+        window,
+        windows,
+        open_window,
+        queue,
+        statusbar,
+        command,
+        figuresection,
+        (copybutton, pythoncopybutton),
+        (lambda: viewer.values.dpi, lambda dpi: apply(dc.replace(viewer.values, dpi=dpi))),
+        show_error,
+        KEYBOARD_HELP_ROWS,
+        playbutton,
+        extracallbacks={"Reload Data": on_reload, "Export Animation…": on_export_animation},
+    )
     set_drop_handler(window, on_drop)
     follow_colour_scheme(window, viewer, queue)
 
@@ -3424,9 +3380,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     tminedit.editingFinished.connect(on_trangeedit)
     tmaxedit.editingFinished.connect(on_trangeedit)
     playbutton.toggled.connect(on_play)
-    figuresection.copybutton.clicked.connect(on_copy_figure)
-    figuresection.dpibox.valueChanged.connect(on_resolution)
-    figuresection.savebutton.clicked.connect(on_save)
     playtimer.timeout.connect(play_step)
     previousbutton.clicked.connect(lambda: on_step_time(-1))
     nextbutton.clicked.connect(lambda: on_step_time(1))
@@ -3463,9 +3416,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ).activated.connect(close_insert_field)
     addsubplotbutton.clicked.connect(on_new_subplot)
     defaultbutton.clicked.connect(lambda: apply_subplots(viewer.defaultsubplots))
-    copybutton.clicked.connect(on_copy)
-    pythoncopybutton.clicked.connect(on_copy_python)
-    statusbar.helpbutton.clicked.connect(on_help)
     window.destroyed.connect(on_closed)
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,

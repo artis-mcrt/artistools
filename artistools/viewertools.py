@@ -3742,6 +3742,110 @@ def open_model_folder(
     return None
 
 
+class ViewerCommand(t.NamedTuple):
+    """The command of a viewer, and the functions that give the text of its plot."""
+
+    # the name of the subcommand, e.g. "plotspectra"
+    name: str
+    main: "Callable[..., None]"
+    parser: "SuggestingArgumentParser"
+    # the arguments of the plot with no -dpi, because the Figure section gives the resolution
+    get_figure_tokens: "Callable[[], list[str]]"
+    get_command: "Callable[[], str]"
+    get_python_code: "Callable[[], str]"
+
+
+def add_window_actions(
+    window: "QtWidgets.QMainWindow",
+    windows: "list[QtWidgets.QMainWindow]",
+    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
+    queue: "DrawQueue[t.Any]",
+    statusbar: StatusBar,
+    command: ViewerCommand,
+    figuresection: FigureSection,
+    copybuttons: "tuple[QtWidgets.QPushButton, QtWidgets.QPushButton]",
+    dpi: "tuple[Callable[[], int | None], Callable[[int | None], None]]",
+    show_error: "Callable[[str], None]",
+    keyrows: "Sequence[tuple[str, str]]",
+    playbutton: "QtWidgets.QAbstractButton | None",
+    extracallbacks: "Mapping[str, Callable[[], object]] | None" = None,
+) -> "Callable[[QtWidgets.QMenu], None]":
+    """Give a window the actions that each viewer has: copy, save, open, help, and the menus.
+
+    copybuttons are the Copy buttons of the command and of the Python code. dpi gives the -dpi of the values, or None
+    for the default, and the function that sets it. extracallbacks gives the menu items of one viewer, e.g. Reload
+    Data. Return the function that adds the actions on the figure to a context menu of the plot.
+    """
+    from PySide6 import QtWidgets
+
+    get_dpi, set_dpi = dpi
+    defaultdpi: int = command.parser.get_default("dpi")
+    callbacks = dict(extracallbacks or {})
+
+    def get_figure_choice() -> tuple[str, int]:
+        return get_figure_format(), get_dpi() or defaultdpi
+
+    def on_copy_figure() -> None:
+        tokens = command.get_figure_tokens()
+        copy_figure_of_command(queue, statusbar, command.main, command.parser, tokens, get_figure_choice())
+
+    def on_save() -> None:
+        tokens = command.get_figure_tokens()
+        save_figure_of_command(
+            window, statusbar, command.main, command.name, tokens, command.parser, get_figure_choice()
+        )
+
+    def on_copy() -> None:
+        copy_text(command.get_command())
+        show_status_note(statusbar, "Copied the command")
+
+    def on_copy_python() -> None:
+        copy_text(command.get_python_code())
+        show_status_note(statusbar, "Copied the Python code")
+
+    def on_resolution(resolution: int) -> None:
+        set_dpi(None if resolution == defaultdpi else resolution)
+
+    def on_open_model() -> None:
+        if (message := open_model_window(window, open_window, windows)) is not None:
+            show_error(message)
+
+    def on_open_recent(folder: str) -> None:
+        if (message := open_model_folder(folder, open_window, windows)) is not None:
+            show_error(message)
+
+    def on_help() -> None:
+        QtWidgets.QMessageBox.information(window, "Keys and mouse actions", get_keyboard_help(keyrows, menutexts))
+
+    menucallbacks: dict[str, Callable[[], object]] = {
+        "Open Model…": on_open_model,
+        "Save Figure…": on_save,
+        "Close Window": window.close,
+        "Copy Figure": on_copy_figure,
+        "Copy Command": on_copy,
+        "Copy Python": on_copy_python,
+        "Keys and Mouse Actions": on_help,
+        **callbacks,
+    }
+    menutexts = add_menus(window, menucallbacks, queue, playbutton, open_folder=on_open_recent)
+    figuresection.copybutton.clicked.connect(on_copy_figure)
+    figuresection.savebutton.clicked.connect(on_save)
+    figuresection.dpibox.valueChanged.connect(on_resolution)
+    commandcopybutton, pythoncopybutton = copybuttons
+    commandcopybutton.clicked.connect(on_copy)
+    pythoncopybutton.clicked.connect(on_copy_python)
+    statusbar.helpbutton.clicked.connect(on_help)
+
+    def add_figure_actions(menu: QtWidgets.QMenu) -> None:
+        """Add the actions on the figure to a context menu, as the context menu of a Mac app gives them."""
+        menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
+        menu.addAction("Save Figure…").triggered.connect(on_save)
+        if (exportanimation := callbacks.get("Export Animation…")) is not None:
+            menu.addAction("Export Animation…").triggered.connect(exportanimation)
+
+    return add_figure_actions
+
+
 def get_new_figwidthscale(
     plotarea: "QtWidgets.QWidget",
     figsize: tuple[float, float],

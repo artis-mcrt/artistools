@@ -28,6 +28,7 @@ from artistools.lightcurve.plotlightcurve import ENERGYRATEDESTS
 from artistools.lightcurve.plotlightcurve import get_plot_lum_unit
 from artistools.lightcurve.plotlightcurve import get_thermalisation_emission_column
 from artistools.lightcurve.plotlightcurve import LumUnit
+from artistools.lightcurve.plotlightcurve import main as plotlightcurves_main
 from artistools.lightcurve.plotlightcurve import make_plot_figure
 from artistools.lightcurve.plotlightcurve import resolve_plot_args
 from artistools.misc import exit_with_error
@@ -47,14 +48,12 @@ from artistools.viewertools import add_command_section
 from artistools.viewertools import add_copy_box
 from artistools.viewertools import add_default_options
 from artistools.viewertools import add_figure_section
-from artistools.viewertools import add_menus
 from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
+from artistools.viewertools import add_window_actions
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
-from artistools.viewertools import copy_figure_of_command
-from artistools.viewertools import copy_text
 from artistools.viewertools import DrawQueue
 from artistools.viewertools import edit_series_style
 from artistools.viewertools import exit_for_other_actions
@@ -67,10 +66,8 @@ from artistools.viewertools import get_dark_plot_colours
 from artistools.viewertools import get_direction_choices
 from artistools.viewertools import get_direction_kind
 from artistools.viewertools import get_direction_kinds
-from artistools.viewertools import get_figure_format
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
-from artistools.viewertools import get_keyboard_help
 from artistools.viewertools import get_line_readouts
 from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
@@ -97,14 +94,11 @@ from artistools.viewertools import make_status_bar
 from artistools.viewertools import make_timer
 from artistools.viewertools import make_window
 from artistools.viewertools import move_series_styles
-from artistools.viewertools import open_model_folder
-from artistools.viewertools import open_model_window
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
-from artistools.viewertools import save_figure_of_command
 from artistools.viewertools import SERIES_LINE_FLAGS
 from artistools.viewertools import SERIES_STYLE_FLAGS
 from artistools.viewertools import set_command_text
@@ -116,10 +110,10 @@ from artistools.viewertools import set_spin_value
 from artistools.viewertools import set_window_document
 from artistools.viewertools import show_figure_in_canvas
 from artistools.viewertools import show_status_message
-from artistools.viewertools import show_status_note
 from artistools.viewertools import show_window
 from artistools.viewertools import SLIDER_STEPS
 from artistools.viewertools import split_option_rows
+from artistools.viewertools import ViewerCommand
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -1459,61 +1453,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             rows = set_series_rows(values.otheroptions, values.lightcurves, path, changes)
             apply(dc.replace(viewer.values, otheroptions=rows))
 
-    def on_copy() -> None:
-        copy_text(viewer.get_command())
-        show_status_note(statusbar, "Copied the command")
-
-    def get_figure_tokens() -> list[str]:
-        """Return the command of the plot with no -dpi. The Figure section gives the resolution."""
-        return viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None))
-
-    def get_figure_choice() -> tuple[str, int]:
-        """Return the format of the Figure section and the resolution of the command."""
-        return get_figure_format(), viewer.values.dpi or defaultdpi
-
-    def on_resolution(resolution: int) -> None:
-        apply(dc.replace(viewer.values, dpi=None if resolution == defaultdpi else resolution))
-
-    def on_copy_figure() -> None:
-        from artistools.lightcurve.plotlightcurve import main as plotlightcurves_main
-
-        plottokens = get_figure_tokens()
-        copy_figure_of_command(queue, statusbar, plotlightcurves_main, viewer.parser, plottokens, get_figure_choice())
-
-    def on_copy_python() -> None:
-        copy_text(get_python_code(viewer.parser, viewer.get_plot_tokens()))
-        show_status_note(statusbar, "Copied the Python code")
-
-    def on_save() -> None:
-        from artistools.lightcurve.plotlightcurve import main as plotlightcurves_main
-
-        plottokens = get_figure_tokens()
-        save_figure_of_command(
-            window, statusbar, plotlightcurves_main, "plotlightcurves", plottokens, viewer.parser, get_figure_choice()
-        )
-
-    def on_open_model() -> None:
-        if (message := open_model_window(window, open_window, windows)) is not None:
-            show_error(message)
-
-    def on_help() -> None:
-        QtWidgets.QMessageBox.information(
-            window, "Keys and mouse actions", get_keyboard_help(KEYBOARD_HELP_ROWS, menutexts)
-        )
-
-    def on_plot_menu(_frameindex: int, _event: t.Any) -> None:
-        """Show the actions on the figure under the pointer, as the context menu of a Mac app does."""
-        menu = QtWidgets.QMenu(window)
-        menu.addAction("Copy Figure").triggered.connect(on_copy_figure)
-        menu.addAction("Save Figure…").triggered.connect(on_save)
-        menu.exec(QtGui.QCursor.pos())
-        # the window is the parent of the menu, thus without this the window keeps each menu until it closes
-        menu.deleteLater()
-
-    def on_open_recent(folder: str) -> None:
-        if (message := open_model_folder(folder, open_window, windows)) is not None:
-            show_error(message)
-
     def on_drop(paths: list[str]) -> None:
         """Add each dropped ARTIS run and each dropped reference file to the light curves of the plot."""
         folders = [path for path in paths if Path(path).is_dir()]
@@ -1529,18 +1468,37 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # leaves the list
         windows.remove(window)
 
-    menucallbacks = {
-        "Open Model…": on_open_model,
-        "Save Figure…": on_save,
-        "Close Window": window.close,
-        "Undo": queue.undo,
-        "Redo": queue.redo,
-        "Copy Figure": on_copy_figure,
-        "Copy Command": on_copy,
-        "Copy Python": on_copy_python,
-        "Keys and Mouse Actions": on_help,
-    }
-    menutexts = add_menus(window, menucallbacks, queue, None, open_folder=on_open_recent)
+    command = ViewerCommand(
+        name="plotlightcurves",
+        main=plotlightcurves_main,
+        parser=viewer.parser,
+        get_figure_tokens=lambda: viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None)),
+        get_command=viewer.get_command,
+        get_python_code=lambda: get_python_code(viewer.parser, viewer.get_plot_tokens()),
+    )
+    add_figure_actions = add_window_actions(
+        window,
+        windows,
+        open_window,
+        queue,
+        statusbar,
+        command,
+        figuresection,
+        (copybutton, pythoncopybutton),
+        (lambda: viewer.values.dpi, lambda dpi: apply(dc.replace(viewer.values, dpi=dpi))),
+        show_error,
+        KEYBOARD_HELP_ROWS,
+        None,
+    )
+
+    def on_plot_menu(_frameindex: int, _event: t.Any) -> None:
+        """Show the actions on the figure under the pointer, as the context menu of a Mac app does."""
+        menu = QtWidgets.QMenu(window)
+        add_figure_actions(menu)
+        menu.exec(QtGui.QCursor.pos())
+        # the window is the parent of the menu, thus without this the window keeps each menu until it closes
+        menu.deleteLater()
+
     set_drop_handler(window, on_drop)
     follow_colour_scheme(window, viewer, queue)
 
@@ -1571,19 +1529,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     ymaxedit.editingFinished.connect(on_yedit)
     directionkindbox.currentIndexChanged.connect(on_direction)
     usedegreescheck.toggled.connect(on_direction)
-    figuresection.copybutton.clicked.connect(on_copy_figure)
-    figuresection.dpibox.valueChanged.connect(on_resolution)
     figscalebox.valueChanged.connect(on_figscale)
-    figuresection.savebutton.clicked.connect(on_save)
     addmodelbutton.clicked.connect(on_add_model)
     # the list moves the row at the end of the drop, thus the new order applies after the drop
     lightcurvelist.model().rowsMoved.connect(lambda: QtCore.QTimer.singleShot(0, window, on_lightcurves_moved))
     openreferencebutton.clicked.connect(on_open_reference)
     referencecompleter.activated.connect(on_complete_reference)
     referenceedit.returnPressed.connect(lambda: add_reference_name(referenceedit.text()))
-    copybutton.clicked.connect(on_copy)
-    pythoncopybutton.clicked.connect(on_copy_python)
-    statusbar.helpbutton.clicked.connect(on_help)
     window.destroyed.connect(on_closed)
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
