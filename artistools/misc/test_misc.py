@@ -1293,7 +1293,8 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
         suggestion = remote.get_git_server_suggestion("vae26")
     assert suggestion is not None
     expected = (
-        f"export ARTISTOOLS_REMOTE_COMMAND='POLARS_MAX_THREADS=16 uvx --with polars=={pl.__version__}"
+        f"export ARTISTOOLS_REMOTE_COMMAND='POLARS_MAX_THREADS=16 uvx --python {remote.get_python_version()}"
+        f" --with polars=={pl.__version__}"
         ' --from "artistools @ git+https://github.com/fork/artistools@abc123"'
     )
     assert f"{expected} artistools server'" in suggestion

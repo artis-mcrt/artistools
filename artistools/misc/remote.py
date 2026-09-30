@@ -402,6 +402,24 @@ def read_message(stream: t.IO[bytes]) -> bytes:
     return data
 
 
+def get_python_version() -> str:
+    """Return the version of this Python, e.g. 3.14.7."""
+    import sys
+
+    return ".".join(str(number) for number in sys.version_info[:3])
+
+
+def get_uvx_pins() -> str:
+    """Return the options of uvx that give the server the Python and the polars of this process.
+
+    The server reads the plans of the queries of this process, and a plan holds Python functions. polars reads such a
+    plan only with the same version of polars and the same version of Python, down to the micro number.
+    """
+    import polars as pl
+
+    return f"--python {get_python_version()} --with polars=={pl.__version__}"
+
+
 def get_server_argv(host: str) -> list[str]:
     """Return the command line that starts the artistools server on the host.
 
@@ -416,21 +434,16 @@ def get_server_argv(host: str) -> list[str]:
     if host.startswith("-"):
         msg = f"The host {host} starts with -, and ssh would read it as an option"
         raise ValueError(msg)
-    import polars as pl
-
-    # a plan of polars has a format that changes between two versions of polars, thus the server takes the polars of
-    # the client, and collect_on_host can send it the plans of the queries
     defaultcommand = (
-        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx --with polars=={pl.__version__}"
-        f" artistools@{version('artistools')} server"
+        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_uvx_pins()} artistools@{version('artistools')} server"
     )
     # ssh takes an IPv6 address with no brackets
     sshhost = re.sub(r"\[([^\]]*)\]", r"\1", host)
     return ["ssh", "--", sshhost, os.environ.get(SERVER_COMMAND_ENVVAR) or defaultcommand]
 
 
-def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
-    """Return the versions of artistools and polars that the server sends after its start line.
+def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str, str]:
+    """Return the versions of artistools, polars, and Python that the server sends after its start line.
 
     Raise EOFError if the server stops first.
     """
@@ -439,10 +452,11 @@ def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
         if not line:
             raise EOFError
 
-    artistoolsversion, polarsversion = load_reply(read_message(process.stdout))
-    assert isinstance(artistoolsversion, str)
-    assert isinstance(polarsversion, str)
-    return artistoolsversion, polarsversion
+    versions = load_reply(read_message(process.stdout))
+    assert isinstance(versions, tuple)
+    assert len(versions) == 3
+    assert all(isinstance(serverversion, str) for serverversion in versions)
+    return versions
 
 
 def get_git_source() -> tuple[str, str, list[str]] | None:
@@ -506,11 +520,9 @@ def get_git_server_suggestion(host: str) -> str | None:
     if (gitsource := get_git_source()) is None:
         return None
 
-    import polars as pl
-
     url, commit, notes = gitsource
     servercommand = (
-        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx --with polars=={pl.__version__}"
+        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_uvx_pins()}"
         f' --from "artistools @ git+{url}@{commit}" artistools server'
     )
     return "\n".join([
@@ -590,7 +602,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
 
     try:
-        serverversion, serverpolarsversion = read_server_versions(process)
+        serverversion, serverpolarsversion, serverpythonversion = read_server_versions(process)
     except Exception:  # ruff:ignore[blind-except]
         # text of a shell or a server of a different protocol can give any error of the unpickle
         process.kill()
@@ -603,12 +615,13 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         )
 
     atexit.register(close_server_pipes, process)
-    if serverpolarsversion != pl.__version__:
+    if (serverpolarsversion, serverpythonversion) != (pl.__version__, get_python_version()):
         process.kill()
         exit_with_error(
-            f"the artistools server on {host} has polars {serverpolarsversion}, and this artistools has polars"
-            f" {pl.__version__}. The server runs the plans of polars, which need the same version",
-            f"Add --with polars=={pl.__version__} to the uvx command of {SERVER_COMMAND_ENVVAR}",
+            f"the artistools server on {host} has polars {serverpolarsversion} and Python {serverpythonversion}, and"
+            f" this artistools has polars {pl.__version__} and Python {get_python_version()}. The server runs the"
+            " plans of polars, which need the same versions",
+            f"Add {get_uvx_pins()} to the uvx command of {SERVER_COMMAND_ENVVAR}",
         )
     if serverversion != localversion:
         print_warning(
@@ -814,7 +827,7 @@ def serve(requeststream: t.IO[bytes], resultstream: t.IO[bytes]) -> None:
     # a reader in a plan of a client then reads the files of this process
     os.environ[SERVER_PROCESS_ENVVAR] = "1"
     resultstream.write(SERVER_START_LINE)
-    write_message(resultstream, dump_message((version("artistools"), pl.__version__)))
+    write_message(resultstream, dump_message((version("artistools"), pl.__version__, get_python_version())))
     while True:
         try:
             request = read_message(requeststream)
