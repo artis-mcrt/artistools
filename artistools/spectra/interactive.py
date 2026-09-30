@@ -1284,12 +1284,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         timegrid.addWidget(edit, row, 2)
     timegrid.addWidget(widthmodebox, 2, 0)
     timegrid.addLayout(make_play_row([previousbutton, nextbutton], timestepslabel, fpsbox, playbutton), 3, 0, 1, -1)
-    # the item data of each choice is the value of ControlValues.timegrid
+    # the item data of each choice is the path of a model. The value "" of ControlValues.timegrid selects the first
+    # model, thus the box then shows that model
     timegridbox = QtWidgets.QComboBox()
     timegridbox.setToolTip(
         "The ARTIS model that gives the timesteps of the time controls. The command gives the time in days, thus"
-        ' this choice does not change the command. "First model" is the first ARTIS model in the list of spectra,'
-        " and it changes when the order changes"
+        " this choice does not change the command. The first ARTIS model in the list of spectra gives them until"
+        " you select a different model"
     )
     timegridbox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
     timegridbox.setMinimumContentsLength(12)
@@ -1697,8 +1698,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         show_direction_kinds()
         shownruns = viewer.runkey
         timegridbox.clear()
-        firstmodel = viewer.runfolders[0]
-        timegridbox.addItem(f"First model ({get_model_name(firstmodel)})", "")
         # two models can have one name, thus each choice gives the place of the model in the list of spectra
         for path in viewer.runtimes:
             timegridbox.addItem(f"{viewer.values.spectra.index(path) + 1}. {get_model_name(path)}", path)
@@ -1834,7 +1833,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         spectra = values.spectra
         spectralist.clear()
         models = list(viewer.runtimes)
-        gridpath = values.timegrid or next(iter(models), "")
+        gridpath = get_timegrid_path(values)
         colours = get_series_colours(spectra, values.otheroptions)
         labels = get_row_values(values.otheroptions, "-label") or ()
         rowheight = spectralist.fontMetrics().lineSpacing() + 4
@@ -1918,7 +1917,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if values.notimeclamp != slidermode:
             set_time_mode()
         modesegments.setCurrentIndex(1 if values.notimeclamp else 0)
-        timegridbox.setCurrentIndex(max(timegridbox.findData(values.timegrid), 0))
+        timegridbox.setCurrentIndex(max(timegridbox.findData(get_timegrid_path(values)), 0))
         packetbox.setCurrentIndex(1 if values.gamma else 0)
         # the current mode stays available, thus the user can switch back from a plot that failed
         if gammaitem.isEnabled() != (gammaavailable := viewer.hasgammaspectrum or values.gamma):
@@ -2082,9 +2081,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         start = min(max(position - (count - 1) // 2, 0), nvalid - count)
         apply(viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count - 1]))
 
+    def get_timegrid_path(values: ControlValues) -> str:
+        """Return the path of the model that gives the timesteps, which is the first model for the value ""."""
+        return values.timegrid or next(iter(viewer.runtimes), "")
+
     def on_timegrid() -> None:
         timegridpath: str = timegridbox.currentData()
-        if timegridpath != viewer.values.timegrid:
+        if timegridpath != get_timegrid_path(viewer.values):
             apply(set_runs(viewer, viewer.values.spectra, timegridpath))
 
     def on_widthmode() -> None:
