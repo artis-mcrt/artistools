@@ -56,6 +56,7 @@ from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import add_series_list
 from artistools.viewertools import add_window_actions
+from artistools.viewertools import add_y_axis_actions
 from artistools.viewertools import add_y_limits_row
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
@@ -84,6 +85,7 @@ from artistools.viewertools import get_python_call
 from artistools.viewertools import get_row_values
 from artistools.viewertools import get_series_style
 from artistools.viewertools import get_series_value
+from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_command_tokens
 from artistools.viewertools import make_fps_box
@@ -108,6 +110,7 @@ from artistools.viewertools import move_series_styles
 from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import ReferenceData
+from artistools.viewertools import reload_runs
 from artistools.viewertools import remove_options
 from artistools.viewertools import ROW_SPACING
 from artistools.viewertools import run_command_step
@@ -1122,7 +1125,9 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Double-click</b> a spectrum", "Give the spectrum a -label"),
     ("<b>Right-click</b> a spectrum", "Move it, use its timesteps, copy its path, or open its folder"),
     ("<b>Drag</b> across the plot", "Select the x range"),
+    ("<b>Shift-drag</b> up or down the plot", "Select the y range (-ymin and -ymax)"),
     ("<b>Double-click</b> the plot", "Get the default x range"),
+    ("<b>Right-click</b> the plot", "Change the y scale, get the automatic y range, or copy or save the figure"),
 )
 
 
@@ -2188,6 +2193,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # leaves the list
         windows.remove(window)
 
+    def on_reload() -> None:
+        """Read the runs again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
+
+        def show_reloaded_runs() -> None:
+            viewer.load_runs(viewer.values.spectra, viewer.values.timegrid)
+            show_run_ranges()
+            queue.redraw()
+
+        reload_runs(queue, viewer.runfolders, show_reloaded_runs, show_error)
+
     command = ViewerCommand(
         name="plotspectra",
         main=plotspectra_main,
@@ -2209,12 +2224,26 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         show_error,
         KEYBOARD_HELP_ROWS,
         playbutton,
-        extracallbacks={"Export Animation…": on_export_animation},
+        extracallbacks={"Reload Data": on_reload, "Export Animation…": on_export_animation},
     )
 
-    def on_plot_menu(_frameindex: int, _event: t.Any) -> None:
-        """Show the actions on the figure under the pointer, as the context menu of a Mac app does."""
+    def on_select_y(frameindex: int, low: float, high: float) -> None:
+        """Give the frame of the spectra the y range of a Shift-drag. A residual panel has its own range."""
+        ymin, ymax = get_short_number(low), get_short_number(high)
+        if frameindex == 0 and plot_shows_values() and float(ymin) < float(ymax):
+            apply(dc.replace(viewer.values, ymin=ymin, ymax=ymax))
+
+    def on_plot_menu(frameindex: int, _event: t.Any) -> None:
+        """Show the actions on the frame and the figure under the pointer, as the context menu of a Mac app does."""
         menu = QtWidgets.QMenu(window)
+        if frameindex == 0 and plot_shows_values() and len(viewer.axes):
+            add_y_axis_actions(
+                menu,
+                viewer.axes[0].get_yscale() == "log",
+                bool(viewer.values.ymin or viewer.values.ymax),
+                lambda yscale: apply(dc.replace(viewer.values, yscale=yscale)),
+                lambda: apply(dc.replace(viewer.values, ymin="", ymax="")),
+            )
         add_figure_actions(menu)
         menu.exec(QtGui.QCursor.pos())
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
@@ -2272,6 +2301,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         on_select=set_xlimits,
         on_reset=lambda: set_xlimits(*get_default_xlimits(viewer.values.xunit, gamma=viewer.values.gamma)),
         can_select=plot_has_xunit,
+        on_select_y=on_select_y,
         on_menu=on_plot_menu,
         show_tag=make_readout_tag(canvas),
     )

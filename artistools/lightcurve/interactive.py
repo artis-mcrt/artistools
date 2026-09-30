@@ -54,6 +54,7 @@ from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import add_series_list
 from artistools.viewertools import add_window_actions
+from artistools.viewertools import add_y_axis_actions
 from artistools.viewertools import add_y_limits_row
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
@@ -80,6 +81,7 @@ from artistools.viewertools import get_path_colours
 from artistools.viewertools import get_python_call
 from artistools.viewertools import get_row_values
 from artistools.viewertools import get_series_style
+from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
 from artistools.viewertools import make_command_tokens
 from artistools.viewertools import make_option_table
@@ -98,6 +100,7 @@ from artistools.viewertools import OptionRows
 from artistools.viewertools import parse_command_tokens
 from artistools.viewertools import read_limit_fields
 from artistools.viewertools import ReferenceData
+from artistools.viewertools import reload_runs
 from artistools.viewertools import remove_options
 from artistools.viewertools import run_command_step_with_warning
 from artistools.viewertools import run_viewer_application
@@ -637,8 +640,12 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
 # the keys and the mouse actions of the window. get_keyboard_help adds the shortcuts of the menus
 KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Alt-Up</b>, <b>Alt-Down</b> in the list of light curves", "Move the light curve up or down (Option on a Mac)"),
+    ("<b>Double-click</b> a light curve", "Give the light curve a -label"),
+    ("<b>Right-click</b> a light curve", "Move it, set its style, copy its path, or open its folder"),
     ("<b>Drag</b> across the plot", "Select the time range"),
+    ("<b>Shift-drag</b> up or down the plot", "Select the y range (-ymin and -ymax)"),
     ("<b>Double-click</b> the plot", "Get the full time range"),
+    ("<b>Right-click</b> the plot", "Change the y scale, get the automatic y range, or copy or save the figure"),
 )
 
 
@@ -1218,6 +1225,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # leaves the list
         windows.remove(window)
 
+    def on_reload() -> None:
+        """Read the runs again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
+
+        def show_reloaded_runs() -> None:
+            viewer.load_runs(viewer.values.lightcurves)
+            show_run_ranges()
+            queue.redraw()
+
+        reload_runs(queue, viewer.runfolders, show_reloaded_runs, show_error)
+
     command = ViewerCommand(
         name="plotlightcurves",
         main=plotlightcurves_main,
@@ -1239,11 +1256,27 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         show_error,
         KEYBOARD_HELP_ROWS,
         None,
+        extracallbacks={"Reload Data": on_reload},
     )
 
-    def on_plot_menu(_frameindex: int, _event: t.Any) -> None:
-        """Show the actions on the figure under the pointer, as the context menu of a Mac app does."""
+    def on_select_y(frameindex: int, low: float, high: float) -> None:
+        """Give the frame of the light curves the y range of a Shift-drag. Each panel below has its own range."""
+        ymin, ymax = get_short_number(low), get_short_number(high)
+        if frameindex == 0 and plot_shows_values() and float(ymin) < float(ymax):
+            apply(dc.replace(viewer.values, ymin=ymin, ymax=ymax))
+
+    def on_plot_menu(frameindex: int, _event: t.Any) -> None:
+        """Show the actions on the frame and the figure under the pointer, as the context menu of a Mac app does."""
         menu = QtWidgets.QMenu(window)
+        if frameindex == 0 and plot_shows_values() and viewer.axis is not None:
+            add_y_axis_actions(
+                menu,
+                # a magnitude is a logarithm already, thus its axis has no choice of scale
+                None if viewer.values.lumunit == "mag" else viewer.axis.get_yscale() == "log",
+                bool(viewer.values.ymin or viewer.values.ymax),
+                lambda yscale: apply(dc.replace(viewer.values, yscale=yscale)),
+                lambda: apply(dc.replace(viewer.values, ymin="", ymax="")),
+            )
         add_figure_actions(menu)
         menu.exec(QtGui.QCursor.pos())
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
@@ -1283,6 +1316,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         on_select=set_time_limits,
         on_reset=lambda: apply(dc.replace(viewer.values, timemin="", timemax="")),
         can_select=plot_shows_values,
+        on_select_y=on_select_y,
         on_menu=on_plot_menu,
         show_tag=make_readout_tag(canvas),
     )

@@ -40,6 +40,7 @@ from artistools.misc.cliutils import dashes_arg
 from artistools.misc.cliutils import SERIES_DEFAULT
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
+from artistools.misc.remote import on_model_host
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import get_series_colors
 from artistools.plottools import plain_label
@@ -1776,6 +1777,28 @@ def add_direction_section(
     usedegreescheck.toggled.connect(on_direction)
     set_run(runfolder)
     return show, set_run
+
+
+def add_y_axis_actions(
+    menu: "QtWidgets.QMenu",
+    islog: bool | None,
+    haslimits: bool,
+    set_yscale: "Callable[[str], None]",
+    clear_limits: "Callable[[], None]",
+) -> None:
+    """Add the actions on the y axis of a frame to a context menu: the scale, and the automatic y range.
+
+    islog is None for an axis with no choice of scale, e.g. a magnitude. haslimits enables Auto Y Range, which removes
+    the limits that the user gave.
+    """
+    if islog is not None:
+        menu.addAction("Linear Scale" if islog else "Log Scale").triggered.connect(
+            partial(set_yscale, "linear" if islog else "log")
+        )
+    resetaction = menu.addAction("Auto Y Range")
+    resetaction.setEnabled(haslimits)
+    resetaction.triggered.connect(clear_limits)
+    menu.addSeparator()
 
 
 def read_limit_fields(
@@ -4425,6 +4448,73 @@ def add_series_list(
     referenceedit.returnPressed.connect(lambda: add_reference_name(referenceedit.text()))
     set_drop_handler(window, on_drop)
     return show_rows
+
+
+def clear_output_caches() -> None:
+    """Clear each cache of the files that ARTIS writes while it runs, e.g. spec.out, in this process.
+
+    The files of the input of a run stay the same, e.g. input.txt and model.txt, thus their caches stay.
+    """
+    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+    from artistools.misc.timesteps import get_deposition_cached
+    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
+    from artistools.misc.timesteps import get_timestep_times_cached
+    from artistools.packets.core import check_packets_batch_parquet_paths
+    from artistools.packets.core import find_first_rank_textfiles
+    from artistools.spectra.core import get_flux_contributions_cached
+    from artistools.spectra.core import get_vspecpol_data_cached
+    from artistools.spectra.core import read_spec_cached
+    from artistools.spectra.core import read_spec_res_cached
+    from artistools.spectra.core import read_specpol_res_cached
+
+    for cachedfunction in (
+        get_runfolder_timesteps_cached,
+        get_deposition_cached,
+        get_escaped_arrivalrange_cached,
+        get_timestep_times_cached,
+        check_packets_batch_parquet_paths,
+        find_first_rank_textfiles,
+        get_flux_contributions_cached,
+        get_vspecpol_data_cached,
+        read_spec_cached,
+        read_spec_res_cached,
+        read_specpol_res_cached,
+    ):
+        cachedfunction.cache_clear()
+
+
+@on_model_host
+def clear_output_caches_of_run(runfolder: Path) -> None:
+    """Clear the caches of the output files on the host of a run. A local run clears the caches of this process."""
+    del runfolder
+    clear_output_caches()
+
+
+def reload_runs(
+    queue: "DrawQueue[t.Any]",
+    runfolders: "Sequence[Path | str]",
+    on_reloaded: "Callable[[], None]",
+    show_error: "Callable[[str], None]",
+) -> None:
+    """Read the runs again in the worker thread, e.g. while ARTIS writes more timesteps, then call on_reloaded.
+
+    The caches of this process and of the host of a remote run hold the files of the last read, thus both go. The
+    reload waits for the plot in progress, and a new plot waits for the reload.
+    """
+
+    def read() -> None:
+        clear_output_caches()
+        for runfolder in runfolders:
+            clear_output_caches_of_run(Path(runfolder))
+
+    def on_done(message: str | None) -> None:
+        if message is not None:
+            show_error(f"The viewer cannot reload the runs: {message}")
+            return
+        on_reloaded()
+
+    if not queue.run_task(lambda: run_command_step(read, quiet=False), "Reload in progress...", on_done):
+        show_error("A different task is in progress. Reload the runs after it")
 
 
 def get_new_figwidthscale(

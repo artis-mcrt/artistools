@@ -83,6 +83,7 @@ from artistools.viewertools import add_recent_model
 from artistools.viewertools import add_row
 from artistools.viewertools import add_section
 from artistools.viewertools import add_window_actions
+from artistools.viewertools import add_y_axis_actions
 from artistools.viewertools import apply_dark_colours
 from artistools.viewertools import connect_plot_mouse
 from artistools.viewertools import DrawQueue
@@ -3250,6 +3251,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if row is not None and plot_shows_values() and float(ymin) < float(ymax):
             set_directives(row, {"ymin": ymin, "ymax": ymax})
 
+    def set_row_yscale(row: int, yscale: str) -> None:
+        set_directives(row, {"yscale": yscale})
+
     def on_menu(frameindex: int, event: t.Any) -> None:
         """Show the menu of a subplot: the y scale, the y range, the plot of a cell or of a snapshot, and the figure."""
         if not plot_shows_values():
@@ -3257,15 +3261,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         menu = QtWidgets.QMenu(window)
         row = get_subplot_row(frameindex)
         if row is not None:
-            islog = get_plot_frames(viewer.fig)[frameindex].get_yscale() == "log"
-            scaleaction = menu.addAction("Linear Scale" if islog else "Log Scale")
-            scaleaction.triggered.connect(lambda: set_directives(row, {"yscale": "linear" if islog else "log"}))
-            resetaction = menu.addAction("Auto Y Range")
-            resetaction.setEnabled(
-                any(get_item_directive(item) in {"ymin", "ymax"} for item in viewer.values.subplots[row])
+            add_y_axis_actions(
+                menu,
+                get_plot_frames(viewer.fig)[frameindex].get_yscale() == "log",
+                any(get_item_directive(item) in {"ymin", "ymax"} for item in viewer.values.subplots[row]),
+                partial(set_row_yscale, row),
+                partial(set_directives, row, {"ymin": None, "ymax": None}),
             )
-            resetaction.triggered.connect(lambda: set_directives(row, {"ymin": None, "ymax": None}))
-            menu.addSeparator()
         if is_evolution(viewer.values):
             snapshot = get_snapshot_values(viewer, event.xdata)
             if snapshot is not None:
