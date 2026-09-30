@@ -48,13 +48,12 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting_or_none
-from artistools.misc import folder_is_artis_run
+from artistools.misc import get_artis_run_folders
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
-from artistools.misc import get_model_folder
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
@@ -2247,15 +2246,6 @@ def get_default_xlimits(xunit: str, *, gamma: bool) -> tuple[float, float]:
     lambdalimits = (0.2, 0.004) if gamma else (2500.0, 19000.0)
     xmin, xmax = sorted(convert_angstroms_to_unit(value, xunit) for value in lambdalimits)
     return xmin, xmax
-
-
-def get_artis_run_folders(modelpaths: Sequence[Path]) -> list[Path]:
-    """Return the folder of each ARTIS run in modelpaths. A reference spectrum or a code comparison file gives none."""
-    return [
-        get_model_folder(path)
-        for path in modelpaths
-        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
-    ]
 
 
 def resolve_plot_args(args: argparse.Namespace) -> None:

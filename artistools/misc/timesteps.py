@@ -19,9 +19,7 @@ from artistools.misc.cliutils import parse_range_list
 from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import folder_is_artis_run
-from artistools.misc.fileio import get_model_folder
-from artistools.misc.fileio import path_is_artis_model
+from artistools.misc.fileio import get_artis_run_folders
 from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
@@ -263,11 +261,7 @@ def apply_time_range_args(
     # command that plots reference data alone still takes a range in days
     # a path can name a light curve file of a run, and get_time_range reads the folder of the run. A folder
     # without input.txt is not a run, e.g. reference data named .out, and the plot code skips it with a warning
-    artispaths = [
-        get_model_folder(path)
-        for path in modelpaths
-        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
-    ]
+    artispaths = get_artis_run_folders(modelpaths)
     if not artispaths:
         if dayrange is None:
             msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"

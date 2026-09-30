@@ -2268,7 +2268,7 @@ def test_interactive_command_tokens() -> None:
         "-folder",
     ]
     basetokens = viewertools.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
-    assert interactive.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
+    assert viewertools.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
         *("-t", "306", "-xmin", "3000", "-xmax", "9000"),
@@ -2799,7 +2799,7 @@ def test_interactive_direction_and_bin_controls() -> None:
     assert "--average_every_tenth_viewing_angle" not in command
     assert command[command.index("-plotviewingangle") + 1] == "10"
 
-    choices = interactive.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
+    choices = viewertools.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
     assert [dirbin for dirbin, _ in choices] == list(range(10))
     assert viewer.change(dc.replace(values, directionkind="theta", directionbins=(3,), deltalogx="")) is None
     command = shlex.split(viewer.get_command())

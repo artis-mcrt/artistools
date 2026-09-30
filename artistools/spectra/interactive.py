@@ -16,20 +16,17 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
-from artistools.misc import get_dirbin_definitions
-from artistools.misc import get_dirbins
+from artistools.misc import get_artis_run_folders
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
-from artistools.misc import path_is_file
 from artistools.misc import separate_trailing_folders
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.packets.core import has_packets_files
-from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
@@ -40,7 +37,6 @@ from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
 from artistools.spectra.plotspectra import draw_plot
 from artistools.spectra.plotspectra import find_reference_spectrum_file_or_none
-from artistools.spectra.plotspectra import get_artis_run_folders
 from artistools.spectra.plotspectra import get_default_xlimits
 from artistools.spectra.plotspectra import make_plot_figure
 from artistools.spectra.plotspectra import path_is_reference_spectrum
@@ -62,9 +58,13 @@ from artistools.viewertools import exit_for_other_actions
 from artistools.viewertools import export_animation
 from artistools.viewertools import fit_canvas
 from artistools.viewertools import FIT_MILLISECONDS
+from artistools.viewertools import fix_title_position
 from artistools.viewertools import follow_colour_scheme
 from artistools.viewertools import get_changed_arguments
 from artistools.viewertools import get_dark_plot_colours
+from artistools.viewertools import get_direction_choices
+from artistools.viewertools import get_direction_kind
+from artistools.viewertools import get_direction_kinds
 from artistools.viewertools import get_figure_format
 from artistools.viewertools import get_fitted_figwidthscale
 from artistools.viewertools import get_helptexts
@@ -78,6 +78,7 @@ from artistools.viewertools import get_python_call
 from artistools.viewertools import get_row_values
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
+from artistools.viewertools import make_command_tokens
 from artistools.viewertools import make_completer
 from artistools.viewertools import make_elided_label
 from artistools.viewertools import make_fps_box
@@ -337,11 +338,6 @@ def has_gamma_spectrum(runfolders: "Sequence[Path]") -> bool:
     ) or all(has_packets_files(runfolder) for runfolder in runfolders)
 
 
-def get_direction_kinds(runfolder: Path) -> list[str]:
-    """Return the kinds of viewing direction of the run. A run with a configuration of virtual packets has observers."""
-    return ["", "bin", "phi", "theta", *(["vpkt"] if path_is_file(runfolder / "vpkt.txt") else [])]
-
-
 def format_days(value: float) -> str:
     """Return a time in days in fixed-point notation. The option -timedays reads the "-" of 1e-05 as a range."""
     return np.format_float_positional(value, precision=DAYS_DECIMALS, trim="-")
@@ -416,12 +412,6 @@ def get_snapped_timedays_argument(
     return f"{lowtext}-{hightext}"
 
 
-def make_command_tokens(basetokens: "Sequence[str]", options: "Sequence[str]") -> list[str]:
-    """Return the plotspectra arguments with the options of the controls after the paths at the start."""
-    pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
-    return [*basetokens[:pathcount], *options, *basetokens[pathcount:]]
-
-
 class RenderedSpectrum(t.NamedTuple):
     """A figure that the worker thread drew, with the frames and the data that the window reads."""
 
@@ -429,17 +419,6 @@ class RenderedSpectrum(t.NamedTuple):
     axes: "npt.NDArray[t.Any]"
     residualaxis: "mplax.Axes | None"
     dfalldata: pl.DataFrame
-
-
-def fix_title_position(axis: "mplax.Axes") -> None:
-    """Keep the title at the top of the frame.
-
-    matplotlib moves the title above the offset text of the y axis. For this, it measures the y axis each time that it
-    draws the plot. ExponentLabelFormatter puts the offset in the label of the axis, thus the offset text is empty and
-    the title stays at the top of the frame.
-    """
-    if axis.get_title() and isinstance(axis.yaxis.get_major_formatter(), ExponentLabelFormatter):
-        axis.set_title(axis.get_title(), y=1.0)
 
 
 def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlValues:
@@ -523,34 +502,6 @@ def get_reference_spectrum_names() -> list[str]:
 def keep_figwidthscale(restored: ControlValues, current: ControlValues) -> ControlValues:
     """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
     return dc.replace(restored, figwidthscale=current.figwidthscale)
-
-
-def get_direction_kind(args: argparse.Namespace) -> str:
-    """Return the kind of viewing direction of the arguments, in the form of ControlValues.directionkind."""
-    if args.plotvspecpol:
-        return "vpkt"
-    if not args.plotviewingangle:
-        return ""
-    if args.average_over_phi_angle:
-        return "phi"
-    return "theta" if args.average_over_theta_angle else "bin"
-
-
-def get_direction_choices(runfolder: Path, directionkind: str, *, usedegrees: bool) -> list[tuple[int, str]]:
-    """Return each bin of a kind of viewing direction with its label.
-
-    An average over the phi angle or the theta angle takes the first bin of each group, as get_dirbins gives it.
-    """
-    averagephi, averagetheta = directionkind == "phi", directionkind == "theta"
-    labels = get_dirbin_definitions(
-        runfolder,
-        get_dirbins(average_over_phi=averagephi, average_over_theta=averagetheta),
-        vpkt_observers=directionkind == "vpkt",
-        average_over_phi=averagephi,
-        average_over_theta=averagetheta,
-        usedegrees=usedegrees,
-    )
-    return list(labels.items())
 
 
 def remove_series_lock(values: ControlValues) -> ControlValues:

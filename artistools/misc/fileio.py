@@ -627,6 +627,15 @@ def folder_is_artis_run(folder: Path | str) -> bool:
     return folder.is_dir() and (folder / "input.txt").is_file()
 
 
+def get_artis_run_folders(modelpaths: Sequence[Path | str]) -> list[Path]:
+    """Return the folder of each ARTIS run in modelpaths. A reference file or a code comparison file gives none."""
+    return [
+        get_model_folder(path)
+        for path in modelpaths
+        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
+    ]
+
+
 def path_is_codecomparison(filepath: Path | str) -> bool:
     """Return whether the path is a virtual codecomparison path and not a real folder on disk.
 
