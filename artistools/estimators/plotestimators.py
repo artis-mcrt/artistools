@@ -343,22 +343,27 @@ def draw_series(
         )
 
 
-def draw_subplot_items(
-    ax: mplax.Axes, items: Sequence[SubplotItem], args: argparse.Namespace, startfromzero: bool
-) -> None:
-    """Collect the data of every series of the subplot in one pass, then draw the items in order.
-
-    Each series scans the estimators, thus one collect_all shares the scan between every series
-    of every item.
-    """
+def get_subplot_queries(items: Sequence[SubplotItem], args: argparse.Namespace) -> list[pl.LazyFrame]:
+    """Return the queries of the average lines and then of the points of every series of the subplot."""
     plans = [plan for series, _ in items for plan in series]
     # -xbins 0 draws the points alone, thus it needs no average line
     linequeries = [get_line_points(plan.dfseries, args) for plan in plans] if args.xbins != 0 else []
     pointqueries = [plan.dfseries.select("xvalue", "yvalue") for plan in plans] if args.markers else []
-    # the host of a remote model runs the queries, thus only the points of the lines come back
-    frames: list[pl.DataFrame | None] = [*collect_on_host(Path(args.modelpath), [*linequeries, *pointqueries])]
-    dflinepoints_of_plan = frames[: len(linequeries)] or [None] * len(plans)
-    dfpoints_of_plan = frames[len(linequeries) :] or [None] * len(plans)
+    return [*linequeries, *pointqueries]
+
+
+def draw_subplot_items(
+    ax: mplax.Axes,
+    items: Sequence[SubplotItem],
+    frames: Sequence[pl.DataFrame],
+    args: argparse.Namespace,
+    startfromzero: bool,
+) -> None:
+    """Draw the items of the subplot in order, from the frames of the queries of get_subplot_queries."""
+    plans = [plan for series, _ in items for plan in series]
+    linecount = len(plans) if args.xbins != 0 else 0
+    dflinepoints_of_plan: Sequence[pl.DataFrame | None] = frames[:linecount] or [None] * len(plans)
+    dfpoints_of_plan: Sequence[pl.DataFrame | None] = frames[linecount:] or [None] * len(plans)
 
     planindex = 0
     for series, finish in items:
@@ -1194,9 +1199,8 @@ def get_xlist(
 
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
 
-    # one collect for these streaming aggregations, rather than re-running the whole scan once per column. Only
-    # the ones the command line did not already pin down are requested, so supplying -xmin -xmax -xbins scans
-    # nothing at all here. xdeltamax stays out: it needs a full sort, and is only read for automatic binning.
+    # one collect gives the statistics and the unique values, because each collect of a remote model is a round trip
+    # through ssh. The command line can give the statistics, and then the query leaves them out
     statexprs: dict[str, pl.Expr] = {}
     if args.xmin is None:
         statexprs["xmin"] = pl.col("xvalue").min()
@@ -1204,14 +1208,30 @@ def get_xlist(
         statexprs["xmax"] = pl.col("xvalue").max()
     if args.xbins is None:
         statexprs["multiple_points_per_xvalue"] = pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()
+    if args.xbins is None or args.xbins < 0:
+        # the automatic bins need this. The full sort is small beside a round trip
+        statexprs["xdeltamax"] = pl.col("xvalue").sort().diff().max()
     if statexprs:
         # a column can have no value in the rows, e.g. tmid_days_prevtimestep at the first timestep
         statexprs["rowcount"] = pl.len()
 
-    modelpath = Path(args.modelpath)
-    xstats: dict[str, t.Any] = (
-        collect_on_host(modelpath, [estimators.select(**statexprs)])[0].row(0, named=True) if statexprs else {}
-    )
+    inxrange = pl.lit(value=True)
+    if args.xmin is not None:
+        inxrange &= pl.col("xvalue") >= args.xmin
+    if args.xmax is not None:
+        inxrange &= pl.col("xvalue") <= args.xmax
+    # a bin holds no row with a null or a NaN x value, and the bins are not known before the statistics
+    inbin = inxrange & pl.col("xvalue").is_not_null() & pl.col("xvalue").cast(pl.Float64).is_not_nan()
+    # sort all three: mgilist[0] and timestepslist[0] name the output file and the figure title,
+    # and polars' unique() does not maintain order, so an unsorted list makes those vary between runs
+    uniqueexprs = {
+        f"{column}{suffix}": pl.col(column).filter(rowfilter).unique().sort().implode()
+        for column in ("xvalue", "modelgridindex", "timestep")
+        for suffix, rowfilter in (("", inxrange), ("_binned", inbin))
+    }
+
+    stats = collect_on_host(Path(args.modelpath), [estimators.select(**statexprs, **uniqueexprs)])[0].row(0, named=True)
+    xstats = {name: stats[name] for name in statexprs}
 
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
@@ -1231,7 +1251,7 @@ def get_xlist(
         args.xbins = -1
 
     if args.xbins is not None and args.xbins < 0:
-        xdeltamax = collect_on_host(modelpath, [estimators.select(pl.col("xvalue").sort().diff().max())])[0].item()
+        xdeltamax = xstats["xdeltamax"]
         if not xdeltamax:
             # a single row gives None, and a column that holds one x value gives 0.0
             print(f"The x values give no interval to bin by ({xdeltamax}). Setting xbins to 25")
@@ -1285,20 +1305,12 @@ def get_xlist(
 
     estimators = estimators.sort("xvalue")
 
-    # again one collect rather than three separate scans of the same query
-    uniquesquery = estimators.select(
-        # sort all three: mgilist[0] and timestepslist[0] name the output file and the figure title,
-        # and polars' unique() does not maintain order, so an unsorted list makes those vary between runs
-        xvalue=pl.col("xvalue").unique().sort().implode(),
-        modelgridindex=pl.col("modelgridindex").unique().sort().implode(),
-        timestep=pl.col("timestep").unique().sort().implode(),
-    )
-    uniques = collect_on_host(modelpath, [uniquesquery])[0].row(0, named=True)
-
-    if not uniques["xvalue"]:
+    suffix = "_binned" if args.xbins else ""
+    xlist, mgilist, timesteps = (stats[f"{column}{suffix}"] for column in ("xvalue", "modelgridindex", "timestep"))
+    if not xlist:
         raise ValueError(get_no_rows_message(timestepslist, args))
 
-    return (uniques["xvalue"], uniques["modelgridindex"], uniques["timestep"], estimators)
+    return xlist, mgilist, timesteps, estimators
 
 
 def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Namespace) -> str:
@@ -1344,8 +1356,12 @@ def plot_subplot(
     estimators: pl.LazyFrame,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
-) -> None:
-    """Make plot from ARTIS estimators."""
+) -> tuple[list[pl.LazyFrame], Callable[[Sequence[pl.DataFrame]], None]]:
+    """Prepare a subplot of the ARTIS estimators, and return its queries and the function that draws it.
+
+    The caller collects the queries of all the subplots in one call, because each collect of a remote model is a
+    round trip through ssh. The function then draws the subplot from the frames of its queries.
+    """
     # these three lists give the x value, modelgridex, and a list of timesteps (for averaging) for each plot of the plot
     showlegend = False
     legend_ncols = 1
@@ -1469,8 +1485,22 @@ def plot_subplot(
                     )
                 )
 
-    draw_subplot_items(ax, items, args, startfromzero)
+    def draw(frames: Sequence[pl.DataFrame]) -> None:
+        draw_subplot_items(ax, items, frames, args, startfromzero)
+        finish_subplot(ax, args, ymin, ymax, showlegend, legend_ncols)
 
+    return get_subplot_queries(items, args), draw
+
+
+def finish_subplot(
+    ax: mplax.Axes,
+    args: argparse.Namespace,
+    ymin: float | None,
+    ymax: float | None,
+    showlegend: bool,
+    legend_ncols: int,
+) -> None:
+    """Apply the limits of the vertical axis and add the legend, after the draw of the data."""
     # Apply the requested limits now that the data has set the range of the axis. A fixed limit of the
     # plot list, e.g. the rho floor of the default list, suits one range of models. A limit outside the
     # data of this model would give an empty panel, thus test each one against the data range first.
@@ -1591,7 +1621,7 @@ def draw_figure(
     xlimits = (xmin, xmax, "-xmin") if xmin != xmax else (None, None, "-xmin")
     set_axis_properties(axes, args, xlimits=xlimits)
 
-    for ax, plotitems in zip(axes, plotlist, strict=False):
+    subplots = [
         plot_subplot(
             ax=ax,
             timestepslist=timestepslist,
@@ -1602,7 +1632,13 @@ def draw_figure(
             startfromzero=startfromzero,
             args=args,
         )
-
+        for ax, plotitems in zip(axes, plotlist, strict=False)
+    ]
+    frames = collect_on_host(Path(modelpath), [query for queries, _ in subplots for query in queries])
+    firstframe = 0
+    for ax, (queries, draw) in zip(axes, subplots, strict=False):
+        draw(frames[firstframe : firstframe + len(queries)])
+        firstframe += len(queries)
         # a stacked subplot puts its lowest label beside the highest label of the subplot below
         prune_log_ticks(ax.yaxis)
 

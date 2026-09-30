@@ -1937,6 +1937,25 @@ def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock, 
     assert POPTYPE_YLABELS["elpop"] in labels
 
 
+def test_estimator_plot_collects_all_subplots_in_one_call(tmp_path: Path) -> None:
+    """Each collect of a remote model is a round trip through ssh, thus a plot must not collect for each subplot.
+
+    The command counts the rows, get_xlist collects its statistics and its unique values, and the subplots share one
+    collect. Before, this plot made 7 collects. On a remote model, each collect took 0.15 s more than its query.
+    """
+    with mock.patch.object(plotestimators, "collect_on_host", wraps=plotestimators.collect_on_host) as mockcollect:
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath,
+            outputfile=tmp_path,
+            timedays=260,
+            x="velocity",
+            plotlist=[["Te"], ["TR", "nne"], [["populations", ["Fe II", "Fe III"]]], [["averageionisation", ["Fe"]]]],
+        )
+
+    assert mockcollect.call_count == 3
+
+
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
 def test_estimator_ionpoptype_default_is_absolute(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
     """A population series with no directive gives an absolute number density."""
