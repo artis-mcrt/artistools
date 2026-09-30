@@ -2060,10 +2060,11 @@ def draw_image_figure(
     isplane = plotaxis1 != "rcyl"
 
     nrows, ncols = get_subplot_grid(len(figuredata.styles), args.subplotsperrow)
-    # the image at each cylindrical radius has half the width of a plane
+    # the image at each cylindrical radius has half the width of a plane. A square plane image with its colour bar is
+    # wider than it is tall, thus a taller row leaves a gap above and below the image
     figscale = args.figscale * SUBPLOT_FRAMESCALE
     panelwidth = (4.6 if isplane else 3.8) * figscale * (getattr(args, "figwidthscale", None) or 1.0)
-    figsize = (panelwidth * ncols, 4.2 * nrows * figscale)
+    figsize = (panelwidth * ncols, (3.5 if isplane else 4.2) * nrows * figscale)
     if fig is None:
         fig = plt.figure(figsize=figsize)
     else:
@@ -2086,7 +2087,9 @@ def draw_image_figure(
         # the grid of a 1D model has 80 000 points, which are slow and large as vector shapes
         image = ax.pcolormesh(edges1, edges2, values, norm=norm, rasterized=True)
         ax.set_label(get_panel_axes_label(style.subplotindex))
-        colourbar = fig.colorbar(image, ax=ax)
+        # an image with an equal aspect is smaller than its layout box. A colour bar in an inset has the height of the
+        # image and stays beside it, and a colour bar that takes space from the box does neither
+        colourbar = fig.colorbar(image, cax=ax.inset_axes((1.04, 0.0, 0.05, 1.0)))
         colourbar.set_label(style.label, fontsize=args.labelfontsize)
         # an empty cell has no value, and black sets it apart from the lowest colour of the scale
         ax.set_facecolor("black")
