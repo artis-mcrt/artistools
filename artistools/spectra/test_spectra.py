@@ -2461,6 +2461,74 @@ def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pyt
     assert interactive.get_spectrum_item_text(reference).startswith("Reference: /")
 
 
+def test_interactive_new_first_model_gives_the_time_grid() -> None:
+    """A new order of the models gives the time controls the timesteps of the new first model.
+
+    A snapped range keeps its middle and its count of timesteps on the new grid. The new first model has longer
+    timesteps, thus the days of the old range contain only 3 of them.
+    """
+    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
+    viewer = make_headless_viewer([str(modelpath_classic_3d), str(classic1dpath), "-t", "4.5-5", "--interactive"])
+    first, last = viewer.get_selection(viewer.values)
+    assert last - first + 1 == 4
+    centre = viewer.values.centre
+
+    viewer.values = interactive.set_runs(viewer, [str(classic1dpath), str(modelpath_classic_3d)], "")
+    assert viewer.runfolders[0] == classic1dpath
+    first, last = viewer.get_selection(viewer.values)
+    assert last - first + 1 == 4
+    assert viewer.values.centre == pytest.approx(centre, rel=0.05)
+    assert viewer.tmids[first] < centre < viewer.tmids[last]
+
+
+def test_interactive_time_grid_of_a_later_model() -> None:
+    """A model that is not first can give its timesteps to the time controls, and the valid times apply to all models.
+
+    plotspectra rejects a time outside the timesteps of each run, thus the valid times stay inside both runs.
+    """
+    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
+    spectra = [str(modelpath_classic_3d), str(classic1dpath)]
+    viewer = make_headless_viewer([*spectra, "-t", "4.5-5", "--interactive"])
+    viewer.values = interactive.set_runs(viewer, spectra, str(classic1dpath))
+    assert viewer.gridfolder == classic1dpath
+    assert viewer.values.spectra == tuple(spectra)
+    first, last = viewer.get_selection(viewer.values)
+    assert last - first + 1 == 4
+    for runtimes in viewer.runtimes.values():
+        assert runtimes.tstart <= viewer.timebounds[0] < viewer.timebounds[1] <= runtimes.tend
+
+    # after the removal of the model, the time controls use the timesteps of the first model again
+    viewer.values = interactive.set_runs(viewer, spectra[:1], viewer.values.timegrid)
+    assert (viewer.values.timegrid, viewer.gridfolder) == ("", modelpath_classic_3d)
+
+
+def test_interactive_series_styles_stay_on_their_spectrum() -> None:
+    """A new order of the spectra keeps each -label and each -color on its spectrum.
+
+    Each option gives its values in the order of the spectra. Thus a spectrum with no value can come before a spectrum
+    with a value. That spectrum then receives the value that gives the same plot as no value.
+    """
+    reference = "sn2011fe_PTF11kly_20120822_norm.txt"
+    oldspectra = (str(modelpath), reference, str(modelpath_classic_3d))
+    rows = (("-label", ("First",)), ("-color", ("red", "blue")))
+    newspectra = (str(modelpath_classic_3d), reference, str(modelpath))
+
+    moved = interactive.move_series_styles(rows, oldspectra, newspectra)
+    classic3dcolour = interactive.get_series_colours(oldspectra, rows)[str(modelpath_classic_3d)]
+    assert dict(moved) == {
+        "-label": ("test-classicmode_3d", "SN2011fe +364d", "First"),
+        "-color": (classic3dcolour, "blue", "red"),
+    }
+    # the values of a removed spectrum go out of the option rows
+    assert dict(interactive.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"-color": ("blue",)}
+
+    viewer = make_headless_viewer([*oldspectra[:2], "-t", "300", "--interactive"])
+    labelled = interactive.set_series_label(viewer.values, reference, "Observed")
+    assert viewertools.get_row_values(labelled.otheroptions, "-label") == ("TEST MODEL", "Observed")
+    unlabelled = interactive.set_series_label(labelled, reference, None)
+    assert viewertools.get_row_values(unlabelled.otheroptions, "-label") == ("TEST MODEL",)
+
+
 def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
     """Each name that the reference field offers names a spectrum that plotspectra finds by that name.
 

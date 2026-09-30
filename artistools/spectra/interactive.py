@@ -9,6 +9,7 @@ import typing as t
 from functools import partial
 from pathlib import Path
 
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
@@ -19,6 +20,8 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_file_metadata
+from artistools.misc import get_model_name
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
@@ -30,6 +33,7 @@ from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.packets.core import has_packets_files
 from artistools.plottools import ExponentLabelFormatter
+from artistools.plottools import get_series_colors
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
@@ -75,6 +79,7 @@ from artistools.viewertools import get_new_figwidthscale
 from artistools.viewertools import get_option_row_tokens
 from artistools.viewertools import get_option_tokens
 from artistools.viewertools import get_python_call
+from artistools.viewertools import get_recent_models
 from artistools.viewertools import get_row_values
 from artistools.viewertools import get_short_number
 from artistools.viewertools import make_central_splitter
@@ -249,6 +254,9 @@ class ControlValues:
     fixedionlist: tuple[str, ...]
     # the paths of the ARTIS models and the reference spectra, in the order of the command
     spectra: tuple[str, ...]
+    # the path of the ARTIS model that gives the timesteps of the time controls, or "" for the first model. The
+    # command gives days, thus the choice is not in the command
+    timegrid: str
     figwidthscale: float
     # the resolution of a PNG file (-dpi), or None for the default of the command
     dpi: int | None
@@ -335,6 +343,42 @@ def has_gamma_spectrum(runfolders: "Sequence[Path]") -> bool:
     return all(
         firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None for runfolder in runfolders
     ) or all(has_packets_files(runfolder) for runfolder in runfolders)
+
+
+class RunTimes(t.NamedTuple):
+    """The times of the timesteps of a run [d], and the times that plotspectra accepts for the run [d]."""
+
+    tstart: float
+    tend: float
+    validstart: float
+    validend: float
+
+
+def get_run_times(runfolder: Path, *, plotinvalidpart: bool) -> RunTimes:
+    """Return the times of the timesteps of a run, and the times inside them that plotspectra accepts.
+
+    plotspectra accepts only the arrival times at which light from the whole model reaches the observer, unless the
+    command gives --plotinvalidpart.
+    """
+    tstart = get_timestep_times(runfolder, loc="start")[0]
+    tend = get_timestep_times(runfolder, loc="end")[-1]
+    validstart, validend = tstart, tend
+    if not plotinvalidpart:
+        with contextlib.suppress(FileNotFoundError):
+            _, arrivalstart, arrivalend = get_escaped_arrivalrange(runfolder)
+            if arrivalstart is not None:
+                validstart = max(validstart, float(arrivalstart))
+            if arrivalend is not None:
+                validend = min(validend, float(arrivalend))
+    return RunTimes(tstart=tstart, tend=tend, validstart=validstart, validend=validend)
+
+
+def get_run_times_text(runtimes: RunTimes) -> str:
+    """Return the times of a run for the tooltip of its row in the list of spectra."""
+    text = f"Timesteps from {runtimes.tstart:.4g} to {runtimes.tend:.4g} d."
+    if (runtimes.validstart, runtimes.validend) != (runtimes.tstart, runtimes.tend):
+        text += f" The escaped packets give valid times from {runtimes.validstart:.4g} to {runtimes.validend:.4g} d."
+    return text
 
 
 def get_direction_kinds(runfolder: Path) -> list[str]:
@@ -682,14 +726,16 @@ class SpectrumViewer:
             usedegrees=bool(args.usedegrees),
             fixedionlist=tuple(args.fixedionlist or ()),
             spectra=tuple(startpaths) or DEFAULT_SPECTRA,
+            timegrid="",
             figwidthscale=args.figwidthscale,
             dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
             otheroptions=otheroptions,
         )
         self.values = self.clamp_time(values) if values.notimeclamp else self.snap(values, *self.get_selection(values))
-        # the list of spectra of the runs of load_runs. After a change of the list, e.g. Add Model or Undo, load_runs
-        # reads the runs again. The paths of the command give the same runs as the list of the values
-        self.runspectra = self.values.spectra
+        # the list of spectra and the time grid of the runs of load_runs. After a change of the list, e.g. Add Model
+        # or Undo, load_runs reads the runs again. At the start, the runs of the command are the runs of the values,
+        # thus load_runs does not read them again
+        self.runkey = (self.values.spectra, self.values.timegrid)
 
         self.fig = fig
         self.axes: npt.NDArray[t.Any] = np.empty(0, dtype=object)
@@ -703,28 +749,29 @@ class SpectrumViewer:
         # the readout of the window reads the contributions of an emission plot from this frame
         self.dfalldata = pl.DataFrame()
 
-    def load_runs(self, spectra: "Sequence[str | Path]") -> None:
+    def load_runs(self, spectra: "Sequence[str | Path]", timegrid: str = "") -> None:
         """Read the timesteps of the ARTIS runs of the spectra, and the times that are valid for all the runs.
 
-        The time controls take the timesteps of the first run. plotspectra rejects a time outside the arrival times of
-        the escaped packets of each run. Thus the controls stay inside the times that are valid for all the runs. With
-        --plotinvalidpart, plotspectra accepts all times. A reference spectrum has no run.
+        The time controls take the timesteps of the run of timegrid, or of the first run if timegrid names no model.
+        plotspectra rejects a time outside the timesteps of a run, and a time outside the arrival times of the escaped
+        packets of a run. Thus the controls stay inside the times that are valid for all the runs. With
+        --plotinvalidpart, plotspectra accepts all the arrival times. A reference spectrum has no run.
         """
         runfolders = get_artis_run_folders([Path(path) for path in spectra])
-        tmids = get_timestep_times(runfolders[0], loc="mid")
-        tstarts = get_timestep_times(runfolders[0], loc="start")
-        tends = get_timestep_times(runfolders[0], loc="end")
+        gridfolder = next(iter(get_artis_run_folders([Path(timegrid)] if timegrid else [])), runfolders[0])
+        tmids = get_timestep_times(gridfolder, loc="mid")
+        tstarts = get_timestep_times(gridfolder, loc="start")
+        tends = get_timestep_times(gridfolder, loc="end")
         timebounds = [tstarts[0], tends[-1]]
-        if not self.args.plotinvalidpart:
-            for runfolder in runfolders:
-                with contextlib.suppress(FileNotFoundError):
-                    _, validstart, validend = get_escaped_arrivalrange(runfolder)
-                    if validstart is not None:
-                        timebounds[0] = max(timebounds[0], float(validstart))
-                    if validend is not None:
-                        timebounds[1] = min(timebounds[1], float(validend))
-        self.runfolders, self.tmids, self.tstarts, self.tends = runfolders, tmids, tstarts, tends
-        self.twidths = get_timestep_times(runfolders[0], loc="delta")
+        self.runtimes: dict[str, RunTimes] = {}
+        for path in spectra:
+            for runfolder in get_artis_run_folders([Path(path)]):
+                runtimes = get_run_times(runfolder, plotinvalidpart=bool(self.args.plotinvalidpart))
+                self.runtimes[str(path)] = runtimes
+                timebounds = [max(timebounds[0], runtimes.validstart), min(timebounds[1], runtimes.validend)]
+        self.runfolders, self.gridfolder = runfolders, gridfolder
+        self.tmids, self.tstarts, self.tends = tmids, tstarts, tends
+        self.twidths = get_timestep_times(gridfolder, loc="delta")
         # the Δ ln t of a logarithmic grid with the same start, end, and count of timesteps. A constant grid or a
         # hybrid grid of ARTIS has a different Δ ln t in each timestep, and the width mode "dlogt" starts with this one
         self.dlogt = float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}")
@@ -737,7 +784,7 @@ class SpectrumViewer:
         self.hasgammaspectrum = has_gamma_spectrum(runfolders)
         # the direction controls read the first run, e.g. for the observers of -plotvspecpol
         self.directionkinds = get_direction_kinds(runfolders[0])
-        self.runspectra = tuple(str(path) for path in spectra)
+        self.runkey = (tuple(str(path) for path in spectra), timegrid)
 
     def get_selection(self, values: ControlValues) -> tuple[int, int]:
         """Return the first and the last valid timestep with a middle in the time range of the values.
@@ -846,7 +893,7 @@ class SpectrumViewer:
         plottokens = self.get_plot_tokens()
         timedays = plottokens[plottokens.index("-t") + 1]
         timestepmin, timestepmax, daysmin, daysmax = get_time_range(
-            self.runfolders[0], timedays_range_str=timedays, clamp_to_timesteps=not self.values.notimeclamp
+            self.gridfolder, timedays_range_str=timedays, clamp_to_timesteps=not self.values.notimeclamp
         )
         return get_time_range_text(timestepmin, timestepmax, daysmin, daysmax, clamped=not self.values.notimeclamp)
 
@@ -1032,6 +1079,119 @@ class SpectrumViewer:
         return "   ".join(parts)
 
 
+# the options that give one value for each spectrum, in the order of the spectra
+SERIES_STYLE_FLAGS: t.Final = ("-label", "-color", "-linestyle", "-linewidth", "-linealpha", "-dashes")
+
+
+def get_series_name(path: str) -> str:
+    """Return the legend name of a spectrum that has no -label, with no time in the name."""
+    if path_is_reference_spectrum(path):
+        filepath = find_reference_spectrum_file_or_none(path)
+        metadata = get_file_metadata(filepath) if filepath is not None else {}
+        return str(metadata.get("label", Path(path).name))
+    return get_model_name(path)
+
+
+def get_series_colours(spectra: "Sequence[str]", rows: OptionRows) -> dict[str, str]:
+    """Return the colour of the plot of each spectrum, as plotspectra gives it."""
+    isreference = [path_is_reference_spectrum(path) for path in spectra]
+    colours = get_series_colors(isreference, get_row_values(rows, "-color") or ())
+    return dict(zip(spectra, colours, strict=True))
+
+
+def get_default_series_style(flag: str, path: str, colour: str) -> str:
+    """Return the value of a series style option that gives the same plot as no value for the spectrum."""
+    match flag:
+        case "-label":
+            return get_series_name(path)
+        case "-color":
+            return colour
+        case "-linestyle":
+            return "-"
+        case "-linewidth":
+            return "1.1" if path_is_reference_spectrum(path) else "1.3"
+        case "-linealpha":
+            return "1"
+        case _:
+            # a dash of 1 and a gap of 0 is a solid line
+            return "1,0"
+
+
+def fill_series_values(
+    flag: str, values: "Sequence[str | None]", spectra: "Sequence[str]", colours: dict[str, str]
+) -> tuple[str, ...] | None:
+    """Return the values of a series style option for the spectra, or None for no option.
+
+    The option gives its values in the order of the spectra. Thus a spectrum with no value can come before a spectrum
+    with a value. That spectrum then receives the value that gives the same plot as no value.
+    """
+    values = list(values)
+    while values and values[-1] is None:
+        values.pop()
+    if not values:
+        return None
+    return tuple(
+        value if value is not None else get_default_series_style(flag, path, colours.get(path, "k"))
+        for path, value in zip(spectra, values, strict=False)
+    )
+
+
+def move_series_styles(rows: OptionRows, oldspectra: "Sequence[str]", newspectra: "Sequence[str]") -> OptionRows:
+    """Return the option rows with the value of each series style option on the same spectrum in the new list.
+
+    Thus a -label stays on its spectrum when the order changes. The values of a removed spectrum go out of the option rows.
+    """
+    colours = get_series_colours(oldspectra, rows)
+    changes: dict[str, tuple[str, ...] | None] = {}
+    for flag in SERIES_STYLE_FLAGS:
+        if not (values := get_row_values(rows, flag)):
+            continue
+        byspectrum = dict(zip(oldspectra, values, strict=False))
+        newvalues = fill_series_values(flag, [byspectrum.get(path) for path in newspectra], newspectra, colours)
+        if newvalues != values:
+            changes[flag] = newvalues
+    return set_row_values(rows, changes)
+
+
+def set_series_label(values: ControlValues, path: str, label: str | None) -> ControlValues:
+    """Return the values with a -label for one spectrum, or with no -label for it if label is None."""
+    labels: list[str | None] = list(get_row_values(values.otheroptions, "-label") or ())
+    labels += [None] * (len(values.spectra) - len(labels))
+    labels[values.spectra.index(path)] = label
+    colours = get_series_colours(values.spectra, values.otheroptions)
+    newlabels = fill_series_values("-label", labels, values.spectra, colours)
+    return dc.replace(values, otheroptions=set_row_values(values.otheroptions, {"-label": newlabels}))
+
+
+def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) -> ControlValues:
+    """Read the runs of a list of spectra, and return the values of the list with a time that the runs have.
+
+    timegrid names the model that gives the timesteps of the time controls, or "" for the first model. A new time
+    grid, e.g. after a change of the order, keeps the middle and the count of timesteps of a snapped range. A
+    continuous range keeps its days. Each series style option, e.g. -label, stays on its spectrum.
+    """
+    first, last = viewer.get_selection(viewer.values)
+    if timegrid not in spectra:
+        timegrid = ""
+    viewer.load_runs(spectra, timegrid)
+    values = dc.replace(
+        viewer.values,
+        spectra=tuple(spectra),
+        timegrid=timegrid,
+        otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.spectra, spectra),
+    )
+    # a new first run can have no observers of the virtual packets, thus the kind of viewing direction can go
+    if values.directionkind not in viewer.directionkinds:
+        values = dc.replace(values, directionkind="", directionbins=())
+    if values.notimeclamp:
+        return viewer.clamp_time(values)
+    count = min(last - first + 1, len(viewer.validtimesteps))
+    start = get_nearest_range_start(
+        [viewer.tmids[timestep] for timestep in viewer.validtimesteps], values.centre, count
+    )
+    return viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count - 1])
+
+
 def get_icon_curve() -> "npt.NDArray[np.float64]":
     """Return the curve of the icon of the viewer, which is a spectrum with two absorption lines."""
     xvalues = np.linspace(0.1, 0.9, 200)
@@ -1044,6 +1204,8 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
     ("<b>Home</b>, <b>End</b>", "Move the time to the first or the last valid timestep"),
     ("<b>Alt-Up</b>, <b>Alt-Down</b> in the list of spectra", "Move the spectrum up or down (Option on a Mac)"),
+    ("<b>Double-click</b> a spectrum", "Give the spectrum a -label"),
+    ("<b>Right-click</b> a spectrum", "Move it, use its timesteps, copy its path, or open its folder"),
     ("<b>Drag</b> across the plot", "Select the x range"),
     ("<b>Double-click</b> the plot", "Get the default x range"),
 )
@@ -1168,6 +1330,25 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         timegrid.addWidget(edit, row, 2)
     timegrid.addWidget(widthmodebox, 2, 0)
     timegrid.addLayout(make_play_row([previousbutton, nextbutton], timestepslabel, fpsbox, playbutton), 3, 0, 1, -1)
+    # the item data of each choice is the value of ControlValues.timegrid
+    timegridbox = QtWidgets.QComboBox()
+    timegridbox.setToolTip(
+        "The ARTIS model that gives the timesteps of the time controls. The command gives the time in days, thus"
+        ' this choice does not change the command. "First model" is the first ARTIS model in the list of spectra,'
+        " and it changes when the order changes"
+    )
+    timegridbox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    timegridbox.setMinimumContentsLength(12)
+    validtimeslabel = QtWidgets.QLabel()
+    validtimeslabel.setToolTip(
+        "The times that plotspectra accepts for all the models of the plot. Each time is inside the timesteps and"
+        " inside the arrival times of the escaped packets of each model. The time controls stay inside these times"
+    )
+    gridrow = QtWidgets.QHBoxLayout()
+    gridrow.addWidget(QtWidgets.QLabel("Timesteps of:"))
+    gridrow.addWidget(timegridbox, 1)
+    gridrow.addWidget(validtimeslabel)
+    timegrid.addLayout(gridrow, 4, 0, 1, -1)
 
     xheader, xgrid = add_section(panellayout, "", key="x axis")
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
@@ -1358,11 +1539,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     spectralist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     spectralist.setToolTip(
         "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
-        " -label and the style of each series. Drag a row, or press Alt-Up or Alt-Down (Option on a Mac), to"
-        " change the order. The command gives a file from the reference data of artistools by its name alone."
+        " -label and the style of each series. The time controls read the timesteps of the first ARTIS model (⏱)."
+        " Click ▲ or ▼, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the order. The command"
+        " gives a file from the reference data of artistools by its name alone."
     )
-    addmodelbutton = QtWidgets.QPushButton("Add Model…")
-    addmodelbutton.setToolTip("Add the folder of an ARTIS run")
+    # a click opens the dialog, and the arrow opens the menu of the recent models
+    addmodelbutton = QtWidgets.QToolButton()
+    addmodelbutton.setText("Add Model…")
+    addmodelbutton.setToolTip("Add the folder of an ARTIS model. The arrow shows the recent models")
+    addmodelbutton.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+    recentmodelsmenu = QtWidgets.QMenu(addmodelbutton)
+    addmodelbutton.setMenu(recentmodelsmenu)
     referenceedit = QtWidgets.QLineEdit()
     referenceedit.setPlaceholderText("Add a reference spectrum, e.g. AT2017gfo")
     referenceedit.setToolTip(
@@ -1436,6 +1623,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         timeslider,
         widthslider,
         widthmodebox,
+        timegridbox,
         xrangeslider,
         xunitbox,
         yscalebox,
@@ -1536,8 +1724,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     # the time sliders have one position for each valid timestep, or SLIDER_STEPS positions for a continuous time
     slidermode: bool | None = None
-    # the spectra of the runs that give the ranges of the time controls
-    shownruns = viewer.runspectra
+    # the spectra and the time grid of the runs that give the ranges of the time controls
+    shownruns: tuple[tuple[str, ...], str] | None = None
 
     def show_run_ranges() -> None:
         """Set the ranges of the time controls and the direction bins from the runs of the plot, e.g. after Add Model.
@@ -1553,7 +1741,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         slidermode, shownchoices = None, None
         directionchoices.clear()
         show_direction_kinds()
-        shownruns = viewer.runspectra
+        shownruns = viewer.runkey
+        timegridbox.clear()
+        firstmodel = viewer.runfolders[0]
+        timegridbox.addItem(f"First model ({get_model_name(firstmodel)})", "")
+        # two models can have one name, thus each choice gives the place of the model in the list of spectra
+        for path in viewer.runtimes:
+            timegridbox.addItem(f"{viewer.values.spectra.index(path) + 1}. {get_model_name(path)}", path)
+            timegridbox.setItemData(
+                timegridbox.count() - 1, get_run_times_text(viewer.runtimes[path]), QtCore.Qt.ItemDataRole.ToolTipRole
+            )
+        low, high = viewer.timebounds
+        validtimeslabel.setText(f"valid {low:.4g} to {high:.4g} d")
 
     def set_time_mode() -> None:
         nonlocal slidermode
@@ -1641,29 +1840,104 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             checkbox.setEnabled(reason is None)
             checkbox.setToolTip(reason or helptexts.get(dest, ""))
 
-    def show_spectra(spectra: "Sequence[str]") -> None:
-        """Show a row for each spectrum, with a ✕ at the right end of the row that removes the spectrum."""
+    # the spectra, the time grid, and the series styles of the rows that show_spectra made. A drag moves the rows in
+    # the list, and the rows then show old numbers and old buttons until show_spectra makes them again
+    shownspectra: tuple[t.Any, ...] | None = None
+
+    def get_spectra_key(values: ControlValues) -> tuple[t.Any, ...]:
+        """Return the parts of the values that the rows of the list of spectra show."""
+        styles = tuple(get_row_values(values.otheroptions, flag) for flag in SERIES_STYLE_FLAGS)
+        return (values.spectra, values.timegrid, styles)
+
+    def add_row_actions(row: QtWidgets.QWidget, index: int, path: str, gridpath: str) -> None:
+        """Give the row of a spectrum a context menu. The keyboard and VoiceOver can then also reach the actions."""
+        spectra = viewer.values.spectra
+        ismodel = path in viewer.runtimes
+        islocal = not is_remote_path(path)
+        row.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
+        for text, enabled, action in (
+            ("Move to Top", index > 0, partial(on_move_row, index, -index)),
+            ("Move to Bottom", index < len(spectra) - 1, partial(on_move_row, index, len(spectra) - 1 - index)),
+            ("Use for the Time Controls", ismodel and path != gridpath, partial(on_use_timegrid, path)),
+            ("Set Label…", True, partial(on_edit_label, path)),
+            ("Copy Path", True, partial(on_copy_path, path)),
+            ("Open Folder", islocal, partial(on_open_spectrum_folder, path)),
+            ("Remove", path not in viewer.runtimes or len(viewer.runtimes) > 1, partial(on_remove_spectrum, path)),
+        ):
+            rowaction = QtGui.QAction(text, row)
+            rowaction.setEnabled(enabled)
+            # the new list replaces this row, thus each action waits until the menu closes
+            rowaction.triggered.connect(partial(QtCore.QTimer.singleShot, 0, window, action))
+            row.addAction(rowaction)
+
+    def show_spectra(values: ControlValues) -> None:
+        """Show a row for each spectrum, with its colour, its name, and buttons that move it and remove it.
+
+        The row of the model that gives the timesteps of the time controls shows a mark. The tooltip of the row of a
+        model gives the times of the model.
+        """
+        nonlocal shownspectra
+        spectra = values.spectra
         spectralist.clear()
-        models = [path for path in spectra if get_artis_run_folders([Path(path)])]
+        models = list(viewer.runtimes)
+        gridpath = values.timegrid or next(iter(models), "")
+        colours = get_series_colours(spectra, values.otheroptions)
+        labels = get_row_values(values.otheroptions, "-label") or ()
         rowheight = spectralist.fontMetrics().lineSpacing() + 4
-        for path in spectra:
+        for index, path in enumerate(spectra):
             item = QtWidgets.QListWidgetItem()
             item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
-            name = Path(path).name or path
-            removebutton = make_glyph_button("✕", f"Remove {name} from the plot", f"Remove {name}")
-            if models == [path]:
-                removebutton.setEnabled(False)
-                removebutton.setToolTip("The plot needs one ARTIS model at least. Add a different model first")
-            # the new list replaces this row, thus the removal waits until the click ends
-            removebutton.clicked.connect(
-                partial(QtCore.QTimer.singleShot, 0, window, partial(on_remove_spectrum, path))
-            )
+            name = labels[index] if index < len(labels) else get_series_name(path)
             row = QtWidgets.QWidget()
+            itemtext = get_spectrum_item_text(path)
+            row.setToolTip(
+                f"{itemtext}\n{get_run_times_text(viewer.runtimes[path])}" if path in viewer.runtimes else itemtext
+            )
             rowlayout = QtWidgets.QHBoxLayout(row)
-            # a long path shows its start and its end, and the width of the box sets the length
             rowlayout.setContentsMargins(4, 0, 2, 0)
-            rowlayout.addWidget(make_elided_label(get_spectrum_item_text(path)), 1)
-            rowlayout.addWidget(removebutton)
+            rowlayout.setSpacing(2)
+            rowlayout.addWidget(QtWidgets.QLabel(f"<b>{index + 1}</b>"))
+            swatch = QtWidgets.QLabel("━━")
+            swatch.setStyleSheet(f"color: {mplcolors.to_hex(colours[path])};")
+            swatch.setToolTip("The colour of the spectrum in the plot")
+            rowlayout.addWidget(swatch)
+            namelabel = QtWidgets.QLabel(name)
+            namelabel.setToolTip(
+                f"The -label of the spectrum: {name}. Double-click the row to change it"
+                if index < len(labels)
+                else f"The name of the spectrum in the legend: {name}. Double-click the row to give it a -label"
+            )
+            rowlayout.addWidget(namelabel)
+            rowlayout.addSpacing(6)
+            # a long path shows its start and its end, and the width of the box sets the length
+            pathlabel = make_elided_label(itemtext)
+            pathlabel.setEnabled(False)
+            rowlayout.addWidget(pathlabel, 1)
+            if path == gridpath:
+                timemark = QtWidgets.QLabel("⏱")
+                timemark.setToolTip(
+                    "The time controls read the timesteps of this model. To use a different model, select it in the"
+                    ' "Timesteps of" box or in the context menu of its row'
+                )
+                rowlayout.addWidget(timemark)
+            # the new list replaces this row, thus each action of a button waits until the click ends
+            for glyph, tooltip, enabled, action in (
+                ("▲", f"Move {name} up (Alt-Up)", index > 0, partial(on_move_row, index, -1)),
+                ("▼", f"Move {name} down (Alt-Down)", index < len(spectra) - 1, partial(on_move_row, index, 1)),
+                ("✕", f"Remove {name} from the plot", models != [path], partial(on_remove_spectrum, path)),
+            ):
+                button = make_glyph_button(glyph, tooltip, tooltip)
+                button.setEnabled(enabled)
+                if glyph == "✕" and not enabled:
+                    button.setToolTip("The plot needs one ARTIS model at least. Add a different model first")
+                button.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, action))
+                rowlayout.addWidget(button)
+            grip = QtWidgets.QLabel("≡")
+            grip.setEnabled(False)
+            grip.setToolTip("Drag the row to move the spectrum")
+            grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+            rowlayout.addWidget(grip)
+            add_row_actions(row, index, path, gridpath)
             rowheight = max(rowheight, row.sizeHint().height())
             spectralist.addItem(item)
             spectralist.setItemWidget(item, row)
@@ -1673,21 +1947,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the list has the height of its spectra, from 2 to 4 rows, and a longer list scrolls
         shownrows = min(max(spectralist.count(), 2), 4)
         spectralist.setFixedHeight(shownrows * rowheight + 2 * spectralist.frameWidth() + 4)
+        shownspectra = get_spectra_key(values)
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
         blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
         values = viewer.values
         # Undo or a rejected change can give a different list of spectra, and its runs have different times
-        if values.spectra != viewer.runspectra:
-            viewer.load_runs(values.spectra)
-        if viewer.runspectra != shownruns:
+        if (values.spectra, values.timegrid) != viewer.runkey:
+            viewer.load_runs(values.spectra, values.timegrid)
+        if viewer.runkey != shownruns:
             show_run_ranges()
         if (values.xunit, values.gamma) != rangesunit:
             set_xunit_ranges()
         if values.notimeclamp != slidermode:
             set_time_mode()
         modesegments.setCurrentIndex(1 if values.notimeclamp else 0)
+        timegridbox.setCurrentIndex(max(timegridbox.findData(values.timegrid), 0))
         packetbox.setCurrentIndex(1 if values.gamma else 0)
         # the current mode stays available, thus the user can switch back from a plot that failed
         if gammaitem.isEnabled() != (gammaavailable := viewer.hasgammaspectrum or values.gamma):
@@ -1766,11 +2042,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             QtCore.QTimer.singleShot(0, window, partial(directionbox.ensureWidgetVisible, firstcheck))
         # all the directions have no bin to select, thus the list of the bins shows only for a kind of direction
         directionbox.setVisible(bool(values.directionkind))
-        shownspectra = [
-            spectralist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(spectralist.count())
-        ]
-        if shownspectra != list(values.spectra):
-            show_spectra(values.spectra)
+        if shownspectra != get_spectra_key(values):
+            show_spectra(values)
         set_option_rows(values.otheroptions)
         set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
         set_spin_value(
@@ -1853,6 +2126,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         count = last - first + 1
         start = min(max(position - (count - 1) // 2, 0), nvalid - count)
         apply(viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count - 1]))
+
+    def on_timegrid() -> None:
+        timegridpath: str = timegridbox.currentData()
+        if timegridpath != viewer.values.timegrid:
+            apply(set_runs(viewer, viewer.values.spectra, timegridpath))
 
     def on_widthmode() -> None:
         values = viewer.values
@@ -2106,12 +2384,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         The runs of the new list can cover a shorter time, e.g. after Add Model, thus the time moves inside it.
         """
-        viewer.load_runs(spectra)
-        values = dc.replace(viewer.values, spectra=tuple(spectra))
-        # a new first run can lack a kind of viewing direction, e.g. the observers of the virtual packets
-        if values.directionkind not in viewer.directionkinds:
-            values = dc.replace(values, directionkind="", directionbins=())
-        apply(viewer.clamp_time(values) if values.notimeclamp else viewer.snap(values, *viewer.get_selection(values)))
+        apply(set_runs(viewer, spectra, viewer.values.timegrid))
 
     def add_spectra(paths: "Sequence[str]") -> None:
         """Add each spectrum whose full path the list does not hold yet, e.g. "." for the working folder.
@@ -2143,7 +2416,22 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if not get_artis_run_folders([Path(folder)]):
             show_error(f"{folder} is not the folder of an ARTIS run, which holds input.txt and spec.out")
             return
+        add_recent_model(folder)
         add_spectra([folder])
+
+    def show_recent_models() -> None:
+        """Fill the menu of Add Model with the recent models that the list does not hold."""
+        recentmodelsmenu.clear()
+        shown = {get_spectrum_path(path) for path in viewer.values.spectra}
+        folders = [folder for folder in get_recent_models() if get_spectrum_path(folder) not in shown]
+        for folder in folders:
+            action = recentmodelsmenu.addAction(Path(folder).name)
+            action.setToolTip(folder)
+            # a test of a remote folder starts ssh, thus the menu enables each remote model and does not test its folder
+            action.setEnabled(is_remote_path(folder) or Path(folder).is_dir())
+            action.triggered.connect(partial(add_spectra, [folder]))
+        if not folders:
+            recentmodelsmenu.addAction("No Recent Models").setEnabled(False)
 
     def on_open_reference() -> None:
         filenames, _ = QtWidgets.QFileDialog.getOpenFileNames(window, "Add reference spectra", str(referencefolder))
@@ -2164,21 +2452,70 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         QtCore.QTimer.singleShot(0, referenceedit.clear)
         add_reference_name(name)
 
-    def on_spectra_moved() -> None:
-        """Apply the order of the rows after a drag in the list of spectra."""
-        order = [spectralist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(spectralist.count())]
-        if order != list(viewer.values.spectra):
-            apply_spectra(order)
+    def on_spectra_dropped() -> None:
+        """Apply the order of the rows after a drag in the list of spectra, and make the rows again.
 
-    def on_move_spectrum(step: int) -> None:
-        """Move the selected spectrum one row up or down, and keep the selection on it."""
+        Qt can move a dropped row, or it can insert a copy and then remove the source row. Until the removal, the
+        list holds one spectrum two times, thus the function waits for the removal. A copy has no row widget, thus the
+        function makes the rows again. When show_spectra inserts and removes rows, each row has its widget, and the
+        function does nothing.
+        """
+        nonlocal shownspectra
+        items = [spectralist.item(index) for index in range(spectralist.count())]
+        order = [item.data(QtCore.Qt.ItemDataRole.UserRole) for item in items]
+        if sorted(order) != sorted(viewer.values.spectra):
+            return
+        if (
+            shownspectra is not None
+            and tuple(order) == shownspectra[0]
+            and all(spectralist.itemWidget(item) is not None for item in items)
+        ):
+            return
+        # the rows show the numbers and the buttons of the old order, thus None makes show_values call show_spectra
+        shownspectra = None
+        apply_spectra(order)
+
+    def on_move_row(row: int, step: int) -> None:
+        """Move the spectrum of a row one row up or down, and select it."""
         spectra = list(viewer.values.spectra)
-        row = spectralist.currentRow()
         if row < 0 or not 0 <= row + step < len(spectra):
             return
         spectra.insert(row + step, spectra.pop(row))
         apply_spectra(spectra)
         spectralist.setCurrentRow(row + step)
+
+    def on_use_timegrid(path: str) -> None:
+        apply(set_runs(viewer, viewer.values.spectra, path))
+
+    def on_edit_label(path: str) -> None:
+        """Ask for the -label of a spectrum. An empty label gives the name that plotspectra takes with no -label."""
+        labels = get_row_values(viewer.values.otheroptions, "-label") or ()
+        index = viewer.values.spectra.index(path)
+        label, accepted = QtWidgets.QInputDialog.getText(
+            window,
+            "Set Label",
+            f"The label of {get_series_name(path)} in the legend.\nClear the field to use the name of the spectrum.",
+            text=labels[index] if index < len(labels) else "",
+        )
+        if accepted:
+            apply(set_series_label(viewer.values, path, label.strip() or None))
+
+    def on_copy_path(path: str) -> None:
+        copy_text(str(get_spectrum_path(path)))
+        show_status_note(statusbar, "Copied the path")
+
+    def on_open_spectrum_folder(path: str) -> None:
+        """Open the folder of a model, or the folder that holds a reference file, in the file manager."""
+        fullpath = get_spectrum_path(path)
+        folder = fullpath if fullpath.is_dir() else fullpath.parent
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
+
+    def on_spectrum_double_clicked(item: QtWidgets.QListWidgetItem) -> None:
+        on_edit_label(item.data(QtCore.Qt.ItemDataRole.UserRole))
+
+    def on_move_spectrum(step: int) -> None:
+        """Move the selected spectrum one row up or down, e.g. for Alt-Up."""
+        on_move_row(spectralist.currentRow(), step)
 
     def on_remove_spectrum(path: str) -> None:
         spectra = tuple(other for other in viewer.values.spectra if other != path)
@@ -2354,8 +2691,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     directionkindbox.currentIndexChanged.connect(on_direction)
     usedegreescheck.toggled.connect(on_direction)
     addmodelbutton.clicked.connect(on_add_model)
-    # the list moves the row at the end of the drop, thus the new order applies after the drop
-    spectralist.model().rowsMoved.connect(lambda: QtCore.QTimer.singleShot(0, window, on_spectra_moved))
+    recentmodelsmenu.aboutToShow.connect(show_recent_models)
+    timegridbox.currentIndexChanged.connect(on_timegrid)
+    spectralist.itemDoubleClicked.connect(on_spectrum_double_clicked)
+    # the list changes its rows at the end of the drop, thus the new order applies after the drop
+    for rowsignal in (spectralist.model().rowsMoved, spectralist.model().rowsInserted, spectralist.model().rowsRemoved):
+        rowsignal.connect(lambda: QtCore.QTimer.singleShot(0, window, on_spectra_dropped))
     openreferencebutton.clicked.connect(on_open_reference)
     referencecompleter.activated.connect(on_complete_reference)
     referenceedit.returnPressed.connect(lambda: add_reference_name(referenceedit.text()))
