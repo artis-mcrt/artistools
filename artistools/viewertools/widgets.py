@@ -14,20 +14,6 @@ from pathlib import Path
 import numpy as np
 
 from artistools.misc import separate_trailing_folders
-
-if t.TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Collection
-    from collections.abc import Mapping
-    from collections.abc import Sequence
-
-    import matplotlib.figure as mplfig
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-    from PySide6 import QtCore
-    from PySide6 import QtGui
-    from PySide6 import QtWidgets
-
-
 from artistools.viewertools.application import get_bool_setting
 from artistools.viewertools.application import get_float_setting
 from artistools.viewertools.application import get_settings
@@ -38,6 +24,20 @@ from artistools.viewertools.core import get_helptexts
 from artistools.viewertools.core import get_option_kind
 from artistools.viewertools.core import get_table_actions
 from artistools.viewertools.core import OptionRows
+
+if t.TYPE_CHECKING:
+    from collections.abc import Callable
+    from collections.abc import Collection
+    from collections.abc import Mapping
+    from collections.abc import Sequence
+
+    import matplotlib.figure as mplfig
+    import numpy.typing as npt
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
 
 # a section with one of these titles starts closed, because a user needs it less often than the plot controls
 CLOSED_SECTIONS: t.Final = frozenset({"Other options", "Command", "Python"})
@@ -774,7 +774,11 @@ def show_plot_area_state(window: "QtCore.QObject", fig: "mplfig.Figure") -> None
 
 
 def figure_shows_data(fig: "mplfig.Figure") -> bool:
-    """Return True if an axes of the figure shows a point of a line inside its limits, an image, or a collection."""
+    """Return True if an axes of the figure shows a part of a line inside its limits, an image, or a collection.
+
+    A line can cross the frame between two of its points, e.g. a time range between two timesteps. Thus each segment
+    between two points counts if it crosses the frame.
+    """
     for axis in fig.axes:
         if axis.images or axis.collections or axis.patches:
             return True
@@ -787,7 +791,32 @@ def figure_shows_data(fig: "mplfig.Figure") -> bool:
             x, y = points[:, 0], points[:, 1]
             if np.any((x >= xlow) & (x <= xhigh) & (y >= ylow) & (y <= yhigh)):
                 return True
+            if np.any(get_segments_in_box(x, y, (xlow, xhigh, ylow, yhigh))):
+                return True
     return False
+
+
+def get_segments_in_box(
+    x: "npt.NDArray[np.floating]", y: "npt.NDArray[np.floating]", box: tuple[float, float, float, float]
+) -> "npt.NDArray[np.bool_]":
+    """Return for each segment between two neighbouring points whether a part of it is inside the box.
+
+    box gives xlow, xhigh, ylow, and yhigh. The test clips each segment to the box (the Liang-Barsky method). A NaN
+    point breaks a line, thus a segment with a NaN point is not inside.
+    """
+    xlow, xhigh, ylow, yhigh = box
+    xstart, ystart = x[:-1], y[:-1]
+    dx, dy = x[1:] - xstart, y[1:] - ystart
+    isinside = np.isfinite(xstart) & np.isfinite(ystart) & np.isfinite(dx) & np.isfinite(dy)
+    tlow, thigh = np.zeros(len(dx)), np.ones(len(dx))
+    for direction, distance in ((-dx, xstart - xlow), (dx, xhigh - xstart), (-dy, ystart - ylow), (dy, yhigh - ystart)):
+        isparallel = direction == 0
+        isinside &= ~(isparallel & (distance < 0))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio = distance / direction
+        tlow = np.where(~isparallel & (direction < 0), np.maximum(tlow, ratio), tlow)
+        thigh = np.where(~isparallel & (direction > 0), np.minimum(thigh, ratio), thigh)
+    return np.logical_and(isinside, tlow <= thigh)
 
 
 # the time that the banner of a rejected plot stays over the plot. The status bar keeps the message

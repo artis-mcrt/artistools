@@ -12,6 +12,15 @@ from types import MappingProxyType
 from artistools.misc.cliutils import dashes_arg
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import split_remote_path
+from artistools.viewertools.application import add_recent_model
+from artistools.viewertools.application import get_recent_models
+from artistools.viewertools.application import set_drop_handler
+from artistools.viewertools.widgets import copy_text
+from artistools.viewertools.widgets import get_message_colours
+from artistools.viewertools.widgets import make_completer
+from artistools.viewertools.widgets import make_elided_label
+from artistools.viewertools.widgets import make_glyph_button
+from artistools.viewertools.widgets import make_reorder_list
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -22,16 +31,6 @@ if t.TYPE_CHECKING:
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-
-from artistools.viewertools.application import add_recent_model
-from artistools.viewertools.application import get_recent_models
-from artistools.viewertools.application import set_drop_handler
-from artistools.viewertools.widgets import copy_text
-from artistools.viewertools.widgets import get_message_colours
-from artistools.viewertools.widgets import make_completer
-from artistools.viewertools.widgets import make_elided_label
-from artistools.viewertools.widgets import make_glyph_button
-from artistools.viewertools.widgets import make_reorder_list
 
 # the line styles of the dialog of the line properties: the value of -linestyle and the text of the box
 LINESTYLE_CHOICES: t.Final = (("solid", "Solid"), ("dashed", "Dashed"), ("dotted", "Dotted"), ("dashdot", "Dash-dot"))
@@ -131,6 +130,7 @@ def edit_series_properties(
     change is one step, thus Undo reverts all of the dialog. Cancel gives None, and the viewer then shows the values
     from before the dialog.
     """
+    import matplotlib.colors as mplcolors
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
@@ -239,7 +239,12 @@ def edit_series_properties(
         )
 
     def on_colour() -> None:
-        colour = QtWidgets.QColorDialog.getColor(QtGui.QColor(chosencolour[0] or defaultcolour), dialog, "Line colour")
+        # Qt reads no colour name of matplotlib, e.g. "C1" or "tab:orange", thus the dialog takes the hexadecimal form
+        try:
+            startcolour = mplcolors.to_hex(chosencolour[0] or defaultcolour)
+        except ValueError:
+            startcolour = mplcolors.to_hex(defaultcolour)
+        colour = QtWidgets.QColorDialog.getColor(QtGui.QColor(startcolour), dialog, "Line colour")
         if colour.isValid():
             chosencolour[0] = colour.name()
             show_preview()
@@ -257,8 +262,8 @@ def edit_series_properties(
         alphabox.setValue(0.0)
         show_preview()
 
-    def get_changes() -> dict[str, str | None] | None:
-        """Return the value of each option of flags, or None for a bad dash pattern."""
+    def get_widget_values() -> dict[str, str | None] | None:
+        """Return the value of each option of flags that the fields show, or None for a bad dash pattern."""
         try:
             dashes = get_dashes()
         except ValueError:
@@ -272,6 +277,20 @@ def edit_series_properties(
             "-linealpha": format(alphabox.value(), "g") if alphabox.value() else None,
         }
         return {flag: value for flag, value in values.items() if flag in flags}
+
+    def get_changes() -> dict[str, str | None] | None:
+        """Return the value of each option of flags, or None for a bad dash pattern.
+
+        A field cannot show each value of the command, e.g. a width above the range of its box, an empty label that
+        hides the series, or a line style that the box does not list. Thus an option keeps its value of the command
+        until the user changes its field.
+        """
+        if (widgetvalues := get_widget_values()) is None:
+            return None
+        return {
+            flag: value if value != openwidgetvalues.get(flag) else style.get(flag)
+            for flag, value in widgetvalues.items()
+        }
 
     # the values that the plot shows, and whether a change of the dialog made the step of Undo
     shownchanges: list[dict[str, str | None] | None] = [None]
@@ -319,6 +338,7 @@ def edit_series_properties(
     labeledit.textChanged.connect(previewtimer.start)
     show_preview()
     previewtimer.stop()
+    openwidgetvalues = get_widget_values() or {}
     shownchanges[0] = get_changes()
 
     accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
@@ -345,7 +365,8 @@ def get_short_item_text(itemtext: str) -> str:
     return f"{kind}: {name}"
 
 
-# the object name of a button of a row of the series list, which shows only under the pointer or if the list selects the row
+# the object name of a button of a row of the series list, which shows only under the pointer or when the list selects
+# the row
 HOVER_WIDGET_NAME: t.Final = "rowhoverwidget"
 
 
@@ -445,7 +466,7 @@ def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str, width: int) -> "
 
 
 def get_menu_parent_text(folder: str) -> str:
-    """Return the parent folder of a model for a menu, e.g. "vae26:~/short" for the remote model "vae26:~/short/mymodel".
+    """Return the parent folder of a model for a menu, e.g. "vae26:~/short" for the model "vae26:~/short/mymodel".
 
     The first line of the menu item gives the name of the model folder, thus the second line leaves it out. A remote
     path gives its host and "~" for its home folder. The host gives its home folder only through ssh, thus the home
@@ -592,12 +613,14 @@ def add_series_list(
     """Add the list of the series of a viewer, with the row that adds a model or a file of reference data.
 
     Each row shows the number, the image of the line, the name, and the path of a series, and buttons that move it
-    and remove it. A double-click opens the line properties of the series, and the context menu of a row gives each action. A drag
-    or Alt-Up and Alt-Down change the order. A folder or a file that the user drops on the window adds a series.
+    and remove it. A double-click opens the line properties of the series, and the context menu of a row gives each
+    action. A drag or Alt-Up and Alt-Down change the order. A folder or a file that the user drops on the window adds a
+    series.
 
     Return the function that shows the rows. It takes a key of the parts of the values that the rows show, and it
     makes the rows again only for a new key, because each row reads the name of its series.
     """
+    import shiboken6
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
@@ -736,7 +759,8 @@ def add_series_list(
         rowlayout.addWidget(grip)
         make_hover_widget(grip)
         # the context menu gives each action, thus the keyboard and VoiceOver can also reach them
-        row.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
+        row.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        row.customContextMenuRequested.connect(partial(on_row_menu, row))
         for text, enabled, action in (
             ("Move to Top", index > 0, partial(move_row, index, -index)),
             ("Move to Bottom", index < count - 1, partial(move_row, index, count - 1 - index)),
@@ -752,6 +776,22 @@ def add_series_list(
             rowaction.triggered.connect(partial(QtCore.QTimer.singleShot, 0, window, action))
             row.addAction(rowaction)
         return row
+
+    def on_row_menu(row: QtWidgets.QWidget, position: QtCore.QPoint) -> None:
+        """Show the menu of a row after the event of the row ends.
+
+        A plot that ends while the menu is open can make the rows again, which deletes the row. A menu of the row ran
+        in the event of the row, thus Qt deleted a row that was still in use and the process stopped. The menu of the
+        window holds the actions of the row, and Qt removes the actions of a deleted row from the menu.
+        """
+        QtCore.QTimer.singleShot(0, window, partial(show_row_menu, list(row.actions()), row.mapToGlobal(position)))
+
+    def show_row_menu(rowactions: "list[QtGui.QAction]", globalposition: QtCore.QPoint) -> None:
+        menu = QtWidgets.QMenu(window)
+        menu.addActions([action for action in rowactions if shiboken6.isValid(action)])
+        menu.exec(globalposition)
+        # the window is the parent of the menu, thus without this the window keeps each menu until it closes
+        menu.deleteLater()
 
     def show_rows(key: object, make_rows: "Callable[[], Sequence[SeriesRow]]") -> None:
         paths = tuple(actions.get_paths())
@@ -819,7 +859,8 @@ def add_series_list(
         """Fill the menu of Add Model with the recent models that the list does not hold."""
         recentmodelsmenu.clear()
         fullpaths = {actions.get_full_path(path) for path in actions.get_paths()}
-        # a test of a remote folder starts ssh, thus the menu keeps each remote model and leaves out a missing local folder
+        # a test of a remote folder starts ssh, thus the menu keeps each remote model and leaves out a missing local
+        # folder
         folders = [
             folder
             for folder in get_recent_models()

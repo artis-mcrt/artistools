@@ -4,15 +4,6 @@ import typing as t
 from functools import partial
 from pathlib import Path
 
-if t.TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Mapping
-    from collections.abc import Sequence
-
-    from PySide6 import QtCore
-    from PySide6 import QtWidgets
-
-
 from artistools.viewertools.core import get_direction_choices
 from artistools.viewertools.core import get_direction_kinds
 from artistools.viewertools.core import get_short_number
@@ -25,9 +16,17 @@ from artistools.viewertools.widgets import make_slider
 from artistools.viewertools.widgets import make_step_button
 from artistools.viewertools.widgets import set_edit_text
 
-# each kind of viewing direction: the value of the kind, the text of its choice, and the option that gives its help
-# the kinds of the kind box: the direction bins, and the observers of the virtual packets. An average over the phi angle
-# or the theta angle is a check box, because it changes the bins of the direction bins
+if t.TYPE_CHECKING:
+    from collections.abc import Callable
+    from collections.abc import Mapping
+    from collections.abc import Sequence
+
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+
+# the value, the text, and the option of the help of each kind of the kind box. An average over the phi angle or the
+# theta angle is a check box, because it changes the bins of the direction bins
 DIRECTION_KINDS: t.Final = (
     ("bin", "Direction bins", "plotviewingangle"),
     ("vpkt", "Virtual packet observers", "plotvspecpol"),
@@ -84,7 +83,8 @@ def get_new_direction_choice(
             if ALL_DIRECTIONS_BIN in newbins
             else tuple(dirbin for dirbin in bins if dirbin != ALL_DIRECTIONS_BIN)
         )
-    if bins == (ALL_DIRECTIONS_BIN,):
+    # no bin left, e.g. the average alone with no new observer, is all the directions
+    if bins in {(), (ALL_DIRECTIONS_BIN,)}:
         return DirectionChoice(kind="", bins=(), usedegrees=usedegrees)
     return DirectionChoice(kind=kind, bins=bins, usedegrees=usedegrees)
 
@@ -96,15 +96,15 @@ def add_direction_section(
     get_choice: "Callable[[], tuple[DirectionChoice, bool]]",
     on_change: "Callable[[DirectionChoice], None]",
     show_error: "Callable[[str], None]",
-    has_direction_data: "Callable[[Path | str], bool]",
+    has_direction_data: "Callable[[Path | str, str], bool]",
 ) -> "tuple[Callable[[], None], Callable[[Path | str], None]]":
     """Add the section of the viewing direction: the kind, the averages, --usedegrees, and a drop-down list of the bins.
 
     The first item of the list is all the directions, and the check boxes of the bins follow it. get_choice gives the
     choice of the values of the window, and whether the plot draws one bin, e.g. an emission plot. Such a plot has a
     radio button for each bin, and a click on a bin replaces the bin. on_change receives each new choice. A new kind
-    keeps each bin that the kind also has. has_direction_data tells whether a run gives the plot of a direction bin. A
-    run with no such data has only all the directions, thus the averages and the bins are disabled.
+    keeps each bin that the kind also has. has_direction_data tells whether a run gives the plot of a bin of a kind,
+    "bin" or "vpkt", with the data source of the values. The window disables each bin that has no data.
 
     Return the function that shows the choice of get_choice, and the function that reads the kinds of direction and
     the labels of the bins of a new first run.
@@ -143,7 +143,6 @@ def add_direction_section(
     binlabels: dict[tuple[str, bool], list[tuple[int, str]]] = {}
     shownlist: tuple[str, bool, bool] | None = None
     run: list[Path | str] = [runfolder]
-    hasdirections = [False]
 
     def get_bins(kind: str, usedegrees: bool) -> list[tuple[int, str]]:
         if (kind, usedegrees) not in binlabels:
@@ -154,14 +153,6 @@ def add_direction_section(
         nonlocal shownlist
         run[0], shownlist = newrunfolder, None
         binlabels.clear()
-        hasdirections[0] = has_direction_data(newrunfolder)
-        for averagekind, check in averagechecks.items():
-            check.setEnabled(hasdirections[0])
-            check.setToolTip(
-                helptexts.get(f"average_over_{averagekind}_angle", "")
-                if hasdirections[0]
-                else "The run gives no plot of a direction bin, thus it has no average over an angle"
-            )
         kinds = get_direction_kinds(Path(newrunfolder))
         with QtCore.QSignalBlocker(kindbox):
             kindbox.clear()
@@ -194,8 +185,8 @@ def add_direction_section(
         for dirbin, label in get_bins(kind, usedegrees):
             text = label if dirbin == ALL_DIRECTIONS_BIN else f"{dirbin}: {label}"
             check = QtWidgets.QRadioButton(text) if onebin else QtWidgets.QCheckBox(text)
-            check.setEnabled(dirbin == ALL_DIRECTIONS_BIN or hasdirections[0])
-            # a click on a radio button also clears the previous button, thus the toggled signal calls the handler two times
+            # a click on a radio button also clears the previous button, thus the toggled signal calls the handler
+            # two times
             check.clicked.connect(on_bin_click)
             checklayout.addWidget(check)
             binchecks[dirbin] = check
@@ -222,11 +213,27 @@ def add_direction_section(
             usedegreescheck.setChecked(choice.usedegrees)
         listkind = get_shown_kind()
         usedegreescheck.setEnabled(bool(choice.kind))
+        # the data of the bins can change with the data source, e.g. a run with only the packets files
+        hasbins = has_direction_data(run[0], "bin")
+        haslistbins = hasbins if listkind in BIN_KINDS else has_direction_data(run[0], listkind)
+        for averagekind, check in averagechecks.items():
+            check.setEnabled(hasbins)
+            check.setToolTip(
+                helptexts.get(f"average_over_{averagekind}_angle", "")
+                if hasbins
+                else "The run and the data source give no plot of a direction bin, thus no average over an angle"
+            )
         isnewlist = show_bins(listkind, choice.usedegrees, onebin)
         checkedbins = choice.bins if choice.kind else (ALL_DIRECTIONS_BIN,)
         for dirbin, check in binchecks.items():
             with QtCore.QSignalBlocker(check):
                 check.setChecked(dirbin in checkedbins)
+            check.setEnabled(dirbin == ALL_DIRECTIONS_BIN or haslistbins)
+            check.setToolTip(
+                ""
+                if dirbin == ALL_DIRECTIONS_BIN or haslistbins
+                else "The run and the data source give no plot of this direction, e.g. no *_res.out file"
+            )
         labels = dict(get_bins(listkind, choice.usedegrees))
         summary = get_direction_summary(choice, labels)
         # a long label of a bin must not widen the sidebar, thus the button shows the start and the end of the text
@@ -270,7 +277,13 @@ def add_direction_section(
             show()
             return
         kindbins = [dirbin for dirbin, _ in get_bins(kind, usedegrees)]
-        bins = tuple(dirbin for dirbin in current.bins if dirbin in kindbins) or tuple(kindbins[1:2] or kindbins[:1])
+        # the observers of the virtual packets have no average, thus a new kind of observers keeps no bin -1
+        keptbins = tuple(
+            dirbin
+            for dirbin in current.bins
+            if dirbin in kindbins and not (kind == "vpkt" and dirbin == ALL_DIRECTIONS_BIN)
+        )
+        bins = keptbins or tuple(kindbins[1:2] or kindbins[:1])
         on_change(get_new_direction_choice(kind, bins, (), usedegrees=usedegrees, onebin=onebin))
 
     def on_average(averagekind: str, checked: bool) -> None:

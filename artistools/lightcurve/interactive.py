@@ -32,9 +32,9 @@ from artistools.lightcurve.plotlightcurve import main as plotlightcurves_main
 from artistools.lightcurve.plotlightcurve import make_plot_figure
 from artistools.lightcurve.plotlightcurve import resolve_plot_args
 from artistools.misc import exit_with_error
-from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_run_folders
 from artistools.misc import get_deposition
+from artistools.misc import get_file_metadata
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
@@ -42,11 +42,11 @@ from artistools.misc import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
-from artistools.packets.core import has_packets_files
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools.application import run_viewer_application
 from artistools.viewertools.core import exit_for_other_actions
+from artistools.viewertools.core import get_actions_by_flag
 from artistools.viewertools.core import get_direction_choices
 from artistools.viewertools.core import get_direction_kind
 from artistools.viewertools.core import get_direction_kinds
@@ -62,6 +62,7 @@ from artistools.viewertools.core import make_parser
 from artistools.viewertools.core import move_series_styles
 from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
+from artistools.viewertools.core import run_has_direction_data
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import set_row_values
 from artistools.viewertools.core import set_series_rows
@@ -337,13 +338,6 @@ def get_reference_token(filename: str) -> str:
     return Path(filename).name if found is not None and found.resolve() == Path(filename).resolve() else filename
 
 
-def run_has_direction_light_curves(runfolder: Path | str) -> bool:
-    """Return True if a run gives the light curve of a direction bin: from light_curve_res.out or the packets."""
-    path = Path(runfolder)
-    resfile = firstexisting_or_none("light_curve_res.out", folder=path, tryzipped=True)
-    return resfile is not None or has_packets_files(path)
-
-
 def get_lightcurve_path(path: str) -> Path:
     """Return the full path of the folder or the file of a light curve, e.g. of "." or of a name of a reference file.
 
@@ -419,8 +413,8 @@ class LightCurveViewer:
 
         self.parser = parser
 
-        actions = {action.dest: action for action in parser._actions}  # ruff:ignore[private-member-access]
-        self.yscalechoices = [str(choice) for choice in actions["yscale"].choices or () if choice != "lin"]
+        actions = get_actions_by_flag(parser)
+        self.yscalechoices = [str(choice) for choice in actions["-yscale"].choices or () if choice != "lin"]
         self.defaultyscale: str = parser.get_default("defaultyscale")
         directionkind = get_direction_kind(args)
         directionbins = tuple(args.plotvspecpol or args.plotviewingangle or ())
@@ -435,7 +429,8 @@ class LightCurveViewer:
             timemax="" if args.timemax is None else format(args.timemax, ".10g"),
             logscalex=bool(args.logscalex),
             lumunit=get_plot_lum_unit(args),
-            yscale=args.yscale,
+            # the window gives a magnitude no scale control, thus a log scale of the command would trap an empty plot
+            yscale=self.defaultyscale if get_plot_lum_unit(args) == "mag" else args.yscale,
             ymin="" if args.ymin is None else format(args.ymin, ".10g"),
             ymax="" if args.ymax is None else format(args.ymax, ".10g"),
             gamma=bool(args.gamma) and not args.rpkt,
@@ -671,7 +666,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         datasourcebox.addItem(text)
         datasourcebox.setItemData(datasourcebox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
     topnucsbox = QtWidgets.QSpinBox()
-    topnucsbox.setRange(0, 50)
+    # the box must hold each -topnucs of a command, thus its maximum is far above a useful number of nuclides
+    topnucsbox.setRange(0, 9999)
     topnucsbox.setSpecialValueText("none")
     topnucsbox.setToolTip(f"-topnucs: {helptexts.get('topnucs', '')}. The option reads the packets files")
     topnucsbox.setKeyboardTracking(False)
@@ -791,7 +787,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         lambda: (get_direction_choice(viewer.values), False),
         lambda choice: on_direction(choice),  # ruff:ignore[unnecessary-lambda]
         lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
-        run_has_direction_light_curves,
+        # the observers of the virtual packets always read the packets, thus that kind takes --frompackets
+        lambda runfolder, kind: run_has_direction_data(
+            Path(runfolder), kind, ("light_curve_res.out",), "", frompackets=viewer.values.frompackets or kind == "vpkt"
+        ),
     )
 
     # the box edits the row of -figscale in the other options, as the box of the other viewers does
@@ -860,9 +859,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return (values.lightcurves, tuple(get_row_values(values.otheroptions, flag) for flag in SERIES_STYLE_FLAGS))
 
     def get_lightcurve_name(values: ControlValues, path: str) -> str:
-        """Return the -label of a light curve, or the name of its model or its file."""
-        label = get_series_style(values.otheroptions, values.lightcurves, path)["-label"]
-        return label or (Path(path).name if path_is_reference_lightcurve(path) else get_model_name(path))
+        """Return the -label of a light curve, or the legend name of its model or its reference file."""
+        if label := get_series_style(values.otheroptions, values.lightcurves, path)["-label"]:
+            return label
+        if path_is_reference_lightcurve(path):
+            # plotlightcurves takes the label of the metadata of a reference file, thus the list shows the same name
+            filepath = find_bol_reflightcurve_file(path)
+            metadata = get_file_metadata(filepath) if filepath is not None else {}
+            return str(metadata.get("label", Path(path).name))
+        return get_model_name(path)
 
     def make_lightcurve_rows(values: ControlValues) -> list[SeriesRow]:
         """Return a row for each light curve."""
@@ -897,83 +902,93 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
         blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
-        values = viewer.values
-        # Undo or a rejected change can give a different list of light curves, and its runs have different times
-        if values.lightcurves != viewer.runlightcurves:
-            viewer.load_runs(values.lightcurves)
-        if viewer.runlightcurves != shownruns:
-            show_run_ranges()
-        show_series_rows(get_lightcurves_key(values), partial(make_lightcurve_rows, values))
-        packetbox.setCurrentIndex(1 if values.gamma else 0)
-        # -topnucs reads the packets, thus the box shows that and takes no choice
-        datasourcebox.setCurrentIndex(1 if values.frompackets or values.topnucs else 0)
-        datasourcebox.setEnabled(not values.topnucs)
-        datasourcebox.setToolTip(
-            "-topnucs reads the packets files" if values.topnucs else "The files of the light curves of the ARTIS runs"
-        )
-        topnucsbox.setValue(values.topnucs)
-        pelletcheck.setChecked(values.usepelletdecaytime)
-        readspackets = values.frompackets or bool(values.topnucs)
-        pelletcheck.setEnabled(readspackets or values.usepelletdecaytime)
-        pelletcheck.setToolTip(
-            helptexts.get("use_pellet_decay_time", "")
-            if readspackets
-            else "Only the packets give the decay time of a pellet. Select the packets files first"
-        )
-        cmfcheck.setChecked(values.plotcmf)
-        cmfcheck.setEnabled(values.lumunit != "mag" or values.plotcmf)
-        cmfcheck.setToolTip(
-            helptexts.get("plotcmf", "") if values.lumunit != "mag" else "A magnitude has no comoving frame luminosity"
-        )
-        invalidcheck.setChecked(values.plotinvalidpart)
-        unavailable: list[str] = []
-        for (dest, particle), check in energychecks.items():
-            ischecked = particle in getattr(values, dest)
-            check.setChecked(ischecked)
-            reason = viewer.get_energy_rate_reason(dest, particle)
-            # a rate that the plot has stays available, thus the user can remove it
-            check.setEnabled(reason is None or ischecked)
-            check.setToolTip(reason or f"-{dest} {particle}: {helptexts.get(dest, '')}")
-            if reason is not None:
-                unavailable.append(f"• {PARTICLETEXTS[particle]} {ENERGYRATENAMES[dest]}: {reason}")
-        set_note_text(
-            unavailablenote,
-            f"The runs give no data for the {len(unavailable)} grey {'box' if len(unavailable) == 1 else 'boxes'}."
-            if unavailable
-            else "",
-            "\n".join(unavailable),
-        )
-        barnescheck.setChecked(values.showbarnes)
-        # Barnes et al. (2016) give the curves of the gamma rays, the electrons, and the alpha particles
-        hasbarnescurve = any(particle in values.thermalisation for particle in ("gamma", "betaminus", "alpha"))
-        barnescheck.setEnabled(hasbarnescurve or values.showbarnes)
-        barnescheck.setToolTip(
-            helptexts.get("showbarnes", "")
-            if hasbarnescurve
-            else "Select the thermalisation of gamma, betaminus, or alpha first. Barnes et al. (2016) give only these"
-        )
-        set_timerange_positions(
-            to_position(float(values.timemin) if values.timemin else viewer.timebounds[0]),
-            to_position(float(values.timemax) if values.timemax else viewer.timebounds[1]),
-        )
-        set_edit_text(timeminedit, values.timemin)
-        set_edit_text(timemaxedit, values.timemax)
-        xscalebox.setCurrentIndex(1 if values.logscalex else 0)
-        lumunitbox.setCurrentIndex(lumunitbox.findData(values.lumunit))
-        yscalebox.setCurrentIndex(yscalebox.findData(values.yscale))
-        # a magnitude is a logarithm already, thus plotlightcurves gives it no log scale
-        yscalebox.setEnabled(values.lumunit != "mag")
-        show_y_limits(values.ymin, values.ymax)
-        show_direction()
-        set_option_rows(values.otheroptions)
-        set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
-        set_spin_value(
-            figscalebox, float((get_row_values(values.otheroptions, "-figscale") or (str(defaultfigscale),))[0])
-        )
-        set_command_text(commandtext, viewer.get_command())
-        set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))
-        for blocker in blockers:
-            blocker.unblock()
+        # an error in a widget value, e.g. a bad colour of the option table, must not leave the signals blocked
+        try:
+            values = viewer.values
+            # Undo or a rejected change can give a different list of light curves, and its runs have different times
+            if values.lightcurves != viewer.runlightcurves:
+                viewer.load_runs(values.lightcurves)
+            if viewer.runlightcurves != shownruns:
+                show_run_ranges()
+            show_series_rows(get_lightcurves_key(values), partial(make_lightcurve_rows, values))
+            packetbox.setCurrentIndex(1 if values.gamma else 0)
+            # -topnucs reads the packets, thus the box shows that and takes no choice
+            datasourcebox.setCurrentIndex(1 if values.frompackets or values.topnucs else 0)
+            datasourcebox.setEnabled(not values.topnucs)
+            datasourcebox.setToolTip(
+                "-topnucs reads the packets files"
+                if values.topnucs
+                else "The files of the light curves of the ARTIS runs"
+            )
+            topnucsbox.setValue(values.topnucs)
+            pelletcheck.setChecked(values.usepelletdecaytime)
+            readspackets = values.frompackets or bool(values.topnucs)
+            pelletcheck.setEnabled(readspackets or values.usepelletdecaytime)
+            pelletcheck.setToolTip(
+                helptexts.get("use_pellet_decay_time", "")
+                if readspackets
+                else "Only the packets give the decay time of a pellet. Select the packets files first"
+            )
+            cmfcheck.setChecked(values.plotcmf)
+            cmfcheck.setEnabled(values.lumunit != "mag" or values.plotcmf)
+            cmfcheck.setToolTip(
+                helptexts.get("plotcmf", "")
+                if values.lumunit != "mag"
+                else "A magnitude has no comoving frame luminosity"
+            )
+            invalidcheck.setChecked(values.plotinvalidpart)
+            unavailable: list[str] = []
+            for (dest, particle), check in energychecks.items():
+                ischecked = particle in getattr(values, dest)
+                check.setChecked(ischecked)
+                reason = viewer.get_energy_rate_reason(dest, particle)
+                # a rate that the plot has stays available, thus the user can remove it
+                check.setEnabled(reason is None or ischecked)
+                check.setToolTip(reason or f"-{dest} {particle}: {helptexts.get(dest, '')}")
+                if reason is not None:
+                    unavailable.append(f"• {PARTICLETEXTS[particle]} {ENERGYRATENAMES[dest]}: {reason}")
+            set_note_text(
+                unavailablenote,
+                f"The runs give no data for the {len(unavailable)} grey {'box' if len(unavailable) == 1 else 'boxes'}."
+                if unavailable
+                else "",
+                "\n".join(unavailable),
+            )
+            barnescheck.setChecked(values.showbarnes)
+            # Barnes et al. (2016) give the curves of the gamma rays, the electrons, and the alpha particles
+            hasbarnescurve = any(particle in values.thermalisation for particle in ("gamma", "betaminus", "alpha"))
+            barnescheck.setEnabled(hasbarnescurve or values.showbarnes)
+            barnescheck.setToolTip(
+                helptexts.get("showbarnes", "")
+                if hasbarnescurve
+                else (
+                    "Select the thermalisation of gamma, betaminus, or alpha first. Barnes et al. (2016) give only"
+                    " these"
+                )
+            )
+            set_timerange_positions(
+                to_position(float(values.timemin) if values.timemin else viewer.timebounds[0]),
+                to_position(float(values.timemax) if values.timemax else viewer.timebounds[1]),
+            )
+            set_edit_text(timeminedit, values.timemin)
+            set_edit_text(timemaxedit, values.timemax)
+            xscalebox.setCurrentIndex(1 if values.logscalex else 0)
+            lumunitbox.setCurrentIndex(lumunitbox.findData(values.lumunit))
+            yscalebox.setCurrentIndex(yscalebox.findData(values.yscale))
+            # a magnitude is a logarithm already, thus plotlightcurves gives it no log scale
+            yscalebox.setEnabled(values.lumunit != "mag")
+            show_y_limits(values.ymin, values.ymax)
+            show_direction()
+            set_option_rows(values.otheroptions)
+            set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
+            set_spin_value(
+                figscalebox, float((get_row_values(values.otheroptions, "-figscale") or (str(defaultfigscale),))[0])
+            )
+            set_command_text(commandtext, viewer.get_command())
+            set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))
+        finally:
+            for blocker in blockers:
+                blocker.unblock()
         fit_canvas(canvas, viewer.figsize, plotarea)
 
     def after_draw(message: str | None) -> None:
@@ -1006,13 +1021,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_series() -> None:
         topnucs = topnucsbox.value()
-        frompackets = datasourcebox.currentIndex() == 1 and not topnucs
+        # while -topnucs is set, the box shows the packets files, thus the values keep the choice of the user
+        frompackets = viewer.values.frompackets if viewer.values.topnucs else datasourcebox.currentIndex() == 1
         readspackets = frompackets or bool(topnucs)
         values = dc.replace(
             viewer.values,
             gamma=packetbox.currentIndex() == 1,
-            # a light curve of -topnucs reads the packets, thus the box keeps the choice of the user for later
-            frompackets=frompackets or (viewer.values.frompackets and bool(topnucs)),
+            frompackets=frompackets,
             topnucs=topnucs,
             # only the packets give the decay time of a pellet
             usepelletdecaytime=pelletcheck.isChecked() and readspackets,
@@ -1112,18 +1127,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         defaultrows = set_series_rows(values.otheroptions, values.lightcurves, path, {"-color": None})
         defaultcolour = get_path_colours(values.lightcurves, isreference, defaultrows)[path]
 
+        style = get_series_style(values.otheroptions, values.lightcurves, path)
+
         def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
-            # each change starts from the values before the dialog, and no change returns to them
-            if changes is None:
-                apply(values, undoable=undoable)
-                return
-            rows = set_series_rows(values.otheroptions, values.lightcurves, path, changes)
-            apply(dc.replace(values, otheroptions=rows), undoable=undoable)
+            # a change applies to the current values, because the window can change them while the dialog is open,
+            # e.g. the fit of the width. No change gives the series its style from before the dialog
+            current = viewer.values
+            rows = set_series_rows(
+                current.otheroptions, current.lightcurves, path, style if changes is None else changes
+            )
+            apply(dc.replace(current, otheroptions=rows), undoable=undoable)
 
         edit_series_properties(
             window,
             get_lightcurve_name(values, path),
-            get_series_style(values.otheroptions, values.lightcurves, path),
+            style,
             mplcolors.to_hex(defaultcolour),
             float(mpl.rcParams["lines.linewidth"]),
             show_changes,
@@ -1140,7 +1158,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         window,
         partial(show_status_note, statusbar),
         "The ARTIS models and the reference light curves of the plot, in the order of the command. The order sets the"
-        " -label and the style of each series. Click ▲ or ▼, drag a row, or press Alt-Up or Alt-Down (Option on a Mac)"
+        " -label and the style of each series. Click ▲ or ▼, drag a row, or press Alt-Up or Alt-Down (Option on a"
+        " Mac)"
         " to change the order. The command gives a file from the reference data of artistools by its name alone.",
         ReferenceData(
             kind="reference light curve",

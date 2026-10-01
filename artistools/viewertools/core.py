@@ -8,6 +8,7 @@ import sys
 import threading
 import traceback
 import typing as t
+from functools import lru_cache
 from pathlib import Path
 
 from artistools.misc import addarg_quiet
@@ -198,6 +199,34 @@ def fix_title_position(axis: "mplax.Axes") -> None:
 def get_direction_kinds(runfolder: Path) -> list[str]:
     """Return the kinds of viewing direction of the run. A run with a configuration of virtual packets has observers."""
     return ["", "bin", "phi", "theta", *(["vpkt"] if path_is_file(runfolder / "vpkt.txt") else [])]
+
+
+@lru_cache(maxsize=64)
+def run_has_direction_data(
+    runfolder: Path, kind: str, resfilenames: tuple[str, ...], vpktpattern: str, *, frompackets: bool
+) -> bool:
+    """Return True if a run gives the plot of a direction bin of a kind, "bin" or "vpkt", with its data source.
+
+    A direction bin comes from a file of resfilenames, e.g. spec_res.out, or from the packets files with --frompackets.
+    The commands read the packets for a direction bin only with --frompackets. An observer of the virtual packets needs
+    vpkt.txt and a file of vpktpattern, e.g. vspecpol_total-0.out, or the virtual packets with --frompackets. An empty
+    vpktpattern gives the observers only from the virtual packets. Reload Data clears the cache.
+    """
+    from artistools.misc import firstexisting_or_none
+    from artistools.misc.fileio import folder_holds_match
+    from artistools.packets.core import get_packets_textfilename
+    from artistools.packets.core import has_packets_files
+
+    if kind == "vpkt":
+        if not path_is_file(runfolder / "vpkt.txt"):
+            return False
+        if vpktpattern and folder_holds_match(runfolder, vpktpattern):
+            return True
+        virtualfile = firstexisting_or_none(get_packets_textfilename(0, virtual=True), folder=runfolder)
+        return frompackets and (virtualfile is not None or folder_holds_match(runfolder, "vpackets*"))
+    if firstexisting_or_none(list(resfilenames), folder=runfolder, tryzipped=True) is not None:
+        return True
+    return frompackets and has_packets_files(runfolder)
 
 
 def get_direction_kind(args: argparse.Namespace) -> str:
@@ -592,14 +621,18 @@ def get_series_tokens(values: "Sequence[str | None]") -> tuple[str, ...] | None:
 def move_series_styles(rows: OptionRows, oldpaths: "Sequence[str]", newpaths: "Sequence[str]") -> OptionRows:
     """Return the option rows with the value of each series style option on the same path in the new list.
 
-    Thus a -label stays on its series when the order changes. The values of a removed series go out of the rows.
+    Thus a -label stays on its series when the order changes. The values of a removed series go out of the rows. The
+    values after the paths stay after the new paths, because a command can add series after them, e.g. -obsspec.
     """
     changes: dict[str, tuple[str, ...] | None] = {}
     for flag in SERIES_STYLE_FLAGS:
         if not (values := get_row_values(rows, flag)):
             continue
         bypath = {path: get_series_value(values, index) for index, path in enumerate(oldpaths)}
-        newvalues = get_series_tokens([bypath.get(path) for path in newpaths])
+        newvalues = get_series_tokens([
+            *(bypath.get(path) for path in newpaths),
+            *get_values_after_paths(values, len(oldpaths)),
+        ])
         if newvalues != values:
             changes[flag] = newvalues
     return set_row_values(rows, changes)
@@ -611,16 +644,22 @@ def set_series_rows(
     """Return the option rows with the value of each series style option in changes for the series of one path.
 
     changes gives each option by its flag, e.g. -label. A value of None gives the series the default of the command,
-    and the other series keep their values.
+    and the other series keep their values, also the series that the command adds after the paths, e.g. -obsspec.
     """
     rowchanges: dict[str, tuple[str, ...] | None] = {}
     for flag, value in changes.items():
         oldvalues = get_row_values(rows, flag) or ()
         newvalues = [
-            value if other == path else get_series_value(oldvalues, index) for index, other in enumerate(paths)
+            *(value if other == path else get_series_value(oldvalues, index) for index, other in enumerate(paths)),
+            *get_values_after_paths(oldvalues, len(paths)),
         ]
         rowchanges[flag] = get_series_tokens(newvalues)
     return set_row_values(rows, rowchanges)
+
+
+def get_values_after_paths(values: "Sequence[str]", pathcount: int) -> list[str | None]:
+    """Return the values of a series style option after the series of the paths, e.g. of -obsspec or -reflightcurves."""
+    return [get_series_value(values, index) for index in range(pathcount, len(values))]
 
 
 def get_series_style(rows: OptionRows, paths: "Sequence[str]", path: str) -> dict[str, str | None]:

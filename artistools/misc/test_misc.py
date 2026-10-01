@@ -436,6 +436,26 @@ def test_add_cli_arg_helper_variants() -> None:
         parserrequired.parse_args([])
 
 
+def test_legendcols_rejects_a_count_below_one() -> None:
+    """-legendcols 0 must fail when argparse reads it, and not in matplotlib after the data is read."""
+    parser = argparse.ArgumentParser(exit_on_error=False)
+    at.misc.addarg_legend(parser)
+    assert parser.parse_args(["-legendcols", "3"]).legendcols == 3
+    for badvalue in ("0", "-2"):
+        with pytest.raises(argparse.ArgumentError, match="positive count"):
+            parser.parse_args([f"-legendcols={badvalue}"])
+
+
+def test_set_args_from_dict_keeps_one_dash_pattern_as_one_series() -> None:
+    """A dash pattern from the Python API must give one series, also after the type of -dashes became a wrapper."""
+    parser = argparse.ArgumentParser()
+    at.lightcurve.addargs(parser)
+    at.misc.set_args_from_dict(parser, {"dashes": (5, 2)})
+    assert parser.parse_args([]).dashes == [(5, 2)]
+    at.misc.set_args_from_dict(parser, {"dashes": [(5, 2), (1, 1)]})
+    assert parser.parse_args([]).dashes == [(5, 2), (1, 1)]
+
+
 def test_set_args_from_dict_does_not_mutate_caller() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("-outputfile", "-o", type=Path)

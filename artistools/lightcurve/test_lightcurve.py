@@ -2263,8 +2263,61 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
     assert sorted(path.name for path in tmp_path.iterdir()) == ["lc.pdf"]
 
 
-def test_plotlightcurves_writes_png_data_to_a_png_file(tmp_path: Path) -> None:
-    """A light curve with -o lc.png must hold PNG data. The save once gave format="pdf" for each file name."""
+@pytest.mark.parametrize("plotoptions", [[], ["-filter", "B"], ["-colour_evolution", "B-V"]])
+def test_plotlightcurves_writes_png_data_to_a_png_file(tmp_path: Path, plotoptions: list[str]) -> None:
+    """A light curve with -o lc.png must hold PNG data. The saves once gave format="pdf" for each file name."""
     outputfile = tmp_path / "lc.png"
-    at.lightcurve.plot(argsraw=[str(modelpath), "-o", str(outputfile)])
+    at.lightcurve.plot(argsraw=[str(modelpath), *plotoptions, "-o", str(outputfile)])
     assert outputfile.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_band_lightcurve_alpha_stays_on_its_model(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The -linealpha of one model must not go to the next model of a band plot, which reuses its plot arguments."""
+    secondmodel = tmp_path / "secondmodel"
+    secondmodel.symlink_to(modelpath, target_is_directory=True)
+    at.lightcurve.plot(
+        argsraw=[str(modelpath), str(secondmodel), "-filter", "B", "-linealpha", "0.3", "-o", str(tmp_path / "lc.pdf")]
+    )
+    alphas = [callargs.kwargs.get("alpha") for callargs in mockplot.call_args_list if callargs.kwargs.get("label")]
+    assert alphas[:2] == [0.3, None]
+
+
+def test_thermalisation_panel_follows_the_time_range_of_the_light_curves() -> None:
+    """The panel of the thermalisation ratios must not widen the shared time axis, and -ymax must not fix its legend.
+
+    The panel had the default x margin of 5 %, and the -ymax of the luminosity axis stopped the legend room of the
+    panel.
+    """
+    plotlightcurve = at.lightcurve.plotlightcurve
+
+    def draw(extraoptions: list[str]) -> tuple[tuple[float, float], tuple[float, float] | None]:
+        args = at.misc.parse_cli_args(
+            plotlightcurve.addargs, None, None, [str(modelpath_classic_3d), *extraoptions], {}
+        )
+        plotlightcurve.resolve_plot_args(args)
+        fig, axis, thermaxis, residualaxis = plotlightcurve.make_plot_figure(args)
+        FigureCanvasAgg(fig)
+        plotlightcurve.draw_plot(args, axis, thermaxis, residualaxis)
+        fig.canvas.draw()
+        return axis.get_xlim(), None if thermaxis is None else thermaxis.get_ylim()
+
+    depositionxlim, _ = draw(["-deposition", "gamma"])
+    thermalisationxlim, thermalisationylim = draw(["-thermalisation", "gamma"])
+    _, ylimwithymax = draw(["-thermalisation", "gamma", "-ymax", "2e43"])
+    assert np.allclose(thermalisationxlim, depositionxlim, rtol=1e-9, atol=0.0)
+    assert thermalisationylim is not None
+    assert ylimwithymax is not None
+    assert np.allclose(ylimwithymax, thermalisationylim, rtol=1e-9, atol=0.0)
+
+
+def test_viewer_gives_a_magnitude_plot_no_log_scale() -> None:
+    """A magnitude plot of the window must not keep a log scale of the command.
+
+    The window has no scale control for a magnitude, and a log axis of magnitudes showed no curve.
+    """
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.LightCurveViewer([str(modelpath), "--magnitude", "-yscale", "log", "--interactive"], fig)
+    assert viewer.values.yscale == viewer.defaultyscale
+    assert "-yscale" not in viewer.get_command()

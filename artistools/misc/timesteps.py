@@ -150,7 +150,9 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
     return get_timestep_times_cached(resolve_modelpath(modelpath), loc)
 
 
-@lru_cache(maxsize=16)
+# a list holds a few thousand floats at most, and a viewer reads 4 kinds of time for each run in turn. With 16 entries,
+# 6 runs evicted each entry before its next use, and a window read the timesteps more than 1000 times at each change
+@lru_cache(maxsize=256)
 def get_timestep_times_cached(modelpath: Path, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
     """Return the times in days of each timestep of the model at an absolute path."""
     colname_of_loc = {"mid": "tmid_days", "start": "tstart_days", "end": "tend_days", "delta": "twidth_days"}

@@ -598,11 +598,15 @@ def set_legend(
     The legend does not cover the data. At each draw, LegendRoom moves the top or the bottom of the y axis to give
     the legend room. A limit that the user gave stays: -ymax and -ymin of args, or keeptop and keepbottom.
 
-    -legendcols of args gives the number of columns. Without it, a caller can give ncol. With neither, a long legend
-    takes more columns, thus it does not push the data into a small part of the frame.
+    -legendcols of args gives the number of columns. Without it, a caller can give ncol. With neither, or with an ncol
+    of None, a long legend takes more columns, thus it does not push the data into a small part of the frame.
     """
     if getattr(args, "nolegend", False):
         return None
+
+    for columnkey in ("ncol", "ncols"):
+        if columnkey in legendkwargs and legendkwargs[columnkey] is None:
+            del legendkwargs[columnkey]
 
     if (legendcols := getattr(args, "legendcols", None)) is not None:
         legendkwargs["ncols"] = legendcols
@@ -677,10 +681,19 @@ def get_fitted_legend_columns(ax: mplax.Axes, legendkwargs: dict[str, t.Any]) ->
         return 1
 
     handles, labels = legendkwargs["handles"], legendkwargs["labels"]
-    otherkwargs = {key: value for key, value in legendkwargs.items() if key not in {"handles", "labels"}}
+    # the size of a legend does not depend on its place, and loc="best" searched the data for each trial legend
+    otherkwargs: dict[str, t.Any] = {
+        key: value for key, value in legendkwargs.items() if key not in {"handles", "labels"}
+    }
+    otherkwargs["loc"] = "upper right"
+    # the test of the width measures the next count of columns, and the next test of the height uses it again
+    frames: dict[int, mpltransforms.Bbox] = {}
 
     def get_frame(ncols: int) -> "mpltransforms.Bbox":
-        return get_legend_frame(mpllegend.Legend(ax, handles, labels, **otherkwargs, ncols=ncols), renderer)
+        if ncols not in frames:
+            legend = mpllegend.Legend(ax, handles, labels, **otherkwargs, ncols=ncols)
+            frames[ncols] = get_legend_frame(legend, renderer)
+        return frames[ncols]
 
     ncols = 1
     while ncols < len(handles) and get_frame(ncols).height > MAX_LEGEND_HEIGHT_FRACTION:

@@ -10,21 +10,6 @@ from types import MappingProxyType
 from artistools.misc import import_optional
 from artistools.misc import write_gif
 from artistools.misc.remote import is_remote_path
-
-if t.TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Collection
-    from collections.abc import Mapping
-    from collections.abc import Sequence
-
-    import matplotlib.figure as mplfig
-    import matplotlib.typing as mplt
-    from PySide6 import QtWidgets
-
-    from artistools.commands import SuggestingArgumentParser
-    from artistools.viewertools.window import DrawQueue
-    from artistools.viewertools.window import PlotViewer
-
 from artistools.viewertools.application import activate_window
 from artistools.viewertools.application import APPEARANCES
 from artistools.viewertools.application import apply_appearance
@@ -51,6 +36,21 @@ from artistools.viewertools.widgets import make_segmented_control
 from artistools.viewertools.widgets import show_status_message
 from artistools.viewertools.widgets import show_status_note
 from artistools.viewertools.widgets import StatusBar
+
+if t.TYPE_CHECKING:
+    from collections.abc import Callable
+    from collections.abc import Collection
+    from collections.abc import Mapping
+    from collections.abc import Sequence
+
+    import matplotlib.figure as mplfig
+    import matplotlib.typing as mplt
+    from PySide6 import QtWidgets
+
+    from artistools.commands import SuggestingArgumentParser
+    from artistools.viewertools.window import DrawQueue
+    from artistools.viewertools.window import PlotViewer
+
 
 # the help text of each menu item in the table of the keys
 MENU_HELPTEXTS: t.Final = MappingProxyType({

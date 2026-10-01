@@ -55,7 +55,7 @@ def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] |
         msg = (
             "The estimators of this model hold no deposition_ column, thus they give no deposition "
             "rate of a cell. The file deposition.out holds the rate of the whole model, which "
-            "artistools plotlightcurves --plotdeposition draws"
+            "artistools plotlightcurves -deposition total draws"
         )
         raise ValueError(msg)
 

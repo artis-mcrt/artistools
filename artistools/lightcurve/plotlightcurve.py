@@ -88,6 +88,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
+from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.remote import on_model_host
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
@@ -684,7 +685,8 @@ def plot_artis_lightcurve(
         label_with_tags: str | None = linelabel
         if dirbin != -1:
             if args.colorbarcostheta or args.colorbarphi:
-                plotkwargs["alpha"] = 0.75
+                # the bins of a colour bar overlap, thus they are partly transparent unless -linealpha gives a value
+                plotkwargs["alpha"] = 0.75 if args.linealpha[lcindex] is None else args.linealpha[lcindex]
                 # the colour bar names the direction bin, thus the legend needs no entry for it. The
                 # user gives -label to name the model, thus only the first bin keeps that label
                 label_with_tags = linelabel if linelabel_is_custom and dirbin == dirbins[0] else None
@@ -823,6 +825,8 @@ def draw_plot(
     residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
     axis.margins(x=0.0)
     if thermaxis is not None:
+        # the panel shares the time axis, and its default margin widened the time range of both frames
+        thermaxis.margins(x=0.0)
         thermaxis.set_ylabel("Thermalisation ratio")
 
     set_prop_cycle_unusedcolors([axis], [*args.color, *args.refspeccolors])
@@ -927,7 +931,9 @@ def draw_plot(
 
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
     if thermaxis is not None:
-        set_legend(thermaxis, args, loc="upper right", handlelength=2, frameon=False, numpoints=1)
+        # -ymin and -ymax give the range of the light curves, thus they do not fix the room of the panel legend
+        thermargs = argparse.Namespace(**{**vars(args), "ymin": None, "ymax": None})
+        set_legend(thermaxis, thermargs, loc="upper right", handlelength=2, frameon=False, numpoints=1)
 
     # a magnitude is a logarithm already, and its axis runs backwards, thus only a luminosity can
     # take a log scale. This follows the plot, because the drawn values give the answer
@@ -1173,8 +1179,8 @@ def make_band_lightcurves_plot(
 
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
                 plotkwargs["linewidth"] = args.linewidth[modelnumber] or (4 if args.subplots else 3.5)
-                if args.linealpha[modelnumber] is not None:
-                    plotkwargs["alpha"] = args.linealpha[modelnumber]
+                # plotkwargs is reused for each model, thus a model with no -linealpha takes None, the default alpha
+                plotkwargs["alpha"] = args.linealpha[modelnumber]
 
                 (modelline,) = axis.plot(time, brightness_in_mag, **plotkwargs)
                 if residualseries is not None:
@@ -1217,7 +1223,7 @@ def make_band_lightcurves_plot(
         if args.write_data:
             write_residual_stats(dfresidualstats, args.outputfile)
 
-    save_figure(fig, args.outputfile, format="pdf", args=args)
+    save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
@@ -1315,7 +1321,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
 
     invert_magnitude_yaxis(ax)
 
-    save_figure(fig, args.outputfile, format="pdf", args=args)
+    save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
 def get_filter_lambda0(filterdir: Path, filter_name_raw: str) -> float:
@@ -1449,7 +1455,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         positional=True,
         multiplepaths=True,
         default=[],
-        helptext="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
+        helptext=(
+            "Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)"
+        ),
     )
 
     addarg_seriesstyle(parser, include_linealpha=True)
@@ -1540,7 +1548,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         metavar="PARTICLE",
         help=(
             "Plot the deposition rate over the emission rate of each particle in a panel below the light curves:"
-            f" {', '.join(ENERGYPARTICLES)}. --showbarnes adds the curves of Barnes et al. (2016)"
+            f" {', '.join(ENERGYPARTICLES)}. --showbarnes adds the published thermalisation curves"
         ),
     )
 
@@ -1548,8 +1556,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--showbarnes",
         action="store_true",
         help=(
-            "With -thermalisation, also plot the thermalisation efficiencies of Barnes et al. (2016, ApJ, 829, 110)"
-            " for gamma, betaminus, and alpha"
+            "With -thermalisation, also plot the thermalisation efficiencies for gamma, betaminus, and alpha of"
+            " Barnes, Kasen, Wu & Martínez-Pinedo (2016), ApJ, 829, 110, doi:10.3847/0004-637X/829/2/110"
         ),
     )
 
@@ -1748,7 +1756,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-legendposition", type=str, default="best", help="Position of legend in plot. Default is best")
 
     # the old spelling of -legendcols, which addarg_legend adds
-    parser.add_argument("-ncolslegend", dest="legendcols", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("-ncolslegend", dest="legendcols", type=positive_int_arg, help=argparse.SUPPRESS)
 
     # the old spelling of --legendframe, which addarg_legend adds
     parser.add_argument("--legendframeon", dest="legendframe", action="store_true", help=argparse.SUPPRESS)

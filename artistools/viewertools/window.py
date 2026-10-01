@@ -14,23 +14,6 @@ from artistools.misc import print_error
 from artistools.misc.remote import on_model_host
 from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
-
-if t.TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Collection
-    from collections.abc import Sequence
-    from concurrent.futures import Future
-
-    import matplotlib.axes as mplax
-    import matplotlib.figure as mplfig
-    from matplotlib.backend_bases import FigureCanvasBase
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-    from PySide6 import QtCore
-    from PySide6 import QtWidgets
-
-    from artistools.commands import SuggestingArgumentParser
-    from artistools.viewertools.core import OptionRows
-
 from artistools.viewertools.application import add_recent_model
 from artistools.viewertools.application import clear_field_error
 from artistools.viewertools.application import get_edited_field
@@ -46,6 +29,7 @@ from artistools.viewertools.core import fix_title_position
 from artistools.viewertools.core import get_first_line
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import run_command_step_with_warning
+from artistools.viewertools.core import run_has_direction_data
 from artistools.viewertools.core import SIDEBAR_WIDTH
 from artistools.viewertools.core import UNDO_LIMIT
 from artistools.viewertools.core import UNDO_MERGE_SECONDS
@@ -71,6 +55,22 @@ from artistools.viewertools.widgets import show_plot_banner
 from artistools.viewertools.widgets import show_status_message
 from artistools.viewertools.widgets import StatusBar
 
+if t.TYPE_CHECKING:
+    from collections.abc import Callable
+    from collections.abc import Collection
+    from collections.abc import Sequence
+    from concurrent.futures import Future
+
+    import matplotlib.axes as mplax
+    import matplotlib.figure as mplfig
+    from matplotlib.backend_bases import FigureCanvasBase
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    from artistools.commands import SuggestingArgumentParser
+    from artistools.viewertools.core import OptionRows
+
 
 def clear_output_caches() -> None:
     """Clear each cache of the files that ARTIS writes while it runs, e.g. spec.out, in this process.
@@ -88,8 +88,12 @@ def clear_output_caches() -> None:
     from artistools.spectra.core import read_spec_cached
     from artistools.spectra.core import read_spec_res_cached
     from artistools.spectra.core import read_specpol_res_cached
+    from artistools.spectra.plotspectra import has_gamma_spec_file
 
     for cachedfunction in (
+        # the file tests of the client also go, e.g. after exspec writes gamma_spec.out
+        has_gamma_spec_file,
+        run_has_direction_data,
         get_runfolder_timesteps_cached,
         get_deposition_cached,
         get_escaped_arrivalrange_cached,
@@ -118,10 +122,11 @@ def reload_runs(
     on_reloaded: "Callable[[], None]",
     show_error: "Callable[[str], None]",
 ) -> None:
-    """Read the runs again in the worker thread, e.g. while ARTIS writes more timesteps, then call on_reloaded.
+    """Clear the caches of the runs in the worker thread, e.g. while ARTIS writes more timesteps, then call on_reloaded.
 
     The caches of this process and of the host of a remote run hold old data, thus the function clears both. The
-    reload waits for the plot in progress, and a new plot waits for the reload.
+    reload waits for the plot in progress, and a new plot waits for the reload. on_reloaded runs in the window thread,
+    and it reads the runs again, e.g. their timesteps.
     """
 
     def read() -> None:
@@ -883,7 +888,6 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--hideother": "Hide Other",
     "--hidexlabel": "Hide x label",
     "--legendframe": "Legend frame",
-    "--logscalex": "Log x",
     "--markers": "Markers",
     "--nolegend": "Hide legend",
     "--normalised": "Normalise",

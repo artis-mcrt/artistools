@@ -7,7 +7,6 @@ import threading
 import time
 import typing as t
 import weakref
-from functools import wraps
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +15,9 @@ from artistools.misc import exit_with_error
 from artistools.misc import import_optional
 from artistools.misc import print_error
 from artistools.misc.fileio import resolve_modelpath
+from artistools.viewertools.core import MACOS_BUNDLE_VARIABLE
+from artistools.viewertools.core import run_command_step
+from artistools.viewertools.core import ThreadOutput
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -23,15 +25,9 @@ if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
     import numpy.typing as npt
-    from matplotlib.font_manager import FontProperties
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
-
-
-from artistools.viewertools.core import MACOS_BUNDLE_VARIABLE
-from artistools.viewertools.core import run_command_step
-from artistools.viewertools.core import ThreadOutput
 
 
 def make_icon_pixmap(size: int, curve: "npt.NDArray[np.float64]") -> "QtGui.QPixmap":
@@ -169,24 +165,19 @@ def serialise_mathtext_parser() -> None:
     import matplotlib.mathtext as mplmathtext
 
     parse = mplmathtext.MathTextParser.parse
-    # wraps gives the new function __wrapped__, thus a second window does not wrap the parse again
-    if hasattr(parse, "__wrapped__"):
+    # a second window must not wrap the parse again. matplotlib's own decorators also set __wrapped__, thus the test
+    # reads the name of this wrapper
+    if getattr(parse, "__name__", "") == "serialised_parse":
         return
     lock = threading.Lock()
 
-    @wraps(parse)
-    def serialised_parse(
-        self: mplmathtext.MathTextParser[t.Any],
-        s: str,
-        dpi: float = 72,
-        prop: "FontProperties | None" = None,
-        *,
-        antialiased: bool | None = None,
-    ) -> t.Any:
+    # the wrapper passes each argument on, thus a new parameter of a later matplotlib also works. Python 3.13 evaluates
+    # the annotations of a nested function at once, and MathTextParser takes no subscript at run time
+    def serialised_parse(*args: t.Any, **kwargs: t.Any) -> t.Any:
         with lock:
-            return parse(self, s, dpi, prop, antialiased=antialiased)
+            return parse(*args, **kwargs)
 
-    mplmathtext.MathTextParser.parse = serialised_parse  # ty:ignore[invalid-assignment]
+    mplmathtext.MathTextParser.parse = serialised_parse
 
 
 def start_application(

@@ -38,6 +38,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
 from artistools.misc.remote import model_path_from_text
+from artistools.viewertools import application as viewerapplication
 from artistools.viewertools import core as viewercore
 from artistools.viewertools import menus as viewermenus
 from artistools.viewertools import sections as viewersections
@@ -2237,7 +2238,8 @@ def test_set_legend_takes_columns_for_a_long_legend(labelwidth: int, legendcols:
     ax = axesgrid[0][0]
     for index in range(16):
         ax.plot([0.0, 1.0], [index, index], label=f"{index}".ljust(labelwidth, "x"))
-    legend = at.plottools.set_legend(ax, argparse.Namespace(legendcols=legendcols), loc="upper right")
+    # an ncol of None asks for the rule, as plotspectra and plotestimators give for a plot of one column
+    legend = at.plottools.set_legend(ax, argparse.Namespace(legendcols=legendcols), loc="upper right", ncol=None)
     assert legend is not None
     assert ax.get_legend() is legend
     assert [child for child in ax.get_children() if isinstance(child, mpllegend.Legend)] == [legend]
@@ -4322,6 +4324,14 @@ def test_figure_shows_data_only_inside_the_axis_limits() -> None:
     assert not viewerwidgets.figure_shows_data(fig)
     axis.imshow([[1.0, 2.0]])
     assert viewerwidgets.figure_shows_data(fig)
+    # a segment crosses the frame between two points, e.g. a time range between two timesteps
+    crossfig = mplfig.Figure()
+    crossaxis = crossfig.add_subplot()
+    crossaxis.plot([0.0, 10.0], [0.0, 100.0])
+    crossaxis.set_xlim(4.0, 6.0)
+    assert viewerwidgets.figure_shows_data(crossfig)
+    crossaxis.set_ylim(70.0, 90.0)
+    assert not viewerwidgets.figure_shows_data(crossfig)
 
 
 def test_direction_list_maps_all_directions_to_no_direction_option() -> None:
@@ -4333,6 +4343,58 @@ def test_direction_list_maps_all_directions_to_no_direction_option() -> None:
     # the virtual packets have no average, thus all the directions give the plot of the real packets
     assert choose("vpkt", (-1, 2), (-1,), usedegrees=False, onebin=False) == nooption
     assert choose("vpkt", (-1, 2), (2,), usedegrees=False, onebin=False).bins == (2,)
+    # the average with no observer of the virtual packets is all the directions, and not a list with no bin
+    assert choose("vpkt", (-1,), (), usedegrees=False, onebin=False) == nooption
     # a plot of one bin takes the bin of the click
     assert choose("bin", (0, 5), (5,), usedegrees=False, onebin=True).bins == (5,)
     assert choose("bin", (-1, 5), (-1,), usedegrees=False, onebin=True) == nooption
+
+
+def test_mathtext_lock_wraps_the_parser_one_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The lock of the mathtext parser must install on each Python version and keep the parse of matplotlib.
+
+    The wrapper had annotations that Python 3.13 evaluates at once, and MathTextParser takes no subscript, thus no
+    viewer opened on Python 3.13.
+    """
+    import matplotlib.mathtext as mplmathtext
+
+    # monkeypatch restores the parse of matplotlib after the test
+    monkeypatch.setattr(mplmathtext.MathTextParser, "parse", mplmathtext.MathTextParser.parse)
+    viewerapplication.serialise_mathtext_parser()
+    wrapped = mplmathtext.MathTextParser.parse
+    viewerapplication.serialise_mathtext_parser()
+    assert mplmathtext.MathTextParser.parse is wrapped
+    width, height, *_ = mplmathtext.MathTextParser("path").parse(r"$10^{-3}$", dpi=72)
+    assert width > 0
+    assert height > 0
+
+
+def test_direction_data_follows_the_files_and_the_data_source() -> None:
+    """A direction bin needs a *_res.out file or the packets with --frompackets, and an observer needs vpkt.txt.
+
+    The commands read the packets for a direction bin only with --frompackets. The viewer enabled the bins of a run
+    with only the packets, and the plot then showed all the directions. It disabled the observers of a run with only
+    the vspecpol files.
+    """
+    has_data = viewercore.run_has_direction_data
+    datafolder = at.get_path("testdata")
+    lightcurveres = ("light_curve_res.out",)
+    # testmodel has the packets files and no light_curve_res.out
+    assert not has_data(datafolder / "testmodel", "bin", lightcurveres, "", frompackets=False)
+    assert has_data(datafolder / "testmodel", "bin", lightcurveres, "", frompackets=True)
+    # vspecpolmodel has vpkt.txt and the vspecpol files, and no packets
+    assert has_data(datafolder / "vspecpolmodel", "vpkt", ("spec_res.out",), "vspecpol*", frompackets=False)
+    assert not has_data(datafolder / "vspecpolmodel", "vpkt", lightcurveres, "", frompackets=True)
+    # vpktcontrib has the virtual packets
+    assert has_data(datafolder / "vpktcontrib", "vpkt", lightcurveres, "", frompackets=True)
+    assert not has_data(datafolder / "vpktcontrib", "vpkt", lightcurveres, "", frompackets=False)
+
+
+def test_series_styles_keep_the_values_after_the_paths() -> None:
+    """A style value of a series that the command adds after the paths, e.g. -obsspec, must stay on that series."""
+    rows = (("-label", ("A", "B", "R")),)
+    # a new order of the two models keeps R on the third series
+    assert viewercore.move_series_styles(rows, ("a", "b"), ("b", "a")) == (("-label", ("B", "A", "R")),)
+    # a new model goes before the series of the command
+    assert viewercore.move_series_styles(rows, ("a", "b"), ("a", "b", "c")) == (("-label", ("A", "B", "default", "R")),)
+    assert viewercore.set_series_rows(rows, ("a", "b"), "a", {"-label": "N"}) == (("-label", ("N", "B", "R")),)

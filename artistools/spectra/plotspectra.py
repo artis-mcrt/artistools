@@ -1581,7 +1581,9 @@ def draw_plot(
         loc="upper right",
         frameon=False,
         handlelength=1 if args.showemission or args.showabsorption else 2,
-        ncol=legendncol,
+        # one column was the default, and a long legend of a plain spectrum then took more height than the frame.
+        # An ncol of None makes set_legend fit the columns
+        ncol=legendncol if legendncol > 1 else None,
         numpoints=1,
         columnspacing=1.0,
     )
@@ -2022,7 +2024,8 @@ def has_gamma_spec_file(runfolder: Path) -> bool:
     """Return True if the run has gamma_spec.out.
 
     The spectrum viewer resolves the arguments at each change, and the search of the subfolders is slow on a network
-    drive. Thus a file that exspec writes later stays unknown until a new window, and the plot then reads the packets.
+    drive. Thus a file that exspec writes later stays unknown until Reload Data clears the cache, and until then the
+    plot reads the packets.
     """
     return firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None
 

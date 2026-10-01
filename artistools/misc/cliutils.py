@@ -617,6 +617,22 @@ SERIES_DEFAULT: t.Final = "default"
 SERIES_DEFAULT_HELP: t.Final = f"An entry {SERIES_DEFAULT} keeps the default of its series"
 
 
+def positive_int_arg(text: str) -> int:
+    """Return the integer of the text, and reject a value below 1 when argparse reads the command line.
+
+    A count of 0 or below passed argparse, and the command then failed after it read all the data.
+    """
+    try:
+        value = int(text)
+    except ValueError as exc:
+        msg = f"invalid int value: {text!r}"
+        raise argparse.ArgumentTypeError(msg) from exc
+    if value < 1:
+        msg = f"{value} is not a positive count. Give 1 or more"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def series_value_arg[T](convert: Callable[[str], T]) -> Callable[[str], T | None]:
     """Return an argparse type that reads SERIES_DEFAULT as None, and each other value with convert."""
 
@@ -1015,7 +1031,7 @@ def addarg_legend(parser: argparse.ArgumentParser) -> None:
     )
     arggroup(parser, "appearance").add_argument(
         "-legendcols",
-        type=int,
+        type=positive_int_arg,
         default=None,
         help=(
             "Number of columns of the legend. The default gives a long legend more columns, thus the legend takes"
@@ -1276,8 +1292,13 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
     # must mean the same as -plotviewingangle 0
     for arg in realactions:
         value = kwargs.get(arg.dest)
-        # -dashes reads one tuple for each series, thus a single tuple is one item and not a list
-        istupleitem = arg.type is dashes_arg and isinstance(value, tuple)
+        # -dashes reads one tuple of numbers for each series, thus a single tuple of numbers is one item and not a
+        # list. The type of -dashes is a wrapper of dashes_arg, thus the test reads the dest
+        istupleitem = (
+            arg.dest == "dashes"
+            and isinstance(value, tuple)
+            and all(isinstance(length, int | float) for length in value)
+        )
         # pyrefly: ignore[implicit-any-type-argument]
         if value is not None and takes_a_list(arg) and (istupleitem or not isinstance(value, list | tuple)):
             kwargs[arg.dest] = [value]

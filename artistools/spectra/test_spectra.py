@@ -2523,8 +2523,8 @@ def test_interactive_time_fits_the_timestep_of_each_run() -> None:
 def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     """A new order of the spectra keeps each -label and each -color on its spectrum.
 
-    Each option gives its values in the order of the spectra. Thus a spectrum with no value in front of a spectrum with a
-    value takes the token default, and plotspectra then gives it the automatic label, e.g. with the time.
+    Each option gives its values in the order of the spectra. Thus a spectrum with no value in front of a spectrum with
+    a value takes the token default, and plotspectra then gives it the automatic label, e.g. with the time.
     """
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
     oldspectra = (str(modelpath), reference, str(modelpath_classic_3d))
@@ -3162,3 +3162,36 @@ def test_emission_plot_of_all_directions(mocktitle: mock.MagicMock, averaging: l
         ]
     )
     assert any("all directions" in str(callargs.args[1]) for callargs in mocktitle.call_args_list)
+
+
+def test_viewer_keys_the_runs_by_the_tokens_of_the_list() -> None:
+    """A path with a trailing slash must give the run of its row, or the window stops at the start."""
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.SpectrumViewer([f"{modelpath}/", "-t", "300"], fig)
+    assert set(viewer.runtimes) == set(viewer.values.spectra)
+    assert viewer.runkey == (viewer.values.spectra, viewer.values.timegrid)
+
+
+def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
+    """A command made on the timesteps of a later model must open with the same time.
+
+    The command holds no choice of "Timesteps of". The viewer snapped the time to the timesteps of the first model,
+    thus a copied command or a restored session drew a different time range.
+    """
+    models = [
+        str(at.get_path("testdata") / "test-classicmode_3d"),
+        str(at.get_path("testdata") / "test-classicmode_1d"),
+    ]
+
+    def make(tokens: list[str]) -> interactive.SpectrumViewer:
+        fig = mplfig.Figure()
+        FigureCanvasAgg(fig)
+        return interactive.SpectrumViewer(tokens, fig)
+
+    viewer = make([*models, "-t", "4.5-5"])
+    viewer.values = interactive.set_runs(viewer, viewer.values.spectra, models[1])
+    command = viewer.get_command()
+    reopened = make([*shlex.split(command)[2:], "--interactive"])
+    assert reopened.get_command() == command
+    assert reopened.values.timegrid == models[1]

@@ -1545,7 +1545,8 @@ def finish_subplot(ax: mplax.Axes, args: argparse.Namespace, settings: SubplotSe
             handlelength=2,
             frameon=False,
             numpoints=1,
-            ncols=settings.get("legendncols", 1),
+            # one column was the default. An ncols of None makes set_legend fit the columns
+            ncols=legendncols if (legendncols := settings.get("legendncols", 1)) > 1 else None,
             markerscale=3,
         )
 
