@@ -2534,3 +2534,12 @@ def test_costheta_bin_labels_have_no_negative_zero() -> None:
     lowers, _, labels = get_costheta_bins(usedegrees=False)
     assert not any("-0.0" in label for label in labels), labels
     assert 0.0 in lowers
+
+
+def test_remote_path_is_not_reference_data_and_needs_no_connection() -> None:
+    """A remote path is an ARTIS model, and its test must not start ssh.
+
+    The menu of the recent models tested each remote model in the window thread, and each ssh call stopped the window.
+    """
+    with mock.patch("artistools.misc.remote.call_on_host", side_effect=AssertionError("ssh started")):
+        assert not at.misc.fileio.path_is_reference_data("nohost.invalid:/runs/model", "data/refspectra")
