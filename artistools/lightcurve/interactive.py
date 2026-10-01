@@ -32,6 +32,7 @@ from artistools.lightcurve.plotlightcurve import main as plotlightcurves_main
 from artistools.lightcurve.plotlightcurve import make_plot_figure
 from artistools.lightcurve.plotlightcurve import resolve_plot_args
 from artistools.misc import exit_with_error
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_run_folders
 from artistools.misc import get_deposition
 from artistools.misc import get_model_name
@@ -41,6 +42,7 @@ from artistools.misc import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
+from artistools.packets.core import has_packets_files
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools.application import run_viewer_application
@@ -332,6 +334,13 @@ def get_reference_token(filename: str) -> str:
     """
     found = find_bol_reflightcurve_file(Path(filename).name)
     return Path(filename).name if found is not None and found.resolve() == Path(filename).resolve() else filename
+
+
+def run_has_direction_light_curves(runfolder: Path | str) -> bool:
+    """Return True if a run gives the light curve of a direction bin: from light_curve_res.out or the packets."""
+    path = Path(runfolder)
+    resfile = firstexisting_or_none("light_curve_res.out", folder=path, tryzipped=True)
+    return resfile is not None or has_packets_files(path)
 
 
 def get_lightcurve_path(path: str) -> Path:
@@ -781,6 +790,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         lambda: (get_direction_choice(viewer.values), False),
         lambda choice: on_direction(choice),  # ruff:ignore[unnecessary-lambda]
         lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
+        run_has_direction_light_curves,
     )
 
     _, appearancegrid = add_section(panellayout, "Appearance")

@@ -26,13 +26,15 @@ from artistools.viewertools.widgets import make_step_button
 from artistools.viewertools.widgets import set_edit_text
 
 # each kind of viewing direction: the value of the kind, the text of its choice, and the option that gives its help
+# the kinds of the kind box: the direction bins, and the observers of the virtual packets. An average over the phi angle
+# or the theta angle is a check box, because it changes the bins of the direction bins
 DIRECTION_KINDS: t.Final = (
-    ("", "All directions", ""),
-    ("bin", "-plotviewingangle", "plotviewingangle"),
-    ("phi", "--average_over_phi_angle", "average_over_phi_angle"),
-    ("theta", "--average_over_theta_angle", "average_over_theta_angle"),
-    ("vpkt", "-plotvspecpol", "plotvspecpol"),
+    ("bin", "Direction bins", "plotviewingangle"),
+    ("vpkt", "Virtual packet observers", "plotvspecpol"),
 )
+# the kinds of direction that the kind "bin" of the kind box gives with the check boxes of the averages
+BIN_KINDS: t.Final = frozenset({"bin", "phi", "theta"})
+ALL_DIRECTIONS_BIN: t.Final = -1
 
 
 class DirectionChoice(t.NamedTuple):
@@ -46,12 +48,45 @@ class DirectionChoice(t.NamedTuple):
 def get_direction_bins(runfolder: Path | str, kind: str, *, usedegrees: bool) -> list[tuple[int, str]]:
     """Return each bin of a kind of viewing direction with its label, and first the average over all the directions.
 
-    The average is bin -1. An observer of the virtual packets has no such average.
+    The average is bin -1. All the directions alone give a plot with no direction option. A kind of the direction bins
+    can also take the average together with its bins. The virtual packets have no average, thus all the directions
+    give the plot of the real packets.
     """
-    if not kind:
-        return []
-    averagebin = [] if kind == "vpkt" else [(-1, "All directions")]
-    return [*averagebin, *get_direction_choices(Path(runfolder), kind, usedegrees=usedegrees)]
+    alltext = "All directions (real packets)" if kind == "vpkt" else "All directions"
+    return [(ALL_DIRECTIONS_BIN, alltext), *get_direction_choices(Path(runfolder), kind, usedegrees=usedegrees)]
+
+
+def get_direction_summary(choice: DirectionChoice, labels: "Mapping[int, str]") -> str:
+    """Return the text of the button of the direction list, e.g. "All directions" or "3 directions: All, 0, 5"."""
+    bins = choice.bins if choice.kind else (ALL_DIRECTIONS_BIN,)
+    if len(bins) == 1:
+        label = labels.get(bins[0], "")
+        return label if bins[0] == ALL_DIRECTIONS_BIN else f"{bins[0]}: {label}"
+    names = ["All" if dirbin == ALL_DIRECTIONS_BIN else str(dirbin) for dirbin in bins]
+    shownnames = ", ".join(names[:8]) + ("…" if len(names) > 8 else "")
+    return f"{len(bins)} directions: {shownnames}"
+
+
+def get_new_direction_choice(
+    kind: str, bins: tuple[int, ...], newbins: tuple[int, ...], *, usedegrees: bool, onebin: bool
+) -> DirectionChoice:
+    """Return the choice of a list of checked bins, which can hold the average over all the directions (bin -1).
+
+    newbins gives the bins that the last click checked. The average alone gives no direction option. An observer of
+    the virtual packets has no average, thus the average replaces the observers, and an observer replaces the
+    average. A plot of one bin replaces the previous bin with the bin of the click.
+    """
+    if onebin and newbins:
+        bins = newbins[:1]
+    if kind == "vpkt" and ALL_DIRECTIONS_BIN in bins:
+        bins = (
+            (ALL_DIRECTIONS_BIN,)
+            if ALL_DIRECTIONS_BIN in newbins
+            else tuple(dirbin for dirbin in bins if dirbin != ALL_DIRECTIONS_BIN)
+        )
+    if bins == (ALL_DIRECTIONS_BIN,):
+        return DirectionChoice(kind="", bins=(), usedegrees=usedegrees)
+    return DirectionChoice(kind=kind, bins=bins, usedegrees=usedegrees)
 
 
 def add_direction_section(
@@ -61,12 +96,15 @@ def add_direction_section(
     get_choice: "Callable[[], tuple[DirectionChoice, bool]]",
     on_change: "Callable[[DirectionChoice], None]",
     show_error: "Callable[[str], None]",
+    has_direction_data: "Callable[[Path | str], bool]",
 ) -> "tuple[Callable[[], None], Callable[[Path | str], None]]":
-    """Add the section of the viewing direction: the kind of direction, --usedegrees, and a list of the bins.
+    """Add the section of the viewing direction: the kind, the averages, --usedegrees, and a drop-down list of the bins.
 
-    get_choice gives the choice of the values of the window, and whether the plot draws one bin, e.g. an emission plot.
-    Such a plot has a radio button for each bin, and a click on a bin replaces the bin. on_change receives each new
-    choice. A new kind keeps each bin that the kind also has.
+    The first item of the list is all the directions, and the check boxes of the bins follow it. get_choice gives the
+    choice of the values of the window, and whether the plot draws one bin, e.g. an emission plot. Such a plot has a
+    radio button for each bin, and a click on a bin replaces the bin. on_change receives each new choice. A new kind
+    keeps each bin that the kind also has. has_direction_data tells whether a run gives the plot of a direction bin. A
+    run with no such data has only all the directions, thus the averages and the bins are disabled.
 
     Return the function that shows the choice of get_choice, and the function that reads the kinds of direction and
     the labels of the bins of a new first run.
@@ -79,21 +117,33 @@ def add_direction_section(
     usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
     usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
     add_row(directiongrid, 0, [kindbox, usedegreescheck])
-    # the plot can show several directions at once, thus each bin has a check box. The list scrolls, and the label of
-    # a bin is long, thus the list takes the full width of the sidebar
+    averagechecks = {
+        "phi": QtWidgets.QCheckBox("--average_over_phi_angle"),
+        "theta": QtWidgets.QCheckBox("--average_over_theta_angle"),
+    }
+    add_row(directiongrid, 1, list(averagechecks.values()))
+    # the list of a run can hold 100 bins, thus a button opens it as a drop-down list, and the button gives the choice
+    binbutton = QtWidgets.QPushButton()
+    binbutton.setToolTip(
+        "The directions of the plot: all the directions, the direction bins, or the observers of the virtual packets."
+        " A plot that draws one bin, e.g. an emission plot, shows a radio button for each bin"
+    )
+    binmenu = QtWidgets.QMenu(binbutton)
     binbox = QtWidgets.QScrollArea()
     binbox.setWidgetResizable(True)
     binbox.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    binbox.setToolTip(
-        "The direction bins of the plot, or the observers of the virtual packets. A plot that draws one bin, e.g. an"
-        " emission plot, shows a radio button for each bin"
-    )
-    directiongrid.addWidget(binbox, 1, 0, 1, -1)
+    # a check box in a widget of a menu takes its click, thus the menu stays open while the user checks several bins
+    binaction = QtWidgets.QWidgetAction(binmenu)
+    binaction.setDefaultWidget(binbox)
+    binmenu.addAction(binaction)
+    binbutton.setMenu(binmenu)
+    directiongrid.addWidget(binbutton, 2, 0, 1, -1)
     binchecks: dict[int, QtWidgets.QAbstractButton] = {}
     # the labels of the bins come from the files of the run, thus the section reads them one time for each kind
     binlabels: dict[tuple[str, bool], list[tuple[int, str]]] = {}
     shownlist: tuple[str, bool, bool] | None = None
     run: list[Path | str] = [runfolder]
+    hasdirections = [False]
 
     def get_bins(kind: str, usedegrees: bool) -> list[tuple[int, str]]:
         if (kind, usedegrees) not in binlabels:
@@ -104,6 +154,14 @@ def add_direction_section(
         nonlocal shownlist
         run[0], shownlist = newrunfolder, None
         binlabels.clear()
+        hasdirections[0] = has_direction_data(newrunfolder)
+        for averagekind, check in averagechecks.items():
+            check.setEnabled(hasdirections[0])
+            check.setToolTip(
+                helptexts.get(f"average_over_{averagekind}_angle", "")
+                if hasdirections[0]
+                else "The run gives no plot of a direction bin, thus it has no average over an angle"
+            )
         kinds = get_direction_kinds(Path(newrunfolder))
         with QtCore.QSignalBlocker(kindbox):
             kindbox.clear()
@@ -111,8 +169,17 @@ def add_direction_section(
                 if kind in kinds:
                     kindbox.addItem(text, kind)
                     kindbox.setItemData(
-                        kindbox.count() - 1, helptexts.get(dest, ""), QtCore.Qt.ItemDataRole.ToolTipRole
+                        kindbox.count() - 1, f"{helptexts.get(dest, '')} (-{dest})", QtCore.Qt.ItemDataRole.ToolTipRole
                     )
+        # a run with no virtual packets has one kind, thus the box gives no choice
+        kindbox.setVisible(kindbox.count() > 1)
+
+    def get_shown_kind() -> str:
+        """Return the kind of the list: the kind of the kind box, with the average that a check box selects."""
+        boxkind: str = kindbox.currentData() or "bin"
+        if boxkind != "bin":
+            return boxkind
+        return next((kind for kind, check in averagechecks.items() if check.isChecked()), "bin")
 
     def show_bins(kind: str, usedegrees: bool, onebin: bool) -> bool:
         """Fill the list with a button for each bin of a kind of direction. Return whether the list is new."""
@@ -125,15 +192,16 @@ def add_direction_section(
         checklayout.setSpacing(2)
         binchecks.clear()
         for dirbin, label in get_bins(kind, usedegrees):
-            text = f"{dirbin}: {label}"
+            text = label if dirbin == ALL_DIRECTIONS_BIN else f"{dirbin}: {label}"
             check = QtWidgets.QRadioButton(text) if onebin else QtWidgets.QCheckBox(text)
+            check.setEnabled(dirbin == ALL_DIRECTIONS_BIN or hasdirections[0])
             # a click on a radio button also clears the previous button, thus the toggled signal calls the handler two times
-            check.clicked.connect(on_direction)
+            check.clicked.connect(on_bin_click)
             checklayout.addWidget(check)
             binchecks[dirbin] = check
         checklayout.addStretch(1)
-        # the list shows up to 6 bins, and a longer list scrolls
-        shownbins = min(max(len(binchecks), 1), 6)
+        # the list shows up to 12 bins, and a longer list scrolls
+        shownbins = min(max(len(binchecks), 1), 12)
         lineheight = max((check.sizeHint().height() for check in binchecks.values()), default=20)
         binbox.setFixedHeight(shownbins * (lineheight + 2) + 10)
         binbox.setWidget(checklist)
@@ -142,42 +210,85 @@ def add_direction_section(
 
     def show() -> None:
         choice, onebin = get_choice()
-        with QtCore.QSignalBlocker(kindbox), QtCore.QSignalBlocker(usedegreescheck):
-            kindbox.setCurrentIndex(max(kindbox.findData(choice.kind), 0))
+        # all the directions alone keep the kind box and the averages of the last kind, thus a new bin returns to them
+        if choice.kind:
+            boxkind = "bin" if choice.kind in BIN_KINDS else choice.kind
+            with QtCore.QSignalBlocker(kindbox):
+                kindbox.setCurrentIndex(max(kindbox.findData(boxkind), 0))
+            for averagekind, check in averagechecks.items():
+                with QtCore.QSignalBlocker(check):
+                    check.setChecked(choice.kind == averagekind)
+        with QtCore.QSignalBlocker(usedegreescheck):
             usedegreescheck.setChecked(choice.usedegrees)
+        listkind = get_shown_kind()
         usedegreescheck.setEnabled(bool(choice.kind))
-        isnewlist = show_bins(choice.kind, choice.usedegrees, onebin)
+        isnewlist = show_bins(listkind, choice.usedegrees, onebin)
+        checkedbins = choice.bins if choice.kind else (ALL_DIRECTIONS_BIN,)
         for dirbin, check in binchecks.items():
             with QtCore.QSignalBlocker(check):
-                check.setChecked(dirbin in choice.bins)
+                check.setChecked(dirbin in checkedbins)
+        labels = dict(get_bins(listkind, choice.usedegrees))
+        summary = get_direction_summary(choice, labels)
+        # a long label of a bin must not widen the sidebar, thus the button shows the start and the end of the text
+        binbutton.setText(binbutton.fontMetrics().elidedText(summary, QtCore.Qt.TextElideMode.ElideMiddle, 320))
+        binbutton.setToolTip(summary)
         # a new list scrolls to the first checked bin, which can be far down a list of 100 bins
-        if isnewlist and choice.bins and (firstcheck := binchecks.get(choice.bins[0])):
+        if isnewlist and (firstcheck := binchecks.get(checkedbins[0])):
             QtCore.QTimer.singleShot(0, binbox, partial(binbox.ensureWidgetVisible, firstcheck))
-        # all the directions have no bin to select, thus the list shows only for a kind of direction
-        binbox.setVisible(bool(choice.kind))
 
-    def on_direction() -> None:
-        kind: str = kindbox.currentData()
-        usedegrees = usedegreescheck.isChecked()
+    def on_show_menu() -> None:
+        binbox.setFixedWidth(max(binbutton.width(), 280))
+        choice, _ = get_choice()
+        checkedbins = choice.bins if choice.kind else (ALL_DIRECTIONS_BIN,)
+        if firstcheck := binchecks.get(checkedbins[0]):
+            QtCore.QTimer.singleShot(0, binbox, partial(binbox.ensureWidgetVisible, firstcheck))
+
+    def on_bin_click() -> None:
         current, onebin = get_choice()
-        if kind == current.kind:
-            bins = tuple(dirbin for dirbin, check in binchecks.items() if check.isChecked())
-            if kind and not bins:
-                show_error("A kind of viewing direction needs one direction bin at least")
-                return
-            newbins = tuple(dirbin for dirbin in bins if dirbin not in current.bins)
-            # a plot of one bin replaces the previous bin with the bin of the click
-            if onebin and newbins:
-                bins = newbins[:1]
-        else:
-            kindbins = [dirbin for dirbin, _ in get_bins(kind, usedegrees)]
-            bins = tuple(dirbin for dirbin in current.bins if dirbin in kindbins) or tuple(kindbins[:1])
-            if onebin:
-                bins = bins[:1]
-        on_change(DirectionChoice(kind=kind, bins=bins, usedegrees=usedegrees))
+        bins = tuple(dirbin for dirbin, check in binchecks.items() if check.isChecked())
+        if not bins:
+            show_error("The plot needs one direction at least")
+            show()
+            return
+        currentbins = current.bins if current.kind else (ALL_DIRECTIONS_BIN,)
+        newbins = tuple(dirbin for dirbin in bins if dirbin not in currentbins)
+        choice = get_new_direction_choice(
+            get_shown_kind(), bins, newbins, usedegrees=usedegreescheck.isChecked(), onebin=onebin
+        )
+        # a radio button selects one bin, thus the list closes after the click
+        if onebin:
+            binmenu.close()
+        on_change(choice)
 
-    kindbox.currentIndexChanged.connect(on_direction)
-    usedegreescheck.toggled.connect(on_direction)
+    def on_kind() -> None:
+        """Apply a new kind, a new average, or a new unit of the angles, and keep each bin that the new kind has."""
+        current, onebin = get_choice()
+        kind = get_shown_kind()
+        usedegrees = usedegreescheck.isChecked()
+        # all the directions alone give no direction option, thus a new kind or average changes only the list
+        if not current.kind:
+            show()
+            return
+        kindbins = [dirbin for dirbin, _ in get_bins(kind, usedegrees)]
+        bins = tuple(dirbin for dirbin in current.bins if dirbin in kindbins) or tuple(kindbins[1:2] or kindbins[:1])
+        on_change(get_new_direction_choice(kind, bins, (), usedegrees=usedegrees, onebin=onebin))
+
+    def on_average(averagekind: str, checked: bool) -> None:
+        # the averages over the two angles exclude each other, and an average applies to the direction bins
+        if checked:
+            for otherkind, check in averagechecks.items():
+                if otherkind != averagekind:
+                    with QtCore.QSignalBlocker(check):
+                        check.setChecked(False)
+            with QtCore.QSignalBlocker(kindbox):
+                kindbox.setCurrentIndex(max(kindbox.findData("bin"), 0))
+        on_kind()
+
+    kindbox.currentIndexChanged.connect(on_kind)
+    usedegreescheck.toggled.connect(on_kind)
+    for averagekind, check in averagechecks.items():
+        check.toggled.connect(partial(on_average, averagekind))
+    binmenu.aboutToShow.connect(on_show_menu)
     set_run(runfolder)
     return show, set_run
 

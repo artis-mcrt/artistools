@@ -40,6 +40,7 @@ import artistools as at
 from artistools.misc.remote import model_path_from_text
 from artistools.viewertools import core as viewercore
 from artistools.viewertools import menus as viewermenus
+from artistools.viewertools import sections as viewersections
 from artistools.viewertools import widgets as viewerwidgets
 from artistools.viewertools import window as viewerwindow
 
@@ -4321,3 +4322,17 @@ def test_figure_shows_data_only_inside_the_axis_limits() -> None:
     assert not viewerwidgets.figure_shows_data(fig)
     axis.imshow([[1.0, 2.0]])
     assert viewerwidgets.figure_shows_data(fig)
+
+
+def test_direction_list_maps_all_directions_to_no_direction_option() -> None:
+    """All the directions alone give no direction option, and the virtual packets never combine with the average."""
+    choose = viewersections.get_new_direction_choice
+    nooption = viewersections.DirectionChoice(kind="", bins=(), usedegrees=False)
+    assert choose("bin", (-1,), (-1,), usedegrees=False, onebin=False) == nooption
+    assert choose("phi", (-1, 3), (3,), usedegrees=False, onebin=False).bins == (-1, 3)
+    # the virtual packets have no average, thus all the directions give the plot of the real packets
+    assert choose("vpkt", (-1, 2), (-1,), usedegrees=False, onebin=False) == nooption
+    assert choose("vpkt", (-1, 2), (2,), usedegrees=False, onebin=False).bins == (2,)
+    # a plot of one bin takes the bin of the click
+    assert choose("bin", (0, 5), (5,), usedegrees=False, onebin=True).bins == (5,)
+    assert choose("bin", (-1, 5), (-1,), usedegrees=False, onebin=True) == nooption

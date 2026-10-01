@@ -875,6 +875,8 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
 
 # the readable text of the label or the checkbox of each flag. The tooltip then gives the flag
 FLAG_LABELS: t.Final = MappingProxyType({
+    "--average_over_phi_angle": "Average over φ",
+    "--average_over_theta_angle": "Average over θ",
     "--colorbyion": "Colour by ion",
     "--frompackets": "ARTIS data source",
     "--hidenetspectrum": "Hide net spectrum",

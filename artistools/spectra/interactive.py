@@ -503,6 +503,13 @@ def get_reference_token(filename: str) -> str:
 DEFAULT_SPECTRA: t.Final = (".",)
 
 
+def run_has_direction_spectra(runfolder: Path | str) -> bool:
+    """Return True if a run gives the spectrum of a direction bin: from spec_res.out, specpol_res.out, or the packets."""
+    path = Path(runfolder)
+    resfile = firstexisting_or_none(["spec_res.out", "specpol_res.out"], folder=path, tryzipped=True)
+    return resfile is not None or has_packets_files(path)
+
+
 def get_spectrum_path(path: str) -> Path:
     """Return the full path of the folder or the file of a spectrum, e.g. of "." or of a name of a reference spectrum.
 
@@ -1338,6 +1345,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         lambda: get_direction_choice(viewer.values),
         lambda choice: on_direction(choice),  # ruff:ignore[unnecessary-lambda]
         lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
+        run_has_direction_spectra,
     )
     for box in (countbox, binwidthbox):
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
