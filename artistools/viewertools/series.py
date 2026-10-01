@@ -359,15 +359,12 @@ def show_row_buttons(row: "QtWidgets.QWidget", *, visible: bool) -> None:
         widget.setVisible(visible)
 
 
-# the width of the path under the name of a recent model, which shows the start and the end of a longer path
-PATH_MENU_WIDTH: t.Final = 320
-
-
-def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str) -> "QtGui.QAction":
+def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str, width: int) -> "QtGui.QAction":
     """Return a menu item with the name of a folder, and its path in a very small font under the name.
 
-    One item of a menu has one font, thus the item is a widget with two labels. The paths of the models are often
-    long, thus the path shows its start and its end, e.g. /Users/luke…1e8pkt_virgo, and the tooltip gives all of it.
+    One item of a menu has one font, thus the item is a widget with two labels. The path takes the width, e.g. the
+    width of the list of series, and a longer path shows its start and its end, e.g. /Users/luke…1e8pkt_virgo. The
+    tooltip gives all of it.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -378,7 +375,8 @@ def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str) -> "QtGui.QActio
     item.setObjectName("pathmenuitem")
     item.setToolTip(folder)
     layout = QtWidgets.QVBoxLayout(item)
-    layout.setContentsMargins(14, 3, 14, 3)
+    margin = 14
+    layout.setContentsMargins(margin, 3, margin, 3)
     layout.setSpacing(0)
     namelabel = QtWidgets.QLabel(Path(folder).name)
     pathlabel = QtWidgets.QLabel()
@@ -388,7 +386,7 @@ def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str) -> "QtGui.QActio
     pathlabel.setForegroundRole(QtGui.QPalette.ColorRole.PlaceholderText)
     pathlabel.setText(
         pathlabel.fontMetrics().elidedText(
-            get_menu_path_text(folder), QtCore.Qt.TextElideMode.ElideMiddle, PATH_MENU_WIDTH
+            get_menu_path_text(folder), QtCore.Qt.TextElideMode.ElideMiddle, max(width - 2 * margin, 100)
         )
     )
     layout.addWidget(namelabel)
@@ -780,11 +778,14 @@ def add_series_list(
         """Fill the menu of Add Model with the recent models that the list does not hold."""
         recentmodelsmenu.clear()
         fullpaths = {actions.get_full_path(path) for path in actions.get_paths()}
-        folders = [folder for folder in get_recent_models() if actions.get_full_path(folder) not in fullpaths]
+        # a test of a remote folder starts ssh, thus the menu keeps each remote model and leaves out a missing local folder
+        folders = [
+            folder
+            for folder in get_recent_models()
+            if (is_remote_path(folder) or Path(folder).is_dir()) and actions.get_full_path(folder) not in fullpaths
+        ]
         for folder in folders:
-            action = make_path_menu_action(recentmodelsmenu, folder)
-            # a test of a remote folder starts ssh, thus the menu enables each remote model and does not test its folder
-            action.setEnabled(is_remote_path(folder) or Path(folder).is_dir())
+            action = make_path_menu_action(recentmodelsmenu, folder, serieslist.width())
             action.triggered.connect(partial(add_paths, [folder]))
             recentmodelsmenu.addAction(action)
         if not folders:
