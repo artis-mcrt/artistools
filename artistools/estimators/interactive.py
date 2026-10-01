@@ -100,17 +100,20 @@ from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import get_changed_arguments
+from artistools.viewertools.widgets import get_first_sentence
 from artistools.viewertools.widgets import get_python_call
 from artistools.viewertools.widgets import make_completer
 from artistools.viewertools.widgets import make_drag_header
 from artistools.viewertools.widgets import make_flow_layout
 from artistools.viewertools.widgets import make_glyph_button
+from artistools.viewertools.widgets import make_note_label
 from artistools.viewertools.widgets import make_range_slider
 from artistools.viewertools.widgets import make_row_layout
 from artistools.viewertools.widgets import make_slider
 from artistools.viewertools.widgets import parse_command_tokens
 from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
+from artistools.viewertools.widgets import set_note_text
 from artistools.viewertools.widgets import set_search_completion
 from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import show_status_message
@@ -1899,9 +1902,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     cellgrid.addWidget(celledit, 1, 2)
     cellgrid.addWidget(celllabel, 2, 0, 1, -1)
     # the set of cells in the terms of the model grid, which show_blocked_values writes
-    geometrydescription = QtWidgets.QLabel()
-    geometrydescription.setWordWrap(True)
-    geometrydescription.setEnabled(False)
+    geometrydescription = make_note_label()
     parameterrows = (axisparameters, planeparameters, lineparameters, projectionparameters, geometrydescription)
     for row, widget in enumerate(parameterrows, start=3):
         cellgrid.addWidget(widget, row, 0, 1, -1)
@@ -2016,9 +2017,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     subplotgrid.addWidget(subplotsbox, 0, 0, 1, -1)
     subplotgrid.addLayout(newsubplotrow, 1, 0, 1, -1)
     subplotgrid.addWidget(newsuggestionsbox, 2, 0, 1, -1)
-    skippeddefaultslabel = QtWidgets.QLabel()
-    skippeddefaultslabel.setWordWrap(True)
-    skippeddefaultslabel.setEnabled(False)
+    skippeddefaultslabel = make_note_label()
     subplotgrid.addWidget(skippeddefaultslabel, 3, 0, 1, -1)
 
     _, appearancegrid = add_section(panellayout, "Appearance")
@@ -2574,8 +2573,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         description = ""
         with contextlib.suppress(ValueError):
             description = get_geometry_description(values, viewer.modelmeta, axistext, float(coneangletext))
-        geometrydescription.setText(description)
-        geometrydescription.setVisible(bool(description))
+        set_note_text(geometrydescription, get_first_sentence(description), description)
         normal = next(axis for axis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
         planeatlabel.setText(f"at {normal}:")
         set_edit_text(offsetedit, offset)
@@ -2639,10 +2637,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         colorbyioncheck.setText(FLAG_LABELS["--colorbyion"] + colorbyionnote)
         show_subplots()
         defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
-        skippeddefaultslabel.setText(
-            "\n".join(["The default subplots leave out:", *(f"• {note}" for note in viewer.skippeddefaults)])
+        skippedcount = len(viewer.skippeddefaults)
+        set_note_text(
+            skippeddefaultslabel,
+            f"The default subplots leave out {skippedcount} {'plot' if skippedcount == 1 else 'plots'}."
+            if skippedcount
+            else "",
+            "\n".join(["The default subplots leave out:", *(f"• {note}" for note in viewer.skippeddefaults)]),
         )
-        skippeddefaultslabel.setVisible(bool(viewer.skippeddefaults))
         set_option_rows(get_table_rows(values.otheroptions))
         set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
         set_command_text(commandtext, viewer.get_command())

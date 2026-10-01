@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import typing as t
+from functools import cache
 from functools import partial
 from pathlib import Path
 from types import MappingProxyType
@@ -24,6 +25,7 @@ from artistools.viewertools.application import add_recent_model
 from artistools.viewertools.application import get_recent_models
 from artistools.viewertools.application import set_drop_handler
 from artistools.viewertools.widgets import copy_text
+from artistools.viewertools.widgets import get_message_colours
 from artistools.viewertools.widgets import make_completer
 from artistools.viewertools.widgets import make_elided_label
 from artistools.viewertools.widgets import make_glyph_button
@@ -181,7 +183,7 @@ def edit_series_properties(
     previewlabel = QtWidgets.QLabel()
     form.addRow("Preview:", previewlabel)
     errorlabel = QtWidgets.QLabel()
-    errorlabel.setStyleSheet("color: red;")
+    errorlabel.setStyleSheet(f"color: {get_message_colours()[0]};")
     errorlabel.hide()
     form.addRow(errorlabel)
 
@@ -288,6 +290,73 @@ def edit_series_properties(
     return {flag: value for flag, value in values.items() if flag in flags}
 
 
+def get_short_item_text(itemtext: str) -> str:
+    """Return the kind and the name of the last folder or file of an item text, e.g. "Model: mymodel".
+
+    A full path took most of the width of a row, and a long path showed only its start and its end.
+    """
+    kind, separator, path = itemtext.partition(": ")
+    if not separator:
+        return itemtext
+    name = path.rstrip("/").rpartition("/")[2] or path
+    return f"{kind}: {name}"
+
+
+# the object name of a button of a row of the series list, which shows only under the pointer or if the list selects the row
+HOVER_WIDGET_NAME: t.Final = "rowhoverwidget"
+
+
+@cache
+def get_hover_row_class() -> "type[QtWidgets.QWidget]":
+    """Return the class of a row of the series list, which shows its buttons only under the pointer or if selected.
+
+    The buttons of each row took the attention from the names. The context menu and the keys give the same actions,
+    thus the keyboard and VoiceOver reach them while the buttons are hidden.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class HoverRow(QtWidgets.QWidget):
+        """A row that shows its buttons under the pointer or while the list selects it."""
+
+        @t.override
+        def enterEvent(self, event: QtGui.QEnterEvent, /) -> None:
+            super().enterEvent(event)
+            show_row_buttons(self, visible=True)
+
+        @t.override
+        def leaveEvent(self, event: QtCore.QEvent, /) -> None:
+            super().leaveEvent(event)
+            show_row_buttons(self, visible=bool(self.property("rowselected")))
+
+    return HoverRow
+
+
+def make_hover_widget(widget: "QtWidgets.QWidget") -> None:
+    """Make a widget of a row show only under the pointer or if the list selects the row. It keeps its place."""
+    widget.setObjectName(HOVER_WIDGET_NAME)
+    # a hidden button keeps its place, thus the name and the path do not move under the pointer
+    policy = widget.sizePolicy()
+    policy.setRetainSizeWhenHidden(True)
+    widget.setSizePolicy(policy)
+    widget.hide()
+
+
+def set_row_selected(row: "QtWidgets.QWidget", *, selected: bool) -> None:
+    """Show the buttons of a row of the series list while the list selects it or the pointer is over it."""
+    row.setProperty("rowselected", selected)
+    show_row_buttons(row, visible=selected or row.underMouse())
+
+
+def show_row_buttons(row: "QtWidgets.QWidget", *, visible: bool) -> None:
+    """Show or hide the buttons of a row of the series list."""
+    from PySide6 import QtWidgets
+
+    for widget in row.findChildren(QtWidgets.QWidget, HOVER_WIDGET_NAME):
+        widget.setVisible(visible)
+
+
 class SeriesRow(t.NamedTuple):
     """One row of the list of series of a viewer, which is an ARTIS model or a file of reference data."""
 
@@ -369,13 +438,14 @@ def add_series_list(
     # the widget of each row shows the text beside its buttons, thus the list draws no text of its own
     serieslist.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     serieslist.setToolTip(listtooltip)
-    # a click opens the dialog, and the arrow opens the menu of the recent models
-    addmodelbutton = QtWidgets.QToolButton()
-    addmodelbutton.setText("Add Model…")
-    addmodelbutton.setToolTip("Add the folder of an ARTIS model. The arrow shows the recent models")
-    addmodelbutton.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-    recentmodelsmenu = QtWidgets.QMenu(addmodelbutton)
-    addmodelbutton.setMenu(recentmodelsmenu)
+    # a tool button with a menu arrow took the small font and the flat frame of the macOS style, thus two push buttons
+    # give the dialog and the menu of the recent models
+    addmodelbutton = QtWidgets.QPushButton("Add Model…")
+    addmodelbutton.setToolTip("Add the folder of an ARTIS model")
+    recentmodelsbutton = QtWidgets.QPushButton("Recent")
+    recentmodelsbutton.setToolTip("Add one of the models that a window opened recently")
+    recentmodelsmenu = QtWidgets.QMenu(recentmodelsbutton)
+    recentmodelsbutton.setMenu(recentmodelsmenu)
     referenceedit = QtWidgets.QLineEdit()
     referenceedit.setPlaceholderText(f"Add a {reference.kind}, e.g. {reference.example}")
     referenceedit.setToolTip(
@@ -390,6 +460,7 @@ def add_series_list(
     addrow.addWidget(referenceedit, 1)
     addrow.addWidget(openreferencebutton)
     addrow.addWidget(addmodelbutton)
+    addrow.addWidget(recentmodelsbutton)
     grid.addWidget(serieslist, 0, 0, 1, -1)
     grid.addLayout(addrow, 1, 0, 1, -1)
 
@@ -435,7 +506,7 @@ def add_series_list(
 
     def make_row(index: int, count: int, seriesrow: SeriesRow) -> QtWidgets.QWidget:
         path, name = seriesrow.path, seriesrow.name
-        row = QtWidgets.QWidget()
+        row = get_hover_row_class()()
         row.setToolTip(seriesrow.tooltip)
         rowlayout = QtWidgets.QHBoxLayout(row)
         rowlayout.setContentsMargins(4, 0, 2, 0)
@@ -460,8 +531,9 @@ def add_series_list(
         )
         rowlayout.addWidget(namelabel)
         rowlayout.addSpacing(6)
-        # a long path shows its start and its end, and the width of the box sets the length
-        pathlabel = make_elided_label(seriesrow.itemtext)
+        # the row gives the kind and the folder name, and the tooltip gives the full path
+        pathlabel = make_elided_label(get_short_item_text(seriesrow.itemtext))
+        pathlabel.setToolTip(seriesrow.itemtext)
         pathlabel.setEnabled(False)
         rowlayout.addWidget(pathlabel, 1)
         if seriesrow.mark is not None:
@@ -479,11 +551,13 @@ def add_series_list(
                 button.setToolTip(seriesrow.removereason)
             button.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, action))
             rowlayout.addWidget(button)
+            make_hover_widget(button)
         grip = QtWidgets.QLabel("≡")
         grip.setEnabled(False)
         grip.setToolTip("Drag the row to move the series")
         grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
         rowlayout.addWidget(grip)
+        make_hover_widget(grip)
         # the context menu gives each action, thus the keyboard and VoiceOver can also reach them
         row.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
         for text, enabled, action in (
@@ -612,6 +686,14 @@ def add_series_list(
         actions.edit_properties(item.data(QtCore.Qt.ItemDataRole.UserRole))
 
     serieslist.itemDoubleClicked.connect(on_double_click)
+
+    def on_selection() -> None:
+        for index in range(serieslist.count()):
+            item = serieslist.item(index)
+            if (row := serieslist.itemWidget(item)) is not None:
+                set_row_selected(row, selected=item.isSelected())
+
+    serieslist.itemSelectionChanged.connect(on_selection)
     # the list changes its rows at the end of the drop, thus the new order applies after the drop
     for rowsignal in (serieslist.model().rowsMoved, serieslist.model().rowsInserted, serieslist.model().rowsRemoved):
         rowsignal.connect(lambda: QtCore.QTimer.singleShot(0, window, on_rows_dropped))

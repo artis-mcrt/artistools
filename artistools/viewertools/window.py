@@ -59,12 +59,14 @@ from artistools.viewertools.menus import show_figure_in_canvas
 from artistools.viewertools.widgets import add_command_section
 from artistools.viewertools.widgets import add_copy_box
 from artistools.viewertools.widgets import add_section
+from artistools.viewertools.widgets import align_section_labels
 from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import make_option_table
 from artistools.viewertools.widgets import make_plot_area
 from artistools.viewertools.widgets import make_sidebar
 from artistools.viewertools.widgets import make_status_bar
 from artistools.viewertools.widgets import set_plot_busy
+from artistools.viewertools.widgets import show_plot_area_state
 from artistools.viewertools.widgets import show_plot_banner
 from artistools.viewertools.widgets import show_status_message
 from artistools.viewertools.widgets import StatusBar
@@ -271,6 +273,7 @@ def finish_viewer_window(
 
     viewerwindow.fittimer.timeout.connect(fit_figwidthscale)
     follow_colour_scheme(window, viewer, queue)
+    show_plot_area_state(window, viewer.fig)
     # the window keeps its command at a quit, and the next start opens the window again
     window.setProperty("sessiontokens", get_session_tokens)
     window.destroyed.connect(on_window_closed)
@@ -623,6 +626,8 @@ class DrawQueue[ValuesT]:
             self.viewer.values = self.drawnvalues
         self.show_plot_status(message)
         self.after_draw(message)
+        # after_draw can give a label a new text, e.g. a new unit, which changes the widths of the labels
+        align_section_labels(self.window)
 
     def run_task(
         self, task: "Callable[[], str | None]", statustext: str, on_done: "Callable[[str | None], None]"
@@ -681,6 +686,7 @@ class DrawQueue[ValuesT]:
         hide_readout_tag(self.window)
         show_status_message(self.statusbar, message, self.viewer.warning)
         show_plot_banner(self.window, message)
+        show_plot_area_state(self.window, self.viewer.fig)
         # show_values can replace the field of the plot, e.g. with a new card of a subplot, before the plot ends
         field, self.renderedfield = self.renderedfield, None
         rejectedfield = field if message is not None and field is not None and is_live(field) else None
@@ -939,6 +945,9 @@ def show_window(window: "QtWidgets.QMainWindow", figsize: tuple[float, float], o
     from PySide6 import QtWidgets
 
     show_flag_labels(window)
+    # the readable text of each flag sets the width of its label, and the first values of the controls can give a label
+    # a unit, thus the alignment waits until Qt has no other events
+    QtCore.QTimer.singleShot(0, window, partial(align_section_labels, window))
     splitter = window.centralWidget()
     assert isinstance(splitter, QtWidgets.QSplitter)
     geometrykey, splitterkey = get_window_setting_keys(window)

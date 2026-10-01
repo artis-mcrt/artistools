@@ -1187,7 +1187,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     timegrid.addLayout(gridrow, 4, 0, 1, -1)
 
     # the settings keep the open state of the section by its key, which the older heading of the section gave
-    _, xgrid = add_section(panellayout, "Horizontal axis", key="x axis")
+    # the heading gives the quantity and the unit of the x axis, e.g. "Horizontal axis: Energy [keV]", as the light curves
+    # give the time
+    xheader, xgrid = add_section(panellayout, "Horizontal axis", key="x axis")
     xunitbox = QtWidgets.QComboBox()
     xunitbox.addItems(list(XUNITS))
     xunitbox.setToolTip(helptexts.get("xunit", ""))
@@ -1433,6 +1435,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         lastbinwidths.pop("deltax", None)
         xunit = get_xunit(values.xunit)
         xrangelabel.setText(f"{xunit.kind.capitalize()} [{xunit.label}]:")
+        xheader.setText(f"Horizontal axis: {xunit.kind.capitalize()} [{xunit.label}]")
         binmodebox.setItemText(binmodebox.findData("deltax"), f"-deltax [{xunit.label}]")
         rangesunit = (values.xunit, values.gamma)
 

@@ -1,13 +1,17 @@
 """Make the widgets of a viewer window, e.g. the sections, the option table, the sliders, and the status bar."""
 
 import argparse
+import html
 import json
 import math
+import re
 import shlex
 import sys
 import typing as t
 from functools import cache
 from pathlib import Path
+
+import numpy as np
 
 from artistools.misc import separate_trailing_folders
 
@@ -17,6 +21,7 @@ if t.TYPE_CHECKING:
     from collections.abc import Mapping
     from collections.abc import Sequence
 
+    import matplotlib.figure as mplfig
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -54,18 +59,24 @@ def add_section(
     header.setCheckable(True)
     header.setAutoRaise(True)
     header.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    header.setStyleSheet("QToolButton { border: none; }")
+    # a faint band across the panel sets each heading apart from the controls. The grey with an alpha suits the light
+    # and the dark appearance
+    header.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+    header.setStyleSheet(SECTION_HEADER_STYLE)
     # the macOS style gives a tool button a small font, and a heading takes the bold font of the application
     font = QtWidgets.QApplication.font()
     font.setBold(True)
     header.setFont(font)
     content = QtWidgets.QWidget()
+    content.setObjectName(SECTION_CONTENT_NAME)
     grid = QtWidgets.QGridLayout(content)
     # the space under the content of a section is larger than the space between its rows, thus each section stays a
     # group of its own
-    grid.setContentsMargins(12, 2, 4, 12)
+    grid.setContentsMargins(12, 6, 4, 14)
     grid.setVerticalSpacing(ROW_SPACING)
-    grid.setHorizontalSpacing(8)
+    # the columns of the grid have the gap of a row of make_row_layout, thus a control in the grid and a control in a
+    # row start at one place
+    grid.setHorizontalSpacing(ROW_SPACING)
     grid.setColumnStretch(1, 1)
     settingkey = f"{QtWidgets.QApplication.applicationDisplayName()}/sections/{key or title}"
     isopen = get_bool_setting(settingkey, default=title not in CLOSED_SECTIONS)
@@ -98,6 +109,11 @@ GLYPH_BUTTON_STYLE: t.Final = (
 # the space between the rows of a section, and the space in front of a group, e.g. a label, that follows a control
 ROW_SPACING: t.Final = 6
 LABEL_GAP: t.Final = 12
+SECTION_CONTENT_NAME: t.Final = "sectioncontent"
+SECTION_HEADER_STYLE: t.Final = (
+    "QToolButton { border: none; border-radius: 5px; padding: 3px 6px; background: rgba(128, 128, 128, 34); }"
+    " QToolButton:hover { background: rgba(128, 128, 128, 60); }"
+)
 
 
 def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidgets.QToolButton":
@@ -702,6 +718,9 @@ def make_plot_area(canvas: "FigureCanvasQTAgg", on_resize: "Callable[[], None]")
             self.on_resize()
 
     plotarea = PlotArea(on_resize)
+    plotarea.setObjectName(PLOT_AREA_NAME)
+    # the area takes the background colour of the figure, which needs a styled background on a plain widget
+    plotarea.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
     plotarea.setMinimumSize(320, 240)
     plotlayout = QtWidgets.QVBoxLayout(plotarea)
     plotlayout.setContentsMargins(0, 0, 0, 0)
@@ -712,9 +731,6 @@ def make_plot_area(canvas: "FigureCanvasQTAgg", on_resize: "Callable[[], None]")
     banner.setObjectName("plotbanner")
     banner.setWordWrap(True)
     banner.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-    banner.setStyleSheet(
-        "QLabel#plotbanner { background: rgba(178, 34, 34, 225); color: white; border-radius: 8px; padding: 8px 14px; }"
-    )
     banner.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     banner.hide()
     hidetimer = QtCore.QTimer(banner)
@@ -724,7 +740,54 @@ def make_plot_area(canvas: "FigureCanvasQTAgg", on_resize: "Callable[[], None]")
     spinner = get_spinner_class()(plotarea)
     spinner.setObjectName("plotspinner")
     spinner.hide()
+    emptynote = QtWidgets.QLabel(EMPTY_PLOT_TEXT, plotarea)
+    emptynote.setObjectName("plotempty")
+    emptynote.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+    emptynote.setForegroundRole(QtGui.QPalette.ColorRole.PlaceholderText)
+    font = emptynote.font()
+    font.setPointSizeF(font.pointSizeF() * 1.3)
+    emptynote.setFont(font)
+    emptynote.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    emptynote.hide()
     return plotarea
+
+
+PLOT_AREA_NAME: t.Final = "plotarea"
+EMPTY_PLOT_TEXT: t.Final = "The plot shows no data in the range of its axes.\nDouble-click the plot to reset the range."
+
+
+def show_plot_area_state(window: "QtCore.QObject", fig: "mplfig.Figure") -> None:
+    """Give the plot area the background colour of the figure, and show a note over a plot that shows no data.
+
+    A figure narrower than the area left a band of the window colour at each side, which looked like a frame.
+    """
+    import matplotlib.colors as mcolors
+    from PySide6 import QtWidgets
+
+    plotarea = window.findChild(QtWidgets.QWidget, PLOT_AREA_NAME)
+    if plotarea is None:
+        return
+    plotarea.setStyleSheet(f"#{PLOT_AREA_NAME} {{ background: {mcolors.to_hex(fig.get_facecolor())}; }}")
+    if (emptynote := plotarea.findChild(QtWidgets.QLabel, "plotempty")) is not None:
+        emptynote.setVisible(not figure_shows_data(fig))
+        place_plot_overlays(plotarea)
+
+
+def figure_shows_data(fig: "mplfig.Figure") -> bool:
+    """Return True if an axes of the figure shows a point of a line inside its limits, an image, or a collection."""
+    for axis in fig.axes:
+        if axis.images or axis.collections or axis.patches:
+            return True
+        xlow, xhigh = sorted(axis.get_xlim())
+        ylow, yhigh = sorted(axis.get_ylim())
+        for line in axis.get_lines():
+            points = np.asarray(line.get_xydata(), dtype=float)
+            if points.size == 0:
+                continue
+            x, y = points[:, 0], points[:, 1]
+            if np.any((x >= xlow) & (x <= xhigh) & (y >= ylow) & (y <= yhigh)):
+                return True
+    return False
 
 
 # the time that the banner of a rejected plot stays over the plot. The status bar keeps the message
@@ -750,6 +813,10 @@ def place_plot_overlays(plotarea: "QtWidgets.QWidget") -> None:
     if (spinner := plotarea.findChild(QtWidgets.QWidget, "plotspinner")) is not None:
         spinner.move(plotarea.width() - spinner.width() - margin, margin)
         spinner.raise_()
+    if (emptynote := plotarea.findChild(QtWidgets.QLabel, "plotempty")) is not None:
+        emptynote.resize(plotarea.width(), emptynote.sizeHint().height())
+        emptynote.move(0, (plotarea.height() - emptynote.height()) // 2)
+        emptynote.raise_()
 
 
 def show_plot_banner(window: "QtCore.QObject", message: str | None) -> None:
@@ -764,6 +831,11 @@ def show_plot_banner(window: "QtCore.QObject", message: str | None) -> None:
         banner.hide()
         return
     banner.setText(message)
+    # the banner takes the red of the status bar, which changes with the appearance
+    banner.setStyleSheet(
+        f"QLabel#plotbanner {{ background: {get_message_colours()[0]}; color: palette(base); border-radius: 8px;"
+        " padding: 8px 14px; }"
+    )
     banner.show()
     if (plotarea := banner.parentWidget()) is not None:
         place_plot_overlays(plotarea)
@@ -1330,6 +1402,11 @@ def make_fps_box() -> "QtWidgets.QDoubleSpinBox":
     return fpsbox
 
 
+# the colour of an error and of a warning on a light window and on a dark window
+MESSAGE_COLOURS_LIGHT: t.Final = ("#b3261e", "#9a5b00")
+MESSAGE_COLOURS_DARK: t.Final = ("#ff8a80", "#ffc164")
+
+
 class StatusBar(t.NamedTuple):
     """The labels of the status bar of a window, and its help button."""
 
@@ -1339,13 +1416,30 @@ class StatusBar(t.NamedTuple):
     helpbutton: "QtWidgets.QToolButton"
 
 
+def get_message_colours() -> tuple[str, str]:
+    """Return the colour of an error and of a warning for the current appearance.
+
+    The dark red and the dark amber of a light window have too little contrast on a dark window, thus a dark window
+    takes a light red and a light amber.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+
+    # a test can run the queue with a QCoreApplication alone, which has no palette
+    if not isinstance(application := QtCore.QCoreApplication.instance(), QtGui.QGuiApplication):
+        return MESSAGE_COLOURS_LIGHT
+    window = application.palette().color(QtGui.QPalette.ColorRole.Window)
+    return MESSAGE_COLOURS_LIGHT if window.lightness() > 128 else MESSAGE_COLOURS_DARK
+
+
 def show_status_message(statusbar: StatusBar, message: str | None, warning: str) -> None:
     """Show the message of a rejected plot in red, or else the last warning of the plot in amber."""
+    errorcolour, warningcolour = get_message_colours()
     if message is not None:
-        statusbar.message.setStyleSheet("color: firebrick")
+        statusbar.message.setStyleSheet(f"color: {errorcolour}")
         statusbar.message.setText(message)
     else:
-        statusbar.message.setStyleSheet("color: darkorange")
+        statusbar.message.setStyleSheet(f"color: {warningcolour}")
         statusbar.message.setText(warning)
 
 
@@ -1364,7 +1458,7 @@ def make_status_bar(window: "QtWidgets.QMainWindow") -> StatusBar:
 
     statusbar = window.statusBar()
     messagelabel = QtWidgets.QLabel()
-    messagelabel.setStyleSheet("color: firebrick")
+    messagelabel.setStyleSheet(f"color: {get_message_colours()[0]}")
     readoutlabel = QtWidgets.QLabel()
     drawtimelabel = QtWidgets.QLabel()
     helpbutton = QtWidgets.QToolButton()
@@ -1452,3 +1546,101 @@ def set_spin_value(box: "QtWidgets.QSpinBox | QtWidgets.QDoubleSpinBox", value: 
         box.setValue(round(value))
     else:
         box.setValue(value)
+
+
+def make_note_label() -> "QtWidgets.QLabel":
+    """Return a label for a note in a section, which shows a summary and a link to the full text.
+
+    A long note pushed the controls below it down the panel. The note text takes the grey of a placeholder, and a
+    disabled label would take no click on its link.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    label = QtWidgets.QLabel()
+    label.setWordWrap(True)
+    label.setTextFormat(QtCore.Qt.TextFormat.RichText)
+    label.setForegroundRole(QtGui.QPalette.ColorRole.PlaceholderText)
+    label.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.LinksAccessibleByMouse)
+
+    def on_link(link: str) -> None:
+        label.setProperty("noteexpanded", link == "more")
+        show_note_text(label)
+
+    label.linkActivated.connect(on_link)
+    label.hide()
+    return label
+
+
+def set_note_text(label: "QtWidgets.QLabel", summary: str, detail: str = "") -> None:
+    """Show a summary in a note label, with a More link to the detail if the detail gives more. No summary hides it."""
+    label.setProperty("notesummary", summary)
+    label.setProperty("notedetail", detail if detail != summary else "")
+    label.setToolTip(detail or summary)
+    show_note_text(label)
+    label.setVisible(bool(summary))
+
+
+def show_note_text(label: "QtWidgets.QLabel") -> None:
+    """Show the summary or the detail of a note label, with the link that changes between them."""
+    summary, detail = str(label.property("notesummary") or ""), str(label.property("notedetail") or "")
+    if not detail:
+        label.setText(html.escape(summary))
+    elif label.property("noteexpanded"):
+        label.setText(html.escape(detail).replace("\n", "<br>") + ' <a href="less">Less</a>')
+    else:
+        label.setText(html.escape(summary) + ' <a href="more">More…</a>')
+
+
+def get_first_sentence(text: str) -> str:
+    """Return the first sentence of a text, or all the text if it has one sentence."""
+    return re.split(r"(?<=[.:])\s+(?=[A-Z])", text, maxsplit=1)[0]
+
+
+def align_section_labels(window: "QtCore.QObject") -> None:
+    """Give the labels at the start of the rows of each section one width, thus the controls start at one place.
+
+    A row of make_row_layout puts its first label and its control in one group. A label in the first column of the grid
+    of a section, or at the start of a row layout in that column, also takes the width. A label can change its text,
+    e.g. for a new unit, thus the window calls the function again after each plot.
+    """
+    from PySide6 import QtWidgets
+
+    if not isinstance(window, QtWidgets.QWidget):
+        return
+    for content in window.findChildren(QtWidgets.QWidget, SECTION_CONTENT_NAME):
+        grid = content.layout()
+        if not isinstance(grid, QtWidgets.QGridLayout):
+            continue
+        labels: list[QtWidgets.QLabel] = []
+        for index in range(grid.count()):
+            _, column, _, columnspan = t.cast("tuple[int, int, int, int]", grid.getItemPosition(index))
+            item = grid.itemAt(index)
+            if column != 0 or item is None:
+                continue
+            if isinstance(widget := item.widget(), QtWidgets.QLabel) and columnspan == 1:
+                labels.append(widget)
+            elif (rowlayout := item.layout()) is not None and (label := get_row_start_label(rowlayout)) is not None:
+                labels.append(label)
+        if len(labels) > 1:
+            width = max(label.sizeHint().width() for label in labels)
+            for label in labels:
+                label.setMinimumWidth(width)
+
+
+def get_row_start_label(rowlayout: "QtWidgets.QLayout") -> "QtWidgets.QLabel | None":
+    """Return the label at the start of a row layout or of a row of make_row_layout if a control follows it, or None."""
+    from PySide6 import QtWidgets
+
+    if (rowitem := rowlayout.itemAt(0)) is None or (wraprow := rowitem.widget()) is None:
+        return None
+    if isinstance(wraprow, QtWidgets.QLabel):
+        return wraprow if rowlayout.count() > 1 else None
+    groups: list[QtWidgets.QWidget] = getattr(wraprow, "groups", [])
+    firstgroup = groups[0] if groups else None
+    if firstgroup is None or (grouplayout := firstgroup.layout()) is None or grouplayout.count() < 2:
+        return None
+    firstitem = grouplayout.itemAt(0)
+    label = firstitem.widget() if firstitem is not None else None
+    return label if isinstance(label, QtWidgets.QLabel) else None

@@ -4304,3 +4304,20 @@ def test_viewer_keeps_its_plot_after_a_rejected_change(kind: str, tokens: list[s
     assert "-figscale" in message
     assert viewer.values == oldvalues
     assert viewer.fig is oldfig
+
+
+def test_figure_shows_data_only_inside_the_axis_limits() -> None:
+    """The window shows the note of an empty plot when no point of a line is inside the limits of its axes."""
+    fig = mplfig.Figure()
+    axis = fig.add_subplot()
+    axis.plot([1.0, 2.0, 3.0], [1.0, 2.0, 3.0])
+    assert viewerwidgets.figure_shows_data(fig)
+    axis.set_xlim(10.0, 20.0)
+    assert not viewerwidgets.figure_shows_data(fig)
+    # an inverted axis has its limits in the other order, and a point inside them shows
+    axis.set_xlim(3.5, 0.5)
+    assert viewerwidgets.figure_shows_data(fig)
+    axis.set_ylim(5.0, 6.0)
+    assert not viewerwidgets.figure_shows_data(fig)
+    axis.imshow([[1.0, 2.0]])
+    assert viewerwidgets.figure_shows_data(fig)

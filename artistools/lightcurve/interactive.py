@@ -86,10 +86,12 @@ from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import get_changed_arguments
 from artistools.viewertools.widgets import get_python_call
+from artistools.viewertools.widgets import make_note_label
 from artistools.viewertools.widgets import make_range_slider
 from artistools.viewertools.widgets import parse_command_tokens
 from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
+from artistools.viewertools.widgets import set_note_text
 from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import show_status_message
 from artistools.viewertools.widgets import show_status_note
@@ -180,6 +182,14 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
 
 # plotlightcurves reads the model in the working folder when the command gives no path
 DEFAULT_LIGHTCURVES: t.Final = (".",)
+
+# the name of each column of the energy rates in a note
+ENERGYRATENAMES: t.Final = MappingProxyType({
+    "deposition": "deposition",
+    "emission": "Monte Carlo emission",
+    "analyticemission": "analytical emission",
+    "thermalisation": "thermalisation",
+})
 
 # the text of each particle in the controls of the energy rates
 PARTICLETEXTS: t.Final = MappingProxyType({
@@ -712,8 +722,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             energychecks[dest, particle] = check
     barnescheck = QtWidgets.QCheckBox("--showbarnes")
     add_row(energygrid, len(DEPOSITIONCHOICES) + 2, [barnescheck])
+    # a grey box shows its reason only in its tooltip, thus a note under the grid gives each reason
+    unavailablenote = make_note_label()
+    energygrid.addWidget(unavailablenote, len(DEPOSITIONCHOICES) + 3, 0, 1, -1)
 
-    _, timegrid = add_section(panellayout, "Time [d]")
+    # the key keeps the open or closed state that the settings saved under the old heading
+    _, timegrid = add_section(panellayout, "Horizontal axis: Time [d]", key="Time [d]")
     timerangeslider, set_timerange_positions, connect_timerange, _ = make_range_slider(SLIDER_STEPS)
     timeminedit, timemaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     zoomtip = " Drag across the plot to select a range. Double-click the plot to get the full range."
@@ -901,6 +915,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             helptexts.get("plotcmf", "") if values.lumunit != "mag" else "A magnitude has no comoving frame luminosity"
         )
         invalidcheck.setChecked(values.plotinvalidpart)
+        unavailable: list[str] = []
         for (dest, particle), check in energychecks.items():
             ischecked = particle in getattr(values, dest)
             check.setChecked(ischecked)
@@ -908,6 +923,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             # a rate that the plot has stays available, thus the user can remove it
             check.setEnabled(reason is None or ischecked)
             check.setToolTip(reason or f"-{dest} {particle}: {helptexts.get(dest, '')}")
+            if reason is not None:
+                unavailable.append(f"• {PARTICLETEXTS[particle]} {ENERGYRATENAMES[dest]}: {reason}")
+        set_note_text(
+            unavailablenote,
+            f"The runs give no data for the {len(unavailable)} grey {'box' if len(unavailable) == 1 else 'boxes'}."
+            if unavailable
+            else "",
+            "\n".join(unavailable),
+        )
         barnescheck.setChecked(values.showbarnes)
         # Barnes et al. (2016) give the curves of the gamma rays, the electrons, and the alpha particles
         hasbarnescurve = any(particle in values.thermalisation for particle in ("gamma", "betaminus", "alpha"))
