@@ -109,6 +109,7 @@ from artistools.viewertools.window import start_viewer_window
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
+    from collections.abc import Mapping
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
@@ -1110,19 +1111,26 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # the colour of the dialog for "Default" is the colour that the light curve has with no -color of its own
         defaultrows = set_series_rows(values.otheroptions, values.lightcurves, path, {"-color": None})
         defaultcolour = get_path_colours(values.lightcurves, isreference, defaultrows)[path]
-        changes = edit_series_properties(
+
+        def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
+            # each change starts from the values before the dialog, and no change returns to them
+            if changes is None:
+                apply(values, undoable=undoable)
+                return
+            rows = set_series_rows(values.otheroptions, values.lightcurves, path, changes)
+            apply(dc.replace(values, otheroptions=rows), undoable=undoable)
+
+        edit_series_properties(
             window,
             get_lightcurve_name(values, path),
             get_series_style(values.otheroptions, values.lightcurves, path),
             mplcolors.to_hex(defaultcolour),
             float(mpl.rcParams["lines.linewidth"]),
+            show_changes,
             flags=("-label", "-color", "-linewidth", "-linealpha")
             if path_is_reference_lightcurve(path)
             else SERIES_PROPERTY_FLAGS,
         )
-        if changes is not None:
-            rows = set_series_rows(values.otheroptions, values.lightcurves, path, changes)
-            apply(dc.replace(viewer.values, otheroptions=rows))
 
     def is_run_folder(path: str) -> bool:
         return bool(get_artis_run_folders([path]))

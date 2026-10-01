@@ -105,6 +105,9 @@ def make_series_swatch(colour: str, style: "Mapping[str, str | None]") -> "QtGui
     )
 
 
+# the pause after a change of the dialog of the line properties before the plot shows it
+PREVIEW_MILLISECONDS: t.Final = 250
+
 # the options of the dialog of the line properties, which each give one value for each series
 SERIES_PROPERTY_FLAGS: t.Final = ("-label", "-color", "-linestyle", "-dashes", "-linewidth", "-linealpha")
 
@@ -115,15 +118,20 @@ def edit_series_properties(
     style: "Mapping[str, str | None]",
     defaultcolour: str,
     defaultlinewidth: float,
+    show_changes: "Callable[[Mapping[str, str | None] | None, bool], None]",
     flags: "Collection[str]" = SERIES_PROPERTY_FLAGS,
-) -> dict[str, str | None] | None:
-    """Ask for the label and the line style of one series, and return the value of each option of flags.
+) -> None:
+    """Ask for the label and the line style of one series, and show each change in the plot at once.
 
     style gives the current value of each option, or None for the default of the command. A field with the default
     gives None, thus the command then gives the series no value. An empty label gives the automatic label of the
-    command. A cancelled dialog gives None. The dialog shows only the fields of flags, e.g. a series of markers has no
-    line style.
+    command. The dialog shows only the fields of flags, e.g. a series of markers has no line style.
+
+    show_changes receives the value of each option of flags, and whether the change is a new step of Undo. The first
+    change is one step, thus Undo reverts all of the dialog. Cancel gives None, and the viewer then shows the values
+    from before the dialog.
     """
+    from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
@@ -173,6 +181,8 @@ def edit_series_properties(
         box.setSpecialValueText("Default")
         box.setValue(float(value) if value else 0.0)
         box.setToolTip(tooltip)
+        # a form of the macOS style keeps a field at its size hint, which leaves no space for the text "Default"
+        box.setMinimumWidth(box.fontMetrics().horizontalAdvance("Default") + 56)
         return box
 
     widthbox = make_default_spinbox(10.0, 0.25, style.get("-linewidth"), "The width of the line in points (-linewidth)")
@@ -207,6 +217,7 @@ def edit_series_properties(
             raise ValueError(str(exc)) from exc
 
     def show_preview() -> None:
+        previewtimer.start()
         colour = chosencolour[0] or defaultcolour
         colourbutton.setIcon(QtGui.QIcon(make_line_swatch(colour, 1.0, 5.0, None)))
         colourbutton.setText(colour if chosencolour[0] else f"Default ({colour})")
@@ -246,11 +257,42 @@ def edit_series_properties(
         alphabox.setValue(0.0)
         show_preview()
 
+    def get_changes() -> dict[str, str | None] | None:
+        """Return the value of each option of flags, or None for a bad dash pattern."""
+        try:
+            dashes = get_dashes()
+        except ValueError:
+            return None
+        values = {
+            "-label": labeledit.text().strip() or None,
+            "-color": chosencolour[0],
+            "-linestyle": linestylebox.currentData(),
+            "-dashes": dashes,
+            "-linewidth": format(widthbox.value(), "g") if widthbox.value() else None,
+            "-linealpha": format(alphabox.value(), "g") if alphabox.value() else None,
+        }
+        return {flag: value for flag, value in values.items() if flag in flags}
+
+    # the values that the plot shows, and whether a change of the dialog made the step of Undo
+    shownchanges: list[dict[str, str | None] | None] = [None]
+    madestep = [False]
+
+    def show_plot_changes() -> None:
+        changes = get_changes()
+        if changes is None or changes == shownchanges[0]:
+            return
+        show_changes(changes, not madestep[0])
+        shownchanges[0], madestep[0] = changes, True
+
+    # a typed label or a typed pattern gives a plot after a short pause, and not after each key
+    previewtimer = QtCore.QTimer(dialog)
+    previewtimer.setSingleShot(True)
+    previewtimer.setInterval(PREVIEW_MILLISECONDS)
+    previewtimer.timeout.connect(show_plot_changes)
+
     def on_accept() -> None:
         # a bad dash pattern keeps the dialog open, and the red text gives the reason
-        try:
-            get_dashes()
-        except ValueError:
+        if get_changes() is None:
             dashesedit.setFocus()
             return
         dialog.accept()
@@ -274,22 +316,21 @@ def edit_series_properties(
         ("-linealpha", alphabox),
     ):
         form.setRowVisible(field, flag in flags)
+    labeledit.textChanged.connect(previewtimer.start)
     show_preview()
+    previewtimer.stop()
+    shownchanges[0] = get_changes()
 
     accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+    previewtimer.stop()
     # the parent keeps its children until it closes, thus the dialog goes when the event loop runs again
     dialog.deleteLater()
-    if not accepted:
-        return None
-    values = {
-        "-label": labeledit.text().strip() or None,
-        "-color": chosencolour[0],
-        "-linestyle": linestylebox.currentData(),
-        "-dashes": get_dashes(),
-        "-linewidth": format(widthbox.value(), "g") if widthbox.value() else None,
-        "-linealpha": format(alphabox.value(), "g") if alphabox.value() else None,
-    }
-    return {flag: value for flag, value in values.items() if flag in flags}
+    if accepted:
+        show_plot_changes()
+    elif madestep[0]:
+        # the return to the values before the dialog reverts the step of the first change, thus it makes no step
+        newstep = False
+        show_changes(None, newstep)
 
 
 def get_short_item_text(itemtext: str) -> str:

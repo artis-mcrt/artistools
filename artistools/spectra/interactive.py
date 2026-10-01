@@ -2015,11 +2015,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
         style = get_series_style(values.otheroptions, values.spectra, path)
         name = style["-label"] or get_series_name(path)
-        changes = edit_series_properties(
-            window, name, style, mplcolors.to_hex(defaultcolours[path]), float(mpl.rcParams["lines.linewidth"])
+
+        def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
+            # each change starts from the values before the dialog, and no change returns to them
+            apply(values if changes is None else set_series_values(values, path, changes), undoable=undoable)
+
+        edit_series_properties(
+            window,
+            name,
+            style,
+            mplcolors.to_hex(defaultcolours[path]),
+            float(mpl.rcParams["lines.linewidth"]),
+            show_changes,
         )
-        if changes is not None:
-            apply(set_series_values(viewer.values, path, changes))
 
     def get_animation_frames() -> "tuple[int, Callable[[int], list[str]]]":
         """Return the count of the steps of Play, from the first valid timestep to the last, and the command of each."""
