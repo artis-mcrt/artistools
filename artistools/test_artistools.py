@@ -237,11 +237,27 @@ def test_transitions_alias_of_the_partition_function_still_works() -> None:
         assert np.isclose(at.transitions.get_lte_partfunc(dflevels, 5000.0), expected)
 
 
+def test_external_packages_find_their_names() -> None:
+    """The packages pynonthermal and artisatomic read these names, thus a release that moves one stops them."""
+    import importlib
+
+    externalnames = {
+        "artistools": ["get_composition_data", "get_ionstring"],  # artisatomic, pynonthermal
+        "artistools.atomic": ["get_levels"],  # pynonthermal
+        "artistools.transitions": ["get_lte_partfunc"],  # pynonthermal
+    }
+    for modulename, names in externalnames.items():
+        module = importlib.import_module(modulename)
+        assert not [name for name in names if not callable(getattr(module, name, None))], modulename
+
+    assert at.get_composition_data is at.atomic.get_composition_data
+
+
 TOPLEVEL_API: t.Final[frozenset[str]] = frozenset({
-    "add_derived_cols_to_modeldata", "decode_roman_numeral", "firstexisting", "get_atomic_number", "get_deposition",
-    "get_elsymbol", "get_inputparams", "get_ion_tuple", "get_ionstring", "get_model_name", "get_modeldata",
-    "get_nprocs", "get_path", "get_timestep_of_timedays", "get_timestep_times", "get_z_a_nucname", "scan_estimators",
-    "zopen",
+    "add_derived_cols_to_modeldata", "decode_roman_numeral", "firstexisting", "get_atomic_number",
+    "get_composition_data", "get_deposition", "get_elsymbol", "get_inputparams", "get_ion_tuple", "get_ionstring",
+    "get_model_name", "get_modeldata", "get_nprocs", "get_path", "get_timestep_of_timedays", "get_timestep_times",
+    "get_z_a_nucname", "scan_estimators", "zopen",
 })  # fmt: skip
 
 

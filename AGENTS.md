@@ -4,7 +4,12 @@ Artistools is a toolkit that plots data, analyses data, and converts files for t
 
 The package has **no public API**. You can delete code that has no callers. This includes a function parameter that no call passes. A `quiet` flag or a `verbose` flag is never dead code, even when no call passes it, because a user sets it at the point of use. You can rename or refactor a function freely. Do not add a compatibility shim or a deprecation path for a name in the code, e.g. a function, a parameter, or a module. Correct the design instead.
 
-One package outside this repository reads artistools: `pynonthermal` reads `at.get_ionstring`, `at.atomic.get_levels`, and `at.transitions.get_lte_partfunc`. Keep the first two names and their paths, because a release that moves one of them stops the installed `pynonthermal`. The third name is a deprecated alias of `at.atomic.get_lte_partfunc`, and `artistools/transitions.py` holds nothing else. This alias is the one permitted exception to the rule above. Delete that module after `pynonthermal` reads the new name.
+Two packages outside this repository read artistools:
+
+- `pynonthermal` reads `at.get_ionstring`, `at.atomic.get_levels`, and `at.transitions.get_lte_partfunc`.
+- `artisatomic` reads `at.get_composition_data` as `from artistools import get_composition_data`.
+
+Keep these names and their paths, because a release that moves one of them stops the installed package. The test `test_external_packages_find_their_names` holds this list. The name `at.transitions.get_lte_partfunc` is a deprecated alias of `at.atomic.get_lte_partfunc`, and `artistools/transitions.py` holds nothing else. This alias is the one permitted exception to the rule above. Delete that module after `pynonthermal` reads the new name.
 
 A command-line argument is different. A user writes such an argument in a script and in a note, thus a
 new spelling that takes the old one away stops that work. Keep the old spelling of a renamed argument

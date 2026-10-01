@@ -108,6 +108,7 @@ A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame 
 | `at.get_timestep_of_timedays` | Return the timestep that holds a time in days. |
 | `at.scan_estimators` | Read the estimators of a full run as a LazyFrame, with a row for each timestep and cell. |
 | `at.get_deposition` | Return `deposition.out` as a LazyFrame. |
+| `at.get_composition_data` | Return the elements and the ion stages of `compositiondata.txt` as a DataFrame. |
 | `at.get_ionstring` | Return a text such as `Fe II` for an atomic number and an ion stage. |
 | `at.get_ion_tuple` | Return `(26, 2)` for a text such as `FeII`, `Fe II`, or `26_2`. |
 | `at.get_elsymbol` | Return the element symbol of an atomic number. |
