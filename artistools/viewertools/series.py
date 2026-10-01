@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import getpass
 import typing as t
 from functools import cache
 from functools import partial
@@ -10,6 +11,7 @@ from types import MappingProxyType
 
 from artistools.misc.cliutils import dashes_arg
 from artistools.misc.remote import is_remote_path
+from artistools.misc.remote import split_remote_path
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -357,6 +359,142 @@ def show_row_buttons(row: "QtWidgets.QWidget", *, visible: bool) -> None:
         widget.setVisible(visible)
 
 
+# the width of the path under the name of a recent model, which shows the start and the end of a longer path
+PATH_MENU_WIDTH: t.Final = 320
+
+
+def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str) -> "QtGui.QAction":
+    """Return a menu item with the name of a folder, and its path in a very small font under the name.
+
+    One item of a menu has one font, thus the item is a widget with two labels. The paths of the models are often
+    long, thus the path shows its start and its end, e.g. /Users/luke…1e8pkt_virgo, and the tooltip gives all of it.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    action = QtWidgets.QWidgetAction(menu)
+    item = get_path_menu_item_class()(action, menu)
+    item.setObjectName("pathmenuitem")
+    item.setToolTip(folder)
+    layout = QtWidgets.QVBoxLayout(item)
+    layout.setContentsMargins(14, 3, 14, 3)
+    layout.setSpacing(0)
+    namelabel = QtWidgets.QLabel(Path(folder).name)
+    pathlabel = QtWidgets.QLabel()
+    font = pathlabel.font()
+    font.setPointSizeF(font.pointSizeF() * 0.75)
+    pathlabel.setFont(font)
+    pathlabel.setForegroundRole(QtGui.QPalette.ColorRole.PlaceholderText)
+    pathlabel.setText(
+        pathlabel.fontMetrics().elidedText(
+            get_menu_path_text(folder), QtCore.Qt.TextElideMode.ElideMiddle, PATH_MENU_WIDTH
+        )
+    )
+    layout.addWidget(namelabel)
+    layout.addWidget(pathlabel)
+    item.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
+    item.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+    # the menu draws no highlight for a widget, thus the item takes the colours of a selected menu item. A style sheet
+    # applies a state such as :hover only to the widget that it names and not to the labels in it, thus a property
+    # gives the state. The palette greys the text of a disabled item
+    item.setStyleSheet(
+        '#pathmenuitem[highlighted="true"] { background: palette(highlight); }'
+        ' #pathmenuitem[highlighted="true"] QLabel { color: palette(highlighted-text); }'
+    )
+    action.setDefaultWidget(item)
+    return action
+
+
+def get_menu_path_text(folder: str) -> str:
+    """Return a path for a menu. A remote path gives its host and "~" for its home folder, e.g. "vae26:~/short/mymodel".
+
+    The host gives its home folder only through ssh, thus the home folder of a remote user is /home/user or /Users/user.
+    The user is the user of "user@host", or the local user. A local path stays as it is.
+    """
+    if (remoteparts := split_remote_path(folder)) is None:
+        return folder
+    host, hostpath = remoteparts
+    user = host.partition("@")[0] if "@" in host else getpass.getuser()
+    hostpathtext = str(hostpath)
+    for home in (f"/home/{user}", f"/Users/{user}"):
+        hostpathtext = get_path_with_tilde(hostpathtext, home)
+    return f"{host}:{hostpathtext}"
+
+
+def get_path_with_tilde(path: str, home: str) -> str:
+    """Return the path with "~" in place of the home folder at its start."""
+    if path == home or path.startswith(f"{home}/"):
+        return f"~{path.removeprefix(home)}"
+    return path
+
+
+@cache
+def get_path_menu_item_class() -> "Callable[[QtGui.QAction, QtWidgets.QMenu], QtWidgets.QWidget]":
+    """Return the class of the widget of a menu item of a path, which triggers its action at a click or at Return.
+
+    A menu triggers no widget item, thus the widget triggers the action and closes the menu.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class PathMenuItem(QtWidgets.QWidget):
+        """The widget of a menu item of a path."""
+
+        def __init__(self, action: QtGui.QAction, menu: QtWidgets.QMenu) -> None:
+            super().__init__()
+            self.action = action
+            self.menu = menu
+
+        def choose(self) -> None:
+            if self.isEnabled():
+                self.menu.close()
+                self.action.trigger()
+
+        def set_highlighted(self, highlighted: bool) -> None:
+            self.setProperty("highlighted", highlighted and self.isEnabled())
+            # a new value of a property changes no style until the style polishes the widgets again
+            for widget in (self, *self.findChildren(QtWidgets.QLabel)):
+                widget.style().unpolish(widget)
+                widget.style().polish(widget)
+
+        @t.override
+        def enterEvent(self, event: QtGui.QEnterEvent, /) -> None:
+            super().enterEvent(event)
+            self.set_highlighted(True)
+
+        @t.override
+        def leaveEvent(self, event: QtCore.QEvent, /) -> None:
+            super().leaveEvent(event)
+            self.set_highlighted(self.hasFocus())
+
+        @t.override
+        def focusInEvent(self, event: QtGui.QFocusEvent, /) -> None:
+            super().focusInEvent(event)
+            self.set_highlighted(True)
+
+        @t.override
+        def focusOutEvent(self, event: QtGui.QFocusEvent, /) -> None:
+            super().focusOutEvent(event)
+            self.set_highlighted(self.underMouse())
+
+        @t.override
+        def mouseReleaseEvent(self, event: QtGui.QMouseEvent, /) -> None:
+            super().mouseReleaseEvent(event)
+            if self.rect().contains(event.position().toPoint()):
+                self.choose()
+
+        @t.override
+        def keyPressEvent(self, event: QtGui.QKeyEvent, /) -> None:
+            if event.key() in {QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter, QtCore.Qt.Key.Key_Space}:
+                self.choose()
+                return
+            super().keyPressEvent(event)
+
+    return PathMenuItem
+
+
 class SeriesRow(t.NamedTuple):
     """One row of the list of series of a viewer, which is an ARTIS model or a file of reference data."""
 
@@ -644,11 +782,11 @@ def add_series_list(
         fullpaths = {actions.get_full_path(path) for path in actions.get_paths()}
         folders = [folder for folder in get_recent_models() if actions.get_full_path(folder) not in fullpaths]
         for folder in folders:
-            action = recentmodelsmenu.addAction(Path(folder).name)
-            action.setToolTip(folder)
+            action = make_path_menu_action(recentmodelsmenu, folder)
             # a test of a remote folder starts ssh, thus the menu enables each remote model and does not test its folder
             action.setEnabled(is_remote_path(folder) or Path(folder).is_dir())
             action.triggered.connect(partial(add_paths, [folder]))
+            recentmodelsmenu.addAction(action)
         if not folders:
             recentmodelsmenu.addAction("No Recent Models").setEnabled(False)
 
