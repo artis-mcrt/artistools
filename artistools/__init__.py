@@ -72,6 +72,7 @@ from artistools import transitions as transitions
 from artistools import writecomparisondata as writecomparisondata
 from artistools.atomic import decode_roman_numeral as decode_roman_numeral
 from artistools.atomic import get_atomic_number as get_atomic_number
+from artistools.atomic import get_composition_data as get_composition_data
 from artistools.atomic import get_elsymbol as get_elsymbol
 from artistools.atomic import get_ion_tuple as get_ion_tuple
 from artistools.atomic import get_ionstring as get_ionstring
