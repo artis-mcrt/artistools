@@ -31,7 +31,7 @@ from artistools.misc import dirbins
 from artistools.misc import fileio
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
-from artistools.viewertools import run_command_step_with_warning
+from artistools.viewertools.core import run_command_step_with_warning
 
 
 def write_timesteps_out(modeldir: Path) -> None:
@@ -387,6 +387,21 @@ def test_add_cli_arg_helpers() -> None:
     assert args.xmin == 1500
     assert args.filtersavgol == ["5", "3"]
 
+    # the token default gives no value to its series, thus a list can give a value to a later series only
+    styles = {"-label": "Two", "-colors": "blue", "-linewidth": "2", "-linealpha": "0.5", "-dashes": "5,2"}
+    args = parser.parse_args([
+        *(token for flag, value in {**styles, "-linestyle": ":"}.items() for token in (flag, "default", value))
+    ])
+    assert args.label == [None, "Two"]
+    # the parser gives the colours C0 and C1 by default, thus a default entry takes the colour of its place
+    assert args.color == ["C0", "blue"]
+    assert args.linewidth == [None, 2.0]
+    assert args.linealpha == [None, 0.5]
+    assert args.dashes == [None, (5.0, 2.0)]
+    assert args.linestyle == [None, ":"]
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-linewidth", "thick"])
+
 
 def test_add_cli_arg_helper_variants() -> None:
     """The non-default helper modes must reproduce the per-command argument shapes."""
@@ -419,6 +434,26 @@ def test_add_cli_arg_helper_variants() -> None:
     at.misc.addarg_modelpath(parserrequired, required=True)
     with pytest.raises(SystemExit):
         parserrequired.parse_args([])
+
+
+def test_legendcols_rejects_a_count_below_one() -> None:
+    """-legendcols 0 must fail when argparse reads it, and not in matplotlib after the data is read."""
+    parser = argparse.ArgumentParser(exit_on_error=False)
+    at.misc.addarg_legend(parser)
+    assert parser.parse_args(["-legendcols", "3"]).legendcols == 3
+    for badvalue in ("0", "-2"):
+        with pytest.raises(argparse.ArgumentError, match="positive count"):
+            parser.parse_args([f"-legendcols={badvalue}"])
+
+
+def test_set_args_from_dict_keeps_one_dash_pattern_as_one_series() -> None:
+    """A dash pattern from the Python API must give one series, also after the type of -dashes became a wrapper."""
+    parser = argparse.ArgumentParser()
+    at.lightcurve.addargs(parser)
+    at.misc.set_args_from_dict(parser, {"dashes": (5, 2)})
+    assert parser.parse_args([]).dashes == [(5, 2)]
+    at.misc.set_args_from_dict(parser, {"dashes": [(5, 2), (1, 1)]})
+    assert parser.parse_args([]).dashes == [(5, 2), (1, 1)]
 
 
 def test_set_args_from_dict_does_not_mutate_caller() -> None:
@@ -2519,3 +2554,12 @@ def test_costheta_bin_labels_have_no_negative_zero() -> None:
     lowers, _, labels = get_costheta_bins(usedegrees=False)
     assert not any("-0.0" in label for label in labels), labels
     assert 0.0 in lowers
+
+
+def test_remote_path_is_not_reference_data_and_needs_no_connection() -> None:
+    """A remote path is an ARTIS model, and its test must not start ssh.
+
+    The menu of the recent models tested each remote model in the window thread, and each ssh call stopped the window.
+    """
+    with mock.patch("artistools.misc.remote.call_on_host", side_effect=AssertionError("ssh started")):
+        assert not at.misc.fileio.path_is_reference_data("nohost.invalid:/runs/model", "data/refspectra")

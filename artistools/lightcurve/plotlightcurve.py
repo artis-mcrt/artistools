@@ -6,6 +6,7 @@ import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 import matplotlib.axes as mplax
 import matplotlib.figure as mplfig
@@ -43,12 +44,13 @@ from artistools.lightcurve.viewingangleanalysis import parse_directionbin_args
 from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_declinerate_init
 from artistools.lightcurve.viewingangleanalysis import plot_viewanglebrightness_at_fixed_time
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
 from artistools.misc import addarg_labelfontsize
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_residuals
@@ -86,6 +88,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
+from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.remote import on_model_host
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
@@ -100,6 +103,7 @@ from artistools.plottools import make_colorbar_viewingangles_colormap
 from artistools.plottools import make_frame_figure
 from artistools.plottools import make_frame_figure_with_residuals
 from artistools.plottools import print_dirbin_summary
+from artistools.plottools import RESIDUALROWHEIGHT
 from artistools.plottools import ResidualSeries
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
@@ -115,6 +119,64 @@ if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
 
 type LumUnit = t.Literal["mag", "Lsun", "erg/s"]
+
+# the particles of the energy rates in deposition.out, in the order of the legend and of the controls of the viewer
+ENERGYPARTICLES: t.Final = ("gamma", "betaminus", "betaplus", "alpha", "fission")
+
+# -deposition also takes the sum of the deposition rates of all the particles
+DEPOSITIONCHOICES: t.Final = (*ENERGYPARTICLES, "total")
+
+# the symbol of each particle in the legend
+PARTICLESYMBOLS: t.Final = MappingProxyType({
+    "gamma": r"\gamma",
+    "betaminus": r"\beta^-",
+    "betaplus": r"\beta^+",
+    "alpha": r"\alpha",
+    "fission": r"\mathrm{fis}",
+    "total": r"\mathrm{tot}",
+})
+
+# the column of deposition.out that holds the deposition rate of each particle. ARTIS deposits the energy of a
+# fission where the pellet decays, thus fission has no rate from the packet trajectories
+DEPOSITIONCOLUMNS: t.Final = MappingProxyType({
+    "gamma": "gammadep_Lsun",
+    "betaminus": "elecdep_Lsun",
+    "betaplus": "positrondep_Lsun",
+    "alpha": "alphadep_Lsun",
+    "fission": "spfission_dep_discrete_Lsun",
+    "total": "total_dep_Lsun",
+})
+
+# the column of the Monte Carlo emission rate, which ARTIS counts at the decays of the pellets. deposition.out holds no
+# such rate of the positrons. The emission rate of fission is its deposition rate, because the energy deposits at the
+# decay
+EMISSIONCOLUMNS: t.Final = MappingProxyType({
+    "gamma": "eps_gamma_Lsun",
+    "betaminus": "eps_elec_Lsun",
+    "alpha": "eps_alpha_Lsun",
+    "fission": "spfission_dep_discrete_Lsun",
+})
+
+# the column of the analytical emission rate, which ARTIS calculates from the decay rates of the nuclides
+ANALYTICEMISSIONCOLUMNS: t.Final = MappingProxyType({
+    "betaminus": "eps_elec_ana_Lsun",
+    "betaplus": "eps_positron_ana_Lsun",
+    "alpha": "eps_alpha_ana_Lsun",
+    "fission": "eps_spfission_ana_Lsun",
+})
+
+# the argument, the columns, the line style, and the legend label of each energy rate on the light curve axis
+ENERGYRATEKINDS: t.Final = (
+    ("deposition", DEPOSITIONCOLUMNS, "dashed", r"$\dot{{E}}_{{dep,{}}}$"),
+    ("emission", EMISSIONCOLUMNS, "dotted", r"$\dot{{E}}_{{rad,{}}}$"),
+    ("analyticemission", ANALYTICEMISSIONCOLUMNS, "dashdot", r"$\dot{{E}}_{{rad,{}}}$ analytical"),
+)
+
+# the arguments that name the particles of the energy rates
+ENERGYRATEDESTS: t.Final = ("deposition", "emission", "analyticemission", "thermalisation")
+
+# the height of the thermalisation panel as a part of the height of the light curve frame
+THERMALISATIONROWHEIGHT: t.Final = 0.6
 
 
 def get_plot_lum_unit(args: argparse.Namespace) -> LumUnit:
@@ -134,13 +196,43 @@ def get_plot_lum_column(lumunit: LumUnit) -> str:
     return "mag" if lumunit == "mag" else f"luminosity_{lumunit}"
 
 
-def shows_deposition(args: argparse.Namespace) -> bool:
-    """Return whether the command-line arguments ask for deposition rates on the light curve axis.
+def resolve_energy_rate_args(args: argparse.Namespace) -> None:
+    """Give the older flags of the energy rates the particles that they drew, and sort each list of particles.
 
-    Every deposition flag puts the gamma and beta curves on that axis. Asking is not drawing, though: the y
-    axis label follows whether a model actually contributed curves, not this.
+    --plotdeposition drew the deposition rates of the gamma rays and the electrons, and the emission rate of the
+    electrons. --plotalphadeposition added the three rates of the alpha particles. --plotthermalisation added the
+    thermalisation ratios of the gamma rays, the electrons, and the alpha particles, with the curves of Barnes et al.
     """
-    return bool(args.plotdeposition or args.plotalphadeposition or args.plotthermalisation)
+    named: dict[str, set[str]] = {dest: set(getattr(args, dest, None) or ()) for dest in ENERGYRATEDESTS}
+    if args.plotdeposition or args.plotalphadeposition or args.plotthermalisation:
+        named["deposition"] |= {"gamma", "betaminus"}
+        named["emission"].add("betaminus")
+    if args.plotalphadeposition:
+        for dest in ("deposition", "emission", "analyticemission"):
+            named[dest].add("alpha")
+    if args.plotthermalisation:
+        named["thermalisation"] |= {"gamma", "betaminus", "alpha"}
+        args.showbarnes = True
+    for dest, particles in named.items():
+        setattr(args, dest, [particle for particle in DEPOSITIONCHOICES if particle in particles])
+    args.plotdeposition = args.plotalphadeposition = args.plotthermalisation = False
+
+
+def shows_energy_rates(args: argparse.Namespace) -> bool:
+    """Return whether the arguments ask for an energy rate of deposition.out on the light curve axis.
+
+    The y axis label depends on the curves that a model drew, and not on the value that this function returns.
+    """
+    return bool(args.deposition or args.emission or args.analyticemission)
+
+
+def get_thermalisation_emission_column(particle: str) -> str:
+    """Return the column of the emission rate that the thermalisation ratio of the particle divides by.
+
+    The Monte Carlo rate comes first. deposition.out holds no such rate of the positrons, thus they take the
+    analytical rate.
+    """
+    return EMISSIONCOLUMNS.get(particle) or ANALYTICEMISSIONCOLUMNS[particle]
 
 
 def convert_lum_lsun_to_plotunits(lum_lsun: npt.NDArray[np.floating], lumunit: LumUnit) -> npt.NDArray[np.floating]:
@@ -204,6 +296,7 @@ def plot_bol_reflightcurve(
     label: str | None = None,
     residualseries: list[ResidualSeries] | None = None,
     linewidth: float | None = None,
+    alpha: float | None = None,
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
@@ -233,6 +326,7 @@ def plot_bol_reflightcurve(
             label=plotlabel,
             color=color,
             elinewidth=linewidth,
+            alpha=alpha,
             capthick=linewidth,
         )
         refartists = errorbars.get_children()
@@ -246,6 +340,7 @@ def plot_bol_reflightcurve(
                 lolims=True,
                 fmt="none",
                 color=color,
+                alpha=alpha,
             )
             # matplotlib picks the direction of the arrow from the orientation of the axis as it is now, and
             # a magnitude axis is inverted only after every series is drawn, so point it at the faint side.
@@ -255,7 +350,7 @@ def plot_bol_reflightcurve(
                 capline.set_marker(caretdown)
             refartists += limitbars.get_children()
     else:
-        refartists = [axis.scatter(time_days, yvalues, label=plotlabel, color=color)]
+        refartists = [axis.scatter(time_days, yvalues, label=plotlabel, color=color, alpha=alpha)]
 
     # a marker and a line have different default zorders. With an equal zorder, matplotlib draws
     # the series in the order of the command line
@@ -287,116 +382,145 @@ def get_model_mass_and_kinetic_energy(modelpath: Path) -> tuple[float, float]:
     return float(model_mass_grams), float(ejecta_ke_erg)
 
 
-def plot_deposition_thermalisation(
+def plot_energy_rates(
     axis: mplax.Axes,
-    axistherm: mplax.Axes | None,
+    thermaxis: mplax.Axes | None,
     modelpath: str | Path,
     modelname: str,
     args: argparse.Namespace,
     linewidth: float | str | None = None,
-) -> None:
-    """Plot the gamma-ray and positron deposition rates, and the thermalisation efficiencies when axistherm is given.
+) -> bool:
+    """Plot the energy rates of deposition.out that args names, and return True if the function drew a curve on axis.
 
-    Every curve below appends its own suffix to modelname and picks its own linestyle and colour, so the line
-    width is the only style the caller sets: passing the rest would reach matplotlib twice.
+    axis takes the deposition rates and the emission rates. thermaxis takes the thermalisation ratios with the curves
+    of Barnes, Kasen, Wu & Martínez-Pinedo (2016, ApJ, 829, 110, doi:10.3847/0004-637X/829/2/110). Each particle takes
+    one colour, and each kind of rate takes one line style. Every curve appends its own suffix to modelname, thus the
+    line width is the only style that the caller sets.
     """
     lumunit = get_plot_lum_unit(args)
-
-    if args.plotthermalisation:
-        model_mass_grams, ejecta_ke_erg = get_model_mass_and_kinetic_energy(Path(modelpath))
-        print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
-
     depdata = get_deposition(modelpath).collect()
+    modellogname = get_model_logname(modelpath)
 
-    get_next_color(axis)  # skip a colour so the deposition curves differ from the light curve
-    color_gamma = get_next_color(axis)
-    color_beta = get_next_color(axis)
-    # the alpha curves are drawn only on request, so their colour is taken only then: consuming it anyway
-    # would step the next model's deposition curves along the cycle for a curve that is never drawn
-    color_alpha: str | None = get_next_color(axis) if args.plotalphadeposition or args.plotthermalisation else None
-
-    depositioncurves: list[tuple[str, str, str, str | None]] = [
-        ("gammadep_Lsun", r" $\dot{E}_{dep,\gamma}$", "dashed", color_gamma),
-        ("eps_elec_Lsun", r" $\dot{E}_{rad,\beta^-}$", "dotted", color_beta),
-        ("elecdep_Lsun", r" $\dot{E}_{dep,\beta^-}$", "dashed", color_beta),
-    ]
-
-    if args.plotalphadeposition:
-        depositioncurves += [
-            ("eps_alpha_ana_Lsun", r" $\dot{E}_{rad,\alpha}$ analytical", "solid", color_alpha),
-            ("eps_alpha_Lsun", r" $\dot{E}_{rad,\alpha}$", "dashed", color_alpha),
-            ("alphadep_Lsun", r" $\dot{E}_{dep,\alpha}$", "dotted", color_alpha),
-        ]
-
-    # an older deposition.out has only the gamma columns, so skip any curve whose column is absent
-    for depcol, labelsuffix, curvelinestyle, curvecolor in depositioncurves:
-        if depcol not in depdata:
-            continue
-        axis.plot(
-            depdata["tmid_days"],
-            convert_lum_lsun_to_plotunits(depdata[depcol].to_numpy(), lumunit),
-            linewidth=linewidth,
-            label=modelname + labelsuffix,
-            linestyle=curvelinestyle,
-            color=curvecolor,
+    get_next_color(axis)  # skip a colour, thus the energy rates have a different colour from the light curve
+    # a colour for each particle that the plot names, thus a particle that no argument names takes no colour
+    named = {*args.deposition, *args.emission, *args.analyticemission, *args.thermalisation}
+    particlecolours = {particle: get_next_color(axis) for particle in DEPOSITIONCHOICES if particle in named}
+    if "fission" in named:
+        print_detail(
+            "ARTIS deposits the energy of each fission where its pellet decays, thus the deposition rate and the"
+            " emission rate of fission are one column of deposition.out"
         )
 
-    if args.plotthermalisation:
-        assert axistherm is not None
-        # an older deposition.out has only the gamma columns, so skip any ratio whose columns are absent
-        thermalisation_ratios = [
-            ("gammadep_Lsun", "eps_gamma_Lsun", r"\dot{E}_{dep,\gamma} \middle/ \dot{E}_{rad,\gamma}", color_gamma),
-            ("elecdep_Lsun", "eps_elec_Lsun", r"\dot{E}_{dep,\beta^-} \middle/ \dot{E}_{rad,\beta^-}", color_beta),
-            ("alphadep_Lsun", "eps_alpha_Lsun", r"\dot{E}_{dep,\alpha} \middle/ \dot{E}_{rad,\alpha}", color_alpha),
-        ]
-        for depcol, epscol, ratiolabel, ratiocolor in thermalisation_ratios:
-            if depcol not in depdata or epscol not in depdata:
+    drewrate = False
+    for particle, colour in particlecolours.items():
+        for dest, columns, linestyle, labelformat in ENERGYRATEKINDS:
+            if particle not in getattr(args, dest):
                 continue
-            axistherm.plot(
+            if (column := columns[particle]) not in depdata.columns:
+                # an older deposition.out has only the gamma columns, and a run with no fission has no fission column
+                print_warning(f"{modellogname} gives no {column} in deposition.out, thus the plot has no such curve")
+                continue
+            axis.plot(
                 depdata["tmid_days"],
-                depdata[depcol] / depdata[epscol],
+                convert_lum_lsun_to_plotunits(depdata[column].to_numpy(), lumunit),
                 linewidth=linewidth,
-                label=modelname + rf" $\left({ratiolabel}\right)$",
-                linestyle="solid",
-                color=ratiocolor,
+                label=f"{modelname} {labelformat.format(PARTICLESYMBOLS[particle])}",
+                linestyle=linestyle,
+                color=colour,
             )
+            drewrate = True
 
-        print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
+    if args.thermalisation:
+        assert thermaxis is not None
+        plot_thermalisation(thermaxis, depdata, modelpath, modelname, args, particlecolours, linewidth)
 
-        # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
-        ejecta_v = np.sqrt(2 * ejecta_ke_erg / model_mass_grams)
-        print(f"  Barnes average ejecta velocity: {ejecta_v / C_cm_per_s:.2f}c")
-        m5 = model_mass_grams / (5e-3 * Msun_to_g)  # M / (5e-3 Msun)
-        v2 = ejecta_v / (0.2 * C_cm_per_s)  # ejecta_v / (0.2c)
+    return drewrate
 
-        def barnes_f_charged(t_ineff: float) -> list[float]:
-            """Return the Barnes et al (2016) equation 32 thermalisation efficiency of a charged particle."""
-            return [math.log(1 + 2 * (t / t_ineff) ** 2) / (2 * (t / t_ineff) ** 2) for t in depdata["tmid_days"]]
 
-        # Barnes et al (2016) scaling form from equation 17, with fiducial t_ineff_gamma of 1.4 days
-        t_ineff_gamma = 1.4 * np.sqrt(m5) / v2
-        e0_beta_mev = 0.5
-        # Barnes et al (2016) equation 20
-        t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
-        e0_alpha_mev = 6.0
-        # Barnes et al (2016) equation 25 times equation 16 for t_peak
-        t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+def plot_thermalisation(
+    thermaxis: mplax.Axes,
+    depdata: pl.DataFrame,
+    modelpath: str | Path,
+    modelname: str,
+    args: argparse.Namespace,
+    particlecolours: dict[str, str],
+    linewidth: float | str | None,
+) -> None:
+    """Plot the deposition rate over the emission rate of each particle of -thermalisation.
 
-        barnes_curves = [
-            # Barnes et al (2016) equation 33 for the gamma rays, equation 32 for the charged particles
-            ([1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in depdata["tmid_days"]], r"\gamma", color_gamma),
-            (barnes_f_charged(t_ineff_beta), r"\beta", color_beta),
-            (barnes_f_charged(t_ineff_alpha), r"\alpha", color_alpha),
-        ]
-        for barnes_f, symbol, curvecolor in barnes_curves:
-            axistherm.plot(
-                depdata["tmid_days"],
-                barnes_f,
-                linewidth=linewidth,
-                label=rf"Barnes+2016 $f_{symbol}$",
-                linestyle="dashed",
-                color=curvecolor,
+    --showbarnes adds the curves of Barnes et al. (2016, ApJ, 829, 110) for the gamma rays, the electrons, and the alpha
+    particles.
+    """
+    if "betaplus" in args.thermalisation:
+        print_detail(
+            "the thermalisation ratio of the positrons divides by the analytical emission rate, because"
+            " deposition.out holds no Monte Carlo emission rate of the positrons"
+        )
+    for particle in args.thermalisation:
+        depcolumn, emissioncolumn = DEPOSITIONCOLUMNS[particle], get_thermalisation_emission_column(particle)
+        if missing := [
+            column for column in dict.fromkeys((depcolumn, emissioncolumn)) if column not in depdata.columns
+        ]:
+            print_warning(
+                f"{get_model_logname(modelpath)} gives no {' and no '.join(missing)} in deposition.out, thus the"
+                f" plot has no thermalisation ratio of {particle}"
             )
+            continue
+        symbol = PARTICLESYMBOLS[particle]
+        thermaxis.plot(
+            depdata["tmid_days"],
+            depdata[depcolumn] / depdata[emissioncolumn],
+            linewidth=linewidth,
+            label=rf"{modelname} $\left(\dot{{E}}_{{dep,{symbol}}} \middle/ \dot{{E}}_{{rad,{symbol}}}\right)$",
+            linestyle="solid",
+            color=particlecolours[particle],
+        )
+
+    # the curves of Barnes et al. (2016, ApJ, 829, 110) describe the gamma rays, the electrons, and the alpha particles
+    barnesparticles = [particle for particle in ("gamma", "betaminus", "alpha") if particle in args.thermalisation]
+    if not (args.showbarnes and barnesparticles):
+        return
+
+    model_mass_grams, ejecta_ke_erg = get_model_mass_and_kinetic_energy(Path(modelpath))
+    print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
+    print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
+
+    # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
+    ejecta_v = np.sqrt(2 * ejecta_ke_erg / model_mass_grams)
+    print(f"  Barnes average ejecta velocity: {ejecta_v / C_cm_per_s:.2f}c")
+    m5 = model_mass_grams / (5e-3 * Msun_to_g)  # M / (5e-3 Msun)
+    v2 = ejecta_v / (0.2 * C_cm_per_s)  # ejecta_v / (0.2c)
+    tmids = depdata["tmid_days"].to_list()
+
+    def barnes_f_charged(t_ineff: float) -> list[float]:
+        """Return the Barnes et al (2016) equation 32 thermalisation efficiency of a charged particle."""
+        return [math.log(1 + 2 * (t / t_ineff) ** 2) / (2 * (t / t_ineff) ** 2) for t in tmids]
+
+    # Barnes et al (2016) scaling form from equation 17, with fiducial t_ineff_gamma of 1.4 days
+    t_ineff_gamma = 1.4 * np.sqrt(m5) / v2
+    e0_beta_mev = 0.5
+    # Barnes et al (2016) equation 20
+    t_ineff_beta = 7.4 * (e0_beta_mev / 0.5) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+    e0_alpha_mev = 6.0
+    # Barnes et al (2016) equation 25 times equation 16 for t_peak
+    t_ineff_alpha = 4.3 * 1.8 * (e0_alpha_mev / 6.0) ** -0.5 * m5**0.5 * (v2 ** (-3.0 / 2))
+
+    barnes_curves = {
+        # Barnes et al (2016) equation 33 for the gamma rays, equation 32 for the charged particles
+        "gamma": ([1 - math.exp(-((t / t_ineff_gamma) ** -2)) for t in tmids], r"\gamma"),
+        "betaminus": (barnes_f_charged(t_ineff_beta), r"\beta"),
+        "alpha": (barnes_f_charged(t_ineff_alpha), r"\alpha"),
+    }
+    for particle in barnesparticles:
+        barnes_f, symbol = barnes_curves[particle]
+        thermaxis.plot(
+            tmids,
+            barnes_f,
+            linewidth=linewidth,
+            label=rf"Barnes+2016 $f_{symbol}$",
+            linestyle="dashed",
+            color=particlecolours[particle],
+        )
 
 
 def get_time_range_days(dflightcurve: pl.DataFrame) -> tuple[float | None, float | None]:
@@ -505,6 +629,8 @@ def plot_artis_lightcurve(
         plotkwargs["dashes"] = args.dashes[lcindex]
     if args.linewidth[lcindex]:
         plotkwargs["linewidth"] = args.linewidth[lcindex]
+    if args.linealpha[lcindex] is not None:
+        plotkwargs["alpha"] = args.linealpha[lcindex]
 
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = make_colorbar_viewingangles_colormap()
@@ -559,7 +685,8 @@ def plot_artis_lightcurve(
         label_with_tags: str | None = linelabel
         if dirbin != -1:
             if args.colorbarcostheta or args.colorbarphi:
-                plotkwargs["alpha"] = 0.75
+                # the bins of a colour bar overlap, thus they are partly transparent unless -linealpha gives a value
+                plotkwargs["alpha"] = 0.75 if args.linealpha[lcindex] is None else args.linealpha[lcindex]
                 # the colour bar names the direction bin, thus the legend needs no entry for it. The
                 # user gives -label to name the model, thus only the first bin keeps that label
                 label_with_tags = linelabel if linelabel_is_custom and dirbin == dirbins[0] else None
@@ -662,41 +789,45 @@ def plot_artis_lightcurve(
     return lcdataframes
 
 
-def make_lightcurve_plot(
-    modelpaths: Sequence[str | Path],
-    filenameout: str | Path,
-    frompackets: bool = False,
-    showuvoir: bool = True,
-    showgamma: bool = False,
-    maxpacketfiles: int | None = None,
-    *,
-    args: argparse.Namespace,
-) -> None:
-    """Plot light curves from light_curve.out, gamma_light_curve.out or light_curve_res.out or packets files."""
-    if "figwidthscale" not in args:
-        args.figwidthscale = 1.0
+def make_plot_figure(
+    args: argparse.Namespace, *, fig: mplfig.Figure | None = None
+) -> tuple[mplfig.Figure, mplax.Axes, mplax.Axes | None, mplax.Axes | None]:
+    """Return the figure, the axis of the light curves, the thermalisation panel, and the residual panel.
 
-    lumunit = get_plot_lum_unit(args)
-
+    The residual panel comes with --residuals, and the thermalisation panel at the bottom comes with -thermalisation.
+    If the caller gives an empty figure as fig, the function adds the frames to it, e.g. the figure of the viewer.
+    """
+    rowheights = [
+        1.0,
+        *([RESIDUALROWHEIGHT] if args.residuals else []),
+        *([THERMALISATIONROWHEIGHT] if args.thermalisation else []),
+    ]
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
-    residualaxis = None
-    residualseries: list[ResidualSeries] | None = None
-    if args.residuals:
-        fig, axis, residualaxis = make_frame_figure_with_residuals(args)
-        residualseries = []
-    else:
-        fig, axesgrid = make_frame_figure(args)
-        axis = axesgrid[0][0]
+    fig, axesgrid = make_frame_figure(args, rows=len(rowheights), sharex=True, rowheights=rowheights, fig=fig)
+    axis, *panels = axesgrid[:, 0]
+    residualaxis = panels.pop(0) if args.residuals else None
+    thermaxis = panels.pop(0) if args.thermalisation else None
+    return fig, axis, thermaxis, residualaxis
+
+
+def draw_plot(
+    args: argparse.Namespace, axis: mplax.Axes, thermaxis: mplax.Axes | None, residualaxis: mplax.Axes | None
+) -> pl.DataFrame | None:
+    """Draw the light curves and the energy rates that args selects, and return the statistics of the residuals.
+
+    The light curves come from light_curve.out, gamma_light_curve.out, light_curve_res.out, or the packets files. The
+    axes must be empty. This function writes no file, thus the viewer can call it again for each change of a control.
+    The statistics are None without a residual panel.
+    """
+    modelpaths = args.modelpath
+    showuvoir, showgamma = args.rpkt, args.gamma
+    lumunit = get_plot_lum_unit(args)
+    residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
     axis.margins(x=0.0)
-
-    if args.plotthermalisation:
-        figtherm, axesthermgrid = make_frame_figure(args)
-        axistherm = axesthermgrid[0][0]
-
-        axistherm.set_ylabel("Thermalisation ratio")
-        axistherm.set_xlabel(r"Time [days]")
-    else:
-        axistherm = None
+    if thermaxis is not None:
+        # the panel shares the time axis, and its default margin widened the time range of both frames
+        thermaxis.margins(x=0.0)
+        thermaxis.set_ylabel("Thermalisation ratio")
 
     set_prop_cycle_unusedcolors([axis], [*args.color, *args.refspeccolors])
 
@@ -714,6 +845,7 @@ def make_lightcurve_plot(
                 label=args.label[lcindex],
                 residualseries=residualseries,
                 linewidth=args.linewidth[lcindex] or None,
+                alpha=args.linealpha[lcindex],
             )
             print_heading(lightcurvelabel)
             plottedsomething = True
@@ -733,7 +865,7 @@ def make_lightcurve_plot(
                             Path(modelpath),
                             escape_type,
                             topnucs,
-                            maxpacketfiles,
+                            args.maxpacketfiles,
                             args.timemin,
                             args.timemax,
                             use_pellet_decay_time=args.use_pellet_decay_time,
@@ -749,8 +881,8 @@ def make_lightcurve_plot(
                         lcindex=lcindex,
                         axis=axis,
                         escape_type=escape_type,
-                        frompackets=frompackets,
-                        maxpacketfiles=maxpacketfiles,
+                        frompackets=args.frompackets,
+                        maxpacketfiles=args.maxpacketfiles,
                         average_over_phi=args.average_over_phi_angle,
                         average_over_theta=args.average_over_theta_angle,
                         args=args,
@@ -767,18 +899,18 @@ def make_lightcurve_plot(
 
             plottedsomething = plottedsomething or plottedthismodel
 
-            if plottedthismodel and shows_deposition(args):
+            if plottedthismodel and (shows_energy_rates(args) or args.thermalisation):
                 # the rates belong to the model, not to one escape type or pellet nuclide, and the style
                 # comes from the command line rather than from whatever a series left in its plot kwargs
-                plot_deposition_thermalisation(
+                drewrate = plot_energy_rates(
                     axis,
-                    axistherm,
+                    thermaxis,
                     get_model_folder(modelpath),
                     modelname=get_series_label(args.label, lcindex, get_model_name(modelpath)),
                     args=args,
                     linewidth=args.linewidth[lcindex] or None,
                 )
-                plotteddeposition = True
+                plotteddeposition = plotteddeposition or drewrate
 
         print()
 
@@ -791,15 +923,17 @@ def make_lightcurve_plot(
                 color=args.refspeccolors[refindex],
                 residualseries=residualseries,
                 linewidth=args.linewidth[len(modelpaths) + refindex] or None,
+                alpha=args.linealpha[len(modelpaths) + refindex],
             )
             plottedsomething = True
 
     assert plottedsomething, "No light curve was plotted"
 
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
-    if args.plotthermalisation:
-        assert axistherm is not None
-        set_legend(axistherm, args, loc="upper right", handlelength=2, frameon=False, numpoints=1)
+    if thermaxis is not None:
+        # -ymin and -ymax give the range of the light curves, thus they do not fix the room of the panel legend
+        thermargs = argparse.Namespace(**{**vars(args), "ymin": None, "ymax": None})
+        set_legend(thermaxis, thermargs, loc="upper right", handlelength=2, frameon=False, numpoints=1)
 
     # a magnitude is a logarithm already, and its axis runs backwards, thus only a luminosity can
     # take a log scale. This follows the plot, because the drawn values give the answer
@@ -845,27 +979,21 @@ def make_lightcurve_plot(
         # applied before a one-sided limit is lost
         invert_magnitude_yaxis(axis)
 
+    dfresidualstats = None
     if residualaxis is not None and residualseries is not None:
         dfresidualstats = draw_residual_panel(residualaxis, axis, residualseries, args, ismagnitude=lumunit == "mag")
-        if args.write_data:
-            write_residual_stats(dfresidualstats, filenameout)
 
-    if args.plotthermalisation:
-        assert axistherm is not None
-        # the second figure covers the same times as the first, so take its range rather than re-deriving it
-        axistherm.set_xlim(axis.get_xlim())
+    if thermaxis is not None:
+        set_axis_properties(thermaxis, args, setyaxis=False)
         # a thermalisation efficiency is a ratio, so keep the physical range rather than letting a
         # near-zero denominator at one timestep rescale every curve into the bottom of the panel
-        axistherm.set_ylim(0.0, 1.0)
+        thermaxis.set_ylim(0.0, 1.0)
+        # the panel is the lowest frame, thus it takes the label of the shared time axis
+        labelaxis = residualaxis or axis
+        thermaxis.set_xlabel(labelaxis.get_xlabel())
+        labelaxis.set_xlabel("")
 
-    save_figure(fig, filenameout, format="pdf", args=args)
-
-    if args.plotthermalisation:
-        assert figtherm is not None
-
-        # a replace of ".pdf" left a name such as lc.png unchanged, thus the second figure replaced the first
-        filenameout2 = Path(filenameout).with_stem(f"{Path(filenameout).stem}_thermalisation")
-        save_figure(figtherm, filenameout2, format="pdf", args=args)
+    return dfresidualstats
 
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_] | mplax.Axes]:
@@ -910,10 +1038,10 @@ def set_lightcurveplot_legend(ax: AxesTree, args: argparse.Namespace) -> None:
 
     if args.subplots:
         axis = iter_axes(ax)[args.legendsubplotnumber]
-        set_legend(axis, args, loc=args.legendposition, frameon=False, ncol=args.ncolslegend)
+        set_legend(axis, args, loc=args.legendposition, frameon=False)
     else:
         assert isinstance(ax, mplax.Axes)
-        set_legend(ax, args, loc=args.legendposition, frameon=False, ncol=args.ncolslegend, handlelength=0.7)
+        set_legend(ax, args, loc=args.legendposition, frameon=False, handlelength=0.7)
 
 
 def set_lightcurve_plot_labels(
@@ -1051,6 +1179,8 @@ def make_band_lightcurves_plot(
 
                 plotkwargs["linestyle"] = args.linestyle[modelnumber]
                 plotkwargs["linewidth"] = args.linewidth[modelnumber] or (4 if args.subplots else 3.5)
+                # plotkwargs is reused for each model, thus a model with no -linealpha takes None, the default alpha
+                plotkwargs["alpha"] = args.linealpha[modelnumber]
 
                 (modelline,) = axis.plot(time, brightness_in_mag, **plotkwargs)
                 if residualseries is not None:
@@ -1093,7 +1223,7 @@ def make_band_lightcurves_plot(
         if args.write_data:
             write_residual_stats(dfresidualstats, args.outputfile)
 
-    save_figure(fig, args.outputfile, format="pdf", args=args)
+    save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
@@ -1156,6 +1286,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
                     color=dirbincolor,
                     linestyle=args.linestyle[modelnumber],
                     linewidth=args.linewidth[modelnumber] or (4 if args.subplots else 3),
+                    alpha=args.linealpha[modelnumber],
                 )
 
     # once for the whole figure, as on the band plot: the reference data does not depend on the models or
@@ -1190,7 +1321,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
 
     invert_magnitude_yaxis(ax)
 
-    save_figure(fig, args.outputfile, format="pdf", args=args)
+    save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
 def get_filter_lambda0(filterdir: Path, filter_name_raw: str) -> float:
@@ -1324,12 +1455,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         positional=True,
         multiplepaths=True,
         default=[],
-        helptext="Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)",
+        helptext=(
+            "Path(s) to ARTIS folders with light_curve.out or packets files (may include wildcards such as * and **)"
+        ),
     )
 
-    addarg_seriesstyle(parser)
+    addarg_seriesstyle(parser, include_linealpha=True)
 
-    addarg_nolegend(parser)
+    addarg_legend(parser)
 
     parser.add_argument(
         "-title",
@@ -1376,18 +1509,62 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "--plotdeposition", action="store_true", help="Plot the gamma-ray and positron deposition rates"
+        "-deposition",
+        nargs="+",
+        choices=DEPOSITIONCHOICES,
+        metavar="PARTICLE",
+        help=(
+            "Plot the deposition rate of each particle from deposition.out:"
+            f" {', '.join(DEPOSITIONCHOICES)}. total is the sum of the rates of all the particles"
+        ),
     )
 
     parser.add_argument(
-        "--plotalphadeposition",
+        "-emission",
+        nargs="+",
+        choices=tuple(EMISSIONCOLUMNS),
+        metavar="PARTICLE",
+        help=(
+            "Plot the Monte Carlo emission rate of each particle, which ARTIS counts at the decays of the pellets:"
+            f" {', '.join(EMISSIONCOLUMNS)}. deposition.out holds no such rate of betaplus"
+        ),
+    )
+
+    parser.add_argument(
+        "-analyticemission",
+        nargs="+",
+        choices=tuple(ANALYTICEMISSIONCOLUMNS),
+        metavar="PARTICLE",
+        help=(
+            "Plot the analytical emission rate of each particle, which ARTIS calculates from the decay rates:"
+            f" {', '.join(ANALYTICEMISSIONCOLUMNS)}"
+        ),
+    )
+
+    parser.add_argument(
+        "-thermalisation",
+        nargs="+",
+        choices=ENERGYPARTICLES,
+        metavar="PARTICLE",
+        help=(
+            "Plot the deposition rate over the emission rate of each particle in a panel below the light curves:"
+            f" {', '.join(ENERGYPARTICLES)}. --showbarnes adds the published thermalisation curves"
+        ),
+    )
+
+    parser.add_argument(
+        "--showbarnes",
         action="store_true",
-        help="Also plot the alpha decay energy release and deposition rates (implies --plotdeposition)",
+        help=(
+            "With -thermalisation, also plot the thermalisation efficiencies for gamma, betaminus, and alpha of"
+            " Barnes, Kasen, Wu & Martínez-Pinedo (2016), ApJ, 829, 110, doi:10.3847/0004-637X/829/2/110"
+        ),
     )
 
-    parser.add_argument(
-        "--plotthermalisation", action="store_true", help="Plot thermalisation rates (in separate plot)"
-    )
+    # the older flags of the energy rates. resolve_energy_rate_args gives each one the particles that it drew
+    parser.add_argument("--plotdeposition", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--plotalphadeposition", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--plotthermalisation", action="store_true", help=argparse.SUPPRESS)
 
     parser.add_argument(
         "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions"
@@ -1472,7 +1649,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_filter(parser)
 
+    addarg_dpi(parser)
+
     addarg_show(parser)
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Open a window with controls for the light curves, the energy rates, and the axes, and show the command",
+    )
     addarg_verbose(parser)
 
     parser.add_argument(
@@ -1571,9 +1755,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-legendposition", type=str, default="best", help="Position of legend in plot. Default is best")
 
-    parser.add_argument("-ncolslegend", type=int, default=1, help="Number of columns in legend")
+    # the old spelling of -legendcols, which addarg_legend adds
+    parser.add_argument("-ncolslegend", dest="legendcols", type=positive_int_arg, help=argparse.SUPPRESS)
 
-    # the old spelling of --legendframe, which addarg_nolegend adds
+    # the old spelling of --legendframe, which addarg_legend adds
     parser.add_argument("--legendframeon", dest="legendframe", action="store_true", help=argparse.SUPPRESS)
 
     addarg_labelfontsize(parser)
@@ -1604,17 +1789,79 @@ def check_residual_args(args: argparse.Namespace) -> None:
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS light curve."""
+    # the dispatcher parses the command line and gives args alone, thus the viewer then reads sys.argv
+    fromdispatcher = args is not None
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
+    if args.interactive:
+        from artistools.lightcurve.interactive import run_viewer
+        from artistools.viewertools.core import get_command_tokens
+
+        run_viewer(
+            get_command_tokens(
+                argsraw,
+                kwargs,
+                fromdispatcher=fromdispatcher,
+                dispatcherargsraw=getattr(args, "dispatcherargsraw", None),
+            )
+        )
+        return
+
+    resolve_plot_args(args)
+    modelpaths = args.modelpath
+    outputfolder = args.outputfile.parent
+
+    # determine if this will be a scatter plot or not
+    if (  # args.calculate_peakmag_risetime_delta_m15 or
+        args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
+        or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
+        or args.make_viewing_angle_peakmag_risetime_scatter_plot
+        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
+    ):
+        peakmag_risetime_declinerate_init(modelpaths, args)
+        return
+
+    if args.colouratpeak:  # make scatter plot of colour at peak, eg. B-V at Bmax
+        make_peak_colour_viewing_angle_plot(args)
+        return
+
+    if args.brightnessattime:
+        if args.timedays is None:
+            misc.exit_with_error("specify a single time with -timedays")
+        # this plot takes one time rather than a range
+        args.timedays = float(args.timedays)
+        if not args.plotviewingangle:
+            args.plotviewingangle = [-1]
+        if not args.colorbarcostheta and not args.colorbarphi:
+            args.colorbarphi = True
+        plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
+        return
+
+    if args.filter:
+        make_band_lightcurves_plot(modelpaths, outputfolder, args)
+
+    elif args.colour_evolution:
+        colour_evolution_plot(modelpaths, args)
+    else:
+        fig, axis, thermaxis, residualaxis = make_plot_figure(args)
+        dfresidualstats = draw_plot(args, axis, thermaxis, residualaxis)
+        if args.write_data and dfresidualstats is not None:
+            write_residual_stats(dfresidualstats, args.outputfile)
+        save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
+
+
+def resolve_plot_args(args: argparse.Namespace) -> None:
+    """Give args the values that the plot reads: the paths, the time range, the styles, and the output file.
+
+    Each change here also applies to the plot of the viewer, which calls this function for each command.
+    """
     if getattr(args, "average_every_tenth_viewing_angle", False):
         print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
         args.average_over_phi_angle = True
 
     args.modelpath = normalize_path_list(args.modelpath)
-
-    modelpaths = args.modelpath
-
-    apply_time_range_args(args, modelpaths)
+    apply_time_range_args(args, args.modelpath)
+    resolve_energy_rate_args(args)
 
     nmodels = len(args.modelpath)
     args.reflightcurves = makelist(args.reflightcurves)
@@ -1633,6 +1880,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         "linestyle",
         "dashes",
         "linewidth",
+        "linealpha",
     )
     args.color = seriescolors[:nmodels]
     args.refspeccolors = seriescolors[nmodels:]
@@ -1668,46 +1916,3 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         defaultoutputfile = "plotlightcurves.pdf"
 
     args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
-    outputfolder = args.outputfile.parent
-
-    # determine if this will be a scatter plot or not
-    if (  # args.calculate_peakmag_risetime_delta_m15 or
-        args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
-        or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-        or args.make_viewing_angle_peakmag_risetime_scatter_plot
-        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
-    ):
-        peakmag_risetime_declinerate_init(modelpaths, args)
-        return
-
-    if args.colouratpeak:  # make scatter plot of colour at peak, eg. B-V at Bmax
-        make_peak_colour_viewing_angle_plot(args)
-        return
-
-    if args.brightnessattime:
-        if args.timedays is None:
-            misc.exit_with_error("specify a single time with -timedays")
-        # this plot takes one time rather than a range
-        args.timedays = float(args.timedays)
-        if not args.plotviewingangle:
-            args.plotviewingangle = [-1]
-        if not args.colorbarcostheta and not args.colorbarphi:
-            args.colorbarphi = True
-        plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
-        return
-
-    if args.filter:
-        make_band_lightcurves_plot(modelpaths, outputfolder, args)
-
-    elif args.colour_evolution:
-        colour_evolution_plot(modelpaths, args)
-    else:
-        make_lightcurve_plot(
-            modelpaths=args.modelpath,
-            filenameout=args.outputfile,
-            frompackets=args.frompackets,
-            showuvoir=args.rpkt,
-            showgamma=args.gamma,
-            maxpacketfiles=args.maxpacketfiles,
-            args=args,
-        )

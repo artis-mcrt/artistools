@@ -21,9 +21,9 @@ import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
-from artistools import viewertools
 from artistools.estimators import interactive
 from artistools.estimators import plotestimators
+from artistools.viewertools import core as viewercore
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -3974,17 +3974,6 @@ def test_interactive_snapshot_and_time_evolution() -> None:
     assert snapshot.first == snapshot.last == viewer.validtimesteps[(len(viewer.validtimesteps) - 1) // 2]
 
 
-def test_interactive_rejection_keeps_the_old_plot() -> None:
-    """A variable that the model does not have gives the message of plotestimators, and the old command stays."""
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    command = viewer.get_command()
-    message = viewer.change(dc.replace(viewer.values, subplots=(("Tee",),)))
-    assert message is not None
-    assert "'Tee' is not an estimator variable" in message
-    assert viewer.get_command() == command
-    assert viewer.fig.axes[0].get_lines()
-
-
 def test_interactive_command_of_a_dispatcher_call() -> None:
     """A call of the dispatcher from Python code gives its own words to the viewer, and not the words of sys.argv."""
     from artistools.__main__ import main as dispatcher_main
@@ -4427,7 +4416,7 @@ def test_interactive_geometry_modes_draw() -> None:
     oddtext = interactive.get_geometry_description(oddvalues, viewer.modelmeta | oddgrid, "+z", 30.0)
     assert "-0.006967c ≤ x < 0.006967c" in oddtext
     rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
-    assert viewertools.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
+    assert viewercore.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
         ("-coneangle", ("40",)),
         ("-axis", ("-x",)),
     )

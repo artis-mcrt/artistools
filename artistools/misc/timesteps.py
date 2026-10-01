@@ -19,9 +19,7 @@ from artistools.misc.cliutils import parse_range_list
 from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import folder_is_artis_run
-from artistools.misc.fileio import get_model_folder
-from artistools.misc.fileio import path_is_artis_model
+from artistools.misc.fileio import get_artis_run_folders
 from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
@@ -152,7 +150,9 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
     return get_timestep_times_cached(resolve_modelpath(modelpath), loc)
 
 
-@lru_cache(maxsize=16)
+# a list holds a few thousand floats at most, and a viewer reads 4 kinds of time for each run in turn. With 16 entries,
+# 6 runs evicted each entry before its next use, and a window read the timesteps more than 1000 times at each change
+@lru_cache(maxsize=256)
 def get_timestep_times_cached(modelpath: Path, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
     """Return the times in days of each timestep of the model at an absolute path."""
     colname_of_loc = {"mid": "tmid_days", "start": "tstart_days", "end": "tend_days", "delta": "twidth_days"}
@@ -263,11 +263,7 @@ def apply_time_range_args(
     # command that plots reference data alone still takes a range in days
     # a path can name a light curve file of a run, and get_time_range reads the folder of the run. A folder
     # without input.txt is not a run, e.g. reference data named .out, and the plot code skips it with a warning
-    artispaths = [
-        get_model_folder(path)
-        for path in modelpaths
-        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
-    ]
+    artispaths = get_artis_run_folders(modelpaths)
     if not artispaths:
         if dayrange is None:
             msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"

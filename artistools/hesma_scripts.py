@@ -12,6 +12,7 @@ import polars.selectors as cs
 from artistools.constants import c_ang_per_s
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
@@ -49,7 +50,7 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: P
         ax.plot(hesma_spec["0.00"], hesma_spec[closest_time], label="HESMA model")
 
 
-def plothesmaresspec(ax: mplax.Axes, specfiles: Sequence[Path | str]) -> None:
+def plothesmaresspec(ax: mplax.Axes, specfiles: Sequence[Path | str], args: argparse.Namespace) -> None:
     """Plot the first five direction bins of each HESMA direction-resolved spectrum file."""
     for specfilename in specfiles:
         specdata = read_wsv(specfilename, has_header=False).cast(pl.Float64)
@@ -71,7 +72,7 @@ def plothesmaresspec(ax: mplax.Axes, specfiles: Sequence[Path | str]) -> None:
                 res_specdata[dirbin]["lambda"], res_specdata[dirbin]["11.7935"] * (1e-5) ** 2, label=f"hesma {dirbin}"
             )
 
-    set_legend(ax)
+    set_legend(ax, args)
 
 
 def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
@@ -177,7 +178,9 @@ def make_hesma_peakmag_dm15_dm40(
     outdataframe.write_csv(outpath / f"{modelname}_width-luminosity.dat", separator=" ")
 
 
-def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str | None = None) -> None:
+def plot_hesma_peakmag_dm15_dm40(
+    pathtofiles: Path | str, args: argparse.Namespace, outputfile: Path | str | None = None
+) -> None:
     """Plot peak magnitude against dm15 for every width-luminosity file in a folder."""
     fig, axesgrid = make_frame_figure()
     axis = axesgrid[0][0]
@@ -189,13 +192,14 @@ def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, outputfile: Path | str
     axis.invert_yaxis()
     axis.set_xlabel(r"$\Delta m_{15}$")
     axis.set_ylabel("Peak magnitude")
-    set_legend(axis)
+    set_legend(axis, args)
 
     save_or_show(fig, outputfile)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    addarg_legend(parser)
     addarg_action(
         parser,
         choices=[
@@ -271,7 +275,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     elif args.action == "plotwidthluminosity":
-        plot_hesma_peakmag_dm15_dm40(require(args.pathtofiles, "-pathtofiles", args.action), args.plotfile)
+        plot_hesma_peakmag_dm15_dm40(require(args.pathtofiles, "-pathtofiles", args.action), args, args.plotfile)
 
     elif args.action == "plotspectrum":
         fig, axesgrid = make_frame_figure()
@@ -286,5 +290,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         fig, axesgrid = make_frame_figure()
         axis = axesgrid[0][0]
-        plothesmaresspec(axis, require(args.hesmafile, "-hesmafile", args.action))
+        plothesmaresspec(axis, require(args.hesmafile, "-hesmafile", args.action), args)
         save_or_show(fig, args.plotfile)

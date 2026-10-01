@@ -1,4 +1,6 @@
 import argparse
+import dataclasses as dc
+import shlex
 import typing as t
 import warnings
 from collections.abc import Sequence
@@ -8,18 +10,21 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
+import matplotlib.figure as mplfig
 import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.container import ErrorbarContainer
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
+from artistools.lightcurve import interactive
 from artistools.lightcurve import viewingangleanalysis
 from artistools.lightcurve.core import bracket_spectrum_to_band
 
@@ -1128,7 +1133,7 @@ def test_bol_reflightcurve_magnitude_asymmetric(mockerrorbar: mock.MagicMock) ->
 def test_plotdeposition(mockplot: mock.MagicMock, lumunit: str) -> None:
     """Deposition curves are drawn in the y axis units, in every unit mode.
 
-    plot_deposition_thermalisation() appends a suffix to the caller's label and picks its own linestyle and
+    plot_energy_rates() appends a suffix to the caller's label and selects its own linestyle and
     colour, so those keys must not also arrive in the **plotkwargs splat, which used to raise
     "got multiple values for keyword argument".
     """
@@ -1168,7 +1173,7 @@ def test_plotdeposition(mockplot: mock.MagicMock, lumunit: str) -> None:
 
 
 def test_plotthermalisation() -> None:
-    """The thermalisation curves share plot_deposition_thermalisation's kwargs handling."""
+    """The thermalisation curves use the kwargs in the same way as plot_energy_rates."""
     at.lightcurve.plot(
         argsraw=[],
         modelpath=[modelpath_classic_3d],
@@ -1628,9 +1633,10 @@ def test_alpha_deposition_colour_is_taken_only_when_it_is_drawn(mockcolor: mock.
             plotdeposition=True, plotalphadeposition=plotalphadeposition, plotthermalisation=False,
             magnitude=False, Lsun=False,
         )  # fmt: skip
+        at.lightcurve.plotlightcurve.resolve_energy_rate_args(args)
 
         mockcolor.reset_mock()
-        at.lightcurve.plotlightcurve.plot_deposition_thermalisation(axis, None, modelpath_classic_3d, "modelname", args)
+        at.lightcurve.plotlightcurve.plot_energy_rates(axis, None, modelpath_classic_3d, "modelname", args)
 
         # one colour skipped plus gamma and beta, and the alpha colour only when its curves are drawn
         assert mockcolor.call_count == 3 + expected_extra
@@ -2198,3 +2204,120 @@ def test_band_lightcurve_of_the_angle_average_with_virtual_packets() -> None:
         at.get_path("testdata") / "vpktcontrib", dirbin=-1, plotvspecpol=[0], filter=["B"]
     )
     assert bandmags["B"]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The command of the viewer must draw the same curves as the viewer, and the old flags give the particle lists.
+
+    --plotalphadeposition gives the deposition rates, the emission rates, and the analytical alpha rate. The command
+    gives these as lists of particles, and a list takes each word after it. Thus a path after a list would be a
+    particle, and the command must give the paths first.
+    """
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.LightCurveViewer([str(modelpath_classic_3d), "--plotalphadeposition", "--interactive"], fig)
+    assert (viewer.values.deposition, viewer.values.emission, viewer.values.analyticemission) == (
+        ("gamma", "betaminus", "alpha"),
+        ("betaminus", "alpha"),
+        ("alpha",),
+    )
+    assert viewer.draw() is None
+    # the deposition.out of this run is older than the fission columns, and ARTIS writes no emission rate of positrons
+    assert viewer.get_energy_rate_reason("deposition", "fission") is not None
+    assert viewer.get_energy_rate_reason("emission", "betaplus") is not None
+    assert viewer.get_energy_rate_reason("thermalisation", "betaplus") is None
+
+    newvalues = dc.replace(
+        viewer.values,
+        lumunit="Lsun",
+        timemin="3.5",
+        timemax="7",
+        deposition=("gamma", "total"),
+        thermalisation=("gamma", "betaplus"),
+    )
+    assert viewer.change(newvalues) is None
+    command = viewer.get_command()
+    assert command.endswith(" -timemin 3.5 -timemax 7 --Lsun -deposition gamma total -emission betaminus alpha"
+                            " -analyticemission alpha -thermalisation gamma betaplus")  # fmt: skip
+    # the thermalisation ratios go in a panel below the light curves, and not in a second figure
+    frames = viewer.get_frames()
+    assert len(frames) == 2
+    viewercurves = {
+        str(line.get_label()): np.asarray(line.get_ydata(), dtype=float)
+        for frame in frames
+        for line in frame.get_lines()
+    }
+    assert any(r"\beta^+" in label for label in viewercurves), viewercurves
+
+    mockplot.reset_mock()
+    at.lightcurve.plot(argsraw=[*shlex.split(command)[2:], "-o", str(tmp_path / "lc.pdf")])
+    commandcurves = {
+        str(callargs.kwargs.get("label")): np.asarray(callargs.args[2], dtype=float)
+        for callargs in mockplot.call_args_list
+        if callargs.kwargs.get("label")
+    }
+    assert commandcurves.keys() == viewercurves.keys()
+    for label, ydata in viewercurves.items():
+        assert np.allclose(commandcurves[label], ydata, rtol=1e-12, atol=0.0, equal_nan=True), label
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["lc.pdf"]
+
+
+@pytest.mark.parametrize("plotoptions", [[], ["-filter", "B"], ["-colour_evolution", "B-V"]])
+def test_plotlightcurves_writes_png_data_to_a_png_file(tmp_path: Path, plotoptions: list[str]) -> None:
+    """A light curve with -o lc.png must hold PNG data. The saves once gave format="pdf" for each file name."""
+    outputfile = tmp_path / "lc.png"
+    at.lightcurve.plot(argsraw=[str(modelpath), *plotoptions, "-o", str(outputfile)])
+    assert outputfile.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_band_lightcurve_alpha_stays_on_its_model(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The -linealpha of one model must not go to the next model of a band plot, which reuses its plot arguments."""
+    secondmodel = tmp_path / "secondmodel"
+    secondmodel.symlink_to(modelpath, target_is_directory=True)
+    at.lightcurve.plot(
+        argsraw=[str(modelpath), str(secondmodel), "-filter", "B", "-linealpha", "0.3", "-o", str(tmp_path / "lc.pdf")]
+    )
+    alphas = [callargs.kwargs.get("alpha") for callargs in mockplot.call_args_list if callargs.kwargs.get("label")]
+    assert alphas[:2] == [0.3, None]
+
+
+def test_thermalisation_panel_follows_the_time_range_of_the_light_curves() -> None:
+    """The panel of the thermalisation ratios must not widen the shared time axis, and -ymax must not fix its legend.
+
+    The panel had the default x margin of 5 %, and the -ymax of the luminosity axis stopped the legend room of the
+    panel.
+    """
+    plotlightcurve = at.lightcurve.plotlightcurve
+
+    def draw(extraoptions: list[str]) -> tuple[tuple[float, float], tuple[float, float] | None]:
+        args = at.misc.parse_cli_args(
+            plotlightcurve.addargs, None, None, [str(modelpath_classic_3d), *extraoptions], {}
+        )
+        plotlightcurve.resolve_plot_args(args)
+        fig, axis, thermaxis, residualaxis = plotlightcurve.make_plot_figure(args)
+        FigureCanvasAgg(fig)
+        plotlightcurve.draw_plot(args, axis, thermaxis, residualaxis)
+        fig.canvas.draw()
+        return axis.get_xlim(), None if thermaxis is None else thermaxis.get_ylim()
+
+    depositionxlim, _ = draw(["-deposition", "gamma"])
+    thermalisationxlim, thermalisationylim = draw(["-thermalisation", "gamma"])
+    _, ylimwithymax = draw(["-thermalisation", "gamma", "-ymax", "2e43"])
+    assert np.allclose(thermalisationxlim, depositionxlim, rtol=1e-9, atol=0.0)
+    assert thermalisationylim is not None
+    assert ylimwithymax is not None
+    assert np.allclose(ylimwithymax, thermalisationylim, rtol=1e-9, atol=0.0)
+
+
+def test_viewer_gives_a_magnitude_plot_no_log_scale() -> None:
+    """A magnitude plot of the window must not keep a log scale of the command.
+
+    The window has no scale control for a magnitude, and a log axis of magnitudes showed no curve.
+    """
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.LightCurveViewer([str(modelpath), "--magnitude", "-yscale", "log", "--interactive"], fig)
+    assert viewer.values.yscale == viewer.defaultyscale
+    assert "-yscale" not in viewer.get_command()

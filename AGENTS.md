@@ -167,6 +167,44 @@ Use the shared functions to build a parser and to find a path. Import them from 
 
 A command that takes only paths as positional arguments reads them first, e.g. `artistools plotlightcurves mymodel`. A command that also names its items reads the ARTIS folder as the **last** positional argument, e.g. `artistools plotestimators Te TR mymodel`. Only the last argument can name a folder. A folder in an earlier place gives an error. Keep this order for each new command.
 
+## Viewers of `--interactive`
+
+The commands plotspectra, plotlightcurves, and plotestimators each have a viewer in `artistools/<area>/interactive.py`. A viewer makes the command from its controls, then it parses the command and draws it with the code of the command. Thus the plot always agrees with the command that the window shows.
+
+- Put a new plot feature in the command first, with an option. Then give the viewer a control for that option. Do not give a viewer a feature that the command does not have.
+- A viewer calls the functions of its command in this sequence: `resolve_plot_args`, `make_plot_figure`, and `draw_plot`. Do not copy their code into the viewer. plotestimators has no `make_plot_figure`, because the data sets the number of its subplots. Thus its `draw_plot` takes an empty figure and calls `resolve_plot_args` itself.
+- Put the code that two viewers need in the package `artistools/viewertools/`. Use it in each viewer that has the feature. Before you write a control, search that package for one that exists. Each module imports only from the modules above it in this list:
+  1. `core.py` makes, parses, and changes the command tokens;
+  2. `application.py` starts the Qt application, and it opens and remembers the windows;
+  3. `widgets.py` makes the widgets, e.g. the sections, the option table, and the status bar;
+  4. `sections.py` makes the sections of the viewing direction, the axes, and the time;
+  5. `series.py` makes the list of the series and the dialog of the line properties;
+  6. `menus.py` makes the menus and the actions of the figure;
+  7. `window.py` builds the window and draws the plot in a worker thread.
+- Examples of the shared code:
+  - `add_window_actions` gives the menus, the copy actions, and the save action;
+  - `add_series_list` gives the list of the models and the reference files;
+  - `add_direction_section` gives the section of the viewing direction;
+  - `add_y_limits_row` and `add_y_axis_actions` give the controls of the y range and the y scale;
+  - `edit_series_properties` gives the dialog of the line properties of a series, e.g. the label and the colour;
+  - `reload_runs` reads the runs again.
+- Use the same heading for the same section in each viewer. plotlightcurves uses "Horizontal axis: Time [d]" for its x section, because its x axis is always the time. plotspectra gives the quantity and the unit of its x axis in the same form, e.g. "Horizontal axis: Wavelength [Å]". The headings are:
+  - "Time";
+  - "Horizontal axis";
+  - "Vertical axis";
+  - "Viewing direction";
+  - "Appearance";
+  - "Figure";
+  - "Other options".
+- Give a label or a check box the text of its flag, e.g. `--logscalex`. `FLAG_LABELS` gives the readable text that the window shows. When you add a label that shows a new flag, add the flag to `FLAG_LABELS`.
+- Give each control the help text of its option as its tooltip. `get_helptexts(parser)` gives these texts.
+- Test a viewer without Qt: make its viewer class with a `FigureCanvasAgg`, and call `draw` and `change`. Add each new viewer to `VIEWER_CASES` in `artistools/test_artistools.py`. The tests there check the rules of all the viewers.
+- To check a change of a window without a display, do these steps:
+  1. Call `QSettings.setDefaultFormat` and `QSettings.setPath`. Then the check writes no settings of the user.
+  2. Set `QT_QPA_PLATFORM=offscreen` and `ARTISTOOLS_VIEWER_IN_BUNDLE=1`.
+  3. Call `open_window`.
+  4. Save an image with `window.grab()`.
+
 ## Tests
 
 - Put a test in the same directory as the code that it tests: `artistools/<area>/test_<area>.py`. Give each test function a `test_` prefix. The `name-tests-test` hook makes this necessary.

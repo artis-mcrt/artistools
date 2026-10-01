@@ -20,10 +20,10 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
-from artistools import viewertools
 from artistools.spectra import core as atspectra
 from artistools.spectra import interactive
 from artistools.spectra import plotspectra
+from artistools.viewertools import core as viewercore
 
 modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
@@ -2232,7 +2232,7 @@ def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
 
 def test_interactive_command_tokens() -> None:
     """The command of the viewer drops each form of an option that a control sets, and keeps the other options."""
-    parser = viewertools.make_parser(plotspectra.addargs)
+    parser = viewercore.make_parser(plotspectra.addargs)
     tokens = [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
@@ -2267,8 +2267,8 @@ def test_interactive_command_tokens() -> None:
         "--",
         "-folder",
     ]
-    basetokens = viewertools.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
-    assert interactive.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
+    basetokens = viewercore.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
+    assert viewercore.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
         *("-t", "306", "-xmin", "3000", "-xmax", "9000"),
@@ -2459,6 +2459,92 @@ def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pyt
     assert shlex.split(viewer.get_command())[2:5] == [".", str(modelpath), reference]
     assert len(viewer.axes[0].get_lines()) == 3
     assert interactive.get_spectrum_item_text(reference).startswith("Reference: /")
+
+
+def test_interactive_new_first_model_gives_the_time_grid() -> None:
+    """A new order of the models gives the time controls the timesteps of the new first model.
+
+    A snapped range keeps its middle and its count of timesteps on the new grid. The new first model has longer
+    timesteps, thus the days of the old range contain only 3 of them.
+    """
+    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
+    viewer = make_headless_viewer([str(modelpath_classic_3d), str(classic1dpath), "-t", "4.5-5", "--interactive"])
+    first, last = viewer.get_selection(viewer.values)
+    assert last - first + 1 == 4
+    centre = viewer.values.centre
+
+    viewer.values = interactive.set_runs(viewer, [str(classic1dpath), str(modelpath_classic_3d)], "")
+    assert viewer.runfolders[0] == classic1dpath
+    first, last = viewer.get_selection(viewer.values)
+    assert last - first + 1 == 4
+    assert viewer.values.centre == pytest.approx(centre, rel=0.05)
+    assert viewer.tmids[first] < centre < viewer.tmids[last]
+
+
+def test_interactive_time_grid_of_a_later_model() -> None:
+    """A model that is not first can give its timesteps to the time controls, and the valid times apply to all models.
+
+    plotspectra rejects a time outside the timesteps of each run, thus the valid times stay inside both runs.
+    """
+    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
+    spectra = [str(modelpath_classic_3d), str(classic1dpath)]
+    viewer = make_headless_viewer([*spectra, "-t", "4.5-5", "--interactive"])
+    viewer.values = interactive.set_runs(viewer, spectra, str(classic1dpath))
+    assert viewer.gridfolder == classic1dpath
+    assert viewer.values.spectra == tuple(spectra)
+    first, last = viewer.get_selection(viewer.values)
+    assert last - first + 1 == 4
+    for runtimes in viewer.runtimes.values():
+        assert runtimes.tstart <= viewer.timebounds[0] < viewer.timebounds[1] <= runtimes.tend
+
+    # after the removal of the model, the time controls use the timesteps of the first model again
+    viewer.values = interactive.set_runs(viewer, spectra[:1], viewer.values.timegrid)
+    assert (viewer.values.timegrid, viewer.gridfolder) == ("", modelpath_classic_3d)
+
+
+def test_interactive_time_fits_the_timestep_of_each_run() -> None:
+    """A time inside the valid times can still give a timestep of a different run that ends outside its valid times.
+
+    plotspectra clamps the time to the timestep of each run, and it then rejects the days of that timestep.
+    """
+    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
+    tstarts = at.get_timestep_times(classic1dpath, loc="start")
+    tends = at.get_timestep_times(classic1dpath, loc="end")
+    timestep = 25
+    # the valid times end in the middle of the timestep
+    validend = (tstarts[timestep] + tends[timestep]) / 2.0
+    runtimes = interactive.RunTimes(tstart=tstarts[0], tend=tends[-1], validstart=tstarts[0], validend=validend)
+    earlytime = f"{tstarts[timestep] + 0.25 * (tends[timestep] - tstarts[timestep]):.6f}"
+    assert float(earlytime) < validend
+    assert not interactive.fits_each_run([(classic1dpath, runtimes)], earlytime)
+    assert interactive.fits_each_run([(classic1dpath, runtimes)], f"{tstarts[timestep - 1] + 0.001:.6f}")
+
+
+def test_interactive_series_styles_stay_on_their_spectrum() -> None:
+    """A new order of the spectra keeps each -label and each -color on its spectrum.
+
+    Each option gives its values in the order of the spectra. Thus a spectrum with no value in front of a spectrum with
+    a value takes the token default, and plotspectra then gives it the automatic label, e.g. with the time.
+    """
+    reference = "sn2011fe_PTF11kly_20120822_norm.txt"
+    oldspectra = (str(modelpath), reference, str(modelpath_classic_3d))
+    rows = (("-label", ("First",)), ("-color", ("red", "blue")))
+    newspectra = (str(modelpath_classic_3d), reference, str(modelpath))
+
+    moved = viewercore.move_series_styles(rows, oldspectra, newspectra)
+    assert dict(moved) == {"-label": ("default", "default", "First"), "-color": ("default", "blue", "red")}
+    # the values of a removed spectrum go out of the option rows
+    assert dict(viewercore.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"-color": ("blue",)}
+
+    viewer = make_headless_viewer([*oldspectra[:2], "-t", "300", "--interactive"])
+    labelled = interactive.set_series_values(viewer.values, reference, {"-label": "Observed"})
+    assert viewercore.get_row_values(labelled.otheroptions, "-label") == ("default", "Observed")
+    assert viewer.change(labelled) is None
+    legendlabels = [line.get_label() for line in viewer.axes[0].get_lines()]
+    assert legendlabels[1] == "Observed"
+    assert legendlabels[0].startswith("TEST MODEL +300")
+    unlabelled = interactive.set_series_values(labelled, reference, {"-label": None})
+    assert viewercore.get_row_values(unlabelled.otheroptions, "-label") is None
 
 
 def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
@@ -2799,7 +2885,7 @@ def test_interactive_direction_and_bin_controls() -> None:
     assert "--average_every_tenth_viewing_angle" not in command
     assert command[command.index("-plotviewingangle") + 1] == "10"
 
-    choices = interactive.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
+    choices = viewercore.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
     assert [dirbin for dirbin, _ in choices] == list(range(10))
     assert viewer.change(dc.replace(values, directionkind="theta", directionbins=(3,), deltalogx="")) is None
     command = shlex.split(viewer.get_command())
@@ -2820,9 +2906,9 @@ def test_interactive_direction_and_bin_controls() -> None:
 
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
-    parser = viewertools.make_parser(plotspectra.addargs)
+    parser = viewercore.make_parser(plotspectra.addargs)
     tokens = ["-dx", "5", "-label", "a b", "c", "-filtersavgol", "5", "2", "--normalised", "-title=My plot", "-dpi300"]
-    rows, othertokens = viewertools.split_option_rows(parser, [*tokens, "--", "rest"])
+    rows, othertokens = viewercore.split_option_rows(parser, [*tokens, "--", "rest"])
     assert rows == (
         ("-deltax", ("5",)),
         ("-label", ("a b", "c")),
@@ -2835,7 +2921,7 @@ def test_interactive_option_rows() -> None:
 
     actions = {
         action.option_strings[0]: action
-        for action in viewertools.get_table_actions(
+        for action in viewercore.get_table_actions(
             parser, interactive.CONTROLLED_DESTS | interactive.TABLE_EXCLUDED_DESTS
         )
     }
@@ -2845,10 +2931,10 @@ def test_interactive_option_rows() -> None:
         & actions.keys()
     )
     # no option of the table has choices now, but a new option with choices gets a list in the table
-    allactions = viewertools.get_actions_by_flag(parser)
-    kinds = {flag: viewertools.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
+    allactions = viewercore.get_actions_by_flag(parser)
+    kinds = {flag: viewercore.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
     assert kinds == {"--notitle": "flag", "-yvariable": "choice", "-dpi": "int"}
-    assert [viewertools.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
+    assert [viewercore.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
         "values",
         "list",
         "text",
@@ -2856,8 +2942,8 @@ def test_interactive_option_rows() -> None:
     # an option with no default needs a value from the user before the command can give it. Export Figure asks for
     # -dpi, thus the table does not offer it
     assert "-dpi" not in actions
-    assert viewertools.get_default_tokens(allactions["-dpi"]) == ("250",)
-    assert viewertools.get_default_tokens(actions["-title"]) is None
+    assert viewercore.get_default_tokens(allactions["-dpi"]) == ("250",)
+    assert viewercore.get_default_tokens(actions["-title"]) is None
 
 
 def test_interactive_other_options_reach_the_command() -> None:
@@ -3052,3 +3138,60 @@ def test_host_merge_of_flux_contributions_keeps_the_plot(
         assert np.isclose(row_merged.fluxcontrib, row_full.fluxcontrib, rtol=1e-12, atol=0.0)
         assert np.allclose(row_merged.array_flambda_emission, row_full.array_flambda_emission, rtol=1e-12, atol=0.0)
         assert np.allclose(row_merged.array_flambda_absorption, row_full.array_flambda_absorption, rtol=1e-12, atol=0.0)
+
+
+@pytest.mark.parametrize("averaging", [[], ["--average_over_phi_angle"], ["--average_over_theta_angle"]])
+@mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
+def test_emission_plot_of_all_directions(mocktitle: mock.MagicMock, averaging: list[str], tmp_path: Path) -> None:
+    """An emission plot takes bin -1, the average over all the directions, also with an average over one angle.
+
+    The window of plotspectra gives bin -1 in the list of the direction bins. The title then had no label for the bin
+    (KeyError), and an average over phi read bin -1 as the first bin of a group of phi bins (AssertionError).
+    """
+    at.spectra.plot(
+        argsraw=[
+            str(modelpath_classic_3d),
+            "-t",
+            "5",
+            "--showemission",
+            *averaging,
+            "-plotviewingangle",
+            "-1",
+            "-o",
+            str(tmp_path / "emission.pdf"),
+        ]
+    )
+    assert any("all directions" in str(callargs.args[1]) for callargs in mocktitle.call_args_list)
+
+
+def test_viewer_keys_the_runs_by_the_tokens_of_the_list() -> None:
+    """A path with a trailing slash must give the run of its row, or the window stops at the start."""
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.SpectrumViewer([f"{modelpath}/", "-t", "300"], fig)
+    assert set(viewer.runtimes) == set(viewer.values.spectra)
+    assert viewer.runkey == (viewer.values.spectra, viewer.values.timegrid)
+
+
+def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
+    """A command made on the timesteps of a later model must open with the same time.
+
+    The command holds no choice of "Timesteps of". The viewer snapped the time to the timesteps of the first model,
+    thus a copied command or a restored session drew a different time range.
+    """
+    models = [
+        str(at.get_path("testdata") / "test-classicmode_3d"),
+        str(at.get_path("testdata") / "test-classicmode_1d"),
+    ]
+
+    def make(tokens: list[str]) -> interactive.SpectrumViewer:
+        fig = mplfig.Figure()
+        FigureCanvasAgg(fig)
+        return interactive.SpectrumViewer(tokens, fig)
+
+    viewer = make([*models, "-t", "4.5-5"])
+    viewer.values = interactive.set_runs(viewer, viewer.values.spectra, models[1])
+    command = viewer.get_command()
+    reopened = make([*shlex.split(command)[2:], "--interactive"])
+    assert reopened.get_command() == command
+    assert reopened.values.timegrid == models[1]

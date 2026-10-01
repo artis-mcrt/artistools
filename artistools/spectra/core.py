@@ -1205,7 +1205,8 @@ def get_flux_contributions_cached(
         elementlist = get_composition_data(modelpath)
     nelements = len(elementlist)
 
-    if directionbin is None:
+    # the bin -1 is the average over all the directions, also with an average over one angle
+    if directionbin is None or directionbin == -1:
         dbinlist = [-1]
     elif average_over_phi:
         assert not average_over_theta

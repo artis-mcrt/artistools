@@ -583,10 +583,12 @@ def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
     """Return whether the path names a file of reference data and not the output of an ARTIS run.
 
     A name that ends in .out belongs to ARTIS, e.g. spec.out. A user can give reference data such a
-    name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files.
+    name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files. A reader opens a
+    file of reference data on this host, thus a remote path names a model, and the test needs no connection to its
+    host.
     """
     path = Path(filepath)
-    if path_is_dir(path) or find_reference_data_file(path, bundledsubfolder) is None:
+    if is_remote_path(path) or path_is_dir(path) or find_reference_data_file(path, bundledsubfolder) is None:
         return False
 
     if not path_is_artis_model(path):
@@ -625,6 +627,15 @@ def folder_is_artis_run(folder: Path | str) -> bool:
         return get_remote_path_kind(folder)[2]
 
     return folder.is_dir() and (folder / "input.txt").is_file()
+
+
+def get_artis_run_folders(modelpaths: Sequence[Path | str]) -> list[Path]:
+    """Return the folder of each ARTIS run in modelpaths. A reference file or a code comparison file gives none."""
+    return [
+        get_model_folder(path)
+        for path in modelpaths
+        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
+    ]
 
 
 def path_is_codecomparison(filepath: Path | str) -> bool:

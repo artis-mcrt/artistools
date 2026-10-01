@@ -14,6 +14,7 @@ from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import LOGRHO_FROM_RHO
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.misc import addarg_legend
 from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.plottools import make_frame_figure
@@ -23,6 +24,7 @@ from artistools.plottools import set_legend
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    addarg_legend(parser)
     parser.add_argument("-inputfolder", action="store", default=".", help="Path to folder with 3D files")
 
     parser.add_argument(
@@ -52,7 +54,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     slice_abundance_file(args.inputfolder, args.outputfolder, dict3dcellidto1dcellid)
 
     if args.pdfoutputfile:
-        make_plot(xlist, ylists, args.pdfoutputfile)
+        make_plot(xlist, ylists, args.pdfoutputfile, args)
 
 
 def slice_3dmodel(
@@ -127,7 +129,7 @@ def slice_abundance_file(
     save_initelemabundances(dfelabundances, outpath=outputfolder)
 
 
-def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str) -> None:
+def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str, args: argparse.Namespace) -> None:
     """Plot density and the Ni56 and Co mass fractions of the slice against velocity, and save it as a PDF."""
     fig, axesgrid = make_frame_figure()
     axis = axesgrid[0][0]
@@ -137,5 +139,5 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str)
     for ylist, ylabel in zip(ylists, ylabels, strict=False):
         axis.plot(xlist, ylist, linewidth=1.5, label=ylabel)
     axis.set_yscale("log", nonpositive="clip")
-    set_legend(axis)
+    set_legend(axis, args)
     save_figure(fig, pdfoutputfile, format="pdf")

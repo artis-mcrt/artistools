@@ -51,9 +51,9 @@ from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
 from artistools.misc import addarg_labelfontsize
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
@@ -1545,7 +1545,8 @@ def finish_subplot(ax: mplax.Axes, args: argparse.Namespace, settings: SubplotSe
             handlelength=2,
             frameon=False,
             numpoints=1,
-            ncols=settings.get("legendncols", 1),
+            # one column was the default. An ncols of None makes set_legend fit the columns
+            ncols=legendncols if (legendncols := settings.get("legendncols", 1)) > 1 else None,
             markerscale=3,
         )
 
@@ -1585,6 +1586,12 @@ def get_subplot_grid(nsubplots: int, subplotsperrow: int) -> tuple[int, int]:
 # a figure of estimators often has several columns of subplots, and a frame of the full text width then gives
 # labels that are small beside the data. Each frame thus takes 0.7 of the size that -figscale gives
 SUBPLOT_FRAMESCALE: t.Final = 0.7
+IMAGE_HEIGHT_INCHES: t.Final = 3.5
+# measured with matplotlib 3.10: the y label on the left and the colour bar on the right take 1.75 inches, and the x
+# label below takes 0.4 inches. Each value has a gap to the next panel
+IMAGE_LABEL_INCHES: t.Final = (1.95, 0.55)
+# the title has two lines
+IMAGE_TITLE_INCHES: t.Final = 0.55
 
 
 class LineFigureData(t.NamedTuple):
@@ -2060,15 +2067,14 @@ def draw_image_figure(
     isplane = plotaxis1 != "rcyl"
 
     nrows, ncols = get_subplot_grid(len(figuredata.styles), args.subplotsperrow)
-    # the image at each cylindrical radius has half the width of a plane
-    figscale = args.figscale * SUBPLOT_FRAMESCALE
-    panelwidth = (4.6 if isplane else 3.8) * figscale * (getattr(args, "figwidthscale", None) or 1.0)
-    figsize = (panelwidth * ncols, 4.2 * nrows * figscale)
+    figsize = get_image_figsize(nrows, ncols, isplane=isplane, args=args)
     if fig is None:
         fig = plt.figure(figsize=figsize)
     else:
         fig.set_size_inches(*figsize, forward=True)
-    fig.set_layout_engine("constrained")
+    # an image has an equal aspect, thus it is smaller than its layout box. The compressed layout moves the images
+    # together at the centre, and it gives each colour bar the height of its image
+    fig.set_layout_engine("compressed")
     axesgrid = fig.subplots(nrows, ncols, squeeze=False)
     vmax_on_c = figuredata.vmax_cmps / C_cm_per_s
     # the axis of an image holds v/c. -x velocity takes km/s, and every other x variable takes v/c already
@@ -2105,9 +2111,27 @@ def draw_image_figure(
         ax.set_visible(False)
 
     if not args.notitle:
-        fig.suptitle(figuredata.title)
+        title = fig.suptitle(figuredata.title)
+        # a long title of a narrow figure, e.g. of one cylindrical image, goes past the edges of the figure
+        titlewidth = title.get_window_extent().width / fig.dpi + 0.2
+        if titlewidth > figsize[0]:
+            fig.set_size_inches(titlewidth, figsize[1])
 
     return fig
+
+
+def get_image_figsize(nrows: int, ncols: int, *, isplane: bool, args: argparse.Namespace) -> tuple[float, float]:
+    """Return the size in inches of a figure of colour images, from the shape of an image and the space of its labels.
+
+    An image has an equal aspect, and the image at each cylindrical radius has half the width of a plane. The labels
+    have a font size in points, thus their space stays the same at each -figscale. -figwidthscale scales all the width.
+    """
+    imageheight = IMAGE_HEIGHT_INCHES * args.figscale * SUBPLOT_FRAMESCALE
+    imagewidth = imageheight if isplane else imageheight / 2.0
+    labelwidth, labelheight = IMAGE_LABEL_INCHES
+    width = ncols * (imagewidth + labelwidth) * (getattr(args, "figwidthscale", None) or 1.0)
+    height = nrows * (imageheight + labelheight) + (0.0 if args.notitle else IMAGE_TITLE_INCHES)
+    return width, height
 
 
 def get_slice_filetag(args: argparse.Namespace) -> str:
@@ -2296,7 +2320,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=argparse.SUPPRESS,
     )
 
-    addarg_nolegend(parser)
+    addarg_legend(parser)
 
     addarg_labelfontsize(parser)
 
@@ -2989,7 +3013,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.interactive:
         from artistools.estimators.interactive import run_viewer
-        from artistools.viewertools import get_command_tokens
+        from artistools.viewertools.core import get_command_tokens
 
         run_viewer(
             get_command_tokens(

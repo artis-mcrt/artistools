@@ -29,8 +29,8 @@ from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_maxpacketfiles
-from artistools.misc import addarg_nolegend
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_pathoption
@@ -48,13 +48,12 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting_or_none
-from artistools.misc import folder_is_artis_run
+from artistools.misc import get_artis_run_folders
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
-from artistools.misc import get_model_folder
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
@@ -1226,9 +1225,11 @@ def plot_reference_spectra(
             if args.label[index] is not None:
                 plotkwargs["label"] = args.label[index]
             plotkwargs["alpha"] = args.linealpha[index]
-            plotkwargs.pop("linewidth", None)
-            if args.linewidth[index]:
-                plotkwargs["linewidth"] = args.linewidth[index]
+            plotkwargs["linestyle"] = args.linestyle[index]
+            for stylename in ("linewidth", "dashes"):
+                plotkwargs.pop(stylename, None)
+                if value := getattr(args, stylename)[index]:
+                    plotkwargs[stylename] = value
 
         plotobj, serieslabel, ymaxref = plot_reference_spectrum_for_args(
             filepath, axis, args, filterfunc, scale_to_peak, offset=0.3 if scale_to_peak else 0.0, **plotkwargs
@@ -1258,8 +1259,10 @@ def get_emission_plot_label(
         return plotlabel
 
     assert dirbin is not None
+    # a label of the bin -1, the average over all the directions, comes only for a list of bins that names it
     dirbin_definitions = get_dirbin_definitions(
         modelpath,
+        [dirbin],
         vpkt_observers=bool(args.plotvspecpol),
         average_over_phi=args.average_over_phi_angle,
         average_over_theta=args.average_over_theta_angle,
@@ -1578,7 +1581,9 @@ def draw_plot(
         loc="upper right",
         frameon=False,
         handlelength=1 if args.showemission or args.showabsorption else 2,
-        ncol=legendncol,
+        # one column was the default, and a long legend of a plain spectrum then took more height than the frame.
+        # An ncol of None makes set_legend fit the columns
+        ncol=legendncol if legendncol > 1 else None,
         numpoints=1,
         columnspacing=1.0,
     )
@@ -1856,7 +1861,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--inset_title", action="store_true", help="Place title inside the plot")
 
-    addarg_nolegend(parser)
+    addarg_legend(parser)
 
     parser.add_argument("--reverselegendorder", action="store_true", help="Reverse the order of legend items")
 
@@ -2019,7 +2024,8 @@ def has_gamma_spec_file(runfolder: Path) -> bool:
     """Return True if the run has gamma_spec.out.
 
     The spectrum viewer resolves the arguments at each change, and the search of the subfolders is slow on a network
-    drive. Thus a file that exspec writes later stays unknown until a new window, and the plot then reads the packets.
+    drive. Thus a file that exspec writes later stays unknown until Reload Data clears the cache, and until then the
+    plot reads the packets.
     """
     return firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None
 
@@ -2174,7 +2180,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.interactive:
         from artistools.spectra.interactive import run_viewer
-        from artistools.viewertools import get_command_tokens
+        from artistools.viewertools.core import get_command_tokens
 
         run_viewer(
             get_command_tokens(
@@ -2247,15 +2253,6 @@ def get_default_xlimits(xunit: str, *, gamma: bool) -> tuple[float, float]:
     lambdalimits = (0.2, 0.004) if gamma else (2500.0, 19000.0)
     xmin, xmax = sorted(convert_angstroms_to_unit(value, xunit) for value in lambdalimits)
     return xmin, xmax
-
-
-def get_artis_run_folders(modelpaths: Sequence[Path]) -> list[Path]:
-    """Return the folder of each ARTIS run in modelpaths. A reference spectrum or a code comparison file gives none."""
-    return [
-        get_model_folder(path)
-        for path in modelpaths
-        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
-    ]
 
 
 def resolve_plot_args(args: argparse.Namespace) -> None:

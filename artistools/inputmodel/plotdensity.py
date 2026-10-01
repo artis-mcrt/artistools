@@ -16,6 +16,7 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
@@ -33,6 +34,7 @@ from artistools.plottools import set_legend
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    addarg_legend(parser)
     addarg_modelpath(
         parser,
         positional=True,
