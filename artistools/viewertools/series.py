@@ -362,9 +362,9 @@ def show_row_buttons(row: "QtWidgets.QWidget", *, visible: bool) -> None:
 def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str, width: int) -> "QtGui.QAction":
     """Return a menu item with the name of a folder, and its path in a very small font under the name.
 
-    One item of a menu has one font, thus the item is a widget with two labels. The path takes the width, e.g. the
-    width of the list of series, and a longer path shows its start and its end, e.g. /Users/luke…1e8pkt_virgo. The
-    tooltip gives all of it.
+    One item of a menu has one font, thus the item is a widget with two labels. The item is as wide as the width, e.g.
+    the width of the list of series, or as the menu if the menu is wider. The path fills the width of the item, and a
+    longer path shows its start and its end, e.g. /Users/luke…1e8pkt_virgo. The tooltip gives all of it.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -378,17 +378,16 @@ def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str, width: int) -> "
     margin = 14
     layout.setContentsMargins(margin, 3, margin, 3)
     layout.setSpacing(0)
+    item.setMinimumWidth(width)
     namelabel = QtWidgets.QLabel(Path(folder).name)
-    pathlabel = QtWidgets.QLabel()
+    # the label shortens the path to the width that the menu gives it, and a path that a fixed width shortened left a
+    # space at the right of a wider menu
+    pathlabel = make_elided_label(get_menu_path_text(folder))
+    pathlabel.setToolTip(folder)
     font = pathlabel.font()
     font.setPointSizeF(font.pointSizeF() * 0.75)
     pathlabel.setFont(font)
     pathlabel.setForegroundRole(QtGui.QPalette.ColorRole.PlaceholderText)
-    pathlabel.setText(
-        pathlabel.fontMetrics().elidedText(
-            get_menu_path_text(folder), QtCore.Qt.TextElideMode.ElideMiddle, max(width - 2 * margin, 100)
-        )
-    )
     layout.addWidget(namelabel)
     layout.addWidget(pathlabel)
     item.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
