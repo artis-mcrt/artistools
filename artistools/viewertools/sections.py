@@ -116,12 +116,12 @@ def add_direction_section(
     kindbox = QtWidgets.QComboBox()
     usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
     usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
-    add_row(directiongrid, 0, [kindbox, usedegreescheck])
+    add_row(directiongrid, 0, [kindbox])
     averagechecks = {
         "phi": QtWidgets.QCheckBox("--average_over_phi_angle"),
         "theta": QtWidgets.QCheckBox("--average_over_theta_angle"),
     }
-    add_row(directiongrid, 1, list(averagechecks.values()))
+    add_row(directiongrid, 1, [*averagechecks.values(), usedegreescheck])
     # the list of a run can hold 100 bins, thus a button opens it as a drop-down list, and the button gives the choice
     binbutton = QtWidgets.QPushButton()
     binbutton.setToolTip(
