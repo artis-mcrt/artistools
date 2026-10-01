@@ -597,11 +597,13 @@ def set_figure_format(suffix: str) -> None:
 
 
 class FigureSection(t.NamedTuple):
-    """The buttons of the Figure section and its Resolution box, which gives the -dpi of the command."""
+    """The buttons of the Figure section, its Resolution box, which gives the -dpi of the command, and its grid."""
 
     copybutton: "QtWidgets.QPushButton"
     savebutton: "QtWidgets.QPushButton"
     dpibox: "QtWidgets.QSpinBox"
+    # a viewer can add a row of its own below the first row, e.g. the figure scale
+    grid: "QtWidgets.QGridLayout"
 
 
 def add_figure_section(
@@ -658,7 +660,7 @@ def add_figure_section(
     show_format(get_figure_format())
     formatbox.currentIndexChanged.connect(on_format)
     window.setProperty("figureformathandler", show_format)
-    return FigureSection(copybutton=copybutton, savebutton=savebutton, dpibox=dpibox)
+    return FigureSection(copybutton=copybutton, savebutton=savebutton, dpibox=dpibox, grid=grid)
 
 
 # a GIF file shows on a screen, thus its frames take the resolution of a screen

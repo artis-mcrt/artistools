@@ -1359,10 +1359,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     assert isinstance(datasourcemodel, QtGui.QStandardItemModel)
     autoitem, textitem = datasourcemodel.item(0), datasourcemodel.item(1)
     add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox])
-    _, appearancegrid = add_section(panellayout, "Appearance")
     # the box edits the row of -figscale in the other options, as the box of the estimator viewer does
     figscalebox = make_figscale_box(helptexts)
-    add_row(appearancegrid, 0, [QtWidgets.QLabel("-figscale"), figscalebox])
     defaultfigscale: float = viewer.parser.get_default("figscale")
     defaultdpi: int = viewer.parser.get_default("dpi")
 
@@ -1382,6 +1380,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
         )
     )
+    # the figure scale is a property of the figure, thus it goes in the Figure section with the format and the resolution
+    add_row(figuresection.grid, 1, [QtWidgets.QLabel("-figscale"), figscalebox])
 
     signalwidgets: list[QtWidgets.QWidget] = [
         figscalebox,
