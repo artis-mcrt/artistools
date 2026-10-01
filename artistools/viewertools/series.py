@@ -360,11 +360,11 @@ def show_row_buttons(row: "QtWidgets.QWidget", *, visible: bool) -> None:
 
 
 def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str, width: int) -> "QtGui.QAction":
-    """Return a menu item with the name of a folder, and its path in a very small font under the name.
+    """Return a menu item with the name of a folder, and its parent folder in a very small font under the name.
 
     One item of a menu has one font, thus the item is a widget with two labels. The item is as wide as the width, e.g.
-    the width of the list of series, or as the menu if the menu is wider. The path fills the width of the item, and a
-    longer path shows its start and its end, e.g. /Users/luke…1e8pkt_virgo. The tooltip gives all of it.
+    the width of the list of series, or as the menu if the menu is wider. The parent folder fills the width of the item,
+    and a longer path shows its start and its end, e.g. /Users/luke…/kilonova_runs. The tooltip gives the full path.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -382,7 +382,7 @@ def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str, width: int) -> "
     namelabel = QtWidgets.QLabel(Path(folder).name)
     # the label shortens the path to the width that the menu gives it, and a path that a fixed width shortened left a
     # space at the right of a wider menu
-    pathlabel = make_elided_label(get_menu_path_text(folder))
+    pathlabel = make_elided_label(get_menu_parent_text(folder))
     pathlabel.setToolTip(folder)
     font = pathlabel.font()
     font.setPointSizeF(font.pointSizeF() * 0.75)
@@ -403,17 +403,18 @@ def make_path_menu_action(menu: "QtWidgets.QMenu", folder: str, width: int) -> "
     return action
 
 
-def get_menu_path_text(folder: str) -> str:
-    """Return a path for a menu. A remote path gives its host and "~" for its home folder, e.g. "vae26:~/short/mymodel".
+def get_menu_parent_text(folder: str) -> str:
+    """Return the parent folder of a model for a menu, e.g. "vae26:~/short" for the remote model "vae26:~/short/mymodel".
 
-    The host gives its home folder only through ssh, thus the home folder of a remote user is /home/user or /Users/user.
-    The user is the user of "user@host", or the local user. A local path stays as it is.
+    The first line of the menu item gives the name of the model folder, thus the second line leaves it out. A remote
+    path gives its host and "~" for its home folder. The host gives its home folder only through ssh, thus the home
+    folder of a remote user is /home/user or /Users/user. The user is the user of "user@host", or the local user.
     """
     if (remoteparts := split_remote_path(folder)) is None:
-        return folder
+        return str(Path(folder).parent)
     host, hostpath = remoteparts
     user = host.partition("@")[0] if "@" in host else getpass.getuser()
-    hostpathtext = str(hostpath)
+    hostpathtext = str(hostpath.parent)
     for home in (f"/home/{user}", f"/Users/{user}"):
         hostpathtext = get_path_with_tilde(hostpathtext, home)
     return f"{host}:{hostpathtext}"
