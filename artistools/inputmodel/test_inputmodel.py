@@ -173,6 +173,19 @@ def test_get_modeldata_3d() -> None:
     assert math.isclose(lzdfmodel.select(pl.col("mass_g").sum()).collect().item(), 2.7861855e33, rel_tol=1e-05)
 
 
+def test_get_spatial_scales() -> None:
+    # the inner shell of this 1D model is 1259 km/s wide and the other 69 shells are 315 km/s wide
+    smallest, largest, description = at.inputmodel.get_spatial_scales(testdatapath / "test-classicmode_1d")
+    assert math.isclose(smallest, 314.84e5, rel_tol=1e-4)
+    assert math.isclose(largest, 1259.375e5, rel_tol=1e-4)
+    assert "the width of the narrowest shell, 315 km/s" in description
+    # the grid has 10 cells on each axis from -vmax to vmax, thus the diagonal of a cell is sqrt(3) times its width
+    smallest, largest, description = at.inputmodel.get_spatial_scales(modelpath_3d)
+    assert math.isclose(smallest, 2 * 2892020000.0 / 10)
+    assert math.isclose(largest, math.sqrt(3) * smallest)
+    assert "the diagonal of a cell" in description
+
+
 @pytest.mark.parametrize("cachecontents", [b"", b"not a parquet file", b"PAR1" + bytes(64)])
 def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: bytes) -> None:
     """A damaged parquet cache must be deleted and rebuilt, not raise from read_parquet_metadata."""

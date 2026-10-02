@@ -6,6 +6,7 @@ the downloaded ARTIS test model.
 
 import argparse
 import gzip
+import importlib.metadata
 import io
 import lzma
 import math
@@ -1261,7 +1262,7 @@ def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pyte
     assert at.misc.normalize_path_list(["./run:2", "vae26:model"]) == [tmp_path / "run:2", Path("vae26:~/model")]
     # rsync takes an IPv6 address in brackets, and ssh takes it with no brackets
     assert remote.split_remote_path("user@[2001:db8::1]:/model") == ("user@[2001:db8::1]", Path("/model"))
-    assert remote.get_server_argv("user@[2001:db8::1]")[1:3] == ["--", "user@2001:db8::1"]
+    assert remote.get_server_argv("user@[2001:db8::1]", "artistools server")[1:3] == ["--", "user@2001:db8::1"]
     # a label of a list option can have the form host:path, thus only a remote path that is clearly a folder counts
     assert remote.names_a_remote_folder("vae26:~/model")
     assert not remote.names_a_remote_folder("second:label")
@@ -1327,18 +1328,29 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
 
     vcsinstall = {"url": "https://github.com/fork/artistools", "vcs_info": {"vcs": "git", "commit_id": "abc123"}}
     with mock_direct_url(json.dumps(vcsinstall)):
-        assert remote.get_git_source() == ("https://github.com/fork/artistools", "abc123", [])
-        suggestion = remote.get_git_server_suggestion("vae26")
-    assert suggestion is not None
-    expected = (
-        f"export ARTISTOOLS_REMOTE_COMMAND='POLARS_MAX_THREADS=16 uvx --with polars=={pl.__version__}"
-        ' --from "artistools @ git+https://github.com/fork/artistools@abc123"'
+        gitsource = remote.get_git_source()
+    assert gitsource is not None
+    assert gitsource == remote.GitSource(
+        "https://github.com/fork/artistools", "abc123", ispushed=True, releasechanges=None, notes=[]
     )
-    assert f"{expected} artistools server'" in suggestion
+    expected = (
+        f"POLARS_MAX_THREADS=16 uvx --with polars=={pl.__version__}"
+        ' --from "artistools @ git+https://github.com/fork/artistools@abc123" artistools server'
+    )
+    assert remote.get_git_command(gitsource) == expected
+    suggestion = remote.get_git_server_suggestion("vae26", None, gitsource)
+    assert f"export ARTISTOOLS_REMOTE_COMMAND='{expected}'" in suggestion
+    assert "but the server command runs a release" in suggestion
+    # a command of ARTISTOOLS_REMOTE_COMMAND can name an old commit, thus the warning tells whether it names this one
+    oldcommand = "uvx --from 'artistools @ git+https://x@0ld' artistools server"
+    assert "does not name this commit" in remote.get_git_server_suggestion("vae26", oldcommand, gitsource)
+    assert "names this commit. The usual command" in remote.get_git_server_suggestion("vae26", expected, gitsource)
 
+    # an install from PyPI records no direct_url.json, thus its server is the release of the same version
     with mock_direct_url(None):
         assert remote.get_git_source() is None
-        assert remote.get_git_server_suggestion("vae26") is None
+    command, _ = remote.choose_server_command(None, None)
+    assert command.endswith(f" artistools@{importlib.metadata.version('artistools')} server")
 
     packagefolder = Path(remote.__file__).resolve().parents[2]
     headcommit = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
@@ -1353,7 +1365,48 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
         gitsource = remote.get_git_source()
     assert gitsource is not None
     # the URL is the one of the remote that holds the commit, which can be a fork
-    assert gitsource[1] == headcommit.stdout.strip()
+    assert gitsource.commit == headcommit.stdout.strip()
+
+
+def test_server_command_runs_the_code_of_this_artistools() -> None:
+    """Choose a given command first, else the release if it has the code of this commit or the commit is only local.
+
+    A release and a later commit have the same version and the same protocol, but a reader can differ, e.g. a new
+    column. The server of a commit needs a build on the host, thus the release is the choice for the same code.
+    """
+    releasecommand = remote.get_release_command()
+    changed = remote.GitSource("https://github.com/a/b", "abc123", ispushed=True, releasechanges=["x.py"], notes=[])
+    gitcommand = remote.get_git_command(changed)
+    assert remote.choose_server_command(None, None)[0] == releasecommand
+    assert remote.choose_server_command("my command", changed)[0] == "my command"
+    assert remote.choose_server_command(None, changed._replace(releasechanges=[]))[0] == releasecommand
+    assert remote.choose_server_command(None, changed)[0] == gitcommand
+    # a commit with no release tag to compare with, e.g. an install from git, runs from git
+    assert remote.choose_server_command(None, changed._replace(releasechanges=None))[0] == gitcommand
+    # a host cannot get a commit that is only on this host
+    assert remote.choose_server_command(None, changed._replace(ispushed=False))[0] == releasecommand
+
+
+def test_server_of_a_commit_falls_back_to_the_release() -> None:
+    """A host with no Rust cannot build the commit, thus the release starts after the failed start of the commit."""
+    from importlib.metadata import version
+
+    changed = remote.GitSource("https://github.com/a/b", "abc123", ispushed=True, releasechanges=["x.py"], notes=[])
+    started = mock.Mock()
+    with (
+        mock.patch.object(remote, "get_git_source", return_value=changed),
+        mock.patch.object(
+            remote, "launch_server", side_effect=[EOFError(), (started, version("artistools"), pl.__version__)]
+        ) as launch,
+        mock.patch("atexit.register"),
+        mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+    ):
+        process, _ = remote.start_server("vae26")
+    assert process is started
+    assert [call.args[0][-1] for call in launch.call_args_list] == [
+        remote.get_git_command(changed),
+        remote.get_release_command(),
+    ]
 
 
 def test_server_of_a_different_protocol_stops_the_start() -> None:

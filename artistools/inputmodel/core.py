@@ -10,6 +10,7 @@ import time
 import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -551,6 +552,76 @@ def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
     The host of a remote model reads the model and sends back the metadata alone.
     """
     return get_modeldata(modelpath, printwarningsonly=True)[1]
+
+
+# the viewer resolves -deltalogx smallestscale at each change, and the grid of a model does not change
+@lru_cache(maxsize=16)
+@on_model_host
+def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
+    """Return the smallest and the largest spatial scale of the model grid in velocity [cm/s], and a description.
+
+    For a 1D model, the smallest and the largest spatial scale are the widths of the narrowest and the widest shell. For
+    a 2D or 3D model, the smallest spatial scale is the smallest cell width along an axis. The largest spatial scale is
+    the diagonal of a cell.
+    """
+    dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    # wid_init_* is the cell width at t_model. A width divided by t_model gives the width in velocity
+    t_model_init_s = float(modelmeta["t_model_init_days"]) * day_to_s
+    vmaxtext = f"the maximum velocity vmax = {vmax_cmps / km_to_cm:.0f} km/s ({vmax_cmps / C_cm_per_s:.3g}c)"
+    match modelmeta["dimensions"]:
+        case 1:
+            shellwidth = pl.col("vel_r_max_kmps") - pl.col("vel_r_min_kmps")
+            shellwidths_kmps = (
+                add_derived_cols_to_modeldata(dfmodel, modelmeta)
+                .select(min=shellwidth.min(), max=shellwidth.max(), shellcount=pl.len())
+                .collect()
+                .row(0, named=True)
+            )
+            smallest, largest = shellwidths_kmps["min"] * km_to_cm, shellwidths_kmps["max"] * km_to_cm
+            shellcount = shellwidths_kmps["shellcount"]
+            gridtext = f"The 1D model has {shellcount} shell{'' if shellcount == 1 else 's'} from 0 to {vmaxtext}"
+            # the widths come from float32 velocities, thus a uniform grid has widths that differ in the last digits
+            if math.isclose(smallest, largest, rel_tol=1e-3):
+                scaletext = (
+                    f"Each shell is {smallest / km_to_cm:.0f} km/s wide, thus this width is the smallest and the"
+                    " largest spatial scale"
+                )
+            else:
+                scaletext = (
+                    f"The smallest spatial scale is the width of the narrowest shell, {smallest / km_to_cm:.0f} km/s."
+                    f" The largest spatial scale is the width of the widest shell, {largest / km_to_cm:.0f} km/s"
+                )
+        case 2:
+            ncoordgridrcyl, ncoordgridz = int(modelmeta["ncoordgridrcyl"]), int(modelmeta["ncoordgridz"])
+            rcylwidth = float(modelmeta["wid_init_rcyl"]) / t_model_init_s
+            zwidth = float(modelmeta["wid_init_z"]) / t_model_init_s
+            smallest, largest = min(rcylwidth, zwidth), math.hypot(rcylwidth, zwidth)
+            gridtext = (
+                f"The 2D model has a grid of n_rcyl x n_z = {ncoordgridrcyl} x {ncoordgridz} cells, with {vmaxtext}."
+                " The cylindrical radius rcyl is from 0 to vmax, and z is from -vmax to vmax. The cell widths are"
+                f" width_rcyl = vmax / n_rcyl = {rcylwidth / km_to_cm:.0f} km/s and"
+                f" width_z = 2 vmax / n_z = {zwidth / km_to_cm:.0f} km/s"
+            )
+            scaletext = (
+                f"The smallest spatial scale is the smaller cell width, {smallest / km_to_cm:.0f} km/s. The largest"
+                " spatial scale is the diagonal of a cell in the plane of rcyl and z,"
+                f" sqrt(width_rcyl^2 + width_z^2) = {largest / km_to_cm:.0f} km/s"
+            )
+        case _:
+            cellwidths = [float(modelmeta[f"wid_init_{axis}"]) / t_model_init_s for axis in "xyz"]
+            smallest, largest = min(cellwidths), math.hypot(*cellwidths)
+            gridshape = " x ".join(str(modelmeta[f"ncoordgrid{axis}"]) for axis in "xyz")
+            gridtext = (
+                f"The 3D model has a grid of {gridshape} cells from -vmax to vmax, with {vmaxtext}. The cell widths"
+                " width_x, width_y, and width_z are 2 vmax / n for n cells on that axis"
+            )
+            scaletext = (
+                f"The smallest spatial scale is the smallest cell width, {smallest / km_to_cm:.0f} km/s. The largest"
+                " spatial scale is the diagonal of a cell, sqrt(width_x^2 + width_y^2 + width_z^2) ="
+                f" {largest / km_to_cm:.0f} km/s. This is the largest range of line-of-sight velocity in one cell"
+            )
+    return smallest, largest, f"{gridtext}. {scaletext}"
 
 
 def get_modeldata(

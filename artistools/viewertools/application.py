@@ -432,7 +432,11 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
         def closeEvent(self, event: QtGui.QCloseEvent) -> None:
             geometrykey, splitterkey = get_window_setting_keys(self)
             settings = get_settings()
-            settings.setValue(geometrykey, self.saveGeometry())
+            # a window that keeps its first size saves no size, thus a different first size of a new version applies
+            if self.property("firstsize") == self.size():
+                settings.remove(geometrykey)
+            else:
+                settings.setValue(geometrykey, self.saveGeometry())
             app = QtWidgets.QApplication.instance()
             isquitting = app is not None and app.property("quittime") is not None
             if isquitting and callable(get_tokens := self.property("sessiontokens")):

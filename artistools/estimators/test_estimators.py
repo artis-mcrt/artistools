@@ -4053,9 +4053,11 @@ def test_interactive_readout_names_each_series() -> None:
     viewer = make_headless_viewer(["Te", "TR", str(modelpath_classic_3d), "-t", "5", "-plot", "nne", "--interactive"])
     firstaxis, nneaxis = viewer.fig.axes
     xmid = float(np.mean(firstaxis.get_xlim()))
-    assert interactive.get_readout(firstaxis, xmid).count(": ") == 2
-    assert "T_e: " in interactive.get_readout(firstaxis, xmid)
-    assert interactive.get_readout(nneaxis, xmid).count(": ") == 1
+    # the parts of a readout are the x value and then "value label" for each series
+    firstparts = interactive.get_readout(firstaxis, xmid).split("   ")
+    assert len(firstparts) == 3
+    assert any(part.endswith(" T_e") for part in firstparts[1:])
+    assert len(interactive.get_readout(nneaxis, xmid).split("   ")) == 2
 
     assert interactive.get_image_value(np.ma.masked_array([5.0])) == pytest.approx(5.0, rel=1e-12, abs=0.0)
     assert interactive.get_image_value(np.ma.masked_array([5.0], mask=[True])) is None

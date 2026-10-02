@@ -238,7 +238,17 @@ def get_wrap_row_class() -> "Callable[[list[QtWidgets.QWidget]], QtWidgets.QWidg
 
 
 def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidgets.QWidget]") -> None:
-    """Put the widgets side by side in one row of the grid, from the left."""
+    """Put the widgets side by side in one row of the grid, from the left.
+
+    A row of one widget puts the widget directly in the grid. The grid gives no height and no spacing to the row of a
+    hidden widget, e.g. the box of the kind of direction for a run with one kind. A layout of make_row_layout keeps its
+    space when its widgets are hidden.
+    """
+    from PySide6 import QtCore
+
+    if len(widgets) == 1:
+        grid.addWidget(widgets[0], row, 0, 1, -1, QtCore.Qt.AlignmentFlag.AlignLeft)
+        return
     grid.addLayout(make_row_layout(widgets), row, 0, 1, -1)
 
 

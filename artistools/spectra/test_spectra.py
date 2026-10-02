@@ -70,6 +70,65 @@ def test_spectra_frompackets(mockplot: mock.MagicMock) -> None:
     assert np.isclose(integral, 7.715075e-12, rtol=1e-3, atol=0.0)
 
 
+def test_deltalogx_largestscale_is_the_diagonal_of_a_cell() -> None:
+    """-deltalogx largestscale gives Δv/c of the diagonal of a cell of a 3D grid, and the viewer keeps the keyword."""
+    vmax_cmps = 2892020000.0
+    expected = math.sqrt(3) * 2 * vmax_cmps / 10 / at.constants.C_cm_per_s
+    args = argparse.Namespace(deltalogx="largestscale", modelspecpaths=[modelpath_classic_3d])
+    plotspectra.resolve_deltalogx_scale(args)
+    assert math.isclose(args.deltalogx, expected, rel_tol=1e-6)
+
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "-deltalogx", "largestscale", "--interactive"])
+    assert viewer.values.deltalogx == "largestscale"
+    assert "-deltalogx largestscale" in viewer.get_command()
+    assert viewer.drawndeltalogx is not None
+    assert math.isclose(viewer.drawndeltalogx, expected, rel_tol=1e-6)
+
+
+def test_histogram_steps_are_on_the_packet_bin_edges() -> None:
+    """The steps of --histogram lie on the edges of the packet bins, also for a frequency, which reverses the order."""
+    lambda_bin_edges = np.geomspace(3000.0, 10000.0, 30)
+    dfspectrum = atspectra.get_from_packets(
+        modelpath, 290.0, 330.0, lambda_bin_edges=lambda_bin_edges, directionbins=[-1]
+    )[-1]
+    for xunit in ("angstrom", "hz"):
+        dfxy = atspectra.get_dfspectrum_x_y_with_units(
+            dfspectrum, xunit=xunit, yvariable="flux", fluxdistance_mpc=1.0
+        ).collect()
+        lower, upper, _ = plotspectra.get_bin_x_edges(dfxy, xunit)
+        expectededges = np.sort(atspectra.convert_angstroms_to_unit(lambda_bin_edges, xunit))
+        assert np.allclose(lower, expectededges[:-1], rtol=1e-12, atol=0.0), xunit
+        assert np.allclose(upper, expectededges[1:], rtol=1e-12, atol=0.0), xunit
+
+
+def test_get_from_packets_relnoise_is_the_noise_of_the_packet_energies() -> None:
+    """The relative noise of a bin is sqrt(sum(e^2)) / sum(e) of the packets that arrive in it."""
+    timelowdays, timehighdays = 290.0, 330.0
+    lambda_bin_edges = np.geomspace(3000.0, 10000.0, 60)
+    dfspectrum = atspectra.get_from_packets(
+        modelpath, timelowdays, timehighdays, lambda_bin_edges=lambda_bin_edges, directionbins=[-1], relnoise=True
+    )[-1].collect()
+
+    _, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfarrived = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays)).collect()
+    lambda_angstroms = at.constants.c_ang_per_s / dfarrived["nu_rf"].to_numpy()
+    energies = dfarrived["e_rf"].cast(pl.Float64).to_numpy()
+    energysums, _ = np.histogram(lambda_angstroms, bins=lambda_bin_edges, weights=energies)
+    energysquaresums, _ = np.histogram(lambda_angstroms, bins=lambda_bin_edges, weights=energies**2)
+    hasenergy = energysums > 0.0
+    # the test needs empty bins, which have a null relnoise, and bins that hold packets
+    assert 0 < hasenergy.sum() < len(energysums)
+
+    relnoise = dfspectrum["relnoise"]
+    assert relnoise.is_null().to_list() == (~hasenergy).tolist()
+    assert np.allclose(
+        relnoise.to_numpy()[hasenergy],
+        np.sqrt(energysquaresums[hasenergy]) / energysums[hasenergy],
+        rtol=1e-10,
+        atol=0.0,
+    )
+
+
 def test_spectra_outputtext(tmp_path: Path) -> None:
     """-o names the folder of the spectrum files, and the command makes a folder that does not exist yet."""
     newfolder = tmp_path / "newfolder"
@@ -388,7 +447,7 @@ def test_spectra_emission_text_files_fill_the_plot_range() -> None:
         modelpath_classic_3d, timestepmin=10, timestepmax=12, lambda_min=lambda_min, lambda_max=lambda_max
     )
     packetedges = atspectra.get_lambda_bin_edges(
-        lambda_min, lambda_max, None, None, None, "angstroms", modelpath_classic_3d
+        lambda_min, lambda_max, None, None, None, "angstrom", modelpath_classic_3d
     )
     assert arraylambda.min() < lambda_min
     assert arraylambda.max() > lambda_max
@@ -1371,11 +1430,13 @@ def test_a_unit_that_no_spectrum_takes_stops_the_command(capsys: pytest.CaptureF
     assert "Did you mean micron?" in capsys.readouterr().err
 
     # a name of a unit is not case sensitive, and each spelling gives the canonical one
-    assert parser.parse_args([".", "-xunit", "Angstrom"]).xunit == "angstroms"
+    assert parser.parse_args([".", "-xunit", "Angstrom"]).xunit == "angstrom"
+    # the plural was the canonical name before, thus a script that gives it still works
+    assert parser.parse_args([".", "-xunit", "angstroms"]).xunit == "angstrom"
     assert parser.parse_args([".", "-x", "MU"]).xunit == "micron"
 
 
-@pytest.mark.parametrize("xunit", ["angstroms", "nm", "micron", "hz", "ev", "kev", "mev", "erg"])
+@pytest.mark.parametrize("xunit", ["angstrom", "nm", "micron", "hz", "ev", "kev", "mev", "erg"])
 def test_xunit_conversion_roundtrip(xunit: str) -> None:
     """Every unit accepted by convert_angstroms_to_unit must also be invertible by convert_unit_to_angstroms."""
     arr_lambda = np.array([1.0, 100.0, 5000.0, 1e5])
@@ -1533,7 +1594,7 @@ def test_lambda_bin_edges_reject_a_zero_lower_limit_with_deltalogx() -> None:
             deltax=None,
             deltalogx=0.05,
             deltalambda=None,
-            xunit="angstroms",
+            xunit="angstrom",
             modelpath=modelpath,
         )
 
@@ -2428,7 +2489,7 @@ def test_interactive_xunit_and_references() -> None:
     # a frequency increases where the wavelength decreases, thus the limit of 19000 Å becomes the minimum
     inhertz = interactive.convert_xunit(viewer.values, "hz", gamma=False)
     assert (inhertz.xmin, inhertz.xmax, inhertz.deltax) == ("1.578e+14", "1.199e+15", "")
-    back = interactive.convert_xunit(inhertz, "angstroms", gamma=False)
+    back = interactive.convert_xunit(inhertz, "angstrom", gamma=False)
     assert np.isclose(float(back.xmin), 2500.0, rtol=1e-3, atol=0.0)
     assert np.isclose(float(back.xmax), 19000.0, rtol=1e-3, atol=0.0)
 
@@ -3063,7 +3124,7 @@ def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
     assert viewer.values.xunit == "kev"
     assert viewer.change(interactive.set_packet_type(viewer.values, gamma=False)) is None
     assert "--gamma" not in viewer.get_plot_tokens()
-    assert viewer.values.xunit == "angstroms"
+    assert viewer.values.xunit == "angstrom"
     # a command with --gamma starts in the mode of the gamma packets, and the option table does not show --gamma
     gammaviewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--gamma", "--interactive"])
     assert gammaviewer.values.gamma
