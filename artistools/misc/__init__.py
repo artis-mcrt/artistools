@@ -112,6 +112,7 @@ from artistools.misc.general import parallel_map as parallel_map
 from artistools.misc.general import savgol_filter as savgol_filter
 from artistools.misc.modelinfo import get_artis_source_text as get_artis_source_text
 from artistools.misc.modelinfo import get_cellsofmpirank as get_cellsofmpirank
+from artistools.misc.modelinfo import get_full_modelpath as get_full_modelpath
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping
 from artistools.misc.modelinfo import get_inputparams as get_inputparams
 from artistools.misc.modelinfo import get_model_logname as get_model_logname

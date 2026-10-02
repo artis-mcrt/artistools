@@ -25,6 +25,9 @@ from matplotlib.lines import Line2D
 
 from artistools.commands import get_path
 from artistools.constants import c_ang_per_s
+from artistools.constants import C_cm_per_s
+from artistools.constants import km_to_cm
+from artistools.inputmodel import get_spatial_scales
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
@@ -54,6 +57,7 @@ from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
+from artistools.misc import get_full_modelpath
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
@@ -339,7 +343,7 @@ def plot_reference_spectrum(
     offset: float = 0,
     scale_to_dist_mpc: float = 1,
     scaletoreftime: float | None = None,
-    xunit: str = "angstroms",
+    xunit: str = "angstrom",
     yvariable: str = "flux",
     residualseries: list[ResidualSeries] | None = None,
     **plotkwargs: t.Any,
@@ -489,6 +493,96 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
         )
 
 
+DELTALOGX_SCALES: t.Final = ("smallestscale", "largestscale")
+
+
+def parse_deltalogx_argument(value: str) -> float | str:
+    """Return the bin width factor of -deltalogx, or a keyword of DELTALOGX_SCALES."""
+    if value.lower() in DELTALOGX_SCALES:
+        return value.lower()
+    try:
+        return float(value)
+    except ValueError:
+        msg = f"give a number or one of {', '.join(DELTALOGX_SCALES)}, not {value}"
+        raise argparse.ArgumentTypeError(msg) from None
+
+
+def get_spatial_scale_deltalogx(
+    runfolders: Sequence[Path], scale: t.Literal["smallest", "largest"]
+) -> tuple[float, str, list[str]]:
+    """Return the value of -deltalogx for the smallest or the largest spatial scale, a short note, and the method lines.
+
+    In a homologous flow, each spatial scale of the model grid is a constant width Δv in velocity. A feature narrower
+    than the Doppler shift across the smallest spatial scale comes from the grid. One bin width applies to all the
+    models. The smallest spatial scale of all the models gives bins that lose no detail of the grid. The largest
+    spatial scale of all the models gives bins that show no detail that is finer than the grid.
+    """
+    spatialscales = {runfolder: get_spatial_scales(runfolder) for runfolder in runfolders}
+    smallestrun = min(spatialscales, key=lambda runfolder: spatialscales[runfolder][0])
+    largestrun = max(spatialscales, key=lambda runfolder: spatialscales[runfolder][1])
+    choices = {
+        "smallest": (spatialscales[smallestrun][0], smallestrun, "lose no detail of the grid"),
+        "largest": (
+            spatialscales[largestrun][1],
+            largestrun,
+            (
+                "are at least as wide as each spatial scale of all the models. Thus the bins show no detail that is"
+                " finer than the grid"
+            ),
+        ),
+    }
+    velocity, run, _ = choices[scale]
+    otherscale = "largest" if scale == "smallest" else "smallest"
+    note = (
+        f"-deltalogx {scale}scale = Δv/c = {velocity / C_cm_per_s:.3g}, where Δv = {velocity / km_to_cm:.0f} km/s is"
+        f" the {scale} spatial scale in {get_model_name(run)}. The resolving power is λ/Δλ = c/Δv ="
+        f" {C_cm_per_s / velocity:.0f}. -deltalogx {otherscale}scale gives {choices[otherscale][0] / C_cm_per_s:.3g}"
+    )
+    method = [
+        (
+            "Δv is a spatial scale of the model grid in velocity. In a homologous flow, Δv stays constant with time. A"
+            " spectral feature with Δλ/λ less than the smallest Δv/c comes from the grid and not from the physics."
+        ),
+        *(
+            f"The {name} spatial scale of the models: Δv = {width / km_to_cm:.0f} km/s in"
+            f" {get_full_modelpath(widthrun)}. Δv/c = {width / C_cm_per_s:.3g}, and λ/Δλ = c/Δv ="
+            f" {C_cm_per_s / width:.0f}. Bins of this width {effect}."
+            for name, (width, widthrun, effect) in choices.items()
+        ),
+        f"-deltalogx {scale}scale selects the {scale} spatial scale.",
+        *(
+            f"{get_full_modelpath(runfolder)}: {description}."
+            for runfolder, (_, _, description) in spatialscales.items()
+        ),
+        (
+            "The Monte Carlo noise of the packets can make the resolution worse than this estimate. The estimate does"
+            " not include this noise."
+        ),
+    ]
+    return velocity / C_cm_per_s, note, method
+
+
+def resolve_deltalogx_scale(args: argparse.Namespace) -> None:
+    """Replace a keyword of -deltalogx with the bin width factor of the spatial scale of the models, and log it.
+
+    args.deltalogxnote then holds a short note of the value for the spectrum viewer, or "" for a number.
+    """
+    args.deltalogxnote = ""
+    if not isinstance(args.deltalogx, str):
+        return
+    runfolders = get_artis_run_folders(args.modelspecpaths)
+    if not runfolders:
+        exit_with_error(
+            f"-deltalogx {args.deltalogx} reads the grid of each ARTIS model, and the command names no model",
+            "Give an ARTIS model, or give -deltalogx a number",
+        )
+    scale: t.Literal["smallest", "largest"] = "smallest" if args.deltalogx == "smallestscale" else "largest"
+    args.deltalogx, args.deltalogxnote, method = get_spatial_scale_deltalogx(runfolders, scale)
+    print_heading("Bin width from the spatial scales of the models")
+    for line in method:
+        print_detail(line)
+
+
 def get_packet_use_time(args: argparse.Namespace) -> t.Literal["escape", "emission", "arrival"]:
     """Return the time of each packet that selects it for the spectrum."""
     if args.use_escapetime:
@@ -514,6 +608,102 @@ def get_packet_lambda_bin_edges(
     )
 
 
+def get_bin_x_edges(
+    dfspectrum: pl.DataFrame, xunit: str
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], str]:
+    """Return the lower x edge and the upper x edge of each bin, and the source of the edges for the log.
+
+    A packet spectrum has the column delta_lambda, thus its edges are exact. A different spectrum, e.g. spec.out or a
+    spectrum after --binflux, has only the bin centres. Its inner edges are then the midpoints on the x axis between
+    adjacent centres. Each outer edge is at the same distance from its centre as the inner edge of that bin.
+    """
+    if "delta_lambda" in dfspectrum.columns:
+        lambda_angstroms = dfspectrum["lambda_angstroms"].to_numpy()
+        halfwidths = 0.5 * dfspectrum["delta_lambda"].to_numpy()
+        # a frequency or an energy decreases with the wavelength, thus the lower wavelength edge can be the upper x edge
+        edges = (
+            convert_angstroms_to_unit(lambda_angstroms - halfwidths, xunit),
+            convert_angstroms_to_unit(lambda_angstroms + halfwidths, xunit),
+        )
+        return np.minimum(*edges), np.maximum(*edges), f"the wavelength edges of the packet bins, in the unit {xunit}"
+
+    x = dfspectrum["x"].to_numpy()
+    if len(x) < 2:
+        exit_with_error(
+            "--histogram needs the width of a bin, and a spectrum with one bin centre gives no width",
+            "Give a wider x range",
+        )
+    midpoints = 0.5 * (x[1:] + x[:-1])
+    lower = np.concatenate([[x[0] - (midpoints[0] - x[0])], midpoints])
+    upper = np.concatenate([midpoints, [x[-1] + (x[-1] - midpoints[-1])]])
+    return (
+        lower,
+        upper,
+        (
+            "the midpoints on the x axis between adjacent bin centres, because the spectrum gives only the bin centres."
+            " Each outer edge is at the same distance from its centre as the inner edge of that bin"
+        ),
+    )
+
+
+def get_histogram_xy(
+    lower: npt.NDArray[np.floating], upper: npt.NDArray[np.floating], values: npt.NDArray[np.floating]
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the points of a line that has the value of each bin from its lower edge to its upper edge."""
+    return np.column_stack([lower, upper]).ravel(), np.repeat(values, 2)
+
+
+def plot_noise_band(
+    axis: mplax.Axes,
+    dfspectrum: pl.DataFrame,
+    yvariable: str,
+    color: "mplt.ColorType",
+    binedges: tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]] | None,
+) -> None:
+    """Draw the band of plus and minus one standard deviation of the Monte Carlo noise around a spectrum.
+
+    The flux of a bin is proportional to the sum of the energies e of its packets. The estimate of the variance of
+    that sum is sum(e^2). Thus the relative noise is r = sqrt(sum(e^2)) / sum(e), and the band goes from y * (1 - r)
+    to y * (1 + r). For -yvariable packetcount, each packet has the weight 1, thus r = 1 / sqrt(N) for N packets. A bin
+    with no packets has y = 0 and no estimate of r, thus its band has zero width. If the caller gives binedges, the
+    band has the same steps as the line of --histogram.
+    """
+    packetcount = pl.col("packetcount")
+    relnoise = (
+        pl.when(packetcount > 0).then(1.0 / packetcount.sqrt()) if yvariable == "packetcount" else pl.col("relnoise")
+    )
+    dfband = dfspectrum.select("x", "y", relnoise=relnoise.fill_null(np.nan))
+    y = dfband["y"].to_numpy()
+    relnoisevalues = dfband["relnoise"].to_numpy()
+    hasnoise = ~np.isnan(relnoisevalues)
+    # a gap in the band at an empty bin would also remove the band of a bin with packets between two empty bins
+    ynoise = np.where(hasnoise, y * np.nan_to_num(relnoisevalues), 0.0)
+    x = dfband["x"].to_numpy()
+    if binedges is not None:
+        x, y = get_histogram_xy(*binedges, y)
+        ynoise = np.repeat(ynoise, 2)
+    axis.fill_between(x, y - ynoise, y + ynoise, color=color, alpha=0.25, linewidth=0)
+
+    noisemethod = (
+        "1 / sqrt(N), where N is the count of packets in the bin"
+        if yvariable == "packetcount"
+        else "sqrt(sum(e^2)) / sum(e), where e is the energy of each packet in the bin"
+    )
+    print_detail(
+        "noise band: the band goes from y * (1 - r) to y * (1 + r). r is the relative noise of the bin, which is the"
+        f" estimate of one standard deviation of y divided by y. r = {noisemethod}"
+    )
+    if not hasnoise.any():
+        print_warning("each drawn bin has y = 0, thus the plot shows no noise band")
+        return
+    percentnoise = 100.0 * relnoisevalues[hasnoise]
+    print_detail(
+        f"noise band: the relative noise r of the drawn bins is {percentnoise.min():.3g}% to"
+        f" {percentnoise.max():.3g}%, and the median is {np.median(percentnoise):.3g}%. {(~hasnoise).sum()} of"
+        f" {len(hasnoise)} bins have y = 0. These bins have no estimate of r, thus their band has zero width"
+    )
+
+
 def plot_artis_spectrum(
     axes: npt.NDArray[np.object_] | Sequence[mplax.Axes],
     modelpath: Path | str,
@@ -528,7 +718,7 @@ def plot_artis_spectrum(
     average_over_theta: bool = False,
     usedegrees: bool = False,
     maxpacketfiles: int | None = None,
-    xunit: str = "angstroms",
+    xunit: str = "angstrom",
     residualseries: list[ResidualSeries] | None = None,
     **plotkwargs: t.Any,
 ) -> pl.DataFrame | None:
@@ -739,9 +929,9 @@ def plot_artis_spectrum(
                 dfspectrum = dfspectrum.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak)
 
             if args.binflux:
-                if args.xunit.lower() != "angstroms":
+                if args.xunit.lower() != "angstrom":
                     exit_with_error(
-                        f"--binflux averages over wavelength, and -xunit gives {args.xunit}", "Give -xunit angstroms"
+                        f"--binflux averages over wavelength, and -xunit gives {args.xunit}", "Give -xunit angstrom"
                     )
                 # bin f_lambda as well, because --write_data returns that column. The earlier
                 # code gave it the value of y, which holds the selected y variable
@@ -756,9 +946,19 @@ def plot_artis_spectrum(
                 seriessuffix += f"_{args.timedayslist[axindex]}d"
             drawnseries.append((seriessuffix, dfspectrum))
 
-            (modelline,) = axis.plot(
-                dfspectrum["x"], dfspectrum["y"], label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs
-            )
+            xplot, yplot = dfspectrum["x"].to_numpy(), dfspectrum["y"].to_numpy()
+            binedges = None
+            if args.histogram:
+                lower, upper, edgesource = get_bin_x_edges(dfspectrum, xunit)
+                binedges = (lower, upper)
+                print_detail(
+                    "histogram: each bin is a horizontal line from its lower edge to its upper edge."
+                    f" The edges are {edgesource}"
+                )
+                xplot, yplot = get_histogram_xy(lower, upper, yplot)
+            (modelline,) = axis.plot(xplot, yplot, label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs)
+            if args.shownoise:
+                plot_noise_band(axis, dfspectrum, yvariable, modelline.get_color(), binedges)
             if residualseries is not None and axindex == 0:
                 residualseries.append(
                     ResidualSeries(
@@ -1724,9 +1924,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     xbinsizegroup.add_argument(
         "-deltalogx",
         "-dlogx",
-        type=float,
+        type=parse_deltalogx_argument,
         default=None,
-        help="Horizontal bin size factor x[1] = x[0] * (1 + dlogx) (applies to from_packets only)",
+        help=(
+            "Horizontal bin size factor x[1] = x[0] * (1 + dlogx) (applies to from_packets only). The keyword"
+            " smallestscale sets dlogx to Δv/c, where Δv is the smallest cell width or shell width of all the models."
+            " The keyword largestscale sets dlogx to Δv/c, where Δv is the largest cell diagonal or shell width of all"
+            " the models"
+        ),
     )
 
     parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
@@ -1907,6 +2112,28 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--binflux", action="store_true", help="Bin flux over wavelength and average flux")
 
     parser.add_argument(
+        "--histogram",
+        action="store_true",
+        help=(
+            "Draw each ARTIS spectrum as a histogram, with a horizontal line across each bin. A packet spectrum"
+            " (--frompackets) has its steps on the wavelength edges of the packet bins. A different spectrum, e.g."
+            " spec.out or a spectrum with --binflux, has its steps at the midpoints on the x axis between adjacent bin"
+            " centres. Each outer edge is at the same distance from its centre as the inner edge of that bin"
+        ),
+    )
+
+    parser.add_argument(
+        "--shownoise",
+        action="store_true",
+        help=(
+            "Draw the Monte Carlo noise band around each ARTIS spectrum. The band goes from y * (1 - r) to"
+            " y * (1 + r). r is the estimate of one standard deviation of y divided by y. r = sqrt(sum(e^2)) / sum(e)"
+            " for the energies e of the packets in the bin. For -yvariable packetcount, r = 1 / sqrt(N). Implies"
+            " --frompackets"
+        ),
+    )
+
+    parser.add_argument(
         "--showfilterfunctions",
         action="store_true",
         help="Plot Bessell filter functions over spectrum. Also use --normalised",
@@ -2062,6 +2289,8 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
         "--notimeclamp": args.notimeclamp,
         # spec.out holds a flux and no count of packets
         "-yvariable packetcount": args.yvariable == "packetcount",
+        # spec.out holds no energies of the packets in each bin, thus it gives no noise
+        "--shownoise": args.shownoise,
     }
     args.frompacketsreason = next((option for option, needspackets in packetreasons.items() if needspackets), None)
     if args.frompacketsreason is not None and not args.frompackets:
@@ -2172,6 +2401,49 @@ def check_yvariable_args(args: argparse.Namespace) -> None:
         )
 
 
+def check_bin_drawing_args(args: argparse.Namespace) -> None:
+    """Stop the command if an option makes the histogram or the noise band incorrect.
+
+    --binflux combines 5 bins, and a filter calculates each value from adjacent bins. Thus the noise of one bin does
+    not apply. An emission plot and a Stokes ratio, e.g. -stokesparam Q/I, draw no band and no histogram.
+    """
+    if args.histogram:
+        for option, given in (
+            ("--showemission", args.showemission),
+            ("--showabsorption", args.showabsorption),
+            (f"-stokesparam {args.stokesparam}", "/" in args.stokesparam),
+        ):
+            if given:
+                exit_with_error(
+                    f"--histogram applies only to the line of each ARTIS spectrum, and {option} draws a different plot",
+                    f"Remove {option}, or remove --histogram",
+                )
+    if not args.shownoise:
+        return
+    filterreason = "calculates each value from adjacent bins, thus the noise of one bin is incorrect"
+    conflicts = [
+        (option, reason)
+        for option, given, reason in (
+            ("--showemission", args.showemission, "draws an emission plot, which has no noise band"),
+            ("--showabsorption", args.showabsorption, "draws an emission plot, which has no noise band"),
+            ("--binflux", args.binflux, "combines the bins, thus the noise of one bin is incorrect"),
+            ("-filtersavgol", args.filtersavgol, filterreason),
+            ("-filtermovingavg", args.filtermovingavg, filterreason),
+            (
+                f"-stokesparam {args.stokesparam}",
+                "/" in args.stokesparam,
+                "draws a ratio from specpol_res.out, which holds no packets",
+            ),
+        )
+        if given
+    ]
+    if conflicts:
+        option, reason = conflicts[0]
+        exit_with_error(
+            f"--shownoise draws the noise of each bin, and {option} {reason}", f"Remove {option}, or remove --shownoise"
+        )
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot spectra from ARTIS and reference data."""
     # the dispatcher parses the command line and gives args alone, thus the viewer then reads sys.argv
@@ -2262,7 +2534,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         args.average_over_phi_angle = True
 
     if args.xunit is None:
-        args.xunit = "kev" if args.gamma else "angstroms"
+        args.xunit = "kev" if args.gamma else "angstrom"
     args.xunit = convert_xunit_aliases_to_canonical(args.xunit)
 
     defaultxmin, defaultxmax = get_default_xlimits(args.xunit, gamma=args.gamma)
@@ -2401,6 +2673,8 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     resolve_velocity_ranges(args)
     resolve_shell_args(args)
     exit_if_no_emission_position(args)
+    resolve_deltalogx_scale(args)
     resolve_frompackets(args)
     check_emission_plot_args(args)
     check_yvariable_args(args)
+    check_bin_drawing_args(args)

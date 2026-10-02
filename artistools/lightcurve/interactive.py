@@ -645,7 +645,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     window, canvas, plotarea, panellayout, fittimer = viewerwindow
     helptexts = viewer.helptexts
 
-    _, lightcurvegrid = add_section(panellayout, "Light curves")
+    # the settings keep the open state of the section by its key, which the older heading of the section gave
+    _, lightcurvegrid = add_section(panellayout, "Data sources", key="Light curves")
     # the index of an item: 0 for the UVOIR light curve of the r-packets, and 1 for the gamma packets (--gamma)
     packetbox = QtWidgets.QComboBox()
     for text, tooltip in (

@@ -183,7 +183,7 @@ def test_sum_packets_by_dirbin_includes_both_outer_edges() -> None:
     values = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
     df = pl.LazyFrame({"x": values, "e": [1.0] * len(values)})
 
-    sums, counts, solidanglefactor = at.packets.sum_packets_by_dirbin(df, [-1], "x", [0.0, 1.0, 2.0, 3.0], "e")[-1]
+    sums, _, counts, solidanglefactor = at.packets.sum_packets_by_dirbin(df, [-1], "x", [0.0, 1.0, 2.0, 3.0], "e")[-1]
 
     # bins are [lower, upper), except the last which also includes its upper edge
     assert counts.tolist() == [2, 2, 3]

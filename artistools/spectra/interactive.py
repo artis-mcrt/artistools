@@ -37,6 +37,7 @@ from artistools.spectra.core import get_xunit
 from artistools.spectra.core import XUNITS
 from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
+from artistools.spectra.plotspectra import DELTALOGX_SCALES
 from artistools.spectra.plotspectra import draw_plot
 from artistools.spectra.plotspectra import find_reference_spectrum_file_or_none
 from artistools.spectra.plotspectra import get_default_xlimits
@@ -148,6 +149,8 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "nostack",
     "deltax",
     "deltalogx",
+    "shownoise",
+    "histogram",
     "yvariable",
     "normalised",
     "hidenetspectrum",
@@ -222,6 +225,8 @@ class ControlValues:
     nostack: bool
     deltax: str
     deltalogx: str
+    shownoise: bool
+    histogram: bool
     # "packets" gives --frompackets. "auto" and "text" give no flag, but "text" rejects an option that needs the
     # packets files
     datasource: DataSource
@@ -252,7 +257,7 @@ class ControlValues:
 
 def get_default_xunit(*, gamma: bool) -> str:
     """Return the x unit that plotspectra takes when the command gives no -xunit."""
-    return "kev" if gamma else "angstroms"
+    return "kev" if gamma else "angstrom"
 
 
 def get_text_source_conflict(values: "ControlValues", plotargs: argparse.Namespace) -> str | None:
@@ -463,6 +468,9 @@ class RenderedSpectrum(t.NamedTuple):
     axes: "npt.NDArray[t.Any]"
     residualaxis: "mplax.Axes | None"
     dfalldata: pl.DataFrame
+    # the bin width factor of -deltalogx in the drawn plot, and the note of a keyword of -deltalogx, e.g. largestscale
+    deltalogx: float | None
+    deltalogxnote: str
 
 
 def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlValues:
@@ -595,6 +603,8 @@ class SpectrumViewer:
         parser, args, startpaths, otheroptions, self.helptexts = parse_viewer_tokens(addargs, tokens, CONTROLLED_DESTS)
         # resolve_frompackets gives an emission plot a default -groupby, thus the value comes from the arguments
         givengroupby: str | None = args.groupby
+        # resolve_plot_args replaces a keyword of -deltalogx with its value, and the controls keep the keyword
+        givendeltalogx: float | str | None = args.deltalogx
         # -deltax and --notimeclamp also make plotspectra read the packets, thus only a --frompackets that the user
         # gave selects the packets files, and the other commands start with the automatic choice
         givesfrompackets = bool(args.frompackets)
@@ -656,7 +666,15 @@ class SpectrumViewer:
             maxseriescount=args.maxseriescount,
             nostack=bool(args.nostack),
             deltax="" if args.deltax is None else format(args.deltax, ".10g"),
-            deltalogx="" if args.deltalogx is None else format(args.deltalogx, ".10g"),
+            deltalogx=(
+                ""
+                if givendeltalogx is None
+                else givendeltalogx
+                if isinstance(givendeltalogx, str)
+                else format(givendeltalogx, ".10g")
+            ),
+            shownoise=bool(args.shownoise),
+            histogram=bool(args.histogram),
             datasource="packets" if givesfrompackets else "auto",
             yvariable=args.yvariable,
             normalised=bool(args.normalised),
@@ -688,6 +706,9 @@ class SpectrumViewer:
         self.figsize: tuple[float, float] = (0.0, 0.0)
         # the readout of the window reads the contributions of an emission plot from this frame
         self.dfalldata = pl.DataFrame()
+        # the bin width factor of the drawn plot, and the note of a keyword of -deltalogx, e.g. largestscale
+        self.drawndeltalogx: float | None = None
+        self.deltalogxnote = ""
 
     def load_runs(self, spectra: "Sequence[str | Path]", timegrid: str = "") -> None:
         """Read the timesteps of the ARTIS runs of the spectra, and the times that are valid for all the runs.
@@ -801,6 +822,8 @@ class SpectrumViewer:
             options += ["-yvariable", values.yvariable]
         for isgiven, flag in (
             (values.normalised, "--normalised"),
+            (values.shownoise, "--shownoise"),
+            (values.histogram, "--histogram"),
             (values.hidenetspectrum, "--hidenetspectrum"),
             (values.hideother, "--hideother"),
             (values.usethermalemissiontype, "--use_thermalemissiontype"),
@@ -932,10 +955,16 @@ class SpectrumViewer:
                 return "A different option of the command keeps the emission plot on"
             _, axes, residualaxis = make_plot_figure(plotargs, fig=fig)
             dfalldata, _ = draw_plot(plotargs, axes, residualaxis)
-            return RenderedSpectrum(axes=axes, residualaxis=residualaxis, dfalldata=dfalldata)
+            return RenderedSpectrum(
+                axes=axes,
+                residualaxis=residualaxis,
+                dfalldata=dfalldata,
+                deltalogx=plotargs.deltalogx,
+                deltalogxnote=plotargs.deltalogxnote,
+            )
 
         def keep(plot: RenderedSpectrum) -> None:
-            self.axes, self.residualaxis, self.dfalldata = plot
+            self.axes, self.residualaxis, self.dfalldata, self.drawndeltalogx, self.deltalogxnote = plot
 
         return render_command(self, draw, keep, quiet=quiet)
 
@@ -1003,6 +1032,15 @@ class SpectrumViewer:
             if total > 0.0:
                 parts.append(f"strongest emission: {strongest} ({100.0 * emissions[strongest] / total:.0f}%)")
         return "   ".join(parts)
+
+
+def get_binmode(values: ControlValues) -> str:
+    """Return the item of the bins box for the values: "", "deltax", "deltalogx", or a keyword of -deltalogx."""
+    if values.deltax:
+        return "deltax"
+    if values.deltalogx in DELTALOGX_SCALES:
+        return values.deltalogx
+    return "deltalogx" if values.deltalogx else ""
 
 
 def get_series_name(path: str) -> str:
@@ -1156,6 +1194,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     dlogtmax = max(math.log(viewer.timebounds[1] / viewer.timebounds[0]) / 4.0, viewer.values.dlogt)
     nvalid = len(viewer.validtimesteps)
 
+    # the models and the reference spectra come first, as the light curves do in the light curve viewer. The settings
+    # keep the open state of the section by its key, which the older heading of the section gave
+    _, spectragrid = add_section(panellayout, "Data sources", key="Spectra")
     _, timegrid = add_section(panellayout, "Time")
     # the index of a segment: 0 snaps the time range to whole timesteps, and 1 gives --notimeclamp
     modesegments = make_segmented_control(
@@ -1253,9 +1294,38 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     # the "Default bins" item gives no -deltax and no -deltalogx, thus plotspectra uses its own bins
     binmodebox = QtWidgets.QComboBox()
-    for binmode, binmodetext in (("", "Default bins"), ("deltax", "-deltax"), ("deltalogx", "-deltalogx")):
+    spatialscaletooltip = (
+        "\n\nΔv/c uses the grid of each model. vmax is the maximum velocity of the model, and n is the number of cells"
+        " on an axis.\n"
+        "• 1D: the smallest scale is the width of the narrowest shell. The largest scale is the width of the widest"
+        " shell.\n"
+        "• 2D: width_rcyl = vmax / n_rcyl and width_z = 2 vmax / n_z. The smallest scale is the smaller width. The"
+        " largest scale is sqrt(width_rcyl^2 + width_z^2).\n"
+        "• 3D: width = 2 vmax / n on each axis. The smallest scale is the smallest width. The largest scale is"
+        " sqrt(width_x^2 + width_y^2 + width_z^2).\n"
+        "• More than one model: smallestscale uses the smallest value of all the models, and largestscale uses the"
+        " largest value.\n"
+        "The terminal shows the value of each model."
+    )
+    for binmode, binmodetext, binmodetooltip in (
+        ("", "Default bins", ""),
+        ("deltax", "-deltax", helptexts.get("deltax", "")),
+        ("deltalogx", "-deltalogx", helptexts.get("deltalogx", "")),
+        (
+            "smallestscale",
+            "-deltalogx smallestscale",
+            "Set -deltalogx to Δv/c of the smallest spatial scale. The bins then lose no detail of the grid."
+            + spatialscaletooltip,
+        ),
+        (
+            "largestscale",
+            "-deltalogx largestscale",
+            "Set -deltalogx to Δv/c of the largest spatial scale. The bins then show no detail that is finer than the"
+            " grid." + spatialscaletooltip,
+        ),
+    ):
         binmodebox.addItem(binmodetext, binmode)
-        binmodebox.setItemData(binmodebox.count() - 1, helptexts.get(binmode, ""), QtCore.Qt.ItemDataRole.ToolTipRole)
+        binmodebox.setItemData(binmodebox.count() - 1, binmodetooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
     binmodebox.setToolTip("The bins of a spectrum from the packets files. The text files of exspec have their own bins")
 
     class BinWidthSpinBox(QtWidgets.QDoubleSpinBox):
@@ -1313,6 +1383,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     gammaitem = packetmodel.item(1)
     # the packets and the scale also describe the y axis, thus the three boxes share one label
     add_row(axesgrid, 0, [QtWidgets.QLabel("-yvariable"), yvariablebox, packetbox, yscalebox, normalisedcheck])
+    # the histogram draws the y value of each bin, and the band gives the uncertainty of each y value
+    histogramcheck = QtWidgets.QCheckBox("--histogram")
+    histogramcheck.setToolTip(helptexts.get("histogram", ""))
+    noisecheck = QtWidgets.QCheckBox("--shownoise")
+    noisecheck.setToolTip(helptexts.get("shownoise", ""))
+    add_row(axesgrid, 2, [histogramcheck, noisecheck])
 
     _, emissiongrid = add_section(panellayout, "Emission and absorption")
     emissioncheck = QtWidgets.QCheckBox("--showemission")
@@ -1388,7 +1464,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # a typed number applies when the user presses Return or leaves the box, and not after each digit
         box.setKeyboardTracking(False)
 
-    _, spectragrid = add_section(panellayout, "Spectra")
     datasourcebox = QtWidgets.QComboBox()
     for text, source, tooltip in (
         ("Auto", "auto", "Read the packets files only when an option needs them"),
@@ -1450,6 +1525,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         lockbutton,
         binmodebox,
         binwidthbox,
+        noisecheck,
+        histogramcheck,
         datasourcebox,
         yvariablebox,
         normalisedcheck,
@@ -1491,6 +1568,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def set_binwidth_box(binmode: str) -> None:
         """Give the box of the bin width the range and the last width of a bin mode."""
+        if binmode in DELTALOGX_SCALES:
+            # the disabled box shows the value of the keyword in the drawn plot
+            decimals, low, high, default = binwidthranges["deltalogx"]
+            binwidthbox.setDecimals(decimals)
+            binwidthbox.setRange(low, high)
+            binwidthbox.setValue(viewer.drawndeltalogx or default)
+            return
         decimals, low, high, default = binwidthranges[binmode]
         binwidthbox.setDecimals(decimals)
         binwidthbox.setRange(low, high)
@@ -1733,17 +1817,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             nostackcheck.setChecked(values.nostack)
             lockbutton.setChecked(bool(values.fixedionlist))
             lockbutton.setText(f"Lock Series ({len(values.fixedionlist)})" if values.fixedionlist else "Lock Series")
-            binmode = "deltax" if values.deltax else "deltalogx" if values.deltalogx else ""
+            binmode = get_binmode(values)
             binmodebox.setCurrentIndex(binmodebox.findData(binmode))
-            if binmode:
+            if binmode in {"deltax", "deltalogx"}:
                 lastbinwidths[binmode] = getattr(values, binmode)
             # the disabled box keeps the last -deltax, thus that width applies again when the user selects -deltax
             set_binwidth_box(binmode or "deltax")
-            binwidthbox.setEnabled(bool(binmode))
+            binwidthbox.setEnabled(binmode in {"deltax", "deltalogx"})
             show_data_source(values)
             yvariablebox.setCurrentText(values.yvariable)
             normalisedcheck.setChecked(values.normalised)
             hidenetcheck.setChecked(values.hidenetspectrum)
+            noisecheck.setChecked(values.shownoise)
+            histogramcheck.setChecked(values.histogram)
             hideothercheck.setChecked(values.hideother)
             thermalbox.setCurrentIndex(1 if values.usethermalemissiontype else 0)
             # the current choice stays available, thus the user can switch back from it
@@ -1767,6 +1853,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         fit_canvas(canvas, viewer.figsize, plotarea)
 
     def after_draw(message: str | None) -> None:
+        # show the note of a keyword of -deltalogx only if the status bar has no message and no warning, which are more
+        # important
+        if viewer.deltalogxnote and message is None and not viewer.warning:
+            show_status_note(statusbar, viewer.deltalogxnote)
         # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
         connect_mouse_to_figure()
         # -yscale auto reads the drawn values, thus only the drawn plot gives the scale that it chose
@@ -1978,6 +2068,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(values)
 
     def on_emission_options() -> None:
+        binmode: str = binmodebox.currentData()
         groupby = groupbybox.currentText()
         showemission = emissioncheck.isChecked()
         # -groupby colours the emission plot, thus a choice of -groupby also sets --showemission.
@@ -1997,9 +2088,17 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             groupby=groupby,
             maxseriescount=countbox.value(),
             nostack=nostackcheck.isChecked(),
-            deltax=format(binwidthbox.value(), ".10g") if binmodebox.currentData() == "deltax" else "",
-            deltalogx=format(binwidthbox.value(), ".10g") if binmodebox.currentData() == "deltalogx" else "",
+            deltax=format(binwidthbox.value(), ".10g") if binmode == "deltax" else "",
+            deltalogx=(
+                format(binwidthbox.value(), ".10g")
+                if binmode == "deltalogx"
+                else binmode
+                if binmode in DELTALOGX_SCALES
+                else ""
+            ),
             datasource=datasourcebox.currentData(),
+            shownoise=noisecheck.isChecked(),
+            histogram=histogramcheck.isChecked(),
             hidenetspectrum=hidenetcheck.isChecked(),
             hideother=hideothercheck.isChecked(),
             usethermalemissiontype=thermalbox.currentIndex() == 1,
@@ -2013,6 +2112,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(values)
 
     def on_binmode() -> None:
+        # after a change from a keyword item to the -deltalogx item, the box starts at the value of the keyword. Then
+        # the user can adjust it
+        if (
+            binmodebox.currentData() == "deltalogx"
+            and get_binmode(viewer.values) in DELTALOGX_SCALES
+            and viewer.drawndeltalogx is not None
+        ):
+            lastbinwidths["deltalogx"] = format(viewer.drawndeltalogx, ".3g")
         # the box holds the width of the previous mode, thus it takes the width of the new mode before the values change
         with QtCore.QSignalBlocker(binwidthbox):
             set_binwidth_box(binmodebox.currentData() or "deltax")
@@ -2222,7 +2329,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     binmodebox.currentIndexChanged.connect(on_binmode)
     binwidthbox.valueChanged.connect(on_emission_options)
     datasourcebox.currentIndexChanged.connect(on_emission_options)
-    for checkbox in (hidenetcheck, hideothercheck):
+    for checkbox in (noisecheck, histogramcheck, hidenetcheck, hideothercheck):
         checkbox.toggled.connect(on_emission_options)
     thermalbox.currentIndexChanged.connect(on_emission_options)
     yvariablebox.currentTextChanged.connect(on_axes)

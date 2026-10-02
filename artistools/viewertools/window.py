@@ -282,7 +282,7 @@ def finish_viewer_window(
     # the window keeps its command at a quit, and the next start opens the window again
     window.setProperty("sessiontokens", get_session_tokens)
     window.destroyed.connect(on_window_closed)
-    show_window(window, viewer.figsize, lambda: fit_canvas(canvas, viewer.figsize, plotarea))
+    show_window(window, lambda: fit_canvas(canvas, viewer.figsize, plotarea))
 
 
 def get_new_figwidthscale(
@@ -857,7 +857,7 @@ def hide_readout_tag(window: "QtCore.QObject") -> None:
 
 
 def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
-    """Return the value at x of each labelled line of the axes, as "label: value".
+    """Return the value at x of each labelled line of the axes, as "value label".
 
     A line with a label that starts with "_" is not a series of the legend. If no line has a label, the first line
     takes the label of the y axis. A subplot of one variable gives no label to its line.
@@ -874,7 +874,7 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
             continue
         order = np.argsort(xdata)
         if xdata[order[0]] <= x <= xdata[order[-1]]:
-            parts.append(f"{label}: {np.interp(x, xdata[order], ydata[order]):.4g}")
+            parts.append(f"{np.interp(x, xdata[order], ydata[order]):.4g} {label}")
     return parts
 
 
@@ -883,10 +883,11 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--average_over_phi_angle": "Average over φ",
     "--average_over_theta_angle": "Average over θ",
     "--colorbyion": "Colour by ion",
-    "--frompackets": "ARTIS data source",
+    "--frompackets": "Read ARTIS data from",
     "--hidenetspectrum": "Hide net spectrum",
     "--hideother": "Hide Other",
     "--hidexlabel": "Hide x label",
+    "--histogram": "Histogram",
     "--legendframe": "Legend frame",
     "--markers": "Markers",
     "--nolegend": "Hide legend",
@@ -898,6 +899,7 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--showabsorption": "Show absorption",
     "--showbarnes": "Barnes et al. (2016)",
     "--showemission": "Show emission",
+    "--shownoise": "Show noise",
     "--use_pellet_decay_time": "Pellet decay time",
     "--use_thermalemissiontype": "Event",
     "--usedegrees": "Degrees",
@@ -940,7 +942,7 @@ def show_flag_labels(window: "QtWidgets.QWidget") -> None:
                 widget.setToolTip(f"{tooltip} ({flag})" if tooltip else flag)
 
 
-def show_window(window: "QtWidgets.QMainWindow", figsize: tuple[float, float], on_screen: "Callable[[], None]") -> None:
+def show_window(window: "QtWidgets.QMainWindow", on_screen: "Callable[[], None]") -> None:
     """Give the window the size of the last window of the viewer, or a first size, and show it.
 
     make_window and make_central_splitter give the window. on_screen runs after the window moves to a different
@@ -964,13 +966,15 @@ def show_window(window: "QtWidgets.QMainWindow", figsize: tuple[float, float], o
         if isinstance(splitterstate, QtCore.QByteArray):
             splitter.restoreState(splitterstate)
     else:
-        # the first size gives the plot 100 dpi, inside the screen
+        # a large first window gives the plot more space beside the sidebar. A figure at 100 dpi gave a window of only
+        # 1399 x 700 on a screen of 2560 x 1440
         screen = window.screen().availableGeometry()
-        figwidth, figheight = figsize
-        plotwidth = min(round(figwidth * 100) + 24, screen.width() - SIDEBAR_WIDTH - 80)
-        plotheight = min(round(figheight * 100) + 24, screen.height() - 100)
-        window.resize(plotwidth + SIDEBAR_WIDTH + 40, max(plotheight, 700))
-        splitter.setSizes([plotwidth, SIDEBAR_WIDTH])
+        windowwidth = max(round(0.8 * screen.width()), SIDEBAR_WIDTH + 600)
+        window.resize(windowwidth, max(round(0.75 * screen.height()), 700))
+        splitter.setSizes([windowwidth - SIDEBAR_WIDTH - 40, SIDEBAR_WIDTH])
+        windowframe = window.frameGeometry()
+        windowframe.moveCenter(screen.center())
+        window.move(windowframe.topLeft())
     window.show()
     if (windowhandle := window.windowHandle()) is not None:
 

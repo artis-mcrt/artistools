@@ -291,7 +291,8 @@ class XUnit(t.NamedTuple):
 # one table gives the conversion factor and the axis label. The unit message and the name
 # suggestion also read it, thus a new unit needs one entry only
 XUNITS: t.Final[Mapping[str, XUnit]] = MappingProxyType({
-    "angstroms": XUnit("wavelength", 1.0, "\u00c5", ("angstrom", "a", "ang", "\u00e5", "\u00e5ngstr\u00f6m")),
+    # each canonical name is singular, as micron and erg are. A script can still give angstroms
+    "angstrom": XUnit("wavelength", 1.0, "\u00c5", ("angstroms", "a", "ang", "\u00e5", "\u00e5ngstr\u00f6m")),
     "nm": XUnit("wavelength", 10.0, "nm", ("nanometer", "nanometers")),
     "micron": XUnit("wavelength", 10000.0, "\u03bcm", ("microns", "mu", "\u03bc", "\u03bcm")),
     "hz": XUnit("frequency", 1.0, "Hz", ()),
@@ -549,6 +550,10 @@ def get_from_packets(
 
     The directionbins parameter selects the viewing direction bins. The default is all the direction bins.
     A query for each direction bin has a cost. Thus a caller that needs one bin must request one bin.
+
+    The column relnoise gives the relative Monte Carlo noise of each bin. relnoise = sqrt(sum(e^2)) / sum(e), where e
+    is the energy of each packet in the bin. relnoise is null for a bin with no packet energy. fluxfilterfunc changes
+    f_lambda, but it does not change relnoise.
     """
     assert use_time in {"arrival", "emission", "escape"}
     if directionbins_are_vpkt_observers and use_time != "arrival":
@@ -604,19 +609,32 @@ def get_from_packets(
         )
 
     dirbin_fluxes: dict[int, pl.LazyFrame] = {}
-    for dirbin, (energysums, packetcounts, inverse_solidangle_fraction) in dirbinsums.items():
+    for dirbin, sums in dirbinsums.items():
         flux = (
-            energysums
+            sums.weightsums
             / delta_time_s
-            * inverse_solidangle_fraction
+            * sums.solidanglefactor
             / (4 * math.pi * constants.megaparsec_to_cm**2)
             / nprocs_read
         )
-        dirbin_fluxes[dirbin] = pl.LazyFrame({
-            "lambda_binindex": np.arange(len(flux), dtype=np.int32),
-            "flux": flux,
-            "packetcount": packetcounts,
-        })
+        dirbin_fluxes[dirbin] = (
+            pl
+            .LazyFrame({
+                "lambda_binindex": np.arange(len(flux), dtype=np.int32),
+                "flux": flux,
+                "packetcount": sums.packetcounts,
+                "energysum": sums.weightsums,
+                "energysquaresum": sums.weightsquaresums,
+            })
+            .with_columns(
+                # a bin with no packets has no noise estimate, thus the value is not available
+                relnoise=pl
+                .when(pl.col("energysum") > 0.0)
+                .then(pl.col("energysquaresum").sqrt() / pl.col("energysum"))
+                .otherwise(None)
+            )
+            .drop("energysum", "energysquaresum")
+        )
 
     dirbin_spectra = {
         dirbin: (
