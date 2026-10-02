@@ -414,26 +414,68 @@ def get_polars_pin() -> str:
     return f"--with polars=={pl.__version__}"
 
 
-def get_server_argv(host: str) -> list[str]:
-    """Return the command line that starts the artistools server on the host.
+def get_server_argv(host: str, command: str) -> list[str]:
+    """Return the command line that starts the artistools server on the host with the command.
 
-    The default command runs the release of this version with uvx, thus the host needs only uv. A reader
-    must have the same signature on the two sides. ssh gives the command to the shell of the remote host,
-    thus the command is one string. An empty ARTISTOOLS_REMOTE_COMMAND gives the default command, because ssh
-    starts a login shell for an empty command.
+    ssh gives the command to the shell of the remote host, thus the command is one string.
     """
-    import os
-    from importlib.metadata import version
-
     if host.startswith("-"):
         msg = f"The host {host} starts with -, and ssh would read it as an option"
         raise ValueError(msg)
-    defaultcommand = (
-        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_polars_pin()} artistools@{version('artistools')} server"
-    )
     # ssh takes an IPv6 address with no brackets
     sshhost = re.sub(r"\[([^\]]*)\]", r"\1", host)
-    return ["ssh", "--", sshhost, os.environ.get(SERVER_COMMAND_ENVVAR) or defaultcommand]
+    return ["ssh", "--", sshhost, command]
+
+
+def get_release_command() -> str:
+    """Return the command that runs the release of this version of artistools with uvx, thus the host needs only uv."""
+    from importlib.metadata import version
+
+    return (
+        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_polars_pin()} artistools@{version('artistools')} server"
+    )
+
+
+def get_git_command(gitsource: "GitSource") -> str:
+    """Return the command that runs the git commit of this artistools with uvx. The host needs git and Rust."""
+    return (
+        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_polars_pin()}"
+        f' --from "artistools @ git+{gitsource.url}@{gitsource.commit}" artistools server'
+    )
+
+
+def choose_server_command(givencommand: str | None, gitsource: "GitSource | None") -> tuple[str, str]:
+    """Return the command that starts the server on a host, and the reason for the choice.
+
+    A reader must have the same code on the two sides. The release of this version needs no build on the host, thus
+    it is the first choice if it has the package code of this artistools. A git commit with different package code
+    runs from git on the host, if the host can get the commit. ARTISTOOLS_REMOTE_COMMAND is the choice of the user,
+    thus it comes first. An empty value gives the automatic choice, because ssh starts a login shell for an empty
+    command.
+    """
+    from importlib.metadata import version
+
+    localversion = version("artistools")
+    if givencommand:
+        return givencommand, f"{SERVER_COMMAND_ENVVAR} gives the command"
+    if gitsource is None:
+        return get_release_command(), f"this artistools is the release {localversion}"
+    if gitsource.releasechanges == []:
+        return (
+            get_release_command(),
+            f"the commit {gitsource.commit} has the same package code as the release {localversion}",
+        )
+    if not gitsource.ispushed:
+        return (
+            get_release_command(),
+            f"the commit {gitsource.commit} is only on this host, thus the host runs the release {localversion}",
+        )
+    difference = (
+        f"no release tag v{localversion} is in this clone to compare with"
+        if gitsource.releasechanges is None
+        else f"{len(gitsource.releasechanges)} files of the package differ from the release {localversion}"
+    )
+    return get_git_command(gitsource), f"{difference}, thus the host runs the commit {gitsource.commit}"
 
 
 def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
@@ -458,8 +500,20 @@ def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
     return versions
 
 
-def get_git_source() -> tuple[str, str, list[str]] | None:
-    """Return the git URL and the commit of this artistools, and notes on that commit. Return None for a release.
+class GitSource(t.NamedTuple):
+    """The git commit of this artistools, and what a host can get of it."""
+
+    url: str
+    commit: str
+    # a host can get only a commit that is on a remote branch
+    ispushed: bool
+    # the package files that differ from the release of this version, or None if the clone has no tag to compare with
+    releasechanges: list[str] | None
+    notes: list[str]
+
+
+def get_git_source() -> GitSource | None:
+    """Return the git source of this artistools. Return None for a release.
 
     An install from git, e.g. with uvx --from git+https://..., records the commit in direct_url.json (PEP 610). An
     install of a clone records its folder there. git then gives the commit of the folder of the code that runs, which
@@ -468,6 +522,7 @@ def get_git_source() -> tuple[str, str, list[str]] | None:
     import json
     import subprocess  # ruff:ignore[suspicious-subprocess-import]
     from importlib.metadata import distribution
+    from importlib.metadata import version
 
     directurl = distribution("artistools").read_text("direct_url.json")
     if directurl is None:
@@ -475,7 +530,10 @@ def get_git_source() -> tuple[str, str, list[str]] | None:
 
     source = json.loads(directurl)
     if (vcsinfo := source.get("vcs_info")) is not None:
-        return (source["url"], vcsinfo["commit_id"], []) if vcsinfo.get("vcs") == "git" else None
+        # a host can get the commit of an install from git, and this install has no tag to compare with
+        if vcsinfo.get("vcs") != "git":
+            return None
+        return GitSource(source["url"], vcsinfo["commit_id"], ispushed=True, releasechanges=None, notes=[])
 
     folder = str(Path(__file__).resolve().parents[2])
 
@@ -497,6 +555,18 @@ def get_git_source() -> tuple[str, str, list[str]] | None:
         # a folder that is not a clone, or a host with no git, gives no commit
         return None
 
+    # the tests do not run on the server, thus only a change of a different package file can change a reader
+    releasechanges: list[str] | None
+    try:
+        changedfiles = run_git("diff", "--name-only", f"v{version('artistools')}", commit, "--", "artistools", "rust")
+    except subprocess.CalledProcessError:
+        # a version with no release yet, or a clone with no tags, has no tag to compare with
+        releasechanges = None
+    else:
+        releasechanges = [
+            path for path in changedfiles.splitlines() if not Path(path).name.startswith(("test_", "conftest"))
+        ]
+
     # uv reads an ssh URL of git only in the form ssh://, and not in the form of scp, e.g. git@github.com:org/repo.git
     if (scpurl := re.match(r"^(?P<userhost>[^/:]+@[^/:]+):(?P<path>.*)$", url)) is not None:
         url = f"ssh://{scpurl['userhost']}/{scpurl['path']}"
@@ -507,31 +577,30 @@ def get_git_source() -> tuple[str, str, list[str]] | None:
     if haschanges:
         notes.append("The changes that are not in a commit stay on this host.")
 
-    return url, commit, notes
+    return GitSource(url, commit, ispushed=bool(remotebranches), releasechanges=releasechanges, notes=notes)
 
 
-def get_git_server_suggestion(host: str) -> str | None:
-    """Return the text that tells the user how to run the commit of this artistools on the host, or None for a release.
+def get_git_server_suggestion(host: str, givencommand: str | None, gitsource: GitSource) -> str:
+    """Return the text that tells the user how to run the commit of this artistools on the host.
 
-    The default command runs the release of the same version, thus a clone with later commits runs different code
-    on the server.
+    givencommand is the value of ARTISTOOLS_REMOTE_COMMAND, or None if the release runs on the host. A given command
+    can name an old commit, thus the text also tells whether it names the commit of this artistools.
     """
-    if (gitsource := get_git_source()) is None:
-        return None
-
-    url, commit, notes = gitsource
-    servercommand = (
-        f"POLARS_MAX_THREADS={SERVER_POLARS_THREADS} uvx {get_polars_pin()}"
-        f' --from "artistools @ git+{url}@{commit}" artistools server'
-    )
+    if givencommand is None:
+        commandtext = "but the server command runs a release"
+    else:
+        commandtext = (
+            f"and {SERVER_COMMAND_ENVVAR} gives the server command, which"
+            f" {'names' if gitsource.commit in givencommand else 'does not name'} this commit"
+        )
     return "\n".join([
         (
-            f"This artistools comes from the git commit {commit}, but the default server command runs a release. To"
-            f" run the same commit on {host}, set:"
+            f"This artistools comes from the git commit {gitsource.commit}, {commandtext}. To run the same commit on"
+            f" {host}, set:"
         ),
-        f"  export {SERVER_COMMAND_ENVVAR}='{servercommand}'",
+        f"  export {SERVER_COMMAND_ENVVAR}='{get_git_command(gitsource)}'",
         "The first start builds the Rust extension of artistools on the host, thus the host needs git and Rust.",
-        *notes,
+        *gitsource.notes,
     ])
 
 
@@ -574,16 +643,32 @@ def close_server_pipes(process: "subprocess.Popen[bytes]") -> None:
         process.wait(timeout=5)
 
 
+def launch_server(argv: list[str]) -> "tuple[subprocess.Popen[bytes], str, str]":
+    """Start a server with the command line, and return the process and its versions of artistools and polars.
+
+    A start that fails stops the process, and the error of read_server_versions goes to the caller.
+    """
+    import subprocess  # ruff:ignore[suspicious-subprocess-import]
+
+    process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
+    try:
+        serverversion, serverpolarsversion = read_server_versions(process)
+    except BaseException:
+        process.kill()
+        raise
+    return process, serverversion, serverpolarsversion
+
+
 def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     """Start the artistools server on the host, and return the process and the lock of its pipes.
 
     The server stays for the life of the process, e.g. for each plot of a viewer, because a start through ssh takes
-    about 10 s. The exit of the process closes its pipes, and the server then stops.
+    about 10 s. The exit of the process closes its pipes, and the server then stops. choose_server_command gives the
+    command. If the server of a git commit does not start, e.g. because the host has no Rust, the release starts.
     """
     import atexit
     import os
     import shlex
-    import subprocess  # ruff:ignore[suspicious-subprocess-import]
     from importlib.metadata import version
 
     import polars as pl
@@ -593,30 +678,51 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     from artistools.misc.cliutils import print_warning
 
     localversion = version("artistools")
-    argv = get_server_argv(host)
-    gitsuggestion = None if os.environ.get(SERVER_COMMAND_ENVVAR) else get_git_server_suggestion(host)
-    if gitsuggestion is not None:
-        print_warning(gitsuggestion)
-    print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")
-    process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)  # ruff:ignore[subprocess-without-shell-equals-true]
-
+    givencommand = os.environ.get(SERVER_COMMAND_ENVVAR) or None
+    gitsource = get_git_source()
+    command, reason = choose_server_command(givencommand, gitsource)
+    runscommit = gitsource is not None and givencommand is None and command == get_git_command(gitsource)
+    # the server can run different code from this artistools, thus the warning tells how to run the same commit
+    showssuggestion = (
+        gitsource is not None and not runscommit and (givencommand is not None or gitsource.releasechanges != [])
+    )
+    if showssuggestion:
+        assert gitsource is not None
+        print_warning(get_git_server_suggestion(host, givencommand, gitsource))
+    elif runscommit and gitsource is not None and gitsource.notes:
+        print_warning("\n".join(gitsource.notes))
     starthelp = (
         f"Set {SERVER_COMMAND_ENVVAR} as the warning above shows"
-        if gitsuggestion is not None
+        if showssuggestion
         else f"Install uv on {host}. The default command needs a release {localversion} of artistools with the"
         f" server command. As an alternative, set {SERVER_COMMAND_ENVVAR} to a command that starts such a server"
     )
-    try:
-        serverversion, serverpolarsversion = read_server_versions(process)
-    except ConnectionError as exc:
-        process.kill()
-        exit_with_error(f"the artistools server on {host} {exc}", starthelp)
-    except Exception:  # ruff:ignore[blind-except]
+
+    def get_start_error(argv: list[str], exc: Exception) -> str:
+        if isinstance(exc, ConnectionError):
+            return f"the artistools server on {host} {exc}"
         # text of a shell can give any error of the unpickle
-        process.kill()
-        exit_with_error(
-            f"the artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}", starthelp
+        return f"the artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}"
+
+    argv = get_server_argv(host, command)
+    print_detail(f"artistools starts the server on {host}, because {reason}, with: {shlex.join(argv)}")
+    if runscommit:
+        print_detail("The first start of a commit builds the Rust extension of artistools on the host, thus it is slow")
+    try:
+        process, serverversion, serverpolarsversion = launch_server(argv)
+    except Exception as exc:  # ruff:ignore[blind-except]
+        if not runscommit:
+            exit_with_error(get_start_error(argv, exc), starthelp)
+        print_warning(
+            f"The server of the commit did not start on {host}, and the host needs git and Rust to build it. artistools"
+            f" starts the release {localversion} instead, which can lack code of this commit"
         )
+        argv = get_server_argv(host, get_release_command())
+        print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")
+        try:
+            process, serverversion, serverpolarsversion = launch_server(argv)
+        except Exception as releaseexc:  # ruff:ignore[blind-except]
+            exit_with_error(get_start_error(argv, releaseexc), starthelp)
 
     atexit.register(close_server_pipes, process)
     if serverpolarsversion != pl.__version__:
