@@ -969,8 +969,9 @@ def show_window(window: "QtWidgets.QMainWindow", on_screen: "Callable[[], None]"
         # a large first window gives the plot more space beside the sidebar. A figure at 100 dpi gave a window of only
         # 1399 x 700 on a screen of 2560 x 1440
         screen = window.screen().availableGeometry()
-        windowwidth = max(round(0.8 * screen.width()), SIDEBAR_WIDTH + 600)
-        window.resize(windowwidth, max(round(0.75 * screen.height()), 700))
+        # a narrow screen still holds the whole window, thus the minimum size gives way to the size of the screen
+        windowwidth = min(max(round(0.8 * screen.width()), SIDEBAR_WIDTH + 600), screen.width())
+        window.resize(windowwidth, min(max(round(0.75 * screen.height()), 700), screen.height()))
         splitter.setSizes([windowwidth - SIDEBAR_WIDTH - 40, SIDEBAR_WIDTH])
         windowframe = window.frameGeometry()
         windowframe.moveCenter(screen.center())

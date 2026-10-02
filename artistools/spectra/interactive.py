@@ -1857,6 +1857,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # important
         if viewer.deltalogxnote and message is None and not viewer.warning:
             show_status_note(statusbar, viewer.deltalogxnote)
+        # the plot resolves a keyword of -deltalogx, thus only the drawn plot gives the value that the box shows
+        if (binmode := get_binmode(viewer.values)) in DELTALOGX_SCALES:
+            with QtCore.QSignalBlocker(binwidthbox):
+                set_binwidth_box(binmode)
         # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
         connect_mouse_to_figure()
         # -yscale auto reads the drawn values, thus only the drawn plot gives the scale that it chose
