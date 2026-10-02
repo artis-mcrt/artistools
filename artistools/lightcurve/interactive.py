@@ -683,56 +683,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(lightcurvegrid, 3, [QtWidgets.QLabel("-topnucs"), topnucsbox, pelletcheck])
     add_row(lightcurvegrid, 4, [cmfcheck, invalidcheck])
 
-    _, energygrid = add_section(panellayout, "Energy rates")
-    # a check box for each particle and each energy rate. The columns of deposition.out decide which ones are on
-    energychecks: dict[tuple[str, str], QtWidgets.QCheckBox] = {}
-    energyheaders = {
-        "deposition": ("Deposition", "The deposition rate: the energy that the particles give to the ejecta"),
-        "emission": (
-            "Monte Carlo",
-            "The Monte Carlo emission rate, which ARTIS counts at the decays of the pellets in the run",
-        ),
-        "analyticemission": (
-            "Analytical",
-            "The analytical emission rate, which ARTIS calculates from the decay rates of the nuclides",
-        ),
-        "thermalisation": (
-            "Thermalisation",
-            (
-                "The deposition rate over the emission rate, in a panel below the light curves. The positrons take"
-                " the analytical emission rate"
-            ),
-        ),
-    }
-    # the two emission rates share one heading above their own headings, thus both columns are clearly emission rates
-    emissionheader = QtWidgets.QLabel("Emission rate")
-    emissionheader.setToolTip("The energy that the decays give to each particle (-emission and -analyticemission)")
-    energygrid.addWidget(emissionheader, 0, 2, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
-    for column, dest in enumerate(ENERGYRATEDESTS, start=1):
-        text, tooltip = energyheaders[dest]
-        header = QtWidgets.QLabel(text)
-        header.setToolTip(f"{tooltip} (-{dest})")
-        energygrid.addWidget(header, 1, column, QtCore.Qt.AlignmentFlag.AlignHCenter)
-        # the columns share the width of the section, thus each check box is under the middle of its heading
-        energygrid.setColumnStretch(column, 1)
-    for row, particle in enumerate(DEPOSITIONCHOICES, start=2):
-        particlelabel = QtWidgets.QLabel(PARTICLETEXTS[particle])
-        particlelabel.setToolTip(f"The word {particle} of the command")
-        energygrid.addWidget(particlelabel, row, 0)
-        for column, dest in enumerate(ENERGYRATEDESTS, start=1):
-            if not get_energy_rate_column_names(dest, particle):
-                continue
-            check = QtWidgets.QCheckBox()
-            check.setAccessibleName(f"-{dest} {particle}")
-            # the grid has no text in a cell, thus the check box takes the middle of its column
-            energygrid.addWidget(check, row, column, QtCore.Qt.AlignmentFlag.AlignHCenter)
-            energychecks[dest, particle] = check
-    barnescheck = QtWidgets.QCheckBox("--showbarnes")
-    add_row(energygrid, len(DEPOSITIONCHOICES) + 2, [barnescheck])
-    # a grey box shows its reason only in its tooltip, thus a note under the grid gives each reason
-    unavailablenote = make_note_label()
-    energygrid.addWidget(unavailablenote, len(DEPOSITIONCHOICES) + 3, 0, 1, -1)
-
     # the key keeps the open or closed state that the settings saved under the old heading
     _, timegrid = add_section(panellayout, "Horizontal axis: Time [d]", key="Time [d]")
     timerangeslider, set_timerange_positions, connect_timerange, _ = make_range_slider(SLIDER_STEPS)
@@ -793,6 +743,56 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             Path(runfolder), kind, ("light_curve_res.out",), "", frompackets=viewer.values.frompackets or kind == "vpkt"
         ),
     )
+
+    _, energygrid = add_section(panellayout, "Energy rates")
+    # a check box for each particle and each energy rate. The columns of deposition.out decide which ones are on
+    energychecks: dict[tuple[str, str], QtWidgets.QCheckBox] = {}
+    energyheaders = {
+        "deposition": ("Deposition", "The deposition rate: the energy that the particles give to the ejecta"),
+        "emission": (
+            "Monte Carlo",
+            "The Monte Carlo emission rate, which ARTIS counts at the decays of the pellets in the run",
+        ),
+        "analyticemission": (
+            "Analytical",
+            "The analytical emission rate, which ARTIS calculates from the decay rates of the nuclides",
+        ),
+        "thermalisation": (
+            "Thermalisation",
+            (
+                "The deposition rate over the emission rate, in a panel below the light curves. The positrons take"
+                " the analytical emission rate"
+            ),
+        ),
+    }
+    # the two emission rates share one heading above their own headings, thus both columns are clearly emission rates
+    emissionheader = QtWidgets.QLabel("Emission rate")
+    emissionheader.setToolTip("The energy that the decays give to each particle (-emission and -analyticemission)")
+    energygrid.addWidget(emissionheader, 0, 2, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
+    for column, dest in enumerate(ENERGYRATEDESTS, start=1):
+        text, tooltip = energyheaders[dest]
+        header = QtWidgets.QLabel(text)
+        header.setToolTip(f"{tooltip} (-{dest})")
+        energygrid.addWidget(header, 1, column, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        # the columns share the width of the section, thus each check box is under the middle of its heading
+        energygrid.setColumnStretch(column, 1)
+    for row, particle in enumerate(DEPOSITIONCHOICES, start=2):
+        particlelabel = QtWidgets.QLabel(PARTICLETEXTS[particle])
+        particlelabel.setToolTip(f"The word {particle} of the command")
+        energygrid.addWidget(particlelabel, row, 0)
+        for column, dest in enumerate(ENERGYRATEDESTS, start=1):
+            if not get_energy_rate_column_names(dest, particle):
+                continue
+            check = QtWidgets.QCheckBox()
+            check.setAccessibleName(f"-{dest} {particle}")
+            # the grid has no text in a cell, thus the check box takes the middle of its column
+            energygrid.addWidget(check, row, column, QtCore.Qt.AlignmentFlag.AlignHCenter)
+            energychecks[dest, particle] = check
+    barnescheck = QtWidgets.QCheckBox("--showbarnes")
+    add_row(energygrid, len(DEPOSITIONCHOICES) + 2, [barnescheck])
+    # a grey box shows its reason only in its tooltip, thus a note under the grid gives each reason
+    unavailablenote = make_note_label()
+    energygrid.addWidget(unavailablenote, len(DEPOSITIONCHOICES) + 3, 0, 1, -1)
 
     # the box edits the row of -figscale in the other options, as the box of the other viewers does
     figscalebox = make_figscale_box(helptexts)
