@@ -183,20 +183,13 @@ def get_model_name_cached(abspath: Path) -> str:
         return shorten_middle(foldername, maxlen=50)
 
 
-def get_full_modelpath(modelpath: Path | str) -> Path:
-    """Return the absolute path of a local model, or the path of a remote or code comparison model as given."""
-    return (
-        Path(modelpath) if path_is_codecomparison(modelpath) or is_remote_path(modelpath) else Path(modelpath).resolve()
-    )
-
-
 def print_modelpath(modelpath: Path | str) -> None:
     """Print the folder of the model below a heading, as the other plot commands do.
 
     The name of a model says nothing about the folder that holds it, and a user runs a command over
     many folders. The full path answers that, because "." says nothing on a run inside the model.
     """
-    print_detail(f"modelpath: {get_full_modelpath(modelpath)}")
+    print_detail(f"modelpath: {resolve_modelpath(modelpath)}")
 
 
 def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:

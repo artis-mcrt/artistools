@@ -1294,35 +1294,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     # the "Default bins" item gives no -deltax and no -deltalogx, thus plotspectra uses its own bins
     binmodebox = QtWidgets.QComboBox()
-    spatialscaletooltip = (
-        "\n\nΔv/c uses the grid of each model. vmax is the maximum velocity of the model, and n is the number of cells"
-        " on an axis.\n"
-        "• 1D: the smallest scale is the width of the narrowest shell. The largest scale is the width of the widest"
-        " shell.\n"
-        "• 2D: width_rcyl = vmax / n_rcyl and width_z = 2 vmax / n_z. The smallest scale is the smaller width. The"
-        " largest scale is sqrt(width_rcyl^2 + width_z^2).\n"
-        "• 3D: width = 2 vmax / n on each axis. The smallest scale is the smallest width. The largest scale is"
-        " sqrt(width_x^2 + width_y^2 + width_z^2).\n"
-        "• More than one model: smallestscale uses the smallest value of all the models, and largestscale uses the"
-        " largest value.\n"
-        "The terminal shows the value of each model."
-    )
     for binmode, binmodetext, binmodetooltip in (
         ("", "Default bins", ""),
         ("deltax", "-deltax", helptexts.get("deltax", "")),
         ("deltalogx", "-deltalogx", helptexts.get("deltalogx", "")),
-        (
-            "smallestscale",
-            "-deltalogx smallestscale",
-            "Set -deltalogx to Δv/c of the smallest spatial scale. The bins then lose no detail of the grid."
-            + spatialscaletooltip,
-        ),
-        (
-            "largestscale",
-            "-deltalogx largestscale",
-            "Set -deltalogx to Δv/c of the largest spatial scale. The bins then show no detail that is finer than the"
-            " grid." + spatialscaletooltip,
-        ),
+        *((keyword, f"-deltalogx {keyword}", helptexts.get("deltalogx", "")) for keyword in DELTALOGX_SCALES),
     ):
         binmodebox.addItem(binmodetext, binmode)
         binmodebox.setItemData(binmodebox.count() - 1, binmodetooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
@@ -1625,23 +1601,37 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         slidermode = continuous
 
     # the test of each choice parses the arguments again, thus the code keeps one result for each set of options
-    rejections: dict[tuple[t.Any, ...], tuple[list[str | None], str | None, str | None]] = {}
+    rejections: dict[ControlValues, tuple[list[str | None], str | None, str | None]] = {}
 
     def get_rejections() -> tuple[list[str | None], str | None, str | None]:
-        """Return why plotspectra rejects each -groupby choice, --showemission, and --showabsorption."""
+        """Return why plotspectra rejects each -groupby choice, --showemission, and --showabsorption.
+
+        Each option can cause a rejection, e.g. --shownoise, thus the cache key holds all the values except these:
+        - the time;
+        - the axis limits;
+        - the size and the dpi of the figure;
+        - the number of a bin width (the key keeps only the bin mode).
+        A change of these values causes no rejection, and some of them change at each drag.
+        """
         values = viewer.values
-        key = (
-            values.gamma,
-            values.showemission,
-            values.showabsorption,
-            values.groupby,
-            values.datasource,
-            values.notimeclamp,
-            values.spectra,
-            bool(values.deltax or values.deltalogx),
-            values.yvariable,
-            values.directionkind,
-            values.otheroptions,
+        key = dc.replace(
+            values,
+            centre=0.0,
+            width=0.0,
+            widthmode="dlogt",
+            dlogt=0.0,
+            xmin="",
+            xmax="",
+            ymin="",
+            ymax="",
+            figwidthscale=1.0,
+            dpi=None,
+            deltax="custom" if values.deltax else "",
+            deltalogx=values.deltalogx
+            if values.deltalogx in DELTALOGX_SCALES
+            else "custom"
+            if values.deltalogx
+            else "",
         )
         if key not in rejections:
             groupbys = [
@@ -1857,10 +1847,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # important
         if viewer.deltalogxnote and message is None and not viewer.warning:
             show_status_note(statusbar, viewer.deltalogxnote)
-        # the plot resolves a keyword of -deltalogx, thus only the drawn plot gives the value that the box shows
-        if (binmode := get_binmode(viewer.values)) in DELTALOGX_SCALES:
-            with QtCore.QSignalBlocker(binwidthbox):
-                set_binwidth_box(binmode)
         # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
         connect_mouse_to_figure()
         # -yscale auto reads the drawn values, thus only the drawn plot gives the scale that it chose

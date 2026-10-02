@@ -447,11 +447,13 @@ def get_git_command(gitsource: "GitSource") -> str:
 def choose_server_command(givencommand: str | None, gitsource: "GitSource | None") -> tuple[str, str]:
     """Return the command that starts the server on a host, and the reason for the choice.
 
-    A reader must have the same code on the two sides. The release of this version needs no build on the host, thus
-    it is the first choice if it has the package code of this artistools. A git commit with different package code
-    runs from git on the host, if the host can get the commit. ARTISTOOLS_REMOTE_COMMAND is the choice of the user,
-    thus it comes first. An empty value gives the automatic choice, because ssh starts a login shell for an empty
-    command.
+    A reader must have the same code on the two sides. The function selects the first command that applies:
+    - the value of ARTISTOOLS_REMOTE_COMMAND, because it is the choice of the user;
+    - the release of this version, if this artistools is a release or has the package code of the release;
+    - the release of this version, if the commit is on no remote branch, because the remote host cannot get it;
+    - the git commit, if its package code differs from the release, or if the clone has no tag of the release.
+    The release needs no build on the host. An empty ARTISTOOLS_REMOTE_COMMAND gives the automatic choice, because ssh
+    starts a login shell for an empty command.
     """
     from importlib.metadata import version
 
@@ -468,14 +470,14 @@ def choose_server_command(givencommand: str | None, gitsource: "GitSource | None
     if not gitsource.ispushed:
         return (
             get_release_command(),
-            f"the commit {gitsource.commit} is only on this host, thus the host runs the release {localversion}",
+            f"the commit {gitsource.commit} is on no remote branch, thus the remote host cannot get it",
         )
     difference = (
         f"no release tag v{localversion} is in this clone to compare with"
         if gitsource.releasechanges is None
         else f"{len(gitsource.releasechanges)} files of the package differ from the release {localversion}"
     )
-    return get_git_command(gitsource), f"{difference}, thus the host runs the commit {gitsource.commit}"
+    return get_git_command(gitsource), difference
 
 
 def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
@@ -501,7 +503,7 @@ def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
 
 
 class GitSource(t.NamedTuple):
-    """The git commit of this artistools, and what a host can get of it."""
+    """The git commit of this artistools, and the data that tells if a remote host can install that commit."""
 
     url: str
     commit: str
@@ -555,7 +557,7 @@ def get_git_source() -> GitSource | None:
         # a folder that is not a clone, or a host with no git, gives no commit
         return None
 
-    # the tests do not run on the server, thus only a change of a different package file can change a reader
+    # the server does not run the tests, thus a change to a test file cannot change a reader
     releasechanges: list[str] | None
     try:
         changedfiles = run_git("diff", "--name-only", f"v{version('artistools')}", commit, "--", "artistools", "rust")
@@ -587,17 +589,13 @@ def get_git_server_suggestion(host: str, givencommand: str | None, gitsource: Gi
     can name an old commit, thus the text also tells whether it names the commit of this artistools.
     """
     if givencommand is None:
-        commandtext = "but the server command runs a release"
+        commandtext = f"but the server command runs a release. To run the same commit on {host}, set:"
+    elif gitsource.commit in givencommand:
+        commandtext = f"and {SERVER_COMMAND_ENVVAR} names this commit. The usual command for this commit is:"
     else:
-        commandtext = (
-            f"and {SERVER_COMMAND_ENVVAR} gives the server command, which"
-            f" {'names' if gitsource.commit in givencommand else 'does not name'} this commit"
-        )
+        commandtext = f"and {SERVER_COMMAND_ENVVAR} does not name this commit. To run the same commit on {host}, set:"
     return "\n".join([
-        (
-            f"This artistools comes from the git commit {gitsource.commit}, {commandtext}. To run the same commit on"
-            f" {host}, set:"
-        ),
+        f"This artistools comes from the git commit {gitsource.commit}, {commandtext}",
         f"  export {SERVER_COMMAND_ENVVAR}='{get_git_command(gitsource)}'",
         "The first start builds the Rust extension of artistools on the host, thus the host needs git and Rust.",
         *gitsource.notes,
@@ -644,9 +642,9 @@ def close_server_pipes(process: "subprocess.Popen[bytes]") -> None:
 
 
 def launch_server(argv: list[str]) -> "tuple[subprocess.Popen[bytes], str, str]":
-    """Start a server with the command line, and return the process and its versions of artistools and polars.
+    """Start a server with the command line, and return the process and the artistools and polars versions of it.
 
-    A start that fails stops the process, and the error of read_server_versions goes to the caller.
+    If the start fails, the function stops the process and raises the error of read_server_versions again.
     """
     import subprocess  # ruff:ignore[suspicious-subprocess-import]
 
@@ -705,7 +703,8 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         return f"the artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}"
 
     argv = get_server_argv(host, command)
-    print_detail(f"artistools starts the server on {host}, because {reason}, with: {shlex.join(argv)}")
+    print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")
+    print_detail(f"Reason: {reason}.")
     if runscommit:
         print_detail("The first start of a commit builds the Rust extension of artistools on the host, thus it is slow")
     try:
@@ -714,8 +713,9 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         if not runscommit:
             exit_with_error(get_start_error(argv, exc), starthelp)
         print_warning(
-            f"The server of the commit did not start on {host}, and the host needs git and Rust to build it. artistools"
-            f" starts the release {localversion} instead, which can lack code of this commit"
+            f"The server of the commit did not start on {host}. To build the commit, the host needs git and Rust."
+            f" artistools starts the release {localversion} instead, and the release possibly reads some files"
+            " differently from this commit"
         )
         argv = get_server_argv(host, get_release_command())
         print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")

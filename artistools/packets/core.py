@@ -996,8 +996,9 @@ class DirbinSums(t.NamedTuple):
     """The weight sums, the squared-weight sums, and the packet counts of each value bin, and the solid-angle factor."""
 
     weightsums: npt.NDArray[np.float64]
-    # sum(w^2) is the estimate of the variance of a weight sum, thus these sums give the Monte Carlo noise
-    weightsquaresums: npt.NDArray[np.float64]
+    # sum(w^2) is the estimate of the variance of a weight sum, thus these sums give the Monte Carlo noise. The value
+    # is None if the caller gives sumsquares=False
+    weightsquaresums: npt.NDArray[np.float64] | None
     packetcounts: npt.NDArray[np.uint64]
     solidanglefactor: float
 
@@ -1011,8 +1012,12 @@ def sum_packets_by_dirbin(
     *,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
+    sumsquares: bool = False,
 ) -> dict[int, DirbinSums]:
     """Return the weight sums, the squared-weight sums, and the packet counts of each value bin of each direction bin.
+
+    The squared-weight sums need more time and memory. Thus only sumsquares=True calculates them, and the value is None
+    for sumsquares=False.
 
     bin_edges gives the lower edges and the final upper edge. Each bin is [lower, upper), except the last bin, which
     also holds its upper edge. dirbin -1 selects all directions, as in filter_packets_dirbin. The Rust kernel bins the
@@ -1032,10 +1037,10 @@ def sum_packets_by_dirbin(
             valuecolumn,
             weightcolumn,
             edges,
+            sumsquares=sumsquares,
         )
-        return {
-            -1: DirbinSums(dfsums["sum"].to_numpy(), dfsums["sumsquares"].to_numpy(), dfsums["count"].to_numpy(), 1.0)
-        }
+        squaresums = dfsums["sumsquares"].to_numpy() if sumsquares else None
+        return {-1: DirbinSums(dfsums["sum"].to_numpy(), squaresums, dfsums["count"].to_numpy(), 1.0)}
 
     # each packet has one group, thus a group holds the packets of a direction bin or of an averaged set of them
     if average_over_phi:
@@ -1056,20 +1061,30 @@ def sum_packets_by_dirbin(
     dfselected = dfpackets.select(
         pl.col(valuecolumn), pl.col(weightcolumn).cast(pl.Float64), pl.col(groupcolumn).cast(pl.Int32)
     )
-    dfsums = sum_weights_in_bins(dfselected.collect(), valuecolumn, weightcolumn, edges, groupcolumn, ngroups)
+    dfsums = sum_weights_in_bins(
+        dfselected.collect(), valuecolumn, weightcolumn, edges, groupcolumn, ngroups, sumsquares=sumsquares
+    )
     groupsums = dfsums["sum"].to_numpy().reshape(ngroups, nbins)
-    groupsquaresums = dfsums["sumsquares"].to_numpy().reshape(ngroups, nbins)
+    groupsquaresums = dfsums["sumsquares"].to_numpy().reshape(ngroups, nbins) if sumsquares else None
     groupcounts = dfsums["count"].to_numpy().reshape(ngroups, nbins)
 
     result: dict[int, DirbinSums] = {}
     for dirbin in dirbins:
         if dirbin == -1:
             result[dirbin] = DirbinSums(
-                groupsums.sum(axis=0), groupsquaresums.sum(axis=0), groupcounts.sum(axis=0), 1.0
+                groupsums.sum(axis=0),
+                None if groupsquaresums is None else groupsquaresums.sum(axis=0),
+                groupcounts.sum(axis=0),
+                1.0,
             )
         else:
             group = groupofdirbin[dirbin]
-            result[dirbin] = DirbinSums(groupsums[group], groupsquaresums[group], groupcounts[group], float(ngroups))
+            result[dirbin] = DirbinSums(
+                groupsums[group],
+                None if groupsquaresums is None else groupsquaresums[group],
+                groupcounts[group],
+                float(ngroups),
+            )
     return result
 
 
@@ -1080,6 +1095,7 @@ def sum_virtual_packets_by_observer(
     valueexpr: Callable[[int], pl.Expr],
     bin_edges: Sequence[float] | npt.NDArray[np.floating],
     arrivaltimerange_days: tuple[float, float] | None = None,
+    sumsquares: bool = False,
 ) -> dict[int, DirbinSums]:
     """Return the sums of the virtual packets in each bin of each observer, and the solid-angle factors.
 
@@ -1099,6 +1115,7 @@ def sum_virtual_packets_by_observer(
             "binvalue",
             bin_edges,
             f"dir{obsdirindex}_e_rf_{opacchoiceindex}",
+            sumsquares=sumsquares,
         )[-1]
         # the flux of a virtual observer has no division by 4 pi. Thus this factor takes the place of the
         # solid-angle factor of the real packets

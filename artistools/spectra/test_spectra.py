@@ -106,7 +106,7 @@ def test_get_from_packets_relnoise_is_the_noise_of_the_packet_energies() -> None
     timelowdays, timehighdays = 290.0, 330.0
     lambda_bin_edges = np.geomspace(3000.0, 10000.0, 60)
     dfspectrum = atspectra.get_from_packets(
-        modelpath, timelowdays, timehighdays, lambda_bin_edges=lambda_bin_edges, directionbins=[-1]
+        modelpath, timelowdays, timehighdays, lambda_bin_edges=lambda_bin_edges, directionbins=[-1], relnoise=True
     )[-1].collect()
 
     _, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")

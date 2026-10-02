@@ -188,7 +188,6 @@ def get_wrap_row_class() -> "Callable[[list[QtWidgets.QWidget]], QtWidgets.QWidg
     row puts its groups in layouts of Qt, and Python runs only when the width of the row changes.
     """
     import shiboken6
-    from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
@@ -208,18 +207,6 @@ def get_wrap_row_class() -> "Callable[[list[QtWidgets.QWidget]], QtWidgets.QWidg
                 max((group.minimumWidth() or group.minimumSizeHint().width() for group in groups), default=1)
             )
             self.set_lines([list(range(len(groups)))])
-            for group in groups:
-                group.installEventFilter(self)
-
-        @t.override
-        def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent, /) -> bool:
-            # an empty row took the spacing of the grid, e.g. with a hidden box of the kind of direction. A row with no
-            # parent stays as it is, because it would show as a window
-            if event.type() in {QtCore.QEvent.Type.ShowToParent, QtCore.QEvent.Type.HideToParent} and (
-                self.parentWidget() is not None
-            ):
-                self.setHidden(all(group.isHidden() for group in self.groups))
-            return super().eventFilter(watched, event)
 
         def set_lines(self, lines: list[list[int]]) -> None:
             layout = self.layout()
@@ -251,7 +238,17 @@ def get_wrap_row_class() -> "Callable[[list[QtWidgets.QWidget]], QtWidgets.QWidg
 
 
 def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidgets.QWidget]") -> None:
-    """Put the widgets side by side in one row of the grid, from the left."""
+    """Put the widgets side by side in one row of the grid, from the left.
+
+    A row of one widget puts the widget directly in the grid. The grid gives no height and no spacing to the row of a
+    hidden widget, e.g. the box of the kind of direction for a run with one kind. A layout of make_row_layout keeps its
+    space when its widgets are hidden.
+    """
+    from PySide6 import QtCore
+
+    if len(widgets) == 1:
+        grid.addWidget(widgets[0], row, 0, 1, -1, QtCore.Qt.AlignmentFlag.AlignLeft)
+        return
     grid.addLayout(make_row_layout(widgets), row, 0, 1, -1)
 
 

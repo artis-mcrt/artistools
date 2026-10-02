@@ -10,6 +10,7 @@ import time
 import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -553,6 +554,8 @@ def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
     return get_modeldata(modelpath, printwarningsonly=True)[1]
 
 
+# the viewer resolves -deltalogx smallestscale at each change, and the grid of a model does not change
+@lru_cache(maxsize=16)
 @on_model_host
 def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
     """Return the smallest and the largest spatial scale of the model grid in velocity [cm/s], and a description.
@@ -563,13 +566,14 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
     """
     dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax_cmps = float(modelmeta["vmax_cmps"])
+    # wid_init_* is the cell width at t_model. A width divided by t_model gives the width in velocity
+    t_model_init_s = float(modelmeta["t_model_init_days"]) * day_to_s
     vmaxtext = f"the maximum velocity vmax = {vmax_cmps / km_to_cm:.0f} km/s ({vmax_cmps / C_cm_per_s:.3g}c)"
     match modelmeta["dimensions"]:
         case 1:
-            vel_r_max = pl.col("vel_r_max_kmps")
-            shellwidth = vel_r_max - vel_r_max.shift(1, fill_value=0.0)
+            shellwidth = pl.col("vel_r_max_kmps") - pl.col("vel_r_min_kmps")
             shellwidths_kmps = (
-                dfmodel
+                add_derived_cols_to_modeldata(dfmodel, modelmeta)
                 .select(min=shellwidth.min(), max=shellwidth.max(), shellcount=pl.len())
                 .collect()
                 .row(0, named=True)
@@ -590,7 +594,8 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
                 )
         case 2:
             ncoordgridrcyl, ncoordgridz = int(modelmeta["ncoordgridrcyl"]), int(modelmeta["ncoordgridz"])
-            rcylwidth, zwidth = vmax_cmps / ncoordgridrcyl, 2 * vmax_cmps / ncoordgridz
+            rcylwidth = float(modelmeta["wid_init_rcyl"]) / t_model_init_s
+            zwidth = float(modelmeta["wid_init_z"]) / t_model_init_s
             smallest, largest = min(rcylwidth, zwidth), math.hypot(rcylwidth, zwidth)
             gridtext = (
                 f"The 2D model has a grid of n_rcyl x n_z = {ncoordgridrcyl} x {ncoordgridz} cells, with {vmaxtext}."
@@ -604,7 +609,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
                 f" sqrt(width_rcyl^2 + width_z^2) = {largest / km_to_cm:.0f} km/s"
             )
         case _:
-            cellwidths = [2 * vmax_cmps / int(modelmeta[f"ncoordgrid{axis}"]) for axis in "xyz"]
+            cellwidths = [float(modelmeta[f"wid_init_{axis}"]) / t_model_init_s for axis in "xyz"]
             smallest, largest = min(cellwidths), math.hypot(*cellwidths)
             gridshape = " x ".join(str(modelmeta[f"ncoordgrid{axis}"]) for axis in "xyz")
             gridtext = (

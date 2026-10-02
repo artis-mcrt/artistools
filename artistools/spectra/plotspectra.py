@@ -57,7 +57,6 @@ from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
-from artistools.misc import get_full_modelpath
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
@@ -82,6 +81,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
+from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import model_path_from_text
 from artistools.packets import get_packets
@@ -545,13 +545,13 @@ def get_spatial_scale_deltalogx(
         ),
         *(
             f"The {name} spatial scale of the models: Δv = {width / km_to_cm:.0f} km/s in"
-            f" {get_full_modelpath(widthrun)}. Δv/c = {width / C_cm_per_s:.3g}, and λ/Δλ = c/Δv ="
+            f" {resolve_modelpath(widthrun)}. Δv/c = {width / C_cm_per_s:.3g}, and λ/Δλ = c/Δv ="
             f" {C_cm_per_s / width:.0f}. Bins of this width {effect}."
             for name, (width, widthrun, effect) in choices.items()
         ),
         f"-deltalogx {scale}scale selects the {scale} spatial scale.",
         *(
-            f"{get_full_modelpath(runfolder)}: {description}."
+            f"{resolve_modelpath(runfolder)}: {description}."
             for runfolder, (_, _, description) in spatialscales.items()
         ),
         (
@@ -618,14 +618,15 @@ def get_bin_x_edges(
     adjacent centres. Each outer edge is at the same distance from its centre as the inner edge of that bin.
     """
     if "delta_lambda" in dfspectrum.columns:
-        lambda_angstroms = dfspectrum["lambda_angstroms"].to_numpy()
-        halfwidths = 0.5 * dfspectrum["delta_lambda"].to_numpy()
-        # a frequency or an energy decreases with the wavelength, thus the lower wavelength edge can be the upper x edge
-        edges = (
-            convert_angstroms_to_unit(lambda_angstroms - halfwidths, xunit),
-            convert_angstroms_to_unit(lambda_angstroms + halfwidths, xunit),
-        )
-        return np.minimum(*edges), np.maximum(*edges), f"the wavelength edges of the packet bins, in the unit {xunit}"
+        dfbins = dfspectrum.select("lambda_angstroms", "delta_lambda").sort("lambda_angstroms")
+        lambda_angstroms = dfbins["lambda_angstroms"].to_numpy()
+        halfwidths = 0.5 * dfbins["delta_lambda"].to_numpy()
+        # two adjacent bins take one value for their common edge. Edges from each side differed in the last bit, and a
+        # readout of the step line then interpolated across a bin
+        lambda_edges = np.append(lambda_angstroms - halfwidths, lambda_angstroms[-1] + halfwidths[-1])
+        # a frequency or an energy decreases with the wavelength, thus the sort puts the x edges in the order of x
+        x_edges = np.sort(convert_angstroms_to_unit(lambda_edges, xunit))
+        return x_edges[:-1], x_edges[1:], f"the wavelength edges of the packet bins, in the unit {xunit}"
 
     x = dfspectrum["x"].to_numpy()
     if len(x) < 2:
@@ -653,26 +654,32 @@ def get_histogram_xy(
     return np.column_stack([lower, upper]).ravel(), np.repeat(values, 2)
 
 
+def get_noise_method_text(yvariable: str) -> str:
+    """Return the log line that tells how the noise band comes from the packets of each bin."""
+    noisemethod = (
+        "1 / sqrt(N), where N is the count of packets in the bin"
+        if yvariable == "packetcount"
+        else "sqrt(sum(e^2)) / sum(e), where e is the energy of each packet in the bin"
+    )
+    return (
+        "noise band: the band goes from y * (1 - r) to y * (1 + r). r is the relative noise of the bin, which is the"
+        f" estimate of one standard deviation of y divided by y. r = {noisemethod}"
+    )
+
+
 def plot_noise_band(
     axis: mplax.Axes,
     dfspectrum: pl.DataFrame,
-    yvariable: str,
     color: "mplt.ColorType",
     binedges: tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]] | None,
 ) -> None:
     """Draw the band of plus and minus one standard deviation of the Monte Carlo noise around a spectrum.
 
-    The flux of a bin is proportional to the sum of the energies e of its packets. The estimate of the variance of
-    that sum is sum(e^2). Thus the relative noise is r = sqrt(sum(e^2)) / sum(e), and the band goes from y * (1 - r)
-    to y * (1 + r). For -yvariable packetcount, each packet has the weight 1, thus r = 1 / sqrt(N) for N packets. A bin
-    with no packets has y = 0 and no estimate of r, thus its band has zero width. If the caller gives binedges, the
-    band has the same steps as the line of --histogram.
+    The column yrelnoise of get_dfspectrum_x_y_with_units gives the relative noise r of y, and the band goes from
+    y * (1 - r) to y * (1 + r). A bin with no packets has y = 0 and no estimate of r, thus its band has zero width. If
+    the caller gives binedges, the band has the same steps as the line of --histogram.
     """
-    packetcount = pl.col("packetcount")
-    relnoise = (
-        pl.when(packetcount > 0).then(1.0 / packetcount.sqrt()) if yvariable == "packetcount" else pl.col("relnoise")
-    )
-    dfband = dfspectrum.select("x", "y", relnoise=relnoise.fill_null(np.nan))
+    dfband = dfspectrum.select("x", "y", relnoise=pl.col("yrelnoise").fill_null(np.nan))
     y = dfband["y"].to_numpy()
     relnoisevalues = dfband["relnoise"].to_numpy()
     hasnoise = ~np.isnan(relnoisevalues)
@@ -684,15 +691,6 @@ def plot_noise_band(
         ynoise = np.repeat(ynoise, 2)
     axis.fill_between(x, y - ynoise, y + ynoise, color=color, alpha=0.25, linewidth=0)
 
-    noisemethod = (
-        "1 / sqrt(N), where N is the count of packets in the bin"
-        if yvariable == "packetcount"
-        else "sqrt(sum(e^2)) / sum(e), where e is the energy of each packet in the bin"
-    )
-    print_detail(
-        "noise band: the band goes from y * (1 - r) to y * (1 + r). r is the relative noise of the bin, which is the"
-        f" estimate of one standard deviation of y divided by y. r = {noisemethod}"
-    )
     if not hasnoise.any():
         print_warning("each drawn bin has y = 0, thus the plot shows no noise band")
         return
@@ -735,6 +733,14 @@ def plot_artis_spectrum(
     # --write_data names one column for each drawn series, thus the loops below collect every one of
     # them. The suffix names the direction bin and the epoch of the panel
     drawnseries: list[tuple[str, pl.DataFrame]] = []
+    # each direction bin and each panel draws a series, thus print_method_line prints each method line one time only
+    printedmethodlines: set[str] = set()
+
+    def print_method_line(line: str) -> None:
+        if line not in printedmethodlines:
+            printedmethodlines.add(line)
+            print_detail(line)
+
     use_time = get_packet_use_time(args)
     assert from_packets or use_time == "arrival"
 
@@ -835,6 +841,8 @@ def plot_artis_spectrum(
                 gamma=args.gamma,
                 # the packets of each requested bin take a pass of the Rust kernel, thus the plot asks only for its bins
                 directionbins=directionbins,
+                # the squared energies of the packets give the noise, and only --shownoise needs them
+                relnoise=args.shownoise,
             )
 
         elif args.plotvspecpol is not None:
@@ -951,14 +959,15 @@ def plot_artis_spectrum(
             if args.histogram:
                 lower, upper, edgesource = get_bin_x_edges(dfspectrum, xunit)
                 binedges = (lower, upper)
-                print_detail(
+                print_method_line(
                     "histogram: each bin is a horizontal line from its lower edge to its upper edge."
                     f" The edges are {edgesource}"
                 )
                 xplot, yplot = get_histogram_xy(lower, upper, yplot)
             (modelline,) = axis.plot(xplot, yplot, label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs)
             if args.shownoise:
-                plot_noise_band(axis, dfspectrum, yvariable, modelline.get_color(), binedges)
+                print_method_line(get_noise_method_text(yvariable))
+                plot_noise_band(axis, dfspectrum, modelline.get_color(), binedges)
             if residualseries is not None and axindex == 0:
                 residualseries.append(
                     ResidualSeries(

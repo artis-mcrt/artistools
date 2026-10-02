@@ -73,13 +73,15 @@ type BinSums = (Vec<f64>, Vec<f64>, Vec<u64>);
 
 /// Return the weight sums, the squared-weight sums, and the value counts of each bin of each group.
 ///
-/// Each vector has the order [group][bin].
+/// Each vector has the order [group][bin]. If `squares` is false, the vector of the squared-weight sums is empty.
+/// Then no part of the parallel sum allocates a third array.
 fn sum_bins<T: Copy + Into<f64> + Sync>(
     values: &[T],
     weights: &[f64],
     groups: Option<&[i32]>,
     edges: &BinEdges,
     ngroups: usize,
+    squares: bool,
 ) -> BinSums {
     let nbins = edges.nbins();
     let size = ngroups * nbins;
@@ -90,7 +92,7 @@ fn sum_bins<T: Copy + Into<f64> + Sync>(
         .map(|(part, chunk)| {
             let start = part * partsize;
             let mut sums = vec![0.0; size];
-            let mut sumsquares = vec![0.0; size];
+            let mut sumsquares = vec![0.0; if squares { size } else { 0 }];
             let mut counts = vec![0_u64; size];
             for (offset, &value) in chunk.iter().enumerate() {
                 let row = start + offset;
@@ -100,9 +102,12 @@ fn sum_bins<T: Copy + Into<f64> + Sync>(
                         reason = "the caller checked that each group is in range"
                     )]
                     let group = groups.map_or(0, |groups| groups[row] as usize);
-                    sums[group * nbins + bin] += weights[row];
-                    sumsquares[group * nbins + bin] += weights[row] * weights[row];
-                    counts[group * nbins + bin] += 1;
+                    let index = group * nbins + bin;
+                    sums[index] += weights[row];
+                    if squares {
+                        sumsquares[index] += weights[row] * weights[row];
+                    }
+                    counts[index] += 1;
                 }
             }
             (sums, sumsquares, counts)
@@ -110,7 +115,7 @@ fn sum_bins<T: Copy + Into<f64> + Sync>(
         .collect();
 
     let mut sums = vec![0.0; size];
-    let mut sumsquares = vec![0.0; size];
+    let mut sumsquares = vec![0.0; if squares { size } else { 0 }];
     let mut counts = vec![0_u64; size];
     for (partsums, partsumsquares, partcounts) in &parts {
         for (total, value) in sums.iter_mut().zip(partsums) {
@@ -179,8 +184,9 @@ pub fn get_bin_indices(
 
 /// Return the weight sum, the squared-weight sum, and the value count of each bin.
 ///
-/// The columns are "sum", "sumsquares", and "count". For a spectrum, the weight is the packet energy and each bin is a
-/// wavelength bin. sqrt(sumsquares) / sum is the relative Monte Carlo noise of a bin.
+/// The columns are "sum", "count", and, if `sumsquares` is true, "sumsquares". For a spectrum, the weight is the packet
+/// energy and each bin is a wavelength bin. sqrt(sumsquares) / sum is the relative Monte Carlo noise of a bin. The
+/// squares need more time and memory, and most callers do not read them. Thus only `sumsquares=True` adds the column.
 ///
 /// `edges` gives the lower edge of each bin and the upper edge of the last bin, in increasing order. A bin is
 /// [lower, upper), and the last bin also holds its upper edge. A value outside the edges, or a NaN value, is in no
@@ -191,8 +197,12 @@ pub fn get_bin_indices(
 ///
 /// The sum runs without the global interpreter lock (GIL), thus other Python threads can run at the same time.
 #[pyfunction]
-#[pyo3(signature = (df, valuecolumn, weightcolumn, edges, groupcolumn=None, ngroups=1))]
+#[pyo3(signature = (df, valuecolumn, weightcolumn, edges, groupcolumn=None, ngroups=1, sumsquares=false))]
 #[expect(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Python gives each keyword argument as one parameter of the function"
+)]
 pub fn sum_weights_in_bins(
     py: Python<'_>,
     df: PyDataFrame,
@@ -201,6 +211,7 @@ pub fn sum_weights_in_bins(
     edges: Vec<f64>,
     groupcolumn: Option<&str>,
     ngroups: usize,
+    sumsquares: bool,
 ) -> PyResult<PyDataFrame> {
     let dfsums = py
         .detach(|| {
@@ -234,13 +245,14 @@ pub fn sum_weights_in_bins(
                 None => None,
             };
             let values = df.column(valuecolumn)?.as_materialized_series();
-            let (sums, sumsquares, counts) = match values.dtype() {
+            let (sums, squaresums, counts) = match values.dtype() {
                 DataType::Float32 => sum_bins(
                     values.f32()?.cont_slice()?,
                     weights,
                     groups,
                     &binedges,
                     ngroups,
+                    sumsquares,
                 ),
                 _ => sum_bins(
                     values.f64()?.cont_slice()?,
@@ -248,9 +260,14 @@ pub fn sum_weights_in_bins(
                     groups,
                     &binedges,
                     ngroups,
+                    sumsquares,
                 ),
             };
-            df!("sum" => sums, "sumsquares" => sumsquares, "count" => counts)
+            if sumsquares {
+                df!("sum" => sums, "sumsquares" => squaresums, "count" => counts)
+            } else {
+                df!("sum" => sums, "count" => counts)
+            }
         })
         .map_err(PyPolarsErr::from)?;
 

@@ -24,4 +24,5 @@ def sum_weights_in_bins(
     edges: list[float],
     groupcolumn: str | None = None,
     ngroups: int = 1,
+    sumsquares: bool = False,
 ) -> pl.DataFrame: ...

@@ -161,6 +161,16 @@ def get_dfspectrum_x_y_with_units(
             msg = f"Unit {yvariable} not implemented"
             raise NotImplementedError(msg)
 
+    # each y variable except packetcount is proportional to the energy sum of the bin. A count of N packets has the
+    # relative noise 1/sqrt(N)
+    if "relnoise" in dfspectrum.collect_schema().names():
+        packetcount = pl.col("packetcount")
+        dfspectrum = dfspectrum.with_columns(
+            yrelnoise=pl.when(packetcount > 0).then(1.0 / packetcount.sqrt())
+            if yvariable.lower() == "packetcount"
+            else pl.col("relnoise")
+        )
+
     return dfspectrum.sort("x")
 
 
@@ -309,12 +319,8 @@ def get_xunit_names() -> list[str]:
 
 
 def get_xunit(xunit: str) -> XUnit:
-    """Return the unit of the horizontal axis that has this canonical name."""
-    try:
-        return XUNITS[xunit.lower()]
-    except KeyError:
-        msg = f"Unknown xunit {xunit}"
-        raise ValueError(msg) from None
+    """Return the unit of the horizontal axis for its canonical name or an alias, e.g. "angstroms" or "nanometers"."""
+    return XUNITS[convert_xunit_aliases_to_canonical(xunit)]
 
 
 def parse_xunit_argument(value: str) -> str:
@@ -545,15 +551,16 @@ def get_from_packets(
     directionbins_are_vpkt_observers: bool = False,
     directionbins: Sequence[int] | None = None,
     gamma: bool = False,
+    relnoise: bool = False,
 ) -> dict[int, pl.LazyFrame]:
     """Return a spectrum dataframe. The packets files are the input.
 
     The directionbins parameter selects the viewing direction bins. The default is all the direction bins.
     A query for each direction bin has a cost. Thus a caller that needs one bin must request one bin.
 
-    The column relnoise gives the relative Monte Carlo noise of each bin. relnoise = sqrt(sum(e^2)) / sum(e), where e
-    is the energy of each packet in the bin. relnoise is null for a bin with no packet energy. fluxfilterfunc changes
-    f_lambda, but it does not change relnoise.
+    With the argument relnoise=True, the dataframe has the column relnoise, which is the relative Monte Carlo noise of
+    each bin. relnoise = sqrt(sum(e^2)) / sum(e), where e is the energy of each packet in the bin. relnoise is null for
+    a bin with no packet energy. fluxfilterfunc changes f_lambda, but it does not change relnoise.
     """
     assert use_time in {"arrival", "emission", "escape"}
     if directionbins_are_vpkt_observers and use_time != "arrival":
@@ -589,6 +596,7 @@ def get_from_packets(
             lambda obsdirindex: constants.c_ang_per_s / pl.col(f"dir{obsdirindex}_nu_rf"),
             lambda_bin_edges,
             arrivaltimerange_days=(timelowdays, timehighdays),
+            sumsquares=relnoise,
         )
 
     else:
@@ -606,6 +614,7 @@ def get_from_packets(
             energy_column,
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
+            sumsquares=relnoise,
         )
 
     dirbin_fluxes: dict[int, pl.LazyFrame] = {}
@@ -617,24 +626,16 @@ def get_from_packets(
             / (4 * math.pi * constants.megaparsec_to_cm**2)
             / nprocs_read
         )
-        dirbin_fluxes[dirbin] = (
-            pl
-            .LazyFrame({
-                "lambda_binindex": np.arange(len(flux), dtype=np.int32),
-                "flux": flux,
-                "packetcount": sums.packetcounts,
-                "energysum": sums.weightsums,
-                "energysquaresum": sums.weightsquaresums,
-            })
-            .with_columns(
-                # a bin with no packets has no noise estimate, thus the value is not available
-                relnoise=pl
-                .when(pl.col("energysum") > 0.0)
-                .then(pl.col("energysquaresum").sqrt() / pl.col("energysum"))
-                .otherwise(None)
-            )
-            .drop("energysum", "energysquaresum")
-        )
+        dfflux = pl.LazyFrame({
+            "lambda_binindex": np.arange(len(flux), dtype=np.int32),
+            "flux": flux,
+            "packetcount": sums.packetcounts,
+        })
+        if sums.weightsquaresums is not None:
+            relativenoise = np.sqrt(sums.weightsquaresums) / np.where(sums.weightsums > 0.0, sums.weightsums, np.nan)
+            # a bin with no packets has no noise estimate, thus the value is not available
+            dfflux = dfflux.with_columns(relnoise=pl.Series(relativenoise).fill_nan(None))
+        dirbin_fluxes[dirbin] = dfflux
 
     dirbin_spectra = {
         dirbin: (

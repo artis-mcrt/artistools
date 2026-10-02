@@ -1343,8 +1343,8 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
     assert "but the server command runs a release" in suggestion
     # a command of ARTISTOOLS_REMOTE_COMMAND can name an old commit, thus the warning tells whether it names this one
     oldcommand = "uvx --from 'artistools @ git+https://x@0ld' artistools server"
-    assert "which does not name this commit" in remote.get_git_server_suggestion("vae26", oldcommand, gitsource)
-    assert "which names this commit" in remote.get_git_server_suggestion("vae26", expected, gitsource)
+    assert "does not name this commit" in remote.get_git_server_suggestion("vae26", oldcommand, gitsource)
+    assert "names this commit. The usual command" in remote.get_git_server_suggestion("vae26", expected, gitsource)
 
     # an install from PyPI records no direct_url.json, thus its server is the release of the same version
     with mock_direct_url(None):
@@ -1369,7 +1369,7 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
 
 
 def test_server_command_runs_the_code_of_this_artistools() -> None:
-    """The host runs the release only if it has the package code of this commit, and a given command comes first.
+    """Choose a given command first, else the release if it has the code of this commit or the commit is only local.
 
     A release and a later commit have the same version and the same protocol, but a reader can differ, e.g. a new
     column. The server of a commit needs a build on the host, thus the release is the choice for the same code.

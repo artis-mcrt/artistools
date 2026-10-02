@@ -872,7 +872,8 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
         xdata, ydata = xdata[finite], ydata[finite]
         if xdata.size < 2:
             continue
-        order = np.argsort(xdata)
+        # a step line has two points at each edge of a bin, and a stable sort keeps them in the order of the line
+        order = np.argsort(xdata, kind="stable")
         if xdata[order[0]] <= x <= xdata[order[-1]]:
             parts.append(f"{np.interp(x, xdata[order], ydata[order]):.4g} {label}")
     return parts
@@ -962,14 +963,14 @@ def show_window(window: "QtWidgets.QMainWindow", on_screen: "Callable[[], None]"
     settings = get_settings()
     geometry = settings.value(geometrykey)
     splitterstate = settings.value(splitterkey)
-    if isinstance(geometry, QtCore.QByteArray) and window.restoreGeometry(geometry):
-        if isinstance(splitterstate, QtCore.QByteArray):
-            splitter.restoreState(splitterstate)
-    else:
+    isfirstsize = not (isinstance(geometry, QtCore.QByteArray) and window.restoreGeometry(geometry))
+    if not isfirstsize and isinstance(splitterstate, QtCore.QByteArray):
+        splitter.restoreState(splitterstate)
+    if isfirstsize:
         # a large first window gives the plot more space beside the sidebar. A figure at 100 dpi gave a window of only
         # 1399 x 700 on a screen of 2560 x 1440
         screen = window.screen().availableGeometry()
-        # a narrow screen still holds the whole window, thus the minimum size gives way to the size of the screen
+        # the minimum size is less important than the screen, thus a narrow screen still holds the whole window
         windowwidth = min(max(round(0.8 * screen.width()), SIDEBAR_WIDTH + 600), screen.width())
         window.resize(windowwidth, min(max(round(0.75 * screen.height()), 700), screen.height()))
         splitter.setSizes([windowwidth - SIDEBAR_WIDTH - 40, SIDEBAR_WIDTH])
@@ -977,6 +978,9 @@ def show_window(window: "QtWidgets.QMainWindow", on_screen: "Callable[[], None]"
         windowframe.moveCenter(screen.center())
         window.move(windowframe.topLeft())
     window.show()
+    if isfirstsize:
+        # the window system can change the size in window.show(), thus the first size is the size after that call
+        window.setProperty("firstsize", window.size())
     if (windowhandle := window.windowHandle()) is not None:
 
         def on_screen_changed(_screen: QtGui.QScreen) -> None:

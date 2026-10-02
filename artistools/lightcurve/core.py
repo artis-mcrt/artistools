@@ -211,15 +211,15 @@ def get_from_packets(
     lumfactors = 1.0 / (nprocs_read * dftimesteps_selected["twidth_days"].to_numpy() * day_to_s * Lsun_to_erg_per_s)
     dftimes = dftimesteps_selected.select(pl.col("timestep").cast(pl.Int32), time_days=pl.col("tmid_days"))
     lcdata: dict[int, pl.LazyFrame] = {}
-    for dirbin, (energysums, _, packetcounts, inverse_solidangle_fraction) in rfsums.items():
+    for dirbin, sums in rfsums.items():
         dflc = dftimes.select(
-            pl.Series("packetcount", packetcounts),
+            pl.Series("packetcount", sums.packetcounts),
             pl.all(),
-            pl.Series("luminosity_Lsun", energysums * inverse_solidangle_fraction * lumfactors),
+            pl.Series("luminosity_Lsun", sums.weightsums * sums.solidanglefactor * lumfactors),
         )
         if cmfsums is not None:
             dflc = dflc.with_columns(
-                pl.Series("luminosity_cmf_Lsun", cmfsums[dirbin].weightsums * inverse_solidangle_fraction * lumfactors)
+                pl.Series("luminosity_cmf_Lsun", cmfsums[dirbin].weightsums * sums.solidanglefactor * lumfactors)
             )
         lcdata[dirbin] = dflc.lazy().with_columns(derived_lum_unit_cols())
 
