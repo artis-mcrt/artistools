@@ -58,7 +58,9 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
 
 
 def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int], bool]:
-    """Get a bi-directional mapping between model cells and propagation grid cells. These can be different, e.g. 1D input model with a 3D grid.
+    """Return the maps from the model cells to the propagation grid cells, and back.
+
+    The two grids can be different, e.g. a 1D input model with a 3D grid.
 
     Returns a tuple with:
     - dict[modelgridindex] = list of associated propagation cellindices,
@@ -296,10 +298,10 @@ def get_inputparams_cached(modelpath: Path) -> dict[str, t.Any]:
     with get_inputfilepath(modelpath).open("r", encoding="utf-8") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
 
-        # number of time steps
+        # number of timesteps
         params["ntstep"] = int(readnoncommentline(inputfile).split("#")[0])
 
-        # number of start and end time step
+        # the first timestep and the last timestep
         params["itstep"], params["ftstep"] = (int(x) for x in readnoncommentline(inputfile).split("#")[0].split())
 
         params["tmin"], params["tmax"] = (float(x) for x in readnoncommentline(inputfile).split("#")[0].split())
@@ -397,7 +399,7 @@ def get_runfolders(
 ) -> Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
-    The folder list may include non-ARTIS folders if a timestep is not specified.
+    Without a timestep, the list holds each folder whose estimator files give at least one timestep.
     """
     folderlist_all = get_run_subfolders(modelpath)
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
@@ -437,12 +439,13 @@ def get_mpiranklist(
             )
         return range(get_nprocs(modelpath))
 
-    if modelgridindex is None or modelgridindex == []:
+    if modelgridindex is None:
         return all_ranks()
 
     if isinstance(modelgridindex, Iterable):
+        # a comparison of a numpy array with an empty list raises, thus the size of the array decides
         cells = np.fromiter(modelgridindex, dtype=np.int64)
-        if (cells < 0).any():
+        if cells.size == 0 or (cells < 0).any():
             return all_ranks()
 
         return sorted(set(get_mpiranks_of_cells(modelpath, cells).tolist()))
@@ -460,7 +463,7 @@ def read_rank_outputfiles(
     timestep: int | None = None,
     modelgridindex: int | Sequence[int] | None = None,
 ) -> pl.DataFrame:
-    """Read per-MPI-rank whitespace-separated output files (e.g. radfield_{mpirank:04d}.out) from the run folders into one DataFrame.
+    """Read the output files of each MPI rank, e.g. radfield_{mpirank:04d}.out, in the run folders into one DataFrame.
 
     When a timestep, a model grid cell, or a sequence of cells is given, only the run folders and ranks
     that could contain them are read, and the rows are filtered to that selection (negative values mean no filter).
@@ -503,26 +506,29 @@ def read_rank_outputfiles(
         msg = f"No {filefamily} files found in {modelpath}"
         raise FileNotFoundError(msg)
 
-    dfofeachfolder: list[pl.DataFrame] = []
-    keycolumns = ["timestep", "modelgridindex"]
-    seenkeys = pl.DataFrame(schema={"timestep": pl.Int64, "modelgridindex": pl.Int64})
-    for folderfilepaths in filepathsofeachfolder:
-        dffolder = (
-            pl
-            .concat((read_wsv(filepath) for filepath in folderfilepaths), how="vertical_relaxed")
-            .rename({"ionstage": "ion_stage"}, strict=False)
-            .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
+    dfofeachfolder = [
+        pl
+        .concat((read_wsv(filepath) for filepath in folderfilepaths), how="vertical_relaxed")
+        .rename({"ionstage": "ion_stage"}, strict=False)
+        .with_columns(
+            pl.col("modelgridindex").cast(pl.Int64),
+            pl.col("timestep").cast(pl.Int64),
+            pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
         )
-        # the first timestep of a restarted run repeats the last timestep of the folder before it.
-        # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
-        # A later folder can hold a cell that the earlier folder never wrote. Thus the pair of the
-        # timestep and the cell decides, and not the timestep alone
-        if not seenkeys.is_empty():
-            dffolder = dffolder.join(seenkeys, on=keycolumns, how="anti")
-        seenkeys = pl.concat([seenkeys, dffolder.select(keycolumns).unique()])
-        dfofeachfolder.append(dffolder)
+        for folderindex, folderfilepaths in enumerate(filepathsofeachfolder)
+    ]
 
-    dfout = pl.concat(dfofeachfolder, how="vertical_relaxed")
+    # the first timestep of a restarted run repeats the last timestep of the folder before it.
+    # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
+    # A later folder can hold a cell that the earlier folder never wrote. Thus the pair of the
+    # timestep and the cell decides, and not the timestep alone, and the earliest folder of the pair keeps its rows
+    keycolumns = ["timestep", "modelgridindex"]
+    dfout = (
+        pl
+        .concat(dfofeachfolder, how="vertical_relaxed")
+        .filter(pl.col("folderindex") == pl.col("folderindex").min().over(keycolumns))
+        .drop("folderindex")
+    )
 
     matchcells = [modelgridindex] if isinstance(modelgridindex, int) else modelgridindex
     if matchcells and all(mgi >= 0 for mgi in matchcells):

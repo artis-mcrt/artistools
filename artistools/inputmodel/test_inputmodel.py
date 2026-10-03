@@ -186,6 +186,21 @@ def test_get_spatial_scales() -> None:
     assert "the diagonal of a cell" in description
 
 
+def test_get_spatial_scales_follows_the_working_folder(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default model path "." gives the model of the current working folder.
+
+    The cache held the relative path, thus the scales of the first folder stayed after a change of the working folder.
+    """
+    monkeypatch.chdir(testdatapath / "test-classicmode_1d")
+    smallest_1d, _, _ = at.inputmodel.get_spatial_scales(Path())
+    monkeypatch.chdir(modelpath_3d)
+    smallest_3d, _, description_3d = at.inputmodel.get_spatial_scales(Path())
+
+    assert math.isclose(smallest_1d, 314.84e5, rel_tol=1e-4)
+    assert math.isclose(smallest_3d, 2 * 2892020000.0 / 10)
+    assert "the diagonal of a cell" in description_3d
+
+
 @pytest.mark.parametrize("cachecontents", [b"", b"not a parquet file", b"PAR1" + bytes(64)])
 def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: bytes) -> None:
     """A damaged parquet cache must be deleted and rebuilt, not raise from read_parquet_metadata."""
@@ -291,15 +306,15 @@ def test_makeartismodelfrom_sph_particles() -> None:
         "maptogridargs": {"ncoordgrid": 16},
         "maptogrid_sums": {
             "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
-            "grid.dat": "d7dbe63efe3544f5d6f77acc202e110e197b02dcfa953d8f2bf84b24d9b8e76d",
-            "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
+            "grid.dat": "2e4ff3708d8e0703fb50513386ead4b5549116895d29bf927a37de6a84a7760c",
+            "gridcontributions.txt": "dbe2427f88f5f8a8490b3a6523a24ef30cdb1def0b0bd5a1e5b8e69e8b227891",
         },
         # the model and abundance files carry eight significant figures, and the vmax header nine, so
         # that a model round-trips through the Float32 of the reader.
         "makeartismodel_sums": {
-            "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
-            "abundances.txt": "fb8b4f7c81e6b223ec9506d625cfc78cb778ad2056b8143078d7bfeb9451c1d2",
-            "model.txt": "e92e6f54d3e494df42c56213a9778a4594c65f370d6f1109975f4f6470627a12",
+            "gridcontributions.txt": "b3de0a54d97c45421d204d6b24e0bfd6400a00a9810df9c520f52a52d235c734",
+            "abundances.txt": "e931d575bfbe2b442fad45a09d5f2acf68306f36e93966c3ac797200f52cf7bb",
+            "model.txt": "4e6884143fbfcfe7e99731ca93a1e92b4270836c0db2d1012ce49dc0872b0bcf",
         },
     }
 
@@ -362,7 +377,9 @@ def test_makeartismodelfrom_sph_particles() -> None:
 @pytest.mark.benchmark
 def test_makeartismodelfrom_fortrangriddat() -> None:
     gridfolderpath = testdatapath / "kilonova"
-    outpath_kn = outputpath / "kilonova"
+    # test_makeartismodelfrom_sph_particles reads the checksums of outputpath / "kilonova", thus this test has its
+    # own folder. A parallel run otherwise writes gridcontributions.txt there before the checksum
+    outpath_kn = outputpath / "kilonova_fromfortrangriddat"
     at.inputmodel.modelfromhydro.main(
         argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, targetmodeltime_days=0.1
     )
@@ -2629,7 +2646,8 @@ def test_get_coarse_velocity_bins_of_a_3d_model_names_each_projection() -> None:
 
     binedges = get_coarse_velocity_bins(dfmodel, nbins=None, vmax_cmps=5.0e9)
 
-    assert binedges == pytest.approx([3.0e9, 5.0e9])
+    # the bins are open at the upper edge, thus the last bin ends above the outermost cell
+    assert binedges == pytest.approx([3.0e9, 5.0e9, 7.0e9])
 
 
 def test_describeinputmodel_prints_the_selected_cell(capsys: pytest.CaptureFixture[str]) -> None:
@@ -3129,3 +3147,305 @@ def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys
     )
     assert dfmodel.height == dims.prod()
     assert "wid_init" in modelmeta
+
+
+@pytest.mark.parametrize(("prefix", "suffix"), [(" ", ""), ("", " "), ("\t", "")])
+def test_get_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, prefix: str, suffix: str) -> None:
+    """A model.txt whose lines start or end with a space must give the cell ids and the velocities.
+
+    The fast reader only tested for a double space. A single leading space gave polars an empty first
+    field, thus each cell id became null and each value moved one column to the right.
+    """
+    (tmp_path / "model.txt").write_text(
+        "3\n1.0\n"
+        + "".join(f"{prefix}{cellid} {cellid}000.0 -5.0 1.0 0.5 0.0 0.0 0.0{suffix}\n" for cellid in (1, 2, 3)),
+        encoding="utf-8",
+    )
+
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel = dfmodel.collect()
+
+    assert dfmodel["inputcellid"].to_list() == [1, 2, 3]
+    assert dfmodel["vel_r_max_kmps"].to_list() == pytest.approx([1000.0, 2000.0, 3000.0])
+    assert dfmodel["logrho"].to_list() == pytest.approx([-5.0, -5.0, -5.0])
+    assert np.isclose(modelmeta["vmax_cmps"], 3000.0 * 1e5)
+
+
+@pytest.mark.parametrize(
+    ("token", "expected"),
+    [
+        ("-1.735904-244", -1.735904e-244),
+        ("-0.5", -0.5),
+        ("1.735904-244", 1.735904e-244),
+        ("-4.165372E-31", -4.165372e-31),
+        ("8.852011-267", 8.852011e-267),
+        ("1.5+100", 1.5e100),
+    ],
+)
+def test_fix_fortran_exponents_keeps_a_negative_mantissa(token: str, expected: float) -> None:
+    """Only the sign before a three-digit exponent gets the "e".
+
+    The repair replaced each hyphen of a token whose fourth-last character was a hyphen. A negative
+    mantissa then became e-1.735904e-244, and the strict cast of the heating column raised.
+    """
+    from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
+
+    value = pl.DataFrame({"htot": [token]}).select(fix_fortran_exponents(pl.Float64)).item()
+
+    assert value == pytest.approx(expected, rel=1e-12)
+
+
+def test_from_e2e_model_split_trajectory_pieces_give_the_same_heating(tmp_path: Path) -> None:
+    """A dynamical trajectory that the e2e model splits into pieces gives the heating of the whole trajectory.
+
+    The merge summed the specific heating rate of the pieces, which counted the heating one time for each
+    piece. The mass fractions, Ye, and the velocity of the pieces were mass-averaged, and q now is too.
+    """
+    from artistools.inputmodel.from_e2e_model import get_grid
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    rng = np.random.default_rng(seed=1)
+    ntimes = 8
+    isopath = tmp_path / "iso_table.npy"
+    np.save(isopath, np.array([[2.0, 2.0], [30.0, 26.0]]))
+    numberfractions = rng.uniform(0.01, 0.2, size=2)
+
+    def write_dat(datpath: Path, idx: list[int], masses: list[float]) -> None:
+        ntraj = len(idx)
+        np.savez(
+            datpath,
+            pos=np.column_stack([np.full(ntraj, 0.2), np.full(ntraj, 1.0)]),
+            idx=np.array(idx, dtype=float),
+            state=np.full(ntraj, -1.0),
+            mass=np.array(masses),
+            qdot=np.full((ntraj, ntimes), 1e10),
+            hnuloss=np.zeros((ntraj, ntimes)),
+            time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
+            nz=np.tile(numberfractions, (ntraj, 1)),
+            t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+        )
+
+    datpath_whole = tmp_path / "whole.npz"
+    datpath_split = tmp_path / "split.npz"
+    write_dat(datpath_whole, idx=[7], masses=[3e-3])
+    write_dat(datpath_split, idx=[7, 10007, 20007], masses=[1e-3, 1e-3, 1e-3])
+
+    results = [
+        get_grid(
+            datpath,
+            isopath,
+            0.4,
+            model_dim=2,
+            grid_dims=np.array([4, 8]),
+            nodynej=False,
+            nohmns=False,
+            notorus=False,
+            no_nu_trapping=False,
+        )
+        for datpath in (datpath_whole, datpath_split)
+    ]
+    (_, _, rho_whole, _, _, q_whole, _, _, _), (_, _, rho_split, _, _, q_split, _, _, _) = results
+
+    assert np.amax(rho_whole) > 0.0
+    np.testing.assert_allclose(rho_split, rho_whole, rtol=1e-10)
+    np.testing.assert_allclose(q_split, q_whole, rtol=1e-10)
+
+
+def test_maptogrid_keeps_the_mirror_symmetry_of_the_particles(tmp_path: Path) -> None:
+    """Two equal particles at x = -1000 and x = +1000 give a grid that is symmetric under x, y, z -> -x, -y, -z.
+
+    The kernel sampled each cell at its lower corner, which grid.dat gives as pos_x_min. Thus the cell
+    [-1000, -500] held the kernel peak, and its mirror cell [500, 1000] held the kernel value 500 away.
+    """
+    from artistools.inputmodel.maptogrid import maptogrid
+
+    def snapshotline(particleid: int, x: float) -> str:
+        values = [0.0] * 31
+        values[0] = particleid
+        values[1] = 300.0  # h
+        values[2] = x
+        for column in (14, 15, 16, 17):  # pmass, rho, p, rho_rst
+            values[column] = 1.0
+        values[20] = 0.3  # ye
+        return " ".join(str(value) for value in values)
+
+    snapshotpath = tmp_path / "ejectasnapshot.dat"
+    snapshotpath.write_text(snapshotline(1, -1000.0) + "\n" + snapshotline(2, 1000.0) + "\n", encoding="utf-8")
+
+    ncoordgrid = 4
+    maptogrid(
+        snapshotpath,
+        tmp_path,
+        ncoordgrid=ncoordgrid,
+        dtextra_seconds=0.0,
+        setgrid_fractionrmax=1.0,
+        modifysmoothinglength="False",
+    )
+
+    dfgrid = at.misc.read_wsv(tmp_path / "grid.dat", skip_rows=3)
+    rho = dfgrid["rho"].to_numpy().reshape((ncoordgrid, ncoordgrid, ncoordgrid), order="F")
+
+    assert rho.max() > 0.0
+    np.testing.assert_allclose(rho, rho[::-1, ::-1, ::-1], rtol=1e-10)
+    # the lower edges of the cells span -rmax to rmax minus one cell width
+    assert dfgrid["pos_x_min"].min() == pytest.approx(-1000.0)
+    assert dfgrid["pos_x_min"].max() == pytest.approx(500.0)
+
+
+@pytest.mark.parametrize(
+    ("ncoordgrid", "positive_axis", "expectedlayer"), [(4, True, 2), (4, False, 1), (5, True, 2), (5, False, 2)]
+)
+def test_get_2d_slice_takes_the_side_of_the_axis(ncoordgrid: int, positive_axis: bool, expectedlayer: int) -> None:
+    """-axis=-z takes the layer below the origin, and -axis=+z the layer above it.
+
+    The sign of -axis was parsed and then ignored, thus both signs gave the layer with pos_z_min == 0.
+    The centre layer of an odd grid holds the origin, thus both signs give that layer.
+    """
+    from artistools.inputmodel.plotinitialcomposition import get_2D_slice_through_3d_model
+
+    dfmodel, modelmeta = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
+    dfmodel = dfmodel.collect()
+    wid = modelmeta["wid_init_z"]
+
+    dfslice = get_2D_slice_through_3d_model(dfmodel, "z", modelmeta, "x", "y", positive_axis=positive_axis)
+
+    assert dfslice.height == ncoordgrid**2
+    assert dfslice["pos_z_min"].to_numpy() == pytest.approx(-modelmeta["vmax_cmps"] * day_to_s + expectedlayer * wid)
+
+
+def test_plotinitialcomposition_negative_axis_plots_the_layer_below_the_origin(tmp_path: Path) -> None:
+    """The command with -axis=-z draws the layer whose upper edge is the origin."""
+    from artistools.inputmodel.plotinitialcomposition import get_2D_slice_through_3d_model
+
+    with mock.patch(
+        "artistools.inputmodel.plotinitialcomposition.get_2D_slice_through_3d_model",
+        side_effect=get_2D_slice_through_3d_model,
+    ) as mockslice:
+        at.inputmodel.plotinitialcomposition.main(argsraw=["rho", str(modelpath_3d), "-axis=-z", "-o", str(tmp_path)])
+
+    assert mockslice.call_args.kwargs["positive_axis"] is False
+    assert mockslice.call_args.kwargs["sliceaxis"] == "z"
+
+
+def test_save_modeldata_1d_keeps_a_negative_custom_value(tmp_path: Path) -> None:
+    """A negative value of a custom column of a 1D model survives a write and a read.
+
+    The writer gave 0.0 to each value that was not above zero, thus a negative value was lost. The 3D
+    writer kept the sign. A NaN value still becomes zero.
+    """
+    dfmodel = pl.DataFrame({
+        "inputcellid": [1, 2, 3],
+        "vel_r_max_kmps": [1000.0, 2000.0, 3000.0],
+        "logrho": [-10.0, -11.0, -12.0],
+        "X_Fegroup": [1.0, 1.0, 1.0],
+        "X_Ni56": [0.5, 0.4, 0.3],
+        "mycolumn": [-3.2e4, 6.0, float("nan")],
+    })
+    at.inputmodel.save_modeldata(
+        dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, extracols=["mycolumn"]
+    )
+
+    dfwritten = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+
+    assert dfwritten["mycolumn"].to_list() == pytest.approx([-3.2e4, 6.0, 0.0])
+
+
+def test_add_mass_to_center_fills_a_sphere_symmetric_about_the_origin() -> None:
+    """The hole takes each cell whose centre lies inside 0.1 c, and the filled set is mirror-symmetric.
+
+    The lower corner of each cell set its radius, thus the hole reached one cell further on the positive
+    side of each axis than on the negative side.
+    """
+    from artistools.constants import C_cm_per_s as CLIGHT
+    from artistools.inputmodel.modelfromhydro import add_mass_to_center
+
+    ncoordgrid = 8
+    t_model_days = 1.0
+    xmax = 0.2 * CLIGHT * t_model_days * day_to_s
+    wid = 2 * xmax / ncoordgrid
+    indices = np.arange(ncoordgrid)
+    posmin = -xmax + wid * indices
+    gridx, gridy, gridz = np.meshgrid(posmin, posmin, posmin, indexing="ij")
+    griddata = pl.DataFrame({
+        "inputcellid": np.arange(1, ncoordgrid**3 + 1),
+        "pos_x_min": gridx.flatten(order="F"),
+        "pos_y_min": gridy.flatten(order="F"),
+        "pos_z_min": gridz.flatten(order="F"),
+        "rho": np.zeros(ncoordgrid**3),
+        "Ye": np.zeros(ncoordgrid**3),
+    })
+
+    dffilled = add_mass_to_center(griddata, t_model_days, wid)
+
+    filled = (dffilled["rho"].to_numpy() > 0.0).reshape((ncoordgrid, ncoordgrid, ncoordgrid), order="F")
+    assert filled.any()
+    np.testing.assert_array_equal(filled, filled[::-1, ::-1, ::-1])
+    centreradius = np.sqrt((gridx + wid / 2) ** 2 + (gridy + wid / 2) ** 2 + (gridz + wid / 2) ** 2)
+    np.testing.assert_array_equal(filled, centreradius < 0.1 * CLIGHT * t_model_days * day_to_s)
+
+
+def test_get_coarse_velocity_bins_cover_the_outermost_cell() -> None:
+    """The last coarse bin ends above the largest mid-point velocity, thus the outer cells keep their mass.
+
+    The number of bins was the integer part of the velocity range over the bin width, thus the last bin ended
+    at or below the outermost cell, and get_binned_profile dropped that cell.
+    """
+    from artistools.inputmodel.plotdensity import get_binned_profile
+    from artistools.inputmodel.plotdensity import get_coarse_velocity_bins
+
+    dfmodel = pl.DataFrame({"vel_r_mid": [1.0e9, 2.0e9, 4.0e9, 5.0e9, 6.5e9], "mass_g": [1.0, 1.0, 1.0, 1.0, 1.0]})
+
+    binedges = get_coarse_velocity_bins(dfmodel, nbins=None, vmax_cmps=6.5e9)
+    assert binedges[-1] > 6.5e9
+
+    _, binned_massvals, _ = get_binned_profile(dfmodel, binedges, plotye=False)
+    binwidths_on_c = np.diff([0.0, *binedges]) / at.constants.C_cm_per_s
+    assert np.sum(binned_massvals[::2] * binwidths_on_c) * at.constants.Msun_to_g == pytest.approx(5.0)
+
+
+def test_apply_density_perturbations_keeps_the_cells_outside_vmax() -> None:
+    """The sinusoidal perturbation changes a cell inside the sphere of radius vmax and no cell outside it.
+
+    The mask compared the radius with 1, but the coordinates are in units of c and span only -vmax to
+    vmax. Thus the mask had no effect, and the radius had no z component.
+    """
+    from artistools.inputmodel.from_e2e_model import apply_density_perturbations
+
+    ncoordgrid = 4
+    vmax = 0.5
+    dfmodel = pl.DataFrame({"rho": np.ones(ncoordgrid**3)})
+
+    dfperturbed = apply_density_perturbations(dfmodel, vmax, ("sinusoidal", 0.3, 0.3))
+
+    rho = dfperturbed["rho"].to_numpy().reshape((ncoordgrid, ncoordgrid, ncoordgrid), order="F")
+    posmid = -vmax + (np.arange(ncoordgrid) + 0.5) * (2 * vmax / ncoordgrid)
+    gridx, gridy, gridz = np.meshgrid(posmid, posmid, posmid, indexing="ij")
+    outside = np.sqrt(gridx**2 + gridy**2 + gridz**2) > vmax
+
+    assert outside.any()
+    assert (~outside).any()
+    np.testing.assert_allclose(rho[outside], 1.0)
+    assert np.all(np.abs(rho[~outside] - 1.0) > 0.1)
+
+
+@pytest.mark.parametrize("outputdimensions", [0, 1])
+def test_dimension_reduce_keeps_the_centre_cell_of_an_odd_grid(outputdimensions: int) -> None:
+    """A 5^3 model has a centre cell with a mid-point velocity of zero, and the reduction keeps its mass.
+
+    The bins were closed on the right, thus a velocity of exactly zero fell below the first bin and the
+    filter dropped the cell.
+    """
+    ncoordgrid = 5
+    dfmodel3d, modelmeta_3d = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
+    dfmodel3d = dfmodel3d.collect().with_columns(rho=pl.lit(1.0))
+    dfmodel3d_derived = at.inputmodel.add_derived_cols_to_modeldata(dfmodel3d, modelmeta=modelmeta_3d).collect()
+    assert dfmodel3d_derived.filter(pl.col("vel_r_mid") == 0.0).height == 1
+
+    mass_inside_vmax = dfmodel3d_derived.filter(pl.col("vel_r_mid") <= modelmeta_3d["vmax_cmps"])["mass_g"].sum()
+    dfmodel_lowerd, _, _, _ = at.inputmodel.dimension_reduce_model(
+        dfmodel=dfmodel3d_derived.select([*dfmodel3d.columns, "mass_g"]),
+        modelmeta=modelmeta_3d,
+        outputdimensions=outputdimensions,
+    )
+
+    assert dfmodel_lowerd["mass_g"].sum() == pytest.approx(mass_inside_vmax, rel=1e-10)

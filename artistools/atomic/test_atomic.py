@@ -271,3 +271,52 @@ def test_the_cached_photoionisation_arrays_refuse_a_write() -> None:
 
     with pytest.raises(ValueError, match="read-only"):
         arrays[0][0] = 0.0
+
+
+def test_get_composition_data_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The composition of the default model path must change with the working folder.
+
+    A cache held the relative Path("."). Thus a second model in the same process got the elements of the first one.
+    """
+    for foldername, atomic_number in (("modelA", 26), ("modelB", 28)):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "compositiondata.txt").write_text(
+            f"1\n0\n0\n{atomic_number} 2 1 2 300 1.0 56.0\n", encoding="utf-8"
+        )
+
+    monkeypatch.chdir(tmp_path / "modelA")
+    assert at.get_composition_data(Path())["Z"].to_list() == [26]
+    monkeypatch.chdir(tmp_path / "modelB")
+    assert at.get_composition_data(Path())["Z"].to_list() == [28]
+
+
+def test_get_levels_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The levels of the default model path must change with the working folder."""
+    for foldername, energy_ev in (("modelA", 1.0), ("modelB", 2.0)):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "adata.txt").write_text(
+            f"26 1 1 7.9\n1 {energy_ev} 9.000 0 ground\n", encoding="utf-8"
+        )
+
+    monkeypatch.chdir(tmp_path / "modelA")
+    assert at.atomic.get_levels(Path())["levels"].item()["energy_ev"].item() == pytest.approx(1.0)
+    monkeypatch.chdir(tmp_path / "modelB")
+    assert at.atomic.get_levels(Path())["levels"].item()["energy_ev"].item() == pytest.approx(2.0)
+
+
+def test_get_ion_levels_reads_adata_one_time_for_all_the_ions() -> None:
+    """A second ion must filter the frame of the first read, and not read adata.txt again.
+
+    A read of one ion still reads each line of adata.txt, thus a plot of several ions read the file once for each
+    one.
+    """
+    from artistools.atomic.core import get_levels_cached
+
+    get_levels_cached.cache_clear()
+    dffe2 = at.atomic.get_ion_levels(modelpath, 26, 2)
+    dfni2 = at.atomic.get_ion_levels(modelpath, 28, 2)
+    assert dffe2 is not None
+    assert dfni2 is not None
+    assert get_levels_cached.cache_info().misses == 1
+    assert at.atomic.get_ion_levels(modelpath, 1, 1) is None
+    assert dffe2.height == len(at.atomic.get_levels(modelpath, ionlist=[(26, 2)])["levels"].item())

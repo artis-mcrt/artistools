@@ -27,8 +27,11 @@ if t.TYPE_CHECKING:
 
 # the rule of rsync: a colon before the first slash makes a remote path, e.g. "vae26:~/mymodel" and
 # "user@vae26:/lustre/mymodel". A local path with such a colon starts with "./", e.g. "./run:2". An IPv6 address
-# is in brackets, e.g. "user@[2001:db8::1]:/lustre/mymodel"
-REMOTEPATH_PATTERN = re.compile(r"^(?P<host>(?:[^/:@\[]*@)?\[[^\]/]*\]|[^/:\[]+):(?P<path>.*)$", re.DOTALL)
+# is in brackets, e.g. "user@[2001:db8::1]:/lustre/mymodel". A host of one letter in front of a path separator
+# is a Windows drive, e.g. "C:\Users\me\mymodel" and "C:/Users/me/mymodel"
+REMOTEPATH_PATTERN = re.compile(
+    r"^(?![A-Za-z]:[\\/])(?P<host>(?:[^/:@\[]*@)?\[[^\]/]*\]|[^/:\[]+):(?P<path>.*)$", re.DOTALL
+)
 
 # a user can give a different command to start the server, e.g. the path of an artistools in a clone
 SERVER_COMMAND_ENVVAR = "ARTISTOOLS_REMOTE_COMMAND"
@@ -746,7 +749,8 @@ def output_is_hidden() -> bool:
     """Return whether the standard output of the calling thread goes elsewhere than to the terminal of the process.
 
     --quiet sends it to the null device, and the worker thread of a viewer sends it to a buffer. The server then
-    hides the standard output of the reader, and it sends back the standard error, e.g. an error or a warning. The ThreadOutput of a viewer gives the target of each thread.
+    hides the standard output of the reader, and it sends back the standard error, e.g. an error or a warning.
+    The ThreadOutput of a viewer gives the target of each thread.
     """
     import sys
 

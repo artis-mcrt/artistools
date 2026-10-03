@@ -604,7 +604,7 @@ def plot_nne_te_points(
     color: mplt.ColorType,
     marker: MarkerType,
 ) -> None:
-    """Scatter plot the electron density and temperature of the emitting cells, sized by how many packets each emitted."""
+    """Plot the electron density and the temperature of the emitting cells, with a marker size from the packet count."""
     color_adj = [(c + 0.1) / 1.1 for c in mplcolors.to_rgb(color)]
     hitcount: Counter[tuple[float, float]] = Counter(
         zip(np.asarray(em_log10nne, dtype=float).tolist(), np.asarray(em_Te, dtype=float).tolist(), strict=True)
@@ -644,6 +644,32 @@ def read_te_nne_refdata(
     return refdatakeys, np.array([float(timekey) for timekey in refdatakeys]), [te_nne[key] for key in refdatakeys]
 
 
+def add_emission_timestep_column(
+    dfpackets: pl.LazyFrame, modelpath: Path | str, emtypecolumn: str
+) -> tuple[pl.LazyFrame, str, str]:
+    """Return the packets, the timestep column, and the cell column of the emission that emtypecolumn selects.
+
+    The cell and the timestep must come from the same event. The last interaction (em) and the last thermal
+    emission (trueem) of a packet can be in different cells and in different timesteps. A packets file that has
+    no trueem_time gives the timestep of the last interaction.
+    """
+    if emtypecolumn == "emissiontype":
+        return dfpackets, "em_timestep", "em_modelgridindex"
+
+    if "trueem_time" not in dfpackets.collect_schema().names():
+        print_warning("The packets have no trueem_time, thus the timestep comes from the last interaction")
+        return dfpackets, "em_timestep", "emtrue_modelgridindex"
+
+    # the same bins as em_timestep in add_derived_columns_lazy. A time before the first timestep gives -1
+    timebins = [tstart * day_to_s for tstart in get_timestep_times(modelpath, loc="start")] + [
+        get_timestep_times(modelpath, loc="end")[-1] * day_to_s
+    ]
+    dfpackets = dfpackets.with_columns(
+        emtrue_timestep=pl.col("trueem_time").cut(breaks=timebins).to_physical().cast(pl.Int32) - 1
+    )
+    return dfpackets, "emtrue_timestep", "emtrue_modelgridindex"
+
+
 def get_emitting_regions_data(
     modelpath: Path, args: argparse.Namespace, times_days: Sequence[float]
 ) -> dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]]:
@@ -651,8 +677,6 @@ def get_emitting_regions_data(
     emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
-
-    em_mgicolumn = "em_modelgridindex" if args.emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
 
     _nprocs_read, dfpackets = get_packets(
         modelpath=modelpath, maxpacketfiles=args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
@@ -662,14 +686,16 @@ def get_emitting_regions_data(
         dfpackets.filter(pl.col(args.emtypecolumn).is_in(linelistindices_allfeatures)), modelpath=modelpath
     )
 
+    dfpackets, em_tscolumn, em_mgicolumn = add_emission_timestep_column(dfpackets, modelpath, args.emtypecolumn)
+
     dfestimators = (
         scan_estimators(modelpath=modelpath, verbose=args.verbose)
         .select(["timestep", "modelgridindex", "Te", "nne"])
         .drop_nulls()
-        .rename({"timestep": "em_timestep", "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
+        .rename({"timestep": em_tscolumn, "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
     ).with_columns(em_log10nne=pl.col("em_nne").log10())
 
-    dfpackets = dfpackets.join(dfestimators, on=["em_timestep", em_mgicolumn], how="inner", maintain_order="left")
+    dfpackets = dfpackets.join(dfestimators, on=[em_tscolumn, em_mgicolumn], how="inner", maintain_order="left")
 
     # one collect gives all the time bins and features, then the loop filters the eager frame
     dfpackets_collected = dfpackets.select("t_arrive_d", args.emtypecolumn, "em_log10nne", "em_Te").collect()

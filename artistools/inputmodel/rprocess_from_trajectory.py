@@ -110,19 +110,17 @@ def fix_fortran_exponents(dtype: pl.DataType | type[pl.DataType]) -> pl.Expr:
     """Return an expression that repairs Fortran triple-digit exponents, then casts to dtype.
 
     Fortran writes a value like 1.735904-244 without the "e", thus the column parses as strings. The cast is
-    strict, thus a value that is corrupt for a different reason still raises.
+    strict, thus a value that is corrupt for a different reason still raises. Only the sign before the three
+    exponent digits gets the "e", thus a negative mantissa keeps its sign.
     """
-    return (
-        pl
-        .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
-        .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
-        .otherwise(cs.by_dtype(pl.String))
-        .cast(dtype)
-    )
+    return cs.by_dtype(pl.String).str.replace(r"(\d)([+-])(\d{3})$", "${1}e${2}${3}").cast(dtype)
 
 
 def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, memberfilename: str) -> Path:
-    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
+    """Return the path of a member file of a trajectory, and prefer a form of the file that is fast to read.
+
+    A trajectory is usually in the file {particleid}.tar.xz, which is slow to read. Thus the function first looks
+    for an extracted file or for a decompressed .tar file, because these are much faster to read.
 
     memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
     """
@@ -180,12 +178,14 @@ def get_closest_network_timesteps(
     particleid: int,
     timesec: float | Sequence[float] | npt.NDArray[np.floating],
     cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest",
-) -> list[int]:
+) -> list[int | None]:
     """Find the closest network timestep to a given time in seconds.
 
     cond:
       - 'lessthan': find highest timestep less than time_sec
       - 'greaterthan': find lowest timestep greater than time_sec.
+
+    For 'lessthan' and 'greaterthan', a time with no network timestep on that side gives None.
     """
     dfevol = get_traj_network_timesteps(traj_root, particleid)
 
@@ -289,7 +289,10 @@ def get_trajectory_timestepfiles_nuc_abund(
 def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pl.DataFrame, float]:
-    """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
+    """Return the nuclear abundances of a trajectory at one time, and that time in seconds.
+
+    memberfilename names the file of that time in the trajectory, e.g. "./Run_rprocess/tday_nz-plane".
+    """
     dfnucabund, timesecs = get_trajectory_timestepfiles_nuc_abund(traj_root, particleid, [memberfilename])
     return dfnucabund.drop("fileindex"), timesecs[0]
 
@@ -329,6 +332,8 @@ def get_trajectory_abund_q(
         nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
     except FileNotFoundError:
         return {}
+    # the nearest timestep always exists, thus only "lessthan" and "greaterthan" can give None
+    assert nts is not None
     memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
 
     try:
@@ -502,7 +507,10 @@ def add_abundancecontributions(
     t_model_days_incpremerger: float,
     traj_root: Path | str,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-    """Contribute trajectory network calculation abundances to model cell abundances and return dfmodel, dfelabundances, dfcontribs."""
+    """Add the abundances of the network calculations of the trajectories to the abundances of the model cells.
+
+    Return dfmodel, dfelabundances, and dfcontribs.
+    """
     t_model_s = t_model_days_incpremerger * day_to_s
     dfcontribs = dfgridcontributions
 

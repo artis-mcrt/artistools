@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
@@ -260,6 +261,20 @@ def bin_packets_by_direction(
     return alldirbins, condition
 
 
+def smooth_direction_map(data: npt.NDArray[np.float64], sigma_bins: float, nphibins: int) -> npt.NDArray[np.float64]:
+    """Return the map of (cos theta, phi) bins smoothed with a Gaussian of sigma_bins bins.
+
+    The phi axis wraps around. The cos theta axis does not wrap: the row beyond a pole is the row on the
+    other side of that pole, which is the same ring of cos theta bins at phi + pi. The pad holds these
+    rows, thus the filter, which wraps both axes, blends no pole with the opposite pole.
+    """
+    padrows = int(4.0 * sigma_bins + 0.5) + 1
+    padded = np.pad(data, ((padrows, padrows), (0, 0)), mode="symmetric")
+    padded[:padrows] = np.roll(padded[:padrows], nphibins // 2, axis=1)
+    padded[-padrows:] = np.roll(padded[-padrows:], nphibins // 2, axis=1)
+    return gaussian_filter_wrap(padded, sigma_bins)[padrows:-padrows]
+
+
 def plot_spherical(
     dirbins: pl.DataFrame,
     plotvars: Sequence[str],
@@ -276,8 +291,10 @@ def plot_spherical(
     """
     print(f"packets plotted: {dirbins.select('count').sum().item(0, 0):.1e}")
 
-    # these phi and theta angle ranges are defined differently to artis
-    phigrid = np.linspace(-np.pi, np.pi, nphibins + 1, endpoint=True, dtype=np.float64)
+    # phi bin j starts at 2 pi j / nphibins, and the Mollweide longitude runs from -pi to +pi with phi = 0
+    # at the centre. Thus the roll below moves the bins above pi to the left half of the map
+    phishift = nphibins // 2
+    phigrid = (np.arange(nphibins + 1, dtype=np.float64) - phishift) * 2 * np.pi / nphibins
     if phireverse:
         phigrid = -phigrid  # reverse the phi direction
 
@@ -307,10 +324,11 @@ def plot_spherical(
         data = dirbins.get_column(plotvar).to_numpy().reshape((ncosthetabins, nphibins))
 
         if gaussian_sigma is not None and gaussian_sigma > 0:
-            sigma_bins = gaussian_sigma / 360 * nphibins
-            data = gaussian_filter_wrap(data, sigma_bins)
+            data = smooth_direction_map(data, gaussian_sigma / 360 * nphibins, nphibins)
 
-        colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data, rasterized=True, cmap=cmap)
+        colormesh = ax.pcolormesh(
+            meshgrid_phi, meshgrid_theta, np.roll(data, phishift, axis=1), rasterized=True, cmap=cmap
+        )
 
         match plotvar:
             case "emlosvelocityoverc":
@@ -427,7 +445,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     elif args.timestep is not None:
         time_ranges = [
             (tstarts[ts], tends[ts], f"timestep {ts}")
-            for ts in parse_range_list(args.timestep, dictvars={"last": len(tstarts) - 1})
+            for ts in parse_range_list(str(args.timestep), dictvars={"last": len(tstarts) - 1})
         ]
         outformat = args.format or "pdf"
     else:

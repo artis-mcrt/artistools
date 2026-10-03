@@ -10,6 +10,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from artistools.misc.cliutils import dashes_arg
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import split_remote_path
 from artistools.viewertools.application import add_recent_model
@@ -579,13 +580,35 @@ class ReferenceData(t.NamedTuple):
 
     # the kind of one series, e.g. "reference spectrum"
     kind: str
-    names: "Sequence[str]"
+    # the folder of the reference data in the data of artistools
     folder: Path
     # return the file of a name in the working folder or in the reference data, or None
     find: "Callable[[str], Path | None]"
-    # return the token of the command for the path of a file, e.g. a name of the reference data
-    get_token: "Callable[[str], str]"
     example: str
+
+
+def get_reference_names(folder: Path) -> list[str]:
+    """Return the names of the files of a folder of reference data, without the suffix of a compressed file.
+
+    A command finds a compressed file by the name without the suffix. A metadata file with no data file beside it
+    gives no name, because the command has no data to read.
+    """
+    names = {
+        path.name.removesuffix(path.suffix) if path.suffix in COMPRESSED_EXTENSIONS else path.name
+        for path in folder.iterdir()
+        if path.is_file() and not path.name.startswith(".") and not path.name.endswith(".meta.yml")
+    }
+    return sorted(names, key=str.lower)
+
+
+def get_reference_token(filename: str, find: "Callable[[str], Path | None]") -> str:
+    """Return the name of a reference file if find gives that same file for the name, and the path if not.
+
+    A command searches the working folder before the reference data of artistools. Thus a file of the same name in
+    the working folder takes the place of a file from the reference data. The name alone gives a short command.
+    """
+    found = find(Path(filename).name)
+    return Path(filename).name if found is not None and found.resolve() == Path(filename).resolve() else filename
 
 
 class SeriesListActions(t.NamedTuple):
@@ -652,7 +675,7 @@ def add_series_list(
         f"Type part of the name of a {reference.kind} in the data of artistools, then press Return. A name of a file"
         " in the working folder also works."
     )
-    referencecompleter = make_completer(reference.names, referenceedit)
+    referencecompleter = make_completer(get_reference_names(reference.folder), referenceedit)
     referenceedit.setCompleter(referencecompleter)
     openreferencebutton = QtWidgets.QPushButton("Open…")
     openreferencebutton.setToolTip(f"Add the file of a {reference.kind} from a folder")
@@ -875,7 +898,7 @@ def add_series_list(
 
     def on_open_reference() -> None:
         filenames, _ = QtWidgets.QFileDialog.getOpenFileNames(window, f"Add a {reference.kind}", str(reference.folder))
-        add_paths([reference.get_token(filename) for filename in filenames])
+        add_paths([get_reference_token(filename, reference.find) for filename in filenames])
 
     def add_reference_name(name: str) -> None:
         name = name.strip()
@@ -898,7 +921,7 @@ def add_series_list(
         runs = [folder for folder in folders if actions.is_run(folder)]
         if len(runs) < len(folders):
             actions.show_error("A dropped folder is not the folder of an ARTIS run, which holds input.txt")
-        add_paths([*runs, *(reference.get_token(path) for path in paths if Path(path).is_file())])
+        add_paths([*runs, *(get_reference_token(path, reference.find) for path in paths if Path(path).is_file())])
 
     addmodelbutton.clicked.connect(on_add_model)
     recentmodelsmenu.aboutToShow.connect(show_recent_models)

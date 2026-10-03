@@ -92,8 +92,12 @@ def get_kurucz_transitions(
                 # gfall.dat is fixed-width: wavelength in nm is F11.4 (columns 0-10) and loggf is F7.3 (columns 11-17)
                 lambda_angstroms = float(line[:11]) * 10
                 loggf = float(line[11:18])
-                lower_energy_ev, upper_energy_ev = hc_in_ev_cm * float(line[24:36]), hc_in_ev_cm * float(line[52:64])
-                lower_statweight, upper_statweight = 2 * float(line[36:42]) + 1, 2 * float(line[64:70]) + 1
+                # gfall.dat does not order the two levels by energy, thus the sort finds the lower level.
+                # A negative energy marks a predicted level, and its absolute value is the energy
+                (lower_energy_ev, lower_statweight), (upper_energy_ev, upper_statweight) = sorted([
+                    (hc_in_ev_cm * abs(float(line[24:36])), 2 * float(line[36:42]) + 1),
+                    (hc_in_ev_cm * abs(float(line[52:64])), 2 * float(line[64:70]) + 1),
+                ])
                 fij = (10**loggf) / lower_statweight
                 A = fij / (1.49919e-16 * upper_statweight / lower_statweight * lambda_angstroms**2)
                 translist.append(
@@ -291,7 +295,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timestep(parser, default="last")
 
-    addarg_modelgridindex(parser, default=0)
+    addarg_modelgridindex(parser, default=[0])
 
     parser.add_argument("--normalised", action="store_true", help="Normalise all spectra to their peak values")
 

@@ -37,17 +37,20 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: P
     """Plot a HESMA reference spectrum at the time closest to timeavg onto each of axes."""
     hesma_spec = read_wsv(hesmafile, comment_prefix="#").cast(pl.Float64)
 
-    searchtimes = [float(x) for x in hesma_spec.columns[1:]]
-
-    closest_time = f"{match_closest_time(timeavg, searchtimes):.2f}"
-    print(closest_time)
+    # the header names each column with its time, in a format that the file sets. Thus the lookup takes the
+    # name of the column and not a new format of the time
+    lambdacolumn, *timecolumns = hesma_spec.columns
+    searchtimes = [float(x) for x in timecolumns]
+    closest_time = match_closest_time(timeavg, searchtimes)
+    timecolumn = timecolumns[searchtimes.index(closest_time)]
+    print(timecolumn)
 
     # Scale distance to 1 Mpc
     dist_mpc = 1e-5  # HESMA specta at 10 pc
-    hesma_spec = hesma_spec.with_columns(pl.col(closest_time) * dist_mpc**2)  # refspecditance Mpc / 1 Mpc ** 2
+    hesma_spec = hesma_spec.with_columns(pl.col(timecolumn) * dist_mpc**2)  # refspecditance Mpc / 1 Mpc ** 2
 
     for ax in axes:
-        ax.plot(hesma_spec["0.00"], hesma_spec[closest_time], label="HESMA model")
+        ax.plot(hesma_spec[lambdacolumn], hesma_spec[timecolumn], label="HESMA model")
 
 
 def plothesmaresspec(ax: mplax.Axes, specfiles: Sequence[Path | str], args: argparse.Namespace) -> None:

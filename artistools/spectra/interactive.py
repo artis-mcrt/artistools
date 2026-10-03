@@ -5,6 +5,7 @@ import contextlib
 import dataclasses as dc
 import math
 import shlex
+import threading
 import typing as t
 from functools import partial
 from pathlib import Path
@@ -25,7 +26,6 @@ from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
-from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.packets.core import has_packets_files
@@ -58,6 +58,7 @@ from artistools.viewertools.core import get_path_colours
 from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_series_style
 from artistools.viewertools.core import get_short_number
+from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
 from artistools.viewertools.core import move_series_styles
@@ -81,6 +82,8 @@ from artistools.viewertools.sections import connect_time_keys
 from artistools.viewertools.sections import DirectionChoice
 from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import make_xscale_box
+from artistools.viewertools.sections import make_yscale_box
+from artistools.viewertools.sections import show_auto_yscale
 from artistools.viewertools.series import add_series_list
 from artistools.viewertools.series import edit_series_properties
 from artistools.viewertools.series import make_series_swatch
@@ -90,17 +93,14 @@ from artistools.viewertools.series import SeriesRow
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import fit_canvas
-from artistools.viewertools.widgets import get_changed_arguments
-from artistools.viewertools.widgets import get_python_call
+from artistools.viewertools.widgets import get_python_code
 from artistools.viewertools.widgets import make_range_slider
 from artistools.viewertools.widgets import make_row_layout
 from artistools.viewertools.widgets import make_segmented_control
-from artistools.viewertools.widgets import parse_command_tokens
 from artistools.viewertools.widgets import ROW_SPACING
 from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_spin_value
-from artistools.viewertools.widgets import show_status_message
 from artistools.viewertools.widgets import show_status_note
 from artistools.viewertools.widgets import start_play_timer
 from artistools.viewertools.window import add_command_sections
@@ -160,7 +160,6 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "plotvspecpol",
     "average_over_phi_angle",
     "average_over_theta_angle",
-    "average_every_tenth_viewing_angle",
     "usedegrees",
     "fixedionlist",
     "figwidthscale",
@@ -186,11 +185,6 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
 
 type DataSource = t.Literal["auto", "text", "packets"]
 
-# the rule of the width of a continuous time range:
-# - "dlogt" takes the width that gives ln(t_end / t_start) = dlogt, as the logarithmic timesteps of ARTIS do;
-# - "days" keeps the width in days.
-type WidthMode = t.Literal["dlogt", "days"]
-
 
 @dc.dataclass(frozen=True, slots=True, kw_only=True)
 class ControlValues:
@@ -205,8 +199,10 @@ class ControlValues:
     width: float
     notimeclamp: bool
     # the rule of the width of a continuous range. The command gives the width that the rule gives, thus the mode
-    # itself is not in the command
-    widthmode: WidthMode
+    # itself is not in the command:
+    # - "dlogt" takes the width that gives ln(t_end / t_start) = dlogt, as the logarithmic timesteps of ARTIS do;
+    # - "days" keeps the width in days.
+    widthmode: t.Literal["dlogt", "days"]
     # the Δ ln t of the width mode "dlogt". It starts with the Δ ln t of a logarithmic grid of the run
     dlogt: float
     # True for the gamma-ray spectrum of the gamma packets, and False for the UVOIR spectrum of the r-packets
@@ -499,16 +495,6 @@ def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlV
     return dc.replace(values, xunit=xunit, xmin=xmin, xmax=xmax, deltax="")
 
 
-def get_reference_token(filename: str) -> str:
-    """Return the name of a reference file if plotspectra finds that same file by the name, and the path if not.
-
-    plotspectra searches the working folder before the reference data of artistools. Thus a file of the same name in
-    the working folder takes the place of a file from the reference data. The name alone gives a short command.
-    """
-    found = find_reference_spectrum_file_or_none(Path(filename).name)
-    return Path(filename).name if found is not None and found.resolve() == Path(filename).resolve() else filename
-
-
 # plotspectra reads the model in the working folder when the command gives no path
 DEFAULT_SPECTRA: t.Final = (".",)
 
@@ -534,26 +520,9 @@ def get_spectrum_item_text(path: str) -> str:
     return f"Model: {path if is_remote_path(path) else Path(path).absolute()}"
 
 
-def get_reference_spectrum_names() -> list[str]:
-    """Return the names of the reference spectra in the data of artistools, without the suffix of a compressed file.
-
-    plotspectra finds a compressed file by the name without the suffix. A metadata file with no data file beside it
-    gives no name, because plotspectra has no spectrum to read.
-    """
-    from artistools.commands import get_path
-
-    folder = get_path("artistools_dir") / "data" / "refspectra"
-    names = {
-        path.name.removesuffix(path.suffix) if path.suffix in COMPRESSED_EXTENSIONS else path.name
-        for path in folder.iterdir()
-        if path.is_file() and not path.name.startswith(".") and not path.name.endswith(".meta.yml")
-    }
-    return sorted(names, key=str.lower)
-
-
-def keep_figwidthscale(restored: ControlValues, current: ControlValues) -> ControlValues:
-    """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
-    return dc.replace(restored, figwidthscale=current.figwidthscale)
+def get_plot_python_code(viewer: "SpectrumViewer") -> str:
+    """Return the Python code that draws the plot of the values of the viewer."""
+    return get_python_code(viewer.parser, viewer.get_plot_tokens(), "plotspectra", "at.spectra.plotspectra.main")
 
 
 def remove_series_lock(values: ControlValues) -> ControlValues:
@@ -580,14 +549,6 @@ def check_viewer_args(args: argparse.Namespace) -> None:
             f"-stokesparam {args.stokesparam}": "/" in args.stokesparam,
         },
     )
-
-
-def get_python_code(parser: argparse.ArgumentParser, tokens: "Sequence[str]") -> str:
-    """Return the Python code that draws the plot of the command, with each argument that differs from its default."""
-    args = parse_command_tokens(parser, tokens)
-    if args is None:
-        return "# plotspectra rejects the command"
-    return get_python_call("at.spectra.plotspectra.main", get_changed_arguments(parser, args))
 
 
 class SpectrumViewer:
@@ -620,6 +581,9 @@ class SpectrumViewer:
                 "--interactive takes the time range from the timesteps of an ARTIS run, and no path names a run",
                 "Give the folder of an ARTIS run, e.g. plotspectra mymodel --interactive",
             )
+        # the worker thread makes the command from the timestep grid while the window can read the runs again, e.g.
+        # for a new model. The lock keeps the grid of one load together
+        self.gridlock = threading.Lock()
         # the keys of the runs are the tokens of the list of spectra. A normalised path, e.g. of "mymodel/", is a
         # different key, and the window then found no run for a row
         self.load_runs(tuple(startpaths) or DEFAULT_SPECTRA)
@@ -639,7 +603,6 @@ class SpectrumViewer:
         actions = get_actions_by_flag(parser)
         self.groupbychoices = [str(choice) for choice in actions["-groupby"].choices or ()]
         self.yvariablechoices = [str(choice) for choice in actions["-yvariable"].choices or ()]
-        self.yscalechoices = [str(choice) for choice in actions["-yscale"].choices or () if choice != "lin"]
         self.defaultyscale: str = parser.get_default("defaultyscale")
         self.defaultyvariable: str = parser.get_default("yvariable")
         # the time of the command stays exact, because a rounded time can select a different timestep
@@ -724,34 +687,41 @@ class SpectrumViewer:
         tstarts = get_timestep_times(gridfolder, loc="start")
         tends = get_timestep_times(gridfolder, loc="end")
         timebounds = [tstarts[0], tends[-1]]
-        self.runtimes: dict[str, RunTimes] = {}
+        runtimes_of_path: dict[str, RunTimes] = {}
         runfoldertimes: list[tuple[Path, RunTimes]] = []
         for path in spectra:
             for runfolder in get_artis_run_folders([Path(path)]):
                 runtimes = get_run_times(runfolder, plotinvalidpart=bool(self.args.plotinvalidpart))
-                self.runtimes[str(path)] = runtimes
+                runtimes_of_path[str(path)] = runtimes
                 runfoldertimes.append((runfolder, runtimes))
                 timebounds = [max(timebounds[0], runtimes.validstart), min(timebounds[1], runtimes.validend)]
-        self.runfolders, self.gridfolder = runfolders, gridfolder
-        self.tmids, self.tstarts, self.tends = tmids, tstarts, tends
-        self.twidths = get_timestep_times(gridfolder, loc="delta")
-        # the Δ ln t of a logarithmic grid with the same start, end, and count of timesteps. A constant grid or a
-        # hybrid grid of ARTIS has a different Δ ln t in each timestep, and the width mode "dlogt" starts with this one
-        self.dlogt = float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}")
-        self.timebounds = (timebounds[0], timebounds[1])
+        twidths = get_timestep_times(gridfolder, loc="delta")
         # a different run clamps the time of a timestep to its own timestep, which can be longer and can end outside
         # the valid times of that run. Thus each run tests the time of each timestep
-        self.validtimesteps = [
+        validtimesteps = [
             timestep
             for timestep in range(len(tmids))
-            if tstarts[timestep] >= self.timebounds[0]
-            and tends[timestep] <= self.timebounds[1]
+            if tstarts[timestep] >= timebounds[0]
+            and tends[timestep] <= timebounds[1]
             and fits_each_run(runfoldertimes, get_snapped_timedays_argument(tmids, tstarts, tends, timestep, timestep))
         ] or list(range(len(tmids)))
-        self.hasgammaspectrum = has_gamma_spectrum(runfolders)
+        hasgammaspectrum = has_gamma_spectrum(runfolders)
         # the direction controls read the first run, e.g. for the observers of -plotvspecpol
-        self.directionkinds = get_direction_kinds(runfolders[0])
-        self.runkey = (tuple(str(path) for path in spectra), timegrid)
+        directionkinds = get_direction_kinds(runfolders[0])
+        # the reads above are slow, thus the lock covers only the assignments
+        with self.gridlock:
+            self.runtimes: dict[str, RunTimes] = runtimes_of_path
+            self.runfolders, self.gridfolder = runfolders, gridfolder
+            self.tmids, self.tstarts, self.tends = tmids, tstarts, tends
+            self.twidths = twidths
+            # the Δ ln t of a logarithmic grid with the same start, end, and count of timesteps. A constant grid or a
+            # hybrid grid of ARTIS has a different Δ ln t in each timestep, and the width mode "dlogt" starts with it
+            self.dlogt = float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}")
+            self.timebounds = (timebounds[0], timebounds[1])
+            self.validtimesteps = validtimesteps
+            self.hasgammaspectrum = hasgammaspectrum
+            self.directionkinds = directionkinds
+            self.runkey = (tuple(str(path) for path in spectra), timegrid)
 
     def get_selection(self, values: ControlValues) -> tuple[int, int]:
         """Return the first and the last valid timestep with a middle in the time range of the values.
@@ -780,10 +750,13 @@ class SpectrumViewer:
         """Return the plotspectra arguments of the values, or of the current values if the caller gives none."""
         if values is None:
             values = self.values
-        if values.notimeclamp:
-            timedays = get_timedays_argument(values.centre, values.width, self.timebounds)
-        else:
-            timedays = get_snapped_timedays_argument(self.tmids, self.tstarts, self.tends, *self.get_selection(values))
+        with self.gridlock:
+            if values.notimeclamp:
+                timedays = get_timedays_argument(values.centre, values.width, self.timebounds)
+            else:
+                timedays = get_snapped_timedays_argument(
+                    self.tmids, self.tstarts, self.tends, *self.get_selection(values)
+                )
         options = ["-t", timedays, *get_option_tokens("-xmin", values.xmin), *get_option_tokens("-xmax", values.xmax)]
         if values.notimeclamp:
             options.append("--notimeclamp")
@@ -1321,13 +1294,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     # the settings keep the open state of the section by its key, which the older heading of the section gave
     _, axesgrid = add_section(panellayout, "Vertical axis", key="y-axis")
-    yscalebox = QtWidgets.QComboBox()
-    # each item holds its -yscale choice, because the text of the "auto" item gives the scale of the drawn plot
-    for yscale in viewer.yscalechoices:
-        yscalebox.addItem(yscale.capitalize(), yscale)
-    # the text of the "auto" item changes after each plot, and the box keeps a width for the longest text
-    yscalebox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
-    yscalebox.setToolTip(helptexts.get("yscale", ""))
+    yscalebox = make_yscale_box(viewer.parser, helptexts)
     # the handlers come later in this function, thus the lambdas read them at the time of a change
     show_y_limits = add_y_limits_row(
         axesgrid,
@@ -1472,7 +1439,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             viewerwindow,
             viewer,
             viewer.parser,
-            viewer.values.dpi,
             (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
         )
     )
@@ -1835,7 +1801,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 figscalebox, float((get_row_values(values.otheroptions, "-figscale") or (str(defaultfigscale),))[0])
             )
             set_command_text(commandtext, viewer.get_command())
-            set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))
+            set_command_text(pythontext, get_plot_python_code(viewer))
             show_rejections()
         finally:
             for blocker in blockers:
@@ -1851,7 +1817,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         connect_mouse_to_figure()
         # -yscale auto reads the drawn values, thus only the drawn plot gives the scale that it chose
         if message is None and viewer.values.yscale == "auto" and plot_shows_values():
-            yscalebox.setItemText(yscalebox.findData("auto"), f"Auto ({viewer.axes[0].get_yscale()})")
+            show_auto_yscale(yscalebox, viewer.axes[0].get_yscale())
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
         fittimer.start()
         # a rejection occurs again at each step, thus a rejection stops the Play button
@@ -1864,14 +1830,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     queue = DrawQueue(
         window, viewer, statusbar, show_values, after_draw, render=viewer.render, keep_on_undo=keep_figwidthscale
     )
+    show_error = queue.show_error
 
     def apply(values: ControlValues, *, undoable: bool = True) -> None:
         """Give the queue the new values, with a time that the runs have."""
         queue.apply(viewer.clamp_time(values), undoable=undoable)
-
-    def show_error(message: str) -> None:
-        show_status_message(statusbar, message, "")
-        show_values()
 
     def on_packet_type(index: int) -> None:
         if (gamma := index == 1) != viewer.values.gamma:
@@ -1917,7 +1880,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def on_widthmode() -> None:
         values = viewer.values
-        widthmode: WidthMode = widthmodebox.currentData()
+        widthmode: t.Literal["dlogt", "days"] = widthmodebox.currentData()
         # Δ ln t keeps its last value, which starts as the Δ ln t of a logarithmic grid of the run
         apply(dc.replace(values, widthmode=widthmode))
 
@@ -2191,17 +2154,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         return (len(validtimesteps) if values.notimeclamp else len(validtimesteps) - count), get_frame_tokens
 
+    command = ViewerCommand(
+        name="plotspectra",
+        main=plotspectra_main,
+        parser=viewer.parser,
+        get_python_code=lambda: get_plot_python_code(viewer),
+    )
+
     def on_export_animation() -> None:
-        export_animation(
-            window,
-            queue,
-            statusbar,
-            plotspectra_main,
-            "plotspectra",
-            get_animation_frames(),
-            fpsbox.value(),
-            viewer.parser,
-        )
+        export_animation(window, queue, command, get_animation_frames(), fpsbox.value())
 
     def is_run_folder(path: str) -> bool:
         return bool(get_artis_run_folders([Path(path)]))
@@ -2216,10 +2177,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         " gives a file from the reference data of artistools by its name alone.",
         ReferenceData(
             kind="reference spectrum",
-            names=get_reference_spectrum_names(),
             folder=get_path("artistools_dir") / "data" / "refspectra",
             find=find_reference_spectrum_file_or_none,
-            get_token=get_reference_token,
             example="AT2017gfo",
         ),
         SeriesListActions(
@@ -2242,25 +2201,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
         reload_runs(queue, viewer.runfolders, show_reloaded_runs, show_error)
 
-    command = ViewerCommand(
-        name="plotspectra",
-        main=plotspectra_main,
-        parser=viewer.parser,
-        get_figure_tokens=lambda: viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None)),
-        get_command=viewer.get_command,
-        get_python_code=lambda: get_python_code(viewer.parser, viewer.get_plot_tokens()),
-    )
     add_figure_actions = add_window_actions(
         window,
         windows,
         open_window,
         queue,
-        statusbar,
         command,
         figuresection,
         (copybutton, pythoncopybutton),
-        (lambda: viewer.values.dpi, lambda dpi: apply(dc.replace(viewer.values, dpi=dpi))),
-        show_error,
         KEYBOARD_HELP_ROWS,
         playbutton,
         extracallbacks={"Reload Data": on_reload, "Export Animation…": on_export_animation},
@@ -2345,18 +2293,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         (lambda: apply(viewer.move_to_end(last=False)), lambda: apply(viewer.move_to_end(last=True))),
     )
 
-    finish_viewer_window(
-        viewerwindow,
-        windows,
-        viewer,
-        queue,
-        viewer.get_command,
-        get_session_tokens,
-        (
-            viewer.get_fitted_figwidthscale,
-            lambda: viewer.values.figwidthscale,
-            lambda figwidthscale: apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False),
-        ),
-    )
+    finish_viewer_window(viewerwindow, windows, viewer, queue, get_session_tokens)
     show_values()
     return None

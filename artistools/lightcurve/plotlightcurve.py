@@ -31,6 +31,7 @@ from artistools.lightcurve.core import find_lightcurve_file
 from artistools.lightcurve.core import generate_band_lightcurve_data
 from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag
+from artistools.lightcurve.core import get_filter_data
 from artistools.lightcurve.core import get_from_packets
 from artistools.lightcurve.core import get_top_nuclides
 from artistools.lightcurve.core import lum_lsun_to_mag
@@ -569,7 +570,8 @@ def plot_artis_lightcurve(
     if escape_type == "TYPE_GAMMA" and linelabel:
         linelabel += r" $\gamma$"
     if pellet_nucname is not None:
-        linelabel = rf"$\;$ {pellet_nucname}"
+        # the model name and the gamma marker stay, because a second model or --gamma gives the same nuclide again
+        linelabel = f"{linelabel} {pellet_nucname}" if linelabel else pellet_nucname
 
     print_heading(linelabel)
     print_detail(f"modelpath: {modelpath.resolve().parts[-1]}")
@@ -580,6 +582,8 @@ def plot_artis_lightcurve(
     # resolve the direction bins first, because "-plotviewingangle -2" expands to every bin. The
     # packet-derived data must hold the same bin keys that the plot loop reads.
     dirbins, angle_definition = parse_directionbin_args(modelpath, args)
+    # bin -1 is the angle average, which only light_curve.out holds
+    directionresolved = list(dirbins) != [-1]
 
     if frompackets:
         lcdataframes = get_from_packets(
@@ -608,14 +612,26 @@ def plot_artis_lightcurve(
                 firstexisting(lcfilename, folder=modelpath, tryzipped=True)
                 if lcfilename is not None
                 else find_lightcurve_file(
-                    modelpath, directionresolved=dirbins != [-1], gamma=escape_type == "TYPE_GAMMA"
+                    modelpath, directionresolved=directionresolved, gamma=escape_type == "TYPE_GAMMA"
                 )
             )
         except FileNotFoundError as exc:
             print_warning(f"Skipping {modelpath}: {exc}")
             return None
 
-        lcdataframes = scan_lightcurve(lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta)
+        try:
+            lcdataframes = scan_lightcurve(
+                lcpath,
+                directionresolved=directionresolved,
+                # the angle average of bin -1 is the mean over every direction already
+                average_over_phi=average_over_phi and directionresolved,
+                average_over_theta=average_over_theta and directionresolved,
+            )
+        except ValueError as exc:
+            exit_with_error(
+                str(exc),
+                "Give -plotviewingangle with light_curve_res.out, and give no -plotviewingangle with light_curve.out",
+            )
         # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
         if -1 in dirbins and -1 not in lcdataframes:
             lcdataframes[-1] = scan_lightcurve(
@@ -770,7 +786,6 @@ def plot_artis_lightcurve(
             print_product(args, lcdata)
 
         if args.plotcmf:
-            assert lumunit != "mag", "Cannot plot cmf luminosity if magnitude is selected"
             # a copy, because the next direction bin keeps the rest-frame style and the -linewidth value
             plotkwargs_cmf: dict[str, t.Any] = plotkwargs | {"linewidth": 1, "linestyle": "dashed"}
             # a colour bar leaves the series with no label, thus there is no label to mark as comoving frame
@@ -1112,10 +1127,6 @@ def make_band_lightcurves_plot(
                 print(f"Reading spectra: {get_model_logname(modelpath)} (angle {dirbin})")
             band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, dirbin, filternames=bandnames)
 
-            if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
-                hesma_model = read_hesma_lightcurve(args)
-                plotkwargs["label"] = str(args.plot_hesma_model).split("_")[:3]
-
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 axis = axes[plotnumber]
                 time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
@@ -1138,14 +1149,6 @@ def make_band_lightcurves_plot(
 
                 if filterfunc is not None:
                     brightness_in_mag = filterfunc(brightness_in_mag)
-
-                if (
-                    modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model.columns
-                ):  # TODO: see if this works
-                    assert isinstance(ax, mplax.Axes)
-                    ax.plot(hesma_model["t"], hesma_model[band_name], color="black")
-                    if residualseries is not None:
-                        print_warning("the residual panel does not include the HESMA model")
 
                 text_key = FILTERNAME_ALIASES.get(band_name, band_name)
 
@@ -1208,6 +1211,9 @@ def make_band_lightcurves_plot(
             residualseries=residualseries,
         )
 
+    if args.plot_hesma_model:
+        plot_hesma_lightcurve(axes, bandnames, args, residualseries)
+
     ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=bandnames[0] if bandnames else None)
     set_lightcurveplot_legend(ax, args)
@@ -1224,6 +1230,26 @@ def make_band_lightcurves_plot(
             write_residual_stats(dfresidualstats, args.outputfile)
 
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
+
+
+def plot_hesma_lightcurve(
+    axes: Sequence[mplax.Axes],
+    bandnames: Sequence[str],
+    args: argparse.Namespace,
+    residualseries: list[ResidualSeries] | None,
+) -> None:
+    """Draw each band of the HESMA model of -plot_hesma_model on the panel of that band.
+
+    The first column of the file holds the time, and a column with the name of a band holds its magnitudes.
+    """
+    hesma_model = read_hesma_lightcurve(args)
+    timecolumn = hesma_model.columns[0]
+    label = Path(args.plot_hesma_model).stem
+    for axis, band_name in zip(axes, bandnames, strict=True):
+        if band_name in hesma_model.columns:
+            axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
+    if residualseries is not None:
+        print_warning("the residual panel does not include the HESMA model")
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
@@ -1324,12 +1350,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
-def get_filter_lambda0(filterdir: Path, filter_name_raw: str) -> float:
-    """Return the reference wavelength of the band in Angstroms, from the filter transmission file."""
-    with (filterdir / f"{filter_name_raw}.txt").open(encoding="utf-8") as f:
-        return float(f.readlines()[2])
-
-
 def deredden_band_magnitudes(dfband: pl.DataFrame, lambda0: float, a_v: float, r_v: float) -> pl.DataFrame:
     """Return the band data with the magnitudes corrected for reddening by the CCM89 extinction law.
 
@@ -1350,7 +1370,7 @@ def get_dereddened_band_data(
     lightcurve_data: pl.DataFrame, metadata: dict[str, t.Any], filter_name_raw: str, filterdir: Path
 ) -> pl.DataFrame:
     """Return the points of one band of a reference light curve, dereddened when the metadata gives the extinction."""
-    lambda0 = get_filter_lambda0(filterdir, filter_name_raw)
+    _, lambda0, *_ = get_filter_data(filterdir, filter_name_raw)
     filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
     dfband = lightcurve_data.filter(pl.col("band") == filter_name)
 
@@ -1797,14 +1817,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         from artistools.lightcurve.interactive import run_viewer
         from artistools.viewertools.core import get_command_tokens
 
-        run_viewer(
-            get_command_tokens(
-                argsraw,
-                kwargs,
-                fromdispatcher=fromdispatcher,
-                dispatcherargsraw=getattr(args, "dispatcherargsraw", None),
-            )
-        )
+        run_viewer(get_command_tokens(args, argsraw, kwargs, fromdispatcher=fromdispatcher))
         return
 
     resolve_plot_args(args)
@@ -1850,18 +1863,52 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
+def check_cmf_args(args: argparse.Namespace) -> None:
+    """Stop --plotcmf with --magnitude, and drop it with a warning for the virtual packet observers.
+
+    The comoving frame energy of the packets gives a luminosity, which has no magnitude. The virtual packets hold the
+    energy of their observer in the rest frame only, thus the light curve of an observer has no comoving frame column.
+    """
+    if not args.plotcmf:
+        return
+    if args.magnitude:
+        exit_with_error(
+            "--plotcmf gives a comoving frame luminosity, which has no magnitude", "Remove --plotcmf or --magnitude"
+        )
+    if args.plotvspecpol is not None:
+        print_warning("the virtual packets hold no comoving frame energy, thus --plotcmf draws no curve of an observer")
+        args.plotcmf = False
+
+
+def check_direction_args(args: argparse.Namespace) -> None:
+    """Drop an average over the angles that has no direction bins, and stop -topnucs for the virtual packet observers.
+
+    --average_over_phi_angle and --average_over_theta_angle group the direction bins of -plotviewingangle. The virtual
+    packets hold no pellet, thus an observer has no light curve of one nuclide and no decay time of a pellet.
+    """
+    if (args.average_over_phi_angle or args.average_over_theta_angle) and not args.plotviewingangle:
+        flag = "--average_over_phi_angle" if args.average_over_phi_angle else "--average_over_theta_angle"
+        print_warning(f"{flag} groups the direction bins of -plotviewingangle, and the command gives none")
+        args.average_over_phi_angle = False
+        args.average_over_theta_angle = False
+    if args.plotvspecpol is not None and (args.topnucs or args.use_pellet_decay_time):
+        exit_with_error(
+            "the virtual packets hold no pellet, thus -topnucs and --use_pellet_decay_time give no light curve of an"
+            " observer",
+            "Remove -plotvspecpol, or remove -topnucs and --use_pellet_decay_time",
+        )
+
+
 def resolve_plot_args(args: argparse.Namespace) -> None:
     """Give args the values that the plot reads: the paths, the time range, the styles, and the output file.
 
     Each change here also applies to the plot of the viewer, which calls this function for each command.
     """
-    if getattr(args, "average_every_tenth_viewing_angle", False):
-        print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
-        args.average_over_phi_angle = True
-
     args.modelpath = normalize_path_list(args.modelpath)
     apply_time_range_args(args, args.modelpath)
     resolve_energy_rate_args(args)
+    check_cmf_args(args)
+    check_direction_args(args)
 
     nmodels = len(args.modelpath)
     args.reflightcurves = makelist(args.reflightcurves)

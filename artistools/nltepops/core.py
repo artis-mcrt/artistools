@@ -3,6 +3,7 @@
 import re
 import string
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 
 import polars as pl
@@ -10,6 +11,7 @@ import polars as pl
 from artistools.atomic import get_ionstring
 from artistools.constants import K_B_ev_per_K
 from artistools.misc import read_rank_outputfiles
+from artistools.misc.fileio import resolve_modelpath
 
 
 def texifyterm(strterm: str) -> str:
@@ -173,5 +175,17 @@ def add_lte_pops(
 def read_nltepops(
     modelpath: str | Path, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
 ) -> pl.DataFrame:
-    """Read in NLTE populations from a model for a particular timestep and one or more grid cells."""
+    """Read in NLTE populations from a model for a particular timestep and one or more grid cells.
+
+    A figure of several subplots reads the same populations for each one, and a window reads them again for each of
+    its plots. Thus the last read stays in memory. Do not change the frame that this function returns.
+    """
+    cells = modelgridindex if modelgridindex is None or isinstance(modelgridindex, int) else tuple(modelgridindex)
+    return read_nltepops_cached(resolve_modelpath(modelpath), timestep, cells)
+
+
+@lru_cache(maxsize=1)
+def read_nltepops_cached(modelpath: Path, timestep: int | None, cells: int | tuple[int, ...] | None) -> pl.DataFrame:
+    """Read the NLTE populations of the model at an absolute path. One read of a large run takes minutes."""
+    modelgridindex = list(cells) if isinstance(cells, tuple) else cells
     return read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex)

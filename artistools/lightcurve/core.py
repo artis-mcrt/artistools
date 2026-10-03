@@ -35,10 +35,12 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_metadata
 from artistools.misc import get_timesteps
+from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import path_is_reference_data
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
+from artistools.misc import require_reference_data_file
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
 from artistools.misc import zopenpl
@@ -78,15 +80,25 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floati
 
 @on_model_host
 def scan_lightcurve(
-    filepath: str | Path, average_over_phi: bool = False, average_over_theta: bool = False
+    filepath: str | Path,
+    *,
+    directionresolved: bool = False,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
 ) -> dict[int, pl.LazyFrame]:
     """Return a LazyFrame of a light curve file for each direction bin, with an optional average over phi or theta.
+
+    A direction-resolved file, e.g. light_curve_res.out, holds one table for each direction bin. A different file
+    holds the angle average as bin -1. The caller knows which file it reads, thus the name of the file decides nothing.
 
     The averaging belongs here rather than to the caller because the magnitude column is not linear in the
     bin contributions. Deriving it only after the averaging leaves no way to plot the mean of the
     magnitudes, where a single dark bin sends the whole averaged bin to inf.
     """
     check_averaging_angles(average_over_phi, average_over_theta)
+    if (average_over_phi or average_over_theta) and not directionresolved:
+        msg = f"an average over the direction bins needs a direction-resolved light curve, and {filepath} holds one bin"
+        raise ValueError(msg)
     print(f"Reading {filepath}")
     lcdata: dict[int, pl.LazyFrame] = {}
     lzdf = pl.scan_csv(
@@ -99,15 +111,23 @@ def scan_lightcurve(
         # value such as 1.5e+07 then stopped the read
         schema_overrides={"time_days": pl.Float64, "luminosity_Lsun": pl.Float64, "luminosity_cmf_Lsun": pl.Float64},
     )
-    if "_res" in Path(filepath).stem:
-        # get a dict of dfs with light curves at each viewing direction bin
+    # a user can name the file, thus its tables must agree with the layout that the caller gives
+    if directionresolved:
         lcdata = split_multitable_dataframe(lzdf)
+        if len(lcdata) != get_viewingdirectionbincount():
+            msg = (
+                f"{filepath} holds {len(lcdata)} tables, and a direction-resolved light curve holds one table for each"
+                f" of the {get_viewingdirectionbincount()} direction bins"
+            )
+            raise ValueError(msg)
     else:
-        lcdata[-1] = lzdf
+        rowcount, timecount = lzdf.select(pl.len(), pl.col("time_days").n_unique()).collect().row(0)
+        if rowcount > 2 * timecount:
+            msg = f"{filepath} holds {rowcount // timecount} tables, thus it is a direction-resolved light curve"
+            raise ValueError(msg)
 
-        # if the light_curve.out file repeats x values, keep the first half only
-        if lcdata[-1].select(pl.col("time_days").n_unique() < pl.len()).collect().item():
-            lcdata[-1] = lcdata[-1].select(pl.all().slice(0, pl.len() // 2))
+        # an old light_curve.out holds a second table, which repeats the times. Keep the first table only
+        lcdata[-1] = lzdf if rowcount == timecount else lzdf.slice(0, rowcount // 2)
 
     if average_over_phi:
         lcdata = average_direction_bins(lcdata, overangle="phi")
@@ -142,6 +162,9 @@ def get_from_packets(
         raise ValueError(msg)
     if directionbins is None:
         directionbins = [-1]
+    if directionbins_are_vpkt_observers and (pellet_nucname is not None or use_pellet_decay_time):
+        msg = "the virtual packets hold no pellet, thus an observer has no light curve of a nuclide or of a decay time"
+        raise ValueError(msg)
 
     dftimesteps_selected = df_filter_minmax_bracketed(
         get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
@@ -153,7 +176,6 @@ def get_from_packets(
     ]
 
     vpkt_config = get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
-    assert not directionbins_are_vpkt_observers or pellet_nucname is None  # we don't track which pellet led to vpkts
     if directionbins_are_vpkt_observers:
         nprocs_read, dfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
@@ -178,7 +200,6 @@ def get_from_packets(
         )
 
     if use_pellet_decay_time:
-        assert not directionbins_are_vpkt_observers
         dfpackets = dfpackets.with_columns([(pl.col("tdecay") / day_to_s).alias("tdecay_d")])
 
     timecol = "tdecay_d" if use_pellet_decay_time else "t_arrive_d"
@@ -281,7 +302,10 @@ def generate_band_lightcurve_data(
     filternames: Sequence[str] | None = None,
     **kwargs: t.Any,
 ) -> dict[str, t.Any]:
-    """Integrate spectra to get band magnitude vs time. Method adapted from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py."""
+    """Integrate the spectra to get the band magnitudes against time.
+
+    The method comes from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py.
+    """
     args = args_from_kwargs(
         args,
         kwargs,
@@ -358,7 +382,7 @@ def generate_band_lightcurve_data(
             continue
 
         bandpoints = filters_dict.setdefault(filter_name, [])
-        zeropointenergyflux, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(
+        zeropointenergyflux, _, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(
             filterdir, filter_name
         )
 
@@ -428,13 +452,18 @@ def get_bolometric_luminosities(
 @lru_cache(maxsize=32)
 def get_filter_data(
     filterdir: Path | str, filter_name: str
-) -> tuple[float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, float]:
-    """Filter data in 'data/filters' taken from https://github.com/cinserra/S3/tree/master/src/s3/metadata."""
-    with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:  # definition of the file
-        line_in_filter_metadata = filter_metadata.readlines()  # list of lines
+) -> tuple[float, float, npt.NDArray[np.floating], npt.NDArray[np.floating], float, float]:
+    """Return the zero point, the reference wavelength, the transmission curve, and its wavelength range of a filter.
+
+    The files in data/filters come from https://github.com/cinserra/S3/tree/master/src/s3/metadata. The first line
+    holds the zero point in energy flux (erg/cm^2/s), the third line holds the reference wavelength in Angstroms, and
+    the lines after the fourth hold the wavelength and the transmission.
+    """
+    with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:
+        line_in_filter_metadata = filter_metadata.readlines()
 
     zeropointenergyflux = float(line_in_filter_metadata[0])
-    # zero point in energy flux (erg/cm^2/s)
+    lambda0 = float(line_in_filter_metadata[2])
 
     wavefilter: list[float] = []
     transmission: list[float] = []
@@ -453,7 +482,14 @@ def get_filter_data(
     arr_wavefilter.setflags(write=False)
     arr_transmission.setflags(write=False)
 
-    return zeropointenergyflux, arr_wavefilter, arr_transmission, float(arr_wavefilter[0]), float(arr_wavefilter[-1])
+    return (
+        zeropointenergyflux,
+        lambda0,
+        arr_wavefilter,
+        arr_transmission,
+        float(arr_wavefilter[0]),
+        float(arr_wavefilter[-1]),
+    )
 
 
 def bracket_spectrum_to_band(
@@ -515,8 +551,10 @@ def read_hesma_lightcurve_file(hesma_modelpath: Path | str) -> pl.DataFrame:
 
 
 def read_hesma_lightcurve(args: argparse.Namespace) -> pl.DataFrame:
-    """Return the HESMA model light curve named by args.plot_hesma_model."""
-    return read_hesma_lightcurve_file(Path(get_path("artistools_dir"), "data/hesma", args.plot_hesma_model))
+    """Return the HESMA model light curve of -plot_hesma_model, from its path or from the data/hesma folder."""
+    return read_hesma_lightcurve_file(
+        require_reference_data_file(args.plot_hesma_model, "data/hesma", "HESMA model light curve")
+    )
 
 
 def luminosity_distance(H0: float, Om0: float, z: float) -> float:
@@ -735,8 +773,13 @@ def read_bol_reflightcurve_data(lightcurvefilename: str | Path) -> tuple[pl.Data
 
 
 def get_phillips_relation_data() -> tuple[pl.DataFrame, str]:
-    """Return the observed dm15(B) against peak MB data of Hicken et al. (2009), and its plot label."""
-    datafilepath = Path(get_path("artistools_dir"), "data", "lightcurves", "SNsample", "CfA3_Phillips.dat")
+    """Return the observed dm15(B) against peak MB data of Hicken et al. (2009), and its plot label.
+
+    The package holds no copy of the data, thus the working folder or the data folder gives the file.
+    """
+    datafilepath = require_reference_data_file(
+        "CfA3_Phillips.dat", "data/lightcurves/SNsample", "Phillips relation data of Hicken et al. (2009)"
+    )
     sn_data = read_wsv(datafilepath, comment_prefix="#").with_columns(
         pl.col("dm15(B)").cast(pl.Float64), pl.col("MB").cast(pl.Float64)
     )

@@ -7,6 +7,7 @@ from pathlib import Path
 from artistools.viewertools.core import get_direction_choices
 from artistools.viewertools.core import get_direction_kinds
 from artistools.viewertools.core import get_short_number
+from artistools.viewertools.core import get_yscale_choices
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import make_fps_box
@@ -17,6 +18,7 @@ from artistools.viewertools.widgets import make_step_button
 from artistools.viewertools.widgets import set_edit_text
 
 if t.TYPE_CHECKING:
+    import argparse
     from collections.abc import Callable
     from collections.abc import Mapping
     from collections.abc import Sequence
@@ -429,6 +431,27 @@ def make_xscale_box(helptexts: "Mapping[str, str]") -> "QtWidgets.QComboBox":
         xscalebox.setItemData(xscalebox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
     xscalebox.setToolTip("The scale of the x axis. Log gives --logscalex")
     return xscalebox
+
+
+def make_yscale_box(parser: "argparse.ArgumentParser", helptexts: "Mapping[str, str]") -> "QtWidgets.QComboBox":
+    """Return a box with an item for each choice of -yscale. The data of each item is its choice.
+
+    The text of the item "auto" gives the scale of the drawn plot, thus show_auto_yscale changes it after each plot.
+    """
+    from PySide6 import QtWidgets
+
+    yscalebox = QtWidgets.QComboBox()
+    for yscale in get_yscale_choices(parser):
+        yscalebox.addItem(yscale.capitalize(), yscale)
+    # the box keeps a width for the longest text of the item "auto"
+    yscalebox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
+    yscalebox.setToolTip(helptexts.get("yscale", ""))
+    return yscalebox
+
+
+def show_auto_yscale(yscalebox: "QtWidgets.QComboBox", yscale: str) -> None:
+    """Show the scale that -yscale auto gave to the drawn plot, e.g. "Auto (log)", in the box of make_yscale_box."""
+    yscalebox.setItemText(yscalebox.findData("auto"), f"Auto ({yscale})")
 
 
 class TimeControls(t.NamedTuple):

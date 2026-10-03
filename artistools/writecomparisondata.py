@@ -24,28 +24,28 @@ from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import drop_trailing_null_column
 from artistools.misc import exit_with_error
-from artistools.misc import firstexisting
 from artistools.misc import get_deposition
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc import zopen
 from artistools.misc.modelinfo import get_runfolder_timesteps
+from artistools.spectra.core import read_spec
 
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     """Write the spectra at the selected timesteps in code comparison workshop format."""
-    with zopen(firstexisting("spec.out", folder=modelpath, tryzipped=True)) as specfile:
-        spec_data = np.loadtxt(specfile)
+    dfspec = drop_trailing_null_column(read_spec(modelpath)).collect()
 
-    times = spec_data[0, 1:]
-    freqs = spec_data[1:, 0]
+    # the header names each column of flux with its time in days
+    times = [float(colname) for colname in dfspec.columns[1:]]
+    freqs = dfspec["nu"].to_numpy()
     lambdas = c_ang_per_s / freqs
 
-    fluxes_nu = spec_data[1:, 1:]
+    fluxes_nu = dfspec.drop("nu").to_numpy()
 
     # area in cm^2 of a sphere of radius 1 Mpc
     area = 4.0 * math.pi * megaparsec_to_cm**2

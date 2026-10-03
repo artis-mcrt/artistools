@@ -39,14 +39,12 @@ from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools.application import run_viewer_application
 from artistools.viewertools.core import exit_for_other_actions
-from artistools.viewertools.core import get_actions_by_flag
 from artistools.viewertools.core import get_direction_choices
 from artistools.viewertools.core import get_direction_kind
 from artistools.viewertools.core import get_direction_kinds
@@ -57,6 +55,7 @@ from artistools.viewertools.core import get_path_colours
 from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_series_style
 from artistools.viewertools.core import get_short_number
+from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
 from artistools.viewertools.core import move_series_styles
@@ -76,7 +75,9 @@ from artistools.viewertools.sections import add_y_limits_row
 from artistools.viewertools.sections import DirectionChoice
 from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import make_xscale_box
+from artistools.viewertools.sections import make_yscale_box
 from artistools.viewertools.sections import read_limit_fields
+from artistools.viewertools.sections import show_auto_yscale
 from artistools.viewertools.series import add_series_list
 from artistools.viewertools.series import edit_series_properties
 from artistools.viewertools.series import make_series_swatch
@@ -87,16 +88,13 @@ from artistools.viewertools.series import SeriesRow
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import fit_canvas
-from artistools.viewertools.widgets import get_changed_arguments
-from artistools.viewertools.widgets import get_python_call
+from artistools.viewertools.widgets import get_python_code
 from artistools.viewertools.widgets import make_note_label
 from artistools.viewertools.widgets import make_range_slider
-from artistools.viewertools.widgets import parse_command_tokens
 from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
 from artistools.viewertools.widgets import set_spin_value
-from artistools.viewertools.widgets import show_status_message
 from artistools.viewertools.widgets import show_status_note
 from artistools.viewertools.window import add_command_sections
 from artistools.viewertools.window import connect_plot_mouse
@@ -154,7 +152,6 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "plotvspecpol",
     "average_over_phi_angle",
     "average_over_theta_angle",
-    "average_every_tenth_viewing_angle",
     "usedegrees",
     "figwidthscale",
     # the window shows the plot, thus the command opens no second window and no file
@@ -315,27 +312,29 @@ def check_viewer_args(args: argparse.Namespace) -> None:
     )
 
 
-def get_python_code(parser: argparse.ArgumentParser, tokens: "Sequence[str]") -> str:
-    """Return the Python code that draws the plot of the command, with each argument that differs from its default."""
-    args = parse_command_tokens(parser, tokens)
-    if args is None:
-        return "# plotlightcurves rejects the command"
-    return get_python_call("at.lightcurve.plot", get_changed_arguments(parser, args))
+def drop_refused_options(args: argparse.Namespace) -> None:
+    """Drop the options of the start command that plotlightcurves refuses together, as the controls of the window do.
 
-
-def keep_figwidthscale(restored: ControlValues, current: ControlValues) -> ControlValues:
-    """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
-    return dc.replace(restored, figwidthscale=current.figwidthscale)
-
-
-def get_reference_token(filename: str) -> str:
-    """Return the name of a reference file if plotlightcurves finds that same file by the name, and the path if not.
-
-    plotlightcurves searches the working folder before the reference data of artistools. Thus a file of the same name
-    in the working folder takes the place of a file from the reference data. The name alone gives a short command.
+    The command stops for --plotcmf with --magnitude, and for -topnucs or --use_pellet_decay_time with an observer of
+    the virtual packets. A change of the unit or of the direction drops the same options. An observer of the virtual
+    packets also reads the packets, as the direction control gives it.
     """
-    found = find_bol_reflightcurve_file(Path(filename).name)
-    return Path(filename).name if found is not None and found.resolve() == Path(filename).resolve() else filename
+    if args.plotcmf and args.magnitude:
+        print_warning("The window drops --plotcmf, because a magnitude has no comoving frame luminosity")
+        args.plotcmf = False
+    if args.plotvspecpol:
+        if args.topnucs or args.use_pellet_decay_time:
+            print_warning(
+                "The window drops -topnucs and --use_pellet_decay_time, because the virtual packets hold no pellet"
+            )
+            args.topnucs = 0
+            args.use_pellet_decay_time = False
+        args.frompackets = True
+
+
+def get_plot_python_code(viewer: "LightCurveViewer") -> str:
+    """Return the Python code that draws the plot of the values of the viewer."""
+    return get_python_code(viewer.parser, viewer.get_plot_tokens(), "plotlightcurves", "at.lightcurve.plot")
 
 
 def get_lightcurve_path(path: str) -> Path:
@@ -359,23 +358,6 @@ def get_lightcurve_item_text(path: str) -> str:
     return f"Model: {path if is_remote_path(path) else Path(path).absolute()}"
 
 
-def get_reference_lightcurve_names() -> list[str]:
-    """Return the names of the bolometric reference light curves in the data of artistools.
-
-    A name has no suffix of a compressed file, because plotlightcurves finds the compressed file by the name without
-    the suffix. A metadata file with no data file beside it gives no name.
-    """
-    from artistools.commands import get_path
-
-    folder = get_path("artistools_dir") / "data" / "lightcurves" / "bollightcurves"
-    names = {
-        path.name.removesuffix(path.suffix) if path.suffix in COMPRESSED_EXTENSIONS else path.name
-        for path in folder.iterdir()
-        if path.is_file() and not path.name.startswith(".") and not path.name.endswith(".meta.yml")
-    }
-    return sorted(names, key=str.lower)
-
-
 class RenderedLightCurve(t.NamedTuple):
     """The frames of a plot that the worker thread drew, which the window reads."""
 
@@ -395,6 +377,7 @@ class LightCurveViewer:
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
         parser, args, startpaths, otheroptions, self.helptexts = parse_viewer_tokens(addargs, tokens, CONTROLLED_DESTS)
+        drop_refused_options(args)
         resolve_plot_args(args)
         check_viewer_args(args)
         if args.rpkt and args.gamma:
@@ -413,8 +396,6 @@ class LightCurveViewer:
 
         self.parser = parser
 
-        actions = get_actions_by_flag(parser)
-        self.yscalechoices = [str(choice) for choice in actions["-yscale"].choices or () if choice != "lin"]
         self.defaultyscale: str = parser.get_default("defaultyscale")
         directionkind = get_direction_kind(args)
         directionbins = tuple(args.plotvspecpol or args.plotviewingangle or ())
@@ -705,7 +686,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     add_row(timegrid, 1, [QtWidgets.QLabel("x scale:"), xscalebox])
 
     _, ygrid = add_section(panellayout, "Vertical axis", key="y axis")
-    lumunitbox, yscalebox = QtWidgets.QComboBox(), QtWidgets.QComboBox()
+    lumunitbox, yscalebox = QtWidgets.QComboBox(), make_yscale_box(viewer.parser, helptexts)
     for unit, text, flag in LUMUNITS:
         lumunitbox.addItem(text, unit)
         lumunitbox.setItemData(
@@ -714,11 +695,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             QtCore.Qt.ItemDataRole.ToolTipRole,
         )
     lumunitbox.setToolTip("The unit of the luminosity and of the energy rates")
-    # each item holds its -yscale choice, because the text of the "auto" item gives the scale of the drawn plot
-    for yscale in viewer.yscalechoices:
-        yscalebox.addItem(yscale.capitalize(), yscale)
-    yscalebox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
-    yscalebox.setToolTip(helptexts.get("yscale", ""))
     add_row(ygrid, 0, [QtWidgets.QLabel("Unit:"), lumunitbox, QtWidgets.QLabel("-yscale"), yscalebox])
     # the handlers come later in this function, thus the lambdas read them at the time of a change
     show_y_limits = add_y_limits_row(
@@ -811,7 +787,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             viewerwindow,
             viewer,
             viewer.parser,
-            viewer.values.dpi,
             (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
         )
     )
@@ -922,21 +897,33 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 else "The files of the light curves of the ARTIS runs"
             )
             topnucsbox.setValue(values.topnucs)
+            # the virtual packets hold no pellet, thus an observer has no light curve of a nuclide or of a decay time
+            isobserver = values.directionkind == "vpkt"
+            topnucsbox.setEnabled(not isobserver)
+            topnucsbox.setToolTip(
+                "The virtual packets hold no pellet. Select a different viewing direction first"
+                if isobserver
+                else f"-topnucs: {helptexts.get('topnucs', '')}. The option reads the packets files"
+            )
             pelletcheck.setChecked(values.usepelletdecaytime)
             readspackets = values.frompackets or bool(values.topnucs)
-            pelletcheck.setEnabled(readspackets or values.usepelletdecaytime)
-            pelletcheck.setToolTip(
-                helptexts.get("use_pellet_decay_time", "")
-                if readspackets
-                else "Only the packets give the decay time of a pellet. Select the packets files first"
-            )
+            pelletcheck.setEnabled((readspackets and not isobserver) or values.usepelletdecaytime)
+            if isobserver:
+                pelletreason = "The virtual packets hold no pellet. Select a different viewing direction first"
+            elif not readspackets:
+                pelletreason = "Only the packets give the decay time of a pellet. Select the packets files first"
+            else:
+                pelletreason = helptexts.get("use_pellet_decay_time", "")
+            pelletcheck.setToolTip(pelletreason)
             cmfcheck.setChecked(values.plotcmf)
-            cmfcheck.setEnabled(values.lumunit != "mag" or values.plotcmf)
-            cmfcheck.setToolTip(
-                helptexts.get("plotcmf", "")
-                if values.lumunit != "mag"
-                else "A magnitude has no comoving frame luminosity"
-            )
+            if values.lumunit == "mag":
+                cmfreason = "A magnitude has no comoving frame luminosity"
+            elif isobserver:
+                cmfreason = "The virtual packets hold no comoving frame energy"
+            else:
+                cmfreason = ""
+            cmfcheck.setEnabled(not cmfreason or values.plotcmf)
+            cmfcheck.setToolTip(cmfreason or helptexts.get("plotcmf", ""))
             invalidcheck.setChecked(values.plotinvalidpart)
             unavailable: list[str] = []
             for (dest, particle), check in energychecks.items():
@@ -986,7 +973,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 figscalebox, float((get_row_values(values.otheroptions, "-figscale") or (str(defaultfigscale),))[0])
             )
             set_command_text(commandtext, viewer.get_command())
-            set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens()))
+            set_command_text(pythontext, get_plot_python_code(viewer))
         finally:
             for blocker in blockers:
                 blocker.unblock()
@@ -997,20 +984,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         connect_mouse_to_figure()
         # -yscale auto reads the drawn values, thus only the drawn plot gives the scale that it chose
         if message is None and viewer.values.yscale == "auto" and plot_shows_values() and viewer.axis is not None:
-            yscalebox.setItemText(yscalebox.findData("auto"), f"Auto ({viewer.axis.get_yscale()})")
+            show_auto_yscale(yscalebox, viewer.axis.get_yscale())
         # a new panel changes the height of the figure, thus the plot can need a new -figwidthscale
         fittimer.start()
 
     queue = DrawQueue(
         window, viewer, statusbar, show_values, after_draw, render=viewer.render, keep_on_undo=keep_figwidthscale
     )
-
-    def apply(values: ControlValues, *, undoable: bool = True) -> None:
-        queue.apply(values, undoable=undoable)
-
-    def show_error(message: str) -> None:
-        show_status_message(statusbar, message, "")
-        show_values()
+    apply, show_error = queue.apply, queue.show_error
 
     def plot_shows_values() -> bool:
         """Return True if the plot on the screen has the values of the controls.
@@ -1096,9 +1077,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         values = dc.replace(
             viewer.values, directionkind=choice.kind, directionbins=choice.bins, usedegrees=choice.usedegrees
         )
-        # the observers of the virtual packets need the packets files
-        if choice.kind == "vpkt" and not values.topnucs:
-            values = dc.replace(values, frompackets=True)
+        if choice.kind == "vpkt":
+            # the observers of the virtual packets need the packets files, and the virtual packets hold no pellet
+            # and no comoving frame energy
+            values = dc.replace(values, frompackets=True, topnucs=0, usepelletdecaytime=False, plotcmf=False)
         apply(values)
 
     def apply_lightcurves(lightcurves: "Sequence[str]") -> None:
@@ -1164,10 +1146,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         " to change the order. The command gives a file from the reference data of artistools by its name alone.",
         ReferenceData(
             kind="reference light curve",
-            names=get_reference_lightcurve_names(),
             folder=get_path("artistools_dir") / "data" / "lightcurves" / "bollightcurves",
             find=find_bol_reflightcurve_file,
-            get_token=get_reference_token,
             example="AT2017gfo",
         ),
         SeriesListActions(
@@ -1194,21 +1174,16 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         name="plotlightcurves",
         main=plotlightcurves_main,
         parser=viewer.parser,
-        get_figure_tokens=lambda: viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None)),
-        get_command=viewer.get_command,
-        get_python_code=lambda: get_python_code(viewer.parser, viewer.get_plot_tokens()),
+        get_python_code=lambda: get_plot_python_code(viewer),
     )
     add_figure_actions = add_window_actions(
         window,
         windows,
         open_window,
         queue,
-        statusbar,
         command,
         figuresection,
         (copybutton, pythoncopybutton),
-        (lambda: viewer.values.dpi, lambda dpi: apply(dc.replace(viewer.values, dpi=dpi))),
-        show_error,
         KEYBOARD_HELP_ROWS,
         None,
         extracallbacks={"Reload Data": on_reload},
@@ -1271,18 +1246,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         show_tag=make_readout_tag(canvas),
     )
 
-    finish_viewer_window(
-        viewerwindow,
-        windows,
-        viewer,
-        queue,
-        viewer.get_command,
-        get_session_tokens,
-        (
-            viewer.get_fitted_figwidthscale,
-            lambda: viewer.values.figwidthscale,
-            lambda figwidthscale: apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False),
-        ),
-    )
+    finish_viewer_window(viewerwindow, windows, viewer, queue, get_session_tokens)
     show_values()
     return None

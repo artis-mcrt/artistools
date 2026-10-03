@@ -32,7 +32,7 @@ MAXNEARBYFOLDERS = 6
 
 
 class CommaJoinAction(argparse.Action):
-    """Join a repeated flag: "-cell 3 -cell 5" gives "3,5", which parse_range_list expands.
+    """Join a repeated flag: "-ts 3 -ts 5" gives "3,5", which parse_range_list expands.
 
     Without this the last occurrence replaces the first, and the command drops a cell silently.
     """
@@ -49,6 +49,49 @@ class CommaJoinAction(argparse.Action):
         text = ",".join(str(value) for value in values) if isinstance(values, list) else str(values)
         isfirstoccurrence = previous is self.default or previous is None
         setattr(namespace, self.dest, text if isfirstoccurrence else f"{previous},{text}")
+
+
+class CellListAction(argparse.Action):
+    """Store the cells of -modelgridindex as a sorted list, and add the cells of each repeated flag.
+
+    "-cell 3 -cell 5-7" gives [3, 5, 6, 7]. Each command then reads a list, whatever text the user gave.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        namespace: argparse.Namespace,
+        values: str | Sequence[t.Any] | None,
+        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+    ) -> None:
+        """Put the cells of every occurrence of this flag in the namespace."""
+        previous = getattr(namespace, self.dest, None)
+        cells = get_cell_list(str(values))
+        isfirstoccurrence = previous is self.default or previous is None
+        setattr(namespace, self.dest, cells if isfirstoccurrence else sorted({*previous, *cells}))
+
+
+def get_cell_list(cells: str | int | Iterable[int]) -> list[int]:
+    """Return the sorted cells of a value of -modelgridindex, e.g. "3-7,9", 12, or [4, 5].
+
+    A keyword argument of main() does not pass through the parser, thus this also takes a number or a list.
+    """
+    if isinstance(cells, str):
+        return parse_range_list(cells)
+    if isinstance(cells, int):
+        return [cells]
+    return sorted(set(cells))
+
+
+def format_range_list(numbers: Iterable[int]) -> str:
+    """Return the text that parse_range_list reads for these numbers, e.g. "3-7,9" for [3, 4, 5, 6, 7, 9]."""
+    ranges: list[list[int]] = []
+    for number in sorted(set(numbers)):
+        if ranges and number == ranges[-1][1] + 1:
+            ranges[-1][1] = number
+        else:
+            ranges.append([number, number])
+    return ",".join(str(first) if first == last else f"{first}-{last}" for first, last in ranges)
 
 
 def arggroup(parser: argparse.ArgumentParser, title: str) -> "argparse._ArgumentGroup":  # pyright: ignore[reportPrivateUsage]
@@ -102,8 +145,14 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
         help="Average over phi (azimuthal) viewing angles to make direction bins into polar angle bins",
     )
 
-    # deprecated alias for --average_over_phi_angle kept for backwards compatibility
-    averagegroup.add_argument("--average_every_tenth_viewing_angle", action="store_true", help=argparse.SUPPRESS)
+    # deprecated spelling kept as a hidden alias. argparse writes a warning when a command gives it
+    averagegroup.add_argument(
+        "--average_every_tenth_viewing_angle",
+        dest="average_over_phi_angle",
+        action="store_true",
+        deprecated=True,
+        help=argparse.SUPPRESS,
+    )
 
     averagegroup.add_argument(
         "--average_over_theta_angle",
@@ -129,11 +178,55 @@ class KeepGivenPaths(argparse.Action):
     ) -> None:
         """Set the paths of the positional argument, unless the option form already gave some."""
         userwrote = bool(values) and values != self.default
-        if userwrote or getattr(namespace, self.dest, None) is None:
+        given = getattr(namespace, self.dest, None)
+        optiongave = bool(given) and given != self.default
+        if userwrote and optiongave:
+            # the option form gives the paths in either order of the two forms
+            if given != values:
+                warn_ignored_paths(ignored=values, kept=given)
+        elif userwrote or given is None:
             setattr(namespace, self.dest, values)
 
         if not userwrote:
             take_back_swallowed_folder(parser, namespace, self)
+
+
+class ReplaceGivenPaths(argparse.Action):
+    """Store the paths of the option form, and give a warning when they replace paths that the user wrote.
+
+    argparse applies an option after a positional that the user wrote in front of it. The option then
+    replaced the paths of the positional, and the user got no message.
+    """
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+    ) -> None:
+        """Set the paths of the option, and name the paths that it replaces."""
+        positionaldefaults = [
+            action.default
+            for action in parser._actions  # ruff:ignore[private-member-access]
+            if isinstance(action, KeepGivenPaths) and action.dest == self.dest
+        ]
+        given = getattr(namespace, self.dest, None)
+        if bool(given) and given not in positionaldefaults and given != values:
+            warn_ignored_paths(ignored=given, kept=values)
+        setattr(namespace, self.dest, values)
+
+
+def warn_ignored_paths(ignored: t.Any, kept: t.Any) -> None:
+    """Give a warning that the command reads the paths of the option form and not the other paths."""
+
+    def as_text(paths: t.Any) -> str:
+        return ", ".join(f"'{path}'" for path in (paths if isinstance(paths, list) else [paths]))
+
+    print_warning(
+        f"the command ignores the path {as_text(ignored)}, because the option form gives the path {as_text(kept)}."
+        " Give the paths in one form only"
+    )
 
 
 def trailing_folder_count(values: list[t.Any]) -> int:
@@ -248,6 +341,7 @@ def addarg_pathoption(parser: argparse.ArgumentParser, flag: str, dest: str, *, 
     """
     optionkwargs: dict[str, t.Any] = {
         "dest": dest,
+        "action": ReplaceGivenPaths,
         "type": model_path_from_text,
         "default": argparse.SUPPRESS,
         "help": argparse.SUPPRESS,
@@ -272,7 +366,8 @@ def addarg_modelpath(
     if multiplepaths:
         kwargs["nargs"] = "*"
     if positional:
-        parser.add_argument("modelpath", action=KeepGivenPaths, **kwargs)
+        # a positional argument with no nargs is required, and the option form could then never stand in for it
+        parser.add_argument("modelpath", action=KeepGivenPaths, nargs=kwargs.pop("nargs", "?"), **kwargs)
         addarg_pathoption(parser, "-modelpath", "modelpath", multiplepaths=multiplepaths)
     else:
         if required:
@@ -460,38 +555,36 @@ def resolve_output_argument(args: argparse.Namespace) -> None:
 
 
 def addarg_modelgridindex(
-    parser: argparse.ArgumentParser, *, default: t.Any = None, helptext: str | None = None
+    parser: argparse.ArgumentParser, *, default: list[int] | None = None, helptext: str | None = None
 ) -> None:
     """Add the -modelgridindex/-cell/-mgi argument that selects the model grid cell or cells.
 
     Every command reads the same text: a number, or a range such as 3-7, or a list such as 1,4,9.
-    parse_range_list expands it, and get_single_modelgridindex gives the one cell that a command
-    which reads one cell needs.
+    CellListAction stores the sorted list of the cells, and get_single_modelgridindex gives the one
+    cell that a command which reads one cell needs.
     """
     arggroup(parser, "cell selection").add_argument(
         "-modelgridindex",
         "-cell",
         "-mgi",
-        action=CommaJoinAction,
+        action=CellListAction,
         default=default,
         help=helptext or "Model grid cell to plot, e.g. 12 or a range 3-7",
     )
 
 
-def get_single_modelgridindex(modelgridindex: str | int | None) -> int | None:
-    """Return the one cell that -modelgridindex names, or None when it names none.
+def get_single_modelgridindex(cells: Sequence[int] | None) -> int | None:
+    """Return the one cell of the cells that -modelgridindex names, or None when it names none.
 
     Every command reads the same text, thus a range reaches a command that plots one cell. Such a
     range earns a message that says so, in place of a cell that the text does not name.
     """
-    # a default of None, of an empty list, or of an empty string each name no cell
-    if not modelgridindex and modelgridindex != 0:
+    if not cells:
         return None
 
-    cells = parse_range_list(modelgridindex)
     if len(cells) > 1:
         msg = (
-            f"-modelgridindex '{modelgridindex}' names {len(cells)} cells, and this command reads one. "
+            f"-modelgridindex '{format_range_list(cells)}' names {len(cells)} cells, and this command reads one. "
             "Give one cell, e.g. -cell 12"
         )
         raise ValueError(msg)
@@ -1047,8 +1140,18 @@ def addarg_legend(parser: argparse.ArgumentParser) -> None:
 
 def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
     """Add the -maxpacketfiles argument limiting how many packet files are read."""
+    from artistools.packets.core import RANKS_PER_BATCH
+
     parser.add_argument(
-        "-maxpacketfiles", "-maxpacketsfiles", type=int, default=None, help="Limit the number of packet files read"
+        "-maxpacketfiles",
+        "-maxpacketsfiles",
+        type=int,
+        default=None,
+        help=(
+            f"Set the maximum number of packet files to read. The reader reads whole batches of {RANKS_PER_BATCH}"
+            f" files, thus give a value of at least {RANKS_PER_BATCH}. The reader rounds the value down to a multiple"
+            f" of {RANKS_PER_BATCH}"
+        ),
     )
 
 
@@ -1129,9 +1232,10 @@ def parse_cli_args(
     argsraw: Sequence[str] | None = None,
     kwargs: dict[str, t.Any] | None = None,
 ) -> argparse.Namespace:
-    """Return args unchanged if already parsed, otherwise parse the command line using the options defined by addargsfunc.
+    """Return args if the caller parsed them, or else parse the command line with the options of addargsfunc.
 
-    Any keyword arguments override the parser defaults, and when at least one is given, the command line/argsraw is ignored.
+    The keyword arguments replace the parser defaults. If the caller gives a keyword argument, the function ignores
+    the command line and argsraw.
     """
     if args is not None:
         return args
@@ -1299,8 +1403,10 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
             and isinstance(value, tuple)
             and all(isinstance(length, int | float) for length in value)
         )
+        if value is not None and isinstance(arg, CellListAction):
+            kwargs[arg.dest] = get_cell_list(value)
         # pyrefly: ignore[implicit-any-type-argument]
-        if value is not None and takes_a_list(arg) and (istupleitem or not isinstance(value, list | tuple)):
+        elif value is not None and takes_a_list(arg) and (istupleitem or not isinstance(value, list | tuple)):
             kwargs[arg.dest] = [value]
 
     parser.set_defaults(**kwargs)
@@ -1357,16 +1463,8 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[int]:
     return range(start, end + 1)
 
 
-def parse_range_list(rngs: str | list[str] | list[int] | int, dictvars: dict[str, int] | None = None) -> list[int]:
-    """Parse a string with comma-separated ranges or a list of range strings.
-
-    Return a sorted list of integers in any of the ranges.
-    """
-    if isinstance(rngs, list):
-        rngs = ",".join(str(x) for x in rngs)
-    elif not isinstance(rngs, str):
-        return [rngs]
-
+def parse_range_list(rngs: str, dictvars: dict[str, int] | None = None) -> list[int]:
+    """Return the sorted integers in any of the comma-separated ranges of a string, e.g. "1,3-5"."""
     return sorted(set(itertools.chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
 
 
@@ -1432,7 +1530,7 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
 
 
 def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]:
-    """Return a flat list of Paths from a scalar or (possibly nested) sequence of paths, using the default if none given.
+    """Return a flat list of Paths from one path or a nested sequence of paths, or the default if there is no path.
 
     A remote path gets the canonical form of get_canonical_path, thus its parent keeps the host.
     """

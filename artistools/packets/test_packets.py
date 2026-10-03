@@ -490,3 +490,64 @@ def test_a_position_outside_the_grid_gets_no_cell() -> None:
     })
     cells = dfpackets.select(get_modelgridindex_expr("em", modelmeta, pl.LazyFrame()).alias("mgi"))["mgi"].to_list()
     assert cells == [1, None, None]
+
+
+def test_a_1d_velocity_at_the_edges_of_the_grid_gets_the_right_cell() -> None:
+    """A velocity of zero is in the first cell, and a velocity at or above the outer edge gets no cell.
+
+    A cut alone gave the index -1 to a velocity of zero and the index of a cell that does not exist to a velocity
+    above the outer edge, which the 3D branch gives null.
+    """
+    from artistools.packets.core import get_modelgridindex_from_velocity_expr
+
+    dfmodel = pl.LazyFrame({"vel_r_max_kmps": [1.0, 2.0, 3.0]})
+    km_to_cm = 1e5
+    velocities = [0.0, 0.5 * km_to_cm, 1.0 * km_to_cm, 2.5 * km_to_cm, 3.0 * km_to_cm, 3.5 * km_to_cm, float("nan")]
+    cells = (
+        pl
+        .DataFrame({"v": velocities})
+        .select(get_modelgridindex_from_velocity_expr(pl.col("v"), dfmodel).alias("mgi"))["mgi"]
+        .to_list()
+    )
+    assert cells == [0, 0, 1, 2, None, None, None]
+
+
+@mock.patch("artistools.packets.plotlastpacketinteraction.save_figure")
+@mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
+def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
+    mockimshow: mock.MagicMock, mocksavefigure: mock.MagicMock
+) -> None:
+    """A packet that arrives at the start of the timestep is in the plot, and a packet at the end is not.
+
+    The window of the arrival time was closed at the right, thus it took a packet of the next timestep instead.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    tdays = 300.0
+    timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
+    emtime_s = 250.0 * at.constants.day_to_s
+    # the packet at the start is in the bin of 0.01 c, and the packet at the end is in the bin of 0.21 c
+    betas = [0.01, 0.21]
+    dfpackets = pl.DataFrame({
+        "t_arrive_d": [t_start, t_end],
+        "e_rf": [1.0e40, 1.0e40],
+        "trueem_posx": [beta * at.constants.C_cm_per_s * emtime_s for beta in betas],
+        "trueem_posy": [0.0, 0.0],
+        "trueem_posz": [beta * at.constants.C_cm_per_s * emtime_s for beta in betas],
+        "trueem_time": [emtime_s, emtime_s],
+    })
+
+    with mock.patch.object(
+        plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
+    ):
+        plotlastpacketinteraction.packets_2d_hist_bin_and_ejecta_vel(
+            modelpath, tdays=tdays, srIItriplet=False, colorlogscale=False, dirbin=-1, trueem=True
+        )
+
+    assert mocksavefigure.call_count == 1
+    heatmap = mockimshow.call_args.args[1].T
+    assert heatmap.count() == 1
+    assert heatmap[0, 25] > 0.0

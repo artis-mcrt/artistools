@@ -50,13 +50,9 @@ from artistools.plottools import set_plot_title
 from artistools.spectra import get_spectra
 
 
-def read_radfield(
-    modelpath: Path | str, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
-) -> pl.DataFrame:
-    """Read radiation field data from a model folder, possibly with timestep and modelgridindex filters."""
-    return read_rank_outputfiles(
-        modelpath, "radfield_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
-    )
+def read_radfield(modelpath: Path | str, modelgridindex: int | Sequence[int] | None = None) -> pl.DataFrame:
+    """Read radiation field data from a model folder, possibly with a modelgridindex filter."""
+    return read_rank_outputfiles(modelpath, "radfield_{mpirank:04d}.out", modelgridindex=modelgridindex)
 
 
 def select_radfield_subset(
@@ -257,13 +253,16 @@ def plot_celltimestep(
     xmin: float,
     xmax: float,
     modelgridindex: int,
+    velocity_kmps: float,
+    modelmeta: dict[str, t.Any],
     args: argparse.Namespace,
     normalised: bool = False,
     isframe: bool = False,
 ) -> bool:
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells).
 
-    radfielddata_cell holds the radiation field data of the cell at every timestep.
+    radfielddata_cell holds the radiation field data of the cell at every timestep. velocity_kmps is the
+    mid-point radial velocity of the cell, which the title gives.
 
     A plot that the merge takes in is one part of the product, thus --show and --open leave it alone.
     merge_pdf_files also deletes such a file, thus an application that opened it would hold nothing.
@@ -317,9 +316,6 @@ def plot_celltimestep(
         print("Could not find spec.out")
         args.nospec = True
 
-    modeldata, modelmeta = get_modeldata(modelpath)
-    modeldata = add_derived_cols_to_modeldata(modeldata, modelmeta=modelmeta)
-
     if not args.nospec:
         plotkwargs: dict[str, t.Any] = {}
         if not normalised:
@@ -341,10 +337,6 @@ def plot_celltimestep(
     if args.showbinedges:
         binedges = get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
-
-    velocity_kmps = (
-        modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / km_to_cm
-    )
 
     figure_title = f"{modelname} {velocity_kmps:.0f} km/s at {time_days:.0f}d"
 
@@ -420,16 +412,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         mgi = get_mgi_of_velocity_kms(modelpath, args.velocity)
         assert mgi is not None, f"Could not find a cell with velocity {args.velocity:.3f} km/s"
         modelgridindexlist = [mgi]
-    elif args.modelgridindex is None:
-        modelgridindexlist = [0]
     else:
-        modelgridindexlist = parse_range_list(args.modelgridindex)
+        modelgridindexlist = args.modelgridindex or [0]
 
     timesteplast = len(get_timestep_times(modelpath)) - 1
     if args.timedays:
         timesteplist = [get_timestep_of_timedays(modelpath, args.timedays)]
     elif args.timestep is not None:
-        timesteplist = parse_range_list(args.timestep, dictvars={"last": timesteplast})
+        timesteplist = parse_range_list(str(args.timestep), dictvars={"last": timesteplast})
     else:
         print("Using last timestep.")
         timesteplist = [timesteplast]
@@ -444,6 +434,20 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # read_radfield parses a rank file on each call, thus one read of all the cells serves each cell and timestep
     radfielddata_allcells = read_radfield(modelpath, modelgridindex=modelgridindexlist)
+
+    # one query of the model gives the velocity of every cell. A query in each frame ran the derivation
+    # of the model columns again for each cell and timestep
+    dfmodel, modelmeta = get_modeldata(modelpath)
+    dfcellvelocities = (
+        add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+        .filter(pl.col("modelgridindex").is_in(modelgridindexlist))
+        .select("modelgridindex", "vel_r_mid")
+        .collect()
+    )
+    velocity_kmps_of_cell = dict(
+        zip(dfcellvelocities["modelgridindex"], dfcellvelocities["vel_r_mid"] / km_to_cm, strict=True)
+    )
+
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
         radfielddata_cell = radfielddata_allcells.filter(pl.col("modelgridindex") == modelgridindex)
@@ -457,6 +461,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 xmin=args.xmin,
                 xmax=args.xmax,
                 modelgridindex=modelgridindex,
+                # a cell that is not in the model has no radiation field data, thus no plot reads the NaN
+                velocity_kmps=velocity_kmps_of_cell.get(modelgridindex, math.nan),
+                modelmeta=modelmeta,
                 args=args,
                 normalised=args.normalised,
                 isframe=frameset.combines,

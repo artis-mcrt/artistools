@@ -113,10 +113,15 @@ def print_saved(filepath: Path | str) -> None:
     Console(highlight=False, soft_wrap=True).print(line)
 
 
+def with_compressed_extension(filename: Path | str, ext: str) -> Path:
+    """Return the path of the compressed file, e.g. spec.out.zst, or the path itself if it has the extension."""
+    return Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
+
+
 def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
-    """Return the extension and path of filename.zst, filename.gz or filename.xz, or None if no compressed file exists."""
+    """Return the extension and the path of filename.zst, .gz, or .xz, or None if no compressed file exists."""
     for ext in COMPRESSED_EXTENSIONS:
-        path_withext = Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
+        path_withext = with_compressed_extension(filename, ext)
         if path_withext.exists():
             return ext, path_withext
 
@@ -472,7 +477,7 @@ def firstexisting(
 
             if tryzipped:
                 for ext in COMPRESSED_EXTENSIONS:
-                    filename_withext = Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
+                    filename_withext = with_compressed_extension(filename, ext)
                     if filename_withext not in filelist:
                         thispath = Path(searchfolder, filename_withext)
                         if thispath.exists():
@@ -699,10 +704,18 @@ def readnoncommentline(file: t.IO[str]) -> str:
     raise EOFError(msg)
 
 
-@lru_cache(maxsize=24)
 def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
-    """Return a dict of metadata for a file, either from a metadata file or from the big combined metadata file."""
-    filepath = Path(filepath)
+    """Return a dict of metadata for a file, either from a metadata file or from the big combined metadata file.
+
+    The absolute path goes to the cache, because a relative path names a different file after the user changes the
+    working folder.
+    """
+    return get_file_metadata_cached(resolve_modelpath(filepath))
+
+
+@lru_cache(maxsize=24)
+def get_file_metadata_cached(filepath: Path) -> dict[str, t.Any]:
+    """Return the metadata of the file at an absolute path, and keep it for the next caller."""
 
     def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
         if "a_v" in metadata and "e_bminusv" in metadata and "r_v" not in metadata:
@@ -723,7 +736,8 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
     if individualmetafile.exists():
         with individualmetafile.open("r", encoding="utf-8") as yamlfile:
-            metadata = yaml.safe_load(yamlfile)
+            # a file of comments alone gives None
+            metadata = yaml.safe_load(yamlfile) or {}
 
         return add_derived_metadata(metadata)
 
@@ -731,8 +745,9 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     combinedmetafile = Path(filepath.parent.resolve(), "metadata.yml")
     if combinedmetafile.exists():
         with combinedmetafile.open("r", encoding="utf-8") as yamlfile:
-            combined_metadata = yaml.safe_load(yamlfile)
-        metadata = combined_metadata.get(str(filepath), {})
+            combined_metadata = yaml.safe_load(yamlfile) or {}
+        # the file sits beside the data files, thus a key can hold the name of the file alone
+        metadata = combined_metadata.get(str(filepath)) or combined_metadata.get(filepath.name) or {}
 
         return add_derived_metadata(metadata)
 
@@ -869,6 +884,15 @@ def get_file_identity(file: Path | os.stat_result) -> tuple[int, int] | None:
         return None
 
     return (filestat.st_dev, filestat.st_ino)
+
+
+def get_file_state(path: Path) -> tuple[int, int, int, int]:
+    """Return the device, the inode, the modification time, and the size of a file, for the key of a cache.
+
+    A rewrite in place changes the time or the size, and a rename onto the path changes the device or the inode.
+    """
+    filestat = path.stat()
+    return (filestat.st_dev, filestat.st_ino, filestat.st_mtime_ns, filestat.st_size)
 
 
 def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple[int, int] | None) -> None:
@@ -1079,7 +1103,7 @@ def write_parquet_atomic(
     metadata: dict[str, str] | None = None,
     replaces: tuple[int, int] | None = None,
 ) -> None:
-    """Write a zstd-compressed parquet file through a temporary file, so a partial write is never mistaken for a complete file.
+    """Write a parquet file with zstd compression through a temporary file, thus no reader sees a partial file.
 
     A parquet file that another process wrote while this one worked is kept, and this copy of the same data
     is discarded. polars opens a parquet file again by its path between reading the metadata and reading the

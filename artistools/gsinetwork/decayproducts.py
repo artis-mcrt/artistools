@@ -1,4 +1,7 @@
-"""Script to load beta-decay (beta- and beta+) energy release data from nucleosynthesis trajectories. Optionally also writes output to parquet files."""
+"""Read the energy release of the beta decays (beta- and beta+) from the nucleosynthesis trajectories.
+
+The script can also write the data to parquet files.
+"""
 
 import argparse
 import math

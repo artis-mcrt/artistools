@@ -25,6 +25,7 @@ from artistools.misc import extra_csv_columns_ignored
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_identity
+from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
@@ -40,6 +41,7 @@ from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.fileio import read_parquet_cache_metadata
+from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
 
@@ -95,10 +97,18 @@ columns_full = [
 ]
 
 
-@lru_cache(maxsize=16)
 def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
-    """Return the packet column names parsed from the ARTIS source in the model folder, or None if it is absent."""
-    modelpath = Path(modelpath)
+    """Return the packet column names parsed from the ARTIS source in the model folder, or None if it is absent.
+
+    The absolute path goes to the cache, because a cache of the relative default path keeps the first answer after
+    the user changes the working folder.
+    """
+    return get_column_names_artiscode_cached(resolve_modelpath(modelpath))
+
+
+@lru_cache(maxsize=16)
+def get_column_names_artiscode_cached(modelpath: Path) -> list[str] | None:
+    """Return the names of the packet columns of the ARTIS source at an absolute model path, and keep them."""
     if Path(modelpath, "artis").is_dir():
         print("detected artis code directory")
         packet_properties: list[str] = []
@@ -171,7 +181,7 @@ def get_emission_velocity_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
 
 
 def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
-    """Return the velocity [cm/s] of the last interaction (em) or of the last thermal emission (trueem) along the packet direction.
+    """Return the line-of-sight velocity [cm/s] of the last interaction (em) or the last thermal emission (trueem).
 
     The packet direction at the escape is the line of sight of the observer of that packet. The
     velocity is the homologous velocity of the position, thus a positive value means motion toward
@@ -185,9 +195,16 @@ def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) 
 
 
 def get_modelgridindex_from_velocity_expr(velocity: pl.Expr, dfmodel: pl.LazyFrame) -> pl.Expr:
-    """Return the index of the cell of a 1D model that holds a radial velocity [cm/s]."""
+    """Return the index of the cell of a 1D model that holds a radial velocity [cm/s], or null outside the grid.
+
+    A cell holds the velocities from its inner edge up to its outer edge, and the outer edge belongs to the next
+    cell. A velocity of NaN gives null. A cut alone gave the index -1 to a velocity of zero and the index of a cell
+    that does not exist to a velocity above the outer edge of the grid.
+    """
     velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
-    return velocity.cut(breaks=velbins).to_physical().cast(pl.Int32) - 1
+    # the first category of cut() holds the values below the first edge, thus the first cell has the index 1
+    index = velocity.cut(breaks=velbins, left_closed=True).to_physical().cast(pl.Int32) - 1
+    return pl.when(index.is_between(0, len(velbins) - 2)).then(index)
 
 
 def get_modelgridindex_expr(
@@ -228,7 +245,7 @@ def get_modelgridindex_expr(
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: Path | str) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
-    We might as well add everything, since the columns only get calculated when they are actually used (polars LazyFrame).
+    The function adds all the columns, because a LazyFrame calculates a column only when a query uses it.
     """
     dfmodel, modelmeta = get_modeldata(modelpath=modelpath)
     timebins = [tstart * day_to_s for tstart in get_timestep_times(modelpath, loc="start")] + [
@@ -508,7 +525,10 @@ def get_packets_rankbatch_parquetfile(
     virtual: bool,
     folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None,
 ) -> Path:
-    """Get the path to a parquet file containing packets for a specific batch of MPI ranks. If the file does not exists or is outdated, generate it first from the text files."""
+    """Return the path of the parquet file of the packets of a batch of MPI ranks.
+
+    If the file does not exist or is outdated, the function first makes it from the text files.
+    """
     modelpath = Path(modelpath)
     strpacket = "vpackets" if virtual else "packets"
     packetdir = Path(modelpath, strpacket)
@@ -573,8 +593,14 @@ def get_packets_rankbatch_parquetfile(
         time_start_load = time.perf_counter()
         print(f"  generating {parquetfilepath.relative_to(modelpath)}...")
 
+        # the check of the cache scanned each folder one time, thus the scan gives the files. A search of each file
+        # ran a glob of every subfolder for each rank. A file that the scan did not find gives the error of
+        # firstexisting, which names each form of the file that it looked for
+        textsources = find_packets_textsources(modelpath, text_filenames, folderlistings)
         text_file_paths = [
-            firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
+            Path(textsources[filename].path)
+            if filename in textsources
+            else firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
             for filename in text_filenames
         ]
 
@@ -681,8 +707,8 @@ def find_first_rank_textfiles(
 
 def get_packets_cache_fingerprint(
     modelpath: Path, mpirank_groups: Sequence[tuple[int, tuple[int, ...]]], virtual: bool
-) -> tuple[tuple[int, ...], tuple[tuple[int, int] | None, ...]] | None:
-    """Return the modification time of the first text file of each batch, and the identity of each cache.
+) -> tuple[tuple[int, ...], tuple[tuple[int, int, int, int] | None, ...]] | None:
+    """Return the modification time of the first text file of each batch, and the state of each cache.
 
     The check of a batch reads the first text file and the cache. Thus a change to one of the two files changes
     this value. The function returns None if a folder of the last scan changed, or if a text file of the last scan
@@ -697,15 +723,15 @@ def get_packets_cache_fingerprint(
         textmtimes = tuple(path.stat().st_mtime_ns for path in firsttextfiles)
     except FileNotFoundError:
         return None
-    cachestats: list[tuple[int, int] | None] = []
+    cachestates: list[tuple[int, int, int, int] | None] = []
     for batchindex, batch_mpiranks in mpirank_groups:
         try:
-            cachestat = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual).stat()
+            cachestates.append(
+                get_file_state(get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual))
+            )
         except FileNotFoundError:
-            cachestats.append(None)
-        else:
-            cachestats.append((cachestat.st_ino, cachestat.st_mtime_ns))
-    return textmtimes, tuple(cachestats)
+            cachestates.append(None)
+    return textmtimes, tuple(cachestates)
 
 
 def get_packets_batch_parquet_paths(
@@ -744,7 +770,7 @@ def check_packets_batch_parquet_paths(
     modelpath: Path,
     maxpacketfiles: int | None,
     virtual: bool,
-    fingerprint: tuple[tuple[int, ...], tuple[tuple[int, int] | None, ...]],  # ruff:ignore[unused-function-argument]
+    fingerprint: tuple[tuple[int, ...], tuple[tuple[int, int, int, int] | None, ...]],  # ruff:ignore[unused-function-argument]
 ) -> tuple[int, tuple[Path, ...]]:
     """Return the number of ranks and the parquet caches of the batches, and make each outdated cache.
 
@@ -971,9 +997,10 @@ def bin_packet_directions_polars(
 def filter_packets_dirbin(
     dfpackets: pl.LazyFrame, dirbin: int, average_over_phi: bool = False, average_over_theta: bool = False
 ) -> tuple[pl.LazyFrame, float]:
-    """Filter packets to a viewing direction bin, returning the filtered frame and the solid-angle factor (4 pi / solidangle).
+    """Return the packets of a viewing direction bin, and the solid angle factor (4 pi / solidangle).
 
-    dirbin -1 selects all directions. When averaging over phi or theta angle, dirbin must be the first bin of its averaging group.
+    dirbin -1 selects all directions. For an average over the phi angle or the theta angle, dirbin must be the first
+    bin of its group of the average.
     """
     if dirbin == -1:
         return dfpackets, 1.0

@@ -226,7 +226,7 @@ def read_griddat_file(
     return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
 
 
-def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float) -> pl.DataFrame:
+def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float, wid_init_cm: float) -> pl.DataFrame:
     """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16."""
     print(griddata)
 
@@ -241,9 +241,14 @@ def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float) -> pl.Dat
     density_hole = (mass_integrated * MSUN) / vol_hole  # g / cm^3
     print(density_hole)
 
-    # cells with velocity below 0.1 c get the hole density added and a Ye floor of 0.4
+    # cells with a centre velocity below 0.1 c get the hole density added and a Ye floor of 0.4. The centre
+    # and not the lower edge sets the velocity, because the lower edge makes the hole asymmetric about the origin
     inhole = (
-        (pl.col("pos_x_min") ** 2 + pl.col("pos_y_min") ** 2 + pl.col("pos_z_min") ** 2).sqrt()
+        (
+            (pl.col("pos_x_min") + wid_init_cm / 2) ** 2
+            + (pl.col("pos_y_min") + wid_init_cm / 2) ** 2
+            + (pl.col("pos_z_min") + wid_init_cm / 2) ** 2
+        ).sqrt()
         / (t_model_in_days * (24.0 * 3600))
         / CLIGHT
     ) < 0.1
@@ -279,7 +284,7 @@ def makemodelfromgriddata(
     )
 
     if fillcentralhole:
-        dfmodel = add_mass_to_center(dfmodel, t_model_days)
+        dfmodel = add_mass_to_center(dfmodel, t_model_days, modelmeta["wid_init_x"])
 
     dfgridcontributions = get_gridparticlecontributions_or_none(gridfolderpath)
 

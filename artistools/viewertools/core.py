@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import dataclasses as dc
 import io
 import re
 import sys
@@ -76,16 +77,12 @@ DEFAULT_PLAY_FPS: t.Final = 2.0
 
 
 def get_command_tokens(
-    argsraw: "Sequence[str] | None",
-    kwargs: "Mapping[str, t.Any]",
-    *,
-    fromdispatcher: bool,
-    dispatcherargsraw: "Sequence[str] | None",
+    args: argparse.Namespace, argsraw: "Sequence[str] | None", kwargs: "Mapping[str, t.Any]", *, fromdispatcher: bool
 ) -> list[str]:
     """Return the arguments that the user gave to the command, without the name of the command.
 
     The dispatcher gives the parsed arguments alone. The tokens then come from the words of a call from Python code
-    (dispatcherargsraw, which start with the subcommand), or else from sys.argv. A script for one command, e.g.
+    (args.dispatcherargsraw, which start with the subcommand), or else from sys.argv. A script for one command, e.g.
     plotartisspectrum, takes no word for the subcommand.
     """
     if kwargs:
@@ -97,7 +94,7 @@ def get_command_tokens(
     if argsraw is not None:
         return list(argsraw)
 
-    if dispatcherargsraw is not None:
+    if (dispatcherargsraw := getattr(args, "dispatcherargsraw", None)) is not None:
         return list(dispatcherargsraw[1:])
 
     if not fromdispatcher:
@@ -436,6 +433,24 @@ def split_argstrings(parser: "SuggestingArgumentParser", tokens: "Sequence[str]"
     return argstrings
 
 
+def count_option_values(action: argparse.Action, argstrings: "Sequence[str]", index: int) -> int:
+    """Return the number of tokens from index that are the values of the option of this action.
+
+    An option of nargs None or of a number takes that many tokens. An option of nargs "?" takes one value, and an
+    option of nargs "*" or "+" takes each value up to the next flag.
+    """
+    if action.nargs == 0:
+        return 0
+    if action.nargs is None or isinstance(action.nargs, int):
+        count = 1 if action.nargs is None else action.nargs
+        return min(count, len(argstrings) - index)
+    maxvalues = 1 if action.nargs == "?" else len(argstrings)
+    count = 0
+    while count < maxvalues and index + count < len(argstrings) and not is_flag(argstrings[index + count]):
+        count += 1
+    return count
+
+
 def remove_options(parser: "SuggestingArgumentParser", tokens: "Sequence[str]", dests: "Collection[str]") -> list[str]:
     """Return the tokens without the options of these dests and without the values of those options."""
     argstrings = split_argstrings(parser, tokens)
@@ -453,18 +468,8 @@ def remove_options(parser: "SuggestingArgumentParser", tokens: "Sequence[str]", 
             kept.append(argstring)
             continue
 
-        if holdsvalue or action.nargs == 0:
-            continue
-
-        if action.nargs is None:
-            index += 1
-            continue
-
-        # an option of nargs "?" takes one value, and an option of nargs "*" or "+" takes each value up to the next flag
-        maxvalues = 1 if action.nargs == "?" else len(argstrings)
-        while maxvalues and index < len(argstrings) and not is_flag(argstrings[index]):
-            index += 1
-            maxvalues -= 1
+        if not holdsvalue:
+            index += count_option_values(action, argstrings, index)
 
     return kept
 
@@ -545,18 +550,9 @@ def split_option_rows(parser: "SuggestingArgumentParser", tokens: "Sequence[str]
         if holdsvalue:
             _, equals, value = argstring.partition("=")
             values.append(value if equals else argstring[2:])
-        elif action.nargs is None or isinstance(action.nargs, int):
-            count = 1 if action.nargs is None else action.nargs
-            values.extend(argstrings[index : index + count])
         else:
-            # an option of nargs "?" takes one value, and an option of nargs "*" or "+" takes each value up to the
-            # next flag
-            maxvalues = 1 if action.nargs == "?" else len(argstrings)
-            while len(values) < maxvalues and index + len(values) < len(argstrings):
-                if is_flag(argstrings[index + len(values)]):
-                    break
-                values.append(argstrings[index + len(values)])
-        index += 0 if holdsvalue else len(values)
+            values.extend(argstrings[index : index + count_option_values(action, argstrings, index)])
+            index += len(values)
         rows.append((action.option_strings[0], tuple(values)))
 
     return tuple(rows), othertokens
@@ -719,6 +715,33 @@ def get_nearest_range_start(tmids: "Sequence[float]", centre: float, count: int)
         return abs((tmids[start] + tmids[start + count - 1]) / 2.0 - centre)
 
     return min(range(len(tmids) - count + 1), key=get_centre_offset)
+
+
+class PlotValues(t.Protocol):
+    """The values of the controls of a viewer: a dataclass with the width and the resolution of the figure."""
+
+    __dataclass_fields__: t.ClassVar[dict[str, "dc.Field[t.Any]"]]
+
+    @property
+    def figwidthscale(self) -> float:
+        """The -figwidthscale of the values."""
+
+    @property
+    def dpi(self) -> int | None:
+        """The -dpi of the values, or None for the default of the command."""
+
+
+def keep_figwidthscale[ValuesT: PlotValues](restored: ValuesT, current: ValuesT) -> ValuesT:
+    """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
+    return dc.replace(restored, figwidthscale=current.figwidthscale)
+
+
+def get_yscale_choices(parser: argparse.ArgumentParser) -> list[str]:
+    """Return the choices of -yscale for a box of a viewer.
+
+    The alias "lin" gives the same scale as "linear", thus it has no item.
+    """
+    return [str(choice) for choice in get_actions_by_flag(parser)["-yscale"].choices or () if choice != "lin"]
 
 
 def get_fitted_figwidthscale(

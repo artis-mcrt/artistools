@@ -22,9 +22,10 @@ const ELSYMBOLS: [&str; 119] = [
     "Uut", "Fl", "Uup", "Lv", "Uus", "Uuo",
 ];
 
-const ROMAN: [&str; 17] = [
+/// The roman numeral of each ion stage. The table must agree with `roman_numerals` in artistools/atomic/core.py
+const ROMAN: [&str; 21] = [
     "", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV",
-    "XV", "XVI",
+    "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
 ];
 
 /// Split a line into (name, value) token pairs, ignoring an unpaired trailing token
@@ -278,7 +279,7 @@ fn parse_estimator_lines<S: AsRef<str>>(
     columns.into_dataframe()
 }
 
-/// Read a single ARTIS estimators*.out[.zst] file and return a `DataFrame`
+/// Read the estimator file of one MPI rank, e.g. `estimators_0000.out[.zst]`, and return a `DataFrame`
 fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> {
     let filepath = find_estimator_file(folderpath, rank).ok_or_else(|| {
         std::io::Error::new(
@@ -290,11 +291,7 @@ fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> 
         )
     })?;
 
-    parse_estimator_lines(
-        BufReader::new(open_decompressed(&filepath)?).lines(),
-        &filepath,
-        1,
-    )
+    read_estimator_text(&filepath)
 }
 
 /// Join the `DataFrame`s of the files of the ranks, or of the parts of one file, into one `DataFrame`
@@ -302,8 +299,12 @@ fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> 
 /// Within one file, `EstimatorColumns` gives a zero to a cell that does not write a quantity, e.g. the ion of an
 /// element that the cell does not hold. A diagonal join gives a null to the rows of a file or a part that does not
 /// write the quantity at all. The boundaries of the ranks and of the parts are arbitrary, thus a zero replaces each
-/// such null, and both forms of the text give the same values.
+/// such null, and both forms of the text give the same values. No frame gives a frame with no column.
 fn concat_estimator_frames(vecdfs: &[DataFrame]) -> PolarsResult<DataFrame> {
+    if vecdfs.is_empty() {
+        // concat_df_diagonal panics on no frame. A text with no complete cell gives no part
+        return EstimatorColumns::default().into_dataframe();
+    }
     polars::functions::concat_df_diagonal(vecdfs)?.fill_null(FillNullStrategy::Zero)
 }
 
@@ -320,6 +321,9 @@ pub fn estimparse(
 ) -> PyResult<PyDataFrame> {
     let dfbatch = py
         .detach(|| {
+            if rankmin > rankmax {
+                polars_bail!(ComputeError: "the rank range {rankmin} to {rankmax} holds no rank");
+            }
             let vecdfs: Vec<DataFrame> = (rankmin..=rankmax)
                 .into_par_iter()
                 .map(|rank| read_estimator_file(&folderpath, rank))
@@ -332,8 +336,8 @@ pub fn estimparse(
     Ok(PyDataFrame(dfbatch))
 }
 
-/// The minimum size of the text of one part of the estimator file of all ranks. One thread parses each part.
-const ALLRANKS_PART_BYTES: usize = 16 * 1024 * 1024;
+/// The minimum size of the text of one part of an estimator file. One thread parses each part.
+const TEXTPART_BYTES: usize = 16 * 1024 * 1024;
 
 /// A part of an estimator text, and the line number of its first line in the file
 struct TextPart {
@@ -378,7 +382,7 @@ impl<R: BufRead> Iterator for TextParts<R> {
                         .is_some_and(|line| line.trim().is_empty());
                     if lineisempty {
                         cellsend = text.len();
-                        if text.len() >= ALLRANKS_PART_BYTES {
+                        if text.len() >= TEXTPART_BYTES {
                             break;
                         }
                     }
@@ -394,41 +398,44 @@ impl<R: BufRead> Iterator for TextParts<R> {
     }
 }
 
+/// Read an estimator text, which is the file of one rank or the file of all ranks, and return a `DataFrame`
+///
+/// The threads parse the parts of the text in parallel, and the rows keep the order of the file. A text that does
+/// not end with an empty line ends inside a cell, e.g. because a job stopped during the write. The reader drops
+/// that cell in both forms of the text, thus a zero never stands for a value that the text does not hold.
+fn read_estimator_text(filepath: &Path) -> PolarsResult<DataFrame> {
+    let parts = TextParts {
+        reader: BufReader::new(open_decompressed(filepath)?),
+        nextlinenum: 1,
+        finished: false,
+    };
+    let mut indexeddfs: Vec<(usize, DataFrame)> = parts
+        .enumerate()
+        .par_bridge()
+        .map(|(partindex, part)| {
+            let part = part?;
+            let dfpart = parse_estimator_lines(
+                part.text.lines().map(Ok::<_, std::io::Error>),
+                filepath,
+                part.firstlinenum,
+            )?;
+            Ok((partindex, dfpart))
+        })
+        .collect::<PolarsResult<_>>()?;
+
+    indexeddfs.sort_unstable_by_key(|(partindex, _)| *partindex);
+    let vecdfs: Vec<DataFrame> = indexeddfs.into_iter().map(|(_, dfpart)| dfpart).collect();
+    concat_estimator_frames(&vecdfs)
+}
+
 /// Read the estimator file of all ranks, e.g. `estimators_allranks.out.zst`, and return a `DataFrame`
 ///
-/// ARTIS writes this file in place of one file for each rank. The threads parse the parts of the text in
-/// parallel, and the rows keep the order of the file. The parse runs without the GIL.
+/// ARTIS writes this file in place of one file for each rank. The parse runs without the GIL.
 #[pyfunction]
 #[expect(clippy::needless_pass_by_value)]
 pub fn estimparse_allranks(py: Python<'_>, filepath: PathBuf) -> PyResult<PyDataFrame> {
     let dfallranks = py
-        .detach(|| {
-            let parts = TextParts {
-                reader: BufReader::new(open_decompressed(&filepath)?),
-                nextlinenum: 1,
-                finished: false,
-            };
-            let mut indexeddfs: Vec<(usize, DataFrame)> = parts
-                .enumerate()
-                .par_bridge()
-                .map(|(partindex, part)| {
-                    let part = part?;
-                    let dfpart = parse_estimator_lines(
-                        part.text.lines().map(Ok::<_, std::io::Error>),
-                        &filepath,
-                        part.firstlinenum,
-                    )?;
-                    Ok((partindex, dfpart))
-                })
-                .collect::<PolarsResult<_>>()?;
-
-            if indexeddfs.is_empty() {
-                return EstimatorColumns::default().into_dataframe();
-            }
-            indexeddfs.sort_unstable_by_key(|(partindex, _)| *partindex);
-            let vecdfs: Vec<DataFrame> = indexeddfs.into_iter().map(|(_, dfpart)| dfpart).collect();
-            concat_estimator_frames(&vecdfs)
-        })
+        .detach(|| read_estimator_text(&filepath))
         .map_err(PyPolarsErr::from)?;
 
     Ok(PyDataFrame(dfallranks))

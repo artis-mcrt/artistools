@@ -497,6 +497,10 @@ def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int |
     except FileNotFoundError:
         print_warning("No deposition.out file found. Assuming all timesteps have been computed")
         nts_last = len(t_end) - 1
+    except AssertionError as exc:
+        # only the energy rates need deposition.out, thus a file of a different run stops no light curve plot
+        print_warning(f"{exc}. Assuming all timesteps have been computed")
+        nts_last = len(t_end) - 1
 
     assert isinstance(nts_last, int)
     nts_last_tend = t_end[nts_last]

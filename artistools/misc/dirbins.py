@@ -104,7 +104,10 @@ def check_averaging_angles(average_over_phi: bool, average_over_theta: bool) -> 
 
 
 def get_dirbins(average_over_phi: bool = False, average_over_theta: bool = False) -> list[int]:
-    """Return the viewing direction bin indices, reduced to the first bin of each averaging group when averaging over phi or theta angle."""
+    """Return the indices of the viewing direction bins.
+
+    An average over the phi angle or the theta angle gives only the first bin of each group of the average.
+    """
     check_averaging_angles(average_over_phi, average_over_theta)
     if average_over_phi:
         return list(range(0, get_viewingdirectionbincount(), get_viewingdirection_phibincount()))

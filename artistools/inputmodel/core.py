@@ -35,6 +35,7 @@ from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.modelinfo import parse_npts_line
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
@@ -64,6 +65,16 @@ def is_writer_comment(commentline: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def has_single_space_separators(line: str) -> bool:
+    """Return True if one space separates each field of the line, and no space starts it.
+
+    A leading space, a tab, or a double space gives polars an empty field. The cell id then becomes
+    null, and each value moves one column to the right. The reader drops an empty field after the last value.
+    """
+    stripped = line.rstrip()
+    return stripped.split(" ") == stripped.split()
 
 
 def read_modelfile_text(
@@ -176,7 +187,7 @@ def read_modelfile_text(
         assert (ncols_line_even + ncols_line_odd) == len(columns)
         onelinepercellformat = False
 
-    if onelinepercellformat and "  " not in data_line_even and "  " not in data_line_odd:
+    if onelinepercellformat and all(has_single_space_separators(line) for line in (data_line_even, data_line_odd)):
         if not printwarningsonly:
             print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
@@ -554,16 +565,23 @@ def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
     return get_modeldata(modelpath, printwarningsonly=True)[1]
 
 
-# the viewer resolves -deltalogx smallestscale at each change, and the grid of a model does not change
-@lru_cache(maxsize=16)
-@on_model_host
-def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
+def get_spatial_scales(modelpath: Path | str) -> tuple[float, float, str]:
     """Return the smallest and the largest spatial scale of the model grid in velocity [cm/s], and a description.
 
     For a 1D model, the smallest and the largest spatial scale are the widths of the narrowest and the widest shell. For
     a 2D or 3D model, the smallest spatial scale is the smallest cell width along an axis. The largest spatial scale is
     the diagonal of a cell.
     """
+    # resolve the path before the cache. The default model path is the relative Path(".").
+    # A cache that holds the relative path keeps the first answer after the user changes the working folder
+    return get_spatial_scales_cached(resolve_modelpath(modelpath))
+
+
+# the viewer resolves -deltalogx smallestscale at each change, and the grid of a model does not change
+@lru_cache(maxsize=16)
+@on_model_host
+def get_spatial_scales_cached(modelpath: Path) -> tuple[float, float, str]:
+    """Return the spatial scales and the description of get_spatial_scales for the model at an absolute path."""
     dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax_cmps = float(modelmeta["vmax_cmps"])
     # wid_init_* is the cell width at t_model. A width divided by t_model gives the width in velocity
@@ -627,12 +645,12 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
 def get_modeldata(
     modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
-    """Read an artis model.txt file containing cell velocities, densities, and mass fraction abundances of radioactive nuclides.
+    """Read the velocities, the densities, and the mass fractions of the radioactive nuclides of the cells in model.txt.
 
     Returns dfmodel, modelmeta
         - dfmodel: a polars LazyFrame with a row for each cell, and the columns of the model file.
           add_derived_cols_to_modeldata adds the other columns, e.g. the volume and the mass of each cell.
-        - modelmeta: a dictionary of input model parameters, with keys such as t_model_init_days, vmax_cmps, dimensions, etc.
+        - modelmeta: a dictionary of the model parameters, e.g. the keys t_model_init_days, vmax_cmps, and dimensions.
 
     Parameters
     ----------
@@ -939,21 +957,24 @@ def save_modeldata(
     extracols: Sequence[str] = (),
     **kwargs: t.Any,
 ) -> None:
-    """Write an artis model.txt (density and composition snapshot) from a DataFrame/LazyFrame of cell properties and other metadata such as the time after explosion.
+    """Write model.txt, a snapshot of the density and the composition, from the cell properties and the metadata.
+
+    The metadata gives values such as the time after the explosion.
 
     1D
     -------
-    dfmodel must contain columns inputcellid, vel_r_max_kmps, logrho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    dfmodel must contain columns inputcellid, vel_r_max_kmps, logrho, X_Fegroup, X_Ni56, X_Co56, X_Fe52, X_Cr48
     modelmeta is not required
 
     2D
     -------
-    dfmodel must contain columns inputcellid, pos_rcyl_mid, pos_z_mid, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    dfmodel must contain columns inputcellid, pos_rcyl_mid, pos_z_mid, rho, X_Fegroup, X_Ni56, X_Co56, X_Fe52, X_Cr48
     modelmeta must define: vmax_cmps, ncoordgridrcyl and ncoordgridz
 
     3D
     -------
-    dfmodel must contain columns: inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56", X_Fe52, X_Cr48
+    dfmodel must contain columns inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56,
+    X_Fe52, X_Cr48
     modelmeta must define: vmax_cmps
 
     model.txt holds these comments:
@@ -1089,12 +1110,12 @@ def save_modeldata(
             ]).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 # write eight significant figures, because write_artis_csv gives the same precision to
-                # the other dimensions
+                # the other dimensions. A negative value keeps its sign, and NaN becomes zero
                 fmodel.write(
                     " ".join([
                         (
                             (f"{colvalue:d}" if isint else f"{colvalue:.7e}")
-                            if colvalue > 0
+                            if colvalue != 0 and not math.isnan(colvalue)
                             else ("0" if isint else "0.0")
                         )
                         for colvalue, isint in zip(abundandcustomcolvals, isintcol, strict=True)
@@ -1299,7 +1320,11 @@ def dimension_reduce_model(
     modelmeta: dict[str, t.Any] | None = None,
     **kwargs: t.Any,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
-    """Convert 3D Cartesian grid model to 1D spherical or 2D cylindrical. Particle gridcontributions and an elemental abundance table can optionally be updated to match."""
+    """Convert a 3D Cartesian grid model to a 1D spherical model or a 2D cylindrical model.
+
+    The function can also change the particle gridcontributions and the table of the elemental abundances to agree
+    with the new model.
+    """
     assert outputdimensions in {0, 1, 2}
 
     dfmodel = dfmodel.lazy()
@@ -1373,15 +1398,19 @@ def dimension_reduce_model(
     vel_r_bins = [vmax * n / ncoordgridr for n in range(ncoordgridr + 1)]
 
     col_vel_r = pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid")
+    # the bins are closed on the left, because the centre cell of an odd grid has a mid-point velocity of zero.
+    # A bin that is closed on the right puts that cell below the first bin, and the filter then drops its mass
     dfmodel_out = dfmodel_out.with_columns(
-        (col_vel_r.cut(breaks=vel_r_bins).to_physical().cast(pl.Int32) - 1).alias("out_n_r")
+        (col_vel_r.cut(breaks=vel_r_bins, left_closed=True).to_physical().cast(pl.Int32) - 1).alias("out_n_r")
     ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
 
     if outputdimensions == 2:
         dfmodel_out = (
             dfmodel_out
             .with_columns(
-                (pl.col("vel_z_mid").cut(breaks=vel_z_bins).to_physical().cast(pl.Int32) - 1).alias("out_n_z")
+                (pl.col("vel_z_mid").cut(breaks=vel_z_bins, left_closed=True).to_physical().cast(pl.Int32) - 1).alias(
+                    "out_n_z"
+                )
             )
             .filter(
                 pl.col("out_n_r").is_between(0, ncoordgridr - 1) & (pl.col("out_n_z").is_between(0, ncoordgridz - 1))

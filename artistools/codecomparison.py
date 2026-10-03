@@ -9,17 +9,19 @@ import math
 import typing as t
 from pathlib import Path
 
-import matplotlib.axes as mplax
 import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
 from artistools.commands import get_path
 from artistools.constants import megaparsec_to_cm
 from artistools.misc import read_wsv
+
+if t.TYPE_CHECKING:
+    import matplotlib.axes as mplax
 
 
 def split_codecomparison_path(modelpath: Path | str) -> tuple[Path, str, str]:
@@ -158,8 +160,10 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
                     iontuples = []
                     ion_startnumber = None
                     for ionstr in row[1:]:
-                        atomic_number = get_atomic_number(ionstr.strip().rstrip(" 0123456789").title())
-                        ion_number = int(ionstr.lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ "))
+                        # the header of some codes gives the symbol in lower case, e.g. "co2". The title case gives "Co2"
+                        iontuple = get_ion_tuple(ionstr.strip().title())
+                        assert isinstance(iontuple, tuple), f"the ion {ionstr} of the header has no stage"
+                        atomic_number, ion_number = iontuple
 
                         # there is unfortunately an inconsistency between codes for
                         # whether the neutral ion is called 0 or 1
@@ -220,7 +224,7 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
     return dfspectra, arr_timedays
 
 
-def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: mplax.Axes, **plotkwargs: t.Any) -> None:
+def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: "mplax.Axes", **plotkwargs: t.Any) -> None:
     """Plot a code comparison workshop model's spectrum at the time closest to timedays."""
     dfspectra, arr_timedays = get_spectra(modelpath)
     timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())

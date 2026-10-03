@@ -195,19 +195,9 @@ def get_expansion_opacities(
     dfsums = sum_binned_line_opacities(
         opacitylines.dflevels,
         opacitylines.dflines,
-        dfcells.select(
-            # the kernel skips an ion with no population, thus it does not use the temperature 0 of such a cell
-            pl.col("T_exc").cast(pl.Float64).fill_null(0.0),
-            # a null population or a null temperature gives no opacity
-            *(
-                pl
-                .when(pl.col("T_exc").is_not_null())
-                .then(pl.col(column).cast(pl.Float64))
-                .fill_null(0.0)
-                .alias(column)
-                for column in nnioncolumns
-            ),
-        ),
+        # the kernel gives no opacity to a cell with a T_exc of zero or below, and no opacity to an ion with no
+        # population. Thus a null temperature and a null population take a zero
+        dfcells.select(pl.col("T_exc", *nnioncolumns).cast(pl.Float64).fill_null(0.0)),
         nnioncolumns,
         numbins,
         K_B_ev_per_K,

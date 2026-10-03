@@ -1,4 +1,7 @@
-"""Prepare data for ARTIS KN calculation from end-to-end hydro models. Original script by Oliver Just with modifications by Gerrit Leck for abundance mapping."""
+"""Prepare the data for an ARTIS kilonova (KN) calculation from the end-to-end hydrodynamical models.
+
+Oliver Just wrote the original script, and Gerrit Leck changed it for the map of the abundances.
+"""
 
 import argparse
 import itertools
@@ -184,9 +187,10 @@ def get_grid(
         i += 1  # index in the new list accounting for unprocessed trajs.
         i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         mtraj[i] = np.sum(mass_arr[i3]) * msol
+        # qdot is a specific rate [erg/g/s], thus the merged pieces take the mass-weighted mean and not the sum
+        qdot_merged = np.average(qdot_arr[i3] + hnuloss_arr[i3], axis=0, weights=mass_arr[i3])
         qtraj[i] = np.trapezoid(
-            time_by_t_snap[starting_idx:snapshot_end_idx]
-            * np.sum((qdot_arr[i3] + hnuloss_arr[i3]), axis=0)[starting_idx:snapshot_end_idx],
+            time_by_t_snap[starting_idx:snapshot_end_idx] * qdot_merged[starting_idx:snapshot_end_idx],
             time_s[starting_idx:snapshot_end_idx],
         )
         tot_Q_rel += mtraj[i] * qtraj[i]
@@ -1118,19 +1122,21 @@ def apply_density_perturbations(
         x = np.linspace(-vmax + Delta_v / 2, vmax - Delta_v / 2, N_x)
         y = np.linspace(-vmax + Delta_v / 2, vmax - Delta_v / 2, N_x)
         z = np.linspace(-vmax + Delta_v / 2, vmax - Delta_v / 2, N_x)
-        x_mesh, _, z_mesh = np.meshgrid(x, y, z)
+        # the flattened meshgrid varies the last axis fastest, as the cell index of ARTIS varies x fastest
+        x_mesh, y_mesh, z_mesh = np.meshgrid(x, y, z)
         X = z_mesh.flatten()
         Y = x_mesh.flatten()
+        Zcoord = y_mesh.flatten()
         Z = np.tile(np.concatenate([np.ones(N_x**2, dtype=int), np.zeros(N_x**2, dtype=int)]), int(N_x / 2))
 
         # Radius
-        r = np.sqrt(X**2 + Y**2)
+        r = np.sqrt(X**2 + Y**2 + Zcoord**2)
 
         # Perturbation function, with a phase factor for z-coordinate (to avoid "sausages")
         pert_array = 1 + A * np.sin(np.pi * X / d) * np.sin(np.pi * Y / d) * (-1) ** (Z)
 
-        # Mask outside unit sphere
-        pert_array[r > 1] = 1
+        # a cell outside the sphere of radius vmax keeps its density. The coordinates are in units of c
+        pert_array[r > vmax] = 1
 
     elif pert_model[0] == "random":
         # apply a random perturbation to every 2D x-y slice. The default applies it to each cell,

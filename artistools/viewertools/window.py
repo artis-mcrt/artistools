@@ -1,5 +1,6 @@
 """Build a viewer window around its figure, and draw the plot in a worker thread."""
 
+import dataclasses as dc
 import math
 import time
 import traceback
@@ -70,6 +71,7 @@ if t.TYPE_CHECKING:
 
     from artistools.commands import SuggestingArgumentParser
     from artistools.viewertools.core import OptionRows
+    from artistools.viewertools.core import PlotValues
 
 
 def clear_output_caches() -> None:
@@ -77,10 +79,14 @@ def clear_output_caches() -> None:
 
     The files of the input of a run stay the same, e.g. input.txt and model.txt, thus their caches stay.
     """
+    from artistools.estimators.core import scan_parquet_file
+    from artistools.estimators.estimators_classic import read_classic_estimators_cached
+    from artistools.misc.modelinfo import get_nu_grid_cached
     from artistools.misc.modelinfo import get_runfolder_timesteps_cached
     from artistools.misc.timesteps import get_deposition_cached
     from artistools.misc.timesteps import get_escaped_arrivalrange_cached
     from artistools.misc.timesteps import get_timestep_times_cached
+    from artistools.nltepops.core import read_nltepops_cached
     from artistools.packets.core import check_packets_batch_parquet_paths
     from artistools.packets.core import find_first_rank_textfiles
     from artistools.spectra.core import get_flux_contributions_cached
@@ -95,6 +101,7 @@ def clear_output_caches() -> None:
         has_gamma_spec_file,
         run_has_direction_data,
         get_runfolder_timesteps_cached,
+        get_nu_grid_cached,
         get_deposition_cached,
         get_escaped_arrivalrange_cached,
         get_timestep_times_cached,
@@ -105,6 +112,10 @@ def clear_output_caches() -> None:
         read_spec_cached,
         read_spec_res_cached,
         read_specpol_res_cached,
+        # a kept scan of a parquet cache also holds the metadata of its file, e.g. 8 MB for 5335 columns
+        scan_parquet_file,
+        read_classic_estimators_cached,
+        read_nltepops_cached,
     ):
         cachedfunction.cache_clear()
 
@@ -210,17 +221,15 @@ def add_command_sections(
     viewerwindow: ViewerWindow,
     viewer: "PlotViewer[t.Any]",
     parser: "SuggestingArgumentParser",
-    dpi: int | None,
     table: "tuple[Collection[str], OptionRows, Callable[[OptionRows], None]]",
 ) -> CommandSections:
     """Add the Figure section, the table of the other options, the command, the Python code, and the status bar.
 
-    dpi is the -dpi of the values, or None for the default. table gives the options that the table hides, the rows of
-    the table, and the function that receives new rows.
+    table gives the options that the table hides, the rows of the table, and the function that receives new rows.
     """
     window, panellayout = viewerwindow.window, viewerwindow.panellayout
     defaultdpi: int = parser.get_default("dpi")
-    figuresection = add_figure_section(window, panellayout, dpi or defaultdpi)
+    figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
     _, optiongrid = add_section(panellayout, "Other options")
     hiddendests, rows, on_rows = table
     optiontable, set_option_rows = make_option_table(window, parser, hiddendests, rows, on_rows)
@@ -242,33 +251,32 @@ def add_command_sections(
     )
 
 
-def finish_viewer_window(
+def finish_viewer_window[ValuesT: PlotValues](
     viewerwindow: ViewerWindow,
     windows: "list[QtWidgets.QMainWindow]",
-    viewer: "PlotViewer[t.Any]",
-    queue: "DrawQueue[t.Any]",
-    get_command: "Callable[[], str]",
+    viewer: "PlotViewer[ValuesT]",
+    queue: "DrawQueue[ValuesT]",
     get_session_tokens: "Callable[[], list[str]]",
-    fit: "tuple[Callable[[float, float], float], Callable[[], float], Callable[[float], None]]",
     on_closed: "Callable[[], None] | None" = None,
 ) -> None:
     """Connect the parts that each window of a viewer has, then show the window.
 
-    - get_session_tokens gives the command that opens the window again at the next start.
-    - fit gives the -figwidthscale that fills an area, the current -figwidthscale, and the function that sets a new
-      one. The window sets it, thus Undo does not return to an old width.
-    - on_closed runs when the window closes, e.g. to clear the caches of a run.
+    get_session_tokens gives the command that opens the window again at the next start. on_closed runs when the window
+    closes, e.g. to clear the caches of a run.
     """
     window, canvas, plotarea = viewerwindow.window, viewerwindow.canvas, viewerwindow.plotarea
-    get_fitted, get_figwidthscale, set_figwidthscale = fit
 
     def fit_figwidthscale() -> None:
-        figwidthscale = get_new_figwidthscale(plotarea, viewer.figsize, get_figwidthscale(), get_fitted)
+        values = viewer.values
+        figwidthscale = get_new_figwidthscale(
+            plotarea, viewer.figsize, values.figwidthscale, viewer.get_fitted_figwidthscale
+        )
+        # the window sets the width, thus the change is not undoable, and Undo does not return to an old width
         if figwidthscale is not None:
-            set_figwidthscale(figwidthscale)
+            queue.apply(dc.replace(values, figwidthscale=figwidthscale), undoable=False)
 
     def on_window_closed() -> None:
-        print(get_command())
+        print(viewer.get_command())
         queue.close()
         if on_closed is not None:
             on_closed()
@@ -314,6 +322,15 @@ class PlotViewer[ValuesT](t.Protocol):
     warning: str
     # the background and the foreground of the plot in Dark Mode, or None for the usual colours
     darkcolours: tuple[str, str] | None
+
+    def get_plot_tokens(self, values: ValuesT | None = None) -> list[str]:
+        """Return the arguments of the command for the values, or for the current values if values is None."""
+
+    def get_command(self) -> str:
+        """Return the command that draws the plot of the current values."""
+
+    def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
+        """Return the -figwidthscale that gives the figure the shape of a plot area of this width and height."""
 
 
 def render_command[PlotT](
@@ -495,6 +512,11 @@ class DrawQueue[ValuesT]:
         self.viewer.values = values
         self.redraw()
 
+    def show_error(self, message: str) -> None:
+        """Show the reason that the viewer rejects a change of the user, and show the values of the viewer again."""
+        show_status_message(self.statusbar, message, "")
+        self.show_values()
+
     def can_undo(self) -> bool:
         """Return whether Undo has values that differ from the current values."""
         return any(changes_values(values, self.viewer.values, self.keep_on_undo) for values in self.undovalues)
@@ -583,9 +605,11 @@ class DrawQueue[ValuesT]:
                 break
         self.pendinghistory.clear()
         self.lastchangetime = -math.inf
-        self.busytimer.stop()
-        set_plot_busy(self.window, busy=False)
-        self.statusbar.drawtime.setText("Plot cancelled")
+        # a task, e.g. Reload Data, continues in the worker thread, thus its spinner and its status text stay
+        if self.task is None:
+            self.busytimer.stop()
+            set_plot_busy(self.window, busy=False)
+            self.statusbar.drawtime.setText("Plot cancelled")
         self.show_values()
 
     def show_rendered(self) -> None:
@@ -593,15 +617,15 @@ class DrawQueue[ValuesT]:
 
         The task or the plot that waits then starts.
         """
+        future = self.rendering if self.rendering is not None else self.taskfuture
+        if future is not None and not future.done():
+            return
+        # the timer stops first, because after_draw or on_done can call run_task, which starts the timer again
+        self.rendertimer.stop()
         if self.rendering is not None:
-            if not self.rendering.done():
-                return
             self.show_rendered_plot(self.rendering)
         elif self.taskfuture is not None:
-            if not self.taskfuture.done():
-                return
             self.end_task(self.taskfuture)
-        self.rendertimer.stop()
         # a task waits for the plot in progress, and the newer values of the user wait for the task
         if self.task is not None and self.taskfuture is None:
             self.start_task()

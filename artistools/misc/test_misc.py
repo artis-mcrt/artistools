@@ -426,8 +426,7 @@ def test_add_cli_arg_helper_variants() -> None:
     at.misc.addarg_modelgridindex(parserrepeat)
     argsrepeat = parserrepeat.parse_args(["-ts", "5", "-ts", "6", "-mgi", "3", "-mgi", "5-7"])
     assert argsrepeat.timestep == "5,6"
-    assert argsrepeat.modelgridindex == "3,5-7"
-    assert at.misc.parse_range_list(argsrepeat.modelgridindex) == [3, 5, 6, 7]
+    assert argsrepeat.modelgridindex == [3, 5, 6, 7]
     # one occurrence replaces the default and does not join to it
     assert parserrepeat.parse_args(["-ts", "5"]).timestep == "5"
 
@@ -435,6 +434,38 @@ def test_add_cli_arg_helper_variants() -> None:
     at.misc.addarg_modelpath(parserrequired, required=True)
     with pytest.raises(SystemExit):
         parserrequired.parse_args([])
+
+
+def test_the_cells_of_modelgridindex_are_a_list_from_every_source() -> None:
+    """The parser, the default, and a keyword argument each give -modelgridindex as a sorted list of cells.
+
+    The parser stored the text, thus each command expanded it again, and the defaults had four different types.
+    """
+    parser = argparse.ArgumentParser()
+    at.misc.addarg_modelgridindex(parser, default=[0])
+    assert parser.parse_args([]).modelgridindex == [0]
+    assert parser.parse_args(["-cell", "7-9", "-mgi", "4", "-cell", "8"]).modelgridindex == [4, 7, 8, 9]
+
+    for keywordvalue, expectedcells in ((5, [5]), ("0,2-3", [0, 2, 3]), ([6, 2], [2, 6])):
+        keywordparser = argparse.ArgumentParser()
+        at.misc.addarg_modelgridindex(keywordparser)
+        at.misc.set_args_from_dict(keywordparser, {"cell": keywordvalue})
+        assert keywordparser.parse_args([]).modelgridindex == expectedcells
+
+    assert at.misc.cliutils.format_range_list([9, 3, 4, 5, 7, 6, 12]) == "3-7,9,12"
+    assert at.misc.parse_range_list(at.misc.cliutils.format_range_list([-1, 0, 2])) == [-1, 0, 2]
+
+
+def test_the_old_spelling_of_the_phi_average_sets_the_phi_average(capsys: pytest.CaptureFixture[str]) -> None:
+    """--average_every_tenth_viewing_angle sets average_over_phi_angle, thus no command copies it to that dest."""
+    parser = argparse.ArgumentParser()
+    at.misc.addarg_viewingangle(parser)
+    args = parser.parse_args(["--average_every_tenth_viewing_angle"])
+    assert args.average_over_phi_angle
+    assert not hasattr(args, "average_every_tenth_viewing_angle")
+    assert "is deprecated" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--average_every_tenth_viewing_angle", "--average_over_theta_angle"])
 
 
 def test_legendcols_rejects_a_count_below_one() -> None:
@@ -1700,6 +1731,31 @@ def test_get_deposition(tmp_path: Path) -> None:
         at.get_deposition(longdir).collect()
 
 
+def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_different_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A deposition.out whose times do not match the timesteps gives the arrival range a warning, not a stop.
+
+    Only the energy rates need deposition.out, but the check of its times stopped every light curve plot of the model.
+    """
+    from artistools.misc import get_escaped_arrivalrange
+    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
+
+    modelcopy = tmp_path / "model"
+    modelcopy.mkdir()
+    for sourcefile in (at.get_path("testdata") / "testmodel").iterdir():
+        (modelcopy / sourcefile.name).symlink_to(sourcefile)
+    ntimesteps = len(at.get_timestep_times(modelcopy, loc="mid"))
+    deplines = ["#tmid_days gammadep_Lsun positrondep_Lsun total_dep_Lsun"]
+    deplines.extend(f"{999 + ts} 1.0 0.1 1.1" for ts in range(ntimesteps))
+    (modelcopy / "deposition.out").write_text("\n".join(deplines) + "\n")
+
+    get_escaped_arrivalrange_cached.cache_clear()
+    nts_last, _, _ = get_escaped_arrivalrange(modelcopy)
+    assert nts_last == ntimesteps - 1
+    assert "Deposition times do not match the timesteps. Assuming all timesteps" in capsys.readouterr().err
+
+
 def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatch) -> None:
     """Averaging must group bins by the phi bin count, which is only distinguishable when the two counts differ."""
     nphibins = 4
@@ -2616,3 +2672,104 @@ def test_remote_path_is_not_reference_data_and_needs_no_connection() -> None:
     """
     with mock.patch("artistools.misc.remote.call_on_host", side_effect=AssertionError("ssh started")):
         assert not at.misc.fileio.path_is_reference_data("nohost.invalid:/runs/model", "data/refspectra")
+
+
+def test_a_windows_drive_letter_is_no_remote_host() -> None:
+    """A path such as C:/Users/me/model names a drive, and not a host of one letter.
+
+    The pattern of a remote path read the drive letter as a host. Thus each absolute path on Windows went to ssh.
+    """
+    assert not remote.is_remote_path("C:/Users/me/model")
+    assert not remote.is_remote_path("C:\\Users\\me\\model")
+    assert not remote.names_a_remote_folder("C:/Users/me/model")
+    assert remote.split_remote_path("host:/path") == ("host", Path("/path"))
+    assert remote.split_remote_path("user@host:path") == ("user@host", Path("~/path"))
+    assert remote.split_remote_path("[::1]:path") == ("[::1]", Path("~/path"))
+
+
+def test_get_file_metadata_follows_the_working_folder_and_takes_an_empty_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The metadata of a relative path must change with the working folder, and a file of comments gives no metadata.
+
+    A cache held the relative path, thus a second file of the same name got the metadata of the first one. A file
+    of comments alone gave a TypeError, because yaml gives None for it.
+    """
+    for foldername, a_v in (("modelA", 1.0), ("modelB", 2.0)):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "ref.txt").write_text("data", encoding="utf-8")
+        (tmp_path / foldername / "ref.txt.meta.yml").write_text(f"a_v: {a_v}\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path / "modelA")
+    assert at.misc.get_file_metadata("ref.txt")["a_v"] == pytest.approx(1.0)
+    monkeypatch.chdir(tmp_path / "modelB")
+    assert at.misc.get_file_metadata("ref.txt")["a_v"] == pytest.approx(2.0)
+
+    (tmp_path / "empty.txt").write_text("data", encoding="utf-8")
+    (tmp_path / "empty.txt.meta.yml").write_text("# a comment alone\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(tmp_path / "empty.txt") == {}
+
+    combineddir = tmp_path / "combined"
+    combineddir.mkdir()
+    (combineddir / "spec.txt").write_text("data", encoding="utf-8")
+    (combineddir / "metadata.yml").write_text("# a comment alone\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(combineddir / "spec.txt") == {}
+    # the combined file sits beside the data file, thus a key can hold the name of the file alone
+    (combineddir / "metadata.yml").write_text(yaml.safe_dump({"spec.txt": {"a_v": 3.0}}), encoding="utf-8")
+    at.misc.fileio.get_file_metadata_cached.cache_clear()
+    assert at.misc.get_file_metadata(combineddir / "spec.txt")["a_v"] == pytest.approx(3.0)
+
+
+def test_get_mpiranklist_takes_a_numpy_array_of_cells() -> None:
+    """A numpy array of cells must give the same ranks as a list, and an empty array gives all the ranks.
+
+    A comparison of a numpy array with an empty list raises, thus the function stopped before it read the cells.
+    """
+    modelpath = at.get_path("testdata") / "testmodel"
+    assert list(at.misc.get_mpiranklist(modelpath, modelgridindex=np.array([0]))) == list(
+        at.misc.get_mpiranklist(modelpath, modelgridindex=[0])
+    )
+    assert list(at.misc.get_mpiranklist(modelpath, modelgridindex=np.array([], dtype=np.int64))) == list(
+        at.misc.get_mpiranklist(modelpath)
+    )
+
+
+def test_addarg_modelpath_positional_single_path_takes_the_option() -> None:
+    """A command with a positional path of one model must also accept -modelpath, and the path is not required.
+
+    The positional argument had no nargs, thus argparse made it required and the option could never stand in
+    for it.
+    """
+
+    def addargs(parser: argparse.ArgumentParser) -> None:
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=False)
+
+    assert parse_cli_args(addargs, "x", None, ["-modelpath", "mymodel"]).modelpath == Path("mymodel")
+    assert parse_cli_args(addargs, "x", None, ["mymodel"]).modelpath == Path("mymodel")
+    assert parse_cli_args(addargs, "x", None, []).modelpath is None
+
+
+def test_the_option_form_of_the_model_path_names_the_path_that_it_replaces(capsys: pytest.CaptureFixture[str]) -> None:
+    """The option form wins over the positional path in either order, and the user gets a warning.
+
+    The option stored its paths in place of the positional paths, thus a model that the user wrote went away with no
+    message. A positional path after the option replaced the option for a command of one path.
+    """
+
+    def addargs_many(parser: argparse.ArgumentParser) -> None:
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
+
+    def addargs_one(parser: argparse.ArgumentParser) -> None:
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=False)
+
+    for addargs, argsraw, expected in (
+        (addargs_many, ["model1", "-modelpath", "model2"], [Path("model2")]),
+        (addargs_many, ["-modelpath", "model2", "--quiet", "model1"], [Path("model2")]),
+        (addargs_one, ["model1", "-modelpath", "model2"], Path("model2")),
+        (addargs_one, ["-modelpath", "model2", "model1"], Path("model2")),
+    ):
+        assert parse_cli_args(addargs, "x", None, argsraw).modelpath == expected
+        assert "ignores the path 'model1'" in capsys.readouterr().err
+
+    assert parse_cli_args(addargs_one, "x", None, ["model1", "-modelpath", "model1"]).modelpath == Path("model1")
+    assert "ignores" not in capsys.readouterr().err
