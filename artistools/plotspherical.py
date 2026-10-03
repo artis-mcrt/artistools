@@ -37,6 +37,7 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import resolve_frameset_paths
+from artistools.misc.dirbins import get_phi_bin_edges_ascending
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import bin_packet_directions_polars
 from artistools.packets import get_packets
@@ -261,18 +262,49 @@ def bin_packets_by_direction(
     return alldirbins, condition
 
 
+def get_rows_across_pole(rows: npt.NDArray[np.float64], nphibins: int) -> npt.NDArray[np.float64]:
+    """Return the rows with each phi bin moved to phi + pi.
+
+    For an odd nphibins, phi + pi is the edge between two bins. Thus each bin gets the mean of these two bins.
+    """
+    rows_across = np.roll(rows, nphibins // 2, axis=1)
+    if nphibins % 2 == 1:
+        rows_across = 0.5 * (rows_across + np.roll(rows, nphibins // 2 + 1, axis=1))
+    return rows_across
+
+
 def smooth_direction_map(data: npt.NDArray[np.float64], sigma_bins: float, nphibins: int) -> npt.NDArray[np.float64]:
     """Return the map of (cos theta, phi) bins smoothed with a Gaussian of sigma_bins bins.
 
-    The phi axis wraps around. The cos theta axis does not wrap: the row beyond a pole is the row on the
-    other side of that pole, which is the same ring of cos theta bins at phi + pi. The pad holds these
-    rows, thus the filter, which wraps both axes, blends no pole with the opposite pole.
+    The phi axis wraps around, but the cos theta axis does not wrap. The row beyond a pole is the row on the
+    other side of that pole. That row is the same ring of cos theta bins at phi + pi. The pad holds these rows,
+    thus the filter, which wraps both axes, blends no pole with the opposite pole.
     """
     padrows = int(4.0 * sigma_bins + 0.5) + 1
     padded = np.pad(data, ((padrows, padrows), (0, 0)), mode="symmetric")
-    padded[:padrows] = np.roll(padded[:padrows], nphibins // 2, axis=1)
-    padded[-padrows:] = np.roll(padded[-padrows:], nphibins // 2, axis=1)
+    padded[:padrows] = get_rows_across_pole(padded[:padrows], nphibins)
+    padded[-padrows:] = get_rows_across_pole(padded[-padrows:], nphibins)
     return gaussian_filter_wrap(padded, sigma_bins)[padrows:-padrows]
+
+
+def get_map_columns(nphibins: int) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.int_]]:
+    """Return the longitude edges of the columns of the map, and the ascending phi bin of each column.
+
+    The longitude runs from -pi to +pi with phi = 0 at the centre, thus a phi above pi goes to the left half. For
+    an odd nphibins, one phi bin holds phi = pi. That bin gives the first column and the last column.
+    """
+    phiedges = get_phi_bin_edges_ascending(nphibins)
+    # compare the indices and not the angles, because the rounding error of an edge at pi can put it on either side
+    edgeindex = np.arange(nphibins + 1)
+    longitude_edges = np.concatenate((
+        [-np.pi],
+        phiedges[2 * edgeindex > nphibins] - 2 * np.pi,
+        phiedges[(edgeindex > 0) & (2 * edgeindex < nphibins)],
+        [np.pi],
+    ))
+    phibins = edgeindex[:-1]
+    column_phibins = np.concatenate((phibins[2 * (phibins + 1) > nphibins], phibins[2 * phibins < nphibins]))
+    return longitude_edges, column_phibins
 
 
 def plot_spherical(
@@ -291,10 +323,7 @@ def plot_spherical(
     """
     print(f"packets plotted: {dirbins.select('count').sum().item(0, 0):.1e}")
 
-    # phi bin j starts at 2 pi j / nphibins, and the Mollweide longitude runs from -pi to +pi with phi = 0
-    # at the centre. Thus the roll below moves the bins above pi to the left half of the map
-    phishift = nphibins // 2
-    phigrid = (np.arange(nphibins + 1, dtype=np.float64) - phishift) * 2 * np.pi / nphibins
+    phigrid, column_phibins = get_map_columns(nphibins)
     if phireverse:
         phigrid = -phigrid  # reverse the phi direction
 
@@ -326,9 +355,7 @@ def plot_spherical(
         if gaussian_sigma is not None and gaussian_sigma > 0:
             data = smooth_direction_map(data, gaussian_sigma / 360 * nphibins, nphibins)
 
-        colormesh = ax.pcolormesh(
-            meshgrid_phi, meshgrid_theta, np.roll(data, phishift, axis=1), rasterized=True, cmap=cmap
-        )
+        colormesh = ax.pcolormesh(meshgrid_phi, meshgrid_theta, data[:, column_phibins], rasterized=True, cmap=cmap)
 
         match plotvar:
             case "emlosvelocityoverc":

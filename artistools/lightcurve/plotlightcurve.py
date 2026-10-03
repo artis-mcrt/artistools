@@ -623,9 +623,8 @@ def plot_artis_lightcurve(
             lcdataframes = scan_lightcurve(
                 lcpath,
                 directionresolved=directionresolved,
-                # the angle average of bin -1 is the mean over every direction already
-                average_over_phi=average_over_phi and directionresolved,
-                average_over_theta=average_over_theta and directionresolved,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
             )
         except ValueError as exc:
             exit_with_error(
@@ -1240,12 +1239,13 @@ def plot_hesma_lightcurve(
 ) -> None:
     """Draw each band of the HESMA model of -plot_hesma_model on the panel of that band.
 
-    The first column of the file holds the time, and a column with the name of a band holds its magnitudes.
+    The first column of the file holds the time, and a column with the name of a band holds its magnitudes. The grid
+    of panels can hold more panels than bands, e.g. six panels for four bands.
     """
     hesma_model = read_hesma_lightcurve(args)
     timecolumn = hesma_model.columns[0]
     label = Path(args.plot_hesma_model).stem
-    for axis, band_name in zip(axes, bandnames, strict=True):
+    for axis, band_name in zip(axes[: len(bandnames)], bandnames, strict=True):
         if band_name in hesma_model.columns:
             axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
     if residualseries is not None:
@@ -1863,40 +1863,74 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
-def check_cmf_args(args: argparse.Namespace) -> None:
-    """Stop --plotcmf with --magnitude, and drop it with a warning for the virtual packet observers.
+class RefusedOption(t.NamedTuple):
+    """An option that plotlightcurves refuses together with a different option of the command."""
 
-    The comoving frame energy of the packets gives a luminosity, which has no magnitude. The virtual packets hold the
-    energy of their observer in the rest frame only, thus the light curve of an observer has no comoving frame column.
+    flag: str
+    reason: str
+    # the help text of the error if the command stops, or None if the command drops the option with a warning
+    remedy: str | None
+
+
+def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
+    """Return each option of args that plotlightcurves refuses together with a different option, and the reason.
+
+    The command stops for an option with a remedy, and it drops a different option with a warning. The viewer drops
+    each option. Thus the command and the viewer read the same rules.
     """
-    if not args.plotcmf:
-        return
-    if args.magnitude:
-        exit_with_error(
-            "--plotcmf gives a comoving frame luminosity, which has no magnitude", "Remove --plotcmf or --magnitude"
+    refused: list[RefusedOption] = []
+    isobserver = args.plotvspecpol is not None
+    # the comoving frame energy of the packets gives a luminosity, which has no magnitude. The virtual packets hold
+    # the energy of their observer in the rest frame only
+    if args.plotcmf and args.magnitude:
+        refused.append(
+            RefusedOption(
+                "--plotcmf",
+                "--plotcmf gives a comoving frame luminosity, which has no magnitude",
+                "Remove --plotcmf or --magnitude",
+            )
         )
-    if args.plotvspecpol is not None:
-        print_warning("the virtual packets hold no comoving frame energy, thus --plotcmf draws no curve of an observer")
-        args.plotcmf = False
-
-
-def check_direction_args(args: argparse.Namespace) -> None:
-    """Drop an average over the angles that has no direction bins, and stop -topnucs for the virtual packet observers.
-
-    --average_over_phi_angle and --average_over_theta_angle group the direction bins of -plotviewingangle. The virtual
-    packets hold no pellet, thus an observer has no light curve of one nuclide and no decay time of a pellet.
-    """
-    if (args.average_over_phi_angle or args.average_over_theta_angle) and not args.plotviewingangle:
-        flag = "--average_over_phi_angle" if args.average_over_phi_angle else "--average_over_theta_angle"
-        print_warning(f"{flag} groups the direction bins of -plotviewingangle, and the command gives none")
-        args.average_over_phi_angle = False
-        args.average_over_theta_angle = False
-    if args.plotvspecpol is not None and (args.topnucs or args.use_pellet_decay_time):
-        exit_with_error(
-            "the virtual packets hold no pellet, thus -topnucs and --use_pellet_decay_time give no light curve of an"
-            " observer",
-            "Remove -plotvspecpol, or remove -topnucs and --use_pellet_decay_time",
+    elif args.plotcmf and isobserver:
+        refused.append(
+            RefusedOption(
+                "--plotcmf",
+                "the virtual packets hold no comoving frame energy, thus --plotcmf draws no curve of an observer",
+                None,
+            )
         )
+    pelletremedy = "Remove -plotvspecpol, or remove -topnucs and --use_pellet_decay_time"
+    for flag, isgiven in (("-topnucs", args.topnucs), ("--use_pellet_decay_time", args.use_pellet_decay_time)):
+        if isgiven and isobserver:
+            reason = f"the virtual packets hold no pellet, thus {flag} gives no light curve of an observer"
+            refused.append(RefusedOption(flag, reason, pelletremedy))
+    if not args.plotviewingangle:
+        refused.extend(
+            RefusedOption(
+                flag, f"{flag} groups the direction bins of -plotviewingangle, and the command gives none", None
+            )
+            for flag, isgiven in (
+                ("--average_over_phi_angle", args.average_over_phi_angle),
+                ("--average_over_theta_angle", args.average_over_theta_angle),
+            )
+            if isgiven
+        )
+    return refused
+
+
+def drop_option(args: argparse.Namespace, flag: str) -> None:
+    """Give the option of a flag the value of no selection, which is 0 for -topnucs and False for a different flag."""
+    setattr(args, flag.lstrip("-"), 0 if flag == "-topnucs" else False)
+
+
+def check_refused_options(args: argparse.Namespace) -> None:
+    """Stop the command for a refused option that has a remedy, and drop each other refused option with a warning."""
+    refused = get_refused_options(args)
+    for option in refused:
+        if option.remedy is not None:
+            exit_with_error(option.reason, option.remedy)
+    for option in refused:
+        print_warning(option.reason)
+        drop_option(args, option.flag)
 
 
 def resolve_plot_args(args: argparse.Namespace) -> None:
@@ -1907,8 +1941,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     args.modelpath = normalize_path_list(args.modelpath)
     apply_time_range_args(args, args.modelpath)
     resolve_energy_rate_args(args)
-    check_cmf_args(args)
-    check_direction_args(args)
+    check_refused_options(args)
 
     nmodels = len(args.modelpath)
     args.reflightcurves = makelist(args.reflightcurves)

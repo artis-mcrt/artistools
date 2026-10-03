@@ -3171,6 +3171,21 @@ def test_get_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, pr
     assert np.isclose(modelmeta["vmax_cmps"], 3000.0 * 1e5)
 
 
+def test_get_modeldata_1d_with_one_cell_uses_the_fast_reader(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A model.txt with one cell must use the fast reader.
+
+    The second data line of such a file is empty, and the check of the separators rejected an empty line.
+    """
+    (tmp_path / "model.txt").write_text("1\n1.0\n1 1000.0 -5.0 1.0 0.5 0.0 0.0 0.0\n", encoding="utf-8")
+
+    dfmodel, _ = at.inputmodel.get_modeldata(tmp_path)
+
+    assert "using fast method" in capsys.readouterr().out
+    assert dfmodel.collect()["vel_r_max_kmps"].to_list() == pytest.approx([1000.0])
+
+
 @pytest.mark.parametrize(
     ("token", "expected"),
     [
@@ -3298,7 +3313,7 @@ def test_maptogrid_keeps_the_mirror_symmetry_of_the_particles(tmp_path: Path) ->
 def test_get_2d_slice_takes_the_side_of_the_axis(ncoordgrid: int, positive_axis: bool, expectedlayer: int) -> None:
     """-axis=-z takes the layer below the origin, and -axis=+z the layer above it.
 
-    The sign of -axis was parsed and then ignored, thus both signs gave the layer with pos_z_min == 0.
+    The parser read the sign of -axis, but the slice ignored it. Thus both signs gave the layer with pos_z_min == 0.
     The centre layer of an odd grid holds the origin, thus both signs give that layer.
     """
     from artistools.inputmodel.plotinitialcomposition import get_2D_slice_through_3d_model
@@ -3330,7 +3345,7 @@ def test_plotinitialcomposition_negative_axis_plots_the_layer_below_the_origin(t
 def test_save_modeldata_1d_keeps_a_negative_custom_value(tmp_path: Path) -> None:
     """A negative value of a custom column of a 1D model survives a write and a read.
 
-    The writer gave 0.0 to each value that was not above zero, thus a negative value was lost. The 3D
+    The writer gave 0.0 to each value that was not above zero, thus it lost a negative value. The 3D
     writer kept the sign. A NaN value still becomes zero.
     """
     dfmodel = pl.DataFrame({
@@ -3375,7 +3390,8 @@ def test_add_mass_to_center_fills_a_sphere_symmetric_about_the_origin() -> None:
         "Ye": np.zeros(ncoordgrid**3),
     })
 
-    dffilled = add_mass_to_center(griddata, t_model_days, wid)
+    modelmeta = {"dimensions": 3, "t_model_init_days": t_model_days, "wid_init": wid}
+    dffilled = add_mass_to_center(griddata, modelmeta)
 
     filled = (dffilled["rho"].to_numpy() > 0.0).reshape((ncoordgrid, ncoordgrid, ncoordgrid), order="F")
     assert filled.any()
@@ -3387,7 +3403,7 @@ def test_add_mass_to_center_fills_a_sphere_symmetric_about_the_origin() -> None:
 def test_get_coarse_velocity_bins_cover_the_outermost_cell() -> None:
     """The last coarse bin ends above the largest mid-point velocity, thus the outer cells keep their mass.
 
-    The number of bins was the integer part of the velocity range over the bin width, thus the last bin ended
+    The number of bins was the integer part of the velocity range over the bin width. Thus the last bin ended
     at or below the outermost cell, and get_binned_profile dropped that cell.
     """
     from artistools.inputmodel.plotdensity import get_binned_profile

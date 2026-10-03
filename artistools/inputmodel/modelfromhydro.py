@@ -14,6 +14,7 @@ from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances
@@ -226,7 +227,7 @@ def read_griddat_file(
     return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
 
 
-def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float, wid_init_cm: float) -> pl.DataFrame:
+def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> pl.DataFrame:
     """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16."""
     print(griddata)
 
@@ -236,22 +237,20 @@ def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float, wid_init_
     mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
     v_outer_hole = 0.1 * CLIGHT  # cm/s
-    pos_outer_hole = v_outer_hole * t_model_in_days * (24.0 * 3600)  # cm
+    pos_outer_hole = v_outer_hole * modelmeta["t_model_init_days"] * day_to_s  # cm
     vol_hole = 4 / 3 * np.pi * pos_outer_hole**3  # cm^3
     density_hole = (mass_integrated * MSUN) / vol_hole  # g / cm^3
     print(density_hole)
 
-    # cells with a centre velocity below 0.1 c get the hole density added and a Ye floor of 0.4. The centre
+    # cells with a mid-point velocity below 0.1 c get the hole density added and a Ye floor of 0.4. The mid-point
     # and not the lower edge sets the velocity, because the lower edge makes the hole asymmetric about the origin
-    inhole = (
-        (
-            (pl.col("pos_x_min") + wid_init_cm / 2) ** 2
-            + (pl.col("pos_y_min") + wid_init_cm / 2) ** 2
-            + (pl.col("pos_z_min") + wid_init_cm / 2) ** 2
-        ).sqrt()
-        / (t_model_in_days * (24.0 * 3600))
-        / CLIGHT
-    ) < 0.1
+    griddata = griddata.with_columns(
+        add_derived_cols_to_modeldata(griddata, modelmeta)
+        .select(inhole=pl.col("vel_r_mid_on_c") < 0.1)
+        .collect()
+        .to_series()
+    )
+    inhole = pl.col("inhole")
 
     showcols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
     print("Inner empty cells")
@@ -264,7 +263,7 @@ def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float, wid_init_
 
     print(griddata.filter(inhole).select(showcols))
 
-    return griddata
+    return griddata.drop("inhole")
 
 
 def makemodelfromgriddata(
@@ -284,7 +283,7 @@ def makemodelfromgriddata(
     )
 
     if fillcentralhole:
-        dfmodel = add_mass_to_center(dfmodel, t_model_days, modelmeta["wid_init_x"])
+        dfmodel = add_mass_to_center(dfmodel, modelmeta)
 
     dfgridcontributions = get_gridparticlecontributions_or_none(gridfolderpath)
 

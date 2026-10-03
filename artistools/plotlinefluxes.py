@@ -6,7 +6,6 @@ import math
 import typing as t
 from collections import Counter
 from collections.abc import Sequence
-from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.axes as mplax
@@ -48,6 +47,7 @@ from artistools.misc import print_warning
 from artistools.misc import require_reference_data_file
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
+from artistools.misc.fileio import modelpath_cache
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import get_packets
@@ -239,7 +239,7 @@ def get_line_luminosities_from_pops(
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
 
-    # read_nltepops is uncached, so read every rank's nlte output once rather than once per feature
+    # one read gives the populations of every ion, thus each feature filters this frame
     dfnltepops_allions = read_nltepops(modelpath)
 
     # the shell velocities do not change with time, thus the volume of a shell scales with t^3
@@ -416,10 +416,10 @@ def get_closelines(
 
 def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.Any]) -> list[FeatureTuple]:
     """Return one feature per search specification in emfeaturesearch."""
-    return list(get_labelandlineindices_cached(Path(modelpath), tuple(tuple(params) for params in emfeaturesearch)))
+    return list(get_labelandlineindices_cached(modelpath, tuple(tuple(params) for params in emfeaturesearch)))
 
 
-@lru_cache(maxsize=16)
+@modelpath_cache(maxsize=16)
 def get_labelandlineindices_cached(
     modelpath: Path, emfeaturesearch: tuple[tuple[t.Any, ...], ...]
 ) -> tuple[FeatureTuple, ...]:
@@ -644,30 +644,22 @@ def read_te_nne_refdata(
     return refdatakeys, np.array([float(timekey) for timekey in refdatakeys]), [te_nne[key] for key in refdatakeys]
 
 
-def add_emission_timestep_column(
-    dfpackets: pl.LazyFrame, modelpath: Path | str, emtypecolumn: str
-) -> tuple[pl.LazyFrame, str, str]:
-    """Return the packets, the timestep column, and the cell column of the emission that emtypecolumn selects.
+def get_emission_columns(dfpackets: pl.LazyFrame, emtypecolumn: str) -> tuple[str, str]:
+    """Return the timestep column and the cell column of the emission that emtypecolumn selects.
 
     The cell and the timestep must come from the same event. The last interaction (em) and the last thermal
     emission (trueem) of a packet can be in different cells and in different timesteps. A packets file that has
     no trueem_time gives the timestep of the last interaction.
     """
     if emtypecolumn == "emissiontype":
-        return dfpackets, "em_timestep", "em_modelgridindex"
+        return "em_timestep", "em_modelgridindex"
 
-    if "trueem_time" not in dfpackets.collect_schema().names():
+    # add_derived_columns_lazy adds emtrue_timestep when the packets have a trueem_time
+    if "emtrue_timestep" not in dfpackets.collect_schema().names():
         print_warning("The packets have no trueem_time, thus the timestep comes from the last interaction")
-        return dfpackets, "em_timestep", "emtrue_modelgridindex"
+        return "em_timestep", "emtrue_modelgridindex"
 
-    # the same bins as em_timestep in add_derived_columns_lazy. A time before the first timestep gives -1
-    timebins = [tstart * day_to_s for tstart in get_timestep_times(modelpath, loc="start")] + [
-        get_timestep_times(modelpath, loc="end")[-1] * day_to_s
-    ]
-    dfpackets = dfpackets.with_columns(
-        emtrue_timestep=pl.col("trueem_time").cut(breaks=timebins).to_physical().cast(pl.Int32) - 1
-    )
-    return dfpackets, "emtrue_timestep", "emtrue_modelgridindex"
+    return "emtrue_timestep", "emtrue_modelgridindex"
 
 
 def get_emitting_regions_data(
@@ -686,7 +678,7 @@ def get_emitting_regions_data(
         dfpackets.filter(pl.col(args.emtypecolumn).is_in(linelistindices_allfeatures)), modelpath=modelpath
     )
 
-    dfpackets, em_tscolumn, em_mgicolumn = add_emission_timestep_column(dfpackets, modelpath, args.emtypecolumn)
+    em_tscolumn, em_mgicolumn = get_emission_columns(dfpackets, args.emtypecolumn)
 
     dfestimators = (
         scan_estimators(modelpath=modelpath, verbose=args.verbose)

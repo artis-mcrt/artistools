@@ -72,9 +72,10 @@ def has_single_space_separators(line: str) -> bool:
 
     A leading space, a tab, or a double space gives polars an empty field. The cell id then becomes
     null, and each value moves one column to the right. The reader drops an empty field after the last value.
+    An empty line has no field, e.g. the second data line of a model with one cell.
     """
     stripped = line.rstrip()
-    return stripped.split(" ") == stripped.split()
+    return not stripped or stripped.split(" ") == stripped.split()
 
 
 def read_modelfile_text(

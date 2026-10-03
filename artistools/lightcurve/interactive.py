@@ -22,14 +22,17 @@ from artistools.lightcurve.plotlightcurve import ANALYTICEMISSIONCOLUMNS
 from artistools.lightcurve.plotlightcurve import DEPOSITIONCHOICES
 from artistools.lightcurve.plotlightcurve import DEPOSITIONCOLUMNS
 from artistools.lightcurve.plotlightcurve import draw_plot
+from artistools.lightcurve.plotlightcurve import drop_option
 from artistools.lightcurve.plotlightcurve import EMISSIONCOLUMNS
 from artistools.lightcurve.plotlightcurve import ENERGYPARTICLES
 from artistools.lightcurve.plotlightcurve import ENERGYRATEDESTS
 from artistools.lightcurve.plotlightcurve import get_plot_lum_unit
+from artistools.lightcurve.plotlightcurve import get_refused_options
 from artistools.lightcurve.plotlightcurve import get_thermalisation_emission_column
 from artistools.lightcurve.plotlightcurve import LumUnit
 from artistools.lightcurve.plotlightcurve import main as plotlightcurves_main
 from artistools.lightcurve.plotlightcurve import make_plot_figure
+from artistools.lightcurve.plotlightcurve import RefusedOption
 from artistools.lightcurve.plotlightcurve import resolve_plot_args
 from artistools.misc import exit_with_error
 from artistools.misc import get_artis_run_folders
@@ -91,6 +94,7 @@ from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import get_python_code
 from artistools.viewertools.widgets import make_note_label
 from artistools.viewertools.widgets import make_range_slider
+from artistools.viewertools.widgets import parse_command_tokens
 from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
@@ -262,7 +266,7 @@ def get_energy_rate_columns(runfolders: "Sequence[Path]") -> frozenset[str]:
     """
     columns: set[str] = set()
     for runfolder in runfolders:
-        with contextlib.suppress(FileNotFoundError, AssertionError):
+        with contextlib.suppress(FileNotFoundError, ValueError):
             columns |= set(get_deposition(runfolder).collect_schema().names())
     return frozenset(columns)
 
@@ -315,26 +319,30 @@ def check_viewer_args(args: argparse.Namespace) -> None:
 def drop_refused_options(args: argparse.Namespace) -> None:
     """Drop the options of the start command that plotlightcurves refuses together, as the controls of the window do.
 
-    The command stops for --plotcmf with --magnitude, and for -topnucs or --use_pellet_decay_time with an observer of
-    the virtual packets. A change of the unit or of the direction drops the same options. An observer of the virtual
-    packets also reads the packets, as the direction control gives it.
+    get_refused_options of plotlightcurves gives the rules. A change of a control drops the same options. An observer of
+    the virtual packets also reads the packets, as the direction control gives it.
     """
-    if args.plotcmf and args.magnitude:
-        print_warning("The window drops --plotcmf, because a magnitude has no comoving frame luminosity")
-        args.plotcmf = False
+    for option in get_refused_options(args):
+        print_warning(f"The window drops {option.flag}: {option.reason}")
+        drop_option(args, option.flag)
     if args.plotvspecpol:
-        if args.topnucs or args.use_pellet_decay_time:
-            print_warning(
-                "The window drops -topnucs and --use_pellet_decay_time, because the virtual packets hold no pellet"
-            )
-            args.topnucs = 0
-            args.use_pellet_decay_time = False
         args.frompackets = True
 
 
 def get_plot_python_code(viewer: "LightCurveViewer") -> str:
     """Return the Python code that draws the plot of the values of the viewer."""
     return get_python_code(viewer.parser, viewer.get_plot_tokens(), "plotlightcurves", "at.lightcurve.plot")
+
+
+def get_refused_reasons(viewer: "LightCurveViewer", values: ControlValues) -> dict[str, str]:
+    """Return the reason for each option that plotlightcurves refuses with the other values, if the user selects it.
+
+    A control of a refused option then shows the reason, and it takes no selection.
+    """
+    selectall = dc.replace(values, plotcmf=True, topnucs=values.topnucs or 1, usepelletdecaytime=True)
+    return {
+        option.flag: option.reason[0].upper() + option.reason[1:] for option in viewer.get_refused_options(selectall)
+    }
 
 
 def get_lightcurve_path(path: str) -> Path:
@@ -517,6 +525,26 @@ class LightCurveViewer:
     def get_command(self) -> str:
         """Return the command that draws the plot of the values."""
         return shlex.join(["artistools", "plotlightcurves", *self.get_plot_tokens()])
+
+    def get_refused_options(self, values: ControlValues) -> list[RefusedOption]:
+        """Return the options of the values that plotlightcurves refuses together with a different option."""
+        args = parse_command_tokens(self.parser, self.get_plot_tokens(values))
+        return [] if args is None else get_refused_options(args)
+
+    def drop_refused_options(self, values: ControlValues) -> ControlValues:
+        """Return the values without the options that plotlightcurves refuses together with a different option.
+
+        The direction controls give each average over the angles with its direction bins, thus only the other options
+        need a control value here.
+        """
+        for option in self.get_refused_options(values):
+            if option.flag == "--plotcmf":
+                values = dc.replace(values, plotcmf=False)
+            elif option.flag == "-topnucs":
+                values = dc.replace(values, topnucs=0)
+            elif option.flag == "--use_pellet_decay_time":
+                values = dc.replace(values, usepelletdecaytime=False)
+        return values
 
     def get_energy_rate_reason(self, dest: str, particle: str) -> str | None:
         """Return why no run of the plot gives an energy rate of a particle, or None if a run gives it."""
@@ -897,32 +925,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 else "The files of the light curves of the ARTIS runs"
             )
             topnucsbox.setValue(values.topnucs)
-            # the virtual packets hold no pellet, thus an observer has no light curve of a nuclide or of a decay time
-            isobserver = values.directionkind == "vpkt"
-            topnucsbox.setEnabled(not isobserver)
+            # the command refuses an option together with a different option, thus ask it about each option
+            refusedreasons = get_refused_reasons(viewer, values)
+            topnucsreason = refusedreasons.get("-topnucs")
+            topnucsbox.setEnabled(topnucsreason is None)
             topnucsbox.setToolTip(
-                "The virtual packets hold no pellet. Select a different viewing direction first"
-                if isobserver
-                else f"-topnucs: {helptexts.get('topnucs', '')}. The option reads the packets files"
+                topnucsreason or f"-topnucs: {helptexts.get('topnucs', '')}. The option reads the packets files"
             )
             pelletcheck.setChecked(values.usepelletdecaytime)
             readspackets = values.frompackets or bool(values.topnucs)
-            pelletcheck.setEnabled((readspackets and not isobserver) or values.usepelletdecaytime)
-            if isobserver:
-                pelletreason = "The virtual packets hold no pellet. Select a different viewing direction first"
-            elif not readspackets:
+            pelletreason = refusedreasons.get("--use_pellet_decay_time")
+            if pelletreason is None and not readspackets:
                 pelletreason = "Only the packets give the decay time of a pellet. Select the packets files first"
-            else:
-                pelletreason = helptexts.get("use_pellet_decay_time", "")
-            pelletcheck.setToolTip(pelletreason)
+            pelletcheck.setEnabled(pelletreason is None or values.usepelletdecaytime)
+            pelletcheck.setToolTip(pelletreason or helptexts.get("use_pellet_decay_time", ""))
             cmfcheck.setChecked(values.plotcmf)
-            if values.lumunit == "mag":
-                cmfreason = "A magnitude has no comoving frame luminosity"
-            elif isobserver:
-                cmfreason = "The virtual packets hold no comoving frame energy"
-            else:
-                cmfreason = ""
-            cmfcheck.setEnabled(not cmfreason or values.plotcmf)
+            cmfreason = refusedreasons.get("--plotcmf")
+            cmfcheck.setEnabled(cmfreason is None or values.plotcmf)
             cmfcheck.setToolTip(cmfreason or helptexts.get("plotcmf", ""))
             invalidcheck.setChecked(values.plotinvalidpart)
             unavailable: list[str] = []
@@ -1065,10 +1084,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         values = viewer.values
         # the limits of a luminosity do not apply to a magnitude, and the reverse
         if lumunit != values.lumunit:
-            values = dc.replace(values, ymin="", ymax="", plotcmf=values.plotcmf and lumunit != "mag")
+            values = dc.replace(values, ymin="", ymax="")
         # a magnitude is a logarithm already, and a log scale of its negative values gives no plot
         yscale = viewer.defaultyscale if lumunit == "mag" else yscalebox.currentData()
-        apply(dc.replace(values, lumunit=lumunit, yscale=yscale, logscalex=xscalebox.currentIndex() == 1))
+        values = dc.replace(values, lumunit=lumunit, yscale=yscale, logscalex=xscalebox.currentIndex() == 1)
+        apply(viewer.drop_refused_options(values))
 
     def get_direction_choice(values: ControlValues) -> DirectionChoice:
         return DirectionChoice(kind=values.directionkind, bins=values.directionbins, usedegrees=values.usedegrees)
@@ -1077,11 +1097,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         values = dc.replace(
             viewer.values, directionkind=choice.kind, directionbins=choice.bins, usedegrees=choice.usedegrees
         )
+        # the observers of the virtual packets need the packets files
         if choice.kind == "vpkt":
-            # the observers of the virtual packets need the packets files, and the virtual packets hold no pellet
-            # and no comoving frame energy
-            values = dc.replace(values, frompackets=True, topnucs=0, usepelletdecaytime=False, plotcmf=False)
-        apply(values)
+            values = dc.replace(values, frompackets=True)
+        apply(viewer.drop_refused_options(values))
 
     def apply_lightcurves(lightcurves: "Sequence[str]") -> None:
         """Read the runs of a new list of light curves, and apply the list."""

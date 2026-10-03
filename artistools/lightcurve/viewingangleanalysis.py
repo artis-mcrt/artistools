@@ -625,8 +625,8 @@ def peakmag_risetime_declinerate_init(
             lcdataframes = scan_lightcurve(
                 lcpath,
                 directionresolved=directionresolved,
-                average_over_phi=directionresolved and args.average_over_phi_angle,
-                average_over_theta=directionresolved and args.average_over_theta_angle,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
             )
             # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
             if directionresolved and -1 in dirbins:

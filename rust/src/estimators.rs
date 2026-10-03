@@ -236,8 +236,14 @@ impl EstimatorColumns {
     }
 
     /// Finish the last cell and convert the columns into a `DataFrame`
+    ///
+    /// The frame always holds the index columns. Thus a text whose cells are all empty gives the index columns and no
+    /// row. Only a text with no complete cell gives a frame with no column.
     fn into_dataframe(mut self) -> PolarsResult<DataFrame> {
         self.end_cell();
+        for colname in INDEX_COLUMNS {
+            self.intcoldata.entry(colname.to_owned()).or_default();
+        }
 
         let columns: Vec<Column> = self
             .intcoldata
@@ -301,11 +307,12 @@ fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> 
 /// write the quantity at all. The boundaries of the ranks and of the parts are arbitrary, thus a zero replaces each
 /// such null, and both forms of the text give the same values. No frame gives a frame with no column.
 fn concat_estimator_frames(vecdfs: &[DataFrame]) -> PolarsResult<DataFrame> {
-    if vecdfs.is_empty() {
+    match vecdfs {
         // concat_df_diagonal panics on no frame. A text with no complete cell gives no part
-        return EstimatorColumns::default().into_dataframe();
+        [] => Ok(DataFrame::empty()),
+        [dfsingle] => Ok(dfsingle.clone()),
+        _ => polars::functions::concat_df_diagonal(vecdfs)?.fill_null(FillNullStrategy::Zero),
     }
-    polars::functions::concat_df_diagonal(vecdfs)?.fill_null(FillNullStrategy::Zero)
 }
 
 /// Read the estimator files from rankmin to rankmax and concatenate them into a single `DataFrame`
@@ -404,23 +411,31 @@ impl<R: BufRead> Iterator for TextParts<R> {
 /// not end with an empty line ends inside a cell, e.g. because a job stopped during the write. The reader drops
 /// that cell in both forms of the text, thus a zero never stands for a value that the text does not hold.
 fn read_estimator_text(filepath: &Path) -> PolarsResult<DataFrame> {
-    let parts = TextParts {
+    let parse_part = |part: std::io::Result<TextPart>| -> PolarsResult<DataFrame> {
+        let part = part?;
+        parse_estimator_lines(
+            part.text.lines().map(Ok::<_, std::io::Error>),
+            filepath,
+            part.firstlinenum,
+        )
+    };
+    let mut parts = TextParts {
         reader: BufReader::new(open_decompressed(filepath)?),
         nextlinenum: 1,
         finished: false,
     };
-    let mut indexeddfs: Vec<(usize, DataFrame)> = parts
+    let Some(firstpart) = parts.next() else {
+        return concat_estimator_frames(&[]);
+    };
+    // the text of a rank is usually smaller than one part, and it then needs no thread and no concatenation
+    if parts.finished {
+        return parse_part(firstpart);
+    }
+    let mut indexeddfs: Vec<(usize, DataFrame)> = std::iter::once(firstpart)
+        .chain(parts)
         .enumerate()
         .par_bridge()
-        .map(|(partindex, part)| {
-            let part = part?;
-            let dfpart = parse_estimator_lines(
-                part.text.lines().map(Ok::<_, std::io::Error>),
-                filepath,
-                part.firstlinenum,
-            )?;
-            Ok((partindex, dfpart))
-        })
+        .map(|(partindex, part)| Ok((partindex, parse_part(part)?)))
         .collect::<PolarsResult<_>>()?;
 
     indexeddfs.sort_unstable_by_key(|(partindex, _)| *partindex);

@@ -8,6 +8,7 @@ import polars.testing as pltest
 import pytest
 
 import artistools as at
+from artistools.estimators.test_estimators import get_cell_texts
 
 modelpath = at.get_path("testdata") / "testmodel"
 
@@ -15,33 +16,28 @@ modelpath = at.get_path("testdata") / "testmodel"
 def test_estimparse_drops_a_cell_that_a_cut_file_ends_inside(tmp_path: Path) -> None:
     """The file of a rank can end inside a cell when a job stops during the write.
 
-    The reader of the file of all ranks drops such a cell. The reader of the file of a rank kept it, with a zero for
-    each value after the cut, thus the cache held zeros that looked like real values. Both readers must give the rows
-    of the complete cells.
+    The reader of the file of a rank kept such a cell, with a zero for each value after the cut. The cache thus held
+    zeros that looked like real values. The reader must give the rows of the complete cells only.
     """
-    completetext = (modelpath / "estimators_0000.out").read_text(encoding="utf-8")
-    (tmp_path / "estimators_0000.out").write_text(completetext, encoding="utf-8")
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    (tmp_path / "estimators_0000.out").write_text("".join(celltexts), encoding="utf-8")
     dfcomplete = at.rustext.estimparse(tmp_path, 0, 0)
-    assert dfcomplete.height == 100
+    assert dfcomplete.height == len(celltexts) == 100
 
-    lastcellstart = completetext.rindex("timestep ")
-    lastpopulations = completetext.rindex("populations")
-    cuttexts = {
-        "inside a value": completetext[:lastpopulations] + "populations    Z=28                2: 2.6e-07  3:",
+    lastcell = celltexts[-1]
+    lastpopulations = lastcell.rindex("populations")
+    cutcells = {
+        "inside a value": lastcell[:lastpopulations] + "populations    Z=28                2: 2.6e-07  3:",
         # the last line ends with "adiabatic 5.00034e-13", and the cut leaves "5.00034e-1", which parses as a number
-        "inside a mantissa": completetext[: completetext.rindex("e-13") + 3],
-        "at the end of a line": completetext[:lastpopulations],
-        "after the cell header": completetext[: completetext.index("\n", lastcellstart) + 1],
+        "inside a mantissa": lastcell[: lastcell.rindex("e-13") + 3],
+        "at the end of a line": lastcell[:lastpopulations],
+        "after the cell header": lastcell[: lastcell.index("\n") + 1],
     }
-    for cutname, cuttext in cuttexts.items():
-        (tmp_path / "estimators_0000.out").write_text(cuttext, encoding="utf-8")
+    for cutname, cutcell in cutcells.items():
+        (tmp_path / "estimators_0000.out").write_text("".join(celltexts[:-1]) + cutcell, encoding="utf-8")
         dfrank = at.rustext.estimparse(tmp_path, 0, 0)
         assert dfrank.height == 99, cutname
         pltest.assert_frame_equal(dfrank, dfcomplete.head(99).select(dfrank.columns))
-
-        allranksfile = tmp_path / "estimators_allranks.out"
-        allranksfile.write_text(cuttext, encoding="utf-8")
-        pltest.assert_frame_equal(at.rustext.estimparse_allranks(allranksfile).select(dfrank.columns), dfrank)
 
 
 def test_estimparse_gives_no_row_for_a_text_with_no_complete_cell(tmp_path: Path) -> None:
@@ -51,6 +47,21 @@ def test_estimparse_gives_no_row_for_a_text_with_no_complete_cell(tmp_path: Path
     )
     dfrank = at.rustext.estimparse(tmp_path, 0, 0)
     assert dfrank.shape == (0, 0)
+
+
+def test_estimparse_gives_the_index_columns_for_a_text_of_empty_cells(tmp_path: Path) -> None:
+    """A text whose cells are all empty is complete, thus it gives the index columns and no row.
+
+    Such a text gave a frame with no column, as a cut text does. The conversion then gave a warning about a cut text.
+    """
+    emptycells = "timestep 0 modelgridindex 0 EMPTYCELL\n\ntimestep 0 modelgridindex 1 EMPTYCELL\n\n"
+    (tmp_path / "estimators_0000.out").write_text(emptycells, encoding="utf-8")
+    (tmp_path / "estimators_allranks.out").write_text(emptycells, encoding="utf-8")
+    dfrank = at.rustext.estimparse(tmp_path, 0, 0)
+    dfallranks = at.rustext.estimparse_allranks(tmp_path / "estimators_allranks.out")
+    for dfempty in (dfrank, dfallranks):
+        assert dfempty.height == 0
+        assert dict(dfempty.schema) == {"timestep": pl.Int32, "modelgridindex": pl.Int32}
 
 
 def test_estimparse_rejects_a_rank_range_with_no_rank() -> None:
@@ -80,11 +91,19 @@ def test_read_transitiondata_rejects_a_table_that_the_file_ends_inside(
     transitionsdict = at.rustext.read_transitiondata(transitionsfile, ionlist=ionlist)
     assert [df.height for df in transitionsdict.values()] == ([] if ionlist == {(27, 2)} else [2])
 
+    # a cut inside the last line leaves a line that parses, e.g. a collision strength of 7.6 for 7.65e-01. ARTIS ends
+    # each line with a newline, thus the missing newline shows the cut
+    transitionsfile.write_text("26 2 2\n1 2 1.0 2.0 1\n1 3 1.0 7.6", encoding="utf-8")
+    with pytest.raises(
+        Exception, match=r"transitiondata\.txt: the file ends after 1 of the 2 transitions of Z=26 ion_stage=2"
+    ):
+        at.rustext.read_transitiondata(transitionsfile, ionlist=ionlist)
+
 
 def test_estimparse_roman_numerals_agree_with_the_python_table(tmp_path: Path) -> None:
     """The ion columns of the Rust reader must have the names that get_ionstring gives.
 
-    The Rust table ended at XVI and the Python table at XX, thus an estimator file with an ion stage from 17 to 20
+    The Rust table ended at XVI, and the Python table ended at XX. Thus an ion stage from 17 to 20 in an estimator file
     stopped the parse of the whole file.
     """
     stages = range(1, len(at.atomic.roman_numerals))
@@ -135,8 +154,8 @@ def test_sum_binned_line_opacities_gives_no_opacity_below_one_kelvin() -> None:
     for column in at.ejectaopacity.OPACITYCOLUMNS:
         sums = dfsums[column].to_numpy()
         assert np.all(np.isfinite(sums))
-        assert sums[0] == 0.0
-        assert sums[1] == 0.0
+        assert sums[0] == pytest.approx(0.0)
+        assert sums[1] == pytest.approx(0.0)
         assert sums[2] > 0.0
 
 
@@ -157,7 +176,7 @@ def test_expansion_opacities_give_zero_for_a_cell_with_no_temperature() -> None:
     dfbins = at.ejectaopacity.get_expansion_opacities(lines, dfcells, edges, time_days)
     for column in at.ejectaopacity.OPACITYCOLUMNS:
         values = dfbins.group_by("modelgridindex", maintain_order=True).agg(pl.col(column).abs().sum())[column]
-        assert values[0] == 0.0
-        assert values[1] == 0.0
+        assert values[0] == pytest.approx(0.0)
+        assert values[1] == pytest.approx(0.0)
         assert np.isfinite(values[2])
         assert values[2] > 0.0

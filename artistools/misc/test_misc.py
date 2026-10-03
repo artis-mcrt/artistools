@@ -456,6 +456,18 @@ def test_the_cells_of_modelgridindex_are_a_list_from_every_source() -> None:
     assert at.misc.parse_range_list(at.misc.cliutils.format_range_list([-1, 0, 2])) == [-1, 0, 2]
 
 
+def test_get_cell_list_takes_a_numpy_integer_and_rejects_a_float() -> None:
+    """A numpy integer is one cell, and a float is an error, because a cell index is an integer.
+
+    The function took only an int as a number, thus set() iterated a numpy integer and raised a TypeError.
+    """
+    assert at.misc.cliutils.get_cell_list(np.int64(5)) == [5]
+    assert at.misc.cliutils.get_cell_list(np.array([7, 3])) == [3, 7]
+    assert at.misc.cliutils.get_cell_list([np.int32(4), "6-7"]) == [4, 6, 7]
+    with pytest.raises(TypeError):
+        at.misc.cliutils.get_cell_list(5.0)  # ty:ignore[invalid-argument-type]  # pyrefly: ignore[bad-argument-type]
+
+
 def test_the_old_spelling_of_the_phi_average_sets_the_phi_average(capsys: pytest.CaptureFixture[str]) -> None:
     """--average_every_tenth_viewing_angle sets average_over_phi_angle, thus no command copies it to that dest."""
     parser = argparse.ArgumentParser()
@@ -1717,7 +1729,7 @@ def test_get_deposition(tmp_path: Path) -> None:
     badlines.extend(f"{999 + ts} {ts + 1.0} {(ts + 1) * 0.1} {(ts + 1) * 1.1}" for ts in range(5))
     (baddir / "deposition.out").write_text("\n".join(badlines) + "\n")
 
-    with pytest.raises(AssertionError, match="Deposition times do not match"):
+    with pytest.raises(ValueError, match="Deposition times do not match"):
         at.get_deposition(baddir).collect()
 
     # a file with more rows than the model has timesteps gets the same message, not a broadcast error
@@ -1727,7 +1739,7 @@ def test_get_deposition(tmp_path: Path) -> None:
     longlines = deplines + [f"{155 + ts * 10} 1.0 0.1 1.1" for ts in range(2)]
     (longdir / "deposition.out").write_text("\n".join(longlines) + "\n")
 
-    with pytest.raises(AssertionError, match="Deposition times do not match"):
+    with pytest.raises(ValueError, match="Deposition times do not match"):
         at.get_deposition(longdir).collect()
 
 
@@ -1753,7 +1765,9 @@ def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_dif
     get_escaped_arrivalrange_cached.cache_clear()
     nts_last, _, _ = get_escaped_arrivalrange(modelcopy)
     assert nts_last == ntimesteps - 1
-    assert "Deposition times do not match the timesteps. Assuming all timesteps" in capsys.readouterr().err
+    assert "Deposition times do not match the timesteps. The plot takes every timestep as complete" in (
+        capsys.readouterr().err
+    )
 
 
 def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2674,17 +2688,50 @@ def test_remote_path_is_not_reference_data_and_needs_no_connection() -> None:
         assert not at.misc.fileio.path_is_reference_data("nohost.invalid:/runs/model", "data/refspectra")
 
 
-def test_a_windows_drive_letter_is_no_remote_host() -> None:
-    """A path such as C:/Users/me/model names a drive, and not a host of one letter.
+def test_a_windows_drive_letter_is_no_remote_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A path such as C:/Users/me/model names a drive on Windows, and not a host of one letter.
 
     The pattern of a remote path read the drive letter as a host. Thus each absolute path on Windows went to ssh.
     """
+    monkeypatch.setattr(remote, "REMOTEPATH_PATTERN", remote.make_remotepath_pattern(windows=True))
     assert not remote.is_remote_path("C:/Users/me/model")
     assert not remote.is_remote_path("C:\\Users\\me\\model")
     assert not remote.names_a_remote_folder("C:/Users/me/model")
     assert remote.split_remote_path("host:/path") == ("host", Path("/path"))
     assert remote.split_remote_path("user@host:path") == ("user@host", Path("~/path"))
     assert remote.split_remote_path("[::1]:path") == ("[::1]", Path("~/path"))
+
+
+def test_a_host_alias_of_one_letter_stays_remote_outside_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An ssh host alias of one letter with an absolute path must stay remote on Linux and macOS.
+
+    The lookahead of the Windows drive applied on each system, thus "a:/lustre/model" became a local path.
+    """
+    monkeypatch.setattr(remote, "REMOTEPATH_PATTERN", remote.make_remotepath_pattern(windows=False))
+    assert remote.split_remote_path("a:/lustre/model") == ("a", Path("/lustre/model"))
+    assert remote.names_a_remote_folder("a:/lustre/model")
+
+
+def test_get_file_metadata_reads_the_sidecar_of_a_link_and_a_key_with_a_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A metadata file beside a symbolic link and a key of metadata.yml with a folder must each give the metadata.
+
+    The function resolved the link before the lookups, thus it looked beside the target and keyed on the target.
+    """
+    (tmp_path / "store").mkdir()
+    (tmp_path / "store" / "spec.txt").write_text("data", encoding="utf-8")
+    linkfolder = tmp_path / "links"
+    linkfolder.mkdir()
+    (linkfolder / "spec.txt").symlink_to(tmp_path / "store" / "spec.txt")
+    (linkfolder / "spec.txt.meta.yml").write_text("a_v: 1.5\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(linkfolder / "spec.txt")["a_v"] == pytest.approx(1.5)
+
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "obs.txt").write_text("data", encoding="utf-8")
+    (tmp_path / "data" / "metadata.yml").write_text(yaml.safe_dump({"data/obs.txt": {"a_v": 2.5}}), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert at.misc.get_file_metadata("data/obs.txt")["a_v"] == pytest.approx(2.5)
 
 
 def test_get_file_metadata_follows_the_working_folder_and_takes_an_empty_file(
@@ -2772,4 +2819,22 @@ def test_the_option_form_of_the_model_path_names_the_path_that_it_replaces(capsy
         assert "ignores the path 'model1'" in capsys.readouterr().err
 
     assert parse_cli_args(addargs_one, "x", None, ["model1", "-modelpath", "model1"]).modelpath == Path("model1")
+    assert "ignores" not in capsys.readouterr().err
+
+
+def test_the_option_form_names_a_positional_path_that_equals_the_default(capsys: pytest.CaptureFixture[str]) -> None:
+    """A positional path that the user writes must get the warning also when it equals the default.
+
+    The actions compared the value with the default, thus "." of writebollightcurvedata counted as no path.
+    """
+
+    def addargs(parser: argparse.ArgumentParser) -> None:
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
+
+    for argsraw in ([".", "-modelpath", "model2"], ["-modelpath", "model2", "--quiet", "."]):
+        assert parse_cli_args(addargs, "x", None, argsraw).modelpath == [Path("model2")]
+        assert "ignores the path '.'" in capsys.readouterr().err
+
+    assert parse_cli_args(addargs, "x", None, ["-modelpath", "model2"]).modelpath == [Path("model2")]
+    assert parse_cli_args(addargs, "x", None, []).modelpath == [Path()]
     assert "ignores" not in capsys.readouterr().err

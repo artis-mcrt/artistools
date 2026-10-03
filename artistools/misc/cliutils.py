@@ -3,6 +3,7 @@
 import argparse
 import dataclasses as dc
 import itertools
+import operator
 import re
 import sys
 import typing as t
@@ -71,16 +72,17 @@ class CellListAction(argparse.Action):
         setattr(namespace, self.dest, cells if isfirstoccurrence else sorted({*previous, *cells}))
 
 
-def get_cell_list(cells: str | int | Iterable[int]) -> list[int]:
-    """Return the sorted cells of a value of -modelgridindex, e.g. "3-7,9", 12, or [4, 5].
+def get_cell_list(cells: "str | t.SupportsIndex | Iterable[str | t.SupportsIndex]") -> list[int]:
+    """Return the sorted integers of a text of ranges, an integer, or a sequence, e.g. "3-7,9", 12, or [4, "6-7"].
 
-    A keyword argument of main() does not pass through the parser, thus this also takes a number or a list.
+    The values of -modelgridindex and -ion_stages use this function. A keyword argument of main() does not pass
+    through the parser, thus the function also takes an integer or a list. A float gives a TypeError.
     """
     if isinstance(cells, str):
         return parse_range_list(cells)
-    if isinstance(cells, int):
-        return [cells]
-    return sorted(set(cells))
+    if isinstance(cells, Iterable):
+        return sorted({cell for item in cells for cell in get_cell_list(item)})
+    return [operator.index(cells)]
 
 
 def format_range_list(numbers: Iterable[int]) -> str:
@@ -145,7 +147,7 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
         help="Average over phi (azimuthal) viewing angles to make direction bins into polar angle bins",
     )
 
-    # deprecated spelling kept as a hidden alias. argparse writes a warning when a command gives it
+    # the hidden alias keeps the old spelling. argparse writes a warning when a command gives it
     averagegroup.add_argument(
         "--average_every_tenth_viewing_angle",
         dest="average_over_phi_angle",
@@ -177,9 +179,11 @@ class KeepGivenPaths(argparse.Action):
         option_string: str | None = None,  # ruff:ignore[unused-method-argument]
     ) -> None:
         """Set the paths of the positional argument, unless the option form already gave some."""
-        userwrote = bool(values) and values != self.default
+        # argparse gives the default object itself when the user writes no path. A path that the user writes is a
+        # new object, thus a path equal to the default still counts as a path that the user wrote
+        userwrote = bool(values) and values is not self.default
         given = getattr(namespace, self.dest, None)
-        optiongave = bool(given) and given != self.default
+        optiongave = bool(given) and given is not self.default
         if userwrote and optiongave:
             # the option form gives the paths in either order of the two forms
             if given != values:
@@ -206,21 +210,17 @@ class ReplaceGivenPaths(argparse.Action):
         option_string: str | None = None,  # ruff:ignore[unused-method-argument]
     ) -> None:
         """Set the paths of the option, and name the paths that it replaces."""
-        positionaldefaults = [
-            action.default
-            for action in parser._actions  # ruff:ignore[private-member-access]
-            if isinstance(action, KeepGivenPaths) and action.dest == self.dest
-        ]
+        # the namespace holds the default object itself until KeepGivenPaths stores the paths that the user wrote
         given = getattr(namespace, self.dest, None)
-        if bool(given) and given not in positionaldefaults and given != values:
+        if bool(given) and given is not parser.get_default(self.dest) and given != values:
             warn_ignored_paths(ignored=given, kept=values)
         setattr(namespace, self.dest, values)
 
 
-def warn_ignored_paths(ignored: t.Any, kept: t.Any) -> None:
+def warn_ignored_paths(ignored: "str | Sequence[t.Any] | None", kept: "str | Sequence[t.Any] | None") -> None:
     """Give a warning that the command reads the paths of the option form and not the other paths."""
 
-    def as_text(paths: t.Any) -> str:
+    def as_text(paths: "str | Sequence[t.Any] | None") -> str:
         return ", ".join(f"'{path}'" for path in (paths if isinstance(paths, list) else [paths]))
 
     print_warning(
@@ -366,7 +366,7 @@ def addarg_modelpath(
     if multiplepaths:
         kwargs["nargs"] = "*"
     if positional:
-        # a positional argument with no nargs is required, and the option form could then never stand in for it
+        # a positional argument with no nargs is required, and the option form could then never replace it
         parser.add_argument("modelpath", action=KeepGivenPaths, nargs=kwargs.pop("nargs", "?"), **kwargs)
         addarg_pathoption(parser, "-modelpath", "modelpath", multiplepaths=multiplepaths)
     else:

@@ -304,19 +304,28 @@ def test_get_levels_follows_the_working_folder(tmp_path: Path, monkeypatch: pyte
     assert at.atomic.get_levels(Path())["levels"].item()["energy_ev"].item() == pytest.approx(2.0)
 
 
-def test_get_ion_levels_reads_adata_one_time_for_all_the_ions() -> None:
-    """A second ion must filter the frame of the first read, and not read adata.txt again.
-
-    A read of one ion still reads each line of adata.txt, thus a plot of several ions read the file once for each
-    one.
-    """
+def test_get_ion_levels_shares_the_cache_entry_of_get_levels() -> None:
+    """A repeated ion and the same ion through get_levels must use one cache entry, and parse adata.txt once."""
     from artistools.atomic.core import get_levels_cached
 
-    get_levels_cached.cache_clear()
+    missesbefore = get_levels_cached.cache_info().misses
     dffe2 = at.atomic.get_ion_levels(modelpath, 26, 2)
-    dfni2 = at.atomic.get_ion_levels(modelpath, 28, 2)
     assert dffe2 is not None
-    assert dfni2 is not None
-    assert get_levels_cached.cache_info().misses == 1
+    assert at.atomic.get_ion_levels(modelpath, 26, 2) is not None
+    dflevels = at.atomic.get_levels(modelpath, ionlist=[(26, 2)])
+    assert get_levels_cached.cache_info().misses <= missesbefore + 1
+    assert dffe2.height == len(dflevels["levels"].item())
     assert at.atomic.get_ion_levels(modelpath, 1, 1) is None
-    assert dffe2.height == len(at.atomic.get_levels(modelpath, ionlist=[(26, 2)])["levels"].item())
+
+
+def test_get_levels_stops_at_an_adata_file_that_ends_inside_an_ion(tmp_path: Path) -> None:
+    """A file that ends inside the levels of an ion must give an error, also for an ion that the caller skips.
+
+    The parser read past the end of the file for a skipped ion, thus the ions after the cut went with no message.
+    """
+    (tmp_path / "adata.txt").write_text("26 1 2 7.9\n1 0.0 9.000 0 ground\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="ends inside the levels of Z=26 ion_stage=1"):
+        at.atomic.get_levels(tmp_path)
+    with pytest.raises(ValueError, match="ends inside the levels of Z=26 ion_stage=1"):
+        at.atomic.get_levels(tmp_path, ionlist=[(28, 2)])

@@ -131,7 +131,13 @@ def test_nltepops_no_estimator_data(
 @pytest.mark.benchmark
 def test_nltepops_versus_velocity(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     at.nltepops.plot(
-        argsraw=[], modelpath=modelpath, outputfile=tmp_path, timestep=40, x="velocity", ion_stages="1,2", levels=[0, 1]
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=tmp_path,
+        timestep=40,
+        x="velocity",
+        ion_stages=[1, 2],
+        levels=[0, 1],
     )
 
     assert len(mockplot.call_args_list) == 2
@@ -150,9 +156,7 @@ def test_nltepops_versus_velocity(mockplot: mock.MagicMock, tmp_path: Path) -> N
 def test_nltepops_versus_time(mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # no outputfile, so this covers the default filename that -x time selects
     monkeypatch.chdir(tmp_path)
-    at.nltepops.plot(
-        argsraw=[], modelpath=modelpath, cell=0, x="time", timedays="270-275", ion_stages="1,2", levels=[0, 1]
-    )
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, cell=0, x="time", timedays="270-275", ion_stages=1, levels=[0, 1])
 
     # one call draws the full time series of each level. The command called the plot function once
     # per timestep on the same axes, thus it drew each series five times before this assertion
@@ -368,6 +372,20 @@ def test_read_nltepops_keeps_the_last_read() -> None:
     assert not firstread.is_empty()
 
 
+def test_read_nltepops_of_a_numpy_cell_keeps_the_frame_of_the_plot() -> None:
+    """A numpy integer names one cell, and a read of the levels for a menu does not drop the frame of the plot.
+
+    The key of the cache took a numpy integer as a list of cells, thus the read stopped with a TypeError.
+    """
+    from artistools.nltepops.core import read_nltepops_cached
+
+    read_nltepops_cached.cache_clear()
+    plotframe = at.nltepops.read_nltepops(modelpath, timestep=np.int64(50), modelgridindex=np.int64(0))
+    assert not plotframe.is_empty()
+    at.nltepops.read_nltepops(modelpath, modelgridindex=0)
+    assert at.nltepops.read_nltepops(modelpath, timestep=50, modelgridindex=0) is plotframe
+
+
 def test_departure_coefficients_of_a_reference_with_a_different_count_of_levels() -> None:
     """The departure coefficient of the reference populations divides each level by the LTE population of that level.
 
@@ -395,3 +413,20 @@ def test_departure_coefficients_of_a_reference_with_a_different_count_of_levels(
     assert list(np.asarray(referenceline.get_xdata())) == [0, 1, 2]
     assert np.allclose(np.asarray(referenceline.get_ydata(), dtype=float), [2.0, 1.0, 0.5])
     plt.close(fig)
+
+
+@pytest.mark.parametrize("ion_stages", ["2", 2, [2]])
+def test_nltepops_ion_stages_of_a_keyword_argument(ion_stages: str | int | list[int], tmp_path: Path) -> None:
+    """A keyword argument of main() does not pass through the parser, thus -ion_stages can be text, a number, or a list.
+
+    The text reader then took only text, thus a number or a list stopped the command.
+    """
+    outputfile = tmp_path / "nltepops.pdf"
+    with mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True) as mockplot:
+        at.nltepops.plot(
+            argsraw=[], modelpath=modelpath, outputfile=outputfile, cell=0, timestep=40, ion_stages=ion_stages
+        )
+
+    assert outputfile.is_file()
+    plottedaxes = {id(callargs[0][0]) for callargs in mockplot.call_args_list}
+    assert len(plottedaxes) == 1

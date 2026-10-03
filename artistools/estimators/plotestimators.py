@@ -652,7 +652,7 @@ def plot_levelpop(
         "timestep": [int(timestep) for timestep in timestepslist],
         "volumefactor": [float(arr_volumefactor[timestep]) for timestep in timestepslist],
         "tdelta": [float(arr_tdelta[timestep]) for timestep in timestepslist],
-    }).with_row_index("timesteporder")
+    })
     # the row of a cell in the model data has the index of the cell. dN/dv takes the number in the cell for each unit
     # of the width in velocity of the shell
     dfcellfactors = (
@@ -700,14 +700,8 @@ def plot_levelpop(
             # the first row of a repeated cell and timestep stays
             .unique(subset=["modelgridindex", "timestep"], keep="first", maintain_order=True)
             .join(dftimesteps.lazy(), on="timestep", how="inner")
-            # the join can change the order of the rows, and cum_sum adds the values in the order of the rows. Thus the
-            # sort gives the same rounding in each run
-            .sort("timesteporder")
             .group_by("modelgridindex")
-            .agg(
-                levelpop=(pl.col("n_NLTE") * pl.col("volumefactor") * pl.col("tdelta")).cum_sum().last()
-                / pl.col("tdelta").cum_sum().last()
-            )
+            .agg(levelpop=(pl.col("n_NLTE") * pl.col("volumefactor") * pl.col("tdelta")).sum() / pl.col("tdelta").sum())
             .join(dfxofmgi.lazy(), on="modelgridindex", how="inner")
             .join(dfcellfactors.lazy(), on="modelgridindex", how="inner")
             .sort("modelgridindex")

@@ -24,6 +24,7 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import polars_source
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
+from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import write_parquet_atomic
@@ -59,7 +60,7 @@ def parse_adata(
                 tuple[float, float, int, str | None, npt.NDArray[np.void] | None, npt.NDArray[np.void] | None]
             ] = []
             for levelindex in range(level_count):
-                strlevelnumber, strenergy_ev, strg, tail = fadata.readline().split(maxsplit=3)
+                strlevelnumber, strenergy_ev, strg, tail = read_level_line(fadata, Z, ion_stage).split(maxsplit=3)
                 strtransition_count, _, namefield = tail.partition(" ")
 
                 inputlevelnumber = int(strlevelnumber)
@@ -107,7 +108,19 @@ def parse_adata(
 
         else:
             for _ in range(level_count):
-                fadata.readline()
+                read_level_line(fadata, Z, ion_stage)
+
+
+def read_level_line(fadata: t.IO[str], atomic_number: int, ion_stage: int) -> str:
+    """Return the next level line of adata.txt, or raise ValueError at the end of the file.
+
+    A file that a copy cut short otherwise lost the ions after the cut with no message.
+    """
+    if line := fadata.readline():
+        return line
+
+    msg = f"adata.txt ends inside the levels of Z={atomic_number} ion_stage={ion_stage}. The file is not complete"
+    raise ValueError(msg)
 
 
 def parse_phixsdata(
@@ -221,9 +234,8 @@ def get_transitiondata(
 
     A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache. The
     copy of the dictionary and of each frame keeps a caller that changes one of them from changing what
-    the next caller reads. A clone is cheap, because polars shares the data of a frame. The absolute path
-    goes to the cache, because a cache of the relative default path keeps the first answer after the user
-    changes the working folder.
+    the next caller reads. A clone is cheap, because polars shares the data of a frame. The cache key holds the
+    absolute path, see ModelpathCache.
     """
     transitionsdict = get_transitiondata_cached(
         resolve_modelpath(modelpath), tuple(ionlist) if ionlist is not None else None, quiet=quiet
@@ -267,13 +279,15 @@ def get_ion_levels(modelpath: Path, atomic_number: int, ion_stage: int) -> pl.Da
     get_levels holds the frame of each ion inside an object column, and Arrow IPC cannot send such a column. The
     host of a remote model thus gives one ion at a time, with no object column.
     """
-    # the parser reads each line of adata.txt for any list of ions, thus one cached read of all the ions serves each
-    # ion. The select below makes a new frame, thus the cached frame needs no clone
-    dfion = get_levels_cached(resolve_modelpath(modelpath)).filter(
-        (pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)
-    )
+    # a parse of one ion takes 0.04 s on the test model and a parse of all the ions takes 0.07 s. A caller asks for
+    # one to three ions, and the frame of one ion holds less memory
+    dfion = get_levels(modelpath, ionlist=[(atomic_number, ion_stage)])
+    if "levels" not in dfion.columns:
+        # a model that holds none of the ions gives a frame of no rows and no columns
+        return None
     # an object column of a level frame, e.g. the transitions of each level, has no Arrow form
-    return dfion["levels"].item().select(pl.exclude(pl.Object)) if dfion.height > 0 else None
+    dflevels: pl.DataFrame = dfion["levels"].item()
+    return dflevels.select(pl.exclude(pl.Object))
 
 
 def get_levels(
@@ -289,8 +303,8 @@ def get_levels(
     A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache. The
     clone is cheap, because polars shares the data of the frame, and it keeps a caller that changes the
     columns in place from changing what the next caller reads. The levels and the transitions of each
-    ion are frames of their own inside an object column, thus each one needs a clone as well. The
-    absolute path goes to the cache, see get_transitiondata.
+    ion are frames of their own inside an object column, thus each one needs a clone as well. The cache
+    key holds the absolute path, see ModelpathCache.
     """
     dflevels = get_levels_cached(
         resolve_modelpath(modelpath),
@@ -422,20 +436,13 @@ roman_numerals = (
 )
 
 
-def get_composition_data(filename: Path | str) -> pl.DataFrame:
+@modelpath_cache(maxsize=8)
+@on_model_host
+def get_composition_data(filename: Path) -> pl.DataFrame:
     """Return a DataFrame containing details of included elements and ions.
 
-    filename is the model folder or the path of compositiondata.txt. The absolute path goes to the cache, because
-    the default model path is the relative Path("."), and a cache of that path keeps the first answer after the
-    user changes the working folder.
+    filename is the model folder or the path of compositiondata.txt.
     """
-    return get_composition_data_cached(resolve_modelpath(filename))
-
-
-@lru_cache(maxsize=8)
-@on_model_host
-def get_composition_data_cached(filename: Path) -> pl.DataFrame:
-    """Return the elements and the ions of compositiondata.txt at an absolute path, and keep them for a later call."""
     filename = Path(filename, "compositiondata.txt") if filename.is_dir() else filename
 
     rows = []

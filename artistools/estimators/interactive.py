@@ -28,6 +28,7 @@ from artistools.estimators.core import PREFIX_GROUPS
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import scan_parquet_file
 from artistools.estimators.core import split_species_suffix
+from artistools.estimators.estimators_classic import read_classic_estimators_cached
 from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
 from artistools.estimators.plotestimators import DIRECTIVES
@@ -69,6 +70,7 @@ from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
+from artistools.nltepops.core import read_nltepops_cached
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
@@ -120,7 +122,6 @@ from artistools.viewertools.widgets import set_search_completion
 from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import start_play_timer
 from artistools.viewertools.window import add_command_sections
-from artistools.viewertools.window import clear_output_caches_of_run
 from artistools.viewertools.window import connect_plot_mouse
 from artistools.viewertools.window import DrawQueue
 from artistools.viewertools.window import finish_viewer_window
@@ -412,11 +413,28 @@ def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunD
 def read_run_again(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
     """Read the run again, e.g. while ARTIS writes more timesteps.
 
-    The caches of the output files hold the files of the last read, thus they go first. The host of a remote run
-    clears its own caches.
+    The caches of the estimators hold the files of the last read, thus they go first.
     """
-    clear_output_caches_of_run(modelpath)
+    clear_estimator_caches(modelpath)
     return read_run(modelpath, args, ntimesteps)
+
+
+@on_model_host
+def clear_estimator_caches(modelpath: Path) -> None:
+    """Clear the caches of the estimators and the NLTE populations. The host of a remote run clears its own caches.
+
+    An lru_cache cannot remove the entries of one run, thus each cache loses the entries of all runs. The caches of the
+    other viewers stay.
+    """
+    del modelpath
+    # a kept scan of a parquet cache also holds the metadata of its file, e.g. 8 MB for 5335 columns
+    for cachedfunction in (
+        scan_parquet_file,
+        get_runfolder_timesteps_cached,
+        read_classic_estimators_cached,
+        read_nltepops_cached,
+    ):
+        cachedfunction.cache_clear()
 
 
 def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:

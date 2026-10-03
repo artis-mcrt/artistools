@@ -90,17 +90,14 @@ def scan_lightcurve(
 
     A direction-resolved file, e.g. light_curve_res.out, holds one table for each direction bin. A different file
     holds the angle average as bin -1. The caller knows which file it reads, thus the name of the file decides nothing.
+    The angle average of bin -1 is the mean over every direction already, thus it takes no average over phi or theta.
 
     The averaging belongs here rather than to the caller because the magnitude column is not linear in the
-    bin contributions. Deriving it only after the averaging leaves no way to plot the mean of the
-    magnitudes, where a single dark bin sends the whole averaged bin to inf.
+    bin contributions. The magnitude comes after the averaging, thus no plot shows the mean of the magnitudes.
+    In that mean, a single dark bin sends the whole averaged bin to inf.
     """
     check_averaging_angles(average_over_phi, average_over_theta)
-    if (average_over_phi or average_over_theta) and not directionresolved:
-        msg = f"an average over the direction bins needs a direction-resolved light curve, and {filepath} holds one bin"
-        raise ValueError(msg)
     print(f"Reading {filepath}")
-    lcdata: dict[int, pl.LazyFrame] = {}
     lzdf = pl.scan_csv(
         # the caller can name a file whose compressed sibling is the one that exists, thus resolve here
         zopenpl(filepath),
@@ -111,23 +108,25 @@ def scan_lightcurve(
         # value such as 1.5e+07 then stopped the read
         schema_overrides={"time_days": pl.Float64, "luminosity_Lsun": pl.Float64, "luminosity_cmf_Lsun": pl.Float64},
     )
-    # a user can name the file, thus its tables must agree with the layout that the caller gives
-    if directionresolved:
-        lcdata = split_multitable_dataframe(lzdf)
-        if len(lcdata) != get_viewingdirectionbincount():
-            msg = (
-                f"{filepath} holds {len(lcdata)} tables, and a direction-resolved light curve holds one table for each"
-                f" of the {get_viewingdirectionbincount()} direction bins"
-            )
-            raise ValueError(msg)
-    else:
-        rowcount, timecount = lzdf.select(pl.len(), pl.col("time_days").n_unique()).collect().row(0)
-        if rowcount > 2 * timecount:
-            msg = f"{filepath} holds {rowcount // timecount} tables, thus it is a direction-resolved light curve"
-            raise ValueError(msg)
+    lcdata = split_multitable_dataframe(lzdf)
+    # a user can name the file, thus its tables must agree with the layout that the caller gives. An old
+    # light_curve.out holds a second table, which repeats the times
+    if directionresolved and len(lcdata) <= 2:
+        msg = f"{filepath} holds {len(lcdata)} tables, thus it is not a direction-resolved light curve"
+        raise ValueError(msg)
+    if not directionresolved and len(lcdata) > 2:
+        msg = f"{filepath} holds {len(lcdata)} tables, thus it is a direction-resolved light curve"
+        raise ValueError(msg)
 
-        # an old light_curve.out holds a second table, which repeats the times. Keep the first table only
-        lcdata[-1] = lzdf if rowcount == timecount else lzdf.slice(0, rowcount // 2)
+    if not directionresolved:
+        return {-1: lcdata[0].with_columns(derived_lum_unit_cols())}
+
+    # ARTIS sets MABINS when it compiles, thus a different build can write a different count of direction bins
+    if len(lcdata) != get_viewingdirectionbincount():
+        print_warning(
+            f"{filepath} holds {len(lcdata)} tables, and artistools gives the angles of"
+            f" {get_viewingdirectionbincount()} direction bins. Thus the angle of a direction bin can be incorrect"
+        )
 
     if average_over_phi:
         lcdata = average_direction_bins(lcdata, overangle="phi")
@@ -456,8 +455,8 @@ def get_filter_data(
     """Return the zero point, the reference wavelength, the transmission curve, and its wavelength range of a filter.
 
     The files in data/filters come from https://github.com/cinserra/S3/tree/master/src/s3/metadata. The first line
-    holds the zero point in energy flux (erg/cm^2/s), the third line holds the reference wavelength in Angstroms, and
-    the lines after the fourth hold the wavelength and the transmission.
+    holds the zero point in energy flux (erg/cm^2/s). The third line holds the reference wavelength in Angstroms.
+    The lines after the fourth hold the wavelength and the transmission.
     """
     with Path(filterdir, f"{filter_name}.txt").open("r", encoding="utf-8") as filter_metadata:
         line_in_filter_metadata = filter_metadata.readlines()

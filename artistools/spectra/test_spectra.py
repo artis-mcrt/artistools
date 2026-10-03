@@ -2413,7 +2413,7 @@ def test_interactive_continuous_width_is_never_zero() -> None:
     # a width of 0 in days changes to Δ ln t, which starts with the Δ ln t of each timestep of the logarithmic grid
     assert viewer.change(dc.replace(viewer.values, width=0.0)) is None
     assert viewer.values.widthmode == "dlogt"
-    assert viewer.values.dlogt == pytest.approx(math.log(viewer.tends[0] / viewer.tstarts[0]), rel=1e-3)
+    assert viewer.values.dlogt == pytest.approx(math.log(viewer.grid.tends[0] / viewer.grid.tstarts[0]), rel=1e-3)
     # the width follows the time
     assert viewer.change(dc.replace(viewer.values, widthmode="dlogt", dlogt=0.01, centre=290.0)) is None
     low, high = (viewer.values.centre + sign * viewer.values.width / 2.0 for sign in (-1.0, 1.0))
@@ -2427,11 +2427,11 @@ def test_interactive_continuous_width_is_never_zero() -> None:
 def test_interactive_valid_timesteps() -> None:
     """The time controls stay inside the valid times, thus a step after the last valid timestep gives None."""
     viewer = make_headless_viewer([str(modelpath), "--interactive"])
-    validstart, validend = viewer.timebounds
-    assert viewer.tstarts[viewer.validtimesteps[0]] >= validstart > viewer.tstarts[0]
-    assert viewer.tends[viewer.validtimesteps[-1]] <= validend < viewer.tends[-1]
+    validstart, validend = viewer.grid.timebounds
+    assert viewer.grid.tstarts[viewer.grid.validtimesteps[0]] >= validstart > viewer.grid.tstarts[0]
+    assert viewer.grid.tends[viewer.grid.validtimesteps[-1]] <= validend < viewer.grid.tends[-1]
     viewer.values = viewer.move_to_end(last=True)
-    assert viewer.get_selection(viewer.values) == (viewer.validtimesteps[-1], viewer.validtimesteps[-1])
+    assert viewer.get_selection(viewer.values) == (viewer.grid.validtimesteps[-1], viewer.grid.validtimesteps[-1])
     assert viewer.step_time(1) is None
     assert viewer.draw() is None
 
@@ -2562,11 +2562,11 @@ def test_interactive_new_first_model_gives_the_time_grid() -> None:
     centre = viewer.values.centre
 
     viewer.values = interactive.set_runs(viewer, [str(classic1dpath), str(modelpath_classic_3d)], "")
-    assert viewer.runfolders[0] == classic1dpath
+    assert viewer.grid.runfolders[0] == classic1dpath
     first, last = viewer.get_selection(viewer.values)
     assert last - first + 1 == 4
     assert viewer.values.centre == pytest.approx(centre, rel=0.05)
-    assert viewer.tmids[first] < centre < viewer.tmids[last]
+    assert viewer.grid.tmids[first] < centre < viewer.grid.tmids[last]
 
 
 def test_interactive_time_grid_of_a_later_model() -> None:
@@ -2578,16 +2578,16 @@ def test_interactive_time_grid_of_a_later_model() -> None:
     spectra = [str(modelpath_classic_3d), str(classic1dpath)]
     viewer = make_headless_viewer([*spectra, "-t", "4.5-5", "--interactive"])
     viewer.values = interactive.set_runs(viewer, spectra, str(classic1dpath))
-    assert viewer.gridfolder == classic1dpath
+    assert viewer.grid.gridfolder == classic1dpath
     assert viewer.values.spectra == tuple(spectra)
     first, last = viewer.get_selection(viewer.values)
     assert last - first + 1 == 4
-    for runtimes in viewer.runtimes.values():
-        assert runtimes.tstart <= viewer.timebounds[0] < viewer.timebounds[1] <= runtimes.tend
+    for runtimes in viewer.grid.runtimes.values():
+        assert runtimes.tstart <= viewer.grid.timebounds[0] < viewer.grid.timebounds[1] <= runtimes.tend
 
     # after the removal of the model, the time controls use the timesteps of the first model again
     viewer.values = interactive.set_runs(viewer, spectra[:1], viewer.values.timegrid)
-    assert (viewer.values.timegrid, viewer.gridfolder) == ("", modelpath_classic_3d)
+    assert (viewer.values.timegrid, viewer.grid.gridfolder) == ("", modelpath_classic_3d)
 
 
 def test_interactive_time_fits_the_timestep_of_each_run() -> None:
@@ -2897,7 +2897,7 @@ def test_interactive_valid_times_of_each_run() -> None:
     ranges = [(None, 260.0, 330.0), (None, 270.0, 320.0)]
     with mock.patch.object(interactive, "get_escaped_arrivalrange", side_effect=ranges):
         viewer = make_headless_viewer([str(modelpath), str(modelpath), "-t", "300", "--interactive"])
-    assert viewer.timebounds == (270.0, 320.0)
+    assert viewer.grid.timebounds == (270.0, 320.0)
 
 
 def test_interactive_command_of_a_dispatcher_call() -> None:
@@ -3120,9 +3120,9 @@ def test_interactive_time_stays_inside_the_runs_of_the_list(tmp_path: Path) -> N
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
     viewer = interactive.SpectrumViewer([str(widemodel), "-t", "300", "--interactive"], fig)
-    widestart = viewer.timebounds[0]
+    widestart = viewer.grid.timebounds[0]
     viewer.load_runs((str(widemodel), str(modelpath)))
-    assert viewer.timebounds[0] > widestart
+    assert viewer.grid.timebounds[0] > widestart
     firsttime = viewer.move_to_end(last=False)
     assert viewer.change(dc.replace(firsttime, spectra=(str(widemodel), str(modelpath)))) is None
 
@@ -3160,7 +3160,7 @@ def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
     # the test model has packets and no gamma_spec.out, thus plotspectra reads the packets of its gamma-ray spectrum.
     # The viewer set --frompackets for the gamma packets, and that flag stayed after the switch back to the r-packets
     packetsviewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
-    assert packetsviewer.hasgammaspectrum
+    assert packetsviewer.grid.hasgammaspectrum
     gammavalues = interactive.set_packet_type(packetsviewer.values, gamma=True)
     assert gammavalues.datasource == "auto"
     assert (
@@ -3195,9 +3195,9 @@ def test_interactive_direction_kinds_follow_the_first_run() -> None:
     The kinds came from the first run of the command, thus a new first run with no vpkt.txt kept -plotvspecpol.
     """
     viewer = make_headless_viewer([str(at.get_path("testdata") / "vpktcontrib"), "--interactive"])
-    assert "vpkt" in viewer.directionkinds
+    assert "vpkt" in viewer.grid.directionkinds
     viewer.load_runs([str(modelpath), str(at.get_path("testdata") / "vpktcontrib")])
-    assert "vpkt" not in viewer.directionkinds
+    assert "vpkt" not in viewer.grid.directionkinds
 
 
 @pytest.mark.parametrize("fixedionlist", [None, ["ion 30", "ion 2", "ion 99", "ion 39"]])
@@ -3209,16 +3209,27 @@ def test_host_merge_of_flux_contributions_keeps_the_plot(
     sort_and_reduce_flux_contribution_list prints the 20 largest other series, thus the host keeps them.
     """
     rng = np.random.default_rng(1)
-    contributions = [
-        atspectra.FluxContributionTuple(float(flux), f"ion {index}", rng.random(5) * flux, rng.random(5) * flux)
+    arraylambda = np.linspace(3000.0, 9000.0, 5)
+    arraynu = at.constants.c_ang_per_s / arraylambda
+    # only a bound-bound series has an absorbed f_nu
+    series: list[atspectra.FluxSeries] = [
+        (f"ion {index}", rng.random(5) * flux, rng.random(5) * flux if index % 3 else None)
         for index, flux in enumerate(rng.random(40))
     ]
-    arraylambda = np.linspace(3000.0, 9000.0, 5)
+
+    merged = atspectra.merge_other_flux_series(series, arraynu, 4, fixedionlist)
+    # the host sends the kept series, the 20 printed other series, and "Other"
+    assert len(merged) <= 4 + 20 + 1
 
     reduced_of_source = []
-    for source in (contributions, atspectra.merge_other_flux_contributions(contributions, 4, fixedionlist)):
-        reduced = atspectra.sort_and_reduce_flux_contribution_list(list(source), 4, arraylambda, fixedionlist)
+    totals = []
+    for source in (series, merged):
+        contributions, total = atspectra.get_flux_contribution_tuples(source, arraynu, arraylambda)
+        totals.append(total)
+        reduced = atspectra.sort_and_reduce_flux_contribution_list(contributions, 4, arraylambda, fixedionlist)
         reduced_of_source.append((reduced, capsys.readouterr().out))
+
+    assert np.allclose(totals[1], totals[0], rtol=1e-12, atol=0.0)
 
     (reduced_full, printed_full), (reduced_merged, printed_merged) = reduced_of_source
     assert printed_merged == printed_full
@@ -3258,8 +3269,8 @@ def test_viewer_keys_the_runs_by_the_tokens_of_the_list() -> None:
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
     viewer = interactive.SpectrumViewer([f"{modelpath}/", "-t", "300"], fig)
-    assert set(viewer.runtimes) == set(viewer.values.spectra)
-    assert viewer.runkey == (viewer.values.spectra, viewer.values.timegrid)
+    assert set(viewer.grid.runtimes) == set(viewer.values.spectra)
+    assert viewer.grid.runkey == (viewer.values.spectra, viewer.values.timegrid)
 
 
 def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
@@ -3431,21 +3442,21 @@ def test_plotspectra_ymax_alone_keeps_the_bottom_at_zero(tmp_path: Path) -> None
     assert axis.get_ylim() == (0.0, 2e-12)
 
 
-def test_interactive_command_waits_for_a_load_of_the_runs() -> None:
-    """The worker thread makes the command from the timestep grid, thus it waits while the window loads the runs.
+def test_interactive_command_reads_one_grid_of_the_runs() -> None:
+    """The worker thread makes the command from the timestep grid while the window can load the runs again.
 
     A new model replaced the grid during a plot, and the worker then read a timestep of the old grid in the new grid.
+    The command must read the grid one time, thus a load during the command has no effect on it.
     """
-    import threading
-
     viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
-    commands: list[list[str]] = []
-    with viewer.gridlock:
-        worker = threading.Thread(target=lambda: commands.append(viewer.get_plot_tokens()))
-        worker.start()
-        worker.join(timeout=0.5)
-        assert worker.is_alive()
-        assert not commands
-    worker.join(timeout=30.0)
-    assert len(commands) == 1
-    assert "-t" in commands[0]
+    expectedtokens = viewer.get_plot_tokens()
+    oldgrid = viewer.grid
+    get_grid_selection = interactive.get_grid_selection
+
+    def select_then_load(grid: interactive.RunGrid, values: interactive.ControlValues) -> tuple[int, int]:
+        viewer.grid = oldgrid._replace(tmids=oldgrid.tmids[:1], tstarts=oldgrid.tstarts[:1], tends=oldgrid.tends[:1])
+        return get_grid_selection(grid, values)
+
+    with mock.patch.object(interactive, "get_grid_selection", side_effect=select_then_load):
+        assert viewer.get_plot_tokens() == expectedtokens
+    assert len(viewer.grid.tmids) == 1

@@ -172,6 +172,15 @@ def get_phi_bin_steps() -> list[int]:
     return list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
 
 
+def get_phi_bin_edges_ascending(nphibins: int) -> npt.NDArray[np.float64]:
+    """Return the nphibins + 1 edges of the ascending phi bins, from 0 to 2 pi.
+
+    Ascending bin j holds 2 pi j / nphibins <= phi < 2 pi (j + 1) / nphibins. The column phibinmonotonicasc
+    of bin_packet_directions_polars in packets/core.py gives this bin.
+    """
+    return np.arange(nphibins + 1, dtype=np.float64) * 2 * np.pi / nphibins
+
+
 def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], list[str]]:
     """Return the lower and upper phi boundaries of each direction bin, and a label for each."""
     nphibins = get_viewingdirection_phibincount()

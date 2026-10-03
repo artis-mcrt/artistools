@@ -256,8 +256,9 @@ def plot_qdot(
     try:
         depdata = df_filter_minmax_bracketed(get_deposition(modelpath=modelpath), "tmid_days", None, xmax).collect()
 
-    except FileNotFoundError:
-        print("Can't do qdot plot because no deposition.out file")
+    except (FileNotFoundError, ValueError) as exc:
+        # a mismatched deposition.out belongs to a different run, thus the plot of the heating rate stops as for no file
+        print(f"Can't do qdot plot: {exc}")
         return
 
     if dfpairs is not None and dfparticledata is not None:
@@ -445,9 +446,13 @@ def get_particledata(
         )
 
         if arr_strnuc_z_n:
-            ntslowers = get_closest_network_timesteps(traj_root, particleid, arr_time_s_incpremerger, cond="lessthan")
+            # the bracket includes a step at the exact time. Then a time at the first or the last step reads
+            # that step, and a time at an inner step reads no neighbour step
+            ntslowers = get_closest_network_timesteps(
+                traj_root, particleid, arr_time_s_incpremerger, cond="lessorequal"
+            )
             ntsuppers = get_closest_network_timesteps(
-                traj_root, particleid, arr_time_s_incpremerger, cond="greaterthan"
+                traj_root, particleid, arr_time_s_incpremerger, cond="greaterorequal"
             )
             # a time outside the range of the network steps has no step on one side, which gives None.
             # np.interp then holds the end value, as it does for the heating rates above

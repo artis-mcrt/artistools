@@ -20,6 +20,7 @@ from artistools.misc.cliutils import print_detail
 from artistools.misc.fileio import extra_csv_columns_ignored
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
@@ -165,8 +166,7 @@ def get_model_name(path: Path | str) -> str:
     if path_is_codecomparison(path):
         return str(path)
 
-    # resolve the path before the cache. The default model path is the relative Path(".").
-    # A cache that holds the relative path keeps the first answer after the user changes the working folder
+    # the cache key holds the absolute path, see ModelpathCache
     return get_model_name_cached(resolve_modelpath(path))
 
 
@@ -242,14 +242,9 @@ def parse_npts_line(line: str, modelfilepath: Path | str) -> list[int]:
     return cellcounts
 
 
-def get_npts_model(modelpath: Path | str) -> int:
+@modelpath_cache(maxsize=8)
+def get_npts_model(modelpath: Path) -> int:
     """Return the number of cells in the model.txt."""
-    return get_npts_model_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=8)
-def get_npts_model_cached(modelpath: Path) -> int:
-    """Return the number of cells in the model.txt of the model at an absolute path."""
     modelfilepath = (
         Path(modelpath) if Path(modelpath).is_file() else firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
@@ -267,14 +262,9 @@ def get_inputfilepath(modelpath: Path | str) -> Path:
     return inputfilepath
 
 
-def get_nprocs(modelpath: Path | str) -> int:
-    """Return the number of MPI processes specified in input.txt."""
-    return get_nprocs_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=8)
-def get_nprocs_cached(modelpath: Path) -> int:
-    """Return the number of MPI processes of the model at an absolute path.
+@modelpath_cache(maxsize=8)
+def get_nprocs(modelpath: Path) -> int:
+    """Return the number of MPI processes specified in input.txt.
 
     ARTIS counts only the lines that hold a value, and it keeps comment lines when it rewrites input.txt.
     """
@@ -283,17 +273,12 @@ def get_nprocs_cached(modelpath: Path) -> int:
     return int(valuelines[21].split("#")[0])
 
 
-def get_inputparams(modelpath: Path | str) -> dict[str, t.Any]:
+@modelpath_cache(maxsize=8)
+def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     """Return the parameters that input.txt gives.
 
     Do not change the dictionary that this function returns. The next caller gets the same object.
     """
-    return get_inputparams_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=8)
-def get_inputparams_cached(modelpath: Path) -> dict[str, t.Any]:
-    """Return the input.txt parameters of the model at an absolute path."""
     params: dict[str, t.Any] = {}
     with get_inputfilepath(modelpath).open("r", encoding="utf-8") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
@@ -559,14 +544,9 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
     return list(range(nstart, nstart + ndo))
 
 
-def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
+@modelpath_cache(maxsize=16)
+def get_dfrankassignments(modelpath: Path) -> pl.LazyFrame | None:
     """Return the cell-to-MPI-rank assignments, or None when modelgridrankassignments.out is absent."""
-    return get_dfrankassignments_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
-def get_dfrankassignments_cached(modelpath: Path) -> pl.LazyFrame | None:
-    """Return the rank assignments of the model at an absolute path."""
     filerankassignments = firstexisting_or_none(
         "modelgridrankassignments.out", folder=modelpath, tryzipped=True, search_subfolders=False
     )
@@ -601,18 +581,13 @@ def get_rankassignments_cached(modelpath: Path) -> pl.DataFrame | None:
     return lzrankassignments.collect() if lzrankassignments is not None else None
 
 
-def get_nonempty_cellcounts(modelpath: Path | str) -> "Mapping[int, int] | None":
+@modelpath_cache(maxsize=16)
+def get_nonempty_cellcounts(modelpath: Path) -> "Mapping[int, int] | None":
     """Return the count of cells that hold matter for each rank, or None without the assignments file.
 
     ARTIS assigns no 3D cell to a shell that holds no matter. A rank whose count is zero handles such
     cells alone, thus it writes no output file, and the absence of that file is not a fault.
     """
-    return get_nonempty_cellcounts_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
-def get_nonempty_cellcounts_cached(modelpath: Path) -> "Mapping[int, int] | None":
-    """Return the count of cells that hold matter for each rank of the model at an absolute path."""
     dfranks = get_rankassignments(modelpath)
     if dfranks is None:
         return None

@@ -87,7 +87,7 @@ def get_deposition_cached(modelpath: Path) -> pl.LazyFrame:
     # below raises a broadcast error for such a file instead of the message
     if len(t_mid_days) > len(ts_mids) or not np.allclose(t_mid_days, ts_mids[: len(t_mid_days)], rtol=0.01):
         msg = "Deposition times do not match the timesteps"
-        raise AssertionError(msg)
+        raise ValueError(msg)
 
     return depdata
 
@@ -494,12 +494,10 @@ def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int |
         depdata = get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
         # get_deposition() always provides a timestep column, adding a row index if the file has no such column
         nts_last = depdata.select(pl.col("timestep").max()).collect().item()
-    except FileNotFoundError:
-        print_warning("No deposition.out file found. Assuming all timesteps have been computed")
-        nts_last = len(t_end) - 1
-    except AssertionError as exc:
-        # only the energy rates need deposition.out, thus a file of a different run stops no light curve plot
-        print_warning(f"{exc}. Assuming all timesteps have been computed")
+    except (FileNotFoundError, ValueError) as exc:
+        # only the energy rates need deposition.out, thus a missing file or a file of a different run stops no plot
+        reason = "No deposition.out file found" if isinstance(exc, FileNotFoundError) else str(exc)
+        print_warning(f"{reason}. The plot takes every timestep as complete")
         nts_last = len(t_end) - 1
 
     assert isinstance(nts_last, int)

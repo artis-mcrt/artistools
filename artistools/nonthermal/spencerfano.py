@@ -28,6 +28,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
+from artistools.misc import format_frame_path
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_single_timestep
 from artistools.misc import get_timestep_of_timedays
@@ -303,8 +304,8 @@ def get_sweep_parameters(args: argparse.Namespace, step: int) -> tuple[float, fl
 def get_plot_filename(args: argparse.Namespace, step: int) -> str:
     """Return the name of the plot file of one step."""
     if args.timestep is not None and args.timedays is not None:
-        outputfilename = str(args.outputfile).format(
-            cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
+        outputfilename = format_frame_path(
+            args.outputfile, cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
         )
     else:
         # a non-ARTIS composition has no cell and no timestep, thus the default template
@@ -318,13 +319,8 @@ def get_plot_filename(args: argparse.Namespace, step: int) -> str:
     return outputfilename
 
 
-def solve_step(
-    args: argparse.Namespace, modelpath: Path, conditions: PlasmaConditions, step: int
-) -> dict[str, float] | None:
-    """Solve the Spencer-Fano equation at one step of a sweep, and plot the solution.
-
-    With -ostat, return the row of statistics of the step. Else return None.
-    """
+def solve_step(args: argparse.Namespace, modelpath: Path, conditions: PlasmaConditions, step: int) -> dict[str, float]:
+    """Solve the Spencer-Fano equation at one step of a sweep, plot the solution, and return its statistics."""
     pynt = import_optional("pynonthermal")
     emin, emax, npts = get_sweep_parameters(args, step)
     ionpopdict = conditions.ionpopdict
@@ -362,9 +358,6 @@ def solve_step(
 
         if args.makeplot:
             sf.plot_spec_channels(outputfilename=get_plot_filename(args, step))
-
-        if not args.ostat:
-            return None
 
         return {
             "emin": emin,
@@ -414,9 +407,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ostatrows: list[dict[str, float]] = []
     for step in range(stepcount):
         conditions = artisconditions if artisconditions is not None else get_element_conditions(args, step, stepcount)
-        ostatrow = solve_step(args, modelpath, conditions, step)
-        if ostatrow is not None:
-            ostatrows.append(ostatrow)
+        ostatrows.append(solve_step(args, modelpath, conditions, step))
 
     if args.ostat:
         write_ntstats_file(args.ostat, ostatrows)

@@ -37,11 +37,11 @@ from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import is_readonly_error
+from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.fileio import read_parquet_cache_metadata
-from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
 
@@ -97,18 +97,9 @@ columns_full = [
 ]
 
 
-def get_column_names_artiscode(modelpath: str | Path) -> list[str] | None:
-    """Return the packet column names parsed from the ARTIS source in the model folder, or None if it is absent.
-
-    The absolute path goes to the cache, because a cache of the relative default path keeps the first answer after
-    the user changes the working folder.
-    """
-    return get_column_names_artiscode_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
-def get_column_names_artiscode_cached(modelpath: Path) -> list[str] | None:
-    """Return the names of the packet columns of the ARTIS source at an absolute model path, and keep them."""
+@modelpath_cache(maxsize=16)
+def get_column_names_artiscode(modelpath: Path) -> list[str] | None:
+    """Return the packet column names parsed from the ARTIS source in the model folder, or None if it is absent."""
     if Path(modelpath, "artis").is_dir():
         print("detected artis code directory")
         packet_properties: list[str] = []
@@ -198,8 +189,8 @@ def get_modelgridindex_from_velocity_expr(velocity: pl.Expr, dfmodel: pl.LazyFra
     """Return the index of the cell of a 1D model that holds a radial velocity [cm/s], or null outside the grid.
 
     A cell holds the velocities from its inner edge up to its outer edge, and the outer edge belongs to the next
-    cell. A velocity of NaN gives null. A cut alone gave the index -1 to a velocity of zero and the index of a cell
-    that does not exist to a velocity above the outer edge of the grid.
+    cell. A velocity of NaN gives null. A cut alone gave the index -1 to a velocity of zero. A velocity above the
+    outer edge of the grid got the index of a cell that does not exist.
     """
     velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
     # the first category of cut() holds the values below the first edge, thus the first cell has the index 1
@@ -242,6 +233,15 @@ def get_modelgridindex_expr(
     return coord["z"] * ncoordgrid["y"] * ncoordgrid["x"] + coord["y"] * ncoordgrid["x"] + coord["x"]
 
 
+def get_timestep_expr(time: pl.Expr, timebins: Sequence[float]) -> pl.Expr:
+    """Return the timestep of a time [s], from the start times of the timesteps and the end time of the last one.
+
+    A time before the first timestep gives -1, and a time after the last timestep gives the timestep count.
+    """
+    # the first category of cut() holds the times below the first edge, thus the first timestep has the index 1
+    return time.cut(breaks=timebins).to_physical().cast(pl.Int32) - 1
+
+
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: Path | str) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
@@ -252,13 +252,16 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
         get_timestep_times(modelpath, loc="end")[-1] * day_to_s
     ]
     dfpackets = dfpackets.lazy().with_columns(
-        (pl.col("em_time").cut(breaks=timebins).to_physical().cast(pl.Int32) - 1).alias("em_timestep"),
+        em_timestep=get_timestep_expr(pl.col("em_time"), timebins),
         emission_velocity=get_emission_velocity_expr("em"),
         emission_velocity_lineofsight=get_emission_velocity_lineofsight_expr("em"),
         em_modelgridindex=get_modelgridindex_expr("em", modelmeta, dfmodel),
     )
 
     packetcolumns = dfpackets.collect_schema().names()
+    if "trueem_time" in packetcolumns:
+        dfpackets = dfpackets.with_columns(emtrue_timestep=get_timestep_expr(pl.col("trueem_time"), timebins))
+
     if "trueem_posx" in packetcolumns:
         dfpackets = dfpackets.with_columns(
             true_emission_velocity=get_emission_velocity_expr("trueem"),

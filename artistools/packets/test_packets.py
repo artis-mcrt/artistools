@@ -373,6 +373,30 @@ def test_add_packet_directions_accepts_a_frame_that_holds_the_angles() -> None:
     pltest.assert_frame_equal(dfonce, dftwice)
 
 
+def test_add_derived_columns_gives_the_timestep_of_the_thermal_emission() -> None:
+    """The timestep of the last thermal emission must use the same bins as the timestep of the last interaction."""
+    modelpath = at.get_path("testdata") / "testmodel"
+    tmids_s = [tmid * at.constants.day_to_s for tmid in at.get_timestep_times(modelpath, loc="mid")]
+    dfpackets = pl.DataFrame({
+        "em_posx": [0.0, 0.0, 0.0],
+        "em_posy": [0.0, 0.0, 0.0],
+        "em_posz": [0.0, 0.0, 0.0],
+        "em_time": [tmids_s[52], tmids_s[52], tmids_s[3]],
+        "trueem_time": [tmids_s[50], -1.0, tmids_s[3]],
+        "dirx": [0.0, 0.0, 0.0],
+        "diry": [0.0, 0.0, 0.0],
+        "dirz": [1.0, 1.0, 1.0],
+    })
+
+    dfderived = at.packets.add_derived_columns_lazy(dfpackets, modelpath).collect()
+    assert dfderived["em_timestep"].to_list() == [52, 52, 3]
+    assert dfderived["emtrue_timestep"].to_list() == [50, -1, 3]
+
+    # an old packets file has no trueem_time, thus it gets no timestep of the thermal emission
+    dfold = at.packets.add_derived_columns_lazy(dfpackets.drop("trueem_time"), modelpath)
+    assert "emtrue_timestep" not in dfold.collect_schema().names()
+
+
 def test_emission_expressions_give_no_value_for_a_packet_with_no_record() -> None:
     """ARTIS gives a time of 0 or -1 and a position of zero to a packet with no thermal emission record."""
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
@@ -495,8 +519,8 @@ def test_a_position_outside_the_grid_gets_no_cell() -> None:
 def test_a_1d_velocity_at_the_edges_of_the_grid_gets_the_right_cell() -> None:
     """A velocity of zero is in the first cell, and a velocity at or above the outer edge gets no cell.
 
-    A cut alone gave the index -1 to a velocity of zero and the index of a cell that does not exist to a velocity
-    above the outer edge, which the 3D branch gives null.
+    A cut alone gave the index -1 to a velocity of zero. A velocity above the outer edge got the index of a cell
+    that does not exist, and the 3D branch gives null for it.
     """
     from artistools.packets.core import get_modelgridindex_from_velocity_expr
 
@@ -519,7 +543,7 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
 ) -> None:
     """A packet that arrives at the start of the timestep is in the plot, and a packet at the end is not.
 
-    The window of the arrival time was closed at the right, thus it took a packet of the next timestep instead.
+    The window of the arrival time included its right edge, thus it took a packet of the next timestep instead.
     """
     from artistools.packets import plotlastpacketinteraction
 

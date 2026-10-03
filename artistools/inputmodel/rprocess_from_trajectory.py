@@ -177,15 +177,16 @@ def get_closest_network_timesteps(
     traj_root: Path,
     particleid: int,
     timesec: float | Sequence[float] | npt.NDArray[np.floating],
-    cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest",
+    cond: t.Literal["lessorequal", "greaterorequal", "nearest"] = "nearest",
 ) -> list[int | None]:
     """Find the closest network timestep to a given time in seconds.
 
     cond:
-      - 'lessthan': find highest timestep less than time_sec
-      - 'greaterthan': find lowest timestep greater than time_sec.
+      - 'lessorequal': find the highest timestep at or before the time
+      - 'greaterorequal': find the lowest timestep at or after the time.
 
-    For 'lessthan' and 'greaterthan', a time with no network timestep on that side gives None.
+    A time that equals the time of a timestep gives that timestep for both conditions. For 'lessorequal' and
+    'greaterorequal', a time with no network timestep on that side gives None.
     """
     dfevol = get_traj_network_timesteps(traj_root, particleid)
 
@@ -203,11 +204,11 @@ def get_closest_network_timesteps(
             .item()
             for t in timesec
         ]
-    if cond == "greaterthan":
-        return [dfevol.select(pl.col("nstep").filter(pl.col("timesec") > tsec).min()).item() for tsec in timesec]
+    if cond == "greaterorequal":
+        return [dfevol.select(pl.col("nstep").filter(pl.col("timesec") >= tsec).min()).item() for tsec in timesec]
 
-    if cond == "lessthan":
-        return [dfevol.select(pl.col("nstep").filter(pl.col("timesec") < tsec).max()).item() for tsec in timesec]
+    if cond == "lessorequal":
+        return [dfevol.select(pl.col("nstep").filter(pl.col("timesec") <= tsec).max()).item() for tsec in timesec]
 
     msg = f"Unknown cond value {cond}"
     raise AssertionError(msg)
@@ -332,7 +333,7 @@ def get_trajectory_abund_q(
         nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
     except FileNotFoundError:
         return {}
-    # the nearest timestep always exists, thus only "lessthan" and "greaterthan" can give None
+    # the nearest timestep always exists, thus only "lessorequal" and "greaterorequal" can give None
     assert nts is not None
     memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
 

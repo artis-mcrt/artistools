@@ -594,12 +594,11 @@ def allranks_textsource_change(parquetfilepath: Path, runfolder: Path | str, tex
         return None
     # a compression of the text after the conversion keeps its time and changes its size, thus the size can show a
     # change only in a text with the same compression as the stamp
+    textfiles = get_estimator_textfiles(Path(runfolder), textfile)
     stampedcompression = pqmetadata.get("textsource_compression")
-    if stampedcompression is not None and stampedcompression != get_estimator_textcompression(
-        Path(runfolder), textfile
-    ):
+    if stampedcompression is not None and stampedcompression != get_estimator_textcompression(textfiles):
         return None
-    if (textsize := str(get_estimator_textsize(Path(runfolder), textfile))) != stampedsize:
+    if (textsize := str(get_estimator_textsize(textfiles))) != stampedsize:
         return f"the text changed from {stampedsize} to {textsize} bytes after the conversion"
     return None
 
@@ -689,7 +688,7 @@ def read_estimator_text(state: "EstimatorBatchState") -> pl.DataFrame:
 
     if dfestimators.width == 0:
         # a job that stopped during the write of the first cell leaves a text with no complete cell, and the reader
-        # then gives no column. A cache with the key columns and no rows adds nothing to the scan
+        # then gives no column. A text of empty cells gives the key columns. A cache with no row adds nothing to a scan
         print_warning(f"{state.runfolder}: the estimator text holds no complete cell, thus the cache holds no row")
         return pl.DataFrame(schema={"timestep": pl.Int32, "modelgridindex": pl.Int32})
 
@@ -703,26 +702,27 @@ def read_estimator_text(state: "EstimatorBatchState") -> pl.DataFrame:
     return dfestimators.sort("timestep", "modelgridindex")
 
 
-def get_estimator_textsize(runfolder: Path, textfile: Path | None) -> int:
-    """Return the size of the estimator text of a run folder: the file of all ranks, or the sum of the rank files.
+def get_estimator_textfiles(runfolder: Path, textfile: Path | None) -> list[Path]:
+    """Return the files of the estimator text: the file of all ranks, or the file of each rank that the reader reads.
 
-    The sum takes only the file of each rank that the reader reads. Thus a leftover sibling, e.g.
-    estimators_0000.out.bak, has no effect on the sum.
+    A leftover sibling, e.g. estimators_0000.out.bak, is not in the list.
     """
-    if textfile is not None:
-        return textfile.stat().st_size
-    return sum(rankfile.stat().st_size for rankfile in get_rank_textfiles(runfolder).values())
+    return [textfile] if textfile is not None else list(get_rank_textfiles(runfolder).values())
 
 
-def get_estimator_textcompression(runfolder: Path, textfile: Path | None) -> str:
+def get_estimator_textsize(textfiles: Sequence[Path]) -> int:
+    """Return the size of the estimator text, which is the sum of the sizes of its files."""
+    return sum(file.stat().st_size for file in textfiles)
+
+
+def get_estimator_textcompression(textfiles: Sequence[Path]) -> str:
     """Return the compression suffixes of the estimator text, e.g. ".zst", or "" for plain text.
 
     A user can compress the text after the conversion, and zstd keeps the time of the file. The size of the text then
-    changes and its data does not, thus the cache compares its stamp of the size only with a text that has the same
+    changes, and its data stays the same. Thus the cache compares its stamp of the size only with a text of the same
     compression. The files of the ranks can have different compressions, e.g. during a compression of the run, and the
     result then holds each one.
     """
-    textfiles = [textfile] if textfile is not None else list(get_rank_textfiles(runfolder).values())
     return ",".join(sorted({file.suffix if file.suffix in COMPRESSED_EXTENSIONS else "" for file in textfiles}))
 
 
@@ -744,12 +744,12 @@ def read_unchanged_estimator_text(state: "EstimatorBatchState") -> tuple[pl.Data
         state = state._replace(
             textfile=textfile, textsource_mtime=textsource_mtime, textsource_complete=textsource_complete
         )
-        textsize = get_estimator_textsize(state.runfolder, textfile)
+        textsize = get_estimator_textsize(get_estimator_textfiles(state.runfolder, textfile))
         dfestimators = read_estimator_text(state)
         textfile_after, textsource_mtime_after, _ = get_estimator_textsource(state.runfolder, state.mpiranks)
         if (
             textfile_after == textfile
-            and get_estimator_textsize(state.runfolder, textfile) == textsize
+            and get_estimator_textsize(get_estimator_textfiles(state.runfolder, textfile)) == textsize
             and textsource_mtime_after is not None
             and mtime_matches_stamp(str(textsource_mtime), textsource_mtime_after)
         ):
@@ -869,7 +869,9 @@ def get_estimators_parquetfile(
                 # a job that still runs can add to the text after the read, within the tolerance of the cache stamp.
                 # The size of the text then shows the change, see allranks_textsource_change()
                 "textsource_size": str(textsize),
-                "textsource_compression": get_estimator_textcompression(state.runfolder, state.textfile),
+                "textsource_compression": get_estimator_textcompression(
+                    get_estimator_textfiles(state.runfolder, state.textfile)
+                ),
             }
             if state.allranks
             else {"batch_rank_min": str(min(state.mpiranks)), "batch_rank_max": str(max(state.mpiranks))}
@@ -1531,7 +1533,7 @@ def scan_artis_estimators(
             pl.scan_parquet(pfile) if batchcaches is None else scan_kept_parquet_file(pfile) for pfile in parquetfiles
         ]
         # The reader gives zero to a species that a cell does not write. A batch cache of an earlier artistools
-        # version gives a null to such a species when a whole rank lacks it, thus a zero replaces that null.
+        # version gives a null to such a species when a whole rank lacks it. Thus a zero replaces that null.
         # The quantities of a cell, e.g. Te, keep their nulls, because a null there is missing data
         pldflazy = drop_restart_duplicates(scans, runfolder_of_file, match_timestep).with_columns(
             (cs.float() & cs.matches(SPECIES_COLUMN_PATTERN)).fill_null(0)

@@ -68,8 +68,9 @@ fn parse_ion_transitions<'a>(
 
 /// Read the transition tables of an ARTIS transitiondata.txt file, keyed by (`atomic_number`, `ion_stage`)
 ///
-/// `ionlist` of `None` keeps every ion in the file. A table with fewer lines than its header gives is an error,
-/// because a cut file decodes with no error, and a short table would then lose the lines in silence.
+/// `ionlist` of `None` keeps every ion in the file. A table with fewer lines than its header gives is an error.
+/// A cut file decodes with no error, thus a short table would lose the lines in silence. ARTIS ends each line with
+/// a newline, thus a table whose last line ends the file with no newline is also short.
 fn read_transition_tables(
     filepath: &Path,
     ionlist: Option<&HashSet<(i32, i32)>>,
@@ -77,6 +78,7 @@ fn read_transition_tables(
     let mut filecontent = String::new();
     open_decompressed(filepath)?.read_to_string(&mut filecontent)?;
 
+    let fileendsinsideline = !filecontent.is_empty() && !filecontent.ends_with('\n');
     let mut transitiondata = Vec::new();
     let mut lines = filecontent.lines();
     while let Some(headerline) = lines.next() {
@@ -94,6 +96,9 @@ fn read_transition_tables(
         } else {
             ionlines.count() // skip past this ion's table
         };
+        // a cut inside the last line can leave a line that parses, e.g. "7.6" of "7.65e-01"
+        let lastlineiscut = linecount > 0 && fileendsinsideline && lines.clone().next().is_none();
+        let linecount = linecount - usize::from(lastlineiscut);
         if linecount < transitioncount {
             polars_bail!(
                 ComputeError:
@@ -107,7 +112,8 @@ fn read_transition_tables(
     Ok(transitiondata)
 }
 
-/// Read an ARTIS transitiondata.txt file and return a dictionary of `DataFrames`, keyed by (`atomic_number`, `ion_stage`).
+/// Read an ARTIS transitiondata.txt file, and return a dictionary of `DataFrames` keyed by
+/// (`atomic_number`, `ion_stage`).
 ///
 /// The parse runs without the GIL, thus other Python threads can run at the same time.
 #[pyfunction]

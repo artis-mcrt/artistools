@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 
 from artistools.atomic import get_ionstring
@@ -173,18 +174,27 @@ def add_lte_pops(
 
 
 def read_nltepops(
-    modelpath: str | Path, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
+    modelpath: str | Path,
+    timestep: int | np.integer | None = None,
+    modelgridindex: int | np.integer | Sequence[int] | None = None,
 ) -> pl.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and one or more grid cells.
 
     A figure of several subplots reads the same populations for each one, and a window reads them again for each of
-    its plots. Thus the last read stays in memory. Do not change the frame that this function returns.
+    its plots. Thus the last reads stay in memory. Do not change the frame that this function returns.
     """
-    cells = modelgridindex if modelgridindex is None or isinstance(modelgridindex, int) else tuple(modelgridindex)
-    return read_nltepops_cached(resolve_modelpath(modelpath), timestep, cells)
+    # a numpy integer is not iterable, thus the test of a sequence decides between one cell and a list of cells
+    if modelgridindex is None:
+        cells = None
+    elif isinstance(modelgridindex, Sequence):
+        cells = tuple(int(mgi) for mgi in modelgridindex)
+    else:
+        cells = int(modelgridindex)
+    return read_nltepops_cached(resolve_modelpath(modelpath), None if timestep is None else int(timestep), cells)
 
 
-@lru_cache(maxsize=1)
+# a window reads the levels of one cell for its menu, and a cache of one read would then drop the frame of the plot
+@lru_cache(maxsize=4)
 def read_nltepops_cached(modelpath: Path, timestep: int | None, cells: int | tuple[int, ...] | None) -> pl.DataFrame:
     """Read the NLTE populations of the model at an absolute path. One read of a large run takes minutes."""
     modelgridindex = list(cells) if isinstance(cells, tuple) else cells

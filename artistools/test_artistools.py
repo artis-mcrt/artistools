@@ -762,8 +762,8 @@ def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
 def test_plotspherical_smoothing_wraps_phi_and_crosses_each_pole() -> None:
     """The smoothing must blend no pole with the opposite pole.
 
-    The filter wrapped the cos theta axis as it wraps phi, thus the row at the south pole took the light
-    of the row at the north pole.
+    The filter wrapped the cos theta axis as it wraps phi. Thus the row at the south pole took the light of
+    the row at the north pole.
     """
     from artistools.plotspherical import smooth_direction_map
 
@@ -799,6 +799,35 @@ def test_plotspherical_puts_phi_zero_at_the_centre(mockpcolormesh: mock.MagicMoc
     _, meshgrid_phi, _, data = mockpcolormesh.call_args_list[0].args
     (litcolumn,) = np.flatnonzero(np.asarray(data)[0])
     assert np.allclose(meshgrid_phi[0, litcolumn : litcolumn + 2], [0.0, 2 * np.pi / nphibins])
+
+
+@pytest.mark.parametrize("nphibins", [1, 5, 8])
+def test_plotspherical_map_columns_cover_each_longitude_with_the_correct_phi_bin(nphibins: int) -> None:
+    """Each column of the map must show the phi bin that holds its longitude, from -pi to +pi.
+
+    For an odd -nphibins, the map ran from -0.8 pi to 1.2 pi for five bins, thus a strip at -pi stayed blank.
+    """
+    from artistools.plotspherical import get_map_columns
+
+    longitude_edges, column_phibins = get_map_columns(nphibins)
+
+    assert len(longitude_edges) == len(column_phibins) + 1
+    assert np.isclose(longitude_edges[0], -np.pi)
+    assert np.isclose(longitude_edges[-1], np.pi)
+    assert np.all(np.diff(longitude_edges) > 0.0)
+    assert np.any(np.isclose(longitude_edges, 0.0)), "phi = 0 must be an edge at the centre of the map"
+    column_centre_phi = np.mod(0.5 * (longitude_edges[:-1] + longitude_edges[1:]), 2 * np.pi)
+    assert np.array_equal(np.floor(column_centre_phi / (2 * np.pi) * nphibins).astype(int), column_phibins)
+
+
+def test_plotspherical_smoothing_with_odd_phi_bins_crosses_the_pole_at_phi_plus_pi() -> None:
+    """For an odd -nphibins, the row beyond a pole must take the two bins on each side of phi + pi."""
+    from artistools.plotspherical import get_rows_across_pole
+
+    rows = np.arange(5, dtype=np.float64).reshape((1, 5))
+
+    # the centre of bin 0 is at 0.2 pi, thus phi + pi is at 1.2 pi, which is the edge of bins 2 and 3
+    assert np.allclose(get_rows_across_pole(rows, 5)[0], [2.5, 3.5, 2.0, 0.5, 1.5])
 
 
 def test_plotspherical_gif(tmp_path: Path) -> None:
@@ -1911,12 +1940,15 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     assert ionlist == [(44, 1)]
     assert len(dftransitions) == 2
     hc_in_ev_cm = 0.0001239841984332003
-    for transition in dftransitions.iter_rows(named=True):
-        assert transition["lambda_angstroms"] == pytest.approx(7155.170)
-        assert transition["lower_statweight"] == pytest.approx(2 * 4.5 + 1)
-        assert transition["upper_statweight"] == pytest.approx(2 * 3.5 + 1)
-        assert transition["lower_energy_ev"] == pytest.approx(hc_in_ev_cm * 25000.0)
-        assert transition["upper_energy_ev"] == pytest.approx(hc_in_ev_cm * 35000.0)
+    expected_values = {
+        "lambda_angstroms": 7155.170,
+        "lower_statweight": 2 * 4.5 + 1,
+        "upper_statweight": 2 * 3.5 + 1,
+        "lower_energy_ev": hc_in_ev_cm * 25000.0,
+        "upper_energy_ev": hc_in_ev_cm * 35000.0,
+    }
+    for colname, expected in expected_values.items():
+        assert dftransitions[colname].to_list() == pytest.approx([expected, expected]), colname
 
     # the two lines give the same transition, thus the same A value
     assert np.isclose(dftransitions["A"][0], dftransitions["A"][1], rtol=1e-12)
@@ -3769,27 +3801,22 @@ def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission()
     The cell came from the last thermal emission and the timestep from the last interaction, thus a
     packet that scattered in a later timestep read the estimators of the wrong time.
     """
-    tmids_s = [tmid * at.constants.day_to_s for tmid in at.get_timestep_times(modelpath, loc="mid")]
     dfpackets = pl.LazyFrame({
         "em_timestep": [52, 52, 3],
-        "trueem_time": [tmids_s[50], -1.0, tmids_s[3]],
+        "emtrue_timestep": [50, -1, 3],
         "emtrue_modelgridindex": [40, 40, 2],
     })
 
-    dfpacketstrue, tscolumn, mgicolumn = at.plotlinefluxes.add_emission_timestep_column(
-        dfpackets, modelpath, "trueemissiontype"
+    assert at.plotlinefluxes.get_emission_columns(dfpackets, "trueemissiontype") == (
+        "emtrue_timestep",
+        "emtrue_modelgridindex",
     )
-    assert (tscolumn, mgicolumn) == ("emtrue_timestep", "emtrue_modelgridindex")
-    assert dfpacketstrue.collect()[tscolumn].to_list() == [50, -1, 3]
 
     # the last interaction keeps its own timestep and cell
-    _, tscolumn, mgicolumn = at.plotlinefluxes.add_emission_timestep_column(dfpackets, modelpath, "emissiontype")
-    assert (tscolumn, mgicolumn) == ("em_timestep", "em_modelgridindex")
+    assert at.plotlinefluxes.get_emission_columns(dfpackets, "emissiontype") == ("em_timestep", "em_modelgridindex")
 
     # an old packets file has no trueem_time, thus the timestep of the last interaction is all that it gives
-    _, tscolumn, _ = at.plotlinefluxes.add_emission_timestep_column(
-        dfpackets.drop("trueem_time"), modelpath, "trueemissiontype"
-    )
+    tscolumn, _ = at.plotlinefluxes.get_emission_columns(dfpackets.drop("emtrue_timestep"), "trueemissiontype")
     assert tscolumn == "em_timestep"
 
 
@@ -3893,12 +3920,15 @@ def test_viewer_undo_ignores_the_parts_that_the_window_sets() -> None:
         figwidthscale: float
         dpi: int | None = None
 
-    def keep_width(restored: Values, current: Values) -> Values:
-        return viewercore.keep_figwidthscale(restored, current)
-
     viewer = mock.Mock(values=Values(time=1, figwidthscale=1.0))
-    queue = viewerwindow.DrawQueue(
-        QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock(), keep_on_undo=keep_width
+    queue = viewerwindow.DrawQueue[Values](
+        QtCore.QObject(),
+        viewer,
+        mock.Mock(),
+        mock.Mock(),
+        mock.Mock(),
+        render=mock.Mock(),
+        keep_on_undo=viewercore.keep_figwidthscale,
     )
     with mock.patch.object(queue, "redraw") as mockredraw:
         queue.apply(Values(time=2, figwidthscale=1.0))
@@ -4370,7 +4400,7 @@ def test_viewer_option_rows_split_a_group_of_switches() -> None:
 def test_viewer_removes_an_option_of_two_values_with_its_values_alone() -> None:
     """An option of nargs 2 takes two values, thus the tokens after them stay in the command.
 
-    remove_options took each token up to the next flag, as for nargs "*", thus a path after the values was lost.
+    remove_options took each token up to the next flag, as for nargs "*", thus the command lost a path after the values.
     """
     parser = viewercore.make_parser(at.spectra.plotspectra.addargs)
     tokens = ["-emissionvelocityrange", "1000", "2000", "mymodel", "-xmin", "5"]

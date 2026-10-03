@@ -613,6 +613,12 @@ def write_zstd_frames(filepath: Path, texts: Sequence[str]) -> None:
     filepath.write_bytes(b"".join(frames))
 
 
+def copy_model_inputs(folder: Path, *extranames: str, source: Path = modelpath) -> None:
+    """Copy the input files of a model to a folder, and each extra file of the model, e.g. estimators_0000.out."""
+    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", *extranames):
+        shutil.copy(source / name, folder / name)
+
+
 def get_cell_texts(estimatortext: str) -> list[str]:
     """Return the text of each cell of an estimator file. The line of a timestep starts the text of a cell."""
     celltexts: list[str] = []
@@ -668,8 +674,7 @@ def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(tmp_path: Path) -> 
     A run of the ARTIS script on the folder of a job that still runs gives such a file, because sn3d then adds
     timesteps to the files of the ranks. The reader must take the files of the ranks, or it silently loses timesteps.
     """
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -701,8 +706,7 @@ def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Pa
     """
     import artistools.estimators.core
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -778,8 +782,7 @@ def test_an_older_text_does_not_replace_a_newer_cache(tmp_path: Path) -> None:
     from artistools.misc.modelinfo import get_runfolder_timesteps
     from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path, "estimators_0000.out")
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (2000.0, 2000.0))
     ntimesteps = at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique()
@@ -804,8 +807,7 @@ def test_an_older_text_replaces_a_cache_of_a_different_version(tmp_path: Path) -
     from artistools.estimators.core import CACHEVERSION
     from artistools.misc import write_parquet_atomic
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path, "estimators_0000.out")
     os.utime(tmp_path / "estimators_0000.out", (2000.0, 2000.0))
     at.estimators.scan_estimators(tmp_path).collect()
 
@@ -830,8 +832,7 @@ def test_a_compression_of_the_text_keeps_the_cache(tmp_path: Path) -> None:
     from artistools.estimators.core import get_estimator_batch_states
     from artistools.misc.fileio import get_decompress_open
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path, "estimators_0000.out")
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (2000.0, 2000.0))
     dfexpected = at.estimators.scan_estimators(tmp_path).collect()
@@ -874,8 +875,7 @@ def test_a_partly_archived_run_rebuilds_only_its_stale_batches(tmp_path: Path) -
     def batched_by_one(ranks: Iterable[int], _batchsize: int, strict: bool = False) -> Iterable[tuple[int, ...]]:
         return itertools.batched(ranks, 1, strict=strict)
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path, "estimators_0000.out")
     dfrank0 = at.rustext.estimparse(tmp_path, 0, 0).with_columns(pl.col("timestep", "modelgridindex").cast(pl.Int32))
     # the text of rank 0 is newer than its cache. The text of rank 1 is archived, but its cache is current
     os.utime(tmp_path / "estimators_0000.out", (5000.0, 5000.0))
@@ -907,8 +907,7 @@ def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
     from artistools.misc import write_parquet_atomic
     from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path, "estimators_0000.out")
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (1000.0, 1000.0))
     batchcache = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
@@ -937,8 +936,7 @@ def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
     """
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
     def relabel(celltext: str, modelgridindex: int) -> str:
@@ -972,8 +970,7 @@ def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_pat
     """
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
     def relabel(celltext: str, modelgridindex: int) -> str:
@@ -1014,8 +1011,7 @@ def test_a_write_after_the_read_makes_the_cache_stale(tmp_path: Path) -> None:
     The time of the text then moves by less than the tolerance of the cache stamp. The size of the text shows the
     change, thus the next scan converts the text again.
     """
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -1072,8 +1068,7 @@ def test_scan_takes_a_text_with_no_complete_cell(tmp_path: Path, capsys: pytest.
     The reader gives a frame with no column for such a text, and the sort of the conversion then stopped with
     ColumnNotFoundError. The scan must give a warning and no row.
     """
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path)
     celltext = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))[0]
     cuttext = celltext[: celltext.index("populations")] + "populations    Z=26  1: 6.2"
     (tmp_path / "estimators_allranks.out").write_text(cuttext, encoding="utf-8")
@@ -1081,6 +1076,22 @@ def test_scan_takes_a_text_with_no_complete_cell(tmp_path: Path, capsys: pytest.
     dfestim = at.estimators.scan_estimators(tmp_path).collect()
     assert dfestim.is_empty()
     assert "holds no complete cell" in capsys.readouterr().err
+
+
+def test_scan_gives_no_warning_of_a_cut_text_for_a_text_of_empty_cells(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A text whose cells are all empty is complete, thus the scan gives no row and no warning of a cut text.
+
+    The reader gave a frame with no column for such a text, as for a cut text. The scan then said that the text holds
+    no complete cell.
+    """
+    copy_model_inputs(tmp_path)
+    (tmp_path / "estimators_allranks.out").write_text("timestep 0 modelgridindex 0 EMPTYCELL\n\n", encoding="utf-8")
+
+    dfestim = at.estimators.scan_estimators(tmp_path).collect()
+    assert dfestim.is_empty()
+    assert "holds no complete cell" not in capsys.readouterr().err
 
 
 def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(tmp_path: Path) -> None:
@@ -1095,8 +1106,7 @@ def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(tmp_p
     from artistools.misc import write_parquet_atomic
     from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path, "estimators_0000.out")
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (1000.0, 1000.0))
     batchcachefile = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
@@ -1205,8 +1215,7 @@ def test_conversion_reads_once_a_text_that_changed_before_the_read(tmp_path: Pat
     from artistools.estimators.core import convert_estimator_batch_caches
     from artistools.estimators.core import get_estimator_batch_states
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -1248,8 +1257,7 @@ def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(tmp_pa
     A job of one timestep has no other timestep to give this count. The restart writes the timestep again, but the
     reader keeps the timestep of the earlier job, thus the conversion must drop the incomplete timestep.
     """
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path)
     (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 1\n1 1 1 1\n")
     celltext = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))[0]
     write_zstd_frames(tmp_path / "estimators_allranks.out.zst", [celltext])
@@ -1268,8 +1276,7 @@ def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None
     from artistools.estimators.core import CACHEVERSION
     from artistools.misc import write_parquet_atomic
 
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", "estimators_0000.out"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path, "estimators_0000.out")
     os.utime(tmp_path / "estimators_0000.out", (1000.0, 1000.0))
     nullcolumns = ("nnion_Fe_II", "gamma_R_Fe_II", "nnelement_Fe", "nniso_Ni56", "Te")
     dfbatch = (
@@ -1288,7 +1295,7 @@ def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None
     dfestim = at.estimators.scan_estimators(tmp_path).collect()
     assert not (tmp_path / "estimators_allranks.out.parquet").exists()
     for column in nullcolumns[:-1]:
-        assert dfestim.filter(pl.col("timestep") == 0)[column].item() == 0.0, column
+        assert dfestim.filter(pl.col("timestep") == 0)[column].item() == pytest.approx(0.0), column
     assert dfestim.filter(pl.col("timestep") == 0)["Te"].item() is None
     assert dfestim["Te"].null_count() == 1
 
@@ -1306,8 +1313,7 @@ def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
     allranksfolder = tmp_path / "allranks"
     for folder in (perrankfolder, allranksfolder):
         folder.mkdir()
-        for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-            shutil.copy(modelpath / name, folder / name)
+        copy_model_inputs(folder)
     shutil.copy(modelpath / "estimators_0000.out", perrankfolder / "estimators_0000.out")
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     write_zstd_frames(allranksfolder / "estimators_allranks.out.zst", celltexts)
@@ -2418,8 +2424,7 @@ def build_classic_restart_model(tmp_path: Path, *, secondfolderfirsttimestep: in
     import shutil
 
     source = at.get_path("testdata") / "test-classicmode_3d"
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(source / name, tmp_path / name)
+    copy_model_inputs(tmp_path, source=source)
     shutil.copy(source / "job0" / "output_0-0.txt", tmp_path / "output_0-0.txt")
 
     # each row gives a cell index, TR, Te, W, TJ, and then the nine rates that the reader takes from the end
@@ -2957,8 +2962,7 @@ def make_model_with_deposition(tmp_path: Path, cellye: Sequence[float] | None = 
     """
     modeldir = tmp_path / "modelwithdeposition"
     modeldir.mkdir()
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, modeldir / name)
+    copy_model_inputs(modeldir)
 
     ncells = 1 if cellye is None else len(cellye)
     if cellye is not None:
@@ -4781,8 +4785,7 @@ def test_multiplot_leaves_out_a_timestep_with_no_estimators(tmp_path: Path, caps
 
     The first frame with no row stopped the command, thus --multiplot and --makegif wrote no frame.
     """
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt"):
-        shutil.copy(modelpath / name, tmp_path / name)
+    copy_model_inputs(tmp_path)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     (tmp_path / "estimators_0000.out").write_text(
         "".join(celltext for celltext in celltexts if int(celltext.split()[1]) <= 10), encoding="utf-8"

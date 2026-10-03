@@ -5,10 +5,10 @@ import contextlib
 import dataclasses as dc
 import math
 import shlex
-import threading
 import typing as t
 from functools import partial
 from pathlib import Path
+from types import MappingProxyType
 
 import matplotlib as mpl
 import matplotlib.colors as mplcolors
@@ -342,6 +342,46 @@ class RunTimes(t.NamedTuple):
     validend: float
 
 
+class RunGrid(t.NamedTuple):
+    """The runs of the list of spectra and the timestep grid of the time controls, which load_runs reads.
+
+    The viewer replaces the whole object, thus a worker thread that reads it one time sees the grid of one load.
+    """
+
+    # the times of each spectrum that names a run, keyed by the token of the spectrum
+    runtimes: "Mapping[str, RunTimes]"
+    runfolders: tuple[Path, ...]
+    gridfolder: Path
+    tmids: tuple[float, ...]
+    tstarts: tuple[float, ...]
+    tends: tuple[float, ...]
+    twidths: tuple[float, ...]
+    # the Δ ln t of a logarithmic grid with the same start, end, and count of timesteps
+    dlogt: float
+    # the times that are valid for all the runs [d]
+    timebounds: tuple[float, float]
+    validtimesteps: tuple[int, ...]
+    hasgammaspectrum: bool
+    directionkinds: tuple[str, ...]
+    # the spectra and the time grid of the load
+    runkey: tuple[tuple[str, ...], str]
+
+
+def get_grid_selection(grid: RunGrid, values: ControlValues) -> tuple[int, int]:
+    """Return the first and the last valid timestep of the grid with a middle in the time range of the values.
+
+    This is the rule of get_time_range for a clamped range. A range that holds no middle gives the valid timestep
+    with the nearest middle.
+    """
+    tolerance = 1e-9 * max(abs(values.centre), 1.0)
+    low, high = values.centre - values.width / 2.0 - tolerance, values.centre + values.width / 2.0 + tolerance
+    inside = [timestep for timestep in grid.validtimesteps if low <= grid.tmids[timestep] <= high]
+    if inside:
+        return inside[0], inside[-1]
+    nearest = min(grid.validtimesteps, key=lambda timestep: abs(grid.tmids[timestep] - values.centre))
+    return nearest, nearest
+
+
 def get_run_times(runfolder: Path, *, plotinvalidpart: bool) -> RunTimes:
     """Return the times of the timesteps of a run, and the times inside them that plotspectra accepts.
 
@@ -581,9 +621,6 @@ class SpectrumViewer:
                 "--interactive takes the time range from the timesteps of an ARTIS run, and no path names a run",
                 "Give the folder of an ARTIS run, e.g. plotspectra mymodel --interactive",
             )
-        # the worker thread makes the command from the timestep grid while the window can read the runs again, e.g.
-        # for a new model. The lock keeps the grid of one load together
-        self.gridlock = threading.Lock()
         # the keys of the runs are the tokens of the list of spectra. A normalised path, e.g. of "mymodel/", is a
         # different key, and the window then found no run for a row
         self.load_runs(tuple(startpaths) or DEFAULT_SPECTRA)
@@ -592,13 +629,14 @@ class SpectrumViewer:
         self.parser = parser
 
         # a range of one timestep is a single time, and a plot with no time starts in the middle of the run
+        grid = self.grid
         if args.timemin is not None and args.timemax is not None:
             centre = (args.timemin + args.timemax) / 2.0
-            coversseveral = sum(args.timemin <= tmid <= args.timemax for tmid in self.tmids) > 1
+            coversseveral = sum(args.timemin <= tmid <= args.timemax for tmid in grid.tmids) > 1
             width = args.timemax - args.timemin if coversseveral or (args.notimeclamp and givesdaysrange) else 0.0
         else:
             # 4 significant digits of the middle timestep give a short command
-            centre, width = float(f"{self.tmids[self.validtimesteps[len(self.validtimesteps) // 2]]:.4g}"), 0.0
+            centre, width = float(f"{grid.tmids[grid.validtimesteps[len(grid.validtimesteps) // 2]]:.4g}"), 0.0
 
         actions = get_actions_by_flag(parser)
         self.groupbychoices = [str(choice) for choice in actions["-groupby"].choices or ()]
@@ -613,7 +651,7 @@ class SpectrumViewer:
             # a continuous range of the command keeps its width in days. A continuous single time takes Δ ln t,
             # because a width of 0 reads the whole timestep, which is the clamped range
             widthmode="days" if width > 0.0 else "dlogt",
-            dlogt=self.dlogt,
+            dlogt=grid.dlogt,
             gamma=bool(args.gamma),
             xmin=format(args.xmin, ".10g"),
             xmax=format(args.xmax, ".10g"),
@@ -705,58 +743,49 @@ class SpectrumViewer:
             and tends[timestep] <= timebounds[1]
             and fits_each_run(runfoldertimes, get_snapped_timedays_argument(tmids, tstarts, tends, timestep, timestep))
         ] or list(range(len(tmids)))
-        hasgammaspectrum = has_gamma_spectrum(runfolders)
-        # the direction controls read the first run, e.g. for the observers of -plotvspecpol
-        directionkinds = get_direction_kinds(runfolders[0])
-        # the reads above are slow, thus the lock covers only the assignments
-        with self.gridlock:
-            self.runtimes: dict[str, RunTimes] = runtimes_of_path
-            self.runfolders, self.gridfolder = runfolders, gridfolder
-            self.tmids, self.tstarts, self.tends = tmids, tstarts, tends
-            self.twidths = twidths
-            # the Δ ln t of a logarithmic grid with the same start, end, and count of timesteps. A constant grid or a
-            # hybrid grid of ARTIS has a different Δ ln t in each timestep, and the width mode "dlogt" starts with it
-            self.dlogt = float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}")
-            self.timebounds = (timebounds[0], timebounds[1])
-            self.validtimesteps = validtimesteps
-            self.hasgammaspectrum = hasgammaspectrum
-            self.directionkinds = directionkinds
-            self.runkey = (tuple(str(path) for path in spectra), timegrid)
+        # the worker thread makes the command from the grid while the window reads the runs again, e.g. for a new
+        # model. One assignment of the complete grid keeps the grid of one load together
+        self.grid = RunGrid(
+            runtimes=MappingProxyType(runtimes_of_path),
+            runfolders=tuple(runfolders),
+            gridfolder=gridfolder,
+            tmids=tuple(tmids),
+            tstarts=tuple(tstarts),
+            tends=tuple(tends),
+            twidths=tuple(twidths),
+            # a constant grid or a hybrid grid of ARTIS has a different Δ ln t in each timestep, and the width mode
+            # "dlogt" starts with this value
+            dlogt=float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}"),
+            timebounds=(timebounds[0], timebounds[1]),
+            validtimesteps=tuple(validtimesteps),
+            hasgammaspectrum=has_gamma_spectrum(runfolders),
+            # the direction controls read the first run, e.g. for the observers of -plotvspecpol
+            directionkinds=tuple(get_direction_kinds(runfolders[0])),
+            runkey=(tuple(str(path) for path in spectra), timegrid),
+        )
 
     def get_selection(self, values: ControlValues) -> tuple[int, int]:
-        """Return the first and the last valid timestep with a middle in the time range of the values.
-
-        This is the rule of get_time_range for a clamped range. A range that holds no middle gives the valid
-        timestep with the nearest middle.
-        """
-        tolerance = 1e-9 * max(abs(values.centre), 1.0)
-        low, high = values.centre - values.width / 2.0 - tolerance, values.centre + values.width / 2.0 + tolerance
-        inside = [timestep for timestep in self.validtimesteps if low <= self.tmids[timestep] <= high]
-        if inside:
-            return inside[0], inside[-1]
-        nearest = min(self.validtimesteps, key=lambda timestep: abs(self.tmids[timestep] - values.centre))
-        return nearest, nearest
+        """Return the first and the last valid timestep with a middle in the time range of the values."""
+        return get_grid_selection(self.grid, values)
 
     def snap(self, values: ControlValues, first: int, last: int) -> ControlValues:
         """Return the values for a time range from the middle of the first timestep to the middle of the last."""
+        tmids = self.grid.tmids
         return dc.replace(
-            values,
-            centre=(self.tmids[first] + self.tmids[last]) / 2.0,
-            width=self.tmids[last] - self.tmids[first],
-            notimeclamp=False,
+            values, centre=(tmids[first] + tmids[last]) / 2.0, width=tmids[last] - tmids[first], notimeclamp=False
         )
 
     def get_plot_tokens(self, values: ControlValues | None = None) -> list[str]:
         """Return the plotspectra arguments of the values, or of the current values if the caller gives none."""
         if values is None:
             values = self.values
-        with self.gridlock:
-            if values.notimeclamp:
-                timedays = get_timedays_argument(values.centre, values.width, self.timebounds)
-            else:
-                timedays = get_snapped_timedays_argument(
-                    self.tmids, self.tstarts, self.tends, *self.get_selection(values)
-                )
+        grid = self.grid
+        if values.notimeclamp:
+            timedays = get_timedays_argument(values.centre, values.width, grid.timebounds)
+        else:
+            timedays = get_snapped_timedays_argument(
+                grid.tmids, grid.tstarts, grid.tends, *get_grid_selection(grid, values)
+            )
         options = ["-t", timedays, *get_option_tokens("-xmin", values.xmin), *get_option_tokens("-xmax", values.xmax)]
         if values.notimeclamp:
             options.append("--notimeclamp")
@@ -835,56 +864,62 @@ class SpectrumViewer:
         plottokens = self.get_plot_tokens()
         timedays = plottokens[plottokens.index("-t") + 1]
         timestepmin, timestepmax, daysmin, daysmax = get_time_range(
-            self.gridfolder, timedays_range_str=timedays, clamp_to_timesteps=not self.values.notimeclamp
+            self.grid.gridfolder, timedays_range_str=timedays, clamp_to_timesteps=not self.values.notimeclamp
         )
         return get_time_range_text(timestepmin, timestepmax, daysmin, daysmax, clamped=not self.values.notimeclamp)
 
     def get_nearest_position(self) -> int:
         """Return the position in the valid timesteps of the timestep with the middle nearest to the time."""
+        grid, centre = self.grid, self.values.centre
         return min(
-            range(len(self.validtimesteps)),
-            key=lambda position: abs(self.tmids[self.validtimesteps[position]] - self.values.centre),
+            range(len(grid.validtimesteps)),
+            key=lambda position: abs(grid.tmids[grid.validtimesteps[position]] - centre),
         )
 
     def get_selection_positions(self) -> tuple[int, int]:
         """Return the positions in the valid timesteps of the first and the last timestep of the time range."""
-        first, last = self.get_selection(self.values)
-        return self.validtimesteps.index(first), self.validtimesteps.index(last)
+        grid = self.grid
+        first, last = get_grid_selection(grid, self.values)
+        return grid.validtimesteps.index(first), grid.validtimesteps.index(last)
 
     def step_time(self, step: int) -> ControlValues | None:
         """Return the values with the time one timestep later or earlier, or None at the end of the valid range."""
+        grid = self.grid
+        validtimesteps, tmids = grid.validtimesteps, grid.tmids
         if self.values.notimeclamp:
             # a continuous range keeps its width and moves its middle to the middle of the adjacent timestep
             position = self.get_nearest_position() + step
-            if not 0 <= position < len(self.validtimesteps):
+            if not 0 <= position < len(validtimesteps):
                 return None
-            return dc.replace(self.values, centre=float(f"{self.tmids[self.validtimesteps[position]]:.4g}"))
+            return dc.replace(self.values, centre=float(f"{tmids[validtimesteps[position]]:.4g}"))
         firstpos, lastpos = self.get_selection_positions()
-        if firstpos + step < 0 or lastpos + step >= len(self.validtimesteps):
+        if firstpos + step < 0 or lastpos + step >= len(validtimesteps):
             return None
-        return self.snap(self.values, self.validtimesteps[firstpos + step], self.validtimesteps[lastpos + step])
+        return self.snap(self.values, validtimesteps[firstpos + step], validtimesteps[lastpos + step])
 
     def step_width(self, step: int) -> ControlValues:
         """Return the values with the time range one timestep wider or narrower."""
+        grid = self.grid
         if self.values.notimeclamp:
             # a step gives a width in days, thus the width mode becomes "days". A width of 0 or less stays out
-            width = self.values.width + step * self.twidths[self.validtimesteps[self.get_nearest_position()]]
+            width = self.values.width + step * grid.twidths[grid.validtimesteps[self.get_nearest_position()]]
             if not float(f"{width:.3g}") > 0.0:
                 return self.values
             return dc.replace(self.values, widthmode="days", width=float(f"{width:.3g}"))
         firstpos, lastpos = self.get_selection_positions()
-        lastpos = min(max(lastpos + step, firstpos), len(self.validtimesteps) - 1)
-        return self.snap(self.values, self.validtimesteps[firstpos], self.validtimesteps[lastpos])
+        lastpos = min(max(lastpos + step, firstpos), len(grid.validtimesteps) - 1)
+        return self.snap(self.values, grid.validtimesteps[firstpos], grid.validtimesteps[lastpos])
 
     def move_to_end(self, *, last: bool) -> ControlValues:
         """Return the values with the time at the first or at the last valid timestep, and the same width."""
+        grid = self.grid
         if self.values.notimeclamp:
-            timestep = self.validtimesteps[-1 if last else 0]
-            return dc.replace(self.values, centre=float(f"{self.tmids[timestep]:.4g}"))
+            timestep = grid.validtimesteps[-1 if last else 0]
+            return dc.replace(self.values, centre=float(f"{grid.tmids[timestep]:.4g}"))
         firstpos, lastpos = self.get_selection_positions()
         count = lastpos - firstpos
-        start = len(self.validtimesteps) - 1 - count if last else 0
-        return self.snap(self.values, self.validtimesteps[start], self.validtimesteps[start + count])
+        start = len(grid.validtimesteps) - 1 - count if last else 0
+        return self.snap(self.values, grid.validtimesteps[start], grid.validtimesteps[start + count])
 
     def get_rejection(self, values: ControlValues) -> str | None:
         """Return why plotspectra rejects the arguments of the values, or None if it accepts them.
@@ -954,7 +989,7 @@ class SpectrumViewer:
         """
         if not values.notimeclamp:
             return values
-        low, high = self.timebounds
+        low, high = self.grid.timebounds
         centre = min(max(values.centre, low), high)
         widthmode = "dlogt" if values.widthmode == "days" and not values.width > 0.0 else values.widthmode
         width = values.width
@@ -1054,16 +1089,17 @@ def find_time_grid(viewer: SpectrumViewer, values: ControlValues, giventimedays:
     if get_timedays_token(viewer, values) == giventimedays:
         return values
     for path in values.spectra[1:]:
-        if path not in viewer.runtimes:
+        if path not in viewer.grid.runtimes:
             continue
         viewer.load_runs(values.spectra, path)
+        grid = viewer.grid
         try:
             _, _, daysmin, daysmax = get_time_range(
-                viewer.gridfolder, timedays_range_str=giventimedays, clamp_to_timesteps=True
+                grid.gridfolder, timedays_range_str=giventimedays, clamp_to_timesteps=True
             )
         except ValueError:
             continue
-        coversseveral = sum(daysmin <= tmid <= daysmax for tmid in viewer.tmids) > 1
+        coversseveral = sum(daysmin <= tmid <= daysmax for tmid in grid.tmids) > 1
         candidate = dc.replace(
             values, timegrid=path, centre=(daysmin + daysmax) / 2.0, width=daysmax - daysmin if coversseveral else 0.0
         )
@@ -1085,6 +1121,7 @@ def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) ->
     if timegrid not in spectra:
         timegrid = ""
     viewer.load_runs(spectra, timegrid)
+    grid = viewer.grid
     values = dc.replace(
         viewer.values,
         spectra=tuple(spectra),
@@ -1092,15 +1129,27 @@ def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) ->
         otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.spectra, spectra),
     )
     # a new first run can have no observers of the virtual packets, thus the kind of viewing direction can go
-    if values.directionkind not in viewer.directionkinds:
+    if values.directionkind not in grid.directionkinds:
         values = dc.replace(values, directionkind="", directionbins=())
     if values.notimeclamp:
         return viewer.clamp_time(values)
-    count = min(last - first + 1, len(viewer.validtimesteps))
-    start = get_nearest_range_start(
-        [viewer.tmids[timestep] for timestep in viewer.validtimesteps], values.centre, count
+    count = min(last - first + 1, len(grid.validtimesteps))
+    start = get_nearest_range_start([grid.tmids[timestep] for timestep in grid.validtimesteps], values.centre, count)
+    return viewer.snap(values, grid.validtimesteps[start], grid.validtimesteps[start + count - 1])
+
+
+def get_time_slider_ranges(grid: RunGrid, values: ControlValues) -> tuple[tuple[float, float], float, float, int]:
+    """Return the ranges of the time sliders: log10 of the valid times, the widths in days and in Δ ln t, and the count.
+
+    The upper limit of a width is a quarter of the valid times, or the width of the values if that is larger.
+    """
+    low, high = grid.timebounds
+    return (
+        (math.log10(low), math.log10(high)),
+        max((high - low) / 4.0, values.width),
+        max(math.log(high / low) / 4.0, values.dlogt),
+        len(grid.validtimesteps),
     )
-    return viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count - 1])
 
 
 def get_icon_curve() -> "npt.NDArray[np.float64]":
@@ -1144,10 +1193,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
     # a command with no path reads the model of the working folder
     modelnames = [resolve_modelpath(path).name for path in viewer.modelpathtokens] or [
-        resolve_modelpath(viewer.runfolders[0]).name
+        resolve_modelpath(viewer.grid.runfolders[0]).name
     ]
     viewerwindow = start_viewer_window(
-        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.runfolders[0], ", ".join(modelnames))
+        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.grid.runfolders[0], ", ".join(modelnames))
     )
     if isinstance(viewerwindow, str):
         return viewerwindow
@@ -1162,10 +1211,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return low + (high - low) * position / SLIDER_STEPS
 
     helptexts = viewer.helptexts
-    logtrange = (math.log10(viewer.timebounds[0]), math.log10(viewer.timebounds[1]))
-    widthmax = max((viewer.timebounds[1] - viewer.timebounds[0]) / 4.0, viewer.values.width)
-    dlogtmax = max(math.log(viewer.timebounds[1] / viewer.timebounds[0]) / 4.0, viewer.values.dlogt)
-    nvalid = len(viewer.validtimesteps)
+    logtrange, widthmax, dlogtmax, nvalid = get_time_slider_ranges(viewer.grid, viewer.values)
 
     # the models and the reference spectra come first, as the light curves do in the light curve viewer. The settings
     # keep the open state of the section by its key, which the older heading of the section gave
@@ -1391,7 +1437,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     show_direction, set_direction_run = add_direction_section(
         panellayout,
         helptexts,
-        viewer.runfolders[0],
+        viewer.grid.runfolders[0],
         lambda: get_direction_choice(viewer.values),
         lambda choice: on_direction(choice),  # ruff:ignore[unnecessary-lambda]
         lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
@@ -1533,27 +1579,23 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         The ranges of the sliders and the direction bins came from the models of the command only.
         """
         nonlocal logtrange, widthmax, dlogtmax, nvalid, slidermode, shownruns
-        logtrange = (math.log10(viewer.timebounds[0]), math.log10(viewer.timebounds[1]))
-        widthmax = max((viewer.timebounds[1] - viewer.timebounds[0]) / 4.0, viewer.values.width)
-        dlogtmax = max(math.log(viewer.timebounds[1] / viewer.timebounds[0]) / 4.0, viewer.values.dlogt)
-        nvalid = len(viewer.validtimesteps)
+        grid = viewer.grid
+        logtrange, widthmax, dlogtmax, nvalid = get_time_slider_ranges(grid, viewer.values)
         # show_values sets the ranges of the sliders again, and the direction bins come from the new first run
         slidermode = None
-        set_direction_run(viewer.runfolders[0])
-        shownruns = viewer.runkey
+        set_direction_run(grid.runfolders[0])
+        shownruns = grid.runkey
         # Reload Data calls this function outside show_values, and a clear of the box without the blocker selected a
         # time grid with no model
         with QtCore.QSignalBlocker(timegridbox):
             timegridbox.clear()
             # two models can have one name, thus each choice gives the place of the model in the list of spectra
-            for path in viewer.runtimes:
+            for path, runtimes in grid.runtimes.items():
                 timegridbox.addItem(f"{viewer.values.spectra.index(path) + 1}. {get_model_name(path)}", path)
                 timegridbox.setItemData(
-                    timegridbox.count() - 1,
-                    get_run_times_text(viewer.runtimes[path]),
-                    QtCore.Qt.ItemDataRole.ToolTipRole,
+                    timegridbox.count() - 1, get_run_times_text(runtimes), QtCore.Qt.ItemDataRole.ToolTipRole
                 )
-        low, high = viewer.timebounds
+        low, high = grid.timebounds
         validtimeslabel.setText(f"valid {low:.4g} to {high:.4g} d")
 
     def set_time_mode() -> None:
@@ -1663,7 +1705,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def make_spectrum_rows(values: ControlValues) -> list[SeriesRow]:
         """Return a row for each spectrum. The model that gives the timesteps of the time controls has a mark."""
-        models = list(viewer.runtimes)
+        runtimes = viewer.grid.runtimes
+        models = list(runtimes)
         gridpath = get_timegrid_path(values)
         colours = get_series_colours(values.spectra, values.otheroptions)
         rows: list[SeriesRow] = []
@@ -1676,11 +1719,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                     name=style["-label"] or get_series_name(path),
                     labelled=style["-label"] is not None,
                     itemtext=itemtext,
-                    tooltip=(
-                        f"{itemtext}\n{get_run_times_text(viewer.runtimes[path])}"
-                        if path in viewer.runtimes
-                        else itemtext
-                    ),
+                    tooltip=(f"{itemtext}\n{get_run_times_text(runtimes[path])}" if path in runtimes else itemtext),
                     swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
                     removereason=(
                         "The plot needs one ARTIS model at least. Add a different model first"
@@ -1701,7 +1740,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                     extraactions=(
                         (
                             "Use for the Time Controls",
-                            path in viewer.runtimes and path != gridpath,
+                            path in runtimes and path != gridpath,
                             partial(on_use_timegrid, path),
                         ),
                     ),
@@ -1716,9 +1755,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         try:
             values = viewer.values
             # Undo or a rejected change can give a different list of spectra, and its runs have different times
-            if (values.spectra, values.timegrid) != viewer.runkey:
+            if (values.spectra, values.timegrid) != viewer.grid.runkey:
                 viewer.load_runs(values.spectra, values.timegrid)
-            if viewer.runkey != shownruns:
+            grid = viewer.grid
+            if grid.runkey != shownruns:
                 show_run_ranges()
             if (values.xunit, values.gamma) != rangesunit:
                 set_xunit_ranges()
@@ -1728,7 +1768,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             timegridbox.setCurrentIndex(max(timegridbox.findData(get_timegrid_path(values)), 0))
             packetbox.setCurrentIndex(1 if values.gamma else 0)
             # the current mode stays available, thus the user can switch back from a plot that failed
-            if gammaitem.isEnabled() != (gammaavailable := viewer.hasgammaspectrum or values.gamma):
+            if gammaitem.isEnabled() != (gammaavailable := grid.hasgammaspectrum or values.gamma):
                 gammaitem.setEnabled(gammaavailable)
                 gammaitem.setToolTip(
                     gammatooltip if gammaavailable else "A run has no gamma_spec.out and no packet files"
@@ -1736,7 +1776,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             stepbuttons[0].setEnabled(viewer.step_time(-1) is not None)
             stepbuttons[1].setEnabled(viewer.step_time(1) is not None)
             if values.notimeclamp:
-                timeslider.setValue(to_position(math.log10(max(values.centre, viewer.timebounds[0])), *logtrange))
+                timeslider.setValue(to_position(math.log10(max(values.centre, grid.timebounds[0])), *logtrange))
                 widthmodebox.setCurrentIndex(widthmodebox.findData(values.widthmode))
                 # the field and the slider give the quantity of the width mode: Δ ln t, or a width in days
                 if values.widthmode == "dlogt":
@@ -1746,7 +1786,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                     widthslider.setValue(to_position(values.width, 0.0, widthmax))
                     set_edit_text(widthedit, f"{values.width:.2f}")
             else:
-                first, last = (viewer.validtimesteps.index(timestep) for timestep in viewer.get_selection(values))
+                first, last = (grid.validtimesteps.index(timestep) for timestep in get_grid_selection(grid, values))
                 timeslider.setValue((first + last) // 2)
                 widthslider.setValue(last - first + 1)
                 set_edit_text(widthedit, str(last - first + 1))
@@ -1864,14 +1904,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             centre = 10.0 ** from_position(position, *logtrange)
             apply(dc.replace(values, centre=float(f"{centre:.4g}")))
             return
-        first, last = (viewer.validtimesteps.index(timestep) for timestep in viewer.get_selection(values))
+        grid = viewer.grid
+        first, last = (grid.validtimesteps.index(timestep) for timestep in get_grid_selection(grid, values))
         count = last - first + 1
         start = min(max(position - (count - 1) // 2, 0), nvalid - count)
-        apply(viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count - 1]))
+        apply(viewer.snap(values, grid.validtimesteps[start], grid.validtimesteps[start + count - 1]))
 
     def get_timegrid_path(values: ControlValues) -> str:
         """Return the path of the model that gives the timesteps, which is the first model for the value ""."""
-        return values.timegrid or next(iter(viewer.runtimes), "")
+        return values.timegrid or next(iter(viewer.grid.runtimes), "")
 
     def on_timegrid() -> None:
         timegridpath: str = timegridbox.currentData()
@@ -1894,9 +1935,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
                 width = from_position(position, 0.0, widthmax)
                 apply(dc.replace(values, width=float(f"{width:.3g}")))
             return
-        first = viewer.validtimesteps.index(viewer.get_selection(values)[0])
+        grid = viewer.grid
+        first = grid.validtimesteps.index(get_grid_selection(grid, values)[0])
         last = min(first + position - 1, nvalid - 1)
-        apply(viewer.snap(values, viewer.validtimesteps[first], viewer.validtimesteps[last]))
+        apply(viewer.snap(values, grid.validtimesteps[first], grid.validtimesteps[last]))
 
     def on_timeedit() -> None:
         # a field shows a time with two decimal places, thus only a field that the user edited gives a new value, and
@@ -1914,7 +1956,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         except ValueError:
             show_error("Give a number of days for the time, and a number for the width")
             return
-        low, high = viewer.timebounds
+        grid = viewer.grid
+        low, high = grid.timebounds
         if not low <= centre <= high:
             show_error(f"Give a time from {low:.2f} to {high:.2f} d")
             return
@@ -1933,12 +1976,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             else:
                 newvalues = dc.replace(values, centre=centre, width=width)
         else:
-            firstpos, lastpos = (viewer.validtimesteps.index(timestep) for timestep in viewer.get_selection(values))
+            validtimesteps = grid.validtimesteps
+            firstpos, lastpos = (validtimesteps.index(timestep) for timestep in get_grid_selection(grid, values))
             count = lastpos - firstpos + 1 if width is None else min(max(1, round(width)), nvalid)
-            start = get_nearest_range_start(
-                [viewer.tmids[timestep] for timestep in viewer.validtimesteps], centre, count
-            )
-            newvalues = viewer.snap(values, viewer.validtimesteps[start], viewer.validtimesteps[start + count - 1])
+            start = get_nearest_range_start([grid.tmids[timestep] for timestep in validtimesteps], centre, count)
+            newvalues = viewer.snap(values, validtimesteps[start], validtimesteps[start + count - 1])
         apply(newvalues)
 
     def on_arrow(step: int) -> None:
@@ -2140,15 +2182,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def get_animation_frames() -> "tuple[int, Callable[[int], list[str]]]":
         """Return the count of the steps of Play, from the first valid timestep to the last, and the command of each."""
-        values = viewer.values
-        validtimesteps = list(viewer.validtimesteps)
+        values, grid = viewer.values, viewer.grid
+        validtimesteps = grid.validtimesteps
         firstpos, lastpos = viewer.get_selection_positions()
         count = lastpos - firstpos
 
         def get_frame_tokens(index: int) -> list[str]:
             if values.notimeclamp:
                 # a continuous range keeps its width and moves its middle to the middle of each timestep
-                centre = float(f"{viewer.tmids[validtimesteps[index]]:.4g}")
+                centre = float(f"{grid.tmids[validtimesteps[index]]:.4g}")
                 return viewer.get_plot_tokens(viewer.clamp_time(dc.replace(values, centre=centre)))
             return viewer.get_plot_tokens(viewer.snap(values, validtimesteps[index], validtimesteps[index + count]))
 
@@ -2199,7 +2241,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_run_ranges()
             queue.redraw()
 
-        reload_runs(queue, viewer.runfolders, show_reloaded_runs, show_error)
+        reload_runs(queue, viewer.grid.runfolders, show_reloaded_runs, show_error)
 
     add_figure_actions = add_window_actions(
         window,

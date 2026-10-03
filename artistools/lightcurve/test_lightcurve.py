@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.testing as pltest
 import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.container import ErrorbarContainer
@@ -723,6 +724,21 @@ def test_read_hesma_lightcurve_file_no_header(tmp_path: Path) -> None:
 
     assert list(dfhesma.columns) == ["time", "bol"]
     assert dfhesma["bol"].to_list() == [2.0, 4.0]
+
+
+def test_hesma_lightcurve_on_a_grid_with_more_panels_than_bands(tmp_path: Path) -> None:
+    """Four bands take a grid of six panels. The strict zip of the panels and the bands then stopped the plot."""
+    from artistools.lightcurve.plotlightcurve import plot_hesma_lightcurve
+
+    hesmafile = tmp_path / "hesma_model.dat"
+    hesmafile.write_text("# t U B V R\n1.0 1.0 2.0 3.0 4.0\n5.0 5.0 6.0 7.0 8.0\n", encoding="utf-8")
+    fig, axesgrid = plt.subplots(2, 3)
+    axes = list(axesgrid.flatten())
+    plot_hesma_lightcurve(axes, ["U", "B", "V", "R"], argparse.Namespace(plot_hesma_model=str(hesmafile)), None)
+
+    assert [len(axis.get_lines()) for axis in axes] == [1, 1, 1, 1, 0, 0]
+    assert np.allclose(np.asarray(axes[3].get_lines()[0].get_ydata(), dtype=float), [4.0, 8.0])
+    plt.close(fig)
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
@@ -2380,19 +2396,39 @@ def test_scan_lightcurve_takes_the_layout_from_the_caller(tmp_path: Path) -> Non
     """The caller says whether a file holds one table for each direction bin. The name of the file decides nothing.
 
     scan_lightcurve read a file as direction resolved when its name held "_res". A copy with a different name then
-    gave one table, and an average over the one bin of light_curve.out gave a ValueError about 100 missing bins.
+    gave one table. An average over the one bin of light_curve.out gave a ValueError about 100 missing bins.
     """
     lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
     copypath = tmp_path / "lightcurve_copy.out"
     copypath.write_bytes(lcpath.read_bytes())
     lcdataframes = at.lightcurve.scan_lightcurve(copypath, directionresolved=True)
     assert sorted(lcdataframes) == list(range(100))
-    with pytest.raises(ValueError, match="holds one bin"):
-        at.lightcurve.scan_lightcurve(modelpath_classic_3d / "light_curve.out", average_over_phi=True)
+    # the angle average of bin -1 is the mean over every direction already, thus it takes no average
+    pltest.assert_frame_equal(
+        at.lightcurve.scan_lightcurve(modelpath_classic_3d / "light_curve.out", average_over_phi=True)[-1].collect(),
+        at.lightcurve.scan_lightcurve(modelpath_classic_3d / "light_curve.out")[-1].collect(),
+    )
     with pytest.raises(ValueError, match="holds 100 tables"):
         at.lightcurve.scan_lightcurve(copypath)
     with pytest.raises(ValueError, match="holds 2 tables"):
         at.lightcurve.scan_lightcurve(modelpath_classic_3d / "light_curve.out", directionresolved=True)
+
+
+def test_scan_lightcurve_of_a_build_with_a_different_count_of_direction_bins(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """ARTIS sets MABINS when it compiles. A file of a different count of direction bins gives a warning.
+
+    scan_lightcurve stopped for each count other than 100, thus the light curves of such a run were not readable.
+    """
+    lcpath = tmp_path / "light_curve_res.out"
+    table = "1.0 2.0 3.0\n2.0 4.0 6.0\n"
+    lcpath.write_text(table * 4, encoding="utf-8")
+    lcdataframes = at.lightcurve.scan_lightcurve(lcpath, directionresolved=True)
+
+    assert sorted(lcdataframes) == [0, 1, 2, 3]
+    assert np.allclose(lcdataframes[3].collect()["luminosity_Lsun"].to_numpy(), [2.0, 4.0])
+    assert "holds 4 tables" in capsys.readouterr().err
 
 
 def test_named_light_curve_file_must_agree_with_the_direction_bins(
@@ -2426,7 +2462,7 @@ def test_colour_at_peak_stops_before_the_fits_without_the_phillips_data(
 def test_topnucs_with_virtual_packet_observers_stops_with_a_message(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The virtual packets hold no pellet, thus -topnucs or --use_pellet_decay_time with -plotvspecpol gives a message.
+    """The virtual packets hold no pellet. Thus -topnucs or --use_pellet_decay_time with -plotvspecpol gives a message.
 
     get_from_packets stopped with a bare AssertionError, which the viewer showed as its reason.
     """
@@ -2524,3 +2560,30 @@ def test_viewer_drops_the_options_that_the_command_refuses_together() -> None:
     assert (viewer.values.frompackets, viewer.values.topnucs, viewer.values.usepelletdecaytime) == (True, 0, False)
     assert viewer.draw() is None
     assert "--frompackets -plotvspecpol 0" in viewer.get_command()
+
+
+def test_viewer_controls_read_the_refused_options_of_the_command() -> None:
+    """A change of a control drops the options that plotlightcurves refuses, and the control shows the reason.
+
+    The viewer held its own copy of each rule of the command, thus a new rule of the command did not reach the window.
+    """
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
+    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "--frompackets", "-topnucs", "2", "--interactive"], fig)
+    observervalues = dc.replace(
+        viewer.values, directionkind="vpkt", directionbins=(0,), topnucs=2, usepelletdecaytime=True, plotcmf=True
+    )
+    assert {option.flag for option in viewer.get_refused_options(observervalues)} == {
+        "--plotcmf",
+        "-topnucs",
+        "--use_pellet_decay_time",
+    }
+    droppedvalues = viewer.drop_refused_options(observervalues)
+    assert (droppedvalues.topnucs, droppedvalues.usepelletdecaytime, droppedvalues.plotcmf) == (0, False, False)
+    assert not viewer.get_refused_options(droppedvalues)
+
+    magnitudevalues = dc.replace(viewer.values, lumunit="mag")
+    reasons = interactive.get_refused_reasons(viewer, magnitudevalues)
+    assert set(reasons) == {"--plotcmf"}
+    assert "has no magnitude" in reasons["--plotcmf"]
