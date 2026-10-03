@@ -28,6 +28,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
+from artistools.misc import format_frame_path
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_single_timestep
 from artistools.misc import get_timestep_of_timedays
@@ -150,7 +151,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timestep(parser)
 
-    addarg_modelgridindex(parser, default=0)
+    addarg_modelgridindex(parser, default=[0])
 
     parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
 
@@ -217,6 +218,166 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
+class PlasmaConditions(t.NamedTuple):
+    """The conditions of one Spencer-Fano solution."""
+
+    nntot: float
+    x_e: float
+    T_e: float
+    deposition_density_ev: float
+    ionpopdict: dict[tuple[int, int] | int, float]
+
+
+def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaConditions:
+    """Return the conditions of the ARTIS cell and timestep that the arguments name.
+
+    The function sets args.timestep, args.modelgridindex, and args.timedays to the resolved values, because
+    the name of the plot file holds them.
+    """
+    if args.timedays:
+        args.timestep = get_timestep_of_timedays(modelpath, args.timedays)
+    else:
+        args.timestep = get_single_timestep(args.timestep, modelpath)
+        if args.timestep is None:
+            exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last")
+
+    dfmodel, modelmeta = get_modeldata(modelpath)
+    # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
+    modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
+    if args.velocity >= 0.0:
+        args.modelgridindex = get_mgi_of_velocity_kms(modelpath, args.velocity)
+    else:
+        args.modelgridindex = get_single_modelgridindex(args.modelgridindex)
+    assert isinstance(args.modelgridindex, int)
+    estimators = read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
+    assert isinstance(args.timestep, int)
+    estim = estimators[args.timestep, args.modelgridindex]
+
+    if read_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
+        exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
+
+    nntot = estim["nntot"]
+    print_warning("Use LTE pops at Te for now")
+
+    velocity_kmps = modeldata["vel_r_mid"][args.modelgridindex] / km_to_cm
+    args.timedays = get_timestep_time(modelpath, args.timestep)
+    print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity_kmps:.1f} km/s at {args.timedays:.1f}d)")
+
+    return PlasmaConditions(
+        nntot=nntot,
+        x_e=estim["nne"] / nntot,
+        T_e=estim["Te"],
+        deposition_density_ev=estim["heating_dep"] / EV_to_erg,
+        ionpopdict={get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))},
+    )
+
+
+def get_element_conditions(args: argparse.Namespace, step: int, stepcount: int) -> PlasmaConditions:
+    """Return the conditions of one element with the electron fraction of one step of a -vary x_e sweep."""
+    compelement_atomicnumber = get_atomic_number(args.composition)
+    nntot = 1.0
+    x_e = x_e_of_sweep_step(args.x_e, compelement_atomicnumber, step, stepcount) if args.vary == "x_e" else args.x_e
+    ionpopdict: dict[tuple[int, int] | int, float] = {}
+    ionpopdict |= ionpops_for_electronfraction(compelement_atomicnumber, x_e, nntot)
+
+    return PlasmaConditions(nntot=nntot, x_e=x_e, T_e=3000, deposition_density_ev=5.0e3, ionpopdict=ionpopdict)
+
+
+def get_sweep_parameters(args: argparse.Namespace, step: int) -> tuple[float, float, int]:
+    """Return the emin, the emax, and the npts of the energy grid at one step of a -vary sweep."""
+    emin = args.emin
+    emax = args.emax
+    npts = args.npts
+    if args.vary == "emax":
+        emax *= 2**step
+    elif args.vary == "emax,npts":
+        npts *= 2**step
+        emax *= 2**step
+    elif args.vary == "emin":
+        emin *= 2**step
+    elif args.vary == "npts":
+        npts *= 2**step
+
+    return emin, emax, npts
+
+
+def get_plot_filename(args: argparse.Namespace, step: int) -> str:
+    """Return the name of the plot file of one step."""
+    if args.timestep is not None and args.timedays is not None:
+        outputfilename = format_frame_path(
+            args.outputfile, cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
+        )
+    else:
+        # a non-ARTIS composition has no cell and no timestep, thus the default template
+        # does not apply, and the element names the file instead
+        outputfilename = str(args.outputfile).replace(defaultoutputfile, f"spencerfano_{args.composition}.pdf")
+    if args.vary:
+        # each step of a sweep writes its own file, because one name would keep the last step only
+        outputpath = Path(outputfilename)
+        outputfilename = str(outputpath.with_name(f"{outputpath.stem}_step{step:02d}{outputpath.suffix}"))
+
+    return outputfilename
+
+
+def solve_step(args: argparse.Namespace, modelpath: Path, conditions: PlasmaConditions, step: int) -> dict[str, float]:
+    """Solve the Spencer-Fano equation at one step of a sweep, plot the solution, and return its statistics."""
+    pynt = import_optional("pynonthermal")
+    emin, emax, npts = get_sweep_parameters(args, step)
+    ionpopdict = conditions.ionpopdict
+
+    # keep only the ion populations, not element or total populations
+    ions = sorted(
+        key for key in ionpopdict if isinstance(key, tuple) and ionpopdict[key] / conditions.nntot >= minionfraction
+    )
+
+    if args.noexcitation:
+        adata = None
+    else:
+        # the excitation cross sections read epsilon_trans_ev, lower_g, and upper_g from each transition
+        adata = get_levels(
+            modelpath,
+            get_transitions=True,
+            ionlist=tuple(ions),
+            derived_transitions_columns=("epsilon_trans_ev", "lower_g", "upper_g"),
+        )
+
+    with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True, use_ar1985=args.ar1985) as sf:
+        for Z, ion_stage in ions:
+            nnion = ionpopdict[Z, ion_stage]
+            if nnion == 0.0:
+                print(f"   skipping Z={Z} ion_stage {ion_stage} due to nnion={nnion:.1e}")
+                continue
+
+            sf.add_ionisation(Z, ion_stage, nnion)
+            if not args.noexcitation:
+                sf.add_ion_ltepopexcitation(Z, ion_stage, nnion, adata_polars=adata, temperature=conditions.T_e)
+
+        sf.solve(depositionratedensity_ev=conditions.deposition_density_ev)
+
+        sf.analyse_ntspectrum()
+
+        if args.makeplot:
+            sf.plot_spec_channels(outputfilename=get_plot_filename(args, step))
+
+        return {
+            "emin": emin,
+            "emax": emax,
+            "npts": npts,
+            "x_e": conditions.x_e,
+            "frac_sum": sf.get_frac_sum(),
+            "frac_excitation": sf.get_frac_excitation_tot(),
+            "frac_ionization": sf.get_frac_ionisation_tot(),
+            "frac_heating": sf.get_frac_heating(),
+        } | {
+            f"frac_ionization_{get_ionstring(atomic_number, ion_stage, sep='')}": (
+                sf.get_frac_ionisation_ion(atomic_number, ion_stage)
+                if ionpopdict[atomic_number, ion_stage] > 0.0
+                else 0.0
+            )
+            for atomic_number, ion_stage in ions
+        }
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Solve Spencer-Fano equation using data from ARTIS cell at some timestep."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -237,146 +398,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             exit_with_error(f"-x_e {args.x_e} gives no sweep", f"Give -x_e above 0 and below {x_e_limit}")
 
     # the import stands in front of the work, thus a missing module stops the command at once
-    pynt = import_optional("pynonthermal")
+    import_optional("pynonthermal")
 
     modelpath = Path(args.modelpath)
-
-    ionpopdict: dict[tuple[int, int] | int, float]
-    if args.composition == "artis":
-        if args.timedays:
-            args.timestep = get_timestep_of_timedays(modelpath, args.timedays)
-        else:
-            args.timestep = get_single_timestep(args.timestep, modelpath)
-            if args.timestep is None:
-                exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last")
-
-        dfmodel, modelmeta = get_modeldata(modelpath)
-        # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
-        modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
-        if args.velocity >= 0.0:
-            args.modelgridindex = get_mgi_of_velocity_kms(modelpath, args.velocity)
-        else:
-            args.modelgridindex = get_single_modelgridindex(args.modelgridindex)
-        assert isinstance(args.modelgridindex, int)
-        estimators = read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
-        assert isinstance(args.timestep, int)
-        assert isinstance(args.modelgridindex, int)
-        estim = estimators[args.timestep, args.modelgridindex]
-
-        if read_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
-            exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
-
-        nntot = estim["nntot"]
-        x_e = estim["nne"] / nntot
-        T_e = estim["Te"]
-        print_warning("Use LTE pops at Te for now")
-        deposition_density_ev = estim["heating_dep"] / EV_to_erg
-        ionpopdict = {get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))}
-
-        velocity_kmps = modeldata["vel_r_mid"][args.modelgridindex] / km_to_cm
-        args.timedays = get_timestep_time(modelpath, args.timestep)
-        print(
-            f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity_kmps:.1f} km/s at {args.timedays:.1f}d)"
-        )
+    artisconditions = get_artis_conditions(args, modelpath) if args.composition == "artis" else None
 
     stepcount = 9 if args.vary else 1
     ostatrows: list[dict[str, float]] = []
     for step in range(stepcount):
-        emin = args.emin
-        emax = args.emax
-        npts = args.npts
-        if args.vary == "emax":
-            emax *= 2**step
-        elif args.vary == "emax,npts":
-            npts *= 2**step
-            emax *= 2**step
-
-        elif args.vary == "emin":
-            emin *= 2**step
-        elif args.vary == "npts":
-            npts *= 2**step
-        if args.composition != "artis":
-            compelement = args.composition
-            compelement_atomicnumber = get_atomic_number(compelement)
-            deposition_density_ev = 5.0e3
-            nntot = 1.0
-            x_e = (
-                x_e_of_sweep_step(args.x_e, compelement_atomicnumber, step, stepcount)
-                if args.vary == "x_e"
-                else args.x_e
-            )
-            ionpopdict = {}
-            T_e = 3000
-            ionpopdict |= ionpops_for_electronfraction(compelement_atomicnumber, x_e, nntot)
-
-        # keep only the ion populations, not element or total populations
-        ions = [key for key in ionpopdict if isinstance(key, tuple) and ionpopdict[key] / nntot >= minionfraction]
-        ions.sort()
-
-        if args.noexcitation:
-            adata = None
-        else:
-            # the excitation cross sections read epsilon_trans_ev, lower_g, and upper_g from each transition
-            adata = get_levels(
-                modelpath,
-                get_transitions=True,
-                ionlist=tuple(ions),
-                derived_transitions_columns=("epsilon_trans_ev", "lower_g", "upper_g"),
-            )
-
-        with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True, use_ar1985=args.ar1985) as sf:
-            for Z, ion_stage in ions:
-                nnion = ionpopdict[Z, ion_stage]
-                if nnion == 0.0:
-                    print(f"   skipping Z={Z} ion_stage {ion_stage} due to nnion={nnion:.1e}")
-                    continue
-
-                sf.add_ionisation(Z, ion_stage, nnion)
-                if not args.noexcitation:
-                    sf.add_ion_ltepopexcitation(Z, ion_stage, nnion, adata_polars=adata, temperature=T_e)
-
-            sf.solve(depositionratedensity_ev=deposition_density_ev)
-
-            sf.analyse_ntspectrum()
-
-            if args.makeplot:
-                if args.timestep is not None and args.timedays is not None:
-                    outputfilename = str(args.outputfile).format(
-                        cell=args.modelgridindex, timestep=args.timestep, timedays=args.timedays
-                    )
-                else:
-                    # a non-ARTIS composition has no cell and no timestep, thus the default template
-                    # does not apply, and the element names the file instead
-                    outputfilename = str(args.outputfile).replace(
-                        defaultoutputfile, f"spencerfano_{args.composition}.pdf"
-                    )
-                if args.vary:
-                    # each step of a sweep writes its own file, because one name would keep the last step only
-                    outputpath = Path(outputfilename)
-                    outputfilename = str(outputpath.with_name(f"{outputpath.stem}_step{step:02d}{outputpath.suffix}"))
-                sf.plot_spec_channels(outputfilename=outputfilename)
-
-            if args.ostat:
-                ostatrows.append(
-                    {
-                        "emin": emin,
-                        "emax": emax,
-                        "npts": npts,
-                        "x_e": x_e,
-                        "frac_sum": sf.get_frac_sum(),
-                        "frac_excitation": sf.get_frac_excitation_tot(),
-                        "frac_ionization": sf.get_frac_ionisation_tot(),
-                        "frac_heating": sf.get_frac_heating(),
-                    }
-                    | {
-                        f"frac_ionization_{get_ionstring(atomic_number, ion_stage, sep='')}": (
-                            sf.get_frac_ionisation_ion(atomic_number, ion_stage)
-                            if ionpopdict[atomic_number, ion_stage] > 0.0
-                            else 0.0
-                        )
-                        for atomic_number, ion_stage in ions
-                    }
-                )
+        conditions = artisconditions if artisconditions is not None else get_element_conditions(args, step, stepcount)
+        ostatrows.append(solve_step(args, modelpath, conditions, step))
 
     if args.ostat:
         write_ntstats_file(args.ostat, ostatrows)

@@ -38,12 +38,17 @@ def get_2D_slice_through_3d_model(
     modelmeta: dict[str, t.Any] | None = None,
     plotaxis1: AxisType | None = None,
     plotaxis2: AxisType | None = None,
+    positive_axis: bool = True,
 ) -> pl.DataFrame:
-    """Return the cells of a 3D model at the position along sliceaxis that lies nearest the origin."""
-    # the minimum absolute value is the position closest to 0
-    argmin = dfmodel["pos_x_min"].abs().arg_min()
-    assert argmin is not None
-    sliceposition: float | int = dfmodel["pos_x_min"].item(argmin)
+    """Return the cells of a 3D model in the layer along sliceaxis that touches the origin on the given side.
+
+    The centre layer of an odd grid holds the origin, thus both sides give that layer.
+    """
+    # the layer index and not the sign of the lower edge selects the side, because the edge at the origin
+    # can have a rounding error of either sign
+    loweredges = dfmodel[f"pos_{sliceaxis}_min"].unique().sort()
+    nlayers = loweredges.len()
+    sliceposition = loweredges.item(nlayers // 2 if positive_axis else (nlayers - 1) // 2)
 
     slicedf = dfmodel.filter(pl.col(f"pos_{sliceaxis}_min") == sliceposition)
 
@@ -170,7 +175,12 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         print(f"Plotting slice through {sliceaxis}=0, plotting {plotaxis1} vs {plotaxis2}")
 
         df2dslice = get_2D_slice_through_3d_model(
-            dfmodel=dfmodel, modelmeta=modelmeta, sliceaxis=sliceaxis, plotaxis1=plotaxis1, plotaxis2=plotaxis2
+            dfmodel=dfmodel,
+            modelmeta=modelmeta,
+            sliceaxis=sliceaxis,
+            plotaxis1=plotaxis1,
+            plotaxis2=plotaxis2,
+            positive_axis=args.positive_axis,
         )
     elif modelmeta["dimensions"] == 2:
         df2dslice = dfmodel
@@ -222,7 +232,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     pv = import_optional("pyvista")
 
     # set white background
-    pv.set_plot_theme("document")  # type: ignore[no-untyped-call]
+    pv.set_plot_theme("document")
 
     # choose what surface will be coloured by
     plotvar = "rho" if "rho" in args.plotvars else "Ye" if "Ye" in args.plotvars else args.plotvars[0]
@@ -340,10 +350,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # the model folder is the last positional argument, thus "plotinitialcomposition Fe mymodel" reads mymodel
     args.plotvars = resolve_positional_modelpath(args, "plotvars") or ["rho"]
 
-    if args.axis[0] in {"+", "-"}:
-        args.positive_axis = args.axis[0] == "+"
-        args.axis = args.axis[1]
-    args.sliceaxis = args.axis
+    # a bare axis name, e.g. "z", gives the positive side
+    args.positive_axis = args.axis[0] != "-"
+    args.sliceaxis = args.axis.lstrip("+-")
 
     if args.plot3d:
         make_3d_plot(Path(args.modelpath), args)

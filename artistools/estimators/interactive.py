@@ -63,12 +63,14 @@ from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
+from artistools.misc.cliutils import format_range_list
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.general import call_in_child_process
 from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
+from artistools.nltepops.core import read_nltepops_cached
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
@@ -83,6 +85,7 @@ from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
 from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_short_number
+from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_parser
 from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
@@ -96,6 +99,7 @@ from artistools.viewertools.sections import add_time_controls
 from artistools.viewertools.sections import add_y_axis_actions
 from artistools.viewertools.sections import connect_time_keys
 from artistools.viewertools.sections import make_figscale_box
+from artistools.viewertools.sections import read_limit_fields
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import fit_canvas
@@ -116,7 +120,6 @@ from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
 from artistools.viewertools.widgets import set_search_completion
 from artistools.viewertools.widgets import set_spin_value
-from artistools.viewertools.widgets import show_status_message
 from artistools.viewertools.widgets import start_play_timer
 from artistools.viewertools.window import add_command_sections
 from artistools.viewertools.window import connect_plot_mouse
@@ -410,31 +413,28 @@ def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunD
 def read_run_again(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
     """Read the run again, e.g. while ARTIS writes more timesteps.
 
-    These caches hold the files of the last read. A kept scan also holds the metadata of its file, e.g. 8 MB for a
-    cache of 5335 columns. Thus the scans of the replaced caches must go.
+    The caches of the estimators hold the files of the last read, thus they go first.
     """
-    clear_run_caches(modelpath)
+    clear_estimator_caches(modelpath)
     return read_run(modelpath, args, ntimesteps)
 
 
 @on_model_host
-def clear_run_caches(modelpath: Path) -> None:
-    """Clear the caches of the scans of a run. The host of a remote run clears its own caches."""
+def clear_estimator_caches(modelpath: Path) -> None:
+    """Clear the caches of the estimators and the NLTE populations. The host of a remote run clears its own caches.
+
+    An lru_cache cannot remove the entries of one run, thus each cache loses the entries of all runs. The caches of the
+    other viewers stay.
+    """
     del modelpath
-    scan_parquet_file.cache_clear()
-    get_runfolder_timesteps_cached.cache_clear()
-    read_classic_estimators_cached.cache_clear()
-
-
-def set_run(viewer: "EstimatorViewer", run: RunData) -> None:
-    """Give the viewer the data of the run."""
-    viewer.batchcaches = run.batchcaches
-    viewer.estimatorcolumns = run.estimatorcolumns
-    viewer.validtimesteps = run.validtimesteps
-    viewer.cells = run.cells
-    viewer.cellvelocities = run.cellvelocities
-    viewer.defaultsubplots = run.defaultsubplots
-    viewer.skippeddefaults = run.skippeddefaults
+    # a kept scan of a parquet cache also holds the metadata of its file, e.g. 8 MB for 5335 columns
+    for cachedfunction in (
+        scan_parquet_file,
+        get_runfolder_timesteps_cached,
+        read_classic_estimators_cached,
+        read_nltepops_cached,
+    ):
+        cachedfunction.cache_clear()
 
 
 def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
@@ -442,12 +442,12 @@ def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
 
     A plot against time of the whole run then covers the new timesteps too.
     """
-    oldvalidtimesteps = viewer.validtimesteps
-    set_run(viewer, run)
+    oldvalidtimesteps = viewer.run.validtimesteps
+    viewer.run = run
     values = viewer.values
     wholerun = (values.first, values.last) == (oldvalidtimesteps[0], oldvalidtimesteps[-1])
     if is_evolution(values) and wholerun:
-        viewer.values = viewer.select_timesteps(values, 0, len(viewer.validtimesteps))
+        viewer.values = viewer.select_timesteps(values, 0, len(viewer.run.validtimesteps))
     else:
         firstpos, lastpos = viewer.get_selection_positions()
         viewer.values = viewer.select_timesteps(values, firstpos, lastpos - firstpos + 1)
@@ -681,7 +681,7 @@ def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: 
         changes["-dimensionreduce"] = ("2",)
     elif mode == "projection":
         changes["-projection"] = oldprojection
-    cells = (values.cells or (str(viewer.cells[0]) if viewer.cells else "")) if mode == "cells" else ""
+    cells = (values.cells or (str(viewer.run.cells[0]) if viewer.run.cells else "")) if mode == "cells" else ""
     newrows = set_row_values(rows, changes)
     newvalues = replace_option_rows(viewer, dc.replace(values, cells=cells), newrows)
     if mode in IMAGE_MODES:
@@ -792,14 +792,8 @@ class EstimatorViewer:
     always agrees with the command.
     """
 
-    # read_run reads these from the run, and set_run gives them to the viewer
-    batchcaches: "list[EstimatorBatchCache] | None"
-    estimatorcolumns: tuple[str, ...]
-    validtimesteps: list[int]
-    cells: list[int]
-    cellvelocities: dict[int, float]
-    defaultsubplots: tuple[tuple[str, ...], ...]
-    skippeddefaults: tuple[str, ...]
+    # the data of the run that the controls need, which read_run reads and Reload Data reads again
+    run: RunData
 
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
@@ -820,7 +814,7 @@ class EstimatorViewer:
         self.tmids = get_timestep_times(self.modelpath, loc="mid")
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
-        set_run(self, read_run(self.modelpath, args, len(self.tmids)))
+        self.run = read_run(self.modelpath, args, len(self.tmids))
         # the option table does not show the rows of these flags, see RUN_DESTS
         self.runflags = frozenset(
             flag for flag, action in get_actions_by_flag(parser).items() if action.dest in RUN_DESTS
@@ -841,7 +835,7 @@ class EstimatorViewer:
         )
         givensubplots = tuple(resolve_aliases(str(item) for item in plotitems) for plotitems in args.plotlist or ())
         # plotestimators stops when no default subplot applies to the model, thus the window then shows Te
-        subplots = givensubplots or self.defaultsubplots or (("Te",),)
+        subplots = givensubplots or self.run.defaultsubplots or (("Te",),)
 
         # the default -x of a command depends on its time and its other options, thus each set has one result
         self.defaultxvariables: dict[tuple[bool, OptionRows], str] = {}
@@ -863,18 +857,18 @@ class EstimatorViewer:
                     "Give a time inside that range",
                 )
         elif xvariable in TIME_XVARIABLES:
-            first, last = self.validtimesteps[0], self.validtimesteps[-1]
+            first, last = self.run.validtimesteps[0], self.run.validtimesteps[-1]
         else:
-            first = last = self.validtimesteps[len(self.validtimesteps) // 2]
+            first = last = self.run.validtimesteps[len(self.run.validtimesteps) // 2]
 
-        subplots, otheroptions = move_poptype_to_subplots(subplots, otheroptions, self.estimatorcolumns)
+        subplots, otheroptions = move_poptype_to_subplots(subplots, otheroptions, self.run.estimatorcolumns)
         self.values = ControlValues(
             first=first,
             last=last,
             x=xvariable,
             xmin="" if args.xmin is None else format(args.xmin, ".10g"),
             xmax="" if args.xmax is None else format(args.xmax, ".10g"),
-            cells="" if args.modelgridindex is None else str(args.modelgridindex),
+            cells="" if args.modelgridindex is None else format_range_list(args.modelgridindex),
             subplots=subplots,
             markers=bool(args.markers),
             xbins="" if args.xbins is None else str(args.xbins),
@@ -903,13 +897,16 @@ class EstimatorViewer:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
         key = (timegiven, otheroptions)
         if key not in self.defaultxvariables:
-            timetokens = ["-timestep", str(self.validtimesteps[0])] if timegiven else []
+            timetokens = ["-timestep", str(self.run.validtimesteps[0])] if timegiven else []
             self.defaultxvariables[key] = get_default_xvariable([*timetokens, *get_option_row_tokens(otheroptions)])
         return self.defaultxvariables[key]
 
     def get_time_tokens(self, values: ControlValues) -> list[str]:
         """Return the -timestep option of the values, or no option for a plot against time of the whole run."""
-        if is_evolution(values) and (values.first, values.last) == (self.validtimesteps[0], self.validtimesteps[-1]):
+        if is_evolution(values) and (values.first, values.last) == (
+            self.run.validtimesteps[0],
+            self.run.validtimesteps[-1],
+        ):
             return []
         return ["-timestep", str(values.first) if values.first == values.last else f"{values.first}-{values.last}"]
 
@@ -926,7 +923,7 @@ class EstimatorViewer:
             values = self.values
         if modeltoken is None:
             modeltoken = self.modeltoken
-        subplots = [get_command_items(subplot, self.estimatorcolumns) for subplot in values.subplots]
+        subplots = [get_command_items(subplot, self.run.estimatorcolumns) for subplot in values.subplots]
         # a first subplot with no item cannot go before the folder, thus it follows -plot as the others do
         firstpositional = bool(subplots and subplots[0])
         tokens = [*(subplots[0] if firstpositional else ()), *([modeltoken] if modeltoken else [])]
@@ -971,7 +968,7 @@ class EstimatorViewer:
         """
         firstpos, lastpos = self.get_selection_positions()
         count = lastpos - firstpos + 1
-        validtmids = [self.tmids[timestep] for timestep in self.validtimesteps]
+        validtmids = [self.tmids[timestep] for timestep in self.run.validtimesteps]
         return self.select_timesteps(self.values, get_nearest_range_start(validtmids, days, count), count)
 
     def get_cell_text(self) -> str:
@@ -979,15 +976,17 @@ class EstimatorViewer:
         if not self.values.cells:
             return "All cells"
         cell = get_single_cell(self.values.cells)
-        if cell is not None and (velocity := self.cellvelocities.get(cell)) is not None:
+        if cell is not None and (velocity := self.run.cellvelocities.get(cell)) is not None:
             return f"Cell {self.values.cells} at v_r = {velocity / C_cm_per_s:.3g}c ({velocity / km_to_cm:.4g} km/s)"
         return f"Cells {self.values.cells}"
 
     def select_timesteps(self, values: ControlValues, firstpos: int, count: int) -> ControlValues:
         """Return the values with count valid timesteps from the position firstpos in the valid timesteps."""
-        count = min(max(count, 1), len(self.validtimesteps))
-        firstpos = min(max(firstpos, 0), len(self.validtimesteps) - count)
-        return dc.replace(values, first=self.validtimesteps[firstpos], last=self.validtimesteps[firstpos + count - 1])
+        count = min(max(count, 1), len(self.run.validtimesteps))
+        firstpos = min(max(firstpos, 0), len(self.run.validtimesteps) - count)
+        return dc.replace(
+            values, first=self.run.validtimesteps[firstpos], last=self.run.validtimesteps[firstpos + count - 1]
+        )
 
     def get_selection_positions(self, values: ControlValues | None = None) -> tuple[int, int]:
         """Return the positions in the valid timesteps of the first and the last timestep of the time range."""
@@ -995,7 +994,8 @@ class EstimatorViewer:
 
         def get_position(timestep: int) -> int:
             return min(
-                range(len(self.validtimesteps)), key=lambda position: abs(self.validtimesteps[position] - timestep)
+                range(len(self.run.validtimesteps)),
+                key=lambda position: abs(self.run.validtimesteps[position] - timestep),
             )
 
         return get_position(values.first), get_position(values.last)
@@ -1003,7 +1003,7 @@ class EstimatorViewer:
     def step_time(self, step: int) -> ControlValues | None:
         """Return the values with the time range one timestep later or earlier, or None at the end of the run."""
         firstpos, lastpos = self.get_selection_positions()
-        if firstpos + step < 0 or lastpos + step >= len(self.validtimesteps):
+        if firstpos + step < 0 or lastpos + step >= len(self.run.validtimesteps):
             return None
         return self.select_timesteps(self.values, firstpos + step, lastpos - firstpos + 1)
 
@@ -1016,7 +1016,7 @@ class EstimatorViewer:
         """Return the values with the time range at the start or at the end of the run, and the same width."""
         firstpos, lastpos = self.get_selection_positions()
         count = lastpos - firstpos + 1
-        return self.select_timesteps(self.values, len(self.validtimesteps) - count if last else 0, count)
+        return self.select_timesteps(self.values, len(self.run.validtimesteps) - count if last else 0, count)
 
     def step_cell(self, step: int) -> ControlValues | None:
         """Return the values with the next or the previous cell of the model, or None after the last cell.
@@ -1024,16 +1024,16 @@ class EstimatorViewer:
         A plot of all the cells, or of a list of cells, moves to the first or the last cell. If -cell does not select
         the cells of the plot, e.g. for a plane, the result is None.
         """
-        if not self.cells or not cells_apply(self.values):
+        if not self.run.cells or not cells_apply(self.values):
             return None
         cell = get_single_cell(self.values.cells)
-        if cell is not None and cell in self.cells:
-            position = self.cells.index(cell) + step
-            if not 0 <= position < len(self.cells):
+        if cell is not None and cell in self.run.cells:
+            position = self.run.cells.index(cell) + step
+            if not 0 <= position < len(self.run.cells):
                 return None
         else:
-            position = 0 if step > 0 else len(self.cells) - 1
-        return dc.replace(self.values, cells=str(self.cells[position]))
+            position = 0 if step > 0 else len(self.run.cells) - 1
+        return dc.replace(self.values, cells=str(self.run.cells[position]))
 
     def set_xvariable(self, values: ControlValues, xvariable: str) -> ControlValues:
         """Return the values with a new -x variable.
@@ -1046,7 +1046,7 @@ class EstimatorViewer:
             return values
         values = dc.replace(values, x=xvariable, xmin="", xmax="")
         if is_evolution(values) and not is_evolution(self.values):
-            return self.select_timesteps(values, 0, len(self.validtimesteps))
+            return self.select_timesteps(values, 0, len(self.run.validtimesteps))
         if not is_evolution(values) and is_evolution(self.values):
             firstpos, lastpos = self.get_selection_positions(values)
             return self.select_timesteps(dc.replace(values, cells=""), (firstpos + lastpos) // 2, 1)
@@ -1071,7 +1071,7 @@ class EstimatorViewer:
             plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
             check_viewer_args(plotargs)
             givenx = plotargs.x
-            draw_plot(plotargs, fig, self.batchcaches)
+            draw_plot(plotargs, fig, self.run.batchcaches)
             return RenderedPlot(
                 isimage=plotargs.dimensionreduce == 2,
                 xlimitscale=C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0,
@@ -1627,12 +1627,12 @@ def get_nearest_cell(viewer: EstimatorViewer, xdata: float) -> int | None:
 
     A 3D model has many cells at one radial velocity, and the function gives one of them.
     """
-    if viewer.values.x not in {"velocity", "beta"} or not viewer.cellvelocities:
+    if viewer.values.x not in {"velocity", "beta"} or not viewer.run.cellvelocities:
         return None
     axisisbeta = viewer.values.x == "beta" or viewer.xlimitscale != 1.0
     velocity = xdata * (C_cm_per_s if axisisbeta else km_to_cm)
-    cells = np.fromiter(viewer.cellvelocities.keys(), dtype=np.int64, count=len(viewer.cellvelocities))
-    velocities = np.fromiter(viewer.cellvelocities.values(), dtype=np.float64, count=len(viewer.cellvelocities))
+    cells = np.fromiter(viewer.run.cellvelocities.keys(), dtype=np.int64, count=len(viewer.run.cellvelocities))
+    velocities = np.fromiter(viewer.run.cellvelocities.values(), dtype=np.float64, count=len(viewer.run.cellvelocities))
     return int(cells[np.argmin(np.abs(velocities - velocity))])
 
 
@@ -1644,10 +1644,12 @@ def get_evolution_values(viewer: EstimatorViewer, cells: str) -> ControlValues:
 def get_snapshot_values(viewer: EstimatorViewer, xdata: float) -> ControlValues | None:
     """Return the values of a snapshot at a position on a time axis, or None for another axis."""
     if viewer.values.x == "time":
-        validtmids = [viewer.tmids[timestep] for timestep in viewer.validtimesteps]
+        validtmids = [viewer.tmids[timestep] for timestep in viewer.run.validtimesteps]
         position = get_nearest_range_start(validtmids, xdata, 1)
     elif viewer.values.x == "timestep":
-        position = min(range(len(viewer.validtimesteps)), key=lambda pos: abs(viewer.validtimesteps[pos] - xdata))
+        position = min(
+            range(len(viewer.run.validtimesteps)), key=lambda pos: abs(viewer.run.validtimesteps[pos] - xdata)
+        )
     else:
         return None
     snapshotx = viewer.get_default_xvariable(viewer.values.otheroptions, timegiven=True)
@@ -1750,11 +1752,6 @@ def get_image_value(cursordata: t.Any) -> float | None:
         return None
     values = np.ma.masked_invalid(np.ma.asarray(cursordata, dtype=float)).compressed()
     return float(values[0]) if values.size else None
-
-
-def keep_figwidthscale(restored: ControlValues, current: ControlValues) -> ControlValues:
-    """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
-    return dc.replace(restored, figwidthscale=current.figwidthscale)
 
 
 def get_icon_curve() -> "npt.NDArray[np.float64]":
@@ -1911,7 +1908,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     xbox = QtWidgets.QComboBox()
     xbox.setEditable(True)
     xbox.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-    xbox.addItems([*XVARIABLES, *(column for column in viewer.estimatorcolumns if column not in XVARIABLES)])
+    xbox.addItems([*XVARIABLES, *(column for column in viewer.run.estimatorcolumns if column not in XVARIABLES)])
     if (completer := xbox.completer()) is not None:
         set_search_completion(completer)
     xbox.setToolTip(helptexts.get("x", ""))
@@ -2066,7 +2063,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             viewerwindow,
             viewer,
             viewer.parser,
-            viewer.values.dpi,
             (tablehiddendests, get_table_rows(viewer.values.otheroptions), on_option_rows),
         )
     )
@@ -2100,12 +2096,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         A shorter range clamps the value of a slider. The handler of the slider must not change the values of the
         viewer then, and show_values gives each slider its value.
         """
-        nvalid = len(viewer.validtimesteps)
+        nvalid = len(viewer.run.validtimesteps)
         blockers = [QtCore.QSignalBlocker(slider) for slider in (timeslider, widthslider, cellslider)]
         try:
             timeslider.setRange(0, nvalid - 1)
             widthslider.setRange(1, nvalid)
-            cellslider.setRange(0, max(len(viewer.cells) - 1, 0))
+            cellslider.setRange(0, max(len(viewer.run.cells) - 1, 0))
         finally:
             for blocker in blockers:
                 blocker.unblock()
@@ -2156,7 +2152,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         The name of the object of a control gives its role. show_subplots gives the focus to the control with the same
         role in a new card.
         """
-        columns = viewer.estimatorcolumns
+        columns = viewer.run.estimatorcolumns
         seriestype = get_subplot_seriestype(subplot, columns)
         currenttype = seriestype or VARIABLES_TYPE
         names = get_subplot_names(subplot)
@@ -2373,11 +2369,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         If get_level_names cannot read the NLTE populations, the terminal shows the error, and the level population
         offers no level.
         """
-        if not seriestype.startswith("levelpopulation") or not viewer.cells:
+        if not seriestype.startswith("levelpopulation") or not viewer.run.cells:
             return []
         if not levelnamescache:
             names: list[str] = []
-            timestep, cell = viewer.values.last, viewer.cells[0]
+            timestep, cell = viewer.values.last, viewer.run.cells[0]
             run_command_step(lambda: names.extend(get_level_names(viewer.modelpath, timestep, cell)))
             levelnamescache.append(names)
         return levelnamescache[0]
@@ -2390,7 +2386,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         names = set(get_subplot_names(viewer.values.subplots[row]))
         # a plot that ends while the menu shows can make the card again, and that deletes the children of the card
         menu = QtWidgets.QMenu(window)
-        for title, columns in get_variable_menu_groups(tuple(viewer.estimatorcolumns)):
+        for title, columns in get_variable_menu_groups(tuple(viewer.run.estimatorcolumns)):
             if not columns:
                 continue
             # a line separates the groups at the top, and the submenus stay together below them
@@ -2439,11 +2435,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         """
         if columnschanged:
             oldcompleter = newsubplotedit.completer()
-            newsubplotedit.setCompleter(make_completer([*subplottypes[1:], *viewer.estimatorcolumns], newsubplotedit))
+            newsubplotedit.setCompleter(
+                make_completer([*subplottypes[1:], *viewer.run.estimatorcolumns], newsubplotedit)
+            )
             if oldcompleter is not None:
                 oldcompleter.deleteLater()
             oldcompleter = insertedit.completer()
-            insertedit.setCompleter(make_completer([*subplottypes[1:], *viewer.estimatorcolumns], insertedit))
+            insertedit.setCompleter(make_completer([*subplottypes[1:], *viewer.run.estimatorcolumns], insertedit))
             if oldcompleter is not None:
                 oldcompleter.deleteLater()
         oldbuttons = [
@@ -2455,7 +2453,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             if button is not None:
                 remove_widget(newsuggestionslayout, button)
         suggestions = get_new_subplot_suggestions(
-            viewer.values.subplots, viewer.defaultsubplots, viewer.estimatorcolumns
+            viewer.values.subplots, viewer.run.defaultsubplots, viewer.run.estimatorcolumns
         )
         for subplot in suggestions:
             text = shlex.join(subplot)
@@ -2471,7 +2469,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         the focus to the control that had it in the old card.
         """
         nonlocal shownnewkey, pendingfocus, shownsubplots, insertrow
-        subplots, columns = viewer.values.subplots, viewer.estimatorcolumns
+        subplots, columns = viewer.values.subplots, viewer.run.estimatorcolumns
         if subplots != shownsubplots:
             movedcollapsed = get_moved_rows(shownsubplots, subplots, collapsedrows)
             collapsedrows.clear()
@@ -2512,7 +2510,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             subplotslayout.insertWidget(insertrow, insertbox)
         else:
             insertbox.hide()
-        newkey = (subplots, viewer.defaultsubplots, columns)
+        newkey = (subplots, viewer.run.defaultsubplots, columns)
         if newkey != shownnewkey:
             show_new_subplot_suggestions(subplottypes, columnschanged=newkey[2:] != shownnewkey[2:])
             shownnewkey = newkey
@@ -2539,7 +2537,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         for widget in (timeslider, timeedit, widthlabel, widthslider, widthedit):
             widget.setVisible(not evolution)
         stepbuttons[0].setEnabled(firstpos > 0)
-        stepbuttons[1].setEnabled(lastpos < len(viewer.validtimesteps) - 1)
+        stepbuttons[1].setEnabled(lastpos < len(viewer.run.validtimesteps) - 1)
         trangebox.setVisible(evolution)
         set_trange_positions(firstpos, lastpos)
         set_edit_text(tminedit, f"{viewer.tmids[values.first]:.4g}")
@@ -2609,8 +2607,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         set_edit_text(timeedit, get_time_text(viewer.tmids, values))
         timestepslabel.setText(viewer.get_time_range_text())
         set_edit_text(celledit, values.cells)
-        if (cell := get_single_cell(values.cells)) is not None and cell in viewer.cells:
-            cellslider.setValue(viewer.cells.index(cell))
+        if (cell := get_single_cell(values.cells)) is not None and cell in viewer.run.cells:
+            cellslider.setValue(viewer.run.cells.index(cell))
         celllabel.setText(viewer.get_cell_text())
         xbox.setCurrentText(values.x)
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
@@ -2636,19 +2634,21 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         colorbyionnote = " (on for bins)" if viewer.plotcolorbyion and not values.colorbyion else ""
         colorbyioncheck.setText(FLAG_LABELS["--colorbyion"] + colorbyionnote)
         show_subplots()
-        defaultbutton.setEnabled(values.subplots != viewer.defaultsubplots and bool(viewer.defaultsubplots))
-        skippedcount = len(viewer.skippeddefaults)
+        defaultbutton.setEnabled(values.subplots != viewer.run.defaultsubplots and bool(viewer.run.defaultsubplots))
+        skippedcount = len(viewer.run.skippeddefaults)
         set_note_text(
             skippeddefaultslabel,
             f"The default subplots leave out {skippedcount} {'plot' if skippedcount == 1 else 'plots'}."
             if skippedcount
             else "",
-            "\n".join(["The default subplots leave out:", *(f"• {note}" for note in viewer.skippeddefaults)]),
+            "\n".join(["The default subplots leave out:", *(f"• {note}" for note in viewer.run.skippeddefaults)]),
         )
         set_option_rows(get_table_rows(values.otheroptions))
         set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
         set_command_text(commandtext, viewer.get_command())
-        set_command_text(pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns))
+        set_command_text(
+            pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.run.estimatorcolumns)
+        )
 
     def after_draw(message: str | None) -> None:
         # matplotlib keeps the connections of the mouse in the figure, and each plot has a new figure
@@ -2665,11 +2665,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     queue = DrawQueue(
         window, viewer, statusbar, show_values, after_draw, render=viewer.render, keep_on_undo=keep_figwidthscale
     )
-    apply = queue.apply
-
-    def show_error(message: str) -> None:
-        show_status_message(statusbar, message, "")
-        show_values()
+    apply, show_error = queue.apply, queue.show_error
 
     def on_time(position: int) -> None:
         firstpos, lastpos = viewer.get_selection_positions()
@@ -2718,7 +2714,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         except ValueError:
             show_error("Give a number of days for the first and the last time")
             return
-        validtmids = [viewer.tmids[timestep] for timestep in viewer.validtimesteps]
+        validtmids = [viewer.tmids[timestep] for timestep in viewer.run.validtimesteps]
         firstpos, lastpos = (get_nearest_range_start(validtmids, days, 1) for days in (firstdays, lastdays))
         if firstpos > lastpos:
             show_error("Give a first time that is before the last time")
@@ -2741,9 +2737,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if not is_evolution(viewer.values):
             return viewer.step_time(1) or viewer.move_to_end(last=False)
         # -cell does not select the cells of some plots, e.g. of a plane
-        if not viewer.cells or not cells_apply(viewer.values):
+        if not viewer.run.cells or not cells_apply(viewer.values):
             return None
-        return viewer.step_cell(1) or dc.replace(viewer.values, cells=str(viewer.cells[0]))
+        return viewer.step_cell(1) or dc.replace(viewer.values, cells=str(viewer.run.cells[0]))
 
     def play_step() -> None:
         if not playbutton.isChecked():
@@ -2760,8 +2756,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             play_step()
 
     def on_cell(position: int) -> None:
-        if viewer.cells:
-            apply(dc.replace(viewer.values, cells=str(viewer.cells[position])))
+        if viewer.run.cells:
+            apply(dc.replace(viewer.values, cells=str(viewer.run.cells[position])))
 
     def on_celledit() -> None:
         celledit.setModified(False)
@@ -2840,28 +2836,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if xvariable := xbox.currentText().strip():
             apply(viewer.set_xvariable(viewer.values, xvariable))
 
-    def get_limit_texts(edits: "Sequence[QtWidgets.QLineEdit]", low: str, high: str) -> list[str] | None:
-        """Return the numbers of two fields in the form of the command, or None after an error message.
-
-        An empty field gives an empty text, which takes the limit of the data.
-        """
-        texts: list[str] = []
-        for edit in edits:
-            # a later plot can show new text in the field only when the field has no edit of the user
-            edit.setModified(False)
-            text = edit.text().strip()
-            try:
-                texts.append(format(float(text), ".10g") if text else "")
-            except ValueError:
-                show_error(f"Give a number for {low} and {high}. An empty field gives the range of the data")
-                return None
-        if texts[0] and texts[1] and float(texts[0]) >= float(texts[1]):
-            show_error(f"Give a {low} that is less than {high}")
-            return None
-        return texts
-
     def on_xedit() -> None:
-        if (texts := get_limit_texts((xminedit, xmaxedit), "-xmin", "-xmax")) is not None:
+        if (texts := read_limit_fields([(xminedit, "-xmin"), (xmaxedit, "-xmax")], show_error)) is not None:
             apply(dc.replace(viewer.values, xmin=texts[0], xmax=texts[1]))
 
     def on_style() -> None:
@@ -2881,12 +2857,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         -ionpoptype of the command waits for a populations subplot, and then it goes to each one.
         """
         # a subplot with no item stays, and it draws an empty frame
-        newsubplots = tuple(subplots) or viewer.defaultsubplots
+        newsubplots = tuple(subplots) or viewer.run.defaultsubplots
         if not newsubplots:
             show_error("Give the items of at least one subplot")
             return
         newsubplots, otheroptions = move_poptype_to_subplots(
-            newsubplots, viewer.values.otheroptions, viewer.estimatorcolumns
+            newsubplots, viewer.values.otheroptions, viewer.run.estimatorcolumns
         )
         apply(dc.replace(viewer.values, subplots=newsubplots, otheroptions=otheroptions))
 
@@ -2902,12 +2878,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_subplot_type(row: int, seriestype: str) -> None:
         subplot = viewer.values.subplots[row]
         levelnames = get_levelnames(seriestype)
-        set_subplot(row, change_subplot_type(subplot, seriestype, viewer.estimatorcolumns, levelnames))
+        set_subplot(row, change_subplot_type(subplot, seriestype, viewer.run.estimatorcolumns, levelnames))
 
     def on_yrange(row: int, yminedit: QtWidgets.QLineEdit, ymaxedit: QtWidgets.QLineEdit) -> None:
         if not is_shown_card(row, yminedit):
             return
-        if (texts := get_limit_texts((yminedit, ymaxedit), "y min", "y max")) is not None:
+        if (texts := read_limit_fields([(yminedit, "y min"), (ymaxedit, "y max")], show_error)) is not None:
             subplot = viewer.values.subplots[row]
             set_subplot(row, replace_directives(subplot, {"ymin": texts[0] or None, "ymax": texts[1] or None}))
 
@@ -3047,7 +3023,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             return
         row, text = insertrow, insertedit.text()
         words = text.split()
-        subplot = make_new_subplot(text, viewer.estimatorcolumns, get_levelnames(words[0] if words else ""))
+        subplot = make_new_subplot(text, viewer.run.estimatorcolumns, get_levelnames(words[0] if words else ""))
         close_insert_field()
         if subplot:
             # the field of the new card takes the focus, thus the user can add more names
@@ -3062,7 +3038,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         text = newsubplotedit.text()
         newsubplotedit.clear()
         words = text.split()
-        add_new_subplot(make_new_subplot(text, viewer.estimatorcolumns, get_levelnames(words[0] if words else "")))
+        add_new_subplot(make_new_subplot(text, viewer.run.estimatorcolumns, get_levelnames(words[0] if words else "")))
 
     def on_reload() -> None:
         """Read the run again in the worker thread.
@@ -3203,7 +3179,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         """
         values = viewer.values
         if is_evolution(values):
-            cells = list(viewer.cells)
+            cells = list(viewer.run.cells)
             # -cell does not select the cells of some plots, e.g. of a plane
             if not cells or not cells_apply(values):
                 return 1, lambda _index: viewer.get_plot_tokens(values)
@@ -3211,21 +3187,19 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         firstpos, lastpos = viewer.get_selection_positions(values)
         count = lastpos - firstpos + 1
         return (
-            len(viewer.validtimesteps) - count + 1,
+            len(viewer.run.validtimesteps) - count + 1,
             lambda index: viewer.get_plot_tokens(viewer.select_timesteps(values, index, count)),
         )
 
+    command = ViewerCommand(
+        name="plotestimators",
+        main=plotestimators_main,
+        parser=viewer.parser,
+        get_python_code=lambda: get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.run.estimatorcolumns),
+    )
+
     def on_export_animation() -> None:
-        export_animation(
-            window,
-            queue,
-            statusbar,
-            plotestimators_main,
-            "plotestimators",
-            get_animation_frames(),
-            fpsbox.value(),
-            viewer.parser,
-        )
+        export_animation(window, queue, command, get_animation_frames(), fpsbox.value())
 
     def on_drop(paths: list[str]) -> None:
         """Open a new window for each dropped folder of a run."""
@@ -3241,25 +3215,14 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         # each kept scan holds the metadata of its file, e.g. 7.6 MB for 3000 columns
         scan_parquet_file.cache_clear()
 
-    command = ViewerCommand(
-        name="plotestimators",
-        main=plotestimators_main,
-        parser=viewer.parser,
-        get_figure_tokens=lambda: viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None)),
-        get_command=viewer.get_command,
-        get_python_code=lambda: get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.estimatorcolumns),
-    )
     add_figure_actions = add_window_actions(
         window,
         windows,
         open_window,
         queue,
-        statusbar,
         command,
         figuresection,
         (copybutton, pythoncopybutton),
-        (lambda: viewer.values.dpi, lambda dpi: apply(dc.replace(viewer.values, dpi=dpi))),
-        show_error,
         KEYBOARD_HELP_ROWS,
         playbutton,
         extracallbacks={"Reload Data": on_reload, "Export Animation…": on_export_animation},
@@ -3313,7 +3276,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         QtGui.QKeySequence(QtCore.Qt.Key.Key_Escape), insertedit, context=QtCore.Qt.ShortcutContext.WidgetShortcut
     ).activated.connect(close_insert_field)
     addsubplotbutton.clicked.connect(on_new_subplot)
-    defaultbutton.clicked.connect(lambda: apply_subplots(viewer.defaultsubplots))
+    defaultbutton.clicked.connect(lambda: apply_subplots(viewer.run.defaultsubplots))
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
         get_frames=lambda: get_plot_frames(viewer.fig),
@@ -3339,19 +3302,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         ),
     )
 
-    finish_viewer_window(
-        viewerwindow,
-        windows,
-        viewer,
-        queue,
-        viewer.get_command,
-        get_session_tokens,
-        (
-            viewer.get_fitted_figwidthscale,
-            lambda: viewer.values.figwidthscale,
-            lambda figwidthscale: apply(dc.replace(viewer.values, figwidthscale=figwidthscale), undoable=False),
-        ),
-        on_closed,
-    )
+    finish_viewer_window(viewerwindow, windows, viewer, queue, get_session_tokens, on_closed)
     show_values()
     return None

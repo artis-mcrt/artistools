@@ -77,6 +77,11 @@ fn get_level_pops(
 ) -> Vec<CellRow> {
     let mut pops = vec![[0.0; CELLSPERTASK]; levels.g.len()];
     for (cell, &cell_t_exc) in t_exc.iter().enumerate() {
+        // a temperature of zero gives 0 / 0 for the ground level, and a negative temperature inverts the
+        // populations. Such a cell has no LTE populations, thus each level stays at zero
+        if cell_t_exc <= 0.0 {
+            continue;
+        }
         for (ionrange, ionpops) in levels.ranges.iter().zip(nnion) {
             let cellnnion = ionpops[cell];
             // an ion with no population gives zero in each level
@@ -162,7 +167,7 @@ fn sum_cell_group(
 /// - the density.
 ///
 /// The rows are in the order [cell][bin]. The level populations are the LTE populations at the excitation temperature
-/// `T_exc` of each cell.
+/// `T_exc` of each cell. A cell with a `T_exc` of zero or below has no populations, thus each of its sums is zero.
 /// `lower` and `upper` give the row of each level in `dflevels`.
 ///
 /// The sum runs without the global interpreter lock (GIL), thus other Python threads can run at the same time.

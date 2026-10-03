@@ -22,6 +22,7 @@ from artistools.viewertools.core import ThreadOutput
 if t.TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Generator
+    from collections.abc import Mapping
     from collections.abc import Sequence
 
     import numpy.typing as npt
@@ -72,6 +73,7 @@ def get_macos_bundle_executable(applicationname: str, documenttypes: "Sequence[s
     no disk space. On a different volume, it holds a copy. If the Python executable changes, this function replaces
     the link. documenttypes gives the uniform type identifiers that the Dock icon accepts, e.g. "public.folder".
     """
+    import filecmp
     import os
     import plistlib
     import shutil
@@ -80,7 +82,8 @@ def get_macos_bundle_executable(applicationname: str, documenttypes: "Sequence[s
     baseexecutable = Path(sys.executable).resolve()
     contents = Path.home() / "Library" / "Caches" / "artistools" / f"{applicationname}.app" / "Contents"
     executable = contents / "MacOS" / baseexecutable.name
-    if not (executable.exists() and executable.samefile(baseexecutable)):
+    # a copy on a different volume is not the same file, thus the test also accepts a copy with the same contents
+    if not (executable.exists() and filecmp.cmp(executable, baseexecutable, shallow=True)):
         executable.parent.mkdir(parents=True, exist_ok=True)
         # two viewers can make the bundle at the same time, thus each file receives its final name in one step
         tmpexecutable = executable.with_name(f"{executable.name}.{os.getpid()}.tmp")
@@ -180,6 +183,23 @@ def serialise_mathtext_parser() -> None:
     mplmathtext.MathTextParser.parse = serialised_parse
 
 
+# the Qt platform plugins of Linux that show a window on an X11 display or on a Wayland display
+DISPLAY_PLATFORMS: t.Final = ("xcb", "wayland")
+
+
+def needs_missing_display(environment: "Mapping[str, str]") -> bool:
+    """Return True if the Qt platform of the environment needs a display, and the environment gives no display.
+
+    QT_QPA_PLATFORM can select a platform that needs no display, e.g. offscreen, vnc, or eglfs. Its value is a list
+    of platforms with ";" between them, and Qt uses the first platform that it can load. Each platform can have
+    options after a ":".
+    """
+    if environment.get("DISPLAY") or environment.get("WAYLAND_DISPLAY"):
+        return False
+    platforms = [entry.partition(":")[0].strip() for entry in environment.get("QT_QPA_PLATFORM", "").split(";")]
+    return all(not platform or platform.startswith(DISPLAY_PLATFORMS) for platform in platforms)
+
+
 def start_application(
     applicationname: str, iconcurve: "npt.NDArray[np.float64]", documenttypes: "Sequence[str]" = ("public.folder",)
 ) -> "QtWidgets.QApplication":
@@ -201,7 +221,7 @@ def start_application(
     from PySide6 import QtWidgets
 
     # Qt stops the process with no Python error when it cannot find a display
-    if sys.platform == "linux" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+    if sys.platform == "linux" and needs_missing_display(os.environ):
         exit_with_error(
             "--interactive needs a window, and this computer has no display",
             "Run the command on a computer with a display, e.g. with ssh -X",
@@ -530,8 +550,14 @@ def add_session_window(tokens: "Sequence[str]") -> None:
 
 
 def get_absolute_tokens(tokens: "Sequence[str]") -> list[str]:
-    """Return the tokens of a command with an absolute path for each path that exists in the working folder."""
-    return [str(Path(word).absolute()) if not word.startswith("-") and Path(word).exists() else word for word in tokens]
+    """Return the tokens of a command with an absolute path for each path that exists in the working folder.
+
+    An empty token, e.g. the value of -label "", stays empty. Path("") is the working folder, and it exists.
+    """
+    return [
+        str(Path(word).absolute()) if word and not word.startswith("-") and Path(word).exists() else word
+        for word in tokens
+    ]
 
 
 def take_session_windows() -> list[list[str]]:

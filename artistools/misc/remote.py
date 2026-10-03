@@ -12,6 +12,7 @@ restricted unpickler, because a different user can control a host that the clien
 
 import argparse
 import functools
+import os
 import pickle
 import re
 import threading
@@ -25,10 +26,20 @@ if t.TYPE_CHECKING:
 
     import polars as pl
 
-# the rule of rsync: a colon before the first slash makes a remote path, e.g. "vae26:~/mymodel" and
-# "user@vae26:/lustre/mymodel". A local path with such a colon starts with "./", e.g. "./run:2". An IPv6 address
-# is in brackets, e.g. "user@[2001:db8::1]:/lustre/mymodel"
-REMOTEPATH_PATTERN = re.compile(r"^(?P<host>(?:[^/:@\[]*@)?\[[^\]/]*\]|[^/:\[]+):(?P<path>.*)$", re.DOTALL)
+
+def make_remotepath_pattern(*, windows: bool) -> re.Pattern[str]:
+    r"""Return the pattern of a remote path, with the rule of rsync.
+
+    A colon before the first slash makes a remote path, e.g. "vae26:~/mymodel" and "user@vae26:/lustre/mymodel". A
+    local path with such a colon starts with "./", e.g. "./run:2". An IPv6 address is in brackets, e.g.
+    "user@[2001:db8::1]:/lustre/mymodel". On Windows, a host of one letter in front of a path separator is a drive,
+    e.g. "C:\Users\me\mymodel". On a different system, it is an ssh host alias, e.g. "a:/lustre/mymodel".
+    """
+    drivelookahead = r"(?![A-Za-z]:[\\/])" if windows else ""
+    return re.compile(rf"^{drivelookahead}(?P<host>(?:[^/:@\[]*@)?\[[^\]/]*\]|[^/:\[]+):(?P<path>.*)$", re.DOTALL)
+
+
+REMOTEPATH_PATTERN = make_remotepath_pattern(windows=os.name == "nt")
 
 # a user can give a different command to start the server, e.g. the path of an artistools in a clone
 SERVER_COMMAND_ENVVAR = "ARTISTOOLS_REMOTE_COMMAND"
@@ -607,8 +618,6 @@ def get_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
 
     The server stops when this process closes the pipes at its exit.
     """
-    import os
-
     with SERVERS_LOCK:
         if (host, os.getpid()) not in SERVERS:
             SERVERS[host, os.getpid()] = start_server(host)
@@ -621,8 +630,6 @@ def forget_server(host: str, process: "subprocess.Popen[bytes] | None" = None) -
     With a process, only that server leaves the registry. A thread can fail on a server that a different thread
     replaced, and the new server must then stay.
     """
-    import os
-
     with SERVERS_LOCK:
         entry = SERVERS.get((host, os.getpid()))
         if entry is not None and (process is None or entry[0] is process):
@@ -665,7 +672,6 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     command. If the server of a git commit does not start, e.g. because the host has no Rust, the release starts.
     """
     import atexit
-    import os
     import shlex
     from importlib.metadata import version
 
@@ -746,7 +752,8 @@ def output_is_hidden() -> bool:
     """Return whether the standard output of the calling thread goes elsewhere than to the terminal of the process.
 
     --quiet sends it to the null device, and the worker thread of a viewer sends it to a buffer. The server then
-    hides the standard output of the reader, and it sends back the standard error, e.g. an error or a warning. The ThreadOutput of a viewer gives the target of each thread.
+    hides the standard output of the reader, and it sends back the standard error, e.g. an error or a warning.
+    The ThreadOutput of a viewer gives the target of each thread.
     """
     import sys
 
@@ -872,7 +879,6 @@ def run_function(request: tuple[str, str, tuple[t.Any, ...], dict[str, t.Any], b
     With quiet, the function prints nothing to the standard output, and its standard error goes to errorstream.
     """
     import contextlib
-    import os
 
     modulename, qualname, args, kwargs, quiet = request
     func = get_server_function(modulename, qualname)
@@ -942,7 +948,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Run the requests that an artistools client sends through ssh. A path host:path starts this server."""
     import io
-    import os
     import sys
 
     from artistools.misc.cliutils import parse_cli_args

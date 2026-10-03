@@ -39,7 +39,6 @@ from artistools.misc import get_timesteps
 from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
-from artistools.misc import parse_range_list
 from artistools.misc import read_wsv
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -53,7 +52,10 @@ def get_abundance_correction_factors(
     modelpath: str | Path,
     modelmeta: dict[str, t.Any],
 ) -> dict[str, float]:
-    """Get a dictionary of abundance multipliers that ARTIS will apply to correct for missing mass due to skipped shells, and volume error due to Cartesian grid mapping.
+    """Return the abundance multipliers that ARTIS applies to correct the mass fractions of the cells.
+
+    The multipliers correct the mass that the skipped shells lose, and the volume error of the map to a Cartesian
+    grid.
 
     It is important to follow the same method as artis to get the correct mass fractions.
     """
@@ -217,7 +219,7 @@ def get_artis_abund_sequences(
 
 
 def sum_weighted_particle_arrays(
-    dfpairs: pl.LazyFrame, dfparticledata: pl.DataFrame, pairweight: pl.Expr, columns: Sequence[str], ntimes: int
+    dfpairs: pl.DataFrame, dfparticledata: pl.DataFrame, pairweight: pl.Expr, columns: Sequence[str], ntimes: int
 ) -> pl.DataFrame:
     """Return the sum over the pairs of particle and cell of each array column, multiplied by the weight of the pair.
 
@@ -226,6 +228,7 @@ def sum_weighted_particle_arrays(
     """
     return (
         dfpairs
+        .lazy()
         .group_by("particleid")
         .agg(weight=pairweight.sum())
         .join(dfparticledata.lazy().select("particleid", *columns), on="particleid", how="inner")
@@ -242,7 +245,7 @@ def sum_weighted_particle_arrays(
 
 def plot_qdot(
     modelpath: Path,
-    dfpairs: pl.LazyFrame | None,
+    dfpairs: pl.DataFrame | None,
     dfparticledata: pl.DataFrame | None,
     arr_time_gsi_days: Sequence[float] | None,
     pdfoutpath: Path | str,
@@ -253,8 +256,9 @@ def plot_qdot(
     try:
         depdata = df_filter_minmax_bracketed(get_deposition(modelpath=modelpath), "tmid_days", None, xmax).collect()
 
-    except FileNotFoundError:
-        print("Can't do qdot plot because no deposition.out file")
+    except (FileNotFoundError, ValueError) as exc:
+        # a mismatched deposition.out belongs to a different run, thus the plot of the heating rate stops as for no file
+        print(f"Can't do qdot plot: {exc}")
         return
 
     if dfpairs is not None and dfparticledata is not None:
@@ -265,7 +269,7 @@ def plot_qdot(
         # the semi join removes the pairs of a particle that has no network data, thus the weights of the pairs
         # that remain do not sum to one. Divide by that sum. The rate then stays a rate for each gram
         expr_weight = pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot")
-        weightsum = dfpairs.select(expr_weight.sum()).collect().item()
+        weightsum = dfpairs.select(expr_weight.sum()).item()
         dfgsiglobalheating = (
             sum_weighted_particle_arrays(dfpairs, dfparticledata, expr_weight, heatcols, len(arr_time_gsi_days))
             .select(pl.col(heatcols) / weightsum)
@@ -319,7 +323,7 @@ def plot_qdot(
 
 def plot_cell_abund_evolution(
     modelpath: Path,
-    dfpairs: pl.LazyFrame | None,
+    dfpairs: pl.DataFrame | None,
     dfparticledata: pl.DataFrame | None,
     arr_time_gsi_days: Sequence[float] | None,
     arr_species: Sequence[str],
@@ -332,19 +336,13 @@ def plot_cell_abund_evolution(
     if dfpairs is not None and dfparticledata is not None:
         print(f"Calculating abundances in model cell {mgi} from the individual particle abundances")
         dfpartcontrib_thiscell = dfpairs.filter(pl.col("modelgridindex") == mgi) if mgi >= 0 else dfpairs
-        frac_of_cellmass_sum = dfpartcontrib_thiscell.select(pl.col("frac_of_cellmass").sum()).collect().item()
+        # the cells of this plot can be a part of the model, thus a normalisation factor is necessary. Each
+        # cell has one mass, thus the sum takes the first pair of each cell
+        frac_of_cellmass_sum, normfactor = dfpartcontrib_thiscell.select(
+            pl.col("frac_of_cellmass").sum(),
+            pl.col("cellmass_on_mtot").filter(pl.col("modelgridindex").is_first_distinct()).sum(),
+        ).row(0)
         print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
-
-        # the cells of this plot can be a part of the model, thus a normalisation factor is necessary
-        normfactor = (
-            dfpartcontrib_thiscell
-            .group_by("modelgridindex")
-            .agg(pl.col("cellmass_on_mtot").first())
-            .drop("modelgridindex")
-            .sum()
-            .collect()
-            .item()
-        )
 
         assert arr_time_gsi_days is not None
         df_gsi_abunds = sum_weighted_particle_arrays(
@@ -415,7 +413,11 @@ def get_particledata(
     particleid: int,
     verbose: bool = False,
 ) -> pl.DataFrame:
-    """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
+    """Interpolate the heating rates of the decay channels to an array of times.
+
+    The times are neutron star merger (NSM) times, which include the time before the merger. If arr_strnuc_z_n
+    is not empty, the function also interpolates the nuclear mass fractions.
+    """
     try:  # ruff:ignore[too-many-statements-in-try-clause]
         if verbose:
             print(
@@ -444,11 +446,17 @@ def get_particledata(
         )
 
         if arr_strnuc_z_n:
-            ntslowers = get_closest_network_timesteps(traj_root, particleid, arr_time_s_incpremerger, cond="lessthan")
-            ntsuppers = get_closest_network_timesteps(
-                traj_root, particleid, arr_time_s_incpremerger, cond="greaterthan"
+            # the bracket includes a step at the exact time. Then a time at the first or the last step reads
+            # that step, and a time at an inner step reads no neighbour step
+            ntslowers = get_closest_network_timesteps(
+                traj_root, particleid, arr_time_s_incpremerger, cond="lessorequal"
             )
-            nts_list = sorted(set(ntslowers + ntsuppers))
+            ntsuppers = get_closest_network_timesteps(
+                traj_root, particleid, arr_time_s_incpremerger, cond="greaterorequal"
+            )
+            # a time outside the range of the network steps has no step on one side, which gives None.
+            # np.interp then holds the end value, as it does for the heating rates above
+            nts_list = sorted({nts for nts in ntslowers + ntsuppers if nts is not None})
             dftrajnucabund, traj_times_s = get_trajectory_timestepfiles_nuc_abund(
                 traj_root, particleid, [f"./Run_rprocess/nz-plane{nts:05d}" for nts in nts_list]
             )
@@ -507,7 +515,7 @@ def get_dfcontribsparticledata(
     griddata_root: Path,
     lzdfmodel: pl.LazyFrame,
     arr_time_gsi_days: list[float],
-) -> tuple[pl.LazyFrame, pl.DataFrame]:
+) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return the pairs of particle and cell for the network particles, and the frame of the particle data."""
     # times in artis are relative to merger, but NSM simulation time started earlier
     mergertime_geomunits = get_merger_time_geomunits(griddata_root)
@@ -554,11 +562,11 @@ def get_dfcontribsparticledata(
     # the streaming engine. The time of that engine increases with the square of the number of inputs
     allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
 
-    # a semi join removes the pairs of a particle without network data, and it copies no arrays. The frame
-    # stays lazy, thus a query for one cell reads the pairs of that cell alone
+    # a semi join removes the pairs of a particle without network data, and it copies no arrays. The result
+    # holds one row for each pair, thus one collect serves the queries of every cell
     dfpairs = dfpartcontrib.join(
         allparticledata.lazy().select("particleid"), on="particleid", how="semi", maintain_order="left"
-    )
+    ).collect()
     return dfpairs, allparticledata
 
 
@@ -728,7 +736,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     plot_qdot_abund_modelcells(
         modelpath=Path(args.modelpath),
         merger_root=Path(args.mergerroot),
-        mgiplotlist=parse_range_list(args.modelgridindex) if args.modelgridindex is not None else [],
+        mgiplotlist=args.modelgridindex or [],
         arr_species=args.species,
         args=args,
         timedaysmax=args.xmax,

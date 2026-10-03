@@ -1283,6 +1283,20 @@ def get_python_call(functionname: str, kwargs: "Mapping[str, t.Any]") -> str:
     return f"import artistools as at\n\n{call}"
 
 
+def get_python_code(
+    parser: argparse.ArgumentParser, tokens: "Sequence[str]", commandname: str, functionname: str
+) -> str:
+    """Return the Python code that draws the plot of the command, with each argument that differs from its default.
+
+    commandname names the command in the comment of a rejection. functionname is the function that the code calls,
+    e.g. "at.lightcurve.plot".
+    """
+    args = parse_command_tokens(parser, tokens)
+    if args is None:
+        return f"# {commandname} rejects the command"
+    return get_python_call(functionname, get_changed_arguments(parser, args))
+
+
 # a box of text shows at least this number of lines
 MIN_COMMAND_LINES: t.Final = 3
 

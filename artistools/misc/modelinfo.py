@@ -20,6 +20,7 @@ from artistools.misc.cliutils import print_detail
 from artistools.misc.fileio import extra_csv_columns_ignored
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
@@ -58,7 +59,9 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
 
 
 def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[int, int], bool]:
-    """Get a bi-directional mapping between model cells and propagation grid cells. These can be different, e.g. 1D input model with a 3D grid.
+    """Return the maps from the model cells to the propagation grid cells, and back.
+
+    The two grids can be different, e.g. a 1D input model with a 3D grid.
 
     Returns a tuple with:
     - dict[modelgridindex] = list of associated propagation cellindices,
@@ -163,8 +166,7 @@ def get_model_name(path: Path | str) -> str:
     if path_is_codecomparison(path):
         return str(path)
 
-    # resolve the path before the cache. The default model path is the relative Path(".").
-    # A cache that holds the relative path keeps the first answer after the user changes the working folder
+    # the cache key holds the absolute path, see ModelpathCache
     return get_model_name_cached(resolve_modelpath(path))
 
 
@@ -240,14 +242,9 @@ def parse_npts_line(line: str, modelfilepath: Path | str) -> list[int]:
     return cellcounts
 
 
-def get_npts_model(modelpath: Path | str) -> int:
+@modelpath_cache(maxsize=8)
+def get_npts_model(modelpath: Path) -> int:
     """Return the number of cells in the model.txt."""
-    return get_npts_model_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=8)
-def get_npts_model_cached(modelpath: Path) -> int:
-    """Return the number of cells in the model.txt of the model at an absolute path."""
     modelfilepath = (
         Path(modelpath) if Path(modelpath).is_file() else firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
@@ -265,14 +262,9 @@ def get_inputfilepath(modelpath: Path | str) -> Path:
     return inputfilepath
 
 
-def get_nprocs(modelpath: Path | str) -> int:
-    """Return the number of MPI processes specified in input.txt."""
-    return get_nprocs_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=8)
-def get_nprocs_cached(modelpath: Path) -> int:
-    """Return the number of MPI processes of the model at an absolute path.
+@modelpath_cache(maxsize=8)
+def get_nprocs(modelpath: Path) -> int:
+    """Return the number of MPI processes specified in input.txt.
 
     ARTIS counts only the lines that hold a value, and it keeps comment lines when it rewrites input.txt.
     """
@@ -281,25 +273,20 @@ def get_nprocs_cached(modelpath: Path) -> int:
     return int(valuelines[21].split("#")[0])
 
 
-def get_inputparams(modelpath: Path | str) -> dict[str, t.Any]:
+@modelpath_cache(maxsize=8)
+def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     """Return the parameters that input.txt gives.
 
     Do not change the dictionary that this function returns. The next caller gets the same object.
     """
-    return get_inputparams_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=8)
-def get_inputparams_cached(modelpath: Path) -> dict[str, t.Any]:
-    """Return the input.txt parameters of the model at an absolute path."""
     params: dict[str, t.Any] = {}
     with get_inputfilepath(modelpath).open("r", encoding="utf-8") as inputfile:
         params["pre_zseed"] = int(readnoncommentline(inputfile).split("#")[0])
 
-        # number of time steps
+        # number of timesteps
         params["ntstep"] = int(readnoncommentline(inputfile).split("#")[0])
 
-        # number of start and end time step
+        # the first timestep and the last timestep
         params["itstep"], params["ftstep"] = (int(x) for x in readnoncommentline(inputfile).split("#")[0].split())
 
         params["tmin"], params["tmax"] = (float(x) for x in readnoncommentline(inputfile).split("#")[0].split())
@@ -397,7 +384,7 @@ def get_runfolders(
 ) -> Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
-    The folder list may include non-ARTIS folders if a timestep is not specified.
+    Without a timestep, the list holds each folder whose estimator files give at least one timestep.
     """
     folderlist_all = get_run_subfolders(modelpath)
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
@@ -437,12 +424,13 @@ def get_mpiranklist(
             )
         return range(get_nprocs(modelpath))
 
-    if modelgridindex is None or modelgridindex == []:
+    if modelgridindex is None:
         return all_ranks()
 
     if isinstance(modelgridindex, Iterable):
+        # a comparison of a numpy array with an empty list raises, thus the size of the array decides
         cells = np.fromiter(modelgridindex, dtype=np.int64)
-        if (cells < 0).any():
+        if cells.size == 0 or (cells < 0).any():
             return all_ranks()
 
         return sorted(set(get_mpiranks_of_cells(modelpath, cells).tolist()))
@@ -460,7 +448,7 @@ def read_rank_outputfiles(
     timestep: int | None = None,
     modelgridindex: int | Sequence[int] | None = None,
 ) -> pl.DataFrame:
-    """Read per-MPI-rank whitespace-separated output files (e.g. radfield_{mpirank:04d}.out) from the run folders into one DataFrame.
+    """Read the output files of each MPI rank, e.g. radfield_{mpirank:04d}.out, in the run folders into one DataFrame.
 
     When a timestep, a model grid cell, or a sequence of cells is given, only the run folders and ranks
     that could contain them are read, and the rows are filtered to that selection (negative values mean no filter).
@@ -503,26 +491,29 @@ def read_rank_outputfiles(
         msg = f"No {filefamily} files found in {modelpath}"
         raise FileNotFoundError(msg)
 
-    dfofeachfolder: list[pl.DataFrame] = []
-    keycolumns = ["timestep", "modelgridindex"]
-    seenkeys = pl.DataFrame(schema={"timestep": pl.Int64, "modelgridindex": pl.Int64})
-    for folderfilepaths in filepathsofeachfolder:
-        dffolder = (
-            pl
-            .concat((read_wsv(filepath) for filepath in folderfilepaths), how="vertical_relaxed")
-            .rename({"ionstage": "ion_stage"}, strict=False)
-            .with_columns(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64))
+    dfofeachfolder = [
+        pl
+        .concat((read_wsv(filepath) for filepath in folderfilepaths), how="vertical_relaxed")
+        .rename({"ionstage": "ion_stage"}, strict=False)
+        .with_columns(
+            pl.col("modelgridindex").cast(pl.Int64),
+            pl.col("timestep").cast(pl.Int64),
+            pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
         )
-        # the first timestep of a restarted run repeats the last timestep of the folder before it.
-        # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
-        # A later folder can hold a cell that the earlier folder never wrote. Thus the pair of the
-        # timestep and the cell decides, and not the timestep alone
-        if not seenkeys.is_empty():
-            dffolder = dffolder.join(seenkeys, on=keycolumns, how="anti")
-        seenkeys = pl.concat([seenkeys, dffolder.select(keycolumns).unique()])
-        dfofeachfolder.append(dffolder)
+        for folderindex, folderfilepaths in enumerate(filepathsofeachfolder)
+    ]
 
-    dfout = pl.concat(dfofeachfolder, how="vertical_relaxed")
+    # the first timestep of a restarted run repeats the last timestep of the folder before it.
+    # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
+    # A later folder can hold a cell that the earlier folder never wrote. Thus the pair of the
+    # timestep and the cell decides, and not the timestep alone, and the earliest folder of the pair keeps its rows
+    keycolumns = ["timestep", "modelgridindex"]
+    dfout = (
+        pl
+        .concat(dfofeachfolder, how="vertical_relaxed")
+        .filter(pl.col("folderindex") == pl.col("folderindex").min().over(keycolumns))
+        .drop("folderindex")
+    )
 
     matchcells = [modelgridindex] if isinstance(modelgridindex, int) else modelgridindex
     if matchcells and all(mgi >= 0 for mgi in matchcells):
@@ -553,14 +544,9 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
     return list(range(nstart, nstart + ndo))
 
 
-def get_dfrankassignments(modelpath: Path | str) -> pl.LazyFrame | None:
+@modelpath_cache(maxsize=16)
+def get_dfrankassignments(modelpath: Path) -> pl.LazyFrame | None:
     """Return the cell-to-MPI-rank assignments, or None when modelgridrankassignments.out is absent."""
-    return get_dfrankassignments_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
-def get_dfrankassignments_cached(modelpath: Path) -> pl.LazyFrame | None:
-    """Return the rank assignments of the model at an absolute path."""
     filerankassignments = firstexisting_or_none(
         "modelgridrankassignments.out", folder=modelpath, tryzipped=True, search_subfolders=False
     )
@@ -595,18 +581,13 @@ def get_rankassignments_cached(modelpath: Path) -> pl.DataFrame | None:
     return lzrankassignments.collect() if lzrankassignments is not None else None
 
 
-def get_nonempty_cellcounts(modelpath: Path | str) -> "Mapping[int, int] | None":
+@modelpath_cache(maxsize=16)
+def get_nonempty_cellcounts(modelpath: Path) -> "Mapping[int, int] | None":
     """Return the count of cells that hold matter for each rank, or None without the assignments file.
 
     ARTIS assigns no 3D cell to a shell that holds no matter. A rank whose count is zero handles such
     cells alone, thus it writes no output file, and the absence of that file is not a fault.
     """
-    return get_nonempty_cellcounts_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
-def get_nonempty_cellcounts_cached(modelpath: Path) -> "Mapping[int, int] | None":
-    """Return the count of cells that hold matter for each rank of the model at an absolute path."""
     dfranks = get_rankassignments(modelpath)
     if dfranks is None:
         return None

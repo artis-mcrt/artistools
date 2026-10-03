@@ -18,7 +18,6 @@ from artistools.misc import addarg_timestep
 from artistools.misc import get_single_timestep
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
-from artistools.misc import parse_range_list
 from artistools.misc import print_saved
 
 DEFAULTOUTPUTNAME = "massfracs.txt"
@@ -28,7 +27,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path())
     addarg_timestep(parser, default=14, helptext="Timestep number to export")
-    addarg_modelgridindex(parser, default="0", helptext="Range of cell numbers to export")
+    addarg_modelgridindex(parser, default=[0], helptext="Range of cell numbers to export")
     addarg_output(parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path to output file of mass fractions")
 
 
@@ -45,7 +44,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     tdays = get_timestep_time(modelpath, timestep)
     outfilename = args.outputfile
     with Path(outfilename).open("w", encoding="utf-8") as fout:
-        modelgridindexlist = parse_range_list(args.modelgridindex)
+        modelgridindexlist: list[int] = args.modelgridindex
         estimators = read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindexlist)
         for modelgridindex in modelgridindexlist:
             numberdens = {}

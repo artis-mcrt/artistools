@@ -143,7 +143,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
             raise ValueError(message)
         position = "trueem"
     print(f"t_min selected: {t_min} t_max_selected: {t_max}, is {Delta_t_secs} seconds")
-    dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="right"))
+    # a timestep holds the times from its start up to its end, and the end belongs to the next timestep
+    dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="left"))
     # a packet with no record of the emission has a time of NaN, thus it is outside each bin of the histogram
     emtime = get_emission_time_expr(position)
     dfpackets = dfpackets.with_columns(

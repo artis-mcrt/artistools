@@ -104,7 +104,10 @@ def check_averaging_angles(average_over_phi: bool, average_over_theta: bool) -> 
 
 
 def get_dirbins(average_over_phi: bool = False, average_over_theta: bool = False) -> list[int]:
-    """Return the viewing direction bin indices, reduced to the first bin of each averaging group when averaging over phi or theta angle."""
+    """Return the indices of the viewing direction bins.
+
+    An average over the phi angle or the theta angle gives only the first bin of each group of the average.
+    """
     check_averaging_angles(average_over_phi, average_over_theta)
     if average_over_phi:
         return list(range(0, get_viewingdirectionbincount(), get_viewingdirection_phibincount()))
@@ -167,6 +170,15 @@ def get_phi_bin_steps() -> list[int]:
     assert nphibins % 2 == 0
 
     return list(range(nphibins // 2)) + list(reversed(range(nphibins // 2, nphibins)))
+
+
+def get_phi_bin_edges_ascending(nphibins: int) -> npt.NDArray[np.float64]:
+    """Return the nphibins + 1 edges of the ascending phi bins, from 0 to 2 pi.
+
+    Ascending bin j holds 2 pi j / nphibins <= phi < 2 pi (j + 1) / nphibins. The column phibinmonotonicasc
+    of bin_packet_directions_polars in packets/core.py gives this bin.
+    """
+    return np.arange(nphibins + 1, dtype=np.float64) * 2 * np.pi / nphibins
 
 
 def get_phi_bins(usedegrees: bool) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating], list[str]]:

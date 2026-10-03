@@ -1,6 +1,7 @@
 """Plot mass density against velocity for one or more ARTIS input models."""
 
 import argparse
+import math
 import typing as t
 from collections.abc import Sequence
 
@@ -128,7 +129,8 @@ def get_coarse_velocity_bins(dfmodel: pl.DataFrame, nbins: int | None, vmax_cmps
         pl.col("vel_r_mid").max().alias("xmax"),
         pl.col("vel_r_mid").sort().diff().max().alias("xdeltamax"),
     ).row(0)
-    ncoarsevelbins = int((xmax - xmin) / xdeltamax)
+    # the bins are open at the upper edge, thus the last bin must end above the outermost cell
+    ncoarsevelbins = math.floor((xmax - xmin) / xdeltamax) + 1
     print(f"Using {ncoarsevelbins} velocity bins from {xmin} to {xmax} with max delta {xdeltamax}")
     return [xmin + xdeltamax * (i + 1) for i in range(ncoarsevelbins)]
 

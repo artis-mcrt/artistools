@@ -4,6 +4,7 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
+import polars as pl
 import pytest
 
 import artistools as at
@@ -121,3 +122,57 @@ def test_comparetogsinetwork_plots_the_global_qdot_with_no_cell(tmp_path: Path) 
     The empty default reached parse_range_list, which stopped the command on int("").
     """
     at.gsinetwork.plot(argsraw=[], modelpath=modelpath, nogsinet=True, outputfile=tmp_path / "gsi.pdf")
+
+
+def test_particledata_holds_the_last_abundance_after_the_network_ends(tmp_path: Path) -> None:
+    """A time after the last network step has no step above it, and the abundance must then stay at its end value.
+
+    get_closest_network_timesteps gives None for such a time, and the sort of the steps stopped with a TypeError.
+    """
+    import shutil
+
+    from artistools.gsinetwork import comparetogsinetwork
+
+    shutil.copy(at.get_path("testdata") / "kilonova" / "trajectories" / "114511.tar.xz", tmp_path)
+    # the test tar holds the abundances of step 223 alone, thus the network ends at that step here
+    dfsteps = at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 114511)
+    laststep_time_s = dfsteps.filter(pl.col("nstep") == 223)["timesec"].item()
+
+    def get_steps_to_223(
+        traj_root: Path, particleid: int, timesec: list[float], cond: str = "nearest"
+    ) -> list[int | None]:
+        assert (traj_root, particleid) == (tmp_path, 114511)
+        return [223 if cond == "lessorequal" else None for _ in timesec]
+
+    with mock.patch.object(comparetogsinetwork, "get_closest_network_timesteps", side_effect=get_steps_to_223):
+        particledata = comparetogsinetwork.get_particledata(
+            [laststep_time_s * 2, laststep_time_s * 10], [("Sr", 38, None)], tmp_path, 114511
+        )
+
+    abundances = particledata["Sr"][0].to_numpy()
+    assert abundances[0] > 0.0
+    assert np.isclose(abundances[0], abundances[1], rtol=1e-6)
+
+
+def test_particledata_reads_the_exact_step_at_the_time_of_a_network_step(tmp_path: Path) -> None:
+    """A time that equals the time of a network step must read the abundances of that step alone.
+
+    The bracket held only the steps strictly before and after the time, thus it read the two neighbour steps.
+    """
+    import shutil
+
+    from artistools.gsinetwork import comparetogsinetwork
+    from artistools.inputmodel.rprocess_from_trajectory import get_traj_network_timesteps
+    from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfile_nuc_abund
+
+    shutil.copy(at.get_path("testdata") / "kilonova" / "trajectories" / "114511.tar.xz", tmp_path)
+    # the test tar holds the abundances of step 223 alone, and not the abundances of steps 222 and 224
+    dfsteps = get_traj_network_timesteps(tmp_path, 114511)
+    step_time_s = dfsteps.filter(pl.col("nstep") == 223)["timesec"].item()
+
+    particledata = comparetogsinetwork.get_particledata([step_time_s], [("Sr", 38, None)], tmp_path, 114511)
+
+    dfnucabund, _ = get_trajectory_timestepfile_nuc_abund(tmp_path, 114511, "./Run_rprocess/nz-plane00223")
+    expected_sr = float(dfnucabund.filter(pl.col("Z") == 38)["massfrac"].sum())
+    assert expected_sr > 0.0
+    assert np.isclose(particledata["Sr"][0][0], expected_sr, rtol=1e-6)

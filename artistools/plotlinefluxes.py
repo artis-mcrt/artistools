@@ -6,7 +6,6 @@ import math
 import typing as t
 from collections import Counter
 from collections.abc import Sequence
-from functools import lru_cache
 from pathlib import Path
 
 import matplotlib.axes as mplax
@@ -48,6 +47,7 @@ from artistools.misc import print_warning
 from artistools.misc import require_reference_data_file
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
+from artistools.misc.fileio import modelpath_cache
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import get_packets
@@ -239,7 +239,7 @@ def get_line_luminosities_from_pops(
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
 
-    # read_nltepops is uncached, so read every rank's nlte output once rather than once per feature
+    # one read gives the populations of every ion, thus each feature filters this frame
     dfnltepops_allions = read_nltepops(modelpath)
 
     # the shell velocities do not change with time, thus the volume of a shell scales with t^3
@@ -416,10 +416,10 @@ def get_closelines(
 
 def get_labelandlineindices(modelpath: Path | str, emfeaturesearch: Sequence[t.Any]) -> list[FeatureTuple]:
     """Return one feature per search specification in emfeaturesearch."""
-    return list(get_labelandlineindices_cached(Path(modelpath), tuple(tuple(params) for params in emfeaturesearch)))
+    return list(get_labelandlineindices_cached(modelpath, tuple(tuple(params) for params in emfeaturesearch)))
 
 
-@lru_cache(maxsize=16)
+@modelpath_cache(maxsize=16)
 def get_labelandlineindices_cached(
     modelpath: Path, emfeaturesearch: tuple[tuple[t.Any, ...], ...]
 ) -> tuple[FeatureTuple, ...]:
@@ -604,7 +604,7 @@ def plot_nne_te_points(
     color: mplt.ColorType,
     marker: MarkerType,
 ) -> None:
-    """Scatter plot the electron density and temperature of the emitting cells, sized by how many packets each emitted."""
+    """Plot the electron density and the temperature of the emitting cells, with a marker size from the packet count."""
     color_adj = [(c + 0.1) / 1.1 for c in mplcolors.to_rgb(color)]
     hitcount: Counter[tuple[float, float]] = Counter(
         zip(np.asarray(em_log10nne, dtype=float).tolist(), np.asarray(em_Te, dtype=float).tolist(), strict=True)
@@ -644,6 +644,24 @@ def read_te_nne_refdata(
     return refdatakeys, np.array([float(timekey) for timekey in refdatakeys]), [te_nne[key] for key in refdatakeys]
 
 
+def get_emission_columns(dfpackets: pl.LazyFrame, emtypecolumn: str) -> tuple[str, str]:
+    """Return the timestep column and the cell column of the emission that emtypecolumn selects.
+
+    The cell and the timestep must come from the same event. The last interaction (em) and the last thermal
+    emission (trueem) of a packet can be in different cells and in different timesteps. A packets file that has
+    no trueem_time gives the timestep of the last interaction.
+    """
+    if emtypecolumn == "emissiontype":
+        return "em_timestep", "em_modelgridindex"
+
+    # add_derived_columns_lazy adds emtrue_timestep when the packets have a trueem_time
+    if "emtrue_timestep" not in dfpackets.collect_schema().names():
+        print_warning("The packets have no trueem_time, thus the timestep comes from the last interaction")
+        return "em_timestep", "emtrue_modelgridindex"
+
+    return "emtrue_timestep", "emtrue_modelgridindex"
+
+
 def get_emitting_regions_data(
     modelpath: Path, args: argparse.Namespace, times_days: Sequence[float]
 ) -> dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]]:
@@ -651,8 +669,6 @@ def get_emitting_regions_data(
     emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
-
-    em_mgicolumn = "em_modelgridindex" if args.emtypecolumn == "emissiontype" else "emtrue_modelgridindex"
 
     _nprocs_read, dfpackets = get_packets(
         modelpath=modelpath, maxpacketfiles=args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
@@ -662,14 +678,16 @@ def get_emitting_regions_data(
         dfpackets.filter(pl.col(args.emtypecolumn).is_in(linelistindices_allfeatures)), modelpath=modelpath
     )
 
+    em_tscolumn, em_mgicolumn = get_emission_columns(dfpackets, args.emtypecolumn)
+
     dfestimators = (
         scan_estimators(modelpath=modelpath, verbose=args.verbose)
         .select(["timestep", "modelgridindex", "Te", "nne"])
         .drop_nulls()
-        .rename({"timestep": "em_timestep", "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
+        .rename({"timestep": em_tscolumn, "modelgridindex": em_mgicolumn, "Te": "em_Te", "nne": "em_nne"})
     ).with_columns(em_log10nne=pl.col("em_nne").log10())
 
-    dfpackets = dfpackets.join(dfestimators, on=["em_timestep", em_mgicolumn], how="inner", maintain_order="left")
+    dfpackets = dfpackets.join(dfestimators, on=[em_tscolumn, em_mgicolumn], how="inner", maintain_order="left")
 
     # one collect gives all the time bins and features, then the loop filters the eager frame
     dfpackets_collected = dfpackets.select("t_arrive_d", args.emtypecolumn, "em_log10nne", "em_Te").collect()

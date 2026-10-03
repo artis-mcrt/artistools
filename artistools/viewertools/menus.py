@@ -1,5 +1,6 @@
 """Make the menus and the actions of a viewer window, e.g. the copy, the save, and the export of the figure."""
 
+import dataclasses as dc
 import shlex
 import sys
 import typing as t
@@ -48,6 +49,7 @@ if t.TYPE_CHECKING:
     from PySide6 import QtWidgets
 
     from artistools.commands import SuggestingArgumentParser
+    from artistools.viewertools.core import PlotValues
     from artistools.viewertools.window import DrawQueue
     from artistools.viewertools.window import PlotViewer
 
@@ -674,15 +676,22 @@ EXPORT_FORMATS: t.Final = (
 )
 
 
+class ViewerCommand(t.NamedTuple):
+    """The command of a viewer, and the function that gives the Python code of its plot."""
+
+    # the name of the subcommand, e.g. "plotspectra"
+    name: str
+    main: "Callable[..., None]"
+    parser: "SuggestingArgumentParser"
+    get_python_code: "Callable[[], str]"
+
+
 def export_animation(
     window: "QtWidgets.QWidget",
     queue: "DrawQueue[t.Any]",
-    statusbar: StatusBar,
-    commandmain: "Callable[..., None]",
-    commandname: str,
+    command: ViewerCommand,
     frames: "tuple[int, Callable[[int], list[str]]]",
     fps: float,
-    parser: "SuggestingArgumentParser",
 ) -> None:
     """Save a GIF file of the steps of Play, with one run of the command for each frame.
 
@@ -695,6 +704,7 @@ def export_animation(
 
     from PySide6 import QtWidgets
 
+    statusbar = queue.statusbar
     framecount, get_frametokens = frames
     if framecount == 0:
         return
@@ -707,7 +717,7 @@ def export_animation(
         if answer != QtWidgets.QMessageBox.StandardButton.Yes:
             return
     filename, _ = QtWidgets.QFileDialog.getSaveFileName(
-        window, "Export the animation", str(Path.cwd() / f"{commandname}.gif"), "GIF (*.gif)"
+        window, "Export the animation", str(Path.cwd() / f"{command.name}.gif"), "GIF (*.gif)"
     )
     if not filename:
         return
@@ -719,9 +729,9 @@ def export_animation(
             framepaths: list[Path] = []
             for index in range(framecount):
                 # the default -dpi suits a printed page, e.g. 600 dpi, and it gave frames larger than a screen
-                tokens = [*remove_options(parser, get_frametokens(index), {"dpi"}), "-dpi", str(ANIMATION_DPI)]
+                tokens = [*remove_options(command.parser, get_frametokens(index), {"dpi"}), "-dpi", str(ANIMATION_DPI)]
                 framepath = Path(folder) / f"frame{index:04d}.png"
-                commandmain(argsraw=[*tokens, "-o", str(framepath)])
+                command.main(argsraw=[*tokens, "-o", str(framepath)])
                 if not framepath.is_file():
                     return f"The command wrote no frame for {shlex.join(tokens)}"
                 framepaths.append(framepath)
@@ -803,61 +813,49 @@ def open_model_window(
     return open_model_folder(folder, open_window, windows)
 
 
-class ViewerCommand(t.NamedTuple):
-    """The command of a viewer, and the functions that give the text of its plot."""
-
-    # the name of the subcommand, e.g. "plotspectra"
-    name: str
-    main: "Callable[..., None]"
-    parser: "SuggestingArgumentParser"
-    # the arguments of the plot with no -dpi, because the Figure section gives the resolution
-    get_figure_tokens: "Callable[[], list[str]]"
-    get_command: "Callable[[], str]"
-    get_python_code: "Callable[[], str]"
-
-
-def add_window_actions(
+def add_window_actions[ValuesT: PlotValues](
     window: "QtWidgets.QMainWindow",
     windows: "list[QtWidgets.QMainWindow]",
     open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
-    queue: "DrawQueue[t.Any]",
-    statusbar: StatusBar,
+    queue: "DrawQueue[ValuesT]",
     command: ViewerCommand,
     figuresection: FigureSection,
     copybuttons: "tuple[QtWidgets.QPushButton, QtWidgets.QPushButton]",
-    dpi: "tuple[Callable[[], int | None], Callable[[int | None], None]]",
-    show_error: "Callable[[str], None]",
     keyrows: "Sequence[tuple[str, str]]",
     playbutton: "QtWidgets.QAbstractButton | None",
     extracallbacks: "Mapping[str, Callable[[], object]] | None" = None,
 ) -> "Callable[[QtWidgets.QMenu], None]":
     """Give a window the actions that each viewer has: copy, save, open, help, and the menus.
 
-    copybuttons are the Copy buttons of the command and of the Python code. dpi gives the -dpi of the values, or None
-    for the default, and the function that sets it. extracallbacks gives the menu items of one viewer, e.g. Reload
-    Data. Return the function that adds the actions on the figure to a context menu of the plot.
+    copybuttons are the Copy buttons of the command and of the Python code. The -dpi box of the Figure section sets
+    the -dpi of the values of the queue. extracallbacks gives the menu items of one viewer, e.g. Reload Data. Return
+    the function that adds the actions on the figure to a context menu of the plot.
     """
     from PySide6 import QtWidgets
 
-    get_dpi, set_dpi = dpi
+    viewer, statusbar = queue.viewer, queue.statusbar
     defaultdpi: int = command.parser.get_default("dpi")
     callbacks = dict(extracallbacks or {})
 
     def get_figure_choice() -> tuple[str, int]:
-        return get_figure_format(), get_dpi() or defaultdpi
+        return get_figure_format(), viewer.values.dpi or defaultdpi
+
+    def get_figure_tokens() -> list[str]:
+        # the Figure section gives the resolution, thus the arguments of the plot have no -dpi
+        return viewer.get_plot_tokens(dc.replace(viewer.values, dpi=None))
 
     def on_copy_figure() -> None:
-        tokens = command.get_figure_tokens()
+        tokens = get_figure_tokens()
         copy_figure_of_command(queue, statusbar, command.main, command.parser, tokens, get_figure_choice())
 
     def on_save() -> None:
-        tokens = command.get_figure_tokens()
+        tokens = get_figure_tokens()
         save_figure_of_command(
             window, statusbar, command.main, command.name, tokens, command.parser, get_figure_choice()
         )
 
     def on_copy() -> None:
-        copy_text(command.get_command())
+        copy_text(viewer.get_command())
         show_status_note(statusbar, "Copied the command")
 
     def on_copy_python() -> None:
@@ -865,15 +863,15 @@ def add_window_actions(
         show_status_note(statusbar, "Copied the Python code")
 
     def on_resolution(resolution: int) -> None:
-        set_dpi(None if resolution == defaultdpi else resolution)
+        queue.apply(dc.replace(viewer.values, dpi=None if resolution == defaultdpi else resolution))
 
     def on_open_model() -> None:
         if (message := open_model_window(window, open_window, windows)) is not None:
-            show_error(message)
+            queue.show_error(message)
 
     def on_open_recent(folder: str) -> None:
         if (message := open_model_folder(folder, open_window, windows)) is not None:
-            show_error(message)
+            queue.show_error(message)
 
     def on_help() -> None:
         QtWidgets.QMessageBox.information(window, "Keys and mouse actions", get_keyboard_help(keyrows, menutexts))

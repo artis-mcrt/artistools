@@ -486,6 +486,8 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     """Scatter plot the colour at peak against the peak magnitude, one point per direction bin per model."""
+    # the package holds no copy of the observed data, thus look for the file before the slow fits
+    sn_data, label = get_phillips_relation_data()
     fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
 
@@ -518,7 +520,6 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         plotkwargsviewingangles["label"] = modelname
         ax.scatter(dfdata["peakcolour"], y=dfdata[f"{bands[0]}max"], **plotkwargsviewingangles)
 
-    sn_data, label = get_phillips_relation_data()
     ax.errorbar(
         x=sn_data["(B-V)Bmax"],
         y=sn_data["MB"],
@@ -621,14 +622,11 @@ def peakmag_risetime_declinerate_init(
             lcpath = find_lightcurve_file(modelpath, directionresolved=directionresolved)
             # a mode that averages over the angles groups several direction bins, and dirbins then
             # names the first bin of each group. Thus the reader must average in the same way
-            lcdataframes = (
-                scan_lightcurve(
-                    lcpath,
-                    average_over_phi=args.average_over_phi_angle,
-                    average_over_theta=args.average_over_theta_angle,
-                )
-                if directionresolved
-                else scan_lightcurve(lcpath)
+            lcdataframes = scan_lightcurve(
+                lcpath,
+                directionresolved=directionresolved,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
             )
             # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
             if directionresolved and -1 in dirbins:
@@ -692,7 +690,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     plotkwargs: dict[str, t.Any] = {}
 
-    lcdataframes_lazy = scan_lightcurve(find_lightcurve_file(modelpath, directionresolved=True))
+    lcdataframes_lazy = scan_lightcurve(find_lightcurve_file(modelpath, directionresolved=True), directionresolved=True)
 
     # one collect_all call parses light_curve_res.out one time for all the direction bins
     lcdataframes = dict(zip(lcdataframes_lazy.keys(), pl.collect_all(list(lcdataframes_lazy.values())), strict=True))

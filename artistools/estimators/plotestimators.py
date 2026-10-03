@@ -78,7 +78,6 @@ from artistools.misc import get_timesteps
 from artistools.misc import item_names_a_folder
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
-from artistools.misc import parse_range_list
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
@@ -564,7 +563,7 @@ def plot_average_excitation(
     # the superlevel population is spread over the levels it stands in for at the electron temperature
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
-    # read_nltepops has no cache, thus one read serves every series of the subplot
+    # one read serves every series of the subplot
     dfnltepops_allions = read_nltepops_of_estimators(modelpath, timestepslist, mgilist)
 
     plans = []
@@ -638,16 +637,35 @@ def plot_levelpop(
 
     # this series draws one point for each cell, thus the horizontal axis must give one value for
     # each cell. A time axis gives one value for each timestep instead
-    dfxofmgi = estimators.select("modelgridindex", "xvalue").unique().collect()
+    dfxofmgi = (
+        estimators.select(pl.col("modelgridindex").cast(pl.Int64), "xvalue").unique().sort("modelgridindex").collect()
+    )
     if dfxofmgi.height != dfxofmgi["modelgridindex"].n_unique():
         exit_with_error(
             "a level population plot draws one point for each cell, thus the horizontal axis must"
             " give one value for each cell",
             "Give -x velocity or -x modelgridindex. A time axis gives one value for each timestep.",
         )
-    xvalue_of_mgi = dict(zip(dfxofmgi["modelgridindex"], dfxofmgi["xvalue"], strict=True))
 
-    # read_nltepops has no cache, thus one read serves every series of the subplot
+    # the mean over the time range weights the population of each timestep with its duration
+    dftimesteps = pl.DataFrame({
+        "timestep": [int(timestep) for timestep in timestepslist],
+        "volumefactor": [float(arr_volumefactor[timestep]) for timestep in timestepslist],
+        "tdelta": [float(arr_tdelta[timestep]) for timestep in timestepslist],
+    })
+    # the row of a cell in the model data has the index of the cell. dN/dv takes the number in the cell for each unit
+    # of the width in velocity of the shell
+    dfcellfactors = (
+        modeldata.with_row_index("modelgridindex").select(
+            pl.col("modelgridindex").cast(pl.Int64),
+            "volume",
+            deltav=pl.col("vel_r_max_kmps") - pl.col("vel_r_min_kmps"),
+        )
+        if seriestype == "levelpopulation_dn_on_dvel"
+        else pl.DataFrame({"modelgridindex": dfxofmgi["modelgridindex"], "volume": 1.0, "deltav": 1.0})
+    )
+
+    # one read serves every series of the subplot
     dfnltepops_allions = read_nltepops_of_estimators(modelpath, timestepslist, mgilist)
 
     plans = []
@@ -667,45 +685,32 @@ def plot_levelpop(
 
         print(f"plot_levelpop {label}")
 
-        dfnltepops = dfnltepops_allions.filter(
-            (pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage) & (pl.col("level") == levelindex)
-        )
-
-        # one pass over the populations instead of re-filtering the frame for every cell and timestep below.
-        # setdefault keeps the first row for a duplicated key, matching the .item(0) this replaces
-        levelpop_of_mgi_ts: dict[tuple[int, int], float] = {}
-        for mgi, ts, n_nlte in dfnltepops.select("modelgridindex", "timestep", "n_NLTE").iter_rows():
-            levelpop_of_mgi_ts.setdefault((mgi, ts), n_nlte)
-
-        ylist = []
-        xlist = []
-        for modelgridindex in mgilist:
-            valuesum = 0.0
-            tdeltasum = 0.0
-
-            for timestep in timestepslist:
-                # an empty cell has no NLTE row, thus it gives no population at this timestep
-                levelpop = levelpop_of_mgi_ts.get((modelgridindex, timestep))
-                if levelpop is None:
-                    continue
-
-                valuesum += levelpop * arr_volumefactor[timestep] * arr_tdelta[timestep]
-                tdeltasum += arr_tdelta[timestep]
-
-            if tdeltasum == 0.0:
-                continue
-
-            xlist.append(xvalue_of_mgi[modelgridindex])
-            if seriestype == "levelpopulation_dn_on_dvel":
-                assert isinstance(modelgridindex, int)
-                cell = modeldata.row(modelgridindex, named=True)
-                deltav = cell["vel_r_max_kmps"] - cell["vel_r_min_kmps"]
-                ylist.append(valuesum / tdeltasum * cell["volume"] / deltav)
-            else:
-                ylist.append(valuesum / tdeltasum)
-
-        dfseries = pl.LazyFrame({"xvalue": xlist, "yvalue": ylist}, orient="col").with_columns(
-            xvalue_binned=pl.col("xvalue"), celltsweight=pl.lit(1.0)
+        # a cell that holds no matter has no NLTE row at a timestep, thus the mean of a cell takes the durations of the
+        # timesteps that hold a row of the cell. A cell with no row at all gives no point
+        dfseries = (
+            dfnltepops_allions
+            .lazy()
+            .filter(
+                (pl.col("Z") == atomic_number)
+                & (pl.col("ion_stage") == ion_stage)
+                & (pl.col("level") == levelindex)
+                & pl.col("modelgridindex").is_in(list(mgilist))
+            )
+            .select(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64), "n_NLTE")
+            # the first row of a repeated cell and timestep stays
+            .unique(subset=["modelgridindex", "timestep"], keep="first", maintain_order=True)
+            .join(dftimesteps.lazy(), on="timestep", how="inner")
+            .group_by("modelgridindex")
+            .agg(levelpop=(pl.col("n_NLTE") * pl.col("volumefactor") * pl.col("tdelta")).sum() / pl.col("tdelta").sum())
+            .join(dfxofmgi.lazy(), on="modelgridindex", how="inner")
+            .join(dfcellfactors.lazy(), on="modelgridindex", how="inner")
+            .sort("modelgridindex")
+            .select(
+                "xvalue",
+                yvalue=pl.col("levelpop") * pl.col("volume") / pl.col("deltav"),
+                xvalue_binned=pl.col("xvalue"),
+                celltsweight=pl.lit(1.0),
+            )
         )
         plans.append(SeriesPlan(label=label, dfseries=dfseries, plotkwargs=plotkwargs.copy()))
 
@@ -1243,7 +1248,9 @@ def get_xlist(
         statexprs["xmin"] = pl.col("xvalue").min()
     if args.xmax is None:
         statexprs["xmax"] = pl.col("xvalue").max()
-    if args.xbins is None:
+    # a time axis gives one x value to each timestep, and get_line_points averages the cells at each x value. Automatic
+    # bins would merge the timesteps of a model that has more cells than timesteps, thus only a spatial axis takes them
+    if args.xbins is None and xvariable not in TIME_XVARIABLES:
         statexprs["multiple_points_per_xvalue"] = pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()
     if args.xbins is None or args.xbins < 0:
         # the automatic bins need this. The full sort is small beside a round trip
@@ -1283,7 +1290,7 @@ def get_xlist(
     if args.xbins == 0:
         args.markers = True
 
-    if args.xbins is None and xstats["multiple_points_per_xvalue"]:
+    if xstats.get("multiple_points_per_xvalue"):
         print("There are multiple plot points per x value. Using automatic bins (use -xbins N to change this)")
         args.xbins = -1
 
@@ -1360,14 +1367,14 @@ class NoEstimatorRowsError(ValueError):
 def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Namespace) -> str:
     """Return the message of a plot whose selection of timesteps, cells, and x range gives no estimator row.
 
-    The code before the plot expands a range of cells and converts -xmin and -xmax. Thus the message gives the size
-    of the selection and not those values. A status line shows one line of the message.
+    The parser expands a range of cells, and the code before the plot converts -xmin and -xmax. Thus the message
+    gives the size of the selection and not those values. A status line shows one line of the message.
     """
     parts: list[str] = []
     if timestepslist:
         parts.append(f"the timesteps {min(timestepslist)} to {max(timestepslist)}")
     if args.modelgridindex is not None:
-        cells = args.modelgridindex if isinstance(args.modelgridindex, list) else [args.modelgridindex]
+        cells: list[int] = args.modelgridindex
         parts.append(
             f"the cells {', '.join(map(str, cells))}"
             if len(cells) <= 3
@@ -2098,15 +2105,12 @@ def draw_image_figure(
         ax.set_facecolor("black")
         ax.tick_params(which="both", color="white")
         if args.labelfontsize is not None:
-            ax.tick_params(axis="both", which="both", labelsize=args.labelfontsize)
             colourbar.ax.tick_params(labelsize=args.labelfontsize)
+        # the image has its own y range, thus only the x range and the font size come from the arguments
+        set_axis_properties(ax, args, xlimits=(xmin_on_c, xmax_on_c, "-xmin"), setyaxis=False)
         ax.set_aspect("equal")
-        ax.set_xlabel(
-            r"v$_{r,xy}$ [$c$]" if plotaxis1 == "rcyl" else rf"v$_{plotaxis1}$ [$c$]", fontsize=args.labelfontsize
-        )
-        ax.set_ylabel(rf"v$_{plotaxis2}$ [$c$]", fontsize=args.labelfontsize)
-        if xmin_on_c is not None or xmax_on_c is not None:
-            ax.set_xlim(xmin_on_c, xmax_on_c)
+        ax.set_xlabel(r"v$_{r,xy}$ [$c$]" if plotaxis1 == "rcyl" else rf"v$_{plotaxis1}$ [$c$]")
+        ax.set_ylabel(rf"v$_{plotaxis2}$ [$c$]")
     for ax in list(axesgrid.flat)[len(figuredata.styles) :]:
         ax.set_visible(False)
 
@@ -2766,9 +2770,7 @@ def prepare_snapshot(
             args.xmax *= km_to_cm / C_cm_per_s
 
     if args.readonlymgi or args.slice is not None:
-        if not isinstance(args.modelgridindex, list):
-            args.modelgridindex = [args.modelgridindex] if args.modelgridindex is not None else []
-        estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex))
+        estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex or []))
 
     panels: list[ImagePanel] = []
     if args.projection is not None and modelmeta["dimensions"] != 3:
@@ -2868,9 +2870,6 @@ def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
     resolve_positional_args(args)
     modelpath = Path(args.modelpath)
     require_artis_folder(modelpath)
-    # -cell gives text such as "3-7", thus expand it before a reader takes a cell number
-    if args.modelgridindex is not None:
-        args.modelgridindex = parse_range_list(args.modelgridindex)
     sliceconditions = resolve_snapshot_arguments(args)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
@@ -2980,12 +2979,29 @@ def get_figures_data(
     # each frame reads its timestep from the parquet caches of the run. A copy of the selected timesteps held every
     # column, and for 10 frames of a 3D run it made the command 16 s and 5.5 GB in place of 5.4 s and 0.85 GB
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
-    figures: list[LineFigureData | ImageFigureData] = [
-        get_image_figure_data(modelpath, frame, estimators, panels, modelmeta, args)
-        if args.dimensionreduce == 2
-        else get_line_figure_data(modelpath, frame, estimators, args.x, plotlist, args)
-        for frame in frames
-    ]
+    figures: list[LineFigureData | ImageFigureData] = []
+    skippedtimesteps: list[int] = []
+    for frame in frames:
+        try:
+            figures.append(
+                get_image_figure_data(modelpath, frame, estimators, panels, modelmeta, args)
+                if args.dimensionreduce == 2
+                else get_line_figure_data(modelpath, frame, estimators, args.x, plotlist, args)
+            )
+        except NoEstimatorRowsError:
+            # a run that stopped early has no estimators for its last timesteps. The frames of the other timesteps
+            # still give a product, thus a set of frames leaves out a frame that has no row
+            if not args.multiplot:
+                raise
+            skippedtimesteps.extend(frame)
+
+    if skippedtimesteps:
+        print_warning(
+            f"The estimators hold no row for {len(skippedtimesteps)} of the {len(frames)} timesteps, from"
+            f" {min(skippedtimesteps)} to {max(skippedtimesteps)}, thus the plot leaves out their frames."
+        )
+    if not figures:
+        raise NoEstimatorRowsError(get_no_rows_message(timesteps_included, args))
 
     return figures, get_changed_args()
 
@@ -3015,14 +3031,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         from artistools.estimators.interactive import run_viewer
         from artistools.viewertools.core import get_command_tokens
 
-        run_viewer(
-            get_command_tokens(
-                argsraw,
-                kwargs,
-                fromdispatcher=fromdispatcher,
-                dispatcherargsraw=getattr(args, "dispatcherargsraw", None),
-            )
-        )
+        run_viewer(get_command_tokens(args, argsraw, kwargs, fromdispatcher=fromdispatcher))
         return
 
     modelpath, timesteps_included = resolve_plot_args(args)

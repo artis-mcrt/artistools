@@ -29,8 +29,9 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
         ioncount = 0
         Z = None
         for row in foutput:
-            if row.split()[0] == "[input.c]":
-                split_row = row.split()
+            split_row = row.split()
+            # a log can hold an empty line, e.g. where a scheduler cut it or joined two logs
+            if split_row and split_row[0] == "[input.c]":
                 if split_row[1] == "element":
                     Z = int(split_row[4])
                     ioncount = 0

@@ -195,7 +195,9 @@ def maptogrid(
 
     logprint(f"grid properties {x0=}, {dx=}, {x0 + dx * (ncoordgrid - 1)=}")
 
-    arrgx = x0 + dx * np.arange(ncoordgrid)
+    # grid.dat gives the lower edge x0 + i * dx of each cell, thus the kernel samples each cell at its centre.
+    # A sample at the lower edge moves the mapped ejecta by half a cell towards +x, +y, and +z
+    arrgx = x0 + dx * (np.arange(ncoordgrid) + 0.5)
     arrgy = arrgx
     arrgz = arrgx
 
@@ -216,8 +218,8 @@ def maptogrid(
 
             # option 3 increase smoothing beyond some distance
 
-            # options can be combined, i.e. option 1 alone fills the hole in the center
-            # (which we could also replace by later ejecta)
+            # a combination of the options is possible. Option 1 alone fills the hole in the centre.
+            # Later ejecta can also fill this hole
             if modifysmoothinglength == "option1":
                 h[n] = max(h[n], 1.5 * dx)  # option 1
 

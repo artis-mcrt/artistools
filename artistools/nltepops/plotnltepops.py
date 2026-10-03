@@ -46,12 +46,12 @@ from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
-from artistools.misc import parse_range_list
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
-from artistools.misc.cliutils import CommaJoinAction
+from artistools.misc.cliutils import CellListAction
+from artistools.misc.cliutils import get_cell_list
 from artistools.nltepops.core import add_lte_pops
 from artistools.nltepops.core import read_nltepops
 from artistools.nltepops.core import texifyconfiguration
@@ -296,9 +296,20 @@ def plot_reference_populations(
         get_next_color(ax)
         if floers_levelpop_values is not None:
             assert floers_levelnums is not None
+            # the reference file can hold a different count of levels, and it has no superlevel. Thus only a resolved
+            # level of both gets a coefficient
+            dfresolved = dfpopthision.filter(pl.col("config") != "superlevel")
+            lte_of_level = dict(
+                zip(dfresolved["level"].to_list(), dfresolved["n_LTE_T_e_normed"].to_list(), strict=True)
+            )
+            sharedlevels = [level for level in floers_levelnums if level in lte_of_level]
             ax.plot(
-                floers_levelnums,
-                floers_levelpop_values / dfpopthision["n_LTE_T_e_normed"].to_numpy(),
+                sharedlevels,
+                [
+                    levelpop / lte_of_level[level]
+                    for level, levelpop in zip(floers_levelnums, floers_levelpop_values, strict=True)
+                    if level in lte_of_level
+                ],
                 linewidth=1.5,
                 label="Flörs NLTE",
                 linestyle="None",
@@ -498,8 +509,7 @@ def make_plot_populations_with_time_or_velocity(modelpaths: Sequence[Path | str]
     ionlevels = args.levels
 
     Z = get_atomic_number(args.elements[0])
-    # -ion_stages is text such as "10", thus its first character is not the ion stage
-    ion_stage = parse_range_list(args.ion_stages)[0]
+    ion_stage = args.ion_stages[0]
 
     adata = get_levels(modelpaths[0], get_transitions=True)
 
@@ -580,7 +590,7 @@ def plot_populations_with_time_or_velocity(
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax + 1))
 
-        if args.modelgridindex is None:
+        if not args.modelgridindex:
             exit_with_error("-x time needs one cell. Give it with -modelgridindex")
 
         modelgridindex = get_single_modelgridindex(args.modelgridindex)
@@ -848,8 +858,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-modelgridindex",
         "-cell",
         "-mgi",
-        action=CommaJoinAction,
-        default=[],
+        action=CellListAction,
         help="Plotted model grid cell, a range e.g. 3-7, or a list e.g. 3,5",
     )
 
@@ -898,6 +907,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot ARTIS non-LTE populations."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    # the parser gives text such as "1-3", and a keyword argument of main() can also give a number or a list
+    args.ion_stages = get_cell_list(args.ion_stages) if args.ion_stages else None
     # the ARTIS folder is the last positional argument, thus "plotnltepops Fe mymodel" reads mymodel
     args.elements = resolve_positional_modelpath(args, "elements") or ["Fe"]
 
@@ -941,13 +952,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.outputfile, defaultoutputfile_timeorvelocity if args.x in {"time", "velocity"} else defaultoutputfile
     )
 
-    ion_stages_permitted = parse_range_list(args.ion_stages) if args.ion_stages else None
-
-    # CommaJoinAction joins every -modelgridindex into one text such as 3-7,9, thus one expansion reads them all.
-    # A cell of 0 is a real selection and it is falsy, thus this tests for the empty default
-    mgilist = [] if args.modelgridindex in ([], None) else parse_range_list(args.modelgridindex)
+    mgilist: list[int] = list(args.modelgridindex or [])
     mgilist.extend(mgi for mgi in [get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity] if mgi is not None)
-    # the branches below read args.modelgridindex, thus give them the expanded cells and not "3-7"
+    # the branches below read args.modelgridindex, thus give them the cells of -velocity too
     args.modelgridindex = mgilist
 
     npts_model = get_npts_model(modelpath)
@@ -983,4 +990,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 continue
 
         for timestep in timesteps_included:
-            make_singletimestep_plot(modelpath, atomic_number, ion_stages_permitted, mgilist, timestep, args)
+            make_singletimestep_plot(modelpath, atomic_number, args.ion_stages, mgilist, timestep, args)

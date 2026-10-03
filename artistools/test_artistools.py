@@ -236,7 +236,7 @@ def test_console_script_runs_its_own_subcommand(
 
 
 def test_transitions_alias_of_the_partition_function_still_works() -> None:
-    """The package pynonthermal reads at.transitions.get_lte_partfunc, thus the old path gives the same value and a warning."""
+    """The old path at.transitions.get_lte_partfunc gives the same value and a warning. pynonthermal reads it."""
     dflevels = pl.DataFrame({"g": [2.0, 4.0], "energy_ev": [0.0, 1.0]})
     expected = at.atomic.get_lte_partfunc(dflevels, 5000.0)
     assert np.isclose(expected, 2.0 + 4.0 * math.exp(-1.0 / (at.constants.K_B_ev_per_K * 5000.0)))
@@ -759,8 +759,86 @@ def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
         )
 
 
-def test_plotspherical_gif() -> None:
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=outputpath)
+def test_plotspherical_smoothing_wraps_phi_and_crosses_each_pole() -> None:
+    """The smoothing must blend no pole with the opposite pole.
+
+    The filter wrapped the cos theta axis as it wraps phi. Thus the row at the south pole took the light of
+    the row at the north pole.
+    """
+    from artistools.plotspherical import smooth_direction_map
+
+    ncosthetabins, nphibins = 8, 16
+    data = np.zeros((ncosthetabins, nphibins))
+    data[-1, 0] = 1.0  # the north polar cap, at phi bin 0
+
+    smoothed = smooth_direction_map(data, 1.0, nphibins)
+
+    assert np.allclose(smoothed[0], 0.0), "the south polar cap must stay dark"
+    # phi wraps, thus the last phi bin is a neighbour of phi bin 0
+    assert smoothed[-1, -1] > 0.0
+    # the bin on the other side of the north pole is at phi + pi in the same row
+    assert smoothed[-1, nphibins // 2] > smoothed[-1, nphibins // 4]
+
+
+@mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
+def test_plotspherical_puts_phi_zero_at_the_centre(mockpcolormesh: mock.MagicMock) -> None:
+    """The direction phi = 0 (+X) must be at the longitude zero, which is the centre of the map.
+
+    The longitude of the map started at -pi with phi bin 0, thus +X was at the edge and -X at the centre.
+    """
+    from artistools.plotspherical import plot_spherical
+
+    ncosthetabins, nphibins = 4, 8
+    isphibinzero = [phibin == 0 for _ in range(ncosthetabins) for phibin in range(nphibins)]
+    dirbins = pl.DataFrame({"count": [1] * len(isphibinzero), "luminosity": [float(x) for x in isphibinzero]})
+
+    fig, _ = plot_spherical(dirbins, ["luminosity"], nphibins=nphibins, ncosthetabins=ncosthetabins)
+    plt.close(fig)
+
+    # the colour bar draws a mesh of its own after the map
+    _, meshgrid_phi, _, data = mockpcolormesh.call_args_list[0].args
+    (litcolumn,) = np.flatnonzero(np.asarray(data)[0])
+    assert np.allclose(meshgrid_phi[0, litcolumn : litcolumn + 2], [0.0, 2 * np.pi / nphibins])
+
+
+@pytest.mark.parametrize("nphibins", [1, 5, 8])
+def test_plotspherical_map_columns_cover_each_longitude_with_the_correct_phi_bin(nphibins: int) -> None:
+    """Each column of the map must show the phi bin that holds its longitude, from -pi to +pi.
+
+    For an odd -nphibins, the map ran from -0.8 pi to 1.2 pi for five bins, thus a strip at -pi stayed blank.
+    """
+    from artistools.plotspherical import get_map_columns
+
+    longitude_edges, column_phibins = get_map_columns(nphibins)
+
+    assert len(longitude_edges) == len(column_phibins) + 1
+    assert np.isclose(longitude_edges[0], -np.pi)
+    assert np.isclose(longitude_edges[-1], np.pi)
+    assert np.all(np.diff(longitude_edges) > 0.0)
+    assert np.any(np.isclose(longitude_edges, 0.0)), "phi = 0 must be an edge at the centre of the map"
+    column_centre_phi = np.mod(0.5 * (longitude_edges[:-1] + longitude_edges[1:]), 2 * np.pi)
+    assert np.array_equal(np.floor(column_centre_phi / (2 * np.pi) * nphibins).astype(int), column_phibins)
+
+
+def test_plotspherical_smoothing_with_odd_phi_bins_crosses_the_pole_at_phi_plus_pi() -> None:
+    """For an odd -nphibins, the row beyond a pole must take the two bins on each side of phi + pi."""
+    from artistools.plotspherical import get_rows_across_pole
+
+    rows = np.arange(5, dtype=np.float64).reshape((1, 5))
+
+    # the centre of bin 0 is at 0.2 pi, thus phi + pi is at 1.2 pi, which is the edge of bins 2 and 3
+    assert np.allclose(get_rows_across_pole(rows, 5)[0], [2.5, 3.5, 2.0, 0.5, 1.5])
+
+
+def test_plotspherical_gif(tmp_path: Path) -> None:
+    """The frames and the gif go in a folder of this test alone.
+
+    A pytest run clears the test output folder when it starts. Thus a second run deleted the frames
+    of this test before the gif read them.
+    """
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=tmp_path)
+
+    assert (tmp_path / "sphericalplot.gif").is_file()
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -930,8 +1008,6 @@ def test_parse_range_list() -> None:
     assert at.misc.parse_range_list("5") == [5]
     assert at.misc.parse_range_list("3-5") == [3, 4, 5]
     assert at.misc.parse_range_list("1,3-5,8") == [1, 3, 4, 5, 8]
-    assert at.misc.parse_range_list([3, 5, 7]) == [3, 5, 7]
-    assert at.misc.parse_range_list(42) == [42]
     assert at.misc.parse_range_list("5-3") == [3, 4, 5]  # reversed range is sorted
 
 
@@ -1149,6 +1225,24 @@ def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
     plotfile = tmp_path / "widthlum.pdf"
     at.hesma_scripts.main(argsraw=["plotwidthluminosity", "-pathtofiles", str(plotdir), "-plotfile", str(plotfile)])
     assert plotfile.is_file()
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_hesma_spectrum_takes_the_column_names_of_the_file(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The header of a HESMA spectrum gives the times with four decimals, and the lookup must find them.
+
+    The lookup made the name of the column again with two decimals, thus it did not find "11.7935" or "0.0000".
+    """
+    hesmafile = tmp_path / "model_spec.dat"
+    hesmafile.write_text("0.0000 11.7935 12.3456\n3000.0 1.0 2.0\n4000.0 3.0 4.0\n", encoding="utf-8")
+    fig, ax = plt.subplots()
+
+    at.hesma_scripts.plot_hesma_spectrum(12.0, [ax], hesmafile)
+    plt.close(fig)
+
+    xarr, yarr = get_plot_xy(mockplot.call_args)
+    assert np.allclose(xarr, [3000.0, 4000.0])
+    assert np.allclose(yarr, np.array([1.0, 3.0]) * 1e-10)
 
 
 def test_hesma_reports_missing_arguments(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1490,7 +1584,7 @@ def test_expansion_opacities_of_a_null_population_are_zero() -> None:
 
 
 def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
-    """A temperature of zero gives NaN level populations, and each of the three sums must then be NaN.
+    """A NaN temperature gives NaN level populations, and each of the three sums must then be NaN.
 
     f64::min(NaN, 1) is 1, and NaN.abs() >= 1e-18 is false, thus the kernel gave a finite linebinned_maxone
     and a finite exopac for such a cell.
@@ -1498,7 +1592,7 @@ def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
     dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te").with_columns(
-        pl.lit(0.0, dtype=pl.Float32).alias("T_exc")
+        pl.lit(float("nan"), dtype=pl.Float32).alias("T_exc")
     )
     lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
     opacitylines = at.ejectaopacity.get_opacity_lines(
@@ -1819,34 +1913,45 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     """gfall.dat is fixed-width, and the wavelength field is 11 characters wide, not 12.
 
     Reading 12 characters takes the first character of the loggf field with it, which is only harmless while that
-    character happens to be a space.
+    character happens to be a space. The second line gives the upper level first, and a negative energy for a
+    predicted level. The reader took the first level as the lower level and kept the sign of the energy.
     """
-    line = (
-        f"{715.5170:11.4f}"  # 0-10  wavelength in nm
-        f"{-1.234:7.3f}"  # 11-17 log(gf)
-        f"{44.00:6.2f}"  # 18-23 element code Z.(ion_stage - 1)
-        f"{25000.000:12.3f}"  # 24-35 lower level energy in cm-1
-        f"{4.5:5.1f}"  # 36-40 lower level J
-        " a4F       "  # 41-51 configuration label
-        f"{35000.000:12.3f}"  # 52-63 upper level energy in cm-1
-        f"{3.5:5.1f}" + " " + " 0" * 16 + "\n"  # 64-68 upper level J
-        # the parser only reads lines with at least 24 whitespace-separated fields
+
+    def get_gfall_line(energy1: float, j1: float, energy2: float, j2: float) -> str:
+        return (
+            f"{715.5170:11.4f}"  # 0-10  wavelength in nm
+            f"{-1.234:7.3f}"  # 11-17 log(gf)
+            f"{44.00:6.2f}"  # 18-23 element code Z.(ion_stage - 1)
+            f"{energy1:12.3f}"  # 24-35 energy of the first level in cm-1
+            f"{j1:5.1f}"  # 36-40 J of the first level
+            " a4F       "  # 41-51 configuration label
+            f"{energy2:12.3f}"  # 52-63 energy of the second level in cm-1
+            f"{j2:5.1f}" + " " + " 0" * 16 + "\n"  # 64-68 J of the second level
+            # the parser only reads lines with at least 24 whitespace-separated fields
+        )
+
+    (tmp_path / "gfall.dat").write_text(
+        get_gfall_line(25000.0, 4.5, 35000.0, 3.5) + get_gfall_line(-35000.0, 3.5, 25000.0, 4.5), encoding="utf-8"
     )
-    (tmp_path / "gfall.dat").write_text(line, encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
     dftransitions, ionlist = at.plottransitions.get_kurucz_transitions()
 
     assert ionlist == [(44, 1)]
-    assert len(dftransitions) == 1
-    transition = dftransitions.row(0, named=True)
-    assert transition["lambda_angstroms"] == pytest.approx(7155.170)
-    assert transition["lower_statweight"] == pytest.approx(2 * 4.5 + 1)
-    assert transition["upper_statweight"] == pytest.approx(2 * 3.5 + 1)
-
+    assert len(dftransitions) == 2
     hc_in_ev_cm = 0.0001239841984332003
-    assert transition["lower_energy_ev"] == pytest.approx(hc_in_ev_cm * 25000.0)
-    assert transition["upper_energy_ev"] == pytest.approx(hc_in_ev_cm * 35000.0)
+    expected_values = {
+        "lambda_angstroms": 7155.170,
+        "lower_statweight": 2 * 4.5 + 1,
+        "upper_statweight": 2 * 3.5 + 1,
+        "lower_energy_ev": hc_in_ev_cm * 25000.0,
+        "upper_energy_ev": hc_in_ev_cm * 35000.0,
+    }
+    for colname, expected in expected_values.items():
+        assert dftransitions[colname].to_list() == pytest.approx([expected, expected]), colname
+
+    # the two lines give the same transition, thus the same A value
+    assert np.isclose(dftransitions["A"][0], dftransitions["A"][1], rtol=1e-12)
 
 
 def test_merge_pdf_files_keeps_inputs_until_written(tmp_path: Path) -> None:
@@ -3023,14 +3128,14 @@ def test_every_command_reads_the_same_cell_grammar() -> None:
     import artistools.__main__
 
     # the text names one cell, a range of cells, or a list of them, whatever command reads it
-    assert at.misc.get_single_modelgridindex("12") == 12
+    assert at.misc.get_single_modelgridindex([12]) == 12
     assert at.misc.get_single_modelgridindex(None) is None
     assert at.misc.parse_range_list("3-7") == [3, 4, 5, 6, 7]
     assert at.misc.parse_range_list("4,5,6") == [4, 5, 6]
 
     # a command that reads one cell says so, in place of taking a cell that the text does not name
-    with pytest.raises(ValueError, match=r"names 5 cells, and this command reads one"):
-        at.misc.get_single_modelgridindex("3-7")
+    with pytest.raises(ValueError, match=r"'3-7' names 5 cells, and this command reads one"):
+        at.misc.get_single_modelgridindex([3, 4, 5, 6, 7])
 
     parser = artistools.__main__.build_parser()
     seen: set[int] = set()
@@ -3045,6 +3150,7 @@ def test_every_command_reads_the_same_cell_grammar() -> None:
 
             assert action.type is None, f"{subcommand} gives -modelgridindex a type of its own"
             assert action.nargs is None, f"{subcommand} gives -modelgridindex an nargs of its own"
+            assert isinstance(action, at.misc.cliutils.CellListAction), f"{subcommand} gives -modelgridindex a text"
             assert action.dest == "modelgridindex", f"{subcommand} gives -modelgridindex another dest"
             checked += 1
 
@@ -3689,6 +3795,31 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]
 
 
+def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission() -> None:
+    """The cell and the timestep of the emitting regions must come from the same event.
+
+    The cell came from the last thermal emission and the timestep from the last interaction, thus a
+    packet that scattered in a later timestep read the estimators of the wrong time.
+    """
+    dfpackets = pl.LazyFrame({
+        "em_timestep": [52, 52, 3],
+        "emtrue_timestep": [50, -1, 3],
+        "emtrue_modelgridindex": [40, 40, 2],
+    })
+
+    assert at.plotlinefluxes.get_emission_columns(dfpackets, "trueemissiontype") == (
+        "emtrue_timestep",
+        "emtrue_modelgridindex",
+    )
+
+    # the last interaction keeps its own timestep and cell
+    assert at.plotlinefluxes.get_emission_columns(dfpackets, "emissiontype") == ("em_timestep", "em_modelgridindex")
+
+    # an old packets file has no trueem_time, thus the timestep of the last interaction is all that it gives
+    tscolumn, _ = at.plotlinefluxes.get_emission_columns(dfpackets.drop("emtrue_timestep"), "trueemissiontype")
+    assert tscolumn == "em_timestep"
+
+
 def test_viewer_status_line_gives_the_error() -> None:
     """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
     stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
@@ -3783,22 +3914,31 @@ def test_viewer_undo_ignores_the_parts_that_the_window_sets() -> None:
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     from PySide6 import QtCore
 
-    def keep_width(restored: tuple[int, float], current: tuple[int, float]) -> tuple[int, float]:
-        return restored[0], current[1]
+    @dc.dataclass(frozen=True, kw_only=True)
+    class Values:
+        time: int
+        figwidthscale: float
+        dpi: int | None = None
 
-    viewer = mock.Mock(values=(1, 1.0))
-    queue = viewerwindow.DrawQueue(
-        QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=mock.Mock(), keep_on_undo=keep_width
+    viewer = mock.Mock(values=Values(time=1, figwidthscale=1.0))
+    queue = viewerwindow.DrawQueue[Values](
+        QtCore.QObject(),
+        viewer,
+        mock.Mock(),
+        mock.Mock(),
+        mock.Mock(),
+        render=mock.Mock(),
+        keep_on_undo=viewercore.keep_figwidthscale,
     )
     with mock.patch.object(queue, "redraw") as mockredraw:
-        queue.apply((2, 1.0))
+        queue.apply(Values(time=2, figwidthscale=1.0))
         # the command rejected the change, thus the viewer kept the values of the plot
-        viewer.values = (1, 1.0)
-        queue.apply((1, 1.3), undoable=False)
+        viewer.values = Values(time=1, figwidthscale=1.0)
+        queue.apply(Values(time=1, figwidthscale=1.3), undoable=False)
         assert not queue.can_undo()
         mockredraw.reset_mock()
         queue.undo()
-        assert viewer.values == (1, 1.3)
+        assert viewer.values == Values(time=1, figwidthscale=1.3)
         mockredraw.assert_not_called()
     queue.close()
 
@@ -4257,6 +4397,19 @@ def test_viewer_option_rows_split_a_group_of_switches() -> None:
     assert othertokens == ["Te", "mymodel"]
 
 
+def test_viewer_removes_an_option_of_two_values_with_its_values_alone() -> None:
+    """An option of nargs 2 takes two values, thus the tokens after them stay in the command.
+
+    remove_options took each token up to the next flag, as for nargs "*", thus the command lost a path after the values.
+    """
+    parser = viewercore.make_parser(at.spectra.plotspectra.addargs)
+    tokens = ["-emissionvelocityrange", "1000", "2000", "mymodel", "-xmin", "5"]
+    assert viewercore.remove_options(parser, tokens, {"emissionvelocityrange"}) == ["mymodel", "-xmin", "5"]
+    rows, othertokens = viewercore.split_option_rows(parser, tokens)
+    assert rows == (("-emissionvelocityrange", ("1000", "2000")), ("-xmin", ("5",)))
+    assert othertokens == ["mymodel"]
+
+
 # each viewer with the arguments of a plot that sets several of its controls
 VIEWER_CASES: t.Final = (
     ("spectra", [str(modelpath), "-t", "300", "-xmin", "3000", "-label", "model", "--interactive"]),
@@ -4416,3 +4569,172 @@ def test_series_styles_keep_the_values_after_the_paths() -> None:
     # a new model goes before the series of the command
     assert viewercore.move_series_styles(rows, ("a", "b"), ("a", "b", "c")) == (("-label", ("A", "B", "default", "R")),)
     assert viewercore.set_series_rows(rows, ("a", "b"), "a", {"-label": "N"}) == (("-label", ("N", "B", "R")),)
+
+
+def test_viewer_queue_polls_a_task_that_after_draw_starts() -> None:
+    """A task that after_draw starts must end, and a later plot must start after it.
+
+    show_rendered stopped the timer after after_draw. A task that after_draw started then had no timer, and the queue
+    refused each later plot.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
+    ondone = mock.Mock()
+    rendered: list[int] = []
+
+    def render(values: int) -> Callable[[], str | None]:
+        rendered.append(values)
+        return lambda: None
+
+    def after_draw(_message: str | None) -> None:
+        if not ondone.called and queue.task is None:
+            queue.run_task(lambda: None, "Task in progress...", ondone)
+
+    viewer = mock.Mock(values=0, warning="")
+    queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), after_draw, render=render)
+
+    def wait_for_queue() -> None:
+        deadline = time.perf_counter() + 10.0
+        while (
+            queue.rendering is not None or queue.task is not None or queue.requestedvalues is not None
+        ) and time.perf_counter() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+
+    with mock.patch.object(viewerwindow, "set_plot_busy"), mock.patch.object(viewerwindow, "show_plot_banner"):
+        queue.apply(1)
+        wait_for_queue()
+        ondone.assert_called_once_with(None)
+        queue.apply(2)
+        wait_for_queue()
+    assert rendered == [1, 2]
+    queue.close()
+
+
+def test_viewer_cancel_keeps_the_status_of_a_task() -> None:
+    """Cancel Plot during a task, e.g. Reload Data, keeps the spinner and the status text of the task.
+
+    The cancel hid the spinner and showed "Plot cancelled" while the task still ran in the worker thread.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    statusbar = mock.Mock()
+    viewer = mock.Mock(values=0, warning="")
+    queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, statusbar, mock.Mock(), mock.Mock(), render=mock.Mock())
+    with mock.patch.object(viewerwindow, "set_plot_busy") as mockbusy:
+        queue.task = lambda: None
+        # a change of the user during the task waits for the end of the task
+        queue.requestedvalues = 1
+        queue.cancel()
+        assert queue.requestedvalues is None
+        mockbusy.assert_not_called()
+        assert mock.call("Plot cancelled") not in statusbar.drawtime.setText.call_args_list
+        queue.task = None
+        queue.requestedvalues = 1
+        queue.cancel()
+        mockbusy.assert_called_once()
+        statusbar.drawtime.setText.assert_called_with("Plot cancelled")
+    queue.close()
+
+
+def test_viewer_session_keeps_an_empty_token() -> None:
+    """An empty value, e.g. of -label "", stays empty in the command of the next start.
+
+    Path("") is the working folder, and it exists. Thus the empty label became the path of the working folder.
+    """
+    tokens = viewerapplication.get_absolute_tokens([str(modelpath), "-label", "", "-title", ""])
+    assert tokens == [str(modelpath.absolute()), "-label", "", "-title", ""]
+
+
+def test_viewer_starts_on_a_qt_platform_with_no_display() -> None:
+    """A Qt platform that needs no display, e.g. offscreen or vnc, starts with no DISPLAY.
+
+    The viewer stopped whenever DISPLAY and WAYLAND_DISPLAY were not set, and QT_QPA_PLATFORM=offscreen then failed.
+    """
+    needs_missing_display = viewerapplication.needs_missing_display
+    assert needs_missing_display({})
+    assert needs_missing_display({"QT_QPA_PLATFORM": "xcb"})
+    assert needs_missing_display({"QT_QPA_PLATFORM": "wayland;xcb"})
+    assert not needs_missing_display({"DISPLAY": ":0"})
+    assert not needs_missing_display({"WAYLAND_DISPLAY": "wayland-0"})
+    assert not needs_missing_display({"QT_QPA_PLATFORM": "offscreen"})
+    assert not needs_missing_display({"QT_QPA_PLATFORM": "vnc:size=1280x800"})
+    assert not needs_missing_display({"QT_QPA_PLATFORM": "wayland;eglfs"})
+
+
+def test_viewer_bundle_keeps_a_copy_of_the_executable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A copy of the Python executable in the macOS bundle stays at the next start if the executable is the same.
+
+    A copy on a different volume is not the same file as the executable. Thus each start copied the executable again.
+    """
+    baseexecutable = tmp_path / "python3"
+    baseexecutable.write_bytes(b"executable")
+    monkeypatch.setattr(sys, "executable", str(baseexecutable))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    monkeypatch.setattr(viewerapplication, "LSREGISTER", tmp_path / "nolsregister")
+
+    def refuse_hardlink(_path: Path, _target: Path) -> None:
+        msg = "a hard link must be on the same volume"
+        raise OSError(msg)
+
+    monkeypatch.setattr(Path, "hardlink_to", refuse_hardlink)
+    executable = viewerapplication.get_macos_bundle_executable("Viewer", ("public.folder",))
+    assert executable.read_bytes() == b"executable"
+    inode = executable.stat().st_ino
+    assert viewerapplication.get_macos_bundle_executable("Viewer", ("public.folder",)) == executable
+    assert executable.stat().st_ino == inode, "the same executable must not give a new copy"
+
+    # a new Python executable replaces the copy
+    baseexecutable.write_bytes(b"new executable")
+    viewerapplication.get_macos_bundle_executable("Viewer", ("public.folder",))
+    assert executable.read_bytes() == b"new executable"
+
+
+def test_viewer_reload_clears_the_frequency_grid(tmp_path: Path) -> None:
+    """Reload Data clears the cache of the frequency grid of spec.out, as it clears the cache of the spectra.
+
+    exspec can write spec.out again with a different grid. The viewer then read the new spectra with the old grid.
+    """
+
+    def write_spec(nus: Sequence[float]) -> None:
+        lines = ["0 1.0 2.0", *(f"{nu:g} 0.0 0.0" for nu in nus)]
+        (tmp_path / "spec.out").write_text("\n".join(lines) + "\n")
+
+    write_spec([1e14, 2e14])
+    assert len(at.misc.get_nu_grid(tmp_path)) == 2
+    write_spec([1e14, 2e14, 3e14, 4e14])
+    viewerwindow.clear_output_caches()
+    assert len(at.misc.get_nu_grid(tmp_path)) == 4
+
+
+def test_viewer_command_tokens_read_the_words_of_the_dispatcher() -> None:
+    """A call of the dispatcher from Python code gives the words of that call, without the name of the subcommand."""
+    args = argparse.Namespace(dispatcherargsraw=["plotspectra", "mymodel", "--interactive"])
+    assert viewercore.get_command_tokens(args, None, {}, fromdispatcher=True) == ["mymodel", "--interactive"]
+    assert viewercore.get_command_tokens(args, ["other"], {}, fromdispatcher=True) == ["other"]
+
+
+def test_viewer_finds_each_path_option() -> None:
+    """Each option form of the paths of the positional argument gives a series of the viewer, e.g. -specpath."""
+    for module, flags in (
+        (at.spectra.plotspectra, {"-specpath", "-modelpath"}),
+        (at.lightcurve.plotlightcurve, {"-modelpath"}),
+    ):
+        assert viewercore.get_path_option_flags(viewercore.make_parser(module.addargs)) == flags
+    viewertokens = viewercore.parse_viewer_tokens(
+        at.spectra.plotspectra.addargs, ["-specpath", str(modelpath), "-t", "300"], set()
+    )
+    assert viewertokens.paths == [str(modelpath)]
+
+
+def test_viewer_python_code_gives_the_changed_arguments() -> None:
+    """The Python code gives each argument that differs from its default, and a rejected command gives a comment."""
+    parser = viewercore.make_parser(at.lightcurve.plotlightcurve.addargs)
+    code = viewerwidgets.get_python_code(parser, ["mymodel", "--notitle"], "plotlightcurves", "at.lightcurve.plot")
+    assert code.startswith("import artistools as at\n\nat.lightcurve.plot(\n")
+    assert "notitle=True" in code
+    rejected = viewerwidgets.get_python_code(parser, ["-xmin", "abc"], "plotlightcurves", "at.lightcurve.plot")
+    assert rejected == "# plotlightcurves rejects the command"

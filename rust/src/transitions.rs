@@ -8,7 +8,7 @@ use pyo3_polars::PyDataFrame;
 use pyo3_polars::error::PyPolarsErr;
 use std::collections::HashSet;
 use std::io::Read as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// ARTIS numbers levels from one, but artistools uses zero-based level indices
 const FIRSTLEVELNUMBER: i32 = 1;
@@ -66,7 +66,56 @@ fn parse_ion_transitions<'a>(
     )
 }
 
-/// Read an ARTIS transitiondata.txt file and return a dictionary of `DataFrames`, keyed by (`atomic_number`, `ion_stage`).
+/// Read the transition tables of an ARTIS transitiondata.txt file, keyed by (`atomic_number`, `ion_stage`)
+///
+/// `ionlist` of `None` keeps every ion in the file. A table with fewer lines than its header gives is an error.
+/// A cut file decodes with no error, thus a short table would lose the lines in silence. ARTIS ends each line with
+/// a newline, thus a table whose last line ends the file with no newline is also short.
+fn read_transition_tables(
+    filepath: &Path,
+    ionlist: Option<&HashSet<(i32, i32)>>,
+) -> PolarsResult<Vec<((i32, i32), DataFrame)>> {
+    let mut filecontent = String::new();
+    open_decompressed(filepath)?.read_to_string(&mut filecontent)?;
+
+    let fileendsinsideline = !filecontent.is_empty() && !filecontent.ends_with('\n');
+    let mut transitiondata = Vec::new();
+    let mut lines = filecontent.lines();
+    while let Some(headerline) = lines.next() {
+        let Some((atomic_number, ion_stage, transitioncount)) = parse_ion_header(headerline)?
+        else {
+            continue;
+        };
+        let ionlines = lines.by_ref().take(transitioncount);
+
+        let linecount = if ionlist.is_none_or(|ions| ions.contains(&(atomic_number, ion_stage))) {
+            let df = parse_ion_transitions(ionlines, transitioncount)?;
+            let linecount = df.height();
+            transitiondata.push(((atomic_number, ion_stage), df));
+            linecount
+        } else {
+            ionlines.count() // skip past this ion's table
+        };
+        // a cut inside the last line can leave a line that parses, e.g. "7.6" of "7.65e-01"
+        let lastlineiscut = linecount > 0 && fileendsinsideline && lines.clone().next().is_none();
+        let linecount = linecount - usize::from(lastlineiscut);
+        if linecount < transitioncount {
+            polars_bail!(
+                ComputeError:
+                "{}: the file ends after {linecount} of the {transitioncount} transitions of Z={atomic_number} \
+                 ion_stage={ion_stage}",
+                filepath.display()
+            );
+        }
+    }
+
+    Ok(transitiondata)
+}
+
+/// Read an ARTIS transitiondata.txt file, and return a dictionary of `DataFrames` keyed by
+/// (`atomic_number`, `ion_stage`).
+///
+/// The parse runs without the GIL, thus other Python threads can run at the same time.
 #[pyfunction]
 #[pyo3(signature = (transitions_filename, ionlist=None))]
 #[expect(clippy::needless_pass_by_value)]
@@ -75,30 +124,13 @@ pub fn read_transitiondata(
     transitions_filename: PathBuf,
     ionlist: Option<HashSet<(i32, i32)>>,
 ) -> PyResult<Py<PyDict>> {
-    let mut filecontent = String::new();
-    open_decompressed(&transitions_filename)?.read_to_string(&mut filecontent)?;
+    let transitiondata = py
+        .detach(|| read_transition_tables(&transitions_filename, ionlist.as_ref()))
+        .map_err(PyPolarsErr::from)?;
 
-    let mut transitiondata = Vec::new();
-    let mut lines = filecontent.lines();
-    while let Some(headerline) = lines.next() {
-        let Some((atomic_number, ion_stage, transitioncount)) =
-            parse_ion_header(headerline).map_err(PyPolarsErr::from)?
-        else {
-            continue;
-        };
-        let ionlines = lines.by_ref().take(transitioncount);
-
-        // ionlist=None means keep every ion in the file
-        if ionlist
-            .as_ref()
-            .is_none_or(|ions| ions.contains(&(atomic_number, ion_stage)))
-        {
-            let df = parse_ion_transitions(ionlines, transitioncount).map_err(PyPolarsErr::from)?;
-            transitiondata.push(((atomic_number, ion_stage), PyDataFrame(df)));
-        } else {
-            ionlines.for_each(drop); // skip past this ion's table
-        }
-    }
-
-    Ok(transitiondata.into_py_dict(py)?.into())
+    let pyframes: Vec<((i32, i32), PyDataFrame)> = transitiondata
+        .into_iter()
+        .map(|(ion, df)| (ion, PyDataFrame(df)))
+        .collect();
+    Ok(pyframes.into_py_dict(py)?.into())
 }

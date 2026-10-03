@@ -320,7 +320,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         args.ymax = 0.5
     if args.ymin is None:
         args.ymin = -0.5
-    assert args.ymin < args.ymax
+    if args.ymin >= args.ymax:
+        exit_with_error(f"-ymin {args.ymin} must be less than -ymax {args.ymax}")
 
     axis.set_ylim(args.ymin, args.ymax)
     axis.set_xlim(args.xmin, args.xmax)
@@ -356,7 +357,7 @@ def plot_reference_spectrum(
     filepath = find_reference_spectrum_file(filename)
 
     metadata = get_file_metadata(filepath)
-    label = plotkwargs.get("label", metadata.get("label", filename))
+    label = plotkwargs.get("label", metadata.get("label", str(filename)))
     assert isinstance(label, str)
     plotkwargs.pop("label", None)
 
@@ -364,12 +365,18 @@ def plot_reference_spectrum(
     specdata = get_reference_spectrum(filepath)
     print_detail(f"file: {filepath}")
 
-    # scale to flux at required distance
-    if scale_to_dist_mpc:
-        # scale to 1 Mpc and let get_dfspectrum_x_y_with_units scale to scale_to_dist_mpc later
-        print(f"Scaling to distance {scale_to_dist_mpc} Mpc")
-        assert metadata["dist_mpc"] > 0  # we must know the true distance in order to scale to some other distance
-        specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * ((metadata["dist_mpc"]) ** 2))
+    # scale to 1 Mpc, and get_dfspectrum_x_y_with_units then scales to scale_to_dist_mpc
+    print(f"Scaling to distance {scale_to_dist_mpc} Mpc")
+    if "dist_mpc" in metadata:
+        filedistance_mpc = float(metadata["dist_mpc"])
+        if filedistance_mpc <= 0:
+            msg = f"dist_mpc in the metadata of {filepath} must be above zero, not {filedistance_mpc}"
+            raise ValueError(msg)
+    else:
+        # a plain file gives no distance, thus its flux is at the distance of the plot
+        print_warning(f"no dist_mpc in the metadata of {filepath}, thus the flux is at {scale_to_dist_mpc} Mpc")
+        filedistance_mpc = scale_to_dist_mpc
+    specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * filedistance_mpc**2)
 
     if scaletoreftime is not None:
         timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
@@ -1134,8 +1141,8 @@ def make_spectrum_plot(
             plot_filter_functions(axis)
 
         # a flux of stokes I is not negative, and the y margin puts the bottom below zero. make_plot applies -ymin
-        # and -ymax after this function returns
-        if args.stokesparam == "I" and not args.logscaley and args.ymin is None and args.ymax is None:
+        # and -ymax after this function returns, and -ymax alone keeps this bottom
+        if args.stokesparam == "I" and not args.logscaley and args.ymin is None:
             axis.set_ylim(bottom=0.0)
 
         set_plot_title(axis, args.title, args)
@@ -1178,9 +1185,9 @@ def get_emission_contributions(
 
         return get_flux_contributions(
             modelpath,
-            filterfunc,
             timestepmin,
             timestepmax,
+            filterfunc=filterfunc,
             getemission=args.showemission,
             getabsorption=args.showabsorption,
             use_lastemissiontype=not args.use_thermalemissiontype,
@@ -1736,23 +1743,22 @@ def draw_plot(
     xlabel, ylabel = get_axis_labels(args)
     set_axis_properties(axes, args)
 
-    # the text of the epoch takes a position from the y limits, thus the code adds it after
-    # set_axis_properties
     if args.showtime:
         for index, axis in enumerate(axes):
             if args.multispecplot:
-                _ymin, ymax = axis.get_ylim()
-                axis.text(5500, ymax * 0.9, f"{args.timedayslist[index]} days")  # multispecplot text
+                timetext = f"{args.timedayslist[index]} days"
             else:
                 timeavg = (args.timemin + args.timemax) / 2.0
-                axis.annotate(
-                    f"{timeavg:.2f} days",
-                    xy=(0.03, 0.97),
-                    xycoords="axes fraction",
-                    horizontalalignment="left",
-                    verticalalignment="top",
-                    fontsize="x-large",
-                )
+                timetext = f"{timeavg:.2f} days"
+            # the position is a fraction of the axes, thus the text stays inside for each x unit and each x range
+            axis.annotate(
+                timetext,
+                xy=(0.03, 0.97),
+                xycoords="axes fraction",
+                horizontalalignment="left",
+                verticalalignment="top",
+                fontsize="x-large",
+            )
 
     for axis in axes:
         if not args.logscalex:
@@ -2248,9 +2254,13 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
         args.shelledges = list(args.yeshells) if args.yeshells is not None else list(DEFAULT_YE_SHELLS)
         args.shellunit = "ye"
     elif args.groupby in SHELLCOLUMNS and args.velocityshells is None:
-        # the plot draws the first ARTIS model, thus the shells come from that model
-        getdefault = get_default_losvelocity_shells if args.groupby == "losvelocity" else get_default_velocity_shells
-        args.shelledges, args.shellunit = getdefault(args.modelspecpaths[0])
+        # the plot draws the first ARTIS model, thus the shells come from that model. Without a model,
+        # check_emission_plot_args stops the command
+        if args.modelspecpaths:
+            getdefault = (
+                get_default_losvelocity_shells if args.groupby == "losvelocity" else get_default_velocity_shells
+            )
+            args.shelledges, args.shellunit = getdefault(args.modelspecpaths[0])
     elif args.velocityshells is not None:
         args.shelledges, args.shellunit = parse_velocity_values(args.velocityshells)
 
@@ -2463,14 +2473,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         from artistools.spectra.interactive import run_viewer
         from artistools.viewertools.core import get_command_tokens
 
-        run_viewer(
-            get_command_tokens(
-                argsraw,
-                kwargs,
-                fromdispatcher=fromdispatcher,
-                dispatcherargsraw=getattr(args, "dispatcherargsraw", None),
-            )
-        )
+        run_viewer(get_command_tokens(args, argsraw, kwargs, fromdispatcher=fromdispatcher))
         return
 
     resolve_plot_args(args)
@@ -2506,11 +2509,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         fig, _axes, dfalldata, dfresidualstats = make_plot(args)
 
-        strdirectionbins = (
-            "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
-            if args.plotviewingangle
-            else ""
-        )
+        # the observers of the virtual packets also name the file, thus the plots of two observers keep both files
+        if args.plotviewingangle:
+            strdirectionbins = "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
+        elif args.plotvspecpol:
+            strdirectionbins = "_vspecpol" + "_".join([f"{observer:02d}" for observer in args.plotvspecpol])
+        else:
+            strdirectionbins = ""
 
         filenameout = str(args.outputfile)
         if args.timemin is not None and args.timemax is not None:
@@ -2538,10 +2543,6 @@ def get_default_xlimits(xunit: str, *, gamma: bool) -> tuple[float, float]:
 
 def resolve_plot_args(args: argparse.Namespace) -> None:
     """Apply the defaults and the time range to args, and stop the command for a bad combination of arguments."""
-    if getattr(args, "average_every_tenth_viewing_angle", False):
-        print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
-        args.average_over_phi_angle = True
-
     if args.xunit is None:
         args.xunit = "kev" if args.gamma else "angstrom"
     args.xunit = convert_xunit_aliases_to_canonical(args.xunit)
