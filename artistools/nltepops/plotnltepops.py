@@ -18,10 +18,10 @@ from matplotlib import ticker
 from artistools import misc
 from artistools import plottools
 from artistools.atomic import get_atomic_number
-from artistools.atomic import get_composition_data
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbolslist
 from artistools.atomic import get_ionstring
+from artistools.atomic import get_kept_level_counts
 from artistools.atomic import get_levels
 from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
@@ -339,14 +339,14 @@ def plot_reference_populations(
             lte_of_level = dict(
                 zip(dfresolved["level"].to_list(), dfresolved["n_LTE_T_e_normed"].to_list(), strict=True)
             )
-            sharedlevels = [level for level in floers_levelnums if level in lte_of_level]
+            departurecoeff_pairs = [
+                (level, levelpop / lte_of_level[level])
+                for level, levelpop in zip(floers_levelnums, floers_levelpop_values, strict=True)
+                if level in lte_of_level
+            ]
             ax.plot(
-                sharedlevels,
-                [
-                    levelpop / lte_of_level[level]
-                    for level, levelpop in zip(floers_levelnums, floers_levelpop_values, strict=True)
-                    if level in lte_of_level
-                ],
+                [level for level, _ in departurecoeff_pairs],
+                [departurecoeff for _, departurecoeff in departurecoeff_pairs],
                 linewidth=1.5,
                 label="Flörs NLTE",
                 linestyle="None",
@@ -386,18 +386,16 @@ def plot_reference_populations(
     return "n_NLTE"
 
 
-def get_nlevelsmax_of_element(modelpath: Path) -> dict[int, int]:
-    """Return the nlevelsmax of each element in compositiondata.txt, or no element if the model has no such file.
+def get_keptlevelcount_of_element(modelpath: Path) -> dict[int, int | None]:
+    """Return the count of levels that ARTIS keeps for each element, or no element if the model has no compositiondata.txt.
 
-    ARTIS keeps only that many levels of an ion, thus the superlevel holds no level above them.
+    The superlevel holds no level above the kept levels.
     """
     try:
-        compositiondata = get_composition_data(modelpath)
+        return get_kept_level_counts(modelpath)
     except FileNotFoundError:
         print_warning(f"{modelpath} holds no compositiondata.txt, thus each superlevel holds all the levels above it")
         return {}
-
-    return dict(zip(compositiondata["Z"].to_list(), compositiondata["nlevelsmax_readin"].to_list(), strict=True))
 
 
 def make_ionsubplot(
@@ -447,7 +445,7 @@ def make_ionsubplot(
         lte_columns,
         noprint=False,
         maxlevel=args.maxlevel,
-        nlevelsmax_of_element=get_nlevelsmax_of_element(modelpath),
+        keptlevelcount_of_element=get_keptlevelcount_of_element(modelpath),
     )
     # the population of the whole ion, before -maxlevel hides levels
     ionpopulation_alllevels = float(dfpopthision["n_NLTE"].sum())
@@ -567,15 +565,10 @@ def get_levelnames_of_ion(modelpath: Path | str, ions: Sequence[tuple[int, int]]
     The plot shows the names of the levels alone, thus it reads no transitions.
     """
     adata = get_levels(modelpath, ionlist=ions)
-    # an atomic data file that holds none of the ions gives a frame of no rows and no columns
-    levelnames_of_ion: dict[tuple[int, int], list[str]] = (
-        {
-            (Z, ion_stage): dflevels["levelname"].to_list()
-            for Z, ion_stage, dflevels in adata.select("Z", "ion_stage", "levels").iter_rows()
-        }
-        if "levels" in adata.columns
-        else {}
-    )
+    levelnames_of_ion: dict[tuple[int, int], list[str]] = {
+        (Z, ion_stage): dflevels["levelname"].to_list()
+        for Z, ion_stage, dflevels in adata.select("Z", "ion_stage", "levels").iter_rows()
+    }
     if missing := [ion for ion in ions if ion not in levelnames_of_ion]:
         exit_with_error(
             f"the atomic data holds no {', '.join(itertools.starmap(get_ionstring, missing))}",
@@ -677,6 +670,7 @@ def plot_populations_with_time_or_velocity(
 
     The label of a series names its ion if the plot shows more than one ion, and its time if showtime is true.
     """
+    velocity: pl.Series | None = None
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax + 1))
 
@@ -705,61 +699,90 @@ def plot_populations_with_time_or_velocity(
             else read_nltepops(modelpath, timestep=timesteps[0])
         )
         for (Z, ion_stage), levelnames in levelnames_of_ion.items():
-            populations = {}
-            # a 3D model holds thousands of cells, thus one partition costs much less than a filter for each cell
-            dfpop_of_cell = dfpop_all.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage)).partition_by(
-                "modelgridindex", as_dict=True
-            )
-            for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
-                dfpop = dfpop_of_cell.get((mgi,))
-                if dfpop is None:
-                    continue
-                timesteppops = dfpop.filter(pl.col("timestep") == timestep)
-                if timesteppops.is_empty():
-                    continue
-                # setdefault keeps the first row for a duplicated level, matching the .item(0) this replaces
-                pop_of_level: dict[int, float] = {}
-                for level, n_nlte in zip(timesteppops["level"], timesteppops["n_NLTE"], strict=True):
-                    pop_of_level.setdefault(level, n_nlte)
-                for ionlevel in ionlevels:
-                    # a 3D model holds cells of low density, and such a cell can hold fewer levels. The plot
-                    # leaves out that cell in place of stopping the command
-                    if ionlevel not in pop_of_level:
-                        print_warning(
-                            f"cell {mgi} at timestep {timestep} holds no level {ionlevel} of"
-                            f" {get_ionstring(Z, ion_stage, style='spectral')}."
-                            f" The cell holds the levels {min(pop_of_level)} to {max(pop_of_level)}"
-                        )
-                        continue
-                    populations[timestep, ionlevel, mgi] = pop_of_level[ionlevel]
-
+            populations = get_level_populations(dfpop_all, Z, ion_stage, timesteps, modelgridindex_list, ionlevels)
+            ionlabel = f"{get_ionstring(Z, ion_stage)} " if len(levelnames_of_ion) > 1 else ""
+            timelabel = f" at {timedays:.0f}d" if showtime else ""
             for ionlevel in ionlevels:
-                plottimesteps = [ts for ts, level, _mgi in populations if level == ionlevel]
-                timedayslist = [get_timestep_time(modelpath, ts) for ts in plottimesteps]
-                plotpopulations = np.array([
-                    populations[ts, level, mgi] for ts, level, mgi in populations if level == ionlevel
-                ])
-                linelabel = get_level_label(levelnames, ionlevel)
-                if len(levelnames_of_ion) > 1:
-                    linelabel = f"{get_ionstring(Z, ion_stage)} {linelabel}"
-                if showtime:
-                    linelabel += f" at {timedays:.0f}d"
+                plot_level_population(
+                    ax,
+                    modelpath,
+                    populations,
+                    ionlevel,
+                    velocity,
+                    marker=markers[modelnumber],
+                    label=f"{ionlabel}{get_level_label(levelnames, ionlevel)}{timelabel}",
+                )
 
-                if args.x == "time":
-                    ax.plot(timedayslist, plotpopulations, marker=markers[modelnumber], label=linelabel)
-                elif args.x == "velocity":
-                    plotvelocities = np.array([
-                        float(velocity[mgi]) for _ts, level, mgi in populations if level == ionlevel
-                    ])
-                    # a 2D or a 3D model numbers its cells by position and not by speed, thus the line joins the
-                    # cells in the order of their speed
-                    velocityorder = np.argsort(plotvelocities, kind="stable")
-                    ax.plot(
-                        plotvelocities[velocityorder],
-                        plotpopulations[velocityorder],
-                        marker=markers[modelnumber],
-                        label=linelabel,
-                    )
+
+def get_level_populations(
+    dfpop_all: pl.DataFrame,
+    atomic_number: int,
+    ion_stage: int,
+    timesteps: Sequence[int],
+    modelgridindex_list: Sequence[int],
+    ionlevels: Sequence[int],
+) -> dict[tuple[int, int, int], float]:
+    """Return the NLTE population of each level of one ion, keyed by (timestep, level, modelgridindex).
+
+    timesteps and modelgridindex_list give the pairs of timestep and cell. A pair with no row gives no entry.
+    """
+    populations: dict[tuple[int, int, int], float] = {}
+    # a 3D model holds thousands of cells, thus one partition costs much less than a filter for each cell
+    dfpop_of_cell = dfpop_all.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).partition_by(
+        "modelgridindex", as_dict=True
+    )
+    for timestep, mgi in zip(timesteps, modelgridindex_list, strict=False):
+        dfpop = dfpop_of_cell.get((mgi,))
+        if dfpop is None:
+            continue
+        timesteppops = dfpop.filter(pl.col("timestep") == timestep)
+        if timesteppops.is_empty():
+            continue
+        # setdefault keeps the first row for a duplicated level, matching the .item(0) this replaces
+        pop_of_level: dict[int, float] = {}
+        for level, n_nlte in zip(timesteppops["level"], timesteppops["n_NLTE"], strict=True):
+            pop_of_level.setdefault(level, n_nlte)
+        for ionlevel in ionlevels:
+            # a 3D model holds cells of low density, and such a cell can hold fewer levels. The plot
+            # leaves out that cell in place of stopping the command
+            if ionlevel not in pop_of_level:
+                print_warning(
+                    f"cell {mgi} at timestep {timestep} holds no level {ionlevel} of"
+                    f" {get_ionstring(atomic_number, ion_stage, style='spectral')}."
+                    f" The cell holds the levels {min(pop_of_level)} to {max(pop_of_level)}"
+                )
+                continue
+            populations[timestep, ionlevel, mgi] = pop_of_level[ionlevel]
+
+    return populations
+
+
+def plot_level_population(
+    ax: mplax.Axes,
+    modelpath: Path | str,
+    populations: Mapping[tuple[int, int, int], float],
+    ionlevel: int,
+    velocity: pl.Series | None,
+    marker: str,
+    label: str,
+) -> None:
+    """Plot the population of one level against time, or against the velocity of each cell if velocity is given.
+
+    populations is the result of get_level_populations. velocity gives the velocity of each cell in km/s.
+    """
+    keys = [(ts, mgi) for ts, level, mgi in populations if level == ionlevel]
+    plotpopulations = np.array([populations[ts, ionlevel, mgi] for ts, mgi in keys])
+
+    if velocity is None:
+        timedayslist = [get_timestep_time(modelpath, ts) for ts, _mgi in keys]
+        ax.plot(timedayslist, plotpopulations, marker=marker, label=label)
+        return
+
+    plotvelocities = np.array([float(velocity[mgi]) for _ts, mgi in keys])
+    # a 2D or a 3D model numbers its cells by position and not by speed, thus the line joins the
+    # cells in the order of their speed
+    velocityorder = np.argsort(plotvelocities, kind="stable")
+    ax.plot(plotvelocities[velocityorder], plotpopulations[velocityorder], marker=marker, label=label)
 
 
 def get_subplot_block(mgilistindex: int, nionstages: int) -> tuple[int, int]:

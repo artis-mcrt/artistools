@@ -27,6 +27,7 @@ from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import read_parquet_cache_metadata
+from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
@@ -51,8 +52,6 @@ def parse_adata(
     phixsdict and for the transitions. A file with a different numbering raises ValueError, because the level indices
     of the other files would then be wrong.
     """
-    detectedfirstlevelnumber: int | None = None
-
     for line in fadata:
         # artisatomic writes a block of comment lines before the header line of each ion
         if not line.strip() or line.lstrip().startswith("#"):
@@ -72,23 +71,10 @@ def parse_adata(
                 strtransition_count, _, namefield = tail.partition(" ")
 
                 inputlevelnumber = int(strlevelnumber)
-                if detectedfirstlevelnumber is None:
-                    if inputlevelnumber not in {0, 1}:
-                        msg = (
-                            f"adata.txt: Z={Z} ion_stage={ion_stage}: the first level has the number {inputlevelnumber},"
-                            " but ARTIS numbers the levels from 0 or from 1"
-                        )
-                        raise ValueError(msg)
-                    if inputlevelnumber != firstlevelnumber:
-                        msg = (
-                            f"adata.txt numbers the levels from {inputlevelnumber}, but the reader took the numbering"
-                            f" from {firstlevelnumber} for the transitions and the photoionisation tables"
-                        )
-                        raise ValueError(msg)
-                    detectedfirstlevelnumber = inputlevelnumber
                 if inputlevelnumber != levelindex + firstlevelnumber:
+                    levelstr = "the first level" if levelindex == 0 else f"level {levelindex + 1}"
                     msg = (
-                        f"adata.txt: Z={Z} ion_stage={ion_stage}: level {levelindex + 1} of the ion has the number"
+                        f"adata.txt: Z={Z} ion_stage={ion_stage}: {levelstr} of the ion has the number"
                         f" {inputlevelnumber}, but the numbering from {firstlevelnumber} gives it the number"
                         f" {levelindex + firstlevelnumber}"
                     )
@@ -161,13 +147,9 @@ def get_first_level_number(modelpath: Path | str) -> int:
     try:
         with zopen(adatafilename, encoding="utf-8") as fadata:
             # the first line that is not blank and not a comment is the header line of the first ion
-            datalines = (line for line in fadata if line.strip() and not line.lstrip().startswith("#"))
-            next(datalines, None)
-            firstlevelline = next(datalines, None)
-    except FileNotFoundError:
-        return 1
-
-    if firstlevelline is None:
+            readnoncommentline(fadata)
+            firstlevelline = readnoncommentline(fadata)
+    except (FileNotFoundError, EOFError):
         return 1
 
     firstlevelnumber = int(firstlevelline.split()[0])
@@ -289,17 +271,24 @@ def add_transition_columns(
 
 
 def get_transitiondata(
-    modelpath: str | Path, ionlist: Collection[tuple[int, int]] | None = None, quiet: bool = False
+    modelpath: str | Path,
+    ionlist: Collection[tuple[int, int]] | None = None,
+    quiet: bool = False,
+    *,
+    firstlevelnumber: int,
 ) -> dict[tuple[int, int], pl.DataFrame]:
     """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame.
 
-    A caller gives a list or a tuple of ions, thus this makes the arguments hashable for the cache. The
-    copy of the dictionary and of each frame keeps a caller that changes one of them from changing what
-    the next caller reads. A clone is cheap, because polars shares the data of a frame. The cache key holds the
-    absolute path, see ModelpathCache.
+    firstlevelnumber is the number of the first level of adata.txt, see get_first_level_number. A caller gives a
+    list or a tuple of ions, thus this makes the arguments hashable for the cache. The copy of the dictionary and of
+    each frame keeps a caller that changes one of them from changing what the next caller reads. A clone is cheap,
+    because polars shares the data of a frame. The cache key holds the absolute path, see ModelpathCache.
     """
     transitionsdict = get_transitiondata_cached(
-        resolve_modelpath(modelpath), tuple(ionlist) if ionlist is not None else None, quiet=quiet
+        resolve_modelpath(modelpath),
+        tuple(ionlist) if ionlist is not None else None,
+        firstlevelnumber=firstlevelnumber,
+        quiet=quiet,
     )
 
     return {ion: dftransitions.clone() for ion, dftransitions in transitionsdict.items()}
@@ -307,7 +296,7 @@ def get_transitiondata(
 
 @lru_cache(maxsize=8)
 def get_transitiondata_cached(
-    modelpath: Path, ionlist: tuple[tuple[int, int], ...] | None = None, *, quiet: bool = False
+    modelpath: Path, ionlist: tuple[tuple[int, int], ...] | None = None, *, firstlevelnumber: int, quiet: bool = False
 ) -> dict[tuple[int, int], pl.DataFrame]:
     """Return the transitions of each ion, and keep them for the next caller.
 
@@ -320,9 +309,7 @@ def get_transitiondata_cached(
     if not quiet:
         print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-    transitionsdict = read_transitiondata(
-        transition_filename, ionlist=ionset, firstlevelnumber=get_first_level_number(modelpath)
-    )
+    transitionsdict = read_transitiondata(transition_filename, ionlist=ionset, firstlevelnumber=firstlevelnumber)
 
     if not quiet:
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")
@@ -345,8 +332,7 @@ def get_ion_levels(modelpath: Path, atomic_number: int, ion_stage: int) -> pl.Da
     # a parse of one ion takes 0.04 s on the test model and a parse of all the ions takes 0.07 s. A caller asks for
     # one to three ions, and the frame of one ion holds less memory
     dfion = get_levels(modelpath, ionlist=[(atomic_number, ion_stage)])
-    if "levels" not in dfion.columns:
-        # a model that holds none of the ions gives a frame of no rows and no columns
+    if dfion.is_empty():
         return None
     # an object column of a level frame, e.g. the transitions of each level, has no Arrow form
     dflevels: pl.DataFrame = dfion["levels"].item()
@@ -380,10 +366,6 @@ def get_levels(
         ),
     ).clone()
 
-    if "levels" not in dflevels.columns:
-        # a model that holds none of the ions gives a frame of no rows and no columns
-        return dflevels
-
     return dflevels.with_columns([
         pl.Series(colname, [nested.clone() for nested in dflevels[colname]], dtype=pl.Object)
         for colname in ("levels", "transitions")
@@ -410,7 +392,9 @@ def get_levels_cached(
     firstlevelnumber = get_first_level_number(modelpath)
 
     transitionsdict: dict[tuple[int, int], pl.DataFrame] = (
-        get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet) if get_transitions else {}
+        get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet, firstlevelnumber=firstlevelnumber)
+        if get_transitions
+        else {}
     )
 
     phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]] = {}
@@ -422,15 +406,7 @@ def get_levels_cached(
 
         phixsdict = parse_phixsdata(phixs_filename, ionlist, firstlevelnumber=firstlevelnumber)
 
-    class IonTuple(t.NamedTuple):
-        Z: int
-        ion_stage: int
-        level_count: int
-        ion_pot: float
-        levels: pl.DataFrame
-        transitions: pl.LazyFrame
-
-    level_lists: list[IonTuple] = []
+    level_lists: list[tuple[int, int, int, float, pl.DataFrame, pl.LazyFrame]] = []
 
     with misc.zopen(adatafilename) as fadata:
         if not quiet:
@@ -446,9 +422,21 @@ def get_levels_cached(
             else:
                 dftransitions = pl.LazyFrame()
 
-            level_lists.append(IonTuple(Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
+            level_lists.append((Z, ion_stage, level_count, ionisation_energy_ev, dflevels, dftransitions))
 
-    dfallions = pl.DataFrame(level_lists, orient="row")
+    # the schema gives a model that holds none of the ions the same columns, thus a caller needs no special case
+    dfallions = pl.DataFrame(
+        level_lists,
+        schema={
+            "Z": pl.Int64,
+            "ion_stage": pl.Int64,
+            "level_count": pl.Int64,
+            "ion_pot": pl.Float64,
+            "levels": pl.Object,
+            "transitions": pl.Object,
+        },
+        orient="row",
+    )
     if get_photoionisations:
         # the arrays hold the cross sections of this read alone, thus a run without them needs no walk
         freeze_photoionisation_arrays(dfallions)
@@ -464,10 +452,6 @@ def freeze_photoionisation_arrays(dfallions: pl.DataFrame) -> None:
     small model, against 0.05 ms for the call itself, and a model of a full run holds far more of them.
     The arrays take this mark one time instead, thus such a write raises in place of passing.
     """
-    if "levels" not in dfallions.columns:
-        # a model that holds none of the ions gives a frame of no rows and no columns
-        return
-
     for dflevels in dfallions["levels"]:
         for colname in ("phixstargetlist", "phixstable"):
             if colname not in dflevels.columns:
@@ -543,13 +527,34 @@ def get_composition_data(filename: Path | str) -> pl.DataFrame:
     )
 
 
-def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
-    """Read the ion list from the log of a run, in case compositiondata.txt is not available.
+def get_kept_level_counts(modelpath: Path | str) -> dict[int, int | None]:
+    """Return the count of levels that ARTIS keeps for each ion of each element of compositiondata.txt.
+
+    ARTIS keeps the first nlevelsmax_readin levels of each ion. A negative value keeps all the levels, and gives None.
+    """
+    dfcomposition = get_composition_data(modelpath)
+    return {
+        Z: None if nlevelsmax < 0 else nlevelsmax
+        for Z, nlevelsmax in zip(
+            dfcomposition["Z"].to_list(), dfcomposition["nlevelsmax_readin"].to_list(), strict=True
+        )
+    }
+
+
+def get_kept_levels(dflevels: pl.DataFrame, keptlevelcount: int | None) -> pl.DataFrame:
+    """Return the levels of an ion that ARTIS keeps. A count of None keeps all the levels."""
+    return dflevels if keptlevelcount is None else dflevels.head(keptlevelcount)
+
+
+def get_ionstages_from_outputfile(modelpath: Path | str) -> dict[int, list[int]]:
+    """Return the ion stages of each element from the log of a run, in the sequence of the log.
 
     After the read of the atomic data, the log lists each element and its ion stages in one block of lines:
     - a classic run writes "[input.c]   element Z = 26" and "[input.c]     ion 2 with ...";
     - a later run writes "[input]  element 0 (Z=26 Fe)" and "[input]    ionstage 2: ...";
     - a current run writes the same lines with an [info] tag.
+
+    An element with no ion line gives an empty list.
     """
     elementpattern = re.compile(r"\[(?:input\.c|input|info)\]\s+element (?:Z = |\d+ \(Z=\s*)(\d+)")
     ionpattern = re.compile(r"\[(?:input\.c|input|info)\]\s+(?:ionstage|ion) (\d+)\b")
@@ -558,6 +563,9 @@ def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
     ionstages_of_element: dict[int, list[int]] = {}
     with zopen(logpath, encoding="utf-8") as foutput:
         for line in foutput:
+            # a log can hold an empty line, e.g. where a scheduler cut it or joined two logs
+            if not line.strip():
+                continue
             if (elementmatch := elementpattern.search(line)) is not None:
                 ionstages_of_element.setdefault(int(elementmatch.group(1)), [])
             elif ionstages_of_element and (ionmatch := ionpattern.search(line)) is not None:
@@ -570,10 +578,15 @@ def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
         msg = f"{logpath} holds no list of the elements and the ion stages of the run"
         raise ValueError(msg)
 
+    return ionstages_of_element
+
+
+def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
+    """Read the ion list from the log of a run, in case compositiondata.txt is not available."""
     return pl.DataFrame(
         [
             (Z, min(ionstages, default=None), max(ionstages, default=None))
-            for Z, ionstages in ionstages_of_element.items()
+            for Z, ionstages in get_ionstages_from_outputfile(modelpath).items()
         ],
         schema=[("Z", pl.Int32), ("lowermost_ion_stage", pl.Int32), ("uppermost_ion_stage", pl.Int32)],
         orient="row",

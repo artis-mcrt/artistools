@@ -791,6 +791,14 @@ def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
     assert (tmp_path / "map.png").read_bytes().startswith(pngmagic)
 
 
+def test_save_figure_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
+    """A caller gave format="pdf" to save_figure, thus a file named x.png held a PDF document."""
+    for filename, magic in (("x.png", b"\x89PNG"), ("x.pdf", b"%PDF"), ("x", b"%PDF")):
+        fig = plt.figure()
+        at.plottools.save_figure(fig, tmp_path / filename, format="pdf")
+        assert (tmp_path / filename).read_bytes().startswith(magic)
+
+
 @pytest.mark.benchmark
 def test_plotspherical(tmp_path: Path) -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)

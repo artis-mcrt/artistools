@@ -10,7 +10,6 @@ import time
 import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -34,8 +33,8 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import MTIME_TOLERANCE_S
-from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.modelinfo import parse_npts_line
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
@@ -613,23 +612,16 @@ def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
     return get_modeldata(modelpath, printwarningsonly=True)[1]
 
 
-def get_spatial_scales(modelpath: Path | str) -> tuple[float, float, str]:
+# the viewer resolves -deltalogx smallestscale at each change, and the grid of a model does not change
+@modelpath_cache(maxsize=16)
+@on_model_host
+def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
     """Return the smallest and the largest spatial scale of the model grid in velocity [cm/s], and a description.
 
     For a 1D model, the smallest and the largest spatial scale are the widths of the narrowest and the widest shell. For
     a 2D or 3D model, the smallest spatial scale is the smallest cell width along an axis. The largest spatial scale is
     the diagonal of a cell.
     """
-    # resolve the path before the cache. The default model path is the relative Path(".").
-    # A cache that holds the relative path keeps the first answer after the user changes the working folder
-    return get_spatial_scales_cached(resolve_modelpath(modelpath))
-
-
-# the viewer resolves -deltalogx smallestscale at each change, and the grid of a model does not change
-@lru_cache(maxsize=16)
-@on_model_host
-def get_spatial_scales_cached(modelpath: Path) -> tuple[float, float, str]:
-    """Return the spatial scales and the description of get_spatial_scales for the model at an absolute path."""
     dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax_cmps = float(modelmeta["vmax_cmps"])
     # wid_init_* is the cell width at t_model. A width divided by t_model gives the width in velocity
@@ -755,6 +747,16 @@ def get_modeldata(
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(firstinputcellid).alias("modelgridindex"))
 
     return dfmodel, modelmeta
+
+
+def get_middle_layer_lower_edge(dfmodel: pl.DataFrame, axis: str, positive: bool) -> float:
+    """Return the lower edge of the layer of cells that touches the origin on the positive or negative side of axis.
+
+    The centre layer of an odd grid holds the origin, thus both sides give that layer.
+    """
+    # select the layer by index, because an edge at the origin can have a rounding error of either sign
+    loweredges = dfmodel[f"pos_{axis}_min"].unique().sort()
+    return float(loweredges.item(loweredges.len() // 2 if positive else (loweredges.len() - 1) // 2))
 
 
 def min_abs_coordinate(ax: str) -> pl.Expr:

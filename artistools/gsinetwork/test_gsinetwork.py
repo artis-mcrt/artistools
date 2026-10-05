@@ -14,30 +14,11 @@ modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
-def copy_trajectories(tmp_path: Path) -> Path:
-    """Return a copy of the folder of the test trajectories.
-
-    A read extracts the members of each tar file next to it, thus a test of the folder of the repository
-    extracted them only on the first run, and it wrote outside the folder of the test output.
-    """
-    import shutil
-
-    trajpath = tmp_path / "trajectories"
-    # CodSpeed runs a benchmark test more than one time in one process, with the same tmp_path
-    trajpath.mkdir(exist_ok=True)
-    for filepath in (at.get_path("testdata") / "kilonova" / "trajectories").iterdir():
-        if filepath.is_file() and filepath.name != ".gitignore":
-            shutil.copy(filepath, trajpath)
-
-    return trajpath
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_decayproducts(mockplot: mock.MagicMock, tmp_path: Path) -> None:
-    trajpath = copy_trajectories(tmp_path)
+def test_decayproducts(mockplot: mock.MagicMock, tmp_path: Path, trajectory_copy: Path) -> None:
     at.gsinetwork.decayproducts.main(
-        argsraw=[], trajectoryroot=trajpath, tmin=0.1, tmax=0.1, nsteps=1, outputpath=tmp_path
+        argsraw=[], trajectoryroot=trajectory_copy, tmin=0.1, tmax=0.1, nsteps=1, outputpath=tmp_path
     )
 
     expected_y_arrays = [
@@ -69,9 +50,8 @@ def test_decayproducts(mockplot: mock.MagicMock, tmp_path: Path) -> None:
         assert math.isclose(y_arr[0], expected_y_arr[0], rel_tol=1e-3)
 
 
-def test_decayproducts_parquet_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_decayproducts_parquet_output(tmp_path: Path, trajectory_copy: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Parquet files must be written under the requested output path, not a relative 'parquet' folder."""
-    trajpath = copy_trajectories(tmp_path)
     outputpath_requested = tmp_path / "requested"
     outputpath_requested.mkdir()
 
@@ -82,7 +62,7 @@ def test_decayproducts_parquet_output(tmp_path: Path, monkeypatch: pytest.Monkey
 
     at.gsinetwork.decayproducts.main(
         argsraw=[],
-        trajectoryroot=trajpath,
+        trajectoryroot=trajectory_copy,
         tmin=0.1,
         tmax=0.1,
         nsteps=1,
@@ -96,14 +76,13 @@ def test_decayproducts_parquet_output(tmp_path: Path, monkeypatch: pytest.Monkey
     assert not (cwd / "parquet").exists(), "parquet files must not be written relative to the working directory"
 
 
-def test_decayproducts_process_trajectory_takes_no_plot_times(tmp_path: Path) -> None:
+def test_decayproducts_process_trajectory_takes_no_plot_times(trajectory_copy: Path) -> None:
     """An empty list of plot times gives empty arrays. The index array of the heating rows was a float array."""
-    trajpath = copy_trajectories(tmp_path)
     nuc_data = at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka")
 
     decay_powers = at.gsinetwork.decayproducts.process_trajectory(
         nuc_data=nuc_data,
-        traj_root=trajpath,
+        traj_root=trajectory_copy,
         traj_masses_g={109215: 1.0e30},
         arr_t_day=np.array([]),
         nuclide_contrib=False,
@@ -205,7 +184,7 @@ def test_particledata_reads_the_exact_step_at_the_time_of_a_network_step(tmp_pat
     assert np.isclose(particledata["Sr"][0][0], expected_sr, rtol=1e-6)
 
 
-def test_decayproducts_counts_each_trajectory_in_one_ye_bin(tmp_path: Path) -> None:
+def test_decayproducts_counts_each_trajectory_in_one_ye_bin(tmp_path: Path, trajectory_copy: Path) -> None:
     """A Ye on the boundary of two bins goes to the upper bin, and a trajectory with no network data is left out.
 
     The bins included both ends, thus such a trajectory was summed into two bins. A trajectory of summary-all.dat
@@ -213,14 +192,13 @@ def test_decayproducts_counts_each_trajectory_in_one_ye_bin(tmp_path: Path) -> N
     """
     from artistools.gsinetwork import decayproducts
 
-    trajpath = copy_trajectories(tmp_path)
-    summarylines = (trajpath / "summary-all.dat").read_text(encoding="utf-8").splitlines()
+    summarylines = (trajectory_copy / "summary-all.dat").read_text(encoding="utf-8").splitlines()
     # trajectory 109215 takes Ye 0.25, which is the boundary of the low and the mid bin for -yemax 0.75
     rows = [line.split() for line in summarylines[1:]]
     rows[0][4] = "0.25"
     # a trajectory with no tar file has no network data
     rows.append(["999999", *rows[1][1:]])
-    (trajpath / "summary-all.dat").write_text(
+    (trajectory_copy / "summary-all.dat").write_text(
         "\n".join([summarylines[0], *(" ".join(row) for row in rows)]) + "\n", encoding="utf-8"
     )
 
@@ -233,7 +211,7 @@ def test_decayproducts_counts_each_trajectory_in_one_ye_bin(tmp_path: Path) -> N
 
     with mock.patch.object(decayproducts, "plot_decay_powers", side_effect=record_decay_powers):
         decayproducts.main(
-            argsraw=[], trajectoryroot=trajpath, tmin=0.1, tmax=0.1, nsteps=1, yemax=0.75, outputpath=tmp_path
+            argsraw=[], trajectoryroot=trajectory_copy, tmin=0.1, tmax=0.1, nsteps=1, yemax=0.75, outputpath=tmp_path
         )
 
     # the low bin holds no trajectory below Ye 0.25, thus the trajectory on the boundary is in the mid bin alone

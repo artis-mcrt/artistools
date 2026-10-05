@@ -82,9 +82,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # a cell with no matter has no estimators. The file opens after the read of every cell, thus an error leaves no
     # empty file
     lines: list[str] = []
-    emptycells = [mgi for mgi in modelgridindexlist if (timestep, mgi) not in estimators]
+    emptycells: list[int] = []
     for modelgridindex in modelgridindexlist:
-        if modelgridindex not in emptycells:
+        if (timestep, modelgridindex) not in estimators:
+            emptycells.append(modelgridindex)
+        else:
             lines += get_massfraction_lines(
                 estimators[timestep, modelgridindex], elmass, tdays, modelgridindex, timestep
             )

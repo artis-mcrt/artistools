@@ -3,6 +3,7 @@
 import argparse
 import json
 import math
+import re
 import typing as t
 from collections import Counter
 from collections.abc import Sequence
@@ -758,7 +759,6 @@ def format_label_fields(template: str, **fields: t.Any) -> str:
     A label can hold LaTeX braces, e.g. $M_{ej}$, which str.format reads as a field. Thus only the named
     fields change, and every other brace stays.
     """
-    import re
 
     def replace_field(match: re.Match[str]) -> str:
         return format(fields[match["name"]], match["spec"] or "")

@@ -282,6 +282,61 @@ def normalised_lines(
     )
 
 
+def read_decompressed_bytes(filepath: Path) -> bytes:
+    """Return the bytes of a file. The function decompresses a .zst, .gz, or .xz file."""
+    if filepath.suffix in COMPRESSED_EXTENSIONS:
+        with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+            data: bytes = fin.read()
+        return data
+
+    return filepath.read_bytes()
+
+
+def read_complete_lines(filename: Path | str, content: str) -> bytes:
+    """Return the bytes of the complete lines of an ARTIS output file, which can be compressed.
+
+    sn3d writes some files again at each timestep, thus a run that stops during that write leaves an empty file or
+    a cut last line. The cut number of such a line is a valid number, thus only the missing line end shows the cut.
+    The function drops a cut last line with a warning, and it raises a ValueError if no line remains. The content
+    names what the file holds in that error, e.g. "light curve". The named file wins over a compressed sibling, as
+    in zopen. The caller gives the bytes to polars, thus the function decompresses the file one time only.
+    """
+    from artistools.misc.cliutils import print_warning
+
+    check_local_path(filename)
+    filepath = Path(filename)
+    if not filepath.is_file() and (found := find_compressed(filename)):
+        filepath = found[1]
+
+    with polars_error_note(filepath):
+        data = read_decompressed_bytes(filepath)
+
+    if data.strip() and not data.endswith(b"\n"):
+        print_warning(f"{filename} ends with a cut line, thus the command reads the file without its last line")
+        # a file of one cut line holds no line end, thus rfind gives -1 and no byte remains
+        data = data[: data.rfind(b"\n") + 1]
+
+    if not data.strip():
+        msg = f"{filename} holds no {content}. A run that stops while sn3d writes this file leaves it empty"
+        raise ValueError(msg)
+
+    return data
+
+
+def raise_if_cut_line(df: pl.DataFrame, textfilepath: Path | str) -> None:
+    """Stop if a line of an ARTIS text file has fewer values than the header.
+
+    ARTIS writes each value of each line, thus a missing value shows a file that is not complete. A cache from such
+    a file keeps the partial data, also after the write ends.
+    """
+    if df.null_count().sum_horizontal().item() > 0:
+        msg = (
+            f"The file {textfilepath} has a line with fewer values than the header. Possibly ARTIS or a copy"
+            " still writes the file, or the end of the file is missing"
+        )
+        raise ValueError(msg)
+
+
 def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> bool:
     """Return True if each byte that no comment holds is valid UTF-8.
 
@@ -290,11 +345,7 @@ def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_
     also hold the replacement character as data. This costs a read of the whole file, thus call it only
     after a strict read has failed.
     """
-    if filepath.suffix in COMPRESSED_EXTENSIONS:
-        with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
-            data: bytes = fin.read()
-    else:
-        data = filepath.read_bytes()
+    data = read_decompressed_bytes(filepath)
 
     start = 0
     for _ in range(skip_rows):

@@ -11,6 +11,7 @@ import numpy as np
 import polars as pl
 
 from artistools.atomic import get_ionstring
+from artistools.atomic import get_kept_levels
 from artistools.constants import K_B_ev_per_K
 from artistools.misc import read_rank_outputfiles
 from artistools.misc.fileio import resolve_modelpath
@@ -70,15 +71,15 @@ def add_lte_pops(
     columntemperature_tuples: Sequence[tuple[str, float | int]],
     noprint: bool = False,
     maxlevel: int = -1,
-    nlevelsmax_of_element: Mapping[int, int] | None = None,
+    keptlevelcount_of_element: Mapping[int, int | None] | None = None,
 ) -> pl.DataFrame:
     """Add columns to dfpop with LTE populations.
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
 
-    nlevelsmax_of_element gives the nlevelsmax of each element in compositiondata.txt. ARTIS keeps only that many
-    levels of an ion, thus its superlevel holds no level above them. A negative value keeps every level of the
-    atomic data, as in ARTIS. An element that the mapping does not hold also keeps every level.
+    keptlevelcount_of_element gives the count of levels that ARTIS keeps for each ion of an element, see
+    get_kept_level_counts. The superlevel holds no level above them. A value of None keeps every level of the
+    atomic data. An element that the mapping does not hold also keeps every level.
     """
     ionlevels_of_ion = {
         (Z, ion_stage): adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["levels"].item(0)
@@ -134,10 +135,9 @@ def add_lte_pops(
 
         if (Z, ion_stage, levelnumber_sl) not in superlevelpops_of_ion:
             ionlevels = ionlevels_of_ion[Z, ion_stage]
-            nlevelsmax = (nlevelsmax_of_element or {}).get(Z, -1)
-            nlevelskept = ionlevels.height if nlevelsmax < 0 else min(nlevelsmax, ionlevels.height)
+            keptlevels = get_kept_levels(ionlevels, (keptlevelcount_of_element or {}).get(Z))
             superlevelpops_of_ion[Z, ion_stage, levelnumber_sl] = (
-                ionlevels[levelnumber_sl:nlevelskept].select(ltepop_exprs(ionlevels)).sum()
+                keptlevels[levelnumber_sl:].select(ltepop_exprs(ionlevels)).sum()
             )
 
     lte_columns = [columnname for columnname, _ in columntemperature_tuples]
@@ -201,8 +201,9 @@ def read_nltepops(
     return read_nltepops_cached(resolve_modelpath(modelpath), None if timestep is None else int(timestep), cells)
 
 
-# a window reads the levels of one cell for its menu, and a cache of one read would then drop the frame of the plot
-@lru_cache(maxsize=4)
+# a window reads the levels of one cell for its menu, and a cache of one read would then drop the frame of the plot.
+# A frame of a large run can hold several GB, thus the cache keeps only these two reads
+@lru_cache(maxsize=2)
 def read_nltepops_cached(modelpath: Path, timestep: int | None, cells: int | tuple[int, ...] | None) -> pl.DataFrame:
     """Read the NLTE populations of the model at an absolute path. One read of a large run takes minutes."""
     modelgridindex = list(cells) if isinstance(cells, tuple) else cells

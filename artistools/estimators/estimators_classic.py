@@ -5,6 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ionstages_from_outputfile
 from artistools.atomic import get_ionstring
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_run_subfolders
@@ -13,31 +14,6 @@ from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import resolve_modelpath
-
-
-def get_atomic_composition(modelpath: Path) -> dict[int, list[int]]:
-    """Return the ion stages of each element, from the [input.c] lines of output_0-0.txt.
-
-    This reads the ion lines rather than get_composition_data_from_outputfile, which gives
-    uppermost - lowermost + 1 and a null count for an element with no ion lines at all. The
-    estimator rows are sliced by the number of ions, so a null or a gap-inflated count misaligns every
-    element after it. Each line "ion N" gives the ion stage N. An element whose lowest ion stage is
-    above I, e.g. Co from Co II, thus keeps the correct names.
-    """
-    atomic_composition: dict[int, list[int]] = {}
-
-    with zopen(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
-        Z = None
-        for row in foutput:
-            split_row = row.split()
-            # a log can hold an empty line, e.g. where a scheduler cut it or joined two logs
-            if split_row and split_row[0] == "[input.c]":
-                if split_row[1] == "element":
-                    Z = int(split_row[4])
-                elif split_row[1] == "ion":
-                    assert Z is not None, "Z should be set before the ion stages"
-                    atomic_composition.setdefault(Z, []).append(int(split_row[2]))
-    return atomic_composition
 
 
 def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, list[int]]) -> None:
@@ -121,7 +97,9 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
     print(f"Reading {len(estimfiles)} estimator files...")
 
     first_timesteps_in_dir = get_first_ts_in_run_directory(modelpath)
-    atomic_composition = get_atomic_composition(modelpath)
+    # the row of a cell holds one population for each ion line of the log. A count from the lowest and the highest
+    # ion stage is wrong for an element with a gap or with no ion line, and it moves every later population
+    atomic_composition = get_ionstages_from_outputfile(modelpath)
 
     estimators: dict[tuple[int, int], t.Any] = {}
     # a classic estimator file numbers its timesteps from zero, thus a folder of a restarted run needs

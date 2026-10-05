@@ -479,12 +479,12 @@ def test_add_lte_pops_superlevel_holds_only_the_kept_levels() -> None:
 
     k_b = 8.617333262145179e-05
     ltepops = [g / 2.0 * math.exp(-energy_ev / k_b / 10000) for g, energy_ev in ionlevels.iter_rows()]
-    for nlevelsmax, expected_superlevel in ((3, ltepops[2]), (-1, sum(ltepops[2:])), (100, sum(ltepops[2:]))):
+    for keptlevelcount, expected_superlevel in ((3, ltepops[2]), (None, sum(ltepops[2:])), (100, sum(ltepops[2:]))):
         result = at.nltepops.add_lte_pops(
-            dfpop, adata, [("lte_10000", 10000)], noprint=True, nlevelsmax_of_element={26: nlevelsmax}
+            dfpop, adata, [("lte_10000", 10000)], noprint=True, keptlevelcount_of_element={26: keptlevelcount}
         )
         superlevelpop = result.filter(pl.col("level") == 3)["lte_10000"].item()
-        assert math.isclose(superlevelpop, expected_superlevel, rel_tol=1e-12), nlevelsmax
+        assert math.isclose(superlevelpop, expected_superlevel, rel_tol=1e-12), keptlevelcount
 
 
 def test_add_lte_pops_superlevel_agrees_with_the_nlte_file() -> None:
@@ -496,15 +496,12 @@ def test_add_lte_pops_superlevel_agrees_with_the_nlte_file() -> None:
         (pl.col("Z") == 26) & pl.col("ion_stage").is_in([1, 2, 3])
     )
     T_J = at.estimators.read_estimators(modelpath, timestep=40, modelgridindex=0)[40, 0]["TJ"]
-    compositiondata = at.get_composition_data(modelpath)
-    nlevelsmax_of_element = dict(zip(compositiondata["Z"], compositiondata["nlevelsmax_readin"], strict=True))
-
     result = at.nltepops.add_lte_pops(
         dfpop,
         at.atomic.get_levels(modelpath, quiet=True),
         [("lte_TJ", T_J)],
         noprint=True,
-        nlevelsmax_of_element=nlevelsmax_of_element,
+        keptlevelcount_of_element=at.atomic.get_kept_level_counts(modelpath),
     )
 
     for ion_stage in (1, 2, 3):
@@ -528,7 +525,7 @@ def test_nltepops_superlevel_takes_the_nlevelsmax_of_compositiondata(tmp_path: P
     ) as mockaddltepops:
         at.nltepops.plot(argsraw=[], modelpath=tmp_path, outputfile=tmp_path, timestep=40, ion_stages=2)
 
-    assert mockaddltepops.call_args.kwargs["nlevelsmax_of_element"] == {26: 100, 27: -1}
+    assert mockaddltepops.call_args.kwargs["keptlevelcount_of_element"] == {26: 100, 27: None}
 
 
 @pytest.mark.parametrize(

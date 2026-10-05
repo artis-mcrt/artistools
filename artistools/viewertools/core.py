@@ -67,6 +67,10 @@ SIDEBAR_WIDTH: t.Final = 600
 # Export Animation asks before it runs the command for more frames than this
 MAX_ANIMATION_FRAMES: t.Final = 200
 
+# the window shows the plot, thus the command opens no second window and no file. Copy Figure and Export Animation
+# run the command for a temporary file, and --open opened each such file
+WINDOW_DESTS: t.Final = frozenset({"show", "open", "interactive"})
+
 # changes closer together than this, e.g. the steps of a slider drag, give one step of Undo
 UNDO_MERGE_SECONDS: t.Final = 0.8
 
@@ -143,7 +147,8 @@ def parse_viewer_tokens(
 ) -> ViewerTokens:
     """Parse the arguments that the user gave to a viewer, and split them into the parts that the viewer reads.
 
-    controlleddests gives the options that the controls of the viewer give, thus the other options leave them out.
+    controlleddests gives the options that the controls of the viewer give, thus the other options leave them out. The
+    other options also leave out WINDOW_DESTS.
     parse_cli_args puts "--" in front of the ARTIS folders at the end, thus an option that reads a list does not take
     a folder. The tokens that no option takes are the paths, e.g. the path of "--notitle mymodel".
     """
@@ -151,7 +156,7 @@ def parse_viewer_tokens(
 
     parser = make_parser(addargs)
     usertokens = remove_options(parser, tokens, {"interactive"})
-    basetokens = remove_options(parser, separate_trailing_folders(usertokens), controlleddests)
+    basetokens = remove_options(parser, separate_trailing_folders(usertokens), {*controlleddests, *WINDOW_DESTS})
     pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
     otheroptions, positionaltokens = split_option_rows(parser, basetokens[pathcount:])
     # -modelpath gives the paths of the positional argument, thus the list of the series holds them and not the options
@@ -509,12 +514,15 @@ def get_table_actions(parser: argparse.ArgumentParser, hiddendests: "Collection[
     """Return the options that the table of the window offers, which are the options that are not in hiddendests.
 
     hiddendests holds the options that a different control of the window sets, and the options that give a
-    different action from one plot.
+    different action from one plot. The table also hides WINDOW_DESTS.
     """
     return [
         action
         for action in parser._actions  # ruff:ignore[private-member-access]
-        if action.option_strings and action.help != argparse.SUPPRESS and action.dest not in hiddendests
+        if action.option_strings
+        and action.help != argparse.SUPPRESS
+        and action.dest not in hiddendests
+        and action.dest not in WINDOW_DESTS
     ]
 
 

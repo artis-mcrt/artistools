@@ -35,7 +35,7 @@ from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import format_frame_path
-from artistools.misc import get_artis_source_text
+from artistools.misc import get_artis_option
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_of_timedays
@@ -189,13 +189,8 @@ def get_first_nlte_radfield_timestep(modelpath: Path | str) -> int | None:
 
     ARTIS uses the fits of the bins from this timestep. Before it, ARTIS uses the full-spectrum fit for every bin.
     """
-    import re
-
-    optionstext = get_artis_source_text(modelpath, "artisoptions.h")
-    if optionstext is None:
-        return None
-    match = re.search(r"^\s*constexpr\s+int\s+FIRST_NLTE_RADFIELD_TIMESTEP\s*=\s*(\d+)\s*;", optionstext, re.MULTILINE)
-    return None if match is None else int(match.group(1))
+    value = get_artis_option(modelpath, "FIRST_NLTE_RADFIELD_TIMESTEP")
+    return int(value) if value is not None and value.isdigit() else None
 
 
 def plot_line_estimators(

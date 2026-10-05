@@ -711,10 +711,7 @@ def plot_levelpop(
             dfnltepops_allions
             .lazy()
             .filter(
-                (pl.col("Z") == atomic_number)
-                & (pl.col("ion_stage") == ion_stage)
-                & (pl.col("level") == levelindex)
-                & pl.col("modelgridindex").is_in(list(mgilist))
+                (pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage) & (pl.col("level") == levelindex)
             )
             .select(pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64), "n_NLTE")
             # the first row of a repeated cell and timestep stays

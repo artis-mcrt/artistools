@@ -189,7 +189,10 @@ def test_level_numbers_that_start_at_zero(tmp_path: Path) -> None:
     with adatafile.open(encoding="utf-8") as fadata:
         ions = list(parse_adata(fadata, {}, None, firstlevelnumber=0))
     assert ions[0][4]["levelindex"].to_list() == [0, 1, 2]
-    with adatafile.open(encoding="utf-8") as fadata, pytest.raises(ValueError, match="numbers the levels from 0"):
+    with (
+        adatafile.open(encoding="utf-8") as fadata,
+        pytest.raises(ValueError, match="the first level of the ion has the number 0, but the numbering from 1"),
+    ):
         list(parse_adata(fadata, {}, None))
 
     adatafile.write_text("26 1 3 7.9\n1 0.0 9.0 1 ground\n2 1.5 7.0 1 first\n4 2.5 5.0 1 second\n", encoding="utf-8")
@@ -401,12 +404,12 @@ def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
     """
     classicmodelpath = at.get_path("testdata") / "test-classicmode_3d"
     adata = at.ejectaopacity.get_opacity_atomic_data(classicmodelpath)
-    dfcomposition = at.get_composition_data(classicmodelpath)
-    nlevelsmax = dict(zip(dfcomposition["Z"], dfcomposition["nlevelsmax_readin"], strict=True))
+    keptlevelcount_of_element = at.atomic.get_kept_level_counts(classicmodelpath)
     alllevels = at.atomic.get_levels(classicmodelpath)
     for Z, ion_stage, dflevels in adata.select("Z", "ion_stage", "levels").iter_rows():
         levelcount = alllevels.filter(pl.col("Z") == Z, pl.col("ion_stage") == ion_stage)["levels"].item().height
-        assert dflevels.height == min(nlevelsmax[Z], levelcount)
+        keptlevelcount = keptlevelcount_of_element[Z]
+        assert dflevels.height == (levelcount if keptlevelcount is None else min(keptlevelcount, levelcount))
     assert adata.filter(pl.col("Z") == 26, pl.col("ion_stage") == 1)["levels"].item().height == 500
 
     # the test model keeps all the levels, because its compositiondata.txt gives -1

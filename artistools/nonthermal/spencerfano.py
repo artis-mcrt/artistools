@@ -333,8 +333,9 @@ def get_element_conditions(args: argparse.Namespace, step: int, stepcount: int) 
     compelement_atomicnumber = get_atomic_number(args.composition)
     nntot = 1.0
     x_e = x_e_of_sweep_step(args.x_e, compelement_atomicnumber, step, stepcount) if args.vary == "x_e" else args.x_e
-    ionpopdict: dict[tuple[int, int] | int, float] = {}
-    ionpopdict |= ionpops_for_electronfraction(compelement_atomicnumber, x_e, nntot)
+    ionpopdict: dict[tuple[int, int] | int, float] = dict(
+        ionpops_for_electronfraction(compelement_atomicnumber, x_e, nntot)
+    )
 
     return PlasmaConditions(nntot=nntot, x_e=x_e, T_e=3000, deposition_density_ev=5.0e3, ionpopdict=ionpopdict)
 

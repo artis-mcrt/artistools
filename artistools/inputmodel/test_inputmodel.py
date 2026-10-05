@@ -87,20 +87,6 @@ testdatapath = at.get_path("testdata")
 modelpath_classic_3d = testdatapath / "test-classicmode_3d"
 
 
-def copy_trajectories(tmp_path: Path) -> Path:
-    """Copy the trajectory archives of the test data to tmp_path, and return the new trajectory folder.
-
-    A read of a trajectory extracts the members of its archive beside the archive. A copy keeps the extracted
-    files out of tests/data, and each run then tests the extraction too.
-    """
-    traj_root = tmp_path / "trajectories"
-    # CodSpeed runs a benchmark test more than one time in one process, with the same tmp_path
-    traj_root.mkdir(exist_ok=True)
-    for filepath in (testdatapath / "kilonova" / "trajectories").glob("*.*"):
-        shutil.copy(filepath, traj_root)
-    return traj_root
-
-
 def get_derived_modeldata(modelpath: Path, **kwargs: t.Any) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Return the model with the derived columns, e.g. the mass of each cell, and the metadata."""
     lzdfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, **kwargs)
@@ -322,7 +308,7 @@ def verify_file_checksums(
         )
 
 
-def test_makeartismodelfrom_sph_particles(tmp_path: Path) -> None:
+def test_makeartismodelfrom_sph_particles(tmp_path: Path, trajectory_copy: Path) -> None:
     gridfolderpath = tmp_path / "kilonova"
 
     config: dict[str, dict[str, t.Any]] = {
@@ -351,7 +337,6 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path) -> None:
 
     verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
 
-    traj_root = copy_trajectories(tmp_path)
     dfcontribs = {}
     for dimensions in (3, 2, 1, 0):
         outpath_kn = tmp_path / f"kilonova_{dimensions:d}d"
@@ -362,7 +347,7 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path) -> None:
         at.inputmodel.modelfromhydro.main(
             argsraw=[],
             gridfolderpath=gridfolderpath,
-            trajectoryroot=traj_root,
+            trajectoryroot=trajectory_copy,
             outputpath=outpath_kn,
             dimensions=dimensions,
             timedays=0.1,
@@ -398,7 +383,7 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path) -> None:
                     assert math.isclose(lowerd_mass, model3_mass, rel_tol=5e-2)
 
 
-def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path: Path) -> None:
+def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path: Path, trajectory_copy: Path) -> None:
     """The option --sample_cell_lower_corner of maptogrid gives the grid files and the model of the older version.
 
     The expected checksums are those that the test of the SPH particles expected before the kernel took the
@@ -426,7 +411,7 @@ def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path:
     at.inputmodel.modelfromhydro.main(
         argsraw=[],
         gridfolderpath=gridfolderpath,
-        trajectoryroot=copy_trajectories(tmp_path),
+        trajectoryroot=trajectory_copy,
         outputpath=outpath,
         dimensions=3,
         timedays=0.1,
@@ -663,11 +648,11 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) ->
         reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001", "./Run_rprocess/nz-plane00002"])
 
 
-def test_get_trajectory_abund_q(tmp_path: Path) -> None:
+def test_get_trajectory_abund_q(trajectory_copy: Path) -> None:
     particleid = 109215
 
     abund_q = at.inputmodel.rprocess_from_trajectory.get_trajectory_abund_q(
-        particleid=particleid, traj_root=copy_trajectories(tmp_path), t_model_s=0.1 * 86400, getqdotintegral=True
+        particleid=particleid, traj_root=trajectory_copy, t_model_s=0.1 * 86400, getqdotintegral=True
     )
 
     expected: dict[tuple[int, int] | str, float] = {
@@ -2264,10 +2249,10 @@ def test_rprocess_const_and_powerlaw() -> None:
     assert rate[-1] == pytest.approx(1.0)
 
 
-def test_energyfiles_from_trajectory(tmp_path: Path) -> None:
+def test_energyfiles_from_trajectory(trajectory_copy: Path) -> None:
     """Integrating a trajectory's heating rate must give a positive total energy."""
     thermofile = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
-        traj_root=copy_trajectories(tmp_path), particleid=109215, memberfilename="./Run_rprocess/energy_thermo.dat"
+        traj_root=trajectory_copy, particleid=109215, memberfilename="./Run_rprocess/energy_thermo.dat"
     )
     dfthermo = at.inputmodel.energyinputfiles.read_trajectory_thermo(thermofile)
     assert dfthermo["time/s"].to_numpy().min() >= 1.0, "the unphysical sub-second Qdot values must be dropped"
@@ -3858,7 +3843,9 @@ def test_make1dmodelfromcone_keeps_ye_q_and_tracercount(tmp_path: Path) -> None:
     assert all(count > 0 and count % 2 == 0 for count in dfcone["tracercount"].to_list())
 
 
-def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(tmp_path: Path) -> None:
+def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(
+    tmp_path: Path, trajectory_copy: Path
+) -> None:
     """The q of the trajectories replaces the Q column of an old grid.dat.
 
     A join kept both columns, thus the model held the grid.dat value and the reduction to 1D stopped at the
@@ -3872,14 +3859,13 @@ def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(tmp_
     gridlines = (gridfolderpath / "grid.dat").read_text(encoding="utf-8").splitlines()
     gridlines = [*gridlines[:3], f"{gridlines[3]} Q", *(f"{line} 1e10" for line in gridlines[4:])]
     (gridfolderpath / "grid.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")
-    traj_root = copy_trajectories(tmp_path)
 
     for dimensions in (3, 1):
         outpath = tmp_path / f"model_{dimensions}d"
         at.inputmodel.modelfromhydro.main(
             argsraw=[],
             gridfolderpath=gridfolderpath,
-            trajectoryroot=traj_root,
+            trajectoryroot=trajectory_copy,
             outputpath=outpath,
             dimensions=dimensions,
             timedays=0.1,
@@ -4090,13 +4076,12 @@ def test_describeinputmodel_keeps_its_description_with_quiet(capsys: pytest.Capt
     assert "kinetic energy" in capsys.readouterr().out
 
 
-def test_closest_network_timesteps_agree_with_a_filter_of_each_time(tmp_path: Path) -> None:
+def test_closest_network_timesteps_agree_with_a_filter_of_each_time(trajectory_copy: Path) -> None:
     """One binary search for all the times must give the steps that one filter for each time gives."""
     from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
     from artistools.inputmodel.rprocess_from_trajectory import get_traj_network_timesteps
 
-    traj_root = copy_trajectories(tmp_path)
-    dfevol = get_traj_network_timesteps(traj_root, 114511).unique(subset=["timesec"], keep="first")
+    dfevol = get_traj_network_timesteps(trajectory_copy, 114511).unique(subset=["timesec"], keep="first")
     arrtimesec = np.sort(dfevol["timesec"].to_numpy())
     # the times of the steps, the mid-points between them, and a time on each side of the whole range
     times = [
@@ -4119,11 +4104,11 @@ def test_closest_network_timesteps_agree_with_a_filter_of_each_time(tmp_path: Pa
         return step
 
     for cond in ("lessorequal", "greaterorequal", "nearest"):
-        steps = get_closest_network_timesteps(traj_root, 114511, times, cond=cond)
+        steps = get_closest_network_timesteps(trajectory_copy, 114511, times, cond=cond)
         assert steps == [get_reference_step(timesec, cond) for timesec in times], cond
 
-    assert get_closest_network_timesteps(traj_root, 114511, times[1:2], cond="lessorequal") == [
+    assert get_closest_network_timesteps(trajectory_copy, 114511, times[1:2], cond="lessorequal") == [
         get_reference_step(times[1], "lessorequal")
     ]
-    assert get_closest_network_timesteps(traj_root, 114511, times[:1], cond="lessorequal") == [None]
-    assert get_closest_network_timesteps(traj_root, 114511, times[-1:], cond="greaterorequal") == [None]
+    assert get_closest_network_timesteps(trajectory_copy, 114511, times[:1], cond="lessorequal") == [None]
+    assert get_closest_network_timesteps(trajectory_copy, 114511, times[-1:], cond="greaterorequal") == [None]

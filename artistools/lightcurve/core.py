@@ -1,6 +1,7 @@
 """Read ARTIS light curves and reference observational light curves, and derive band magnitudes from spectra."""
 
 import argparse
+import io
 import math
 import typing as t
 from collections.abc import Collection
@@ -43,8 +44,8 @@ from artistools.misc import read_wsv
 from artistools.misc import require_reference_data_file
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
-from artistools.misc import zopenpl
 from artistools.misc.fileio import polars_error_note
+from artistools.misc.fileio import read_complete_lines
 from artistools.misc.remote import on_model_host
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
@@ -108,11 +109,11 @@ def scan_lightcurve(
     """
     check_averaging_angles(average_over_phi, average_over_theta)
     print(f"Reading {filepath}")
-    # a cut compressed file stops the read, thus the error must name the file
+    # sn3d writes the whole file again at each timestep, thus the file can be empty or end with a cut line
+    lcbytes = read_complete_lines(filepath, content="light curve")
     with polars_error_note(Path(filepath)):
-        lzdf = pl.scan_csv(
-            # the caller can name a file whose compressed sibling is the one that exists, thus resolve here
-            zopenpl(filepath),
+        dflc = pl.read_csv(
+            io.BytesIO(lcbytes),
             separator=" ",
             has_header=False,
             new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
@@ -124,35 +125,20 @@ def scan_lightcurve(
                 "luminosity_cmf_Lsun": pl.Float64,
             },
         )
-        # sn3d writes the whole file again at each timestep, thus a run that stops during that write leaves an empty
-        # file or a cut last line. The cut number of such a line is a valid number, thus only the missing line end
-        # shows the cut
-        with zopen(filepath, encoding="utf-8") as lcfile:
-            lctext = lcfile.read()
-        if not lctext.strip():
-            msg = f"{filepath} holds no light curve. A run that stops while sn3d writes this file leaves it empty"
-            raise ValueError(msg)
-        rowcount, timecount = lzdf.select(pl.len(), pl.col("time_days").n_unique()).collect().row(0)
-    if not lctext.endswith("\n"):
-        print_warning(f"{filepath} ends with a cut line, thus the command reads the file without its last line")
-        lzdf = lzdf.head(rowcount - 1)
-        rowcount -= 1
-        timecount = lzdf.select(pl.col("time_days").n_unique()).collect().item()
-    if timecount == 0 or rowcount % timecount != 0:
-        msg = (
-            f"{filepath} holds {rowcount} rows and {timecount} different times, thus its tables have different"
-            " lengths. A cut file or a repeated time gives this"
-        )
-        raise ValueError(msg)
-    lcdata = split_multitable_dataframe(lzdf)
+    try:
+        lcdata = split_multitable_dataframe(dflc)
+    except ValueError as exc:
+        exc.add_note(f"while reading {filepath}")
+        raise
+
     # a user can name the file, thus an angle-averaged light curve must not hold the tables of the direction bins.
     # An old light_curve.out holds a second table, which repeats the times. A build of ARTIS with one or two
     # direction bins writes as few tables, thus the count check below gives a warning and no error for that case
-    if not directionresolved and len(lcdata) > 2:
-        msg = f"{filepath} holds {len(lcdata)} tables, thus it is a direction-resolved light curve"
-        raise ValueError(msg)
-
     if not directionresolved:
+        if len(lcdata) > 2:
+            msg = f"{filepath} holds {len(lcdata)} tables, thus it is a direction-resolved light curve"
+            raise ValueError(msg)
+
         return {-1: lcdata[0].with_columns(derived_lum_unit_cols())}
 
     # ARTIS sets MABINS when it compiles, thus a different build can write a different count of direction bins

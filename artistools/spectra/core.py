@@ -1,6 +1,7 @@
 """Artistools - spectra related functions."""
 
 import argparse
+import io
 import itertools
 import math
 import typing as t
@@ -51,9 +52,9 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
-from artistools.misc import zopen
 from artistools.misc.fileio import polars_error_note
-from artistools.misc.fileio import polars_source_open
+from artistools.misc.fileio import raise_if_cut_line
+from artistools.misc.fileio import read_complete_lines
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import on_model_host
 from artistools.packets import filter_packets_dirbin
@@ -730,30 +731,21 @@ def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     )
     print(f"Reading {specfilename}")
 
-    # sn3d writes the whole file again at each timestep, thus a run that stops during that write leaves an empty file
-    # or a cut last line. A cut compressed file stops the read, thus the error must name the file
+    # sn3d writes the whole file again at each timestep, thus the file can be empty or end with a cut line
+    specbytes = read_complete_lines(specfilename, content="spectrum")
     with polars_error_note(specfilename):
-        with zopen(specfilename, encoding="utf-8") as specfile:
-            spectext = specfile.read()
-        if not spectext.strip():
-            msg = f"{specfilename} holds no spectrum. A run that stops while sn3d writes this file leaves it empty"
-            raise ValueError(msg)
-        with polars_source_open(specfilename) as source:
-            # get_spectra counts the time columns, thus the column of a trailing space on each line must go
-            dfspec = drop_trailing_null_column(
-                pl.read_csv(source, separator=" ", infer_schema=False, truncate_ragged_lines=True)
-            )
+        # get_spectra counts the time columns, thus the column of a trailing space on each line must go
+        dfspec = drop_trailing_null_column(
+            pl.read_csv(io.BytesIO(specbytes), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        )
 
-    # the cut number of a cut line is a valid number, thus only the missing line end shows the cut
-    if not spectext.endswith("\n"):
-        print_warning(f"{specfilename} ends with a cut line, thus the command reads the file without its last line")
-        dfspec = dfspec.head(-1)
-    if dfspec.is_empty() or dfspec.null_count().sum_horizontal().item() > 0:
+    if dfspec.is_empty():
         msg = (
-            f"{specfilename} holds no spectrum or a line with fewer values than the times."
+            f"{specfilename} holds no spectrum after its line of times."
             " A run that stops while sn3d writes this file gives this"
         )
         raise ValueError(msg)
+    raise_if_cut_line(dfspec, specfilename)
 
     return (
         dfspec
@@ -1219,12 +1211,12 @@ def get_vspecpol_spectrum(
     arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
 
+    timerangelow, timerangehigh = (timeavg, timeavg) if timemin is None or timemax is None else (timemin, timemax)
     check_time_range_overlaps_time_bins(
-        arr_tmid,
-        timeavg if timemin is None or timemax is None else timemin,
-        timeavg if timemin is None or timemax is None else timemax,
-        f"vspecpol_total-{angle}.out of {modelpath}",
+        arr_tmid, timerangelow, timerangehigh, f"vspecpol_total-{angle}.out of {modelpath}"
     )
+    # the vspecpol files hold only the arrival times inside the time window of vpkt.txt
+    check_time_range_inside_vpkt_window(get_vpkt_config(modelpath), timerangelow, timerangehigh)
 
     if timemin is not None and timemax is not None:
         timestepmin = arr_tmid.index(match_closest_time(timemin, arr_tmid))

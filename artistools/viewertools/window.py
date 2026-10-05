@@ -74,19 +74,35 @@ if t.TYPE_CHECKING:
     from artistools.viewertools.core import PlotValues
 
 
+def clear_estimator_caches() -> None:
+    """Clear the caches of the estimators and the NLTE populations in this process.
+
+    The estimator viewer clears only these caches, thus the caches of the other viewers stay.
+    """
+    from artistools.estimators.core import scan_parquet_file
+    from artistools.estimators.estimators_classic import read_classic_estimators_cached
+    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+    from artistools.nltepops.core import read_nltepops_cached
+
+    for cachedfunction in (
+        # a kept scan of a parquet cache also holds the metadata of its file, e.g. 8 MB for 5335 columns
+        scan_parquet_file,
+        get_runfolder_timesteps_cached,
+        read_classic_estimators_cached,
+        read_nltepops_cached,
+    ):
+        cachedfunction.cache_clear()
+
+
 def clear_output_caches() -> None:
     """Clear each cache of the files that ARTIS writes while it runs, e.g. spec.out, in this process.
 
     The files of the input of a run stay the same, e.g. input.txt and model.txt, thus their caches stay.
     """
-    from artistools.estimators.core import scan_parquet_file
-    from artistools.estimators.estimators_classic import read_classic_estimators_cached
     from artistools.misc.modelinfo import get_nu_grid_cached
-    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
     from artistools.misc.timesteps import get_deposition_cached
     from artistools.misc.timesteps import get_escaped_arrivalrange_cached
     from artistools.misc.timesteps import get_timestep_times_cached
-    from artistools.nltepops.core import read_nltepops_cached
     from artistools.packets.core import check_packets_batch_parquet_paths
     from artistools.packets.core import find_first_rank_textfiles
     from artistools.spectra.core import get_flux_contributions_cached
@@ -100,7 +116,6 @@ def clear_output_caches() -> None:
         # the file tests of the client also go, e.g. after exspec writes gamma_spec.out
         has_gamma_spec_file,
         run_has_direction_data,
-        get_runfolder_timesteps_cached,
         get_nu_grid_cached,
         get_deposition_cached,
         get_escaped_arrivalrange_cached,
@@ -112,19 +127,22 @@ def clear_output_caches() -> None:
         read_spec_cached,
         read_spec_res_cached,
         read_specpol_res_cached,
-        # a kept scan of a parquet cache also holds the metadata of its file, e.g. 8 MB for 5335 columns
-        scan_parquet_file,
-        read_classic_estimators_cached,
-        read_nltepops_cached,
     ):
         cachedfunction.cache_clear()
+    clear_estimator_caches()
 
 
 @on_model_host
-def clear_output_caches_of_run(runfolder: Path) -> None:
-    """Clear the caches of the output files on the host of a run. A local run clears the caches of this process."""
+def clear_output_caches_of_run(runfolder: Path, estimatorsonly: bool) -> None:
+    """Clear the caches of the output files on the host of a run. A local run clears the caches of this process.
+
+    With estimatorsonly, the function clears only the caches of the estimators and the NLTE populations.
+    """
     del runfolder
-    clear_output_caches()
+    if estimatorsonly:
+        clear_estimator_caches()
+    else:
+        clear_output_caches()
 
 
 def reload_runs(
@@ -132,18 +150,26 @@ def reload_runs(
     runfolders: "Sequence[Path | str]",
     on_reloaded: "Callable[[], None]",
     show_error: "Callable[[str], None]",
+    *,
+    estimatorsonly: bool = False,
+    read_runs: "Callable[[], None] | None" = None,
 ) -> None:
     """Clear the caches of the runs in the worker thread, e.g. while ARTIS writes more timesteps, then call on_reloaded.
 
     The caches of this process and of the host of a remote run hold old data, thus the function clears both. The
-    reload waits for the plot in progress, and a new plot waits for the reload. on_reloaded runs in the window thread,
-    and it reads the runs again, e.g. their timesteps.
+    reload waits for the plot in progress, and a new plot waits for the reload. read_runs reads the runs again in the
+    worker thread, because a conversion of new text files can take minutes. on_reloaded runs in the window thread.
     """
 
     def read() -> None:
-        clear_output_caches()
+        if estimatorsonly:
+            clear_estimator_caches()
+        else:
+            clear_output_caches()
         for runfolder in runfolders:
-            clear_output_caches_of_run(Path(runfolder))
+            clear_output_caches_of_run(Path(runfolder), estimatorsonly)
+        if read_runs is not None:
+            read_runs()
 
     def on_done(message: str | None) -> None:
         if message is not None:

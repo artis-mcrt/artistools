@@ -90,15 +90,23 @@ def get_cell_list(cells: "str | t.SupportsIndex | Iterable[str | t.SupportsIndex
     return [operator.index(cells)]
 
 
+def contiguous_runs(numbers: Sequence[int]) -> list[list[int]]:
+    """Split a sorted sequence of integers into the runs that have no gap."""
+    runs: list[list[int]] = []
+    for number in numbers:
+        if runs and number == runs[-1][-1] + 1:
+            runs[-1].append(number)
+        else:
+            runs.append([number])
+
+    return runs
+
+
 def format_range_list(numbers: Iterable[int]) -> str:
     """Return the text that parse_range_list reads for these numbers, e.g. "3-7,9" for [3, 4, 5, 6, 7, 9]."""
-    ranges: list[list[int]] = []
-    for number in sorted(set(numbers)):
-        if ranges and number == ranges[-1][1] + 1:
-            ranges[-1][1] = number
-        else:
-            ranges.append([number, number])
-    return ",".join(str(first) if first == last else f"{first}-{last}" for first, last in ranges)
+    return ",".join(
+        str(run[0]) if len(run) == 1 else f"{run[0]}-{run[-1]}" for run in contiguous_runs(sorted(set(numbers)))
+    )
 
 
 def arggroup(parser: argparse.ArgumentParser, title: str) -> "argparse._ArgumentGroup":  # pyright: ignore[reportPrivateUsage]
@@ -185,8 +193,6 @@ class KeepGivenPaths(argparse.Action):
         option_string: str | None = None,  # ruff:ignore[unused-method-argument]
     ) -> None:
         """Set the paths of the positional argument, unless the option form already gave some."""
-        # argparse gives the default object itself when the user writes no path. A path that the user writes is a
-        # new object, thus a path equal to the default still counts as a path that the user wrote
         userwrote = bool(values) and values is not self.default
         given = getattr(namespace, self.dest, None)
         optiongave = bool(given) and given is not self.default
@@ -304,7 +310,7 @@ def take_back_swallowed_folder(
     value can be a reference spectrum or a model folder with no input.txt, thus the user gets a warning.
     """
     given = getattr(namespace, pathaction.dest, None)
-    # the option form gives a new object, thus a path equal to the default is still a path that the user wrote
+    # only the default object counts as no value, as in KeepGivenPaths
     if given and given is not pathaction.default:
         return
 

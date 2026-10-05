@@ -24,7 +24,6 @@ from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
-from artistools.misc import drop_trailing_null_column
 from artistools.misc import exit_with_error
 from artistools.misc import get_deposition
 from artistools.misc import get_runfolders
@@ -38,7 +37,7 @@ from artistools.spectra import read_spec
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     """Write the spectra at the selected timesteps in code comparison workshop format."""
-    dfspec = drop_trailing_null_column(read_spec(modelpath)).collect()
+    dfspec = read_spec(modelpath).collect()
 
     # the header names each column of flux with its time in days
     times = [float(colname) for colname in dfspec.columns[1:]]

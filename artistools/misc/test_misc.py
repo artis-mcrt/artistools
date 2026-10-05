@@ -30,6 +30,7 @@ from artistools.estimators import plotestimators
 from artistools.estimators.core import join_cell_modeldata
 from artistools.misc import dirbins
 from artistools.misc import fileio
+from artistools.misc import modelinfo
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
 from artistools.viewertools.core import run_command_step_with_warning
@@ -3237,6 +3238,27 @@ def test_get_runfolders_gives_a_repeated_timestep_to_the_earlier_folder(tmp_path
     shutil.rmtree(job0)
     assert at.misc.get_runfolders(tmp_path, timestep=2) == (job1,)
     assert at.misc.get_runfolders(tmp_path, timesteps=[2]) == (job1,)
+
+
+def test_get_runfolders_of_one_timestep_reads_no_later_folder(tmp_path: Path) -> None:
+    """The earliest folder that holds a timestep keeps it, thus get_runfolders reads no folder after that one."""
+    for foldername, timesteps in (("job0", (0, 1, 2)), ("job1", (2, 3, 4)), ("job2", (4, 5))):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "estimators_0000.out").write_text(
+            "".join(f"timestep {timestep} modelgridindex 0\n\n" for timestep in timesteps), encoding="utf-8"
+        )
+
+    with mock.patch.object(modelinfo, "get_runfolder_timesteps", wraps=modelinfo.get_runfolder_timesteps) as mockreader:
+        assert at.misc.get_runfolders(tmp_path, timestep=2) == (tmp_path / "job0",)
+        assert [call.args[0] for call in mockreader.call_args_list] == [tmp_path / "job0"]
+
+        mockreader.reset_mock()
+        assert at.misc.get_runfolders(tmp_path, timestep=99) == ()
+        assert len(mockreader.call_args_list) == 4
+
+        mockreader.reset_mock()
+        assert at.misc.get_runfolders(tmp_path, timesteps=[4]) == (tmp_path / "job1",)
+        assert len(mockreader.call_args_list) == 4
 
 
 def test_replace_outdated_file_locks_a_descriptor_that_can_write(tmp_path: Path) -> None:

@@ -105,7 +105,6 @@ from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
 from artistools.plottools import write_residual_stats
 from artistools.spectra.core import bin_spectrum
-from artistools.spectra.core import check_time_range_inside_vpkt_window
 from artistools.spectra.core import check_time_range_overlaps_time_bins
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_xlimits_to_lambda_range
@@ -351,7 +350,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis.set_xlabel(xlabel)
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     outpath = resolve_outputfile(args.outputfile, figname)
-    save_figure(fig, outpath, format="pdf", args=args)
+    save_figure(fig, outpath, args=args)
 
 
 def plot_reference_spectrum(
@@ -818,11 +817,15 @@ def plot_artis_spectrum(
         and not is_remote_path(modelpath)
     )
     # the panel loop skips an epoch that the model does not hold, thus such an epoch needs no packets
-    timeranges = [
-        get_time_range(modelpath, timedays_range_str=timedays, clamp_to_timesteps=clamp_to_timesteps)
-        for timedays in (args.timedayslist if sharesreadofpackets else [])
-        if model_covers_timedays(modelpath, timedays, quiet=True)
-    ]
+    timeranges: list[tuple[int, int, float, float]] = (
+        [
+            get_time_range(modelpath, timedays_range_str=timedays, clamp_to_timesteps=clamp_to_timesteps)
+            for timedays in args.timedayslist
+            if model_covers_timedays(modelpath, timedays, quiet=True)
+        ]
+        if sharesreadofpackets
+        else []
+    )
     if timeranges:
         nprocs_read, dfpackets = get_packets(
             modelpath,
@@ -894,13 +897,6 @@ def plot_artis_spectrum(
         print_detail(f"modelpath: {modelpath}")
 
         check_time_range_is_valid(modelpath, timemin, timemax, args.plotinvalidpart)
-
-        if args.plotvspecpol is not None:
-            # the packets and the vspecpol files hold only the arrival times inside the time window of vpkt.txt
-            try:
-                check_time_range_inside_vpkt_window(get_vpkt_config(modelpath), timemin, timemax)
-            except ValueError as exc:
-                exit_with_error(str(exc))
 
         xmin, xmax = axis.get_xlim()
         if from_packets:

@@ -203,6 +203,18 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
     return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
+def get_artis_option(modelpath: Path | str, name: str) -> str | None:
+    """Return the value text of a constexpr option of artis/artisoptions.h in the folder of the run, or None.
+
+    A run with no such file, or a file with no such option, gives None. A commented line gives no value.
+    """
+    optionstext = get_artis_source_text(modelpath, "artisoptions.h")
+    if optionstext is None:
+        return None
+    match = re.search(rf"^\s*constexpr\s+\S+\s+{re.escape(name)}\s*=\s*([^;\n]*?)\s*;", optionstext, re.MULTILINE)
+    return None if match is None else match.group(1)
+
+
 @lru_cache(maxsize=16)
 @on_model_host
 def get_remote_model_logname(path: Path, label: str | None) -> str:
@@ -393,19 +405,21 @@ def get_runfolders(
     hold, as in scan_estimators. A folder with no earlier folder keeps its first timestep, e.g. a run whose first job
     folder is gone.
     """
+    singletimestep = timestep if timesteps is None and timestep is not None and timestep > -1 else None
     ownedtimesteps_of_folder: dict[Path, set[int]] = {}
     earliertimesteps: set[int] = set()
     for folderpath in get_run_subfolders(modelpath):
         foldertimesteps = get_runfolder_timesteps(folderpath)
+        # the earliest folder that holds a timestep keeps it, thus a later folder cannot change the result
+        if singletimestep is not None and singletimestep in foldertimesteps:
+            return (folderpath,)
         ownedtimesteps_of_folder[folderpath] = set(foldertimesteps) - earliertimesteps
         earliertimesteps.update(foldertimesteps)
 
-    if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
-        if timesteps is None:
-            # a single timestep gives the single folder that keeps it
-            return next(
-                ((folderpath,) for folderpath, owned in ownedtimesteps_of_folder.items() if timestep in owned), ()
-            )
+    if singletimestep is not None:
+        return ()
+
+    if timesteps is not None and (len(timesteps) > 0 or (timestep is not None and timestep > -1)):
         return tuple(
             folderpath for folderpath, owned in ownedtimesteps_of_folder.items() if not owned.isdisjoint(timesteps)
         )
@@ -512,41 +526,41 @@ def read_rank_outputfiles(
         msg = f"No {filefamily} files found in {modelpath}"
         raise FileNotFoundError(msg)
 
-    dfofeachfolder = [
-        pl
-        .concat(dfsoffolder, how="vertical_relaxed")
-        .rename({"ionstage": "ion_stage"}, strict=False)
-        .with_columns(
-            pl.col("modelgridindex").cast(pl.Int64),
-            pl.col("timestep").cast(pl.Int64),
-            pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
-        )
-        for folderindex, folderfilepaths in enumerate(filepathsofeachfolder)
-        if (dfsoffolder := [dfrank for filepath in folderfilepaths if (dfrank := read_rank_file(filepath)) is not None])
-    ]
+    dfofeachfolder: list[pl.DataFrame] = []
+    for folderindex, folderfilepaths in enumerate(filepathsofeachfolder):
+        dfsoffolder = [dfrank for dfrank in map(read_rank_file, folderfilepaths) if dfrank is not None]
+        if dfsoffolder:
+            dfofeachfolder.append(
+                pl
+                .concat(dfsoffolder, how="vertical_relaxed")
+                .rename({"ionstage": "ion_stage"}, strict=False)
+                .with_columns(
+                    pl.col("modelgridindex").cast(pl.Int64),
+                    pl.col("timestep").cast(pl.Int64),
+                    pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
+                )
+            )
     if not dfofeachfolder:
         msg = f"Each {filefamily} file of {modelpath} is empty"
         raise ValueError(msg)
 
-    # the first timestep of a restarted run repeats the last timestep of the folder before it.
-    # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
-    # A later folder can hold a cell that the earlier folder never wrote. Thus the pair of the
-    # timestep and the cell decides, and not the timestep alone, and the earliest folder of the pair keeps its rows
-    keycolumns = ["timestep", "modelgridindex"]
-    dfout = (
-        pl
-        .concat(dfofeachfolder, how="vertical_relaxed")
-        .filter(pl.col("folderindex") == pl.col("folderindex").min().over(keycolumns))
-        .drop("folderindex")
-    )
+    dfout = pl.concat(dfofeachfolder, how="vertical_relaxed")
 
+    # the filters act on the key columns of the deduplication below, thus they come first and make it smaller
     matchcells = [modelgridindex] if isinstance(modelgridindex, int) else modelgridindex
     if matchcells and all(mgi >= 0 for mgi in matchcells):
         dfout = dfout.filter(pl.col("modelgridindex").is_in(matchcells))
     if timestep is not None and timestep >= 0:
         dfout = dfout.filter(pl.col("timestep") == timestep)
 
-    return dfout
+    # the first timestep of a restarted run repeats the last timestep of the folder before it.
+    # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
+    # A later folder can hold a cell that the earlier folder never wrote. Thus the pair of the
+    # timestep and the cell decides, and not the timestep alone, and the earliest folder of the pair keeps its rows
+    if len(dfofeachfolder) > 1:
+        dfout = dfout.filter(pl.col("folderindex") == pl.col("folderindex").min().over(["timestep", "modelgridindex"]))
+
+    return dfout.drop("folderindex")
 
 
 def read_rank_file(filepath: Path) -> pl.DataFrame | None:

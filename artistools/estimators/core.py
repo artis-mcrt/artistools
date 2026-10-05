@@ -38,6 +38,7 @@ from artistools.misc import get_timesteps
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
+from artistools.misc.cliutils import contiguous_runs
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import mtime_matches_stamp
@@ -236,18 +237,6 @@ def split_species_suffix(colname: str) -> tuple[str, str] | None:
             return ("_".join(parts[:index]), species)
 
     return None
-
-
-def contiguous_runs(numbers: Sequence[int]) -> list[list[int]]:
-    """Split a sorted sequence of integers into the runs that have no gap."""
-    runs: list[list[int]] = []
-    for number in numbers:
-        if runs and number == runs[-1][-1] + 1:
-            runs[-1].append(number)
-        else:
-            runs.append([number])
-
-    return runs
 
 
 def summarise_ions(species: Collection[str]) -> str:
@@ -726,14 +715,16 @@ def get_estimator_textcompression(textfiles: Sequence[Path]) -> str:
     return ",".join(sorted({file.suffix if file.suffix in COMPRESSED_EXTENSIONS else "" for file in textfiles}))
 
 
-def read_unchanged_estimator_text(state: "EstimatorBatchState") -> tuple[pl.DataFrame, "EstimatorBatchState", int]:
+def read_unchanged_estimator_text(
+    state: "EstimatorBatchState",
+) -> tuple[pl.DataFrame, "EstimatorBatchState", list[Path], int]:
     """Read the estimator text of a cache, and read it again when a job changed the text during the read.
 
     sn3d can add a timestep to the text during the read. The time of the text then moves by less than the tolerance
     of the cache stamp, thus a cache with the earlier time would stay current without that timestep. The size of the
     text shows such a change. The returned state holds the form and the time of the text before the last read. The
-    third value is the size of that text. After three reads with a change, the state holds a time of zero, which makes
-    the cache stale at the next scan.
+    third value is the list of the files of that text, and the fourth value is its size. After three reads with a
+    change, the state holds a time of zero, which makes the cache stale at the next scan.
     """
     for _ in range(3):
         # the next read must not keep the large frame of the read before it in the memory
@@ -744,7 +735,8 @@ def read_unchanged_estimator_text(state: "EstimatorBatchState") -> tuple[pl.Data
         state = state._replace(
             textfile=textfile, textsource_mtime=textsource_mtime, textsource_complete=textsource_complete
         )
-        textsize = get_estimator_textsize(get_estimator_textfiles(state.runfolder, textfile))
+        textfiles = get_estimator_textfiles(state.runfolder, textfile)
+        textsize = get_estimator_textsize(textfiles)
         dfestimators = read_estimator_text(state)
         textfile_after, textsource_mtime_after, _ = get_estimator_textsource(state.runfolder, state.mpiranks)
         if (
@@ -753,14 +745,14 @@ def read_unchanged_estimator_text(state: "EstimatorBatchState") -> tuple[pl.Data
             and textsource_mtime_after is not None
             and mtime_matches_stamp(str(textsource_mtime), textsource_mtime_after)
         ):
-            return dfestimators, state, textsize
+            return dfestimators, state, textfiles, textsize
         print("the text changed during the read.", flush=True)
 
     print_warning(
         f"{state.runfolder}: the estimator text changed during each of three reads. The cache can lack the last"
         " timestep, thus artistools converts the text again at the next scan."
     )
-    return dfestimators, state._replace(textsource_mtime=0.0), textsize
+    return dfestimators, state._replace(textsource_mtime=0.0), textfiles, textsize
 
 
 def drop_incomplete_last_timestep(
@@ -843,7 +835,7 @@ def get_estimators_parquetfile(
 
         time_start = time.perf_counter()
 
-        pldf_batch, state, textsize = read_unchanged_estimator_text(state)
+        pldf_batch, state, textfiles, textsize = read_unchanged_estimator_text(state)
         if state.allranks:
             nonempty_cellcounts = get_nonempty_cellcounts(modelpath)
             if nonempty_cellcounts is not None and state.textfile is None:
@@ -869,9 +861,7 @@ def get_estimators_parquetfile(
                 # a job that still runs can add to the text after the read, within the tolerance of the cache stamp.
                 # The size of the text then shows the change, see allranks_textsource_change()
                 "textsource_size": str(textsize),
-                "textsource_compression": get_estimator_textcompression(
-                    get_estimator_textfiles(state.runfolder, state.textfile)
-                ),
+                "textsource_compression": get_estimator_textcompression(textfiles),
             }
             if state.allranks
             else {"batch_rank_min": str(min(state.mpiranks)), "batch_rank_max": str(max(state.mpiranks))}

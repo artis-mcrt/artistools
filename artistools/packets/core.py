@@ -42,6 +42,7 @@ from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import polars_error_note
+from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
@@ -279,20 +280,6 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
         dfpackets = dfpackets.with_columns(emtrue_timestep=get_timestep_expr(pl.col("trueem_time"), timebins))
 
     return dfpackets
-
-
-def raise_if_cut_line(dfpackets: pl.DataFrame, textfilepath: Path) -> None:
-    """Stop if a line of a packets text file has fewer values than the header.
-
-    ARTIS writes each value of each line, thus a missing value shows a file that is not complete. A cache from such
-    a file keeps the partial data, also after the write ends.
-    """
-    if dfpackets.null_count().sum_horizontal().item() > 0:
-        msg = (
-            f"The file {textfilepath} has a line with fewer values than the header. Possibly ARTIS or a copy"
-            " still writes the file, or the end of the file is missing"
-        )
-        raise ValueError(msg)
 
 
 def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".") -> list[str]:
@@ -900,7 +887,7 @@ def get_packets(
         )
         # ARTIS removes the escaped gamma packets before it writes the packets files, unless
         # KEEP_ESCAPED_GAMMAS is true. Thus an empty frame gives a luminosity of zero that is not correct
-        if escape_type == "TYPE_GAMMA" and pldfpackets.select(pl.len()).collect().item() == 0:
+        if escape_type == "TYPE_GAMMA" and pldfpackets.select("type_id").head(1).collect().is_empty():
             msg = (
                 f"The packets files of {modelpath} hold no escaped gamma packets. ARTIS writes them only with"
                 " KEEP_ESCAPED_GAMMAS = true in artisoptions.h, thus the packets give no gamma-ray light curve and"

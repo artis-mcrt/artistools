@@ -1,10 +1,12 @@
 import typing as t
+from pathlib import Path
+
+import pytest
 
 
 def pytest_configure(config: t.Any) -> None:
     """Clear the test output of previous runs."""
     import shutil
-    from pathlib import Path
 
     from artistools.commands import get_path
 
@@ -37,3 +39,26 @@ def pytest_configure(config: t.Any) -> None:
                     entry.unlink(missing_ok=True)
 
     outputpath.mkdir(exist_ok=True)
+
+
+@pytest.fixture
+def trajectory_copy(tmp_path: Path) -> Path:
+    """Return a copy of the folder of the test trajectories.
+
+    A read of a trajectory extracts the members of its archive beside the archive. A copy keeps the extracted files
+    out of tests/data, and each run then tests the extraction too.
+    """
+    import shutil
+
+    from artistools.commands import get_path
+
+    testdatapath = get_path("testdata")
+    assert isinstance(testdatapath, Path)
+    trajectorypath = tmp_path / "trajectories"
+    # CodSpeed runs a benchmark test more than one time in one process, with the same tmp_path
+    trajectorypath.mkdir(exist_ok=True)
+    for filepath in (testdatapath / "kilonova" / "trajectories").iterdir():
+        if filepath.is_file() and filepath.name != ".gitignore":
+            shutil.copy(filepath, trajectorypath)
+
+    return trajectorypath

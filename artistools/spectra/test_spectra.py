@@ -2413,7 +2413,7 @@ def test_read_spec_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.Capture
 
     specpath.write_text("0 10.0 11.0\n1e15 1.0 2.0\n2e15 3.0\n", encoding="utf-8")
     atspectra.read_spec_cached.cache_clear()
-    with pytest.raises(ValueError, match="a line with fewer values than the times"):
+    with pytest.raises(ValueError, match="a line with fewer values than the header"):
         atspectra.read_spec(tmp_path)
 
     fulltext = (modelpath / "spec.out").read_bytes()
@@ -2883,7 +2883,7 @@ def test_interactive_command_tokens() -> None:
         "--",
         "-folder",
     ]
-    basetokens = viewercore.remove_options(parser, tokens, interactive.CONTROLLED_DESTS)
+    basetokens = viewercore.remove_options(parser, tokens, interactive.CONTROLLED_DESTS | viewercore.WINDOW_DESTS)
     assert viewercore.make_command_tokens(basetokens, ["-t", "306", "-xmin", "3000", "-xmax", "9000"]) == [
         "my model",
         "sn2011fe_PTF11kly_20120822_norm.txt",
@@ -2959,7 +2959,8 @@ def test_interactive_valid_timesteps() -> None:
     assert viewer.grid.tstarts[viewer.grid.validtimesteps[0]] >= validstart > viewer.grid.tstarts[0]
     assert viewer.grid.tends[viewer.grid.validtimesteps[-1]] <= validend < viewer.grid.tends[-1]
     viewer.values = viewer.move_to_end(last=True)
-    assert viewer.get_selection(viewer.values) == (viewer.grid.validtimesteps[-1], viewer.grid.validtimesteps[-1])
+    lasttimestep = viewer.grid.validtimesteps[-1]
+    assert interactive.get_grid_selection(viewer.grid, viewer.values) == (lasttimestep, lasttimestep)
     assert viewer.step_time(1) is None
     assert viewer.draw() is None
 
@@ -3085,13 +3086,13 @@ def test_interactive_new_first_model_gives_the_time_grid() -> None:
     """
     classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
     viewer = make_headless_viewer([str(modelpath_classic_3d), str(classic1dpath), "-t", "4.5-5", "--interactive"])
-    first, last = viewer.get_selection(viewer.values)
+    first, last = interactive.get_grid_selection(viewer.grid, viewer.values)
     assert last - first + 1 == 4
     centre = viewer.values.centre
 
     viewer.values = interactive.set_runs(viewer, [str(classic1dpath), str(modelpath_classic_3d)], "")
     assert viewer.grid.runfolders[0] == classic1dpath
-    first, last = viewer.get_selection(viewer.values)
+    first, last = interactive.get_grid_selection(viewer.grid, viewer.values)
     assert last - first + 1 == 4
     assert viewer.values.centre == pytest.approx(centre, rel=0.05)
     assert viewer.grid.tmids[first] < centre < viewer.grid.tmids[last]
@@ -3108,7 +3109,7 @@ def test_interactive_time_grid_of_a_later_model() -> None:
     viewer.values = interactive.set_runs(viewer, spectra, str(classic1dpath))
     assert viewer.grid.gridfolder == classic1dpath
     assert viewer.values.spectra == tuple(spectra)
-    first, last = viewer.get_selection(viewer.values)
+    first, last = interactive.get_grid_selection(viewer.grid, viewer.values)
     assert last - first + 1 == 4
     for runtimes in viewer.grid.runtimes.values():
         assert runtimes.tstart <= viewer.grid.timebounds[0] < viewer.grid.timebounds[1] <= runtimes.tend
@@ -4018,13 +4019,13 @@ def test_interactive_continuous_range_keeps_the_days_of_the_snapped_range(
     viewer = interactive.SpectrumViewer(
         [str(modelpath), "-timestep", f"{firsttimestep}-{lasttimestep}", "--interactive"], mplfig.Figure()
     )
-    assert viewer.get_selection(viewer.values) == (firsttimestep, lasttimestep)
+    assert interactive.get_grid_selection(viewer.grid, viewer.values) == (firsttimestep, lasttimestep)
     continuous = viewer.clamp_time(interactive.get_continuous_values(viewer, viewer.values))
     assert continuous.notimeclamp
     grid = viewer.grid
     assert np.isclose(continuous.width, grid.tends[lasttimestep] - grid.tstarts[firsttimestep], rtol=0.01)
-    snapped = viewer.snap(continuous, *viewer.get_selection(continuous))
-    assert viewer.get_selection(snapped) == (firsttimestep, lasttimestep)
+    snapped = viewer.snap(continuous, *interactive.get_grid_selection(viewer.grid, continuous))
+    assert interactive.get_grid_selection(viewer.grid, snapped) == (firsttimestep, lasttimestep)
 
 
 def test_interactive_reload_reads_the_data_source_again(tmp_path: Path) -> None:

@@ -18,6 +18,7 @@ from matplotlib.image import AxesImage
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -45,11 +46,7 @@ def get_2D_slice_through_3d_model(
 
     The centre layer of an odd grid holds the origin, thus both sides give that layer.
     """
-    # the layer index and not the sign of the lower edge selects the side, because the edge at the origin
-    # can have a rounding error of either sign
-    loweredges = dfmodel[f"pos_{sliceaxis}_min"].unique().sort()
-    nlayers = loweredges.len()
-    sliceposition = loweredges.item(nlayers // 2 if positive_axis else (nlayers - 1) // 2)
+    sliceposition = get_middle_layer_lower_edge(dfmodel, sliceaxis, positive=positive_axis)
 
     slicedf = dfmodel.filter(pl.col(f"pos_{sliceaxis}_min") == sliceposition)
 

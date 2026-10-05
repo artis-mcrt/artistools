@@ -28,7 +28,6 @@ from artistools.estimators.core import PREFIX_GROUPS
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import scan_parquet_file
 from artistools.estimators.core import split_species_suffix
-from artistools.estimators.estimators_classic import read_classic_estimators_cached
 from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
 from artistools.estimators.plotestimators import DIRECTIVES
@@ -70,7 +69,6 @@ from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
-from artistools.nltepops import read_nltepops_cached
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
@@ -131,6 +129,7 @@ from artistools.viewertools.window import FLAG_LABELS
 from artistools.viewertools.window import get_line_readouts
 from artistools.viewertools.window import make_readout_tag
 from artistools.viewertools.window import make_timer
+from artistools.viewertools.window import reload_runs
 from artistools.viewertools.window import render_command
 from artistools.viewertools.window import start_viewer_window
 
@@ -166,11 +165,10 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "markers",
     "colorbyion",
     "figwidthscale",
-    "interactive",
 })
 
 # these options change only the output file. Save Figure in the File menu gives the file, thus the command drops them
-OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format", "show", "open"})
+OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format"})
 
 # the window reads the run in the format of --classicartis when it opens, thus a change later has no effect. The option
 # table neither shows nor offers this row, and the row stays in the command
@@ -410,33 +408,6 @@ def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunD
             f"{' '.join(get_plotitem_tokens(plotitems))}: {reason}" for plotitems, reason in skippedplotlist
         ),
     )
-
-
-def read_run_again(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
-    """Read the run again, e.g. while ARTIS writes more timesteps.
-
-    The caches of the estimators hold the files of the last read, thus they go first.
-    """
-    clear_estimator_caches(modelpath)
-    return read_run(modelpath, args, ntimesteps)
-
-
-@on_model_host
-def clear_estimator_caches(modelpath: Path) -> None:
-    """Clear the caches of the estimators and the NLTE populations. The host of a remote run clears its own caches.
-
-    An lru_cache cannot remove the entries of one run, thus each cache loses the entries of all runs. The caches of the
-    other viewers stay.
-    """
-    del modelpath
-    # a kept scan of a parquet cache also holds the metadata of its file, e.g. 8 MB for 5335 columns
-    for cachedfunction in (
-        scan_parquet_file,
-        get_runfolder_timesteps_cached,
-        read_classic_estimators_cached,
-        read_nltepops_cached,
-    ):
-        cachedfunction.cache_clear()
 
 
 def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
@@ -993,14 +964,11 @@ class EstimatorViewer:
     def get_selection_positions(self, values: ControlValues | None = None) -> tuple[int, int]:
         """Return the positions in the valid timesteps of the first and the last timestep of the time range."""
         values = values or self.values
-
-        def get_position(timestep: int) -> int:
-            return min(
-                range(len(self.run.validtimesteps)),
-                key=lambda position: abs(self.run.validtimesteps[position] - timestep),
-            )
-
-        return get_position(values.first), get_position(values.last)
+        validtimesteps = self.run.validtimesteps
+        return (
+            get_nearest_range_start(validtimesteps, values.first, 1),
+            get_nearest_range_start(validtimesteps, values.last, 1),
+        )
 
     def step_time(self, step: int) -> ControlValues | None:
         """Return the values with the time range one timestep later or earlier, or None at the end of the run."""
@@ -1649,9 +1617,7 @@ def get_snapshot_values(viewer: EstimatorViewer, xdata: float) -> ControlValues 
         validtmids = [viewer.tmids[timestep] for timestep in viewer.run.validtimesteps]
         position = get_nearest_range_start(validtmids, xdata, 1)
     elif viewer.values.x == "timestep":
-        position = min(
-            range(len(viewer.run.validtimesteps)), key=lambda pos: abs(viewer.run.validtimesteps[pos] - xdata)
-        )
+        position = get_nearest_range_start(viewer.run.validtimesteps, xdata, 1)
     else:
         return None
     snapshotx = viewer.get_default_xvariable(viewer.values.otheroptions, timegiven=True)
@@ -3048,28 +3014,27 @@ def open_window(
         add_new_subplot(make_new_subplot(text, viewer.run.estimatorcolumns, get_levelnames(words[0] if words else "")))
 
     def on_reload() -> None:
-        """Read the run again in the worker thread.
+        """Read the run again in the worker thread, and keep the window responsive.
 
-        A conversion of new text files can take minutes, thus the window stays responsive, and the terminal shows the
-        progress. The reload waits for the plot in progress, and a new plot waits for the reload. Thus a plot never
-        reads a cache that the reload replaces.
+        A conversion of new text files can take minutes, and the terminal shows the progress. The other viewers keep
+        their caches.
         """
         modelpath, args, ntimesteps = viewer.modelpath, viewer.userargs, len(viewer.tmids)
         reloadedruns: list[RunData] = []
 
-        def read() -> None:
-            reloadedruns.append(read_run_again(modelpath, args, ntimesteps))
-
-        def show_reloaded_run(message: str | None) -> None:
-            if message is not None or not reloadedruns:
-                show_error(f"The viewer cannot reload the run: {message}")
-                return
+        def show_reloaded_run() -> None:
             reload_run(viewer, reloadedruns[0])
             set_ranges()
             queue.redraw()
 
-        if not queue.run_task(lambda: run_command_step(read, quiet=False), "Reload in progress...", show_reloaded_run):
-            show_error("A reload of the run is in progress")
+        reload_runs(
+            queue,
+            [modelpath],
+            show_reloaded_run,
+            show_error,
+            estimatorsonly=True,
+            read_runs=lambda: reloadedruns.append(read_run(modelpath, args, ntimesteps)),
+        )
 
     def get_frame_readout(event: t.Any, frame: "mplax.Axes") -> str:
         if not viewer.isimage:

@@ -22,7 +22,7 @@ from artistools.lightcurve.plotlightcurve import ANALYTICEMISSIONCOLUMNS
 from artistools.lightcurve.plotlightcurve import DEPOSITIONCHOICES
 from artistools.lightcurve.plotlightcurve import DEPOSITIONCOLUMNS
 from artistools.lightcurve.plotlightcurve import draw_plot
-from artistools.lightcurve.plotlightcurve import drop_option
+from artistools.lightcurve.plotlightcurve import drop_refused_options
 from artistools.lightcurve.plotlightcurve import EMISSIONCOLUMNS
 from artistools.lightcurve.plotlightcurve import ENERGYPARTICLES
 from artistools.lightcurve.plotlightcurve import ENERGYRATEDESTS
@@ -159,11 +159,6 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "average_over_theta_angle",
     "usedegrees",
     "figwidthscale",
-    # the window shows the plot, thus the command opens no second window and no file. Copy Figure and Export Animation
-    # run the command for a temporary file, and --open opened each such file
-    "show",
-    "open",
-    "interactive",
 })
 
 APPLICATION_NAME: t.Final = "artistools plotlightcurves"
@@ -261,6 +256,24 @@ class ControlValues:
     otheroptions: OptionRows
 
 
+# for each option that a control gives and that plotlightcurves can refuse, the function that returns the values with
+# the option selected and the function that returns the values without the option
+REFUSABLE_OPTIONS: t.Final[
+    MappingProxyType[str, tuple["Callable[[ControlValues], ControlValues]", "Callable[[ControlValues], ControlValues]"]]
+] = MappingProxyType({
+    "--plotcmf": (lambda values: dc.replace(values, plotcmf=True), lambda values: dc.replace(values, plotcmf=False)),
+    "-topnucs": (
+        lambda values: dc.replace(values, topnucs=values.topnucs or 1),
+        lambda values: dc.replace(values, topnucs=0),
+    ),
+    "--use_pellet_decay_time": (
+        lambda values: dc.replace(values, usepelletdecaytime=True),
+        lambda values: dc.replace(values, usepelletdecaytime=False),
+    ),
+    "--gamma": (lambda values: dc.replace(values, gamma=True), lambda values: dc.replace(values, gamma=False)),
+})
+
+
 def get_energy_rate_columns(runfolders: "Sequence[Path]") -> frozenset[str]:
     """Return each column of deposition.out that at least one run of the plot gives.
 
@@ -319,15 +332,13 @@ def check_viewer_args(args: argparse.Namespace) -> None:
     )
 
 
-def drop_refused_options(args: argparse.Namespace) -> None:
+def drop_refused_start_options(args: argparse.Namespace) -> None:
     """Drop the options of the start command that plotlightcurves refuses together, as the controls of the window do.
 
     get_refused_options of plotlightcurves gives the rules. A change of a control drops the same options. An observer of
     the virtual packets also reads the packets, as the direction control gives it.
     """
-    for option in get_refused_options(args):
-        print_warning(f"The window drops {option.flag}: {option.reason}")
-        drop_option(args, option.flag)
+    drop_refused_options(args, get_refused_options(args), "The window drops {flag}: {reason}")
     if args.plotvspecpol:
         args.frompackets = True
 
@@ -343,16 +354,10 @@ def get_refused_reasons(viewer: "LightCurveViewer", values: ControlValues) -> di
     A control of a refused option then shows the reason, and it takes no selection. Each option takes the other values
     as they are, because a rule can refuse two options together, e.g. --plotcmf and --use_pellet_decay_time.
     """
-    selections = {
-        "--plotcmf": dc.replace(values, plotcmf=True),
-        "-topnucs": dc.replace(values, topnucs=values.topnucs or 1),
-        "--use_pellet_decay_time": dc.replace(values, usepelletdecaytime=True),
-        "--gamma": dc.replace(values, gamma=True),
-    }
     return {
         option.flag: option.reason[0].upper() + option.reason[1:]
-        for flag, selection in selections.items()
-        for option in viewer.get_refused_options(selection)
+        for flag, (select_option, _) in REFUSABLE_OPTIONS.items()
+        for option in viewer.get_refused_options(select_option(values))
         if option.flag == flag
     }
 
@@ -399,7 +404,7 @@ class LightCurveViewer:
         parser, args, startpaths, otheroptions, self.helptexts = parse_viewer_tokens(addargs, tokens, CONTROLLED_DESTS)
         # True while the viewer gave --frompackets to the observers of the virtual packets. See set_direction
         self.observerfrompackets = bool(args.plotvspecpol) and not args.frompackets
-        drop_refused_options(args)
+        drop_refused_start_options(args)
         resolve_plot_args(args)
         check_viewer_args(args)
         if args.rpkt and args.gamma:
@@ -552,14 +557,9 @@ class LightCurveViewer:
         need a control value here.
         """
         for option in self.get_refused_options(values):
-            if option.flag == "--plotcmf":
-                values = dc.replace(values, plotcmf=False)
-            elif option.flag == "-topnucs":
-                values = dc.replace(values, topnucs=0)
-            elif option.flag == "--use_pellet_decay_time":
-                values = dc.replace(values, usepelletdecaytime=False)
-            elif option.flag == "--gamma":
-                values = dc.replace(values, gamma=False)
+            if option.flag in REFUSABLE_OPTIONS:
+                _, drop_option = REFUSABLE_OPTIONS[option.flag]
+                values = drop_option(values)
         return values
 
     def set_direction(self, values: ControlValues, choice: DirectionChoice) -> ControlValues:

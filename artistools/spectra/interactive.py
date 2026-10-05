@@ -166,11 +166,6 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "fixedionlist",
     "figwidthscale",
     "gamma",
-    # the window shows the plot, thus the command opens no second window and no file. Copy Figure and Export Animation
-    # run the command for a temporary file, and --open opened each such file
-    "show",
-    "open",
-    "interactive",
 })
 
 APPLICATION_NAME: t.Final = "artistools plotspectra"
@@ -716,7 +711,9 @@ class SpectrumViewer:
             dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
             otheroptions=otheroptions,
         )
-        self.values = self.clamp_time(values) if values.notimeclamp else self.snap(values, *self.get_selection(values))
+        self.values = (
+            self.clamp_time(values) if values.notimeclamp else self.snap(values, *get_grid_selection(self.grid, values))
+        )
         if giventimedays is not None and not values.notimeclamp:
             self.values = find_time_grid(self, self.values, giventimedays)
 
@@ -792,10 +789,6 @@ class SpectrumViewer:
             directionkinds=tuple(get_direction_kinds(runfolders[0])),
             runkey=(tuple(str(path) for path in spectra), timegrid),
         )
-
-    def get_selection(self, values: ControlValues) -> tuple[int, int]:
-        """Return the first and the last valid timestep with a middle in the time range of the values."""
-        return get_grid_selection(self.grid, values)
 
     def snap(self, values: ControlValues, first: int, last: int) -> ControlValues:
         """Return the values for a time range from the middle of the first timestep to the middle of the last."""
@@ -899,10 +892,9 @@ class SpectrumViewer:
 
     def get_nearest_position(self) -> int:
         """Return the position in the valid timesteps of the timestep with the middle nearest to the time."""
-        grid, centre = self.grid, self.values.centre
-        return min(
-            range(len(grid.validtimesteps)),
-            key=lambda position: abs(grid.tmids[grid.validtimesteps[position]] - centre),
+        grid = self.grid
+        return get_nearest_range_start(
+            [grid.tmids[timestep] for timestep in grid.validtimesteps], self.values.centre, 1
         )
 
     def get_selection_positions(self) -> tuple[int, int]:
@@ -1167,10 +1159,7 @@ def get_animation_frames(viewer: "SpectrumViewer") -> "tuple[int, Callable[[int]
             for index in range(len(validtimesteps) - count)
         ]
 
-    def get_frame_tokens(index: int) -> list[str]:
-        return frames[index]
-
-    return len(frames), get_frame_tokens
+    return len(frames), frames.__getitem__
 
 
 def get_binmode(values: ControlValues) -> str:
@@ -1234,7 +1223,7 @@ def find_time_grid(viewer: SpectrumViewer, values: ControlValues, giventimedays:
         candidate = dc.replace(
             values, timegrid=path, centre=(daysmin + daysmax) / 2.0, width=daysmax - daysmin if coversseveral else 0.0
         )
-        candidate = viewer.snap(candidate, *viewer.get_selection(candidate))
+        candidate = viewer.snap(candidate, *get_grid_selection(viewer.grid, candidate))
         if get_timedays_token(viewer, candidate) == giventimedays:
             return candidate
     viewer.load_runs(values.spectra)
@@ -1248,7 +1237,7 @@ def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) ->
     grid, e.g. after a change of the order, keeps the middle and the count of timesteps of a snapped range. A
     continuous range keeps its days. Each series style option, e.g. -label, stays on its spectrum.
     """
-    first, last = viewer.get_selection(viewer.values)
+    first, last = get_grid_selection(viewer.grid, viewer.values)
     if timegrid not in spectra:
         timegrid = ""
     viewer.load_runs(spectra, timegrid)
@@ -1970,7 +1959,7 @@ def open_window(
         if modesegments.currentIndex() == 1 and not values.notimeclamp:
             apply(get_continuous_values(viewer, values))
         elif modesegments.currentIndex() == 0 and values.notimeclamp:
-            apply(viewer.snap(values, *viewer.get_selection(values)))
+            apply(viewer.snap(values, *get_grid_selection(viewer.grid, values)))
 
     def on_time(position: int) -> None:
         values = viewer.values

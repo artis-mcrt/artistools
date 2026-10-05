@@ -12,8 +12,9 @@ from types import MappingProxyType
 import polars as pl
 import polars.selectors as cs
 
-from artistools.atomic import get_composition_data
 from artistools.atomic import get_ionstring
+from artistools.atomic import get_kept_level_counts
+from artistools.atomic import get_kept_levels
 from artistools.atomic import get_levels
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -26,6 +27,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
+from artistools.misc import get_artis_option
 from artistools.misc import get_artis_source_text
 from artistools.misc import get_model_logname
 from artistools.misc import get_npts_model
@@ -279,13 +281,8 @@ def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:
 
     A run with no such file, or a file with no such option, gives None.
     """
-    optionstext = get_artis_source_text(modelpath, "artisoptions.h")
-    if optionstext is None:
-        return None
-    match = re.search(
-        r"^\s*constexpr\s+bool\s+LTEPOP_EXCITATION_USE_TJ\s*=\s*(true|false)\s*;", optionstext, flags=re.MULTILINE
-    )
-    return None if match is None else match.group(1) == "true"
+    value = get_artis_option(modelpath, "LTEPOP_EXCITATION_USE_TJ")
+    return value == "true" if value in {"true", "false"} else None
 
 
 def get_excitation_temperature_column(modelpath: Path | str, selection: str) -> str:
@@ -386,14 +383,10 @@ def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:
     adata = get_levels(
         modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms", "lower_g", "upper_g"]
     )
-    if "levels" not in adata.columns:
-        # a model that holds none of the ions gives a frame of no rows and no columns
-        return adata
 
-    dfcomposition = get_composition_data(modelpath)
-    nlevelsmax = dict(zip(dfcomposition["Z"], dfcomposition["nlevelsmax_readin"], strict=True))
+    keptlevelcount_of_element = get_kept_level_counts(modelpath)
     keptlevels = [
-        dflevels if nlevelsmax.get(Z, -1) < 0 else dflevels.head(nlevelsmax[Z])
+        get_kept_levels(dflevels, keptlevelcount_of_element.get(Z))
         for Z, dflevels in zip(adata["Z"], adata["levels"], strict=True)
     ]
     return adata.with_columns(pl.Series("levels", keptlevels, dtype=pl.Object))

@@ -224,16 +224,15 @@ def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_pat
         )
 
 
-def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(tmp_path: Path) -> None:
     """--frompackets with -plotvspecpol stops as the vspecpol branch does when the time range leaves the window.
 
     ARTIS writes a virtual packet only inside the time window of vpkt.txt. The flux of the packets took the full
-    width of the time range, thus a range that left the window gave a low flux and no message.
+    width of the time range, thus a range that left the window gave a low flux and no message. The dispatcher
+    reports the ValueError without a traceback.
     """
     modelpath = copy_vpktcontrib_model(tmp_path / "window", "1 130 140", "0")
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValueError, match="outside the virtual packets"):
         at.spectra.plot(
             argsraw=[],
             specpath=[modelpath],
@@ -243,4 +242,3 @@ def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(
             timemin=125,
             timemax=135,
         )
-    assert "outside the virtual packets" in capsys.readouterr().err

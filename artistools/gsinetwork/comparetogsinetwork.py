@@ -176,7 +176,11 @@ def get_artis_abund_sequences(
         # ARTIS gives the number density of the stable isotopes that it does not follow as <El>_otherstable. Such a
         # nucleus has the mean stable mass of the element in compositiondata.txt (decay.cc). Only such a column
         # needs the file, thus a run with no compositiondata.txt still gives every other curve
-        meannucmass_amu_of_z: dict[int, float] | None = None
+        meannucmass_amu_of_z = (
+            get_mean_stable_masses_amu(modelpath)
+            if any(col.endswith("_otherstable") for col in estimatorcolumns)
+            else None
+        )
         cellmassfrac_exprs = []
         for strspecies in arr_species:
             isnuclide = strspecies[-1].isdigit() and f"nniso_{strspecies}" in estimatorcolumns
@@ -203,8 +207,6 @@ def get_artis_abund_sequences(
             ]
             otherstablecol = f"nniso_{strspecies}_otherstable"
             if not isnuclide and otherstablecol in estimatorcolumns:
-                if meannucmass_amu_of_z is None:
-                    meannucmass_amu_of_z = get_mean_stable_masses_amu(modelpath)
                 if meannucmass_amu_of_z is None:
                     print_warning(
                         f"{modelpath} gives no compositiondata.txt, thus the {strspecies}"

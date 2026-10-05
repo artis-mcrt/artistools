@@ -2036,9 +2036,17 @@ def get_refused_average_options(args: argparse.Namespace) -> list[RefusedOption]
     return refused
 
 
-def drop_option(args: argparse.Namespace, flag: str) -> None:
-    """Give the option of a flag the value of no selection, which is 0 for -topnucs and False for a different flag."""
-    setattr(args, flag.lstrip("-"), 0 if flag == "-topnucs" else False)
+def drop_refused_options(
+    args: argparse.Namespace, refused: Iterable[RefusedOption], warningformat: str = "{reason}"
+) -> None:
+    """Give each refused option the value of no selection, and print a warning.
+
+    The value of no selection is 0 for -topnucs and False for a different flag. warningformat makes the text of the
+    warning from the fields flag and reason.
+    """
+    for option in refused:
+        print_warning(warningformat.format(flag=option.flag, reason=option.reason))
+        setattr(args, option.flag.lstrip("-"), 0 if option.flag == "-topnucs" else False)
 
 
 def check_refused_options(args: argparse.Namespace) -> None:
@@ -2047,9 +2055,7 @@ def check_refused_options(args: argparse.Namespace) -> None:
     for option in refused:
         if option.remedy is not None:
             exit_with_error(option.reason, option.remedy)
-    for option in refused:
-        print_warning(option.reason)
-        drop_option(args, option.flag)
+    drop_refused_options(args, refused)
 
 
 def resolve_plot_args(args: argparse.Namespace) -> None:

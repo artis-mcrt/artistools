@@ -2455,11 +2455,10 @@ def test_estimator_x_variable_names_the_choices(capsys: pytest.CaptureFixture[st
 
 def build_classic_restart_model(tmp_path: Path, *, secondfolderfirsttimestep: int | None) -> Path:
     """Write a classic model of two run folders, as a restarted run leaves behind."""
-    import shutil
-
     source = at.get_path("testdata") / "test-classicmode_3d"
     copy_model_inputs(tmp_path, source=source)
-    shutil.copy(source / "job0" / "output_0-0.txt", tmp_path / "output_0-0.txt")
+    # a classic log of one element and no ion, thus a row of the estimators holds no ion population
+    (tmp_path / "output_0-0.txt").write_text("[input.c]   element Z = 26\n", encoding="utf-8")
 
     # each row gives a cell index, TR, Te, W, TJ, and then the nine rates that the reader takes from the end
     rows = "\n".join(" ".join([str(mgi), "5000", "4000", "0.5", "4500", *["0.0"] * 9]) for mgi in (0, 1))
@@ -4279,7 +4278,10 @@ def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -
 
 def reread_run(viewer: interactive.EstimatorViewer) -> interactive.RunData:
     """Read the run of a viewer again, as Reload Data does in the worker thread."""
-    return interactive.read_run_again(viewer.modelpath, viewer.userargs, len(viewer.tmids))
+    from artistools.viewertools.window import clear_output_caches_of_run
+
+    clear_output_caches_of_run(viewer.modelpath, estimatorsonly=True)
+    return interactive.read_run(viewer.modelpath, viewer.userargs, len(viewer.tmids))
 
 
 def test_interactive_reload_keeps_the_time_range_inside_the_run() -> None:
@@ -4839,9 +4841,9 @@ def test_multiplot_leaves_out_a_timestep_with_no_estimators(tmp_path: Path, caps
 
 def test_classic_atomic_composition_takes_a_log_with_an_empty_line(tmp_path: Path) -> None:
     """A log can hold an empty line, e.g. where a scheduler cut it. The read of the log stopped with IndexError."""
-    from artistools.estimators.estimators_classic import get_atomic_composition
+    from artistools.atomic import get_ionstages_from_outputfile
 
-    expected = get_atomic_composition(CLASSIC1DPATH)
+    expected = get_ionstages_from_outputfile(CLASSIC1DPATH)
     assert expected
     loglines = (CLASSIC1DPATH / "output_0-0.txt").read_text(encoding="utf-8").splitlines(keepends=True)
     firstinputline = next(index for index, line in enumerate(loglines) if line.startswith("[input.c]"))
@@ -4849,7 +4851,7 @@ def test_classic_atomic_composition_takes_a_log_with_an_empty_line(tmp_path: Pat
         "".join(["\n", *loglines[: firstinputline + 1], "   \n", *loglines[firstinputline + 1 :]]), encoding="utf-8"
     )
 
-    assert get_atomic_composition(tmp_path) == expected
+    assert get_ionstages_from_outputfile(tmp_path) == expected
 
 
 def test_image_takes_the_label_font_size_and_the_x_range(tmp_path: Path) -> None:
@@ -5045,7 +5047,7 @@ def test_a_selection_that_cannot_give_a_plot_stops_with_a_message(
 
 def test_classic_ion_names_take_the_ion_stage_of_the_log(tmp_path: Path) -> None:
     """The log gives the ion stage of each ion. Co with ions from Co II took the names Co I, Co II, and Co III."""
-    from artistools.estimators.estimators_classic import get_atomic_composition
+    from artistools.atomic import get_ionstages_from_outputfile
     from artistools.estimators.estimators_classic import parse_ion_row_classic
 
     (tmp_path / "output_0-0.txt").write_text(
@@ -5056,7 +5058,7 @@ def test_classic_ion_names_take_the_ion_stage_of_the_log(tmp_path: Path) -> None
         "[input.c]     ion 3 with 1 levels (0 ionising)\n",
         encoding="utf-8",
     )
-    composition = get_atomic_composition(tmp_path)
+    composition = get_ionstages_from_outputfile(tmp_path)
     assert composition == {26: [1], 27: [2, 3]}
 
     outdict: dict[str, t.Any] = {}

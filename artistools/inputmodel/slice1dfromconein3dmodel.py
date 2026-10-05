@@ -14,6 +14,7 @@ import polars.selectors as cs
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
@@ -50,27 +51,17 @@ def get_profile_along_axis(dfmodel: pl.DataFrame, args: argparse.Namespace) -> p
     """Return the cells of the 3D model running along the chosen axis, nearest to the other two axes' origin."""
     print("Getting profile along axis")
 
-    # Pick the middle cell by index. For an odd cell count, the edges at -dx/2 and +dx/2 have the same
-    # magnitude, and the float rounding can select the wrong one of the two.
-    middle_lower_edges = {}
-    for axis in (args.other_axis1, args.other_axis2):
-        loweredges = dfmodel[f"pos_{axis}_min"].unique().sort()
-        middle_lower_edges[axis] = loweredges.item(len(loweredges) // 2)
-
-    # Each side of the slice axis takes its half of the cells by index, also the middle cell of an odd count, which
-    # holds the origin. A test of the sign of pos_min dropped that cell on the positive side, and an edge at the
-    # origin with a rounding error of either sign moved a cell to the wrong side
-    sliceedges = dfmodel[f"pos_{args.sliceaxis}_min"].unique().sort()
+    # each side of the slice axis takes the middle layer of an odd grid, because that layer holds the origin
+    sliceedge = get_middle_layer_lower_edge(dfmodel, args.sliceaxis, positive=args.positive_axis)
     sliceposmin = pl.col(f"pos_{args.sliceaxis}_min")
-    sliceaxis_cond = (
-        (sliceposmin >= sliceedges.item(len(sliceedges) // 2))
-        if args.positive_axis
-        else (sliceposmin <= sliceedges.item((len(sliceedges) - 1) // 2))
-    )
+    sliceaxis_cond = (sliceposmin >= sliceedge) if args.positive_axis else (sliceposmin <= sliceedge)
 
     return dfmodel.filter(
-        (pl.col(f"pos_{args.other_axis1}_min") == middle_lower_edges[args.other_axis1])
-        & (pl.col(f"pos_{args.other_axis2}_min") == middle_lower_edges[args.other_axis2])
+        (pl.col(f"pos_{args.other_axis1}_min") == get_middle_layer_lower_edge(dfmodel, args.other_axis1, positive=True))
+        & (
+            pl.col(f"pos_{args.other_axis2}_min")
+            == get_middle_layer_lower_edge(dfmodel, args.other_axis2, positive=True)
+        )
         & sliceaxis_cond
     )
 

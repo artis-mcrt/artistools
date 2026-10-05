@@ -14,7 +14,10 @@ from artistools.atomic.core import get_elsymbolset as get_elsymbolset
 from artistools.atomic.core import get_elsymbolslist as get_elsymbolslist
 from artistools.atomic.core import get_ion_levels as get_ion_levels
 from artistools.atomic.core import get_ion_tuple as get_ion_tuple
+from artistools.atomic.core import get_ionstages_from_outputfile as get_ionstages_from_outputfile
 from artistools.atomic.core import get_ionstring as get_ionstring
+from artistools.atomic.core import get_kept_level_counts as get_kept_level_counts
+from artistools.atomic.core import get_kept_levels as get_kept_levels
 from artistools.atomic.core import get_levels as get_levels
 from artistools.atomic.core import get_lineindices as get_lineindices
 from artistools.atomic.core import get_linelist_pldf as get_linelist_pldf

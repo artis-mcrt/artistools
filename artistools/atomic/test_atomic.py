@@ -1,5 +1,6 @@
 import math
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -286,35 +287,38 @@ def test_the_cached_photoionisation_arrays_refuse_a_write() -> None:
         arrays[0][0] = 0.0
 
 
-def test_get_composition_data_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The composition of the default model path must change with the working folder.
+def get_composition_z(folder: Path) -> int:
+    """Return the atomic number of the one element of compositiondata.txt in the folder."""
+    return int(at.get_composition_data(folder)["Z"].item())
 
-    A cache held the relative Path("."). Thus a second model in the same process got the elements of the first one.
+
+def get_ground_level_energy(folder: Path) -> float:
+    """Return the energy of the ground level of the one ion of adata.txt in the folder."""
+    return float(at.atomic.get_levels(folder)["levels"].item()["energy_ev"].item())
+
+
+@pytest.mark.parametrize(
+    ("filename", "filetext", "readvalue"),
+    [
+        ("compositiondata.txt", "1\n0\n0\n{value} 2 1 2 300 1.0 56.0\n", get_composition_z),
+        ("adata.txt", "26 1 1 7.9\n1 {value} 9.000 0 ground\n", get_ground_level_energy),
+    ],
+)
+def test_atomic_data_follows_the_working_folder(
+    filename: str, filetext: str, readvalue: Callable[[Path], float], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The atomic data of the default model path must change with the working folder.
+
+    A cache held the relative Path("."). Thus a second model in the same process got the data of the first one.
     """
-    for foldername, atomic_number in (("modelA", 26), ("modelB", 28)):
+    for foldername, value in (("modelA", 26), ("modelB", 28)):
         (tmp_path / foldername).mkdir()
-        (tmp_path / foldername / "compositiondata.txt").write_text(
-            f"1\n0\n0\n{atomic_number} 2 1 2 300 1.0 56.0\n", encoding="utf-8"
-        )
+        (tmp_path / foldername / filename).write_text(filetext.format(value=value), encoding="utf-8")
 
     monkeypatch.chdir(tmp_path / "modelA")
-    assert at.get_composition_data(Path())["Z"].to_list() == [26]
+    assert readvalue(Path()) == pytest.approx(26)
     monkeypatch.chdir(tmp_path / "modelB")
-    assert at.get_composition_data(Path())["Z"].to_list() == [28]
-
-
-def test_get_levels_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The levels of the default model path must change with the working folder."""
-    for foldername, energy_ev in (("modelA", 1.0), ("modelB", 2.0)):
-        (tmp_path / foldername).mkdir()
-        (tmp_path / foldername / "adata.txt").write_text(
-            f"26 1 1 7.9\n1 {energy_ev} 9.000 0 ground\n", encoding="utf-8"
-        )
-
-    monkeypatch.chdir(tmp_path / "modelA")
-    assert at.atomic.get_levels(Path())["levels"].item()["energy_ev"].item() == pytest.approx(1.0)
-    monkeypatch.chdir(tmp_path / "modelB")
-    assert at.atomic.get_levels(Path())["levels"].item()["energy_ev"].item() == pytest.approx(2.0)
+    assert readvalue(Path()) == pytest.approx(28)
 
 
 def test_get_ion_levels_shares_the_cache_entry_of_get_levels(tmp_path: Path) -> None:
