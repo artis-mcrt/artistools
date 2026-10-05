@@ -205,9 +205,10 @@ def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> n
                 f"No gamma_spec.out found. Using default gamma bins: mnubins {mnubins} nu_min_r {min_mev_on_h:.2f} MeV/H nu_max_r {max_mev_on_h:.2f} MeV/H"
             )
         else:
-            # the NU_MIN_R and NU_MAX_R of the artisoptions.h files of ARTIS. exspec bins the r-packets up to 5e15 Hz
+            # NU_MAX_R is 5e16 Hz in the kilonova artisoptions.h files of ARTIS and 5e15 Hz in the others. The
+            # default keeps the kilonova value, because most runs with no spec.out are kilonova runs
             nu_min_r = 1e13
-            nu_max_r = 5e15
+            nu_max_r = 5e16
             print(
                 f"No spec.out found. Using default rpkt bins: mnubins {mnubins} nu_min_r {nu_min_r:.2e} nu_max_r {nu_max_r:.2e}"
             )

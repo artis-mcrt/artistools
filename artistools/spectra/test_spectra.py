@@ -3825,14 +3825,15 @@ def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
     assert reopened.values.timegrid == models[1]
 
 
-def test_default_rpkt_bins_end_at_the_nu_max_r_of_artis(tmp_path: Path) -> None:
-    """Without spec.out, the packet bins are the exspec bins of ARTIS, from 1e13 Hz to NU_MAX_R = 5e15 Hz.
+def test_default_rpkt_bins_end_at_the_kilonova_nu_max_r_of_artis(tmp_path: Path) -> None:
+    """Without spec.out, the packet bins go from 1e13 Hz to NU_MAX_R = 5e16 Hz.
 
-    The upper bound was 5e16 Hz, thus each bin was 1.37 times wider than the exspec bins.
+    The kilonova artisoptions.h files of ARTIS give 5e16 Hz, and the others give 5e15 Hz. The default keeps
+    the kilonova value.
     """
     lambda_bin_edges = atspectra.get_exspec_lambda_bin_edges(tmp_path)
     assert len(lambda_bin_edges) == 1001
-    assert np.isclose(lambda_bin_edges[0], at.constants.c_ang_per_s / 5e15, rtol=1e-9, atol=0.0)
+    assert np.isclose(lambda_bin_edges[0], at.constants.c_ang_per_s / 5e16, rtol=1e-9, atol=0.0)
     assert np.isclose(lambda_bin_edges[-1], at.constants.c_ang_per_s / 1e13, rtol=1e-9, atol=0.0)
 
 
