@@ -20,6 +20,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import get_model_name
+from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
@@ -149,7 +150,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         parser,
         positional=True,
         multiplepaths=True,
-        default=[Path()],
+        default=[],
         helptext="Path(s) to ARTIS folders for which abundances / mass fractions shall be plotted",
     )
 
@@ -184,5 +185,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot initial abundances or mass fractions from one or more ARTIS models."""
     args = parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
+    args.modelpath = normalize_path_list(args.modelpath)
 
     make_plot(args)

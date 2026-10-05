@@ -1055,6 +1055,12 @@ def make_option_table(
         if (completer := box.completer()) is not None:
             set_search_completion(completer)
         box.setCurrentText(flag)
+        # the box of a row gives the help of its option, as each other control does
+        box.setToolTip(
+            helptexts.get(actionsbyflag[flag].dest, "")
+            if flag in actionsbyflag
+            else "Add an option of the command. The tooltip of each item gives the help of its option"
+        )
         if (lineedit := box.lineEdit()) is not None:
             lineedit.setPlaceholderText("Add an option")
 
@@ -1070,6 +1076,8 @@ def make_option_table(
         action = actionsbyflag[flag]
         kind = get_option_kind(action)
         editor = QtWidgets.QWidget()
+        # a control in the editor with no tooltip of its own shows this tooltip
+        editor.setToolTip(helptexts.get(action.dest, ""))
         layout = QtWidgets.QHBoxLayout(editor)
         layout.setContentsMargins(2, 0, 2, 0)
         if kind == "flag":

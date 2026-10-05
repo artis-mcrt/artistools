@@ -44,6 +44,7 @@ from artistools.misc import require_reference_data_file
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
 from artistools.misc import zopenpl
+from artistools.misc.fileio import polars_error_note
 from artistools.misc.remote import on_model_host
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
@@ -56,6 +57,15 @@ from artistools.spectra import get_vspecpol_data
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
+
+
+def get_filename_part(name: str) -> str:
+    """Return a band name or a model name in a form that an output file name can hold.
+
+    A filter of an instrument has a name with a folder, e.g. NOT/B. A slash in a file name names a folder that does not
+    exist, thus the slash becomes an underscore.
+    """
+    return name.replace("/", "_")
 
 
 def derived_lum_unit_cols() -> list[pl.Expr]:
@@ -98,16 +108,42 @@ def scan_lightcurve(
     """
     check_averaging_angles(average_over_phi, average_over_theta)
     print(f"Reading {filepath}")
-    lzdf = pl.scan_csv(
-        # the caller can name a file whose compressed sibling is the one that exists, thus resolve here
-        zopenpl(filepath),
-        separator=" ",
-        has_header=False,
-        new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
-        # ARTIS writes 0.0 as 0, thus 100 rows of zero at the start inferred an integer column, and a later
-        # value such as 1.5e+07 then stopped the read
-        schema_overrides={"time_days": pl.Float64, "luminosity_Lsun": pl.Float64, "luminosity_cmf_Lsun": pl.Float64},
-    )
+    # a cut compressed file stops the read, thus the error must name the file
+    with polars_error_note(Path(filepath)):
+        lzdf = pl.scan_csv(
+            # the caller can name a file whose compressed sibling is the one that exists, thus resolve here
+            zopenpl(filepath),
+            separator=" ",
+            has_header=False,
+            new_columns=["time_days", "luminosity_Lsun", "luminosity_cmf_Lsun"],
+            # ARTIS writes 0.0 as 0, thus 100 rows of zero at the start inferred an integer column, and a later
+            # value such as 1.5e+07 then stopped the read
+            schema_overrides={
+                "time_days": pl.Float64,
+                "luminosity_Lsun": pl.Float64,
+                "luminosity_cmf_Lsun": pl.Float64,
+            },
+        )
+        # sn3d writes the whole file again at each timestep, thus a run that stops during that write leaves an empty
+        # file or a cut last line. The cut number of such a line is a valid number, thus only the missing line end
+        # shows the cut
+        with zopen(filepath, encoding="utf-8") as lcfile:
+            lctext = lcfile.read()
+        if not lctext.strip():
+            msg = f"{filepath} holds no light curve. A run that stops while sn3d writes this file leaves it empty"
+            raise ValueError(msg)
+        rowcount, timecount = lzdf.select(pl.len(), pl.col("time_days").n_unique()).collect().row(0)
+    if not lctext.endswith("\n"):
+        print_warning(f"{filepath} ends with a cut line, thus the command reads the file without its last line")
+        lzdf = lzdf.head(rowcount - 1)
+        rowcount -= 1
+        timecount = lzdf.select(pl.col("time_days").n_unique()).collect().item()
+    if timecount == 0 or rowcount % timecount != 0:
+        msg = (
+            f"{filepath} holds {rowcount} rows and {timecount} different times, thus its tables have different"
+            " lengths. A cut file or a repeated time gives this"
+        )
+        raise ValueError(msg)
     lcdata = split_multitable_dataframe(lzdf)
     # a user can name the file, thus its tables must agree with the layout that the caller gives. An old
     # light_curve.out holds a second table, which repeats the times
@@ -141,6 +177,38 @@ def scan_lightcurve(
     return {dirbin: lzdf.with_columns(unitcols) for dirbin, lzdf in lcdata.items()}
 
 
+def select_timesteps_inside_vpkt_window(dftimesteps: pl.DataFrame, vpkt_config: Mapping[str, t.Any]) -> pl.DataFrame:
+    """Return the timesteps that lie fully inside the time window of the virtual packets in vpkt.txt.
+
+    ARTIS writes a virtual packet only for an arrival time inside the window. A timestep outside the window thus
+    gave zero luminosity, and a timestep across an edge gave a low luminosity. With no time override, vpkt.txt takes
+    the window of the constants of the ARTIS build. The file does not give that window, thus each timestep stays.
+    """
+    if not vpkt_config["time_limits_enabled"]:
+        return dftimesteps
+
+    windowstart, windowend = vpkt_config["initial_time"], vpkt_config["final_time"]
+    # a window can start or stop at the edge of a timestep, thus a rounded edge must not drop that timestep
+    tolerance = 1e-6 * windowend
+    dfinside = dftimesteps.filter(
+        (pl.col("tstart_days") >= windowstart - tolerance)
+        & (pl.col("tstart_days") + pl.col("twidth_days") <= windowend + tolerance)
+    )
+    if dfinside.is_empty():
+        msg = (
+            f"No selected timestep lies fully inside the time window of the virtual packets, {windowstart} to"
+            f" {windowend} days. ARTIS writes a virtual packet only inside this window of vpkt.txt"
+        )
+        raise ValueError(msg)
+    if dfinside.height < dftimesteps.height:
+        print_warning(
+            f"The light curve of the virtual packets leaves out {dftimesteps.height - dfinside.height} timesteps,"
+            f" because they are not fully inside the time window {windowstart} to {windowend} days of vpkt.txt"
+        )
+
+    return dfinside
+
+
 @on_model_host
 def get_from_packets(
     modelpath: str | Path,
@@ -169,22 +237,31 @@ def get_from_packets(
         get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
     ).collect()
 
+    vpkt_config = get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
+    if vpkt_config is not None:
+        dftimesteps_selected = select_timesteps_inside_vpkt_window(dftimesteps_selected, vpkt_config)
+
     timebinstarts_plusend = [
         *dftimesteps_selected["tstart_days"],
         dftimesteps_selected.select(pl.col("tstart_days").last() + pl.col("twidth_days").last()).item(),
     ]
 
-    vpkt_config = get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
     if directionbins_are_vpkt_observers:
         nprocs_read, dfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
         nprocs_read, dfpackets = get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        # the escape time multiplied by the Lorentz factor at the model surface gives the comoving-frame arrival time
-        dfpackets = dfpackets.with_columns(
-            t_arrive_cmf_d=pl.col("escape_time") * get_escape_surface_gamma(modelpath) / day_to_s
-        )
+        # the comoving frame needs the velocity of the model surface. A copy of a run can leave out a large model.txt,
+        # and the rest frame light curve needs no model.txt
+        try:
+            escapesurfacegamma = get_escape_surface_gamma(modelpath)
+        except FileNotFoundError:
+            print_warning(f"{modelpath} holds no model.txt, thus the light curve has no comoving frame luminosity")
+        else:
+            # the escape time multiplied by the Lorentz factor at the model surface gives the comoving-frame arrival
+            # time
+            dfpackets = dfpackets.with_columns(t_arrive_cmf_d=pl.col("escape_time") * escapesurfacegamma / day_to_s)
 
     if pellet_nucname is not None:
         atomic_number = get_atomic_number(pellet_nucname)
@@ -208,23 +285,33 @@ def get_from_packets(
         rfsums = sum_virtual_packets_by_observer(
             dfpackets,
             list(directionbins),
-            vpkt_config["nspectraperobs"],
+            vpkt_config,
             lambda obsdirindex: pl.col(f"dir{obsdirindex}_t_arrive_d"),
             timebinstarts_plusend,
         )
         cmfsums = None
     else:
-        rfsums, cmfsums = (
+        rfsums = sum_packets_by_dirbin(
+            dfpackets,
+            list(directionbins),
+            timecol,
+            timebinstarts_plusend,
+            "e_rf",
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+        )
+        cmfsums = (
             sum_packets_by_dirbin(
                 dfpackets,
                 list(directionbins),
-                valuecolumn,
+                "t_arrive_cmf_d",
                 timebinstarts_plusend,
-                weightcolumn,
+                "e_cmf",
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
             )
-            for valuecolumn, weightcolumn in ((timecol, "e_rf"), ("t_arrive_cmf_d", "e_cmf"))
+            if "t_arrive_cmf_d" in dfpackets.collect_schema().names()
+            else None
         )
 
     # the luminosity in Lsun of each timestep is the packet energy times this factor and the solid-angle factor
@@ -318,7 +405,8 @@ def generate_band_lightcurve_data(
     )
     # get_spectrum_at_time reads the angle average of bin -1 from spec.out, thus its times come from there too.
     # A vpkt run can have no specpol.out
-    if args.plotvspecpol and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file():
+    isvpktobserver = bool(args.plotvspecpol) and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file()
+    if isvpktobserver:
         print("Found vpkt.txt, using virtual packets")
         vspecdata = get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)["I"]
         timearray = vspecdata.collect_schema().names()[1:]
@@ -371,8 +459,21 @@ def generate_band_lightcurve_data(
     filterdir = Path(get_path("artistools_dir"), "data/filters/")
     filters_dict: dict[str, list[tuple[float, float]]] = {}
 
+    # the virtual packet spectra cover the wavelength range of vpkt.txt, which can be much less than the range of
+    # spec.out. A band outside that range has no flux, thus the magnitude is too faint
+    spectrumwavelengths = times_spectra[0][1]["lambda_angstroms"].to_numpy() if times_spectra else None
+    spectrumrange = (
+        (float(spectrumwavelengths.min()), float(spectrumwavelengths.max()))
+        if spectrumwavelengths is not None and spectrumwavelengths.size
+        else None
+    )
     for filter_name in bandnames:
         if filter_name == "bol":
+            if isvpktobserver and spectrumrange is not None:
+                print_warning(
+                    f"the bol band of a virtual packet observer integrates only the range of its spectrum,"
+                    f" {spectrumrange[0]:.0f} to {spectrumrange[1]:.0f} Å"
+                )
             bol_magnitudes = (
                 (time, float(lum_lsun_to_mag(np.asarray(spectrum_to_bolometric_lum(spectrum) / Lsun_to_erg_per_s))))
                 for time, spectrum in times_spectra
@@ -384,6 +485,15 @@ def generate_band_lightcurve_data(
         zeropointenergyflux, _, wavefilter, transmission, wavefilter_min, wavefilter_max = get_filter_data(
             filterdir, filter_name
         )
+        transmittedwavelengths = wavefilter[transmission > 0.0]
+        if spectrumrange is not None and (
+            transmittedwavelengths.min() < spectrumrange[0] or transmittedwavelengths.max() > spectrumrange[1]
+        ):
+            print_warning(
+                f"the spectrum covers {spectrumrange[0]:.0f} to {spectrumrange[1]:.0f} Å, and the {filter_name} filter"
+                f" transmits from {transmittedwavelengths.min():.0f} to {transmittedwavelengths.max():.0f} Å. The"
+                " magnitude has no flux from the part of the filter outside the spectrum"
+            )
 
         for time, spectrum in times_spectra:
             wavelength_from_spectrum, flux = bracket_spectrum_to_band(spectrum, wavefilter_min, wavefilter_max)
@@ -661,6 +771,21 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
     return (1.0 + z) * dist_hubble_mpc * (integral if z >= 0.0 else -integral)
 
 
+def read_reflightcurve_band_table(data_path: Path, lines: list[str], *, header_from_comment: bool) -> pl.DataFrame:
+    """Return the table of a band reference light curve file, which separates its columns with commas or with spaces.
+
+    With header_from_comment, a first line that starts with "#" gives the names of the columns.
+    """
+    if header_from_comment and lines and lines[0].lstrip().startswith("#"):
+        lines = [lines[0].lstrip().removeprefix("#"), *lines[1:]]
+    # a reference light curve file can put a comment after a value, thus cut each line at the first "#"
+    csvtext = "\n".join(line.split("#", 1)[0].rstrip() for line in lines)
+    lightcurve_data = pl.read_csv(csvtext.encode())
+    if lightcurve_data.width == 1:
+        lightcurve_data = read_wsv(data_path, comment_prefix="#", header_from_comment=header_from_comment)
+    return lightcurve_data
+
+
 def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return an observed band light curve from a reference data file, along with its metadata.
 
@@ -687,12 +812,18 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
         )
     metadata.setdefault("label", data_path.stem)
 
-    # a reference light curve file can put a comment after a value, thus cut each line at the first "#"
     with zopen(data_path, encoding="utf-8") as datafile:
-        csvtext = "\n".join(line.split("#", 1)[0].rstrip() for line in datafile.read().splitlines())
-    lightcurve_data = pl.read_csv(csvtext.encode())
-    if lightcurve_data.width == 1:
-        lightcurve_data = read_wsv(data_path, comment_prefix="#")
+        lines = datafile.read().splitlines()
+    lightcurve_data = read_reflightcurve_band_table(data_path, lines, header_from_comment=False)
+    if "magnitude" not in lightcurve_data.columns:
+        # the header line can start with "#", as in a bolometric reference light curve
+        lightcurve_data = read_reflightcurve_band_table(data_path, lines, header_from_comment=True)
+    if not {"time", "magnitude", "band"}.issubset(lightcurve_data.columns):
+        msg = (
+            f"{data_path} gives the columns {lightcurve_data.columns}, and a band light curve needs time, magnitude,"
+            " and band"
+        )
+        raise ValueError(msg)
 
     # m - M = 5log(d) - 5  Get absolute magnitude. A distance modulus from the metadata is a measured value,
     # thus the distance from the redshift applies only when the metadata gives neither

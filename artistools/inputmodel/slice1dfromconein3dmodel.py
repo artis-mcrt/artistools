@@ -57,9 +57,15 @@ def get_profile_along_axis(dfmodel: pl.DataFrame, args: argparse.Namespace) -> p
         loweredges = dfmodel[f"pos_{axis}_min"].unique().sort()
         middle_lower_edges[axis] = loweredges.item(len(loweredges) // 2)
 
-    # the innermost cell on the positive axis has pos_min == 0, thus the condition must keep it
+    # Each side of the slice axis takes its half of the cells by index, also the middle cell of an odd count, which
+    # holds the origin. A test of the sign of pos_min dropped that cell on the positive side, and an edge at the
+    # origin with a rounding error of either sign moved a cell to the wrong side
+    sliceedges = dfmodel[f"pos_{args.sliceaxis}_min"].unique().sort()
+    sliceposmin = pl.col(f"pos_{args.sliceaxis}_min")
     sliceaxis_cond = (
-        (pl.col(f"pos_{args.sliceaxis}_min") >= 0) if args.positive_axis else (pl.col(f"pos_{args.sliceaxis}_min") < 0)
+        (sliceposmin >= sliceedges.item(len(sliceedges) // 2))
+        if args.positive_axis
+        else (sliceposmin <= sliceedges.item((len(sliceedges) - 1) // 2))
     )
 
     return dfmodel.filter(
@@ -74,9 +80,11 @@ def get_cone_shells(
 ) -> list[dict[str, float]]:
     """Return the density and the normalised composition of each spherical shell of the cone.
 
-    The shells end at the first empty shell, because the outer shells have no mass.
+    The shells end at the first empty shell, because the outer shells have no mass. Ye and q are mass-weighted means
+    over the cells of a shell, as in dimension_reduce_model, and tracercount is the sum.
     """
     nshells = len(cone1d_bins) - 1
+    massweightedcols = [col for col in ("Ye", "q") if col in cone.columns]
     # a cell belongs to the shell with cone1d_bins[i] <= pos_r_mid < cone1d_bins[i + 1]
     shellindex = np.searchsorted(np.asarray(cone1d_bins), cone["pos_r_mid"].to_numpy(), side="right") - 1
     dfshells = (
@@ -86,7 +94,8 @@ def get_cone_shells(
         .group_by("shellindex")
         .agg(
             # mass of each species in each 3D grid cell, summed over the cells
-            *[(pl.col(species) * pl.col("mass_g")).sum().alias(species) for species in speciescols],
+            *[(pl.col(col) * pl.col("mass_g")).sum().alias(col) for col in [*speciescols, *massweightedcols]],
+            cs.by_name("tracercount", require_all=False).sum(),
             cellcount=pl.len(),
             total_mass_g=pl.col("mass_g").sum(),
             total_volume=pl.col("volume").sum(),
@@ -97,7 +106,7 @@ def get_cone_shells(
             how="right",
             maintain_order="right",
         )
-        .with_columns(cs.float().fill_null(0.0), cellcount=pl.col("cellcount").fill_null(0))
+        .with_columns(cs.float().fill_null(0.0), cs.integer().fill_null(0))
     )
 
     shellrows: list[dict[str, float]] = []
@@ -162,6 +171,8 @@ def get_cone_shells(
         shellrows.append(
             {"inputcellid": i + 1, "r_bin_max_boundary": cone1d_bins[i + 1], "rho": total_mass_g / total_volume}
             | composition
+            | {col: shell[col] / total_mass_g for col in massweightedcols}
+            | ({"tracercount": shell["tracercount"]} if "tracercount" in shell else {})
         )
 
     return shellrows

@@ -143,17 +143,50 @@ def parse_bool(strbool: str) -> bool:
 
 
 def fatal_config_error(config: VpktConfig) -> str | None:
-    """Return the reason ARTIS would abort on this config, or None if it would accept it."""
+    """Return the reason ARTIS would abort on this config, or None if it would accept it.
+
+    The tests follow read_vpktparameterfile() in vpkt.cc. They leave out the limits of the constants that vpkt.h
+    compiles in, because a build can have other constants. check_config() gives a warning for those.
+    """
     if config.opacityexclusions and config.opacityexclusions[0] != 0:
         return first_opacity_choice_error(config.opacityexclusions[0])
+
+    if belowminus4 := [choice for choice in config.opacityexclusions if choice < -4]:
+        return f"The opacity choice {belowminus4[0]} is below -4, which is the lowest choice that ARTIS accepts"
 
     for i, (costheta, _) in enumerate(config.directions_costheta_phi):
         if abs(costheta) > 1:
             return f"Observer direction {i} has costheta {fmtnum(costheta)}, which is outside [-1, 1]"
 
+    if config.override_tminmax and not config.vspec_tmin_in_days < config.vspec_tmax_in_days:
+        return (
+            f"The time window [{fmtnum(config.vspec_tmin_in_days)}, {fmtnum(config.vspec_tmax_in_days)}] d is empty."
+            " The start must be before the end"
+        )
+
+    # ARTIS reads the ranges of the velocity grid map only when the map is on
+    lambdaranges = config.custom_lambda_ranges + (config.vgrid_lambda_ranges if config.vgrid_on else [])
     for lambdamin, lambdamax in config.custom_lambda_ranges + config.vgrid_lambda_ranges:
         if lambdamin >= lambdamax:
             return f"Wavelength range [{fmtnum(lambdamin)}, {fmtnum(lambdamax)}] must have lambdamin < lambdamax"
+    for lambdamin, lambdamax in lambdaranges:
+        if lambdamin <= 0.0:
+            return f"Wavelength range [{fmtnum(lambdamin)}, {fmtnum(lambdamax)}] must have lambdamin > 0"
+
+    if config.override_thickcell_tau and config.cell_is_optically_thick_vpkt <= 0.0:
+        return f"The thick cell optical depth {fmtnum(config.cell_is_optically_thick_vpkt)} must be more than zero"
+
+    if config.tau_max_vpkt <= 0.0:
+        return f"tau_max_vpkt {fmtnum(config.tau_max_vpkt)} must be more than zero"
+
+    if config.vgrid_on:
+        if not config.tmin_vgrid_in_days < config.tmax_vgrid_in_days:
+            return (
+                f"The velocity grid map time range [{fmtnum(config.tmin_vgrid_in_days)},"
+                f" {fmtnum(config.tmax_vgrid_in_days)}] d is empty. The start must be before the end"
+            )
+        if not config.vgrid_lambda_ranges:
+            return "The velocity grid map needs at least one wavelength range"
 
     return None
 
@@ -360,8 +393,18 @@ def get_editable_fields() -> list[VpktField]:
             parse_lambda_ranges,
             show_pairs,
         ),
-        VpktField("override_thickcell_tau", "Skip virtual packets in optically thick cells?", parse_bool, show_bool),
-        VpktField("cell_is_optically_thick_vpkt", "Cell optical depth counted as thick", float, fmtnum),
+        VpktField(
+            "override_thickcell_tau",
+            "Set the thick cell optical depth of virtual packets here? (no takes optical_depth_is_thick of input.txt)",
+            parse_bool,
+            show_bool,
+        ),
+        VpktField(
+            "cell_is_optically_thick_vpkt",
+            "Grey optical depth above which a cell creates no virtual packets, when the value above is yes",
+            float,
+            fmtnum,
+        ),
         VpktField("tau_max_vpkt", "Maximum optical depth before a virtual packet is discarded", float, fmtnum),
         VpktField("vgrid_on", "Produce a velocity grid map?", parse_bool, show_bool),
         VpktField("tmin_vgrid_in_days", "Velocity grid map start [days]", float, fmtnum),
@@ -432,13 +475,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         dest="override_thickcell_tau",
         action="store_false",
         default=None,
-        help="Create virtual packets even in cells more optically thick than -cell-is-optically-thick",
+        help=(
+            "Take the thick cell optical depth of virtual packets from optical_depth_is_thick of input.txt, and not"
+            " from -cell-is-optically-thick. A cell above that optical depth still creates no virtual packets"
+        ),
     )
     parser.add_argument(
         "-cell-is-optically-thick",
         type=float,
         default=None,
-        help="Cell optical depth above which virtual packets are not created",
+        help="Grey optical depth above which a cell creates no virtual packets",
     )
     parser.add_argument(
         "-tau-max", type=float, default=None, help="Maximum optical depth before a virtual packet is discarded"

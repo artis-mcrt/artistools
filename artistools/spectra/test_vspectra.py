@@ -4,6 +4,7 @@ from unittest import mock
 
 import matplotlib.axes as mplax
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 import artistools as at
@@ -166,3 +167,80 @@ def test_make_virtual_spectra_summed_file(tmp_path: Path) -> None:
         assert np.array_equal(total[0], source[0]), "the time header must not be summed"
         assert np.array_equal(total[1:, 0], source[1:, 0]), "the frequency column must not be summed"
         assert np.allclose(total[1:, 1:], 2 * source[1:, 1:], rtol=1e-12, atol=0.0)
+
+
+def copy_vpktcontrib_model(modelfolder: Path, timewindowline: str, rangesline: str) -> Path:
+    """Copy the vpktcontrib model with a new time window line and a new wavelength range line in vpkt.txt."""
+    sourcedir = at.get_path("testdata") / "vpktcontrib"
+    modelfolder.mkdir()
+    for filename in ("input.txt", "vpackets_0000.out.zst", "vpackets_0001.out.zst"):
+        shutil.copy(sourcedir / filename, modelfolder / filename)
+    vpktlines = (sourcedir / "vpkt.txt").read_text(encoding="utf-8").splitlines()
+    # the fifth line is the time window override, and the sixth line is the custom wavelength range flag
+    vpktlines[4:6] = [timewindowline, rangesline]
+    (modelfolder / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
+    return modelfolder
+
+
+def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_path: Path) -> None:
+    """The spectrum of a virtual observer bins only the rows with nu_rf inside a wavelength range of vpkt.txt.
+
+    ARTIS also writes a row when only the absorption frequency is inside a range, and it keeps that row out of
+    vspecpol. The code binned each row, thus the bins outside the ranges held a biased part of the flux.
+    """
+    fullmodel = copy_vpktcontrib_model(tmp_path / "full", "0 10 30", "0")
+    rangesmodel = copy_vpktcontrib_model(tmp_path / "ranges", "1 130 140", "1 2 3500 6000 6400 7200")
+    lambda_bin_edges = np.arange(3000.0, 8000.0, 100.0)
+
+    def get_flambda(modelpath: Path) -> npt.NDArray[np.floating]:
+        dfspectrum = at.spectra.get_from_packets(
+            modelpath,
+            timelowdays=131.0,
+            timehighdays=139.0,
+            lambda_bin_edges=lambda_bin_edges,
+            directionbins_are_vpkt_observers=True,
+            directionbins=[0],
+        )[0].collect()
+        return dfspectrum["f_lambda"].to_numpy()
+
+    flambda_full = get_flambda(fullmodel)
+    flambda_ranges = get_flambda(rangesmodel)
+
+    binlow, binhigh = lambda_bin_edges[:-1], lambda_bin_edges[1:]
+    insiderange = ((binlow >= 3500.0) & (binhigh <= 6000.0)) | ((binlow >= 6400.0) & (binhigh <= 7200.0))
+    outsideranges = (binhigh <= 3500.0) | ((binlow >= 6000.0) & (binhigh <= 6400.0)) | (binlow >= 7200.0)
+    assert np.allclose(flambda_ranges[insiderange], flambda_full[insiderange], rtol=1e-12, atol=0.0)
+    assert flambda_full[outsideranges].sum() > 0.0
+    assert not flambda_ranges[outsideranges].any()
+
+    with pytest.raises(ValueError, match="outside the virtual packets, which cover 130"):
+        at.spectra.get_from_packets(
+            rangesmodel,
+            timelowdays=125.0,
+            timehighdays=135.0,
+            lambda_bin_edges=lambda_bin_edges,
+            directionbins_are_vpkt_observers=True,
+            directionbins=[0],
+        )
+
+
+def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--frompackets with -plotvspecpol stops as the vspecpol branch does when the time range leaves the window.
+
+    ARTIS writes a virtual packet only inside the time window of vpkt.txt. The flux of the packets took the full
+    width of the time range, thus a range that left the window gave a low flux and no message.
+    """
+    modelpath = copy_vpktcontrib_model(tmp_path / "window", "1 130 140", "0")
+    with pytest.raises(SystemExit):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=[modelpath],
+            outputfile=tmp_path / "vpkt_window.pdf",
+            plotvspecpol=[0],
+            frompackets=True,
+            timemin=125,
+            timemax=135,
+        )
+    assert "outside the virtual packets" in capsys.readouterr().err

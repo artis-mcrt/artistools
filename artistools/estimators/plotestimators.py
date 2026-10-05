@@ -36,12 +36,14 @@ from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.estimators.core import get_averageexcitation
 from artistools.estimators.core import get_levelpop_modeldata
+from artistools.estimators.core import get_units
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import get_variablelongunits
 from artistools.estimators.core import get_varname_formatted
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import summarise_columns
+from artistools.estimators.core import VARIABLES
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
@@ -322,12 +324,14 @@ def draw_series(
     label: str | None,
     args: argparse.Namespace,
     startfromzero: bool = False,
+    xbinwidth: float | None = None,
     **plotkwargs: t.Any,
 ) -> None:
     """Draw the average line of a series, with markers at the points or a min-max area.
 
     dflinepoints comes from get_line_points. dfpoints holds the xvalue and the yvalue of every point,
-    and --markers draws them. -xbins 0 draws those points alone, with no average line.
+    and --markers draws them. -xbins 0 draws those points alone, with no average line. xbinwidth is the width of
+    each x bin, or None for a plot with no bins.
     """
     if dflinepoints is None:
         assert dfpoints is not None
@@ -336,10 +340,11 @@ def draw_series(
         return
 
     # a binned line runs through bin middles, thus it stops half a bin short. The value holds across
-    # the bin, thus reach the outer edges and leave no gap
+    # the bin, thus reach the outer edges and leave no gap. The bins of a line can have gaps, thus the
+    # space between the last two points does not give the width of a bin
     xbinned = dflinepoints.get_column("xvalue_binned")
-    if args.xbins and xbinned.len() > 1:
-        halfwidth = (xbinned[-1] - xbinned[-2]) / 2.0
+    if xbinwidth and not xbinned.is_empty():
+        halfwidth = xbinwidth / 2.0
         dflinepoints = repeat_endpoint(dflinepoints, xbinned[-1] + halfwidth, atstart=False)
         # startfromzero takes the line further to the left, thus that end comes below
         if not startfromzero:
@@ -393,6 +398,7 @@ def draw_subplot(
     settings: SubplotSettings,
     args: argparse.Namespace,
     startfromzero: bool,
+    xbinwidth: float | None = None,
 ) -> None:
     """Apply the settings of the subplot to the axes, draw its series in order, and add the limits and the legend."""
     # set the scale and the limits before the data, so that the axis autoscales in the correct space
@@ -413,6 +419,7 @@ def draw_subplot(
             label=seriesdata.label,
             args=args,
             startfromzero=startfromzero,
+            xbinwidth=xbinwidth,
             **seriesdata.plotkwargs,
         )
 
@@ -571,8 +578,10 @@ def plot_average_excitation(
         print(f"  plotting averageexcitation {paramvalue}")
         iontuple = get_ion_tuple(paramvalue)
         if isinstance(iontuple, int):
-            msg = f"averageexcitation needs an ion such as 'Fe II', but got {paramvalue!r}"
-            raise TypeError(msg)
+            exit_with_error(
+                f"averageexcitation needs an ion, and '{paramvalue}' names an element",
+                'Give an ion, e.g. -plot averageexcitation "Fe II"',
+            )
         atomic_number, ion_stage = iontuple
 
         dfavgexc = get_averageexcitation(
@@ -614,16 +623,27 @@ def plot_levelpop(
 ) -> list[SeriesPlan]:
     """Return the series of the population of each level in params, directly or per unit velocity."""
     if seriestype == "levelpopulation_dn_on_dvel":
-        settings["ylabel"] = "dN/dV [{}km$^{{-1}}$ s]"
+        # the number for each unit of velocity, thus a lower-case v
+        settings["ylabel"] = "dN/dv [{}km$^{{-1}}$ s]"
     elif seriestype == "levelpopulation":
         settings["ylabel"] = "X$_{{i}}$ [{}/cm³]"
     else:
-        raise ValueError
+        exit_with_error(
+            f"'{seriestype}' is not a type of series",
+            "The types of a level population are levelpopulation and levelpopulation_dn_on_dvel",
+        )
 
     settings["exponentlabel"] = True
 
     # only the levelpopulation_dn_on_dvel series reads the shell velocities, which only a 1D model gives
     modeldata, t_model_init_days = get_levelpop_modeldata(Path(modelpath))
+    if seriestype == "levelpopulation_dn_on_dvel" and not {"vel_r_min_kmps", "vel_r_max_kmps"} <= set(
+        modeldata.columns
+    ):
+        exit_with_error(
+            "levelpopulation_dn_on_dvel divides by the velocity width of a shell, and only a 1D model has shells",
+            "Give levelpopulation for the number density of the level",
+        )
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
 
@@ -975,6 +995,17 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
                 suggest_names(notions[0], estimatorcolumns) or "Run with --listvariables to see the variables",
             )
 
+        # Te and W name an estimator variable and also an element. A run with no estimator files has no such column,
+        # and the plot then read tellurium in place of the temperature and drew an empty subplot
+        if absentvariables := [
+            var for var in plotvars if isinstance(var, str) and var in VARIABLES and var not in estimatorcolumns
+        ]:
+            exit_with_error(
+                f"'{absentvariables[0]}' is an estimator variable, and the estimators of this model hold no such"
+                " column",
+                "Run with --listvariables to see the variables of this model",
+            )
+
         # plotting this as a variable would cause an error, so interpret it as ion populations instead
         new_plotvars = [["populations", plotvars]]
         print(f"Rewriting plotlist {plotvars} to {new_plotvars}")
@@ -1020,6 +1051,28 @@ def get_population_normfactor(seriestype: str, poptype: str, atomic_number: int)
     if seriestype == "populations" and poptype == "totalpop":
         return pl.col("nntot")
     return pl.lit(1)
+
+
+def get_ion_series_weight(
+    seriestype: str, poptype: str, atomic_number: int, ion_stage: str | int, estimatorcolumns: Collection[str]
+) -> pl.Expr:
+    """Return the weight of a cell in the mean of an ion series, which multiplies the volume and the duration.
+
+    A fraction of the element or of all the nuclei gives the ratio of the totals of a bin when the weight is its
+    divisor. A rate for each ion, e.g. gamma_NT, takes the number of the ion as its weight, as averageexcitation does.
+    The reader gives 0 for a rate in a cell that holds none of the element, and that weight leaves such a cell out.
+    A population and a rate for each unit of volume, e.g. cooling_coll_Fe_II, take the volume alone.
+    """
+    if seriestype == "populations":
+        return get_population_normfactor(seriestype, poptype, atomic_number)
+
+    if get_units(get_column_name(seriestype, atomic_number, ion_stage)[0], latex=False) == "erg/s/cm^3":
+        return pl.lit(1.0)
+
+    popcolumn = get_column_name("populations", atomic_number, ion_stage)[0]
+    if popcolumn not in estimatorcolumns:
+        popcolumn = f"nnelement_{get_elsymbol(atomic_number)}"
+    return pl.col(popcolumn) if popcolumn in estimatorcolumns else pl.lit(1.0)
 
 
 def plot_multi_ion_series(
@@ -1102,9 +1155,10 @@ def plot_multi_ion_series(
             # the sum is over the cells of one timestep, thus it must restart at each timestep
             expr_yvals = (expr_yvals * pl.col("volume")).cum_sum().over("timestep")
 
+        weight = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
         lazyframes.append(
             estimators.select(
-                pl.col("deltavol_deltat").alias("celltsweight"),
+                (pl.col("deltavol_deltat") * weight).alias("celltsweight"),
                 # 0/0 gives NaN for a cell that holds none of the element. Make it null. The weighted
                 # mean in get_line_points then drops the cell and does not count it as zero.
                 (expr_yvals / expr_normfactor).fill_nan(None).alias("yvalue"),
@@ -1241,50 +1295,56 @@ def get_xlist(
 
         estimators = estimators.with_columns(xvalue=pl.col(xvariable))
 
+    # a row with no finite x value has no place on the axis, e.g. tmid_days_prevtimestep at the first timestep. The
+    # minimum of such a list gave a TypeError, and set_xlim refuses a NaN or an infinite limit
+    hasxvalue = pl.col("xvalue").is_not_null() & pl.col("xvalue").cast(pl.Float64).is_finite()
+    xvalues = pl.col("xvalue").filter(hasxvalue)
     # one collect gives the statistics and the unique values. The command line can give the statistics, and then the
     # query leaves them out
-    statexprs: dict[str, pl.Expr] = {}
+    statexprs: dict[str, pl.Expr] = {"rowcount": pl.len(), "noxvaluecount": (~hasxvalue).sum()}
     if args.xmin is None:
-        statexprs["xmin"] = pl.col("xvalue").min()
+        statexprs["xmin"] = xvalues.min()
     if args.xmax is None:
-        statexprs["xmax"] = pl.col("xvalue").max()
+        statexprs["xmax"] = xvalues.max()
     # a time axis gives one x value to each timestep, and get_line_points averages the cells at each x value. Automatic
     # bins would merge the timesteps of a model that has more cells than timesteps, thus only a spatial axis takes them
     if args.xbins is None and xvariable not in TIME_XVARIABLES:
-        statexprs["multiple_points_per_xvalue"] = pl.n_unique("xvalue") * pl.n_unique("timestep") < pl.len()
+        statexprs["multiple_points_per_xvalue"] = (
+            xvalues.n_unique() * pl.col("timestep").filter(hasxvalue).n_unique() < hasxvalue.sum()
+        )
     if args.xbins is None or args.xbins < 0:
         # the automatic bins need this. The full sort is small beside a round trip
-        statexprs["xdeltamax"] = pl.col("xvalue").sort().diff().max()
-    if statexprs:
-        # a column can have no value in the rows, e.g. tmid_days_prevtimestep at the first timestep
-        statexprs["rowcount"] = pl.len()
+        statexprs["xdeltamax"] = xvalues.sort().diff().max()
 
-    inxrange = pl.lit(value=True)
+    inxrange = hasxvalue
     if args.xmin is not None:
         inxrange &= pl.col("xvalue") >= args.xmin
     if args.xmax is not None:
         inxrange &= pl.col("xvalue") <= args.xmax
-    # a bin holds no row with a null or a NaN x value, and the bins are not known before the statistics
-    inbin = inxrange & pl.col("xvalue").is_not_null() & pl.col("xvalue").cast(pl.Float64).is_not_nan()
     # sort all three: mgilist[0] and timestepslist[0] name the output file and the figure title,
     # and polars' unique() does not maintain order, so an unsorted list makes those vary between runs
     uniqueexprs = {
-        f"{column}{suffix}": pl.col(column).filter(rowfilter).unique().sort().implode()
+        column: pl.col(column).filter(inxrange).unique().sort().implode()
         for column in ("xvalue", "modelgridindex", "timestep")
-        for suffix, rowfilter in (("", inxrange), ("_binned", inbin))
     }
 
     stats = estimators.select(**statexprs, **uniqueexprs).collect().row(0, named=True)
     xstats = {name: stats[name] for name in statexprs}
 
+    # a selection with no rows has no minimum and no maximum, and the bins below need both
+    if xstats["rowcount"] == 0:
+        raise NoEstimatorRowsError(get_no_rows_message(timestepslist, args))
+    if xstats["noxvaluecount"] == xstats["rowcount"]:
+        msg = f"-x {xvariable} has no value in the timesteps and the cells of the plot"
+        raise ValueError(msg)
+    if xstats["noxvaluecount"] > 0:
+        print_warning(
+            f"{xstats['noxvaluecount']} of the {xstats['rowcount']} pairs of a cell and a timestep have no finite"
+            f" value of {xvariable}, thus the plot leaves them out"
+        )
+
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
-    # a selection with no rows has no minimum and no maximum, and the bins below need both
-    if xmin is None or xmax is None:
-        if xstats.get("rowcount"):
-            msg = f"-x {xvariable} has no value in the timesteps and the cells of the plot"
-            raise ValueError(msg)
-        raise NoEstimatorRowsError(get_no_rows_message(timestepslist, args))
 
     # -xbins 0 draws the points alone. The points reach the plot only with --markers, thus this turns it on
     if args.xbins == 0:
@@ -1341,16 +1401,9 @@ def get_xlist(
     else:
         estimators = estimators.with_columns(xvalue_binned=pl.col("xvalue"))
 
-    if args.xmin is not None:
-        estimators = estimators.filter(pl.col("xvalue") >= args.xmin)
+    estimators = estimators.filter(inxrange).sort("xvalue")
 
-    if args.xmax is not None:
-        estimators = estimators.filter(pl.col("xvalue") <= args.xmax)
-
-    estimators = estimators.sort("xvalue")
-
-    suffix = "_binned" if args.xbins else ""
-    xlist, mgilist, timesteps = (stats[f"{column}{suffix}"] for column in ("xvalue", "modelgridindex", "timestep"))
+    xlist, mgilist, timesteps = (stats[column] for column in ("xvalue", "modelgridindex", "timestep"))
     if not xlist:
         raise NoEstimatorRowsError(get_no_rows_message(timestepslist, args))
 
@@ -1645,7 +1698,8 @@ def get_line_figure_data(
 
     modelname = get_model_name(modelpath)
     framefields: dict[str, int | str]
-    if len(set(mgilist)) == 1 and len(timestepslist) > 1:
+    # a snapshot of a model of one cell also holds one cell, thus only the horizontal axis tells the two plots apart
+    if xvariable in TIME_XVARIABLES and len(set(mgilist)) == 1 and len(timestepslist) > 1:
         figure_title = f"{modelname}\nCell {mgilist[0]}"
         framefields = {"cell": mgilist[0]}
     else:
@@ -1693,8 +1747,11 @@ def draw_line_figure(
     set_axis_properties(axes, args, xlimits=(*figuredata.xlimits, "-xmin"))
 
     startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
+    # get_xlist divides the range of the x axis into the bins
+    xlow, xhigh = figuredata.xlimits
+    xbinwidth = (xhigh - xlow) / args.xbins if args.xbins and xlow is not None and xhigh is not None else None
     for ax, (series, settings) in zip(axes, figuredata.subplots, strict=True):
-        draw_subplot(ax, series, settings, args, startfromzero)
+        draw_subplot(ax, series, settings, args, startfromzero, xbinwidth)
         # a stacked subplot puts its lowest label beside the highest label of the subplot below
         prune_log_ticks(ax.yaxis)
 
@@ -1789,15 +1846,18 @@ IMAGEPOPTYPES = ("absolute", "elpop", "totalpop")
 
 def get_ion_panel_columns(
     seriestype: str, ionlist: Sequence[str], poptype: str, estimatorcolumns: Collection[str]
-) -> list[tuple[pl.Expr, str, str]]:
-    """Return the expression, the column name, and the label of each ion of a series that the estimators hold."""
+) -> list[tuple[pl.Expr, str, str, pl.Expr]]:
+    """Return the expression, the column name, the label, and the weight of each ion of a series in the estimators.
+
+    get_ion_series_weight gives the weight, thus a pixel and a bin of a line take the same mean.
+    """
     if seriestype == "populations" and poptype not in IMAGEPOPTYPES:
         exit_with_error(
             f"a colour image cannot show the ion population type '{poptype}'",
             f"The types for an image are {', '.join(IMAGEPOPTYPES)}",
         )
 
-    columns: list[tuple[pl.Expr, str, str]] = []
+    columns: list[tuple[pl.Expr, str, str, pl.Expr]] = []
     for ionstr in ionlist:
         atomic_number, ion_stage = get_iontuple(ionstr)
         colname, ionlabel = get_column_name(seriestype, atomic_number, ion_stage)
@@ -1814,7 +1874,8 @@ def get_ion_panel_columns(
             else f"{ionlabel.replace('_', ' ')} {seriestype}{get_units_string(colname)}"
         )
         # 0/0 gives NaN for a cell that holds none of the element, and the mean leaves such a cell out
-        columns.append(((pl.col(colname) / normfactor).alias(colname), colname, label))
+        weight = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
+        columns.append(((pl.col(colname) / normfactor).alias(colname), colname, label, weight))
 
     return columns
 
@@ -1852,7 +1913,11 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
                 continue
             elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):
                 subplotpoptype = str(directives.get("ionpoptype", poptype))
-                columns += get_ion_panel_columns(plotitem[0], plotitem[1], subplotpoptype, estimatorcolumns)
+                for colexpr, colname, label, weight in get_ion_panel_columns(
+                    plotitem[0], plotitem[1], subplotpoptype, estimatorcolumns
+                ):
+                    columns.append((colexpr, colname, label))
+                    weights[colname] = weight
             elif plotitem[0] == "averageionisation":
                 for element in plotitem[1]:
                     elsymb = get_elsymbol(get_atomic_number(element))
@@ -2159,7 +2224,6 @@ def complete_plotitem(prefix: str, **kwargs: t.Any) -> list[str]:
     from argcomplete.completers import DirectoriesCompleter
 
     from artistools.estimators.core import PREFIX_GROUPS
-    from artistools.estimators.core import VARIABLES
 
     names = [
         *(key for key, info in VARIABLES.items() if not info.group),
@@ -2237,15 +2301,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timeminmax(parser)
 
-    parser.add_argument("--multiplot", action="store_true", help="Make multiple plots for timesteps in range")
+    parser.add_argument(
+        "--multiplot",
+        action="store_true",
+        help=(
+            "Make one snapshot for each timestep of the time range, which is the whole run when no time is given."
+            " The default PDF format puts all the snapshots in one file"
+        ),
+    )
 
     parser.add_argument("-x", default=None, help="Horizontal axis variable, e.g. velocity, timestep, or time")
 
     addarg_axislimits(
         parser,
         include_y=False,
-        xminhelp="Plot range: minimum x value, in km/s for -x velocity, in units of c otherwise",
-        xmaxhelp="Plot range: maximum x value, in km/s for -x velocity, in units of c otherwise",
+        xminhelp="Plot range: minimum x value in the units of -x, e.g. km/s for velocity, c for beta, days for time",
+        xmaxhelp="Plot range: maximum x value in the units of -x, e.g. km/s for velocity, c for beta, days for time",
     )
 
     parser.add_argument(
@@ -2445,8 +2516,8 @@ def time_is_given(args: argparse.Namespace) -> bool:
 def get_default_x(*, timegiven: bool, makegif: bool) -> str:
     """Return the x variable of a command with no -x.
 
-    A gif holds one snapshot for each timestep, thus its x axis shows a spatial variable. A time that the user gave
-    also selects one snapshot.
+    A gif and the frames of --multiplot hold one snapshot for each timestep, thus their x axis shows a spatial
+    variable. makegif is True for both of them. A time that the user gave also selects one snapshot.
     """
     return "time" if not timegiven and not makegif else "velocity"
 
@@ -2455,18 +2526,28 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     """Apply the default x variable and the default time range, and return the first and last timestep.
 
     A plot against time takes every timestep, thus a user who gives no time gets the full evolution. A
-    gif, a list of the variables, and a plot of one cell also take every timestep, whichever variable the horizontal
-    axis holds. A plot of a snapshot against a spatial variable needs a time, thus it keeps the
-    default time range.
+    gif, the frames of --multiplot, a list of the variables, and a plot of one cell also take every timestep. A plot of
+    a snapshot against a spatial variable needs a time, thus it keeps the default time range.
     """
     notimegiven = not time_is_given(args)
-    wantswholerun = args.makegif or args.listvariables or args.listnuclides
+    framepertimestep = args.makegif or args.multiplot
+    wantswholerun = framepertimestep or args.listvariables or args.listnuclides
     if notimegiven and (wantswholerun or args.modelgridindex is not None or args.x in {None, *TIME_XVARIABLES}):
         args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
 
     if args.x is None:
-        args.x = get_default_x(timegiven=not notimegiven, makegif=args.makegif)
+        args.x = get_default_x(timegiven=not notimegiven, makegif=framepertimestep)
         print(f"Setting x variable to {args.x}")
+
+    # a frame of a gif or of --multiplot holds one timestep. A plot against time draws all the timesteps in one plot,
+    # thus such a command wrote one plot with no gif, and its title named the first timestep alone
+    if framepertimestep and args.x in TIME_XVARIABLES:
+        flag = "--makegif" if args.makegif else "--multiplot"
+        exit_with_error(
+            f"{flag} gives one snapshot for each timestep, thus its horizontal axis cannot show {args.x}",
+            f"Remove -x {args.x} to plot each snapshot against the velocity, or remove {flag} for one plot"
+            f" against {args.x}",
+        )
 
     # get_time_range returns these times, thus keep what the user gave for the message below
     given_timemin, given_timemax = args.timemin, args.timemax
@@ -2654,15 +2735,20 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
 @on_model_host
 def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]:
     """Return the cells with matter on an axis or in a cone of a 3D model. The host of a remote model reads it."""
+    lzmodel, modelmeta = get_modeldata(modelpath)
+    # the selection reads the positions of the cells on three axes, which only a 3D model gives
+    if modelmeta["dimensions"] != 3:
+        exit_with_error(
+            f"-readonlymgi {args.readonlymgi} needs a 3D model, and this model has {modelmeta['dimensions']}"
+            " dimension(s)",
+            "Remove -readonlymgi to plot every cell against the velocity",
+        )
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
-        dfmodel = (
-            get_modeldata(modelpath)[0].select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min").collect()
-        )
+        dfmodel = lzmodel.select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min").collect()
         dfselectedcells = get_profile_along_axis(dfmodel, args)
     elif args.readonlymgi == "cone":
         print(f"Getting mgi lying within a cone around the {args.axis} half-axis")
-        lzmodel, modelmeta = get_modeldata(modelpath)
         # the cone selection reads the mid-point positions, which are derived columns
         lzmodel = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         dfselectedcells = make_cone(args, lzmodel, logprint=print)
@@ -3042,9 +3128,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     try:
         figures, changedargs = get_figures_data(modelpath, args, timesteps_included)
-    except NoEstimatorRowsError:
+    except NoEstimatorRowsError as exc:
         report_data_available(modelpath, classicartis=args.classicartis)
-        return
+        # the command makes no plot, thus a script that runs it must see a failure
+        exit_with_error(str(exc), "The output above names the cells and the timesteps that hold data")
 
     vars(args).update(changedargs)
 

@@ -78,6 +78,27 @@ def has_single_space_separators(line: str) -> bool:
     return not stripped or stripped.split(" ") == stripped.split()
 
 
+def read_noncomment_line(fmodel: t.IO[str], headercommentlines: list[str]) -> tuple[str, int]:
+    """Return the next line that is not a comment or empty, and the number of lines that the function read.
+
+    sn3d skips such lines before the cell count and before the time of the model. The function keeps each comment
+    in headercommentlines, except a comment that save_modeldata writes again.
+    """
+    linecount = 1
+    line = fmodel.readline()
+    # an empty string is the end of the file, and a comment can have spaces before it
+    while line.lstrip().startswith("#") or (line and not line.strip()):
+        if line.strip():
+            commentline = line.lstrip().removeprefix("#").removeprefix(" ").removesuffix("\n")
+            # save_modeldata writes these lines again, thus a kept copy gives each line two times
+            if not is_writer_comment(commentline):
+                headercommentlines.append(commentline)
+        linecount += 1
+        line = fmodel.readline()
+
+    return line, linecount
+
+
 def read_modelfile_text(
     filename: Path | str, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
@@ -94,18 +115,7 @@ def read_modelfile_text(
         ncoordgridy: int = 0
         ncoordgridz: int = 0
 
-        numheaderrows = 0
-        line = fmodel.readline()
-        # sn3d and get_npts_model also skip an empty line and a comment that has spaces before it
-        while line.lstrip().startswith("#") or (line and not line.strip()):
-            if line.strip():
-                commentline = line.lstrip().removeprefix("#").removeprefix(" ").removesuffix("\n")
-                # save_modeldata writes these lines again, thus a kept copy gives each line two times
-                if not is_writer_comment(commentline):
-                    modelmeta["headercommentlines"].append(commentline)
-            numheaderrows += 1
-            line = fmodel.readline()
-
+        line, numheaderrows = read_noncomment_line(fmodel, modelmeta["headercommentlines"])
         cellcounts = parse_npts_line(line, filename)
         if len(cellcounts) == 2:
             modelmeta["dimensions"] = 2
@@ -119,8 +129,13 @@ def read_modelfile_text(
             npts_model = cellcounts[0]
 
         modelmeta["npts_model"] = npts_model
-        modelmeta["t_model_init_days"] = float(fmodel.readline().split("#", 1)[0])
-        numheaderrows += 2
+        line, linecount = read_noncomment_line(fmodel, modelmeta["headercommentlines"])
+        numheaderrows += linecount
+        try:
+            modelmeta["t_model_init_days"] = float(line.split("#", 1)[0])
+        except ValueError:
+            msg = f"In {filename}, the line after the cell count must give the time of the model in days, not {line!r}"
+            raise ValueError(msg) from None
         t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
 
         line = fmodel.readline()
@@ -164,6 +179,10 @@ def read_modelfile_text(
         data_line_odd = fmodel.readline()
         ncols_line_odd = len(data_line_odd.split())
 
+    if ncols_line_even == 0:
+        msg = f"{filename}: found only 0 cells instead of {npts_model} expected."
+        raise ValueError(msg)
+
     if columns is None:
         columns = get_standard_columns(modelmeta["dimensions"], includenico57=True, pos_unknown=True)
         # last two abundances are optional
@@ -201,6 +220,9 @@ def read_modelfile_text(
             skip_rows=numheaderrows,
             schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
             truncate_ragged_lines=True,
+            # a header comment can hold one quotation mark, e.g. 5" model. A reader that takes it as a quote
+            # skips the rows to the next quotation mark, and the data lines then go with the header
+            quote_char=None,
         ).lazy()
 
     else:
@@ -220,20 +242,39 @@ def read_modelfile_text(
         )
 
         if ncols_line_odd > 0 and not onelinepercellformat:
-            # merge the odd rows with their correct column names
-            dfmodeloddlines = (
-                dfmodelraw[1 : npts_model * 2 : 2]
-                .select([pl.col(str(i)).alias(colname) for i, colname in enumerate(columns[ncols_line_even:])])
-                .with_row_index("inputcellid", offset=1)
-                .with_columns(pl.col("inputcellid").cast(pl.Int32))
-            )
-            assert len(dfmodel) == len(dfmodeloddlines)
-            dfmodel = dfmodel.join(dfmodeloddlines, on="inputcellid", how="left")
+            # the second line of a cell holds no cell id. It follows the first line, thus the two go side by side.
+            # An id from a count would put the second line of each cell with the next cell when the ids start at 0
+            dfmodeloddlines = dfmodelraw[1 : npts_model * 2 : 2].select([
+                pl.col(str(i)).alias(colname) for i, colname in enumerate(columns[ncols_line_even:])
+            ])
+            if dfmodeloddlines.height != dfmodel.height:
+                msg = f"{filename}: found only {dfmodeloddlines.height} cells instead of {npts_model} expected."
+                raise ValueError(msg)
+            dfmodel = pl.concat([dfmodel, dfmodeloddlines], how="horizontal")
 
         dfmodel = dfmodel.head(npts_model).with_columns(pl.exclude("inputcellid").cast(pl.Float32)).lazy()
 
     # an old model.txt names the electron fraction cellYe, and Ye is the name everywhere after this point
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
+
+    # sn3d stops for a file with too few cells. It takes the id of the first cell (0 or 1) as the start of the
+    # cell index, and each id after it must be one more than the id before it
+    cellcount, firstinputcellid, idsareconsecutive = (
+        dfmodel
+        .select(
+            cellcount=pl.len(),
+            firstinputcellid=pl.col("inputcellid").first(),
+            idsareconsecutive=(pl.col("inputcellid") == pl.col("inputcellid").first() + pl.int_range(pl.len())).all(),
+        )
+        .collect()
+        .row(0)
+    )
+    if cellcount != npts_model:
+        msg = f"{filename}: found only {cellcount} cells instead of {npts_model} expected."
+        raise ValueError(msg)
+    if firstinputcellid not in {0, 1} or not idsareconsecutive:
+        msg = f"{filename}: the inputcellid values must start at 0 or 1 and increase by one from each cell to the next"
+        raise ValueError(msg)
 
     if modelmeta["dimensions"] == 1:
         vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
@@ -248,8 +289,8 @@ def read_modelfile_text(
 
         # check pos_rcyl_mid and pos_z_mid are correct. One expression over the whole column instead of a Python
         # loop, which cost a round trip through the interpreter for every cell of the grid
-        n_r = (pl.col("inputcellid") - 1) % modelmeta["ncoordgridrcyl"]
-        n_z = (pl.col("inputcellid") - 1) // modelmeta["ncoordgridrcyl"]
+        n_r = (pl.col("inputcellid") - firstinputcellid) % modelmeta["ncoordgridrcyl"]
+        n_z = (pl.col("inputcellid") - firstinputcellid) // modelmeta["ncoordgridrcyl"]
         pos_z_min_grid = -modelmeta["vmax_cmps"] * t_model_init_seconds
 
         maxoffby = (
@@ -306,6 +347,11 @@ def read_modelfile_text(
                     raise ValueError(msg)
 
         else:
+            # sn3d reads the positions from the three columns after inputcellid, whatever names the header gives
+            # them, e.g. pos_x_mid. Thus the values below give the order of the axes and the place in the cell
+            dfmodel = dfmodel.rename(
+                dict(zip(columns[1:4], ("inputpos_a", "inputpos_b", "inputpos_c"), strict=True)), strict=False
+            )
 
             def vectormatch(vec1: Sequence[float], vec2: Sequence[float]) -> bool:
                 xclose = np.isclose(vec1[0], vec2[0], atol=wid_init_x * 0.05)
@@ -397,8 +443,9 @@ def read_modelfile_text(
 
 # The version of the parquet cache format of every text source that get_text_source_cached() reads,
 # which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
-# incorrect, e.g. a new column or a different data type in either one.
-CACHEVERSION = 1
+# incorrect, e.g. a new column or a different data type in either one. Version 2 checks the cell count and the
+# cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
+CACHEVERSION = 2
 
 
 def read_parquet_cache(
@@ -697,11 +744,15 @@ def get_modeldata(
     if not printwarningsonly:
         print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
 
+    # the reader checks that the ids start at 0 or 1 and increase by one, and it sorts the cells by id. sn3d
+    # takes the id of the first cell as the start of the cell index
+    firstinputcellid = dfmodel.select(pl.col("inputcellid").first()).collect().item()
+
     if get_elemabundances:
         abundancedata = get_initelemabundances(modelpath, printwarningsonly=printwarningsonly)
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid", maintain_order="left")
 
-    dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(1).alias("modelgridindex"))
+    dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(firstinputcellid).alias("modelgridindex"))
 
     return dfmodel, modelmeta
 
@@ -1111,12 +1162,13 @@ def save_modeldata(
             ]).iter_rows():
                 fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 # write eight significant figures, because write_artis_csv gives the same precision to
-                # the other dimensions. A negative value keeps its sign, and NaN becomes zero
+                # the other dimensions. A negative value keeps its sign, and a null or NaN becomes zero, as
+                # write_artis_csv writes a null
                 fmodel.write(
                     " ".join([
                         (
                             (f"{colvalue:d}" if isint else f"{colvalue:.7e}")
-                            if colvalue != 0 and not math.isnan(colvalue)
+                            if colvalue is not None and colvalue != 0 and not math.isnan(colvalue)
                             else ("0" if isint else "0.0")
                         )
                         for colvalue, isint in zip(abundandcustomcolvals, isintcol, strict=True)

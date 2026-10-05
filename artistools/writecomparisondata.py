@@ -328,7 +328,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.outputfile.mkdir(parents=True, exist_ok=True)
 
     for modelpath in modelpathlist:
-        model_id = Path(modelpath).name.split("_")[0]
+        # the name of "." is empty, thus the model name comes from the absolute path of the folder
+        model_id = Path(modelpath).absolute().name.split("_")[0]
         print(f"{model_id=}")
 
         allnonemptymgilist = (
@@ -340,6 +341,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         modeldata, modelmeta = get_nonempty_cells(modelpath, allnonemptymgilist)
         dfestimators = scan_cell_estimators(modelpath, selected_timesteps, modeldata, modelmeta)
+
+        # with no estimator files, the scan gives only the columns of the model, thus each select of Te stops
+        if "Te" not in dfestimators.columns:
+            exit_with_error(
+                f"{modelpath} holds no estimator files, thus the code comparison data has no temperatures",
+                "Give the folder of a run that wrote estimators_????.out files",
+            )
 
         # a timestep that the run did not write gives an empty block, thus the file promises rows that it has not
         if missingtimesteps := sorted(set(selected_timesteps) - set(dfestimators["timestep"].to_list())):

@@ -62,6 +62,7 @@ from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
+from artistools.misc import get_timestep_times
 from artistools.misc import get_vpkt_config
 from artistools.misc import KeepGivenPaths
 from artistools.misc import make_output_folder
@@ -84,6 +85,7 @@ from artistools.misc import resolve_series_styles
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import model_path_from_text
+from artistools.misc.timesteps import parse_timedays_range
 from artistools.packets import get_packets
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
@@ -103,6 +105,8 @@ from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
 from artistools.plottools import write_residual_stats
 from artistools.spectra.core import bin_spectrum
+from artistools.spectra.core import check_time_range_inside_vpkt_window
+from artistools.spectra.core import check_time_range_overlaps_time_bins
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_xlimits_to_lambda_range
 from artistools.spectra.core import convert_xunit_aliases_to_canonical
@@ -172,7 +176,7 @@ def path_is_reference_spectrum(filepath: str | Path) -> bool:
 def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
     """Warn, or raise unless allow_invalid, when the requested times fall outside the model's packet arrival range."""
     with contextlib.suppress(FileNotFoundError):
-        _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
+        timesteplast, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
         problem_messages: list[str] = []
         if validrange_start_days is validrange_end_days is None:
             problem_messages.append("The model has no valid time range days")
@@ -186,7 +190,15 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
             )
 
         if problem_messages and not allow_invalid:
-            problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")
+            lastend_days = get_timestep_times(modelpath, loc="end")[timesteplast]
+            if timemin > lastend_days:
+                # the run wrote no spectrum after its last timestep, thus --plotinvalidpart cannot give a plot
+                problem_messages.append(
+                    f"The run computed the timesteps up to {timesteplast}, which ends at {lastend_days:.2f} days,"
+                    " thus it holds no spectrum of this time"
+                )
+            else:
+                problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")
             raise ValueError("\n".join(problem_messages))
 
         for message in problem_messages:
@@ -200,13 +212,15 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
     str_xunit = xunit.label
 
     xlabel = None if args.hidexticklabels else f"{xtype} [{str_xunit}]"
+    # a frequency axis draws f_nu, and an energy axis draws the flux per energy interval
+    fluxsymbol = {"wavelength": r"F$_\lambda$", "frequency": r"F$_\nu$", "energy": "dF/dE"}[xunit.kind]
 
     ylabel = None
     if not args.hideyticklabels:
         if args.normalised:
             match args.yvariable:
                 case "flux":
-                    ylabel = r"Scaled F$_\lambda$"
+                    ylabel = f"Scaled {fluxsymbol}"
                 case "luminosity":
                     ylabel = r"Scaled Luminosity"
                 case "packetcount":
@@ -228,16 +242,14 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
             strdist = str(args.distmpc).removesuffix(".0") + " Mpc"
             match args.yvariable:
                 case "flux":
-                    if xunit.kind == "wavelength":
-                        ylabel = rf"F$_\lambda$ at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
-                    elif xunit.kind == "frequency":
-                        ylabel = rf"F$_\nu$ at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
-                    else:
-                        ylabel = f"dF/dE at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
+                    ylabel = f"{fluxsymbol} at {strdist} [{{}}erg/s/cm$^2$/{str_xunit}]"
                 case "luminosity":
                     ylabel = f"Luminosity [{{}}erg/s/{str_xunit}]"
                 case "packetcount":
                     ylabel = r"{}Monte Carlo packets per bin"
+                case "eflux" if xunit.kind == "wavelength":
+                    # get_dfspectrum_x_y_with_units gives lambda F_lambda, which is E^2 dN/dE in erg
+                    ylabel = rf"$\lambda$F$_\lambda$ at {strdist} [{{}}erg/s/cm$^2$]"
                 case "eflux":
                     ylabel = f"E$^2$ flux at {strdist} [{{}}{str_xunit}/s/cm$^2$]"
                 case "photoncount":
@@ -280,6 +292,14 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     assert timemax is not None
 
     timeavg_float = (timemin + timemax) / 2.0
+    if args.plotvspecpol:
+        # the time bins of the virtual packets differ from the timesteps, thus get_time_range does not test them
+        check_time_range_overlaps_time_bins(
+            [float(timestr) for timestr in timearray],
+            timeavg_float,
+            timeavg_float,
+            f"vspecpol_total-{angle}.out of {modelpath}",
+        )
 
     def timedistance(timestr: str) -> float:
         return abs(float(timestr) - timeavg_float)
@@ -389,7 +409,8 @@ def plot_reference_spectrum(
 
     if metadata.get("mask_telluric", False):
         print("Masking telluric regions")
-        z = metadata["z"]
+        # a spectrum with no redshift in its metadata is in the observed frame, where the telluric bands are
+        z = metadata.get("z", 0.0)
         bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
         bands_rest = [(band_low / (1 + z), band_high / (1 + z)) for band_low, band_high in bands]
 
@@ -478,8 +499,11 @@ def plot_reference_spectrum_for_args(
     )
 
 
-def plot_filter_functions(axis: mplax.Axes) -> None:
-    """Plot the UBVI filter transmission curves on a twinned y axis."""
+def plot_filter_functions(axis: mplax.Axes, xunit: str) -> None:
+    """Plot the UBVI filter transmission curves on the flux axis, at the x values of the unit xunit.
+
+    The transmission goes from 0 to 1, thus the curves agree with a spectrum of --normalised.
+    """
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
@@ -491,8 +515,9 @@ def plot_filter_functions(axis: mplax.Axes) -> None:
             skip_rows=4,
             new_columns=["lambda_angstroms", "flux_normalised"],
         )
+        # the files give the wavelength in angstroms, thus the curves take the unit of the x axis
         axis.plot(
-            filter_data["lambda_angstroms"],
+            convert_angstroms_to_unit(filter_data["lambda_angstroms"].to_numpy(), xunit),
             filter_data["flux_normalised"],
             label=filter_name,
             color=colours[index],
@@ -709,6 +734,32 @@ def plot_noise_band(
     )
 
 
+def model_covers_timedays(modelpath: Path | str, timedays: str | float | None, *, quiet: bool = False) -> bool:
+    """Return False if timedays names one time outside the timesteps of the model, and print a warning unless quiet.
+
+    A -timemin and -timemax range outside a model skips that model with a warning, thus one time does the same. A
+    range of -timedays and a text that is no number give True, because get_time_range gives their messages.
+    """
+    if timedays is None or parse_timedays_range(timedays) is not None:
+        return True
+    try:
+        timedays_float = float(str(timedays).rstrip("d"))
+    except ValueError:
+        return True
+
+    tstart_first = get_timestep_times(modelpath, loc="start")[0]
+    tend_last = get_timestep_times(modelpath, loc="end")[-1]
+    if tstart_first <= timedays_float <= tend_last:
+        return True
+
+    if not quiet:
+        print_warning(
+            f"{get_model_logname(modelpath)}: no timestep covers {timedays_float:g} days, because the timesteps cover"
+            f" {tstart_first:.2f} to {tend_last:.2f} days. The plot skips this model at this time"
+        )
+    return False
+
+
 def plot_artis_spectrum(
     axes: npt.NDArray[np.object_] | Sequence[mplax.Axes],
     modelpath: Path | str,
@@ -759,17 +810,20 @@ def plot_artis_spectrum(
     # every panel reads the packets, thus one read of the union of the time windows serves them all. Each
     # panel then applies its own arrival window to the frame in memory. The packets of a remote model stay on
     # its host, thus each panel asks the host for its own spectrum
-    if (
+    sharesreadofpackets = (
         from_packets
         and args.multispecplot
         and use_time == "arrival"
         and args.plotvspecpol is None
         and not is_remote_path(modelpath)
-    ):
-        timeranges = [
-            get_time_range(modelpath, timedays_range_str=timedays, clamp_to_timesteps=clamp_to_timesteps)
-            for timedays in args.timedayslist
-        ]
+    )
+    # the panel loop skips an epoch that the model does not hold, thus such an epoch needs no packets
+    timeranges = [
+        get_time_range(modelpath, timedays_range_str=timedays, clamp_to_timesteps=clamp_to_timesteps)
+        for timedays in (args.timedayslist if sharesreadofpackets else [])
+        if model_covers_timedays(modelpath, timedays, quiet=True)
+    ]
+    if timeranges:
         nprocs_read, dfpackets = get_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
@@ -778,21 +832,33 @@ def plot_artis_spectrum(
         )
         timelow = min(timerange[2] for timerange in timeranges)
         timehigh = max(timerange[3] for timerange in timeranges)
+        # get_from_packets reads only the time, the frequency, the energy, and the direction bin of each packet. The
+        # packets files hold about 40 columns, thus a frame of every column needs about ten times the memory
         nprocs_read_dfpackets = (
             nprocs_read,
-            dfpackets.filter(pl.col("t_arrive_d").is_between(timelow, timehigh)).collect(),
+            dfpackets
+            .filter(pl.col("t_arrive_d").is_between(timelow, timehigh))
+            .select(cs.by_name("t_arrive_d", "nu_rf", "e_rf", "dirbin", "costhetabin", "phibin", require_all=False))
+            .collect(),
         )
 
     for axindex, axis in enumerate(axes):
         assert isinstance(axis, mplax.Axes)
+        # label_dirbin_series clears the colour of each direction bin after the first one, thus each panel takes a
+        # copy. The later panels then keep the -color of the first bin, as the legend of the first panel shows
+        panelplotkwargs = dict(plotkwargs)
         # locals, not a write-back onto args: this function runs once for each model and once for
         # each axis. A range that one of them resolved would reach the next one, and get_time_range
         # then drops a model whose last timestep ends before that range
         if args.multispecplot:
+            if not model_covers_timedays(modelpath, args.timedayslist[axindex]):
+                continue
             (timestepmin, timestepmax, timemin, timemax) = get_time_range(
                 modelpath, timedays_range_str=args.timedayslist[axindex], clamp_to_timesteps=clamp_to_timesteps
             )
         else:
+            if not model_covers_timedays(modelpath, args.timedays):
+                return None
             (timestepmin, timestepmax, timemin, timemax) = get_time_range(
                 modelpath,
                 args.timestep,
@@ -829,6 +895,13 @@ def plot_artis_spectrum(
 
         check_time_range_is_valid(modelpath, timemin, timemax, args.plotinvalidpart)
 
+        if args.plotvspecpol is not None:
+            # the packets and the vspecpol files hold only the arrival times inside the time window of vpkt.txt
+            try:
+                check_time_range_inside_vpkt_window(get_vpkt_config(modelpath), timemin, timemax)
+            except ValueError as exc:
+                exit_with_error(str(exc))
+
         xmin, xmax = axis.get_xlim()
         if from_packets:
             lambda_bin_edges = get_packet_lambda_bin_edges(args, xmin, xmax, modelpath)
@@ -854,15 +927,6 @@ def plot_artis_spectrum(
 
         elif args.plotvspecpol is not None:
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
-            vpkt_config = get_vpkt_config(modelpath)
-            if vpkt_config["time_limits_enabled"] and (
-                timemin < vpkt_config["initial_time"] or timemax > vpkt_config["final_time"]
-            ):
-                exit_with_error(
-                    f"The time range {timemin:.2f} to {timemax:.2f} days is outside the virtual packets, which "
-                    f"cover {vpkt_config['initial_time']} to {vpkt_config['final_time']} days"
-                )
-
             viewinganglespectra = {
                 dirbin: get_vspecpol_spectrum(
                     modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc, timemin=timemin, timemax=timemax
@@ -935,7 +999,7 @@ def plot_artis_spectrum(
             dfspectrum = dfspectrum_dirbin
             print_dirbin_summary(dirbin, dirbin_definitions[dirbin], dfspectrum)
             linelabel_withdirbin = label_dirbin_series(
-                dirbin, directionbins, dirbin_definitions, linelabel, linelabel_is_custom, plotkwargs
+                dirbin, directionbins, dirbin_definitions, linelabel, linelabel_is_custom, panelplotkwargs
             )
 
             print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
@@ -971,7 +1035,9 @@ def plot_artis_spectrum(
                     f" The edges are {edgesource}"
                 )
                 xplot, yplot = get_histogram_xy(lower, upper, yplot)
-            (modelline,) = axis.plot(xplot, yplot, label=linelabel_withdirbin if axindex == 0 else None, **plotkwargs)
+            (modelline,) = axis.plot(
+                xplot, yplot, label=linelabel_withdirbin if axindex == 0 else None, **panelplotkwargs
+            )
             if args.shownoise:
                 print_method_line(get_noise_method_text(yvariable))
                 plot_noise_band(axis, dfspectrum, modelline.get_color(), binedges)
@@ -1012,6 +1078,35 @@ def plot_artis_spectrum(
         )
 
     return dfseriesdata
+
+
+def check_codecomparison_args(args: argparse.Namespace) -> None:
+    """Stop if the plot of a code comparison spectrum cannot follow the arguments.
+
+    The code comparison reader draws F_lambda per angstrom at 1 Mpc against the wavelength in angstroms, at the
+    time nearest to the middle of the time range.
+    """
+    if args.timemin is None or args.timemax is None:
+        exit_with_error(
+            "a code comparison spectrum needs a time, and the command gives no time range",
+            "Give -timedays (e.g. -t 300 or -t 290-320), or -timemin and -timemax",
+        )
+    unsupported = [
+        option
+        for option, given in (
+            (f"-xunit {args.xunit}", args.xunit != "angstrom"),
+            (f"-yvariable {args.yvariable}", args.yvariable != "flux"),
+            (f"-distmpc {args.distmpc}", args.distmpc != 1.0),
+            ("--normalised", args.normalised),
+        )
+        if given
+    ]
+    if unsupported:
+        exit_with_error(
+            "a code comparison spectrum is F_lambda per angstrom at 1 Mpc, and the command gives"
+            f" {' and '.join(unsupported)}",
+            f"Remove {' and '.join(unsupported)}, or remove the code comparison path",
+        )
 
 
 def make_spectrum_plot(
@@ -1066,7 +1161,9 @@ def make_spectrum_plot(
                 )
             nseriesplotted += 1
         elif path_is_codecomparison(specpath):
-            timeavg = args.timedays
+            check_codecomparison_args(args)
+            # resolve_plot_args gives both bounds. -timedays can hold a range such as 290-320, which is no number
+            timeavg = (args.timemin + args.timemax) / 2.0
             from artistools.codecomparison import plot_spectrum
 
             plot_spectrum(specpath, timedays=timeavg, axis=axes[0], **plotkwargs)
@@ -1099,7 +1196,8 @@ def make_spectrum_plot(
                     **plotkwargs,
                 )
             except FileNotFoundError as e:
-                print_warning(f"Skipping {specpath} because it does not exist ({e})")
+                # the folder can exist and still lack a file that the plot needs, thus the message names the file
+                print_warning(f"Skipping {specpath}, because a file that the plot needs does not exist: {e}")
                 continue
 
             if seriesdata is not None:
@@ -1110,8 +1208,15 @@ def make_spectrum_plot(
             if dfalldata.is_empty():
                 dfalldata = pl.DataFrame({"lambda_angstroms": seriesdata["lambda_angstroms"]})
             else:
-                # make sure we can share the same set of wavelengths for this series
-                assert np.allclose(dfalldata["lambda_angstroms"], seriesdata["lambda_angstroms"].to_numpy())
+                # one table holds one wavelength column, thus each model must give the same wavelengths
+                lambda_first = dfalldata["lambda_angstroms"].to_numpy()
+                lambda_this = seriesdata["lambda_angstroms"].to_numpy()
+                if lambda_first.shape != lambda_this.shape or not np.allclose(lambda_first, lambda_this):
+                    exit_with_error(
+                        f"--write_data gives one table, and {get_model_name(specpath)} has a different wavelength grid"
+                        " from the model before it",
+                        "Remove --write_data, or give models with the same frequency bins",
+                    )
             # the plotted x column is the same for every model, thus the table holds it once
             xcolumn = f"x_plotted_{args.xunit}"
             if xcolumn not in dfalldata.columns:
@@ -1138,7 +1243,7 @@ def make_spectrum_plot(
         if args.showfilterfunctions:
             if not args.normalised:
                 print_warning("the filter functions plot normalised values, thus give --normalised as well")
-            plot_filter_functions(axis)
+            plot_filter_functions(axis, args.xunit)
 
         # a flux of stokes I is not negative, and the y margin puts the bottom below zero. make_plot applies -ymin
         # and -ymax after this function returns, and -ymax alone keeps this bottom
@@ -1968,7 +2073,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     timegroup.add_argument(
         "--use_escapetime",
         action="store_true",
-        help="Use the time of packet escape to the surface (instead of a plane toward the observer)",
+        help=(
+            "Use the time of packet escape to the surface (instead of a plane toward the observer). Each packet then"
+            " has the weight of its comoving-frame energy, as in the comoving-frame light curve of ARTIS, and the"
+            " bin of its rest-frame frequency"
+        ),
     )
 
     timegroup.add_argument("--use_emissiontime", action="store_true", help="Use the time of packet last emission")
@@ -2121,7 +2230,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_viewingangle(parser)
 
     parser.add_argument(
-        "-stokesparam", type=str, default="I", help="Stokes param to plot. Default I. Expects I, Q or U"
+        "-stokesparam",
+        type=str,
+        default="I",
+        choices=["I", "Q", "U", "Q/I", "U/I"],
+        help=(
+            "The Stokes parameter to plot. Q and U read the virtual packet spectra of -plotvspecpol. The ratio Q/I"
+            " or U/I draws the polarisation plot from specpol.out, specpol_res.out, or the virtual packet spectra"
+        ),
     )
 
     parser.add_argument("--binflux", action="store_true", help="Bin flux over wavelength and average flux")
@@ -2548,6 +2664,18 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     args.xunit = convert_xunit_aliases_to_canonical(args.xunit)
 
     defaultxmin, defaultxmax = get_default_xlimits(args.xunit, gamma=args.gamma)
+    # a sort of a given limit and a default limit put the given limit on the other side, thus the plot showed a
+    # different range. A pair that the user gave keeps the sort
+    if args.xmin is not None and args.xmax is None and args.xmin >= defaultxmax:
+        exit_with_error(
+            f"-xmin {args.xmin:g} is not below the default upper limit {defaultxmax:g} {args.xunit}",
+            "Give -xmax as well",
+        )
+    if args.xmax is not None and args.xmin is None and args.xmax <= defaultxmin:
+        exit_with_error(
+            f"-xmax {args.xmax:g} is not above the default lower limit {defaultxmin:g} {args.xunit}",
+            "Give -xmin as well",
+        )
     if args.xmin is None:
         args.xmin = defaultxmin
     if args.xmax is None:
@@ -2606,6 +2734,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         # first epoch alone would give one name to two lists that share it
         # read the range of every model, because a model can end before a -timemin that a later model reaches
         timedaysvalues = args.timedayslist or [args.timedays]
+        # the plot skips a model that does not hold a time, as it skips a model outside a -timemin -timemax range
         resolvedranges = [
             get_time_range(
                 timesteppath,
@@ -2617,6 +2746,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
             )[2:]
             for timesteppath in timesteppaths
             for timedays in timedaysvalues
+            if model_covers_timedays(timesteppath, timedays, quiet=True)
         ]
         finiteranges = [
             (rangemin, rangemax)

@@ -67,7 +67,12 @@ class CellListAction(argparse.Action):
     ) -> None:
         """Put the cells of every occurrence of this flag in the namespace."""
         previous = getattr(namespace, self.dest, None)
-        cells = get_cell_list(str(values))
+        try:
+            cells = get_cell_list(str(values))
+        except ValueError as exc:
+            # argparse names the flag in the message of an ArgumentError, and it stops with no traceback
+            msg = f"'{values}' names no cells. Give a cell, a range such as 3-7, or a list such as 1,4,9"
+            raise argparse.ArgumentError(self, msg) from exc
         isfirstoccurrence = previous is self.default or previous is None
         setattr(namespace, self.dest, cells if isfirstoccurrence else sorted({*previous, *cells}))
 
@@ -167,8 +172,9 @@ class KeepGivenPaths(argparse.Action):
     """Store the paths of a positional argument, but keep the paths that the option form already gave.
 
     argparse applies a positional after an option that shares its dest, thus a positional that the user
-    left out would otherwise hide the value of that option. argparse gives the default of the positional
-    as the value in that case, thus a value equal to that default counts as no value at all.
+    left out would otherwise hide the value of that option. argparse gives the default object itself as the
+    value in that case, thus only that object counts as no value. A path that the user writes is a new object,
+    thus it counts also when it is equal to the default.
     """
 
     def __call__(
@@ -229,15 +235,26 @@ def warn_ignored_paths(ignored: "str | Sequence[t.Any] | None", kept: "str | Seq
     )
 
 
-def trailing_folder_count(values: list[t.Any]) -> int:
-    """Return how many values at the end of a list name an ARTIS run folder."""
+def trailing_folder_count(values: list[t.Any], *, anypath: bool = False) -> int:
+    """Return how many values at the end of a list name an ARTIS run folder, or with anypath, a path that exists.
+
+    The text alone decides for a value of the form host:path. A test of a remote folder asks its host through ssh,
+    and a label of a list option can have that form, e.g. "W7:Kasen". An empty value is a label, and not the
+    working folder.
+    """
     from artistools.misc.fileio import folder_is_artis_run
+    from artistools.misc.remote import is_remote_path
     from artistools.misc.remote import names_a_remote_folder
 
+    def names_a_folder(value: str) -> bool:
+        if is_remote_path(value):
+            return names_a_remote_folder(value)
+
+        return Path(value).exists() if anypath else folder_is_artis_run(value)
+
     count = 0
-    # a remote path counts with no test, because a test of the folder asks the host through ssh
     for value in reversed(values):
-        if not isinstance(value, str) or not (names_a_remote_folder(value) or folder_is_artis_run(value)):
+        if not isinstance(value, str) or not value or not names_a_folder(value):
             break
         count += 1
 
@@ -282,12 +299,16 @@ def take_back_swallowed_folder(
     Only the last values of an option can be folders, because the user writes the paths last. Two
     options that each end with the name of a folder are ambiguous. The command then reads them as
     the user wrote them.
+
+    A different file or folder stays with the option, because an option such as -reflightcurves reads files. Such a
+    value can be a reference spectrum or a model folder with no input.txt, thus the user gets a warning.
     """
     given = getattr(namespace, pathaction.dest, None)
-    if given and given != pathaction.default:
+    # the option form gives a new object, thus a path equal to the default is still a path that the user wrote
+    if given and given is not pathaction.default:
         return
 
-    def taken_folder_count(action: argparse.Action) -> int:
+    def taken_folder_count(action: argparse.Action, *, anypath: bool = False) -> int:
         values = getattr(namespace, action.dest, None)
         takesalist = (
             bool(action.option_strings)
@@ -301,7 +322,7 @@ def take_back_swallowed_folder(
             return 0
 
         assert isinstance(values, list)
-        count = trailing_folder_count(values)
+        count = trailing_folder_count(values, anypath=anypath)
 
         # every value of the option names a folder, thus which one is the model path is unknown
         return 0 if count == len(values) else count
@@ -311,6 +332,15 @@ def take_back_swallowed_folder(
         for action in parser._actions  # ruff:ignore[private-member-access]
         if (count := taken_folder_count(action))
     ]
+    if not candidates:
+        for action in parser._actions:  # ruff:ignore[private-member-access]
+            if count := taken_folder_count(action, anypath=True):
+                flag = action.option_strings[0]
+                paths = ", ".join(f"'{value}'" for value in getattr(namespace, action.dest)[-count:])
+                print_warning(
+                    f"{flag} read {paths} as values, and each one names a file or a folder. To read them as paths,"
+                    f" write them in front of {flag}"
+                )
     if len(candidates) != 1:
         return
 
@@ -744,6 +774,14 @@ class KeepDefaultColors(argparse.Action):
     thus an entry SERIES_DEFAULT takes the default colour of its place in the list.
     """
 
+    def with_default_colours(self, colours: "Sequence[t.Any]") -> list[t.Any]:
+        """Return the colours with the default colour of its series for each entry SERIES_DEFAULT."""
+        defaults: Sequence[str] = self.default or []
+        return [
+            defaults[index] if colour is None and index < len(defaults) else colour
+            for index, colour in enumerate(colours)
+        ]
+
     def __call__(
         self,
         parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
@@ -752,16 +790,8 @@ class KeepDefaultColors(argparse.Action):
         option_string: str | None = None,  # ruff:ignore[unused-method-argument]
     ) -> None:
         """Set the colours, and give each entry SERIES_DEFAULT the default colour of its series."""
-        defaults: Sequence[str] = self.default or []
         colours: list[t.Any] = [] if values is None else [values] if isinstance(values, str) else list(values)
-        setattr(
-            namespace,
-            self.dest,
-            [
-                defaults[index] if colour is None and index < len(defaults) else colour
-                for index, colour in enumerate(colours)
-            ],
-        )
+        setattr(namespace, self.dest, self.with_default_colours(colours))
 
 
 def color_arg(value: str) -> str:
@@ -895,8 +925,8 @@ def addarg_action(parser: argparse.ArgumentParser, choices: Sequence[str], helpt
     """Add the positional action argument that selects what the subcommand does."""
     parser.add_argument(
         "action",
-        # optional so that main(argsraw=[], action=...) works, since parse_cli_args ignores
-        # argsraw as soon as any keyword argument is given
+        # optional so that main(argsraw=[], action=...) works, because the keyword gives the default
+        # and the command line then holds no action
         nargs="?",
         default=None,
         choices=choices,
@@ -1167,7 +1197,7 @@ def check_time_selection(
     arguments, thus a second call for a second model path would read its own output as a second range.
 
     The test reads the arguments that the user wrote, because a value can be the same as the default of
-    the parser: plottransitions gives -timestep a default of 70, and a user can also type that value.
+    the parser: plottransitions gives -timestep a default of "last", and a user can also type that value.
 
     set_args_from_dict makes a keyword argument of the API into a default of the parser, thus a value
     that differs from the default counts, and so does a name that kwargs holds. A name that carries
@@ -1234,8 +1264,8 @@ def parse_cli_args(
 ) -> argparse.Namespace:
     """Return args if the caller parsed them, or else parse the command line with the options of addargsfunc.
 
-    The keyword arguments replace the parser defaults. If the caller gives a keyword argument, the function ignores
-    the command line and argsraw.
+    The keyword arguments replace the parser defaults, and argsraw then gives the other arguments as text. A call
+    that gives keyword arguments and no argsraw reads no command line, because sys.argv holds a different command.
     """
     if args is not None:
         return args
@@ -1246,8 +1276,9 @@ def parse_cli_args(
     addarg_quiet(parser)
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
-    args = parser.parse_args([] if kwargs else separate_trailing_folders(argsraw))
-    check_time_selection(parser, args, [] if kwargs else argsraw, kwargs)
+    tokens = [] if argsraw is None and kwargs else argsraw
+    args = parser.parse_args(separate_trailing_folders(tokens))
+    check_time_selection(parser, args, tokens, kwargs)
     resolve_output_argument(args)
     resolve_yscale(args)
 
@@ -1341,12 +1372,14 @@ def resolve_frameset_paths(
     folder. Without that name the combining step names it, as merge_pdf_files takes the names of the
     first frame and the last one.
 
-    A -o path that has a file extension names the product itself, thus the frames go in the folder that
-    holds it. A -o path with no file extension names a folder. This makes that folder either way.
+    For a run that combines its frames, a -o path that has a file extension names the product itself, thus the
+    frames go in the folder that holds it. A -o path with no file extension names a folder. This makes that folder
+    either way. A -o name that holds a field, e.g. frame_{timestep}.pdf, names each frame and never the product.
+    A run that does not combine its frames makes no product, thus its -o path names the frame.
     """
     givenpath = Path(outputfile) if outputfile else Path()
 
-    if (combines or productname is not None) and givenpath.suffix and not givenpath.is_dir():
+    if combines and givenpath.suffix and not givenpath.is_dir() and "{" not in givenpath.name:
         # the folder of the product can carry a suffix of its own, e.g. results.v1, thus make it here
         # and let resolve_outputfile read it as a folder and not as the name of one frame
         givenpath.parent.mkdir(parents=True, exist_ok=True)
@@ -1373,6 +1406,23 @@ def takes_a_list(action: argparse.Action) -> bool:
     return action.nargs in {"*", "+"} or (isinstance(action.nargs, int) and action.nargs > 1)
 
 
+def convert_keyword_items(arg: argparse.Action, items: "Sequence[t.Any]") -> list[t.Any]:
+    """Return the items of a list keyword after the type of the argument, as the command line converts them.
+
+    argparse converts a default of one text alone, thus label=["default", "B"] kept the text "default". An item that
+    is not a text comes from Python code, thus it stays as it is.
+    """
+    converter = arg.type
+    flag = arg.option_strings[0] if arg.option_strings else arg.dest
+    try:
+        converted = [converter(item) if callable(converter) and isinstance(item, str) else item for item in items]
+    except (argparse.ArgumentTypeError, ValueError) as exc:
+        msg = f"{flag}: {exc}"
+        raise ValueError(msg) from exc
+
+    return arg.with_default_colours(converted) if isinstance(arg, KeepDefaultColors) else converted
+
+
 def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]) -> None:
     """Set argparse defaults from a dictionary.
 
@@ -1386,11 +1436,18 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         for action in parser._actions  # ruff:ignore[private-member-access]
         if not isinstance(action, UnsupportedArgument)
     ]
-    # set_defaults expects the dest of an argument. Here we allow the option strings to be used as keys
+    # set_defaults expects the dest of an argument. A keyword can also name an option string of the argument
     for arg in realactions:
-        for optstring in arg.option_strings:
-            if optstring.lstrip("-") in kwargs and arg.dest not in kwargs:
-                kwargs[arg.dest] = kwargs.pop(optstring.lstrip("-"))
+        names = list(
+            dict.fromkeys(
+                name for name in (arg.dest, *(flag.lstrip("-") for flag in arg.option_strings)) if name in kwargs
+            )
+        )
+        if len(names) > 1:
+            msg = f"The keywords {', '.join(names)} name one argument, thus give only one of them"
+            raise ValueError(msg)
+        if names and names[0] != arg.dest:
+            kwargs[arg.dest] = kwargs.pop(names[0])
 
     # an option that reads a list gets a list from the command line, thus main(plotviewingangle=0)
     # must mean the same as -plotviewingangle 0
@@ -1405,10 +1462,11 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         )
         if value is not None and isinstance(arg, CellListAction):
             kwargs[arg.dest] = get_cell_list(value)
-        # pyrefly: ignore[implicit-any-type-argument]
-        elif value is not None and takes_a_list(arg) and (istupleitem or not isinstance(value, list | tuple)):
-            kwargs[arg.dest] = [value]
+        elif value is not None and takes_a_list(arg):
+            istextlist = isinstance(value, list | tuple) and not istupleitem  # pyrefly: ignore[implicit-any-type-argument]
+            kwargs[arg.dest] = convert_keyword_items(arg, value if istextlist else [value])
 
+    # set_defaults gives each argument of this dest the new default, thus the colours of -color are read first
     parser.set_defaults(**kwargs)
     # every argument takes required=False. A keyword argument can give the value instead, thus a
     # required argument would give an error for a value that the caller did supply

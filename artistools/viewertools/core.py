@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import dataclasses as dc
 import io
+import math
 import re
 import sys
 import threading
@@ -159,9 +160,39 @@ def parse_viewer_tokens(
     otheroptions = tuple(row for row in otheroptions if row[0] not in pathflags)
     paths = [*basetokens[:pathcount], *optionpaths, *(word for word in positionaltokens if word != "--")]
     args = parse_cli_args(addargs, None, None, usertokens)
+    if not paths:
+        paths, otheroptions = take_back_folders(parser, args, otheroptions)
     return ViewerTokens(
         parser=parser, args=args, paths=paths, otheroptions=otheroptions, helptexts=get_helptexts(parser)
     )
+
+
+def take_back_folders(
+    parser: "SuggestingArgumentParser", args: argparse.Namespace, rows: OptionRows
+) -> tuple[list[str], OptionRows]:
+    """Return the paths that the command took back from a list option, and the rows without those paths.
+
+    The command gives the ARTIS folders at the end of a list option back to the paths, e.g. the folder of
+    "-label 'My model' mymodel -t 300". The list of the series must then hold the folders, and the row of the option
+    must not hold them. A command with no such folders gives no paths and the same rows.
+    """
+    from artistools.misc.cliutils import KeepGivenPaths
+
+    actions = parser._actions  # ruff:ignore[private-member-access]
+    pathaction = next((action for action in actions if isinstance(action, KeepGivenPaths)), None)
+    parsed = getattr(args, pathaction.dest, None) if pathaction is not None else None
+    if pathaction is None or not parsed or parsed == pathaction.default:
+        return [], rows
+    folders = parsed if isinstance(parsed, list) else [parsed]
+    convert = pathaction.type if callable(pathaction.type) else str
+    listflags = {flag for flag, action in get_actions_by_flag(parser).items() if action.nargs in {"*", "+"}}
+    count = len(folders)
+    # the option keeps one value at least, because the command takes no folder from an option of folders alone
+    for index, (flag, values) in enumerate(rows):
+        if flag in listflags and len(values) > count and [convert(value) for value in values[-count:]] == folders:
+            return list(values[-count:]), (*rows[:index], (flag, values[:-count]), *rows[index + 1 :])
+    # a control of the window gives the option that took the folders, thus the rows do not hold them
+    return [str(folder) for folder in folders], rows
 
 
 def exit_for_other_actions(plotname: str, otheractions: "Mapping[str, bool]") -> None:
@@ -584,6 +615,12 @@ def set_row_values(rows: OptionRows, changes: "Mapping[str, tuple[str, ...] | No
     return tuple((flag, values) for flag, values in (*changed, *added) if values is not None)
 
 
+def set_figscale_row(rows: OptionRows, figscale: float, defaultfigscale: float) -> OptionRows:
+    """Return the option rows with the -figscale of the box of the Figure section. The default gives no row."""
+    change = None if math.isclose(figscale, defaultfigscale) else (format(figscale, "g"),)
+    return set_row_values(rows, {"-figscale": change})
+
+
 def get_option_row_tokens(rows: OptionRows) -> list[str]:
     """Return the command tokens of the rows of the option table."""
     return [
@@ -758,6 +795,27 @@ def get_fitted_figwidthscale(
     return round(min(max(fitted, MIN_FIGWIDTHSCALE), MAX_FIGWIDTHSCALE), 2)
 
 
-def get_short_number(value: float) -> str:
-    """Return a number with 3 significant digits for a short command, e.g. 12300 or 1.23e-05."""
-    return format(float(f"{value:.3g}"), ".10g")
+def get_short_number(value: float, digits: int = 3) -> str:
+    """Return a number with the significant digits for a short command, e.g. 12300 or 1.23e-05 for 3 digits."""
+    return format(float(f"{value:.{digits}g}"), f".{max(digits, 10)}g")
+
+
+# a limit of a selected range moves by at most this part of the width of the range when get_short_limits rounds it
+SHORT_LIMITS_TOLERANCE: t.Final = 0.01
+
+
+def get_short_limits(low: float, high: float) -> tuple[str, str] | None:
+    """Return the two limits of a range with few significant digits, or None for a range with no width.
+
+    Each limit takes 3 significant digits for a short command, or more digits for a narrow range. 3 digits gave the
+    same limit at each end of a narrow range, and a wider range moved by up to a third of its width. With more
+    digits, each limit moves by at most SHORT_LIMITS_TOLERANCE of the width.
+    """
+    if not low < high:
+        return None
+    tolerance = SHORT_LIMITS_TOLERANCE * (high - low)
+    for digits in range(3, 18):
+        lowtext, hightext = get_short_number(low, digits), get_short_number(high, digits)
+        if abs(float(lowtext) - low) <= tolerance and abs(float(hightext) - high) <= tolerance:
+            return (lowtext, hightext) if float(lowtext) < float(hightext) else None
+    return None

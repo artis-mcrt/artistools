@@ -57,7 +57,6 @@ from artistools.viewertools.core import get_option_tokens
 from artistools.viewertools.core import get_path_colours
 from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_series_style
-from artistools.viewertools.core import get_short_number
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
@@ -66,7 +65,7 @@ from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
 from artistools.viewertools.core import run_has_direction_data
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
-from artistools.viewertools.core import set_row_values
+from artistools.viewertools.core import set_figscale_row
 from artistools.viewertools.core import set_series_rows
 from artistools.viewertools.core import SLIDER_STEPS
 from artistools.viewertools.menus import add_default_options
@@ -77,9 +76,11 @@ from artistools.viewertools.sections import add_y_axis_actions
 from artistools.viewertools.sections import add_y_limits_row
 from artistools.viewertools.sections import DirectionChoice
 from artistools.viewertools.sections import make_figscale_box
+from artistools.viewertools.sections import make_select_y_handler
 from artistools.viewertools.sections import make_xscale_box
 from artistools.viewertools.sections import make_yscale_box
 from artistools.viewertools.sections import read_limit_fields
+from artistools.viewertools.sections import read_selected_range
 from artistools.viewertools.sections import show_auto_yscale
 from artistools.viewertools.series import add_series_list
 from artistools.viewertools.series import edit_series_properties
@@ -158,8 +159,10 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "average_over_theta_angle",
     "usedegrees",
     "figwidthscale",
-    # the window shows the plot, thus the command opens no second window and no file
+    # the window shows the plot, thus the command opens no second window and no file. Copy Figure and Export Animation
+    # run the command for a temporary file, and --open opened each such file
     "show",
+    "open",
     "interactive",
 })
 
@@ -337,11 +340,20 @@ def get_plot_python_code(viewer: "LightCurveViewer") -> str:
 def get_refused_reasons(viewer: "LightCurveViewer", values: ControlValues) -> dict[str, str]:
     """Return the reason for each option that plotlightcurves refuses with the other values, if the user selects it.
 
-    A control of a refused option then shows the reason, and it takes no selection.
+    A control of a refused option then shows the reason, and it takes no selection. Each option takes the other values
+    as they are, because a rule can refuse two options together, e.g. --plotcmf and --use_pellet_decay_time.
     """
-    selectall = dc.replace(values, plotcmf=True, topnucs=values.topnucs or 1, usepelletdecaytime=True)
+    selections = {
+        "--plotcmf": dc.replace(values, plotcmf=True),
+        "-topnucs": dc.replace(values, topnucs=values.topnucs or 1),
+        "--use_pellet_decay_time": dc.replace(values, usepelletdecaytime=True),
+        "--gamma": dc.replace(values, gamma=True),
+    }
     return {
-        option.flag: option.reason[0].upper() + option.reason[1:] for option in viewer.get_refused_options(selectall)
+        option.flag: option.reason[0].upper() + option.reason[1:]
+        for flag, selection in selections.items()
+        for option in viewer.get_refused_options(selection)
+        if option.flag == flag
     }
 
 
@@ -385,6 +397,8 @@ class LightCurveViewer:
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
         parser, args, startpaths, otheroptions, self.helptexts = parse_viewer_tokens(addargs, tokens, CONTROLLED_DESTS)
+        # True while the viewer gave --frompackets to the observers of the virtual packets. See set_direction
+        self.observerfrompackets = bool(args.plotvspecpol) and not args.frompackets
         drop_refused_options(args)
         resolve_plot_args(args)
         check_viewer_args(args)
@@ -544,7 +558,25 @@ class LightCurveViewer:
                 values = dc.replace(values, topnucs=0)
             elif option.flag == "--use_pellet_decay_time":
                 values = dc.replace(values, usepelletdecaytime=False)
+            elif option.flag == "--gamma":
+                values = dc.replace(values, gamma=False)
         return values
+
+    def set_direction(self, values: ControlValues, choice: DirectionChoice) -> ControlValues:
+        """Return the values with the viewing direction of choice, without the options that plotlightcurves refuses.
+
+        The observers of the virtual packets need the packets files, thus the viewer gives them --frompackets. A
+        different direction then reads the light curve files again, unless the user selected the packets files.
+        """
+        newvalues = dc.replace(
+            values, directionkind=choice.kind, directionbins=choice.bins, usedegrees=choice.usedegrees
+        )
+        if choice.kind == "vpkt" and values.directionkind != "vpkt":
+            self.observerfrompackets = not values.frompackets
+            newvalues = dc.replace(newvalues, frompackets=True)
+        elif choice.kind != "vpkt" and values.directionkind == "vpkt" and self.observerfrompackets:
+            newvalues = dc.replace(newvalues, frompackets=False)
+        return self.drop_refused_options(newvalues)
 
     def get_energy_rate_reason(self, dest: str, particle: str) -> str | None:
         """Return why no run of the plot gives an energy rate of a particle, or None if a run gives it."""
@@ -632,7 +664,9 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens, ("public.folder", "public.data"))
 
 
-def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
+def open_window(
+    tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]", *, newwindow: bool = True
+) -> str | None:
     """Open a window of the viewer for the plotlightcurves arguments in tokens, or return the reason for no window."""
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -641,7 +675,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     from artistools.commands import get_path
 
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
-    viewer = LightCurveViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
+    # a window of the last session keeps its command, and a new window takes the options of the Settings window
+    viewer = LightCurveViewer(
+        add_default_options(make_parser(addargs), tokens) if newwindow else tokens, mplfig.Figure()
+    )
     # a command with no path reads the model of the working folder
     modelnames = [
         resolve_modelpath(path).name for path in viewer.values.lightcurves if not path_is_reference_lightcurve(path)
@@ -807,8 +844,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(dc.replace(viewer.values, otheroptions=rows))
 
     def on_figscale(figscale: float) -> None:
-        change = None if math.isclose(figscale, defaultfigscale) else (format(figscale, "g"),)
-        on_option_rows(set_row_values(viewer.values.otheroptions, {"-figscale": change}))
+        on_option_rows(set_figscale_row(viewer.values.otheroptions, figscale, defaultfigscale))
 
     figuresection, set_option_rows, commandtext, pythontext, (copybutton, pythoncopybutton), statusbar = (
         add_command_sections(
@@ -927,16 +963,18 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             topnucsbox.setValue(values.topnucs)
             # the command refuses an option together with a different option, thus ask it about each option
             refusedreasons = get_refused_reasons(viewer, values)
+            packetbox.setItemData(
+                1,
+                refusedreasons.get("--gamma", f"--gamma: {helptexts.get('gamma', '')}"),
+                QtCore.Qt.ItemDataRole.ToolTipRole,
+            )
             topnucsreason = refusedreasons.get("-topnucs")
             topnucsbox.setEnabled(topnucsreason is None)
             topnucsbox.setToolTip(
                 topnucsreason or f"-topnucs: {helptexts.get('topnucs', '')}. The option reads the packets files"
             )
             pelletcheck.setChecked(values.usepelletdecaytime)
-            readspackets = values.frompackets or bool(values.topnucs)
             pelletreason = refusedreasons.get("--use_pellet_decay_time")
-            if pelletreason is None and not readspackets:
-                pelletreason = "Only the packets give the decay time of a pellet. Select the packets files first"
             pelletcheck.setEnabled(pelletreason is None or values.usepelletdecaytime)
             pelletcheck.setToolTip(pelletreason or helptexts.get("use_pellet_decay_time", ""))
             cmfcheck.setChecked(values.plotcmf)
@@ -1030,15 +1068,15 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             gamma=packetbox.currentIndex() == 1,
             frompackets=frompackets,
             topnucs=topnucs,
-            # only the packets give the decay time of a pellet
-            usepelletdecaytime=pelletcheck.isChecked() and readspackets,
+            usepelletdecaytime=pelletcheck.isChecked(),
             plotcmf=cmfcheck.isChecked(),
             plotinvalidpart=invalidcheck.isChecked(),
         )
         # the observers of the virtual packets need the packets files
         if values.directionkind == "vpkt" and not readspackets:
             values = dc.replace(values, directionkind="", directionbins=())
-        apply(values)
+        # e.g. only the packets give the decay time of a pellet, thus plotlightcurves refuses it with the text files
+        apply(viewer.drop_refused_options(values))
 
     def get_checked_particles(dest: str) -> tuple[str, ...]:
         return sort_particles({
@@ -1058,10 +1096,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
 
     def set_time_limits(low: float, high: float) -> None:
-        # a value of 3 significant digits gives a short command, and a text field gives an exact value
-        low, high = float(f"{low:.3g}"), float(f"{high:.3g}")
-        if low < high:
-            apply(dc.replace(viewer.values, timemin=format(low, ".10g"), timemax=format(high, ".10g")))
+        # a short number gives a short command, and a text field gives an exact value
+        if (limits := read_selected_range(low, high, "time", show_error)) is not None:
+            apply(dc.replace(viewer.values, timemin=limits[0], timemax=limits[1]))
 
     def on_timerange(handle: int, position: int) -> None:
         """Set the limit of the handle that moved, and keep the other limit as its text field gives it."""
@@ -1094,13 +1131,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return DirectionChoice(kind=values.directionkind, bins=values.directionbins, usedegrees=values.usedegrees)
 
     def on_direction(choice: DirectionChoice) -> None:
-        values = dc.replace(
-            viewer.values, directionkind=choice.kind, directionbins=choice.bins, usedegrees=choice.usedegrees
-        )
-        # the observers of the virtual packets need the packets files
-        if choice.kind == "vpkt":
-            values = dc.replace(values, frompackets=True)
-        apply(viewer.drop_refused_options(values))
+        apply(viewer.set_direction(viewer.values, choice))
 
     def apply_lightcurves(lightcurves: "Sequence[str]") -> None:
         """Read the runs of a new list of light curves, and apply the list."""
@@ -1208,11 +1239,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         extracallbacks={"Reload Data": on_reload},
     )
 
-    def on_select_y(frameindex: int, low: float, high: float) -> None:
-        """Give the frame of the light curves the y range of a Shift-drag. Each panel below has its own range."""
-        ymin, ymax = get_short_number(low), get_short_number(high)
-        if frameindex == 0 and plot_shows_values() and float(ymin) < float(ymax):
-            apply(dc.replace(viewer.values, ymin=ymin, ymax=ymax))
+    on_select_y = make_select_y_handler(
+        plot_shows_values, lambda ymin, ymax: apply(dc.replace(viewer.values, ymin=ymin, ymax=ymax)), show_error
+    )
 
     def on_plot_menu(frameindex: int, _event: t.Any) -> None:
         """Show the actions on the frame and the figure under the pointer, as the context menu of a Mac app does."""

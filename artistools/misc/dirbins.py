@@ -14,11 +14,19 @@ from artistools.misc.modelinfo import get_vpkt_config
 
 
 def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int, pl.LazyFrame]:
-    """Res (angle-resolved) files include a table for each direction bin."""
+    """Res (angle-resolved) files include a table for each direction bin.
+
+    The tables repeat the values of the first column, thus a row count that is not a multiple of the count of
+    those values shows a cut file.
+    """
     res_df = res_df.lazy()
-    rowcount = res_df.select(pl.len()).collect().item()
-    nu_points = res_df.select(cs.by_index(0).n_unique()).collect().item()
-    assert rowcount % nu_points == 0
+    rowcount, nu_points = res_df.select(pl.len(), cs.by_index(0).n_unique()).collect().row(0)
+    if nu_points == 0 or rowcount % nu_points != 0:
+        msg = (
+            f"The data holds {rowcount} rows and {nu_points} different values in its first column, thus its tables"
+            " have different lengths. A cut file gives this"
+        )
+        raise ValueError(msg)
     tablecount = rowcount // nu_points
 
     # polars 2.0.0rc2 gives incorrect rows for pl.collect_all of several filtered slices of one scan. head and tail give
@@ -250,9 +258,10 @@ def get_costheta_bins(usedegrees: bool) -> tuple[tuple[float, ...], tuple[float,
             f"{lower:.0f}° < θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper, strict=False)
         ]
     else:
+        # ARTIS puts a packet with cos θ = 1 in the last bin, thus that bin includes its upper edge
         binlabels = [
-            f"{lower:.1f} ≤ cos θ < {upper:.1f}"
-            for lower, upper in zip(costhetabins_lower, costhetabins_upper, strict=False)
+            f"{lower:.1f} ≤ cos θ {'≤' if binindex == ncosthetabins - 1 else '<'} {upper:.1f}"
+            for binindex, (lower, upper) in enumerate(zip(costhetabins_lower, costhetabins_upper, strict=True))
         ]
     return tuple(float(x) for x in costhetabins_lower), tuple(costhetabins_upper), binlabels
 
@@ -301,6 +310,7 @@ def get_dirbin_labels(
     usedegrees: bool = False,
 ) -> dict[int, str]:
     """Return a dict of text labels for viewing direction bins."""
+    check_averaging_angles(average_over_phi, average_over_theta)
     if modelpath:
         modelpath = Path(modelpath)
         MABINS = get_viewingdirectionbincount()
@@ -315,6 +325,7 @@ def get_dirbin_labels(
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)
 
     nphibins = get_viewingdirection_phibincount()
+    ndirbins = get_viewingdirectionbincount()
 
     if dirbins is None:
         dirbins = get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)
@@ -326,16 +337,23 @@ def get_dirbin_labels(
             angle_definitions[dirbin_int] = "all directions"
             continue
 
+        if not 0 <= dirbin_int < ndirbins:
+            msg = f"The direction bin {dirbin_int} is not one of the {ndirbins} bins 0 to {ndirbins - 1}, or -1 for all"
+            raise ValueError(msg)
+
         costheta_index = dirbin_int // nphibins
         phi_index = dirbin_int % nphibins
 
+        # an averaged bin is the first bin of its group, thus a different bin has no label
+        if (average_over_phi and phi_index != 0) or (average_over_theta and costheta_index != 0):
+            validbins = get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)
+            msg = f"Direction bin {dirbin_int} is not the first bin of an average group. Valid bins: {validbins}"
+            raise ValueError(msg)
+
         if average_over_phi:
             angle_definitions[dirbin_int] = costhetabinlabels[costheta_index]
-            assert phi_index == 0
-            assert not average_over_theta
         elif average_over_theta:
             angle_definitions[dirbin_int] = phibinlabels[phi_index]
-            assert costheta_index == 0
         else:
             angle_definitions[dirbin_int] = f"{costhetabinlabels[costheta_index]}, {phibinlabels[phi_index]}"
 

@@ -87,6 +87,19 @@ testdatapath = at.get_path("testdata")
 modelpath_classic_3d = testdatapath / "test-classicmode_3d"
 
 
+def copy_trajectories(tmp_path: Path) -> Path:
+    """Copy the trajectory archives of the test data to tmp_path, and return the new trajectory folder.
+
+    A read of a trajectory extracts the members of its archive beside the archive. A copy keeps the extracted
+    files out of tests/data, and each run then tests the extraction too.
+    """
+    traj_root = tmp_path / "trajectories"
+    traj_root.mkdir()
+    for filepath in (testdatapath / "kilonova" / "trajectories").glob("*.*"):
+        shutil.copy(filepath, traj_root)
+    return traj_root
+
+
 def get_derived_modeldata(modelpath: Path, **kwargs: t.Any) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Return the model with the derived columns, e.g. the mass of each cell, and the metadata."""
     lzdfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, **kwargs)
@@ -143,13 +156,22 @@ def test_tar_member_empty_leftover_without_archive_raises(tmp_path: Path) -> Non
     assert not path_extracted_file.exists()
 
 
-def test_describeinputmodel() -> None:
+def test_describeinputmodel(capsys: pytest.CaptureFixture[str]) -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[modelpath], isotopes=True)
+
+    output = capsys.readouterr().out
+    assert "Model contains 1 1D spherical shells" in output
+    # the mass of the one cell, 1.416963e33 g, is 0.71240 Msun
+    assert "M_tot_rho           0.71240 MSun" in output
 
 
 @pytest.mark.benchmark
-def test_describeinputmodel_3d() -> None:
+def test_describeinputmodel_3d(capsys: pytest.CaptureFixture[str]) -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=modelpath_3d, isotopes=True)
+
+    output = capsys.readouterr().out
+    assert "Model contains 1000 grid cells (695 nonempty)" in output
+    assert "M_tot_rho" in output
 
 
 def test_get_modeldata_1d() -> None:
@@ -252,10 +274,10 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
 
 
-def test_downscale_3dmodel() -> None:
+def test_downscale_3dmodel(tmp_path: Path) -> None:
     lzdfmodel, modelmeta = get_derived_modeldata(modelpath_3d, get_elemabundances=True)
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
-        modelpath_3d, outputgridsize=2, outputfolder=outputpath
+        modelpath_3d, outputgridsize=2, outputfolder=tmp_path
     )
     dfmodel = lzdfmodel.collect()
     lzdfmodel_small, modelmeta_small = get_derived_modeldata(modelpath_3d_small, get_elemabundances=True)
@@ -299,8 +321,8 @@ def verify_file_checksums(
         )
 
 
-def test_makeartismodelfrom_sph_particles() -> None:
-    gridfolderpath = outputpath / "kilonova"
+def test_makeartismodelfrom_sph_particles(tmp_path: Path) -> None:
+    gridfolderpath = tmp_path / "kilonova"
 
     config: dict[str, dict[str, t.Any]] = {
         "maptogridargs": {"ncoordgrid": 16},
@@ -328,9 +350,10 @@ def test_makeartismodelfrom_sph_particles() -> None:
 
     verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
 
+    traj_root = copy_trajectories(tmp_path)
     dfcontribs = {}
     for dimensions in (3, 2, 1, 0):
-        outpath_kn = outputpath / f"kilonova_{dimensions:d}d"
+        outpath_kn = tmp_path / f"kilonova_{dimensions:d}d"
         outpath_kn.mkdir(exist_ok=True, parents=True)
 
         shutil.copyfile(gridfolderpath / "gridcontributions.txt", outpath_kn / "gridcontributions.txt")
@@ -338,10 +361,10 @@ def test_makeartismodelfrom_sph_particles() -> None:
         at.inputmodel.modelfromhydro.main(
             argsraw=[],
             gridfolderpath=gridfolderpath,
-            trajectoryroot=testdatapath / "kilonova" / "trajectories",
+            trajectoryroot=traj_root,
             outputpath=outpath_kn,
             dimensions=dimensions,
-            targetmodeltime_days=0.1,
+            timedays=0.1,
         )
 
         dfcontribs[dimensions] = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(outpath_kn)
@@ -357,9 +380,9 @@ def test_makeartismodelfrom_sph_particles() -> None:
                 abs_tol=1e-4,
             )
         else:
-            dfmodel3lz, _ = get_derived_modeldata(outputpath / f"kilonova_{3:d}d")
+            dfmodel3lz, _ = get_derived_modeldata(tmp_path / f"kilonova_{3:d}d")
             dfmodel3 = dfmodel3lz.collect()
-            dfmodel_lowerdlz, _ = get_derived_modeldata(outputpath / f"kilonova_{dimensions:d}d")
+            dfmodel_lowerdlz, _ = get_derived_modeldata(tmp_path / f"kilonova_{dimensions:d}d")
             dfmodel_lowerd = dfmodel_lowerdlz.collect()
 
             # check that the total mass is conserved
@@ -375,26 +398,48 @@ def test_makeartismodelfrom_sph_particles() -> None:
 
 
 @pytest.mark.benchmark
-def test_makeartismodelfrom_fortrangriddat() -> None:
+def test_makeartismodelfrom_fortrangriddat(tmp_path: Path) -> None:
     gridfolderpath = testdatapath / "kilonova"
-    # test_makeartismodelfrom_sph_particles reads the checksums of outputpath / "kilonova", thus this test has its
-    # own folder. A parallel run otherwise writes gridcontributions.txt there before the checksum
-    outpath_kn = outputpath / "kilonova_fromfortrangriddat"
+    outpath_kn = tmp_path / "kilonova_fromfortrangriddat"
     at.inputmodel.modelfromhydro.main(
-        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, targetmodeltime_days=0.1
+        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, timedays=0.1
     )
 
+    # grid.dat gives 8 cells, and the command expands the grid to the time of the snapshot
+    _, modelmeta = at.inputmodel.get_modeldata(outpath_kn, printwarningsonly=True)
+    assert modelmeta["dimensions"] == 3
+    assert modelmeta["npts_model"] == 8
+    assert np.isclose(modelmeta["t_model_init_days"], 0.1)
 
-def test_make1dmodelfromcone() -> None:
+
+def test_makeartismodelfromparticlegridmap_short_time_flag_means_timedays() -> None:
+    """-t means -timedays on every command, and the old name of the argument still works."""
+    parser = at.commands.SuggestingArgumentParser(prog="makeartismodelfromparticlegridmap")
+    at.inputmodel.modelfromhydro.addargs(parser)
+
+    assert parser.parse_args([]).timedays == 0.1
+    for flag in ("-t", "-timedays", "-time", "-targetmodeltime_days"):
+        assert parser.parse_args([flag, "300"]).timedays == 300.0
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-timestep", "40"])
+
+
+def test_make1dmodelfromcone(tmp_path: Path) -> None:
     at.inputmodel.slice1dfromconein3dmodel.main(
         argsraw=[],
         modelpath=[modelpath_3d],
-        outputpath=outputpath,
+        outputpath=tmp_path,
         axis="-z",
         coneshellspacingexponent=2.0,
         nshells=4,
         coneangle=60,
     )
+
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)
+    assert modelmeta["dimensions"] == 1
+    assert 1 <= modelmeta["npts_model"] <= 4
+    assert dfmodel.select(pl.col("logrho").max()).collect().item() > -90.0
+    assert (tmp_path / "abundances_1d.txt").is_file()
 
 
 def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -442,37 +487,83 @@ def test_makefromcone_arg_can_be_disabled() -> None:
     assert parser.parse_args(["--no-makefromcone"]).makefromcone is False
 
 
-def test_makemodel() -> None:
-    outpath = outputpath / "test_makemodel"
-    outpath.mkdir(exist_ok=True, parents=True)
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, outputpath=outpath)
+def test_makemodel_without_an_action_stops_with_an_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A run with no action stops with a message. It did nothing and gave no message, thus it looked successful."""
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path)
+
+    assert "no action was given" in capsys.readouterr().err
+    assert not list(tmp_path.iterdir())
 
 
-def test_makemodel_energyfiles() -> None:
-    outpath = outputpath / "test_makemodel_energyfiles"
-    outpath.mkdir(exist_ok=True, parents=True)
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, outputpath=outpath)
+def test_makemodel_energyfiles(tmp_path: Path) -> None:
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, outputpath=tmp_path)
+
+    assert (tmp_path / "energydistribution.txt").is_file()
+    assert (tmp_path / "energyrate.txt").is_file()
 
 
-def test_maketardismodel() -> None:
-    outpath = outputpath / "test_maketardismodel"
-    outpath.mkdir(exist_ok=True, parents=True)
-    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=outpath)
+def test_makemodel_dimensionreduce_writes_the_gridcontributions(tmp_path: Path) -> None:
+    """-dimensionreduce writes the particle contributions of the reduced grid, as makeartismodelfromparticlegridmap does.
+
+    The command discarded the remapped contributions, thus the reduced model folder held no gridcontributions.txt.
+    """
+    modelfolder = tmp_path / "model3d"
+    modelfolder.mkdir()
+    for filename in ("model.txt.xz", "abundances.txt.xz"):
+        shutil.copy(modelpath_3d / filename, modelfolder)
+    dfmodel = at.inputmodel.get_modeldata(modelfolder, printwarningsonly=True)[0].collect()
+    nonemptyids = dfmodel.filter(pl.col("rho") > 0)["inputcellid"].to_list()
+    (modelfolder / "gridcontributions.txt").write_text(
+        "particleid cellindex frac_of_cellmass\n" + "".join(f"7 {cellid} 1.0\n" for cellid in nonemptyids),
+        encoding="utf-8",
+    )
+
+    outfolder = tmp_path / "out"
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], dimensionreduce=1, outputpath=outfolder)
+
+    reducedfolder = outfolder / "model3d_dimreduce_1d"
+    dfcontribs = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(reducedfolder)
+    _, modelmeta = at.inputmodel.get_modeldata(reducedfolder, printwarningsonly=True)
+    assert set(dfcontribs["particleid"].to_list()) == {7}
+    assert dfcontribs["cellindex"].max() <= modelmeta["npts_model"]
 
 
-def test_make_empty_abundance_file() -> None:
-    outpath = outputpath / "test_make_empty_abundance_file"
-    outpath.mkdir(exist_ok=True, parents=True)
-    at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=outpath)
+def test_makemodel_dimensionreduce_takes_only_a_lower_dimension(capsys: pytest.CaptureFixture[str]) -> None:
+    """-dimensionreduce 3 gives an argument error, not the message of an internal check."""
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(argsraw=["-dimensionreduce", "3"])
+
+    assert "invalid choice" in capsys.readouterr().err
 
 
-def test_opacity_by_Ye_file() -> None:
+def test_maketardismodel(tmp_path: Path) -> None:
+    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=tmp_path)
+
+    csvytext = (tmp_path / f"{at.get_model_name(modelpath)}.csvy").read_text(encoding="utf-8")
+    assert csvytext.startswith("---\n")
+    assert "velocity,density,t_rad,dilution_factor" in csvytext
+
+
+def test_make_empty_abundance_file(tmp_path: Path) -> None:
+    at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=tmp_path)
+
+    dfabund = at.inputmodel.get_initelemabundances(tmp_path, printwarningsonly=True).collect()
+    assert dfabund["inputcellid"].to_list() == list(range(1, 51))
+    assert dfabund.select(cs.starts_with("X_").abs().max()).max_horizontal().item() == 0.0
+
+
+def test_opacity_by_Ye_file(tmp_path: Path) -> None:
     griddata = pl.DataFrame({
         "Ye": [0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
         "rho": [0.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0],
         "inputcellid": range(1, 9),
     })
-    at.inputmodel.opacityinputfile.opacity_by_Ye(outputpath, griddata=griddata)
+    at.inputmodel.opacityinputfile.opacity_by_Ye(tmp_path, griddata=griddata)
+
+    # Table 1 of Tanaka et al. (2020), and zero for the empty cell
+    opacities = np.loadtxt(tmp_path / "opacity.txt", skiprows=1)[:, 1]
+    assert np.allclose(opacities, [0.0, 19.5, 32.2, 22.3, 5.6, 5.36, 3.3, 0.96])
 
 
 def test_opacity_by_integer_Ye(tmp_path: Path) -> None:
@@ -527,15 +618,11 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) ->
         reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001", "./Run_rprocess/nz-plane00002"])
 
 
-def test_get_trajectory_abund_q() -> None:
-    # this test reads the test data folder itself, and not the testmodel folder below it
+def test_get_trajectory_abund_q(tmp_path: Path) -> None:
     particleid = 109215
 
     abund_q = at.inputmodel.rprocess_from_trajectory.get_trajectory_abund_q(
-        particleid=particleid,
-        traj_root=testdatapath / "kilonova" / "trajectories",
-        t_model_s=0.1 * 86400,
-        getqdotintegral=True,
+        particleid=particleid, traj_root=copy_trajectories(tmp_path), t_model_s=0.1 * 86400, getqdotintegral=True
     )
 
     expected: dict[tuple[int, int] | str, float] = {
@@ -1696,8 +1783,24 @@ def test_get_trajectory_abund_q() -> None:
         assert math.isclose(abund_q[key], value)
 
 
-def test_plotdensity() -> None:
-    at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=outputpath)
+def test_plotdensity(tmp_path: Path) -> None:
+    at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=tmp_path)
+
+    assert (tmp_path / "densityprofile.pdf").is_file()
+
+
+def test_plotdensity_grid_with_one_cell_radius(tmp_path: Path) -> None:
+    """A grid of 2 x 2 x 2 cells has one mid-point velocity, thus the bins have one step of zero.
+
+    The bin width was the largest step of the mid-point velocities, thus the bin count divided by zero.
+    """
+    smallmodelpath = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
+        modelpath_3d, outputgridsize=2, outputfolder=tmp_path
+    )
+
+    at.inputmodel.plotdensity.main(argsraw=[], modelpath=[smallmodelpath], outputpath=tmp_path / "plot")
+
+    assert (tmp_path / "plot" / "densityprofile.pdf").is_file()
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -1726,14 +1829,16 @@ def test_plotdensity_nbins_covers_the_model_below_xmax(mockplot: mock.MagicMock,
 
 
 @pytest.mark.benchmark
-def test_plotinitialcomposition() -> None:
+def test_plotinitialcomposition(tmp_path: Path) -> None:
     at.inputmodel.plotinitialcomposition.main(
-        argsraw=["-modelpath", str(modelpath_3d), "-o", str(outputpath), "rho", "Fe"]
+        argsraw=["-modelpath", str(modelpath_3d), "-o", str(tmp_path), "rho", "Fe"]
     )
+
+    assert (tmp_path / "plotcomposition_rho,fe.pdf").is_file()
 
 
 @pytest.mark.benchmark
-def test_save_load_3d_model() -> None:
+def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True)
     dfmodel = lzdfmodel.collect()
 
@@ -1788,14 +1893,20 @@ def test_save_load_3d_model() -> None:
         *[pl.sum_horizontal(cs.starts_with(elcol)).cast(pl.Float32).alias(elcol) for elcol in elcolnames],
     ])
 
-    outpath = outputpath / "test_save_load_3d_model"
-    outpath.mkdir(exist_ok=True, parents=True)
+    outpath = tmp_path
     at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel, modelmeta=modelmeta)
     at.inputmodel.save_initelemabundances(outpath=outpath, dfelabundances=dfelemabundances)
 
-    # first load will be from text, second from parquet
-    for _ in (0, 1):
+    # the first load reads the text file, and it writes a cache, because the file is larger than 2 MiB.
+    # The second load reads that cache
+    cachefilepath = outpath / "model.txt.parquet.tmp"
+    for loadnumber in (0, 1):
+        assert cachefilepath.is_file() == (loadnumber == 1)
+        capsys.readouterr()
         dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata(modelpath=outpath)
+        output = capsys.readouterr().out
+        assert (f"Reading table from {cachefilepath}" in output) == (loadnumber == 1)
+        assert (f"Saving {cachefilepath}" in output) == (loadnumber == 0)
         assert set(dfmodel_loaded.collect_schema().names()) == set(dfmodel.columns)
         pltest.assert_frame_equal(
             dfmodel, dfmodel_loaded.collect(), check_column_order=False, check_dtypes=False, rel_tol=1e-4, abs_tol=1e-4
@@ -2108,12 +2219,10 @@ def test_rprocess_const_and_powerlaw() -> None:
     assert rate[-1] == pytest.approx(1.0)
 
 
-def test_energyfiles_from_trajectory() -> None:
+def test_energyfiles_from_trajectory(tmp_path: Path) -> None:
     """Integrating a trajectory's heating rate must give a positive total energy."""
     thermofile = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
-        traj_root=testdatapath / "kilonova" / "trajectories",
-        particleid=109215,
-        memberfilename="./Run_rprocess/energy_thermo.dat",
+        traj_root=copy_trajectories(tmp_path), particleid=109215, memberfilename="./Run_rprocess/energy_thermo.dat"
     )
     dfthermo = at.inputmodel.energyinputfiles.read_trajectory_thermo(thermofile)
     assert dfthermo["time/s"].to_numpy().min() >= 1.0, "the unphysical sub-second Qdot values must be dropped"
@@ -3225,7 +3334,7 @@ def test_from_e2e_model_split_trajectory_pieces_give_the_same_heating(tmp_path: 
     np.save(isopath, np.array([[2.0, 2.0], [30.0, 26.0]]))
     numberfractions = rng.uniform(0.01, 0.2, size=2)
 
-    def write_dat(datpath: Path, idx: list[int], masses: list[float]) -> None:
+    def write_dat(datpath: Path, idx: list[int], masses: list[float], qdots: list[float]) -> None:
         ntraj = len(idx)
         np.savez(
             datpath,
@@ -3233,7 +3342,7 @@ def test_from_e2e_model_split_trajectory_pieces_give_the_same_heating(tmp_path: 
             idx=np.array(idx, dtype=float),
             state=np.full(ntraj, -1.0),
             mass=np.array(masses),
-            qdot=np.full((ntraj, ntimes), 1e10),
+            qdot=np.tile(np.array(qdots)[:, np.newaxis], (1, ntimes)),
             hnuloss=np.zeros((ntraj, ntimes)),
             time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
             nz=np.tile(numberfractions, (ntraj, 1)),
@@ -3242,8 +3351,10 @@ def test_from_e2e_model_split_trajectory_pieces_give_the_same_heating(tmp_path: 
 
     datpath_whole = tmp_path / "whole.npz"
     datpath_split = tmp_path / "split.npz"
-    write_dat(datpath_whole, idx=[7], masses=[3e-3])
-    write_dat(datpath_split, idx=[7, 10007, 20007], masses=[1e-3, 1e-3, 1e-3])
+    # the pieces have different masses and heating rates, thus a plain mean and a sum differ from the mass-weighted
+    # mean of the whole trajectory, (1 * 1 + 2 * 2 + 3 * 4) / 6 = 17 / 6
+    write_dat(datpath_whole, idx=[7], masses=[6e-3], qdots=[17.0 / 6.0 * 1e10])
+    write_dat(datpath_split, idx=[7, 10007, 20007], masses=[1e-3, 2e-3, 3e-3], qdots=[1e10, 2e10, 4e10])
 
     results = [
         get_grid(
@@ -3329,17 +3440,24 @@ def test_get_2d_slice_takes_the_side_of_the_axis(ncoordgrid: int, positive_axis:
 
 
 def test_plotinitialcomposition_negative_axis_plots_the_layer_below_the_origin(tmp_path: Path) -> None:
-    """The command with -axis=-z draws the layer whose upper edge is the origin."""
-    from artistools.inputmodel.plotinitialcomposition import get_2D_slice_through_3d_model
-
-    with mock.patch(
-        "artistools.inputmodel.plotinitialcomposition.get_2D_slice_through_3d_model",
-        side_effect=get_2D_slice_through_3d_model,
-    ) as mockslice:
+    """The command with -axis=-z draws the densities of the layer whose upper edge is the origin."""
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
         at.inputmodel.plotinitialcomposition.main(argsraw=["rho", str(modelpath_3d), "-axis=-z", "-o", str(tmp_path)])
 
-    assert mockslice.call_args.kwargs["positive_axis"] is False
-    assert mockslice.call_args.kwargs["sliceaxis"] == "z"
+    dfmodel, modelmeta = get_derived_modeldata(modelpath_3d)
+    dfmodel = dfmodel.collect()
+    # the cells of a layer go with x fastest, thus a reshape gives the rows of y and the columns of x
+    shape = (modelmeta["ncoordgridy"], modelmeta["ncoordgridx"])
+    layerbelow, layerabove = (
+        dfmodel.filter(selection).sort("inputcellid")["rho"].to_numpy().reshape(shape)
+        for selection in (
+            pl.col("pos_z_max").abs() < 0.01 * modelmeta["wid_init_z"],
+            pl.col("pos_z_min").abs() < 0.01 * modelmeta["wid_init_z"],
+        )
+    )
+    # the two layers differ, thus the plot of the wrong layer gives other values
+    assert not np.allclose(layerbelow, layerabove)
+    np.testing.assert_allclose(np.asarray(mockimshow.call_args.args[1]), layerbelow, rtol=1e-6)
 
 
 def test_save_modeldata_1d_keeps_a_negative_custom_value(tmp_path: Path) -> None:
@@ -3465,3 +3583,500 @@ def test_dimension_reduce_keeps_the_centre_cell_of_an_odd_grid(outputdimensions:
     )
 
     assert dfmodel_lowerd["mass_g"].sum() == pytest.approx(mass_inside_vmax, rel=1e-10)
+
+
+def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Path) -> None:
+    """A header comment with one quotation mark must not hide the cells from the fast reader.
+
+    The reader took the quotation mark as the start of a quoted field. Thus it skipped the cells after the
+    header, and it gave an error for an empty file. save_modeldata writes such a comment again.
+    """
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    dfmodel = dfmodel.collect()
+    at.inputmodel.save_modeldata(
+        dfmodel, outpath=tmp_path, modelmeta=modelmeta | {"headercommentlines": ['DDT "N100 model']}
+    )
+
+    dfmodel_read, modelmeta_read = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+
+    assert modelmeta_read["headercommentlines"] == ['DDT "N100 model']
+    pltest.assert_frame_equal(dfmodel_read.collect(), dfmodel, rel_tol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "modeltext",
+    [
+        "3\n1.0\n0 1000 -10 0.1 0.2 0 0 0\n1 2000 -11 0.3 0.4 0 0 0\n2 3000 -12 0.5 0.6 0 0 0\n",
+        "3\n1.0\n0 1000 -10\n0.1 0.2 0 0 0\n1 2000 -11\n0.3 0.4 0 0 0\n2 3000 -12\n0.5 0.6 0 0 0\n",
+    ],
+    ids=["onelinepercell", "twolinespercell"],
+)
+def test_get_modeldata_1d_cell_ids_can_start_at_zero(tmp_path: Path, modeltext: str) -> None:
+    """sn3d takes the id of the first cell, 0 or 1, as the start of the cell index.
+
+    The reader took each id as one more than the cell index. Thus the first cell got the index -1, and the
+    second line of each cell of a file with two lines for each cell went to the next cell.
+    """
+    (tmp_path / "model.txt").write_text(modeltext, encoding="utf-8")
+
+    dfmodel = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+
+    assert dfmodel["inputcellid"].to_list() == [0, 1, 2]
+    assert dfmodel["modelgridindex"].to_list() == [0, 1, 2]
+    assert dfmodel["X_Ni56"].to_list() == pytest.approx([0.2, 0.4, 0.6])
+
+
+def test_get_modeldata_2d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
+    """A 2D model with the ids 0 to 7 reads, and its cell positions agree with the cell index from 0."""
+    ncoordgridrcyl, ncoordgridz = 2, 4
+    vmax_cmps = 1e9
+    xmax = vmax_cmps * day_to_s
+    lines = [f"{ncoordgridrcyl} {ncoordgridz}", "1.0", f"{vmax_cmps}"]
+    for mgi in range(ncoordgridrcyl * ncoordgridz):
+        pos_rcyl_mid = (mgi % ncoordgridrcyl + 0.5) * xmax / ncoordgridrcyl
+        pos_z_mid = -xmax + (mgi // ncoordgridrcyl + 0.5) * 2 * xmax / ncoordgridz
+        lines.append(f"{mgi} {pos_rcyl_mid:.7e} {pos_z_mid:.7e} 1e-10 0 0 0 0 0")
+    (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    dfmodel = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+
+    assert dfmodel["modelgridindex"].to_list() == list(range(8))
+
+
+def test_get_modeldata_3d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
+    """A 3D model with the ids 0 to 7 gives the cell index 0 to 7."""
+    lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=2, vmax=1e9, t_model_init_days=1.0)
+    dfmodel = lzdfmodel.collect().with_columns(pl.col("inputcellid") - 1, rho=pl.lit(1e-10))
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
+
+    dfmodel_read = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+
+    assert dfmodel_read["inputcellid"].to_list() == list(range(8))
+    assert dfmodel_read["modelgridindex"].to_list() == list(range(8))
+
+
+@pytest.mark.parametrize(
+    ("modeltext", "match"),
+    [
+        ("5\n1.0\n1 1000 -10 0 0 0 0 0\n2 2000 -10 0 0 0 0 0\n3 3000 -10 0 0 0 0 0\n", "found only 3 cells"),
+        ("5\n1.0\n1  1000 -10 0 0 0 0 0\n2  2000 -10 0 0 0 0 0\n", "found only 2 cells"),
+        ("3\n1.0\n1 1000 -10\n0 0 0 0 0\n2 2000 -10\n0 0 0 0 0\n3 3000 -10\n", "found only 2 cells"),
+        ("3\n1.0\n", "found only 0 cells"),
+        ("3\n1.0\n1 1000 -10 0 0 0 0 0\n2 2000 -10 0 0 0 0 0\n4 3000 -10 0 0 0 0 0\n", "increase by one"),
+    ],
+    ids=["fastreader", "slowreader", "twolinespercell", "nocells", "missingid"],
+)
+def test_get_modeldata_rejects_a_model_with_missing_cells(tmp_path: Path, modeltext: str, match: str) -> None:
+    """A model.txt with fewer cells than its header gives, or with a gap in the ids, stops with a message, as in sn3d.
+
+    The reader gave the cells that the file held, and the vmax of a 1D model then came from the last of them.
+    """
+    (tmp_path / "model.txt").write_text(modeltext, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=match):
+        at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+
+
+@pytest.mark.parametrize("skippedline", ["# time of the snapshot [days]\n", "\n", "   # an indented comment\n"])
+def test_get_modeldata_skips_a_comment_before_the_time(tmp_path: Path, skippedline: str) -> None:
+    """sn3d skips a comment line and an empty line before the time of the model, thus the reader must also skip it."""
+    (tmp_path / "model.txt").write_text(
+        f"3\n{skippedline}2.5\n1 1000 -10 0 0 0 0 0\n2 2000 -10 0 0 0 0 0\n3 3000 -10 0 0 0 0 0\n", encoding="utf-8"
+    )
+
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+
+    assert modelmeta["t_model_init_days"] == pytest.approx(2.5)
+    assert dfmodel.collect()["vel_r_max_kmps"].to_list() == pytest.approx([1000.0, 2000.0, 3000.0])
+
+
+def test_get_modeldata_3d_header_with_mid_point_positions(tmp_path: Path) -> None:
+    """A 3D header can name the positions pos_x_mid, pos_y_mid, and pos_z_mid, which sn3d accepts.
+
+    Only the name pos_x_min selected the header names. Each other name went to the code for a file with no
+    header, which looked for the columns inputpos_a, inputpos_b, and inputpos_c.
+    """
+    lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=4, vmax=1e9, t_model_init_days=1.0)
+    dfmodel = lzdfmodel.collect()
+    wid = modelmeta["wid_init_x"]
+    dfmid = dfmodel.select(
+        "inputcellid", *[(pl.col(f"pos_{ax}_min") + wid / 2).alias(f"pos_{ax}_mid") for ax in "xyz"], rho=pl.lit(1e-10)
+    )
+    lines = [str(modelmeta["npts_model"]), "1.0", f"{modelmeta['vmax_cmps']}"]
+    lines.append("#inputcellid pos_x_mid pos_y_mid pos_z_mid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48")
+    lines.extend(f"{cellid} {x:.7e} {y:.7e} {z:.7e} {rho} 0 0 0 0 0" for cellid, x, y, z, rho in dfmid.iter_rows())
+    (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    dfmodel_read = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+
+    for ax in "xyz":
+        np.testing.assert_allclose(
+            dfmodel_read[f"pos_{ax}_min"].to_numpy(), dfmodel[f"pos_{ax}_min"].to_numpy(), atol=1e-4 * wid
+        )
+
+
+def test_save_modeldata_1d_writes_zero_for_a_null(tmp_path: Path) -> None:
+    """The 1D writer writes 0.0 for a null value, as the writer of a 2D or a 3D model does.
+
+    The writer called math.isnan on each value, which raised TypeError for a null.
+    """
+    dfmodel = pl.DataFrame({
+        "inputcellid": [1, 2],
+        "vel_r_max_kmps": [1000.0, 2000.0],
+        "logrho": [-10.0, -11.0],
+        "X_Ni56": [0.5, None],
+    })
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"t_model_init_days": 1.0})
+
+    dfwritten = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+
+    assert dfwritten["X_Ni56"].to_list() == pytest.approx([0.5, 0.0])
+
+
+def test_describeinputmodel_empty_cell_and_cell_outside_the_model(capsys: pytest.CaptureFixture[str]) -> None:
+    """-modelgridindex of an empty cell gives a message, and a cell outside the model gives an error.
+
+    The description divided by the mass of the selected cells, thus both raised ZeroDivisionError.
+    """
+    at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[modelpath_3d], modelgridindex="0")
+    assert "cell 0 is empty" in capsys.readouterr().out
+
+    with pytest.raises(ValueError, match="names no cell"):
+        at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[modelpath], modelgridindex="5")
+
+
+def test_describeinputmodel_with_zero_abundances(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A model whose abundances.txt holds zeros only, e.g. from save_empty_abundance_file, gets a description.
+
+    The list of the species masses was empty, and min() of it raised ValueError.
+    """
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
+
+    at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[tmp_path])
+
+    assert "no species has a mass above zero" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("loweredges", "expectedcellcount"),
+    [
+        # an odd count: the middle cell holds the origin, thus each side takes it
+        ([-1.0, -0.6, -0.2, 0.2, 0.6], 3),
+        # an even count with a rounding error at the origin, as a grid of -xmax + 2 xmax i / n can give
+        ([-1.5, -1.0, -0.5, -1e-7, 0.5, 1.0], 3),
+    ],
+    ids=["odd", "evenwithrounding"],
+)
+def test_profile_along_axis_takes_half_of_the_cells_on_each_side(
+    loweredges: list[float], expectedcellcount: int
+) -> None:
+    """Each side of the slice axis takes the same number of cells, and the middle cell of an odd grid on both sides.
+
+    The positive side took the cells with pos_min >= 0, thus it lost the middle cell of an odd grid. An edge at
+    the origin with a rounding error below zero moved a cell to the negative side.
+    """
+    from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
+
+    middle = loweredges[len(loweredges) // 2]
+    dfmodel = pl.DataFrame({"pos_x_min": middle, "pos_y_min": middle, "pos_z_min": z} for z in loweredges).cast(
+        pl.Float32
+    )
+
+    for positive_axis in (True, False):
+        args = argparse.Namespace(sliceaxis="z", other_axis1="x", other_axis2="y", positive_axis=positive_axis)
+        dfprofile = get_profile_along_axis(dfmodel, args)
+        assert dfprofile.height == expectedcellcount, positive_axis
+
+
+def test_make1dmodelfromcone_keeps_ye_q_and_tracercount(tmp_path: Path) -> None:
+    """The 1D model of a cone keeps Ye and q as mass-weighted means and tracercount as a sum, as the axis path does.
+
+    The cone took only the X_ columns. A kilonova model then had no initial energy and no Ye.
+    """
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    dfmodel = dfmodel.collect().with_columns(Ye=pl.lit(0.25), q=pl.lit(1e12), tracercount=pl.lit(2, dtype=pl.Int32))
+    modelfolder = tmp_path / "model3d"
+    at.inputmodel.save_modeldata(dfmodel, outpath=modelfolder, modelmeta=modelmeta)
+    shutil.copy(modelpath_3d / "abundances.txt.xz", modelfolder)
+
+    at.inputmodel.slice1dfromconein3dmodel.main(
+        argsraw=[], modelpath=[modelfolder], outputpath=tmp_path, axis="-z", nshells=4, coneangle=60
+    )
+
+    dfcone = at.inputmodel.get_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)[0].collect()
+    assert dfcone["Ye"].to_list() == pytest.approx([0.25] * dfcone.height)
+    assert dfcone["q"].to_list() == pytest.approx([1e12] * dfcone.height, rel=1e-6)
+    # each 3D cell gives 2 tracers, thus a shell has an even sum above zero
+    assert all(count > 0 and count % 2 == 0 for count in dfcone["tracercount"].to_list())
+
+
+def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(tmp_path: Path) -> None:
+    """The q of the trajectories replaces the Q column of an old grid.dat.
+
+    A join kept both columns, thus the model held the grid.dat value and the reduction to 1D stopped at the
+    column q_right.
+    """
+    gridfolderpath = tmp_path / "grid"
+    shutil.copytree(
+        testdatapath / "kilonova", gridfolderpath, ignore=shutil.ignore_patterns("trajectories"), dirs_exist_ok=True
+    )
+    at.inputmodel.maptogrid.main(argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=4)
+    gridlines = (gridfolderpath / "grid.dat").read_text(encoding="utf-8").splitlines()
+    gridlines = [*gridlines[:3], f"{gridlines[3]} Q", *(f"{line} 1e10" for line in gridlines[4:])]
+    (gridfolderpath / "grid.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")
+    traj_root = copy_trajectories(tmp_path)
+
+    for dimensions in (3, 1):
+        outpath = tmp_path / f"model_{dimensions}d"
+        at.inputmodel.modelfromhydro.main(
+            argsraw=[],
+            gridfolderpath=gridfolderpath,
+            trajectoryroot=traj_root,
+            outputpath=outpath,
+            dimensions=dimensions,
+            timedays=0.1,
+        )
+        dfmodel = at.inputmodel.get_modeldata(outpath, printwarningsonly=True)[0].collect()
+        qvalues = dfmodel.filter(pl.col("q") > 0)["q"].to_numpy()
+        assert qvalues.size > 0
+        assert not np.allclose(qvalues, 1e10, rtol=1e-3), "the model holds the q of grid.dat"
+
+
+def test_plotinitialcomposition_gives_each_panel_its_colour_bar(tmp_path: Path) -> None:
+    """Each panel gets a colour bar with its own colour limits and a label of its own quantity.
+
+    One colour bar came from the last panel, with a label that came from the list of the variables. Thus the
+    bar of "rho Fe" gave the colours of Fe and the label of rho.
+    """
+    import matplotlib.colorbar as mplcolorbar
+
+    with mock.patch.object(
+        mplcolorbar.Colorbar, "set_label", side_effect=mplcolorbar.Colorbar.set_label, autospec=True
+    ) as mocksetlabel:
+        at.inputmodel.plotinitialcomposition.main(argsraw=["rho", "Fe", str(modelpath_3d), "-o", str(tmp_path)])
+
+    # matplotlib makes each colour bar with an empty label first
+    labelsandlimits = [
+        (call.args[1], call.args[0].mappable.get_clim()) for call in mocksetlabel.call_args_list if call.args[1]
+    ]
+    assert len(labelsandlimits) == 2
+    (rholabel, rholimits), (felabel, felimits) = labelsandlimits
+    assert rholabel == r"$\rho$ [g/cm³]"
+    assert rholimits == pytest.approx((1e-15, 1e-7))
+    assert "Fe" in felabel
+    assert felimits != pytest.approx((1e-15, 1e-7))
+
+
+def test_plotinitialcomposition_2d_slice_reads_ye_from_the_ye_file(tmp_path: Path) -> None:
+    """A model with no Ye column gets Ye from Ye.txt for the 2D slice, as for the 3D plot.
+
+    The 2D slice looked for the column X_Ye, which does not exist.
+    """
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    for filename in ("model.txt.xz", "abundances.txt.xz"):
+        shutil.copy(modelpath_3d / filename, modelfolder)
+    dfmodel = get_derived_modeldata(modelfolder)[0].collect()
+    dfmodel = dfmodel.with_columns(Ye=(0.1 + 0.4 * pl.col("modelgridindex") / pl.len()).cast(pl.Float32))
+    at.inputmodel.opacityinputfile.write_Ye_file(modelfolder, dfmodel)
+
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(argsraw=["Ye", str(modelfolder), "-o", str(tmp_path)])
+
+    # the default slice is the layer above the origin along z
+    expected = dfmodel.filter(pl.col("pos_z_min").abs() < 1.0).sort("inputcellid")["Ye"].to_numpy()
+    np.testing.assert_allclose(np.asarray(mockimshow.call_args.args[1]).ravel(), expected, rtol=1e-6)
+
+
+def test_plotinitialcomposition_rejects_a_column_or_a_model_that_it_cannot_plot(tmp_path: Path) -> None:
+    """An unknown element and a 1D model give a message, not a polars error or an internal check."""
+    with pytest.raises(ValueError, match="holds no column X_Xx"):
+        at.inputmodel.plotinitialcomposition.main(argsraw=["Xx", str(modelpath_3d), "-o", str(tmp_path)])
+
+    with pytest.raises(ValueError, match="2D or a 3D model"):
+        at.inputmodel.plotinitialcomposition.main(argsraw=["rho", str(modelpath), "-o", str(tmp_path)])
+
+
+def test_makeartismodelfromshen2018(tmp_path: Path) -> None:
+    """The command writes the model and the abundances, with the free nucleons n and p as neutrons and hydrogen.
+
+    get_atomic_number reads "n" as nitrogen and "p" as phosphorus, thus the neutron mass went to nitrogen and the
+    proton mass went to phosphorus. An element with no column stopped the command with KeyError.
+    """
+    from artistools.inputmodel import shen2018
+
+    species = ["n", "p", "he4", "ni56", "co56", "fe52", "cr48", "ni57", "co57"]
+    massfracs = [0.1, 0.2, 0.3, 0.2, 0.1, 0.05, 0.03, 0.01, 0.01]
+    lines = [" ".join(["m", "v", "rho", "temp", "ye", *species])]
+    lines.extend(
+        " ".join(str(value) for value in [enclosedmass, velocity, 1.0, 1.0, 0.5, *massfracs])
+        for enclosedmass, velocity in ((0.5, 5e8), (1.0, 1e9))
+    )
+    inputpath = tmp_path / "shen.dat"
+    inputpath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    shen2018.main(argsraw=["-i", str(inputpath), "-o", str(tmp_path / "out")])
+
+    dfmodel = get_derived_modeldata(tmp_path / "out", get_elemabundances=True)[0].collect()
+    assert dfmodel.height == 2
+    assert float(dfmodel["mass_g"].sum()) / at.constants.Msun_to_g == pytest.approx(1.0, rel=1e-5)
+    assert dfmodel["X_Ni56"].to_list() == pytest.approx([0.2, 0.2])
+    assert dfmodel["X_H"].to_list() == pytest.approx([0.2, 0.2])
+    assert dfmodel["X_He"].to_list() == pytest.approx([0.3, 0.3])
+    assert dfmodel["X_N"].to_list() == pytest.approx([0.0, 0.0])
+    assert dfmodel["X_P"].to_list() == pytest.approx([0.0, 0.0])
+    assert dfmodel["X_Ni"].to_list() == pytest.approx([0.21, 0.21])
+
+
+def test_make1dslicefrom3dmodel(tmp_path: Path) -> None:
+    """The command writes a 1D model and its abundances from the cells on the positive x axis of a 3D model."""
+    from artistools.inputmodel import make1dslicefrom3d
+
+    outfolder = tmp_path / "slice"
+    make1dslicefrom3d.main(
+        argsraw=[], inputfolder=modelpath_3d, outputfolder=str(outfolder), pdfoutputfile=str(tmp_path / "slice.pdf")
+    )
+
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(outfolder, get_elemabundances=True, printwarningsonly=True)
+    # the 10 x 10 x 10 grid has 5 cells on each side of the origin
+    assert modelmeta["dimensions"] == 1
+    assert dfmodel.collect().height == 5
+    assert (tmp_path / "slice.pdf").is_file()
+
+
+def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The command takes the trajectory folder and the particle id as arguments, and it writes a one-cell model."""
+    particleid = 42
+    rundir = tmp_path / "trajectories" / str(particleid) / "Run_rprocess"
+    rundir.mkdir(parents=True)
+    # N, Z, and the log10 of the number abundance: He4 and Ni56 have a mass fraction of 0.5 each
+    nuclidelines = [f"{2:4d}{2:4d}{math.log10(0.5 / 4):13.5E}", f"{28:4d}{28:4d}{math.log10(0.5 / 56):13.5E}"]
+    timeseconds = 86400.0
+    (rundir / "tday_nz-plane").write_text(
+        f"  1  {timeseconds:.6E}   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n" + "\n".join(nuclidelines) + "\n",
+        encoding="utf-8",
+    )
+    # the command reads a density profile from the working folder if one exists
+    monkeypatch.chdir(tmp_path)
+
+    at.inputmodel.rprocess_from_trajectory.main(
+        argsraw=["-trajectoryroot", str(tmp_path / "trajectories"), "-particleid", str(particleid), "-o", "out"]
+    )
+
+    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path / "out", get_elemabundances=True, printwarningsonly=True)
+    dfmodel = dfmodel.collect()
+    assert modelmeta["t_model_init_days"] == pytest.approx(1.0)
+    assert dfmodel["X_Ni56"].to_list() == pytest.approx([0.5], rel=1e-4)
+    assert dfmodel["X_Ni"].to_list() == pytest.approx([0.5], rel=1e-4)
+    assert dfmodel["X_He"].to_list() == pytest.approx([0.5], rel=1e-4)
+    assert (tmp_path / "out" / "gridcontributions.txt").read_text(encoding="utf-8").splitlines()[1] == "42 1 1.0"
+
+
+def write_e2e_model(datpath: Path, isopath: Path) -> None:
+    """Write a small end-to-end model of 40 tracers with dynamical and torus ejecta, and its nuclide table."""
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    rng = np.random.default_rng(seed=3)
+    ntraj = 40
+    ntimes = 8
+    np.savez(
+        datpath,
+        # the polar angles reach below the equator, thus the model has no equatorial symmetry
+        pos=np.column_stack([rng.uniform(0.05, 0.3, ntraj), rng.uniform(0.2, 2.9, ntraj)]),
+        idx=np.arange(1, ntraj + 1, dtype=float),
+        state=np.where(np.arange(ntraj) < 20, -1.0, 0.0),
+        mass=np.full(ntraj, 1e-3),
+        qdot=np.full((ntraj, ntimes), 1e10),
+        hnuloss=np.zeros((ntraj, ntimes)),
+        time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
+        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)),
+        t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+    )
+    # the neutron number and the atomic number of He4 and Zn56
+    np.save(isopath, np.array([[2, 2], [26, 30]]))
+
+
+def test_from_e2e_model_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The command writes a 2D model and a 3D model, and --interpolate writes its check files to the -o folder.
+
+    The interpolation with the dynamical ejecta wrote dyn_abunds.txt and dyn_model_*.txt to the working folder.
+    """
+    datpath = tmp_path / "e2emodel.npz"
+    write_e2e_model(datpath, tmp_path / "iso_table.npy")
+    workingfolder = tmp_path / "workingfolder"
+    workingfolder.mkdir()
+    monkeypatch.chdir(workingfolder)
+
+    gridargs = ["-npz", str(datpath), "-vmax_on_c", "0.4", "-ngridrcyl", "4", "-ngridz", "8"]
+    at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-o", str(tmp_path / "model2d")])
+    _, modelmeta2d = at.inputmodel.get_modeldata(tmp_path / "model2d", printwarningsonly=True)
+    assert modelmeta2d["dimensions"] == 2
+    assert modelmeta2d["npts_model"] == 32
+
+    gridargs3d = [*gridargs, "--mapto3D", "-ngridx", "4", "-ngridy", "4", "-ngridz", "4"]
+    at.inputmodel.from_e2e_model.main(argsraw=[*gridargs3d, "-o", str(tmp_path / "dyn3d")])
+    at.inputmodel.from_e2e_model.main(
+        argsraw=[
+            *gridargs3d,
+            "-replacedyn",
+            str(tmp_path / "dyn3d"),
+            "--interpolate",
+            "-o",
+            str(tmp_path / "interpolated"),
+        ]
+    )
+
+    _, modelmeta3d = at.inputmodel.get_modeldata(tmp_path / "interpolated", printwarningsonly=True)
+    assert modelmeta3d["npts_model"] == 64
+    for filename in ("dyn_abunds.txt", "dyn_model_notrescaled.txt", "dyn_model_rescaled.txt"):
+        assert (tmp_path / "interpolated" / filename).is_file(), filename
+    assert not list(workingfolder.iterdir())
+
+
+def test_describeinputmodel_keeps_its_description_with_quiet(capsys: pytest.CaptureFixture[str]) -> None:
+    """The description is the product of the command, thus --quiet must keep it."""
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["describeinputmodel", str(at.get_path("testdata") / "testmodel"), "--quiet"])
+
+    assert "kinetic energy" in capsys.readouterr().out
+
+
+def test_closest_network_timesteps_agree_with_a_filter_of_each_time(tmp_path: Path) -> None:
+    """One binary search for all the times must give the steps that one filter for each time gives."""
+    from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
+    from artistools.inputmodel.rprocess_from_trajectory import get_traj_network_timesteps
+
+    traj_root = copy_trajectories(tmp_path)
+    dfevol = get_traj_network_timesteps(traj_root, 114511).unique(subset=["timesec"], keep="first")
+    arrtimesec = np.sort(dfevol["timesec"].to_numpy())
+    # the times of the steps, the mid-points between them, and a time on each side of the whole range
+    times = [
+        float(arrtimesec[0]) * 0.5,
+        *arrtimesec[::7].tolist(),
+        *((arrtimesec[:-1:5] + arrtimesec[1::5]) / 2).tolist(),
+        float(arrtimesec[-1]) * 2.0,
+    ]
+
+    def get_reference_step(timesec: float, cond: str) -> int | None:
+        dftime = dfevol.with_columns(pl.lit(timesec, dtype=pl.Float32).alias("t"))
+        if cond == "lessorequal":
+            expr = pl.col("nstep").filter(pl.col("timesec") <= pl.col("t")).max()
+        elif cond == "greaterorequal":
+            expr = pl.col("nstep").filter(pl.col("timesec") >= pl.col("t")).min()
+        else:
+            dftime = dftime.sort("timesec")
+            expr = pl.col("nstep").get((pl.col("timesec") - pl.col("t")).abs().arg_min())
+        step: int | None = dftime.select(expr).item()
+        return step
+
+    for cond in ("lessorequal", "greaterorequal", "nearest"):
+        steps = get_closest_network_timesteps(traj_root, 114511, times, cond=cond)
+        assert steps == [get_reference_step(timesec, cond) for timesec in times], cond
+
+    assert get_closest_network_timesteps(traj_root, 114511, times[1:2], cond="lessorequal") == [
+        get_reference_step(times[1], "lessorequal")
+    ]
+    assert get_closest_network_timesteps(traj_root, 114511, times[:1], cond="lessorequal") == [None]
+    assert get_closest_network_timesteps(traj_root, 114511, times[-1:], cond="greaterorequal") == [None]

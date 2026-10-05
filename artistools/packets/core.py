@@ -7,6 +7,7 @@ import os
 import time
 import typing as t
 from collections.abc import Callable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
 from itertools import batched
@@ -40,8 +41,8 @@ from artistools.misc.fileio import is_readonly_error
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import parquet_is_readable
+from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import rankbatch_parquet_staleness
-from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
 
@@ -150,7 +151,8 @@ def get_column_names_artiscode(modelpath: Path) -> list[str] | None:
 def has_emission_record_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     """Return true for a packet that has a record of the last interaction (em) or of the last thermal emission (trueem).
 
-    ARTIS gives a time of 0 or -1 and a position of zero to a packet with no such record.
+    ARTIS gives a time of 0 or -1 to a packet with no such record. An older ARTIS gives that packet a position of
+    zero, and the current ARTIS gives it a position of NaN.
     """
     return pl.col(f"{position}_time") > 0
 
@@ -259,9 +261,6 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
     )
 
     packetcolumns = dfpackets.collect_schema().names()
-    if "trueem_time" in packetcolumns:
-        dfpackets = dfpackets.with_columns(emtrue_timestep=get_timestep_expr(pl.col("trueem_time"), timebins))
-
     if "trueem_posx" in packetcolumns:
         dfpackets = dfpackets.with_columns(
             true_emission_velocity=get_emission_velocity_expr("trueem"),
@@ -274,7 +273,26 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
             emtrue_modelgridindex=get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)
         )
 
+    # the timestep and the cell of the thermal emission select the estimators of that emission together. Thus a file
+    # with no cell gets no timestep, e.g. a 2D or 3D model with no position of the thermal emission
+    if "trueem_time" in packetcolumns and "emtrue_modelgridindex" in dfpackets.collect_schema().names():
+        dfpackets = dfpackets.with_columns(emtrue_timestep=get_timestep_expr(pl.col("trueem_time"), timebins))
+
     return dfpackets
+
+
+def raise_if_cut_line(dfpackets: pl.DataFrame, textfilepath: Path) -> None:
+    """Stop if a line of a packets text file has fewer values than the header.
+
+    ARTIS writes each value of each line, thus a missing value shows a file that is not complete. A cache from such
+    a file keeps the partial data, also after the write ends.
+    """
+    if dfpackets.null_count().sum_horizontal().item() > 0:
+        msg = (
+            f"The file {textfilepath} has a line with fewer values than the header. Possibly ARTIS or a copy"
+            " still writes the file, or the end of the file is missing"
+        )
+        raise ValueError(msg)
 
 
 def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".") -> list[str]:
@@ -367,6 +385,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         raise
 
     dfpackets = drop_trailing_null_column(dfpackets)
+    raise_if_cut_line(dfpackets, packetsfiletext)
 
     mpirank = int(packetsfiletext.name.split("_")[-1].split(".")[0])
     dfpackets = dfpackets.drop(
@@ -398,30 +417,36 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
 
 
 def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: list[str]) -> pl.DataFrame:
-    """Read one rank's virtual packets text file, adding the MPI rank taken from the filename."""
+    """Read one rank's virtual packets text file, adding the MPI rank taken from the filename.
+
+    ARTIS writes the header line at the start of the run, and a line only for a virtual packet that escapes in one
+    direction or more. Thus the file of a rank can hold no data lines, and the frame of that rank has no rows.
+    """
     vpacketsfiletext = Path(vpacketsfiletext)
     mpirank = int(vpacketsfiletext.name.split("_")[-1].split(".")[0])
 
+    integercolumns = {"emissiontype", "trueemissiontype", "absorption_type"}
+    # a file with no data lines gives no values to infer a data type from, thus the schema gives each column a type
+    schema = {
+        col: pl.Int32 if col in integercolumns else pl.Float32 if col.endswith("_t_arrive_d") else pl.Float64
+        for col in column_names
+    }
     # the caller resolves the path with tryzipped=True, thus polars_source only has to open the
     # .xz case, which polars cannot read from a path
-    dfvpackets = pl.read_csv(
-        polars_source(vpacketsfiletext),
-        separator=" ",
-        has_header=False,
-        comment_prefix="#",
-        new_columns=column_names,
-        **extra_csv_columns_ignored(),
-        schema_overrides={
-            "emissiontype": pl.Int32,
-            "trueemissiontype": pl.Int32,
-            "absorption_type": pl.Int32,
-            "absorption_freq": pl.Float64,
-        }
-        | {col: pl.Float64 for col in column_names if col.endswith("_nu_rf") or "_e_rf" in col}
-        | {col: pl.Float32 for col in column_names if col.endswith("_t_arrive_d")},
-    )
+    with polars_error_note(vpacketsfiletext):
+        dfvpackets = pl.read_csv(
+            polars_source(vpacketsfiletext),
+            separator=" ",
+            has_header=False,
+            comment_prefix="#",
+            schema=schema,
+            **extra_csv_columns_ignored(),
+            raise_if_empty=False,
+        )
 
-    return drop_trailing_null_column(dfvpackets).with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
+    dfvpackets = drop_trailing_null_column(dfvpackets)
+    raise_if_cut_line(dfvpackets, vpacketsfiletext)
+    return dfvpackets.with_columns(mpirank=pl.lit(mpirank, dtype=pl.Int32))
 
 
 def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
@@ -433,8 +458,8 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 
 
 # The version of the packets parquet cache format. Increase it for a change that makes an older
-# cache file incorrect, e.g. a new column, a removed column, or a different data type.
-# version 1: the stokes1/2/3 columns became stokes_q/stokes_u, and the schema omits the redundant stokes I
+# cache file incorrect, e.g. a new column, a removed column, or a different data type. A cache keeps the
+# names of the Stokes columns of its text file, e.g. stokes1/2/3 of an older ARTIS, and get_packets renames them
 CACHEVERSION = 1
 
 # the number of ranks in each parquet cache of the packets
@@ -547,25 +572,22 @@ def get_packets_rankbatch_parquetfile(
 
     text_filenames = [get_packets_textfilename(rank, virtual) for rank in batch_mpiranks]
 
+    # the check of the cache and the conversion use one scan of each folder
+    if folderlistings is None:
+        folderlistings = {}
+
     conversion_needed = True
     outdatedparquet: tuple[int, int] | None = None
     if parquetfilepath.is_file():
         parquetstat = parquetfilepath.stat()
-        # ARTIS writes the packet files of all the ranks at the same time, thus the file of the first rank gives the
-        # time of the batch. A check of each file took 4900 stat calls for each read of a run of 1920 ranks. The
-        # stamp is the newest time of all the files, thus a first file that is newer than the stamp shows a rewrite
-        firstmtimes = get_packets_textsource_mtimes(modelpath, text_filenames[:1], folderlistings)
+        # the stamp is the newest time of all the files of the batch, thus each file counts. The file of a later
+        # rank can change alone, e.g. while a copy of the run folder is not complete. The folder listings give each
+        # time with one stat call for each file and no new scan
+        textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames, folderlistings)
+        allranksfound = len(textsource_mtimes) == len(batch_mpiranks)
         stalereason = rankbatch_parquet_staleness(
-            parquetfilepath, CACHEVERSION, firstmtimes[0] if firstmtimes else None, textsource_complete=False
+            parquetfilepath, CACHEVERSION, max(textsource_mtimes, default=None), textsource_complete=allranksfound
         )
-        # the one-way check keeps a cache with no stamp. The reader can make that cache again from the text files,
-        # thus the cache is stale
-        if stalereason is None and firstmtimes:
-            _, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, None)
-        # a conversion needs every text file of the batch, thus only a stale cache needs the check of each one
-        allranksfound = stalereason is not None and len(
-            get_packets_textsource_mtimes(modelpath, text_filenames, folderlistings)
-        ) == len(batch_mpiranks)
 
         if stalereason is None:
             conversion_needed = False
@@ -607,7 +629,7 @@ def get_packets_rankbatch_parquetfile(
             for filename in text_filenames
         ]
 
-        # the stamp is the newest text file of the batch, thus the check of the first file finds a rewrite of that file
+        # the stamp is the newest text file of the batch, which the check of the cache compares
         textsource_mtime = max(text_file_path.stat().st_mtime for text_file_path in text_file_paths)
 
         column_names = (
@@ -713,9 +735,10 @@ def get_packets_cache_fingerprint(
 ) -> tuple[tuple[int, ...], tuple[tuple[int, int, int, int] | None, ...]] | None:
     """Return the modification time of the first text file of each batch, and the state of each cache.
 
-    The check of a batch reads the first text file and the cache. Thus a change to one of the two files changes
-    this value. The function returns None if a folder of the last scan changed, or if a text file of the last scan
-    does not exist now.
+    The check of a batch reads every text file of the batch and the cache. This value holds only the first text
+    file of each batch, because a stat of each file at each plot is slow on a network drive. Thus a change of only
+    a later rank shows in a new process, or after Reload Data clears the result. The function returns None if a
+    folder of the last scan changed, or if a text file of the last scan does not exist now.
     """
     firsttextfiles, foldermtimes = find_first_rank_textfiles(
         modelpath, tuple(batch_mpiranks[0] for _, batch_mpiranks in mpirank_groups), virtual
@@ -846,12 +869,17 @@ def get_packets(
 
     print_parquet_size(packetsparquetfiles)
 
-    # ARTIS names the Stokes columns stokes1/2/3, where stokes1 holds the redundant I=1.0. Thus stokes2
-    # is Q and stokes3 is U. The cache keeps stokes1, because a cache file that omits it would need a
-    # new cache version, and every older cache would then be converted again
+    # an older ARTIS names the Stokes columns stokes1/2/3, where stokes1 holds the redundant I=1.0. Thus stokes2 is
+    # the stokes_q and stokes3 is the stokes_u of the current ARTIS. The current ARTIS writes the flag
+    # originated_from_particlenotgamma as an integer, and an older ARTIS names it originated_from_positron. A cache
+    # keeps the names and the types of its text file, because a different cache needs a new cache version, and
+    # every older cache must then have a new conversion
     pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
-        {"stokes2": "stokes_q", "stokes3": "stokes_u"}, strict=False
+        {"stokes2": "stokes_q", "stokes3": "stokes_u", "originated_from_positron": "originated_from_particlenotgamma"},
+        strict=False,
     )
+    if "originated_from_particlenotgamma" in pldfpackets.collect_schema().names():
+        pldfpackets = pldfpackets.with_columns(pl.col("originated_from_particlenotgamma").cast(pl.Boolean))
 
     if {"true_emission_velocity", "trueem_time"} <= set(pldfpackets.collect_schema().names()):
         # an old packets file holds a thermal emission velocity of 0 for a packet with no thermal emission record
@@ -870,6 +898,15 @@ def get_packets(
         pldfpackets = pldfpackets.filter(
             (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
         )
+        # ARTIS removes the escaped gamma packets before it writes the packets files, unless
+        # KEEP_ESCAPED_GAMMAS is true. Thus an empty frame gives a luminosity of zero that is not correct
+        if escape_type == "TYPE_GAMMA" and pldfpackets.select(pl.len()).collect().item() == 0:
+            msg = (
+                f"The packets files of {modelpath} hold no escaped gamma packets. ARTIS writes them only with"
+                " KEEP_ESCAPED_GAMMAS = true in artisoptions.h, thus the packets give no gamma-ray light curve and"
+                " no gamma-ray spectrum"
+            )
+            raise ValueError(msg)
     elif packet_type is not None and packet_type:
         pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
@@ -908,12 +945,18 @@ def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> 
             ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
         )
 
+        # ARTIS takes cosphi = 1 for a direction along syn_dir, where phi has no definition (get_escapedirectionbin in
+        # vectors.h). Thus the bin of such a direction agrees with the bin of ARTIS
+        vec1len = (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
         dfpackets = dfpackets.with_columns(
-            (
+            pl
+            .when(vec1len > 1e-12)
+            .then(
                 (pl.col("vec1_x") * vec2[0] + pl.col("vec1_y") * vec2[1] + pl.col("vec1_z") * vec2[2])
-                / (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
+                / vec1len
                 / float(np.linalg.norm(vec2))
             )
+            .otherwise(1.0)
             .cast(pl.Float32)
             .alias("cosphi")
         )
@@ -952,9 +995,11 @@ def bin_packet_directions_polars(
         "phibinhistoricaldescendingdiscont", "phibinmonotonicasc"
     ] = "phibinhistoricaldescendingdiscont",
 ) -> pl.LazyFrame:
-    """Add the costheta, phi, and combined viewing direction bin index of each packet.
+    """Add the costheta bin and the phi bin of each packet.
 
     phibintype selects between the historical descending-and-discontinuous phi bins and monotonically ascending ones.
+    The historical phi bins are the bins of ARTIS, and they also give the combined viewing direction bin (dirbin). The
+    ascending phi bins give only the column phibinmonotonicasc, and no phibin or dirbin.
     """
     dfpackets = dfpackets.lazy()
     if nphibins is None:
@@ -1118,10 +1163,28 @@ def sum_packets_by_dirbin(
     return result
 
 
+def get_vpkt_in_spectrum_range_expr(obsdirindex: int, lambda_ranges: Sequence[tuple[float, float]]) -> pl.Expr:
+    """Return true for a virtual packet whose rest frame frequency is inside a wavelength range [Å] of vpkt.txt.
+
+    ARTIS also writes a row when only the absorption frequency of the real packet is inside a range. Such rows are
+    a correlated subset of the packets, thus ARTIS keeps their flux out of vspecpol. A vpkt.txt with no custom ranges
+    takes the range of the constants of the ARTIS build. The file does not give that range, thus each row stays.
+    """
+    if not lambda_ranges:
+        return pl.lit(value=True)
+
+    # ARTIS uses open intervals in nu_rf_is_in_spectrum_range()
+    nu_rf = pl.col(f"dir{obsdirindex}_nu_rf")
+    return pl.any_horizontal([
+        (nu_rf > CLIGHT * 1e8 / lambdamax) & (nu_rf < CLIGHT * 1e8 / lambdamin)
+        for lambdamin, lambdamax in lambda_ranges
+    ])
+
+
 def sum_virtual_packets_by_observer(
     dfvpackets: pl.LazyFrame,
     vspecindices: Sequence[int],
-    nspectraperobs: int,
+    vpkt_config: Mapping[str, t.Any],
     valueexpr: Callable[[int], pl.Expr],
     bin_edges: Sequence[float] | npt.NDArray[np.floating],
     arrivaltimerange_days: tuple[float, float] | None = None,
@@ -1131,12 +1194,14 @@ def sum_virtual_packets_by_observer(
 
     A vspecindex gives an observer direction and an opacity choice. valueexpr gives the binned value of the virtual
     packets of an observer direction, e.g. the arrival time. Each observer direction has its own columns, thus each
-    vspecindex needs its own pass over the packets.
+    vspecindex needs its own pass over the packets. The sums leave out the rows that ARTIS keeps out of vspecpol.
     """
     result: dict[int, DirbinSums] = {}
     for vspecindex in vspecindices:
-        obsdirindex, opacchoiceindex = divmod(vspecindex, nspectraperobs)
-        dfobserver = dfvpackets
+        obsdirindex, opacchoiceindex = divmod(vspecindex, vpkt_config["nspectraperobs"])
+        dfobserver = dfvpackets.filter(
+            get_vpkt_in_spectrum_range_expr(obsdirindex, vpkt_config["custom_lambda_ranges"])
+        )
         if arrivaltimerange_days is not None:
             dfobserver = dfobserver.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(*arrivaltimerange_days))
         observersums = sum_packets_by_dirbin(

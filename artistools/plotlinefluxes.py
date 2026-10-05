@@ -21,7 +21,6 @@ from artistools.atomic import get_levels
 from artistools.atomic import get_linelist_pldf
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
-from artistools.constants import km_to_cm
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
@@ -34,6 +33,8 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
+from artistools.misc import exit_with_error
+from artistools.misc import find_reference_data_file
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
@@ -44,7 +45,6 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_saved
 from artistools.misc import print_warning
-from artistools.misc import require_reference_data_file
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.misc.fileio import modelpath_cache
@@ -132,32 +132,33 @@ def get_timebins(
 def get_timebin_expr(timeexpr: pl.Expr, arr_tstart: Sequence[float], arr_tend: Sequence[float]) -> pl.Expr:
     """Return the index of the time bin [tstart, tend) that holds each time, or null for a time in no bin.
 
-    The last bin also holds its upper edge. A gap between two bins holds no time, but an end that differs
-    from the next start by rounding alone meets that start, e.g. the times of timesteps.out.
+    The last bin in time also holds its upper edge. A gap between two bins holds no time, but an end that
+    differs from the next start by rounding alone meets that start, e.g. the times of timesteps.out. The
+    user can give the bins in any order, thus these rules take the order in time and not the list order.
     """
-    arr_binedge_start = np.asarray(arr_tstart, dtype=np.float64)
-    arr_binedge_end = np.asarray(arr_tend, dtype=np.float64).copy()
+    # timeorder[k] is the index in the list of the bin that is k-th in time
+    timeorder = np.argsort(np.asarray(arr_tstart, dtype=np.float64), kind="stable")
+    arr_binedge_start = np.asarray(arr_tstart, dtype=np.float64)[timeorder]
+    arr_binedge_end = np.asarray(arr_tend, dtype=np.float64)[timeorder]
     endsmeetnextstart = np.isclose(arr_binedge_end[:-1], arr_binedge_start[1:], rtol=1e-5, atol=0.0)
     arr_binedge_end[:-1][endsmeetnextstart] = arr_binedge_start[1:][endsmeetnextstart]
-    # the user can give the bins in any order, thus the test compares each bin with the next one in time
-    timeorder = np.argsort(arr_binedge_start)
-    if np.any(arr_binedge_start[timeorder][1:] < arr_binedge_end[timeorder][:-1]):
+    if np.any(arr_binedge_start[1:] < arr_binedge_end[:-1]):
         msg = "The time bins overlap, thus a packet in both bins would count in one bin only. Give separate bins"
         raise ValueError(msg)
 
     # use one cut() on all the edges, because a when() test for each bin made one column for each bin
     edges = np.unique(np.concatenate([arr_binedge_start, arr_binedge_end]))
     binofinterval: dict[int, int] = {}
-    for binindex, (tstart, tend) in enumerate(zip(arr_binedge_start, arr_binedge_end, strict=True)):
+    for listindex, tstart, tend in zip(timeorder.tolist(), arr_binedge_start, arr_binedge_end, strict=True):
         for intervalindex in range(int(np.searchsorted(edges, tstart)), int(np.searchsorted(edges, tend))):
-            binofinterval[intervalindex] = binindex
+            binofinterval[intervalindex] = listindex
 
     # cut() gives 0 below the first edge, thus interval k of the edges takes the category k + 1
     intervalindex = timeexpr.cut(breaks=edges.tolist(), left_closed=True).to_physical().cast(pl.Int32) - 1
     return (
         pl
         .when(timeexpr == edges[-1])
-        .then(pl.lit(len(arr_binedge_start) - 1, dtype=pl.Int32))
+        .then(pl.lit(int(timeorder[-1]), dtype=pl.Int32))
         .otherwise(intervalindex.replace_strict(binofinterval, default=None, return_dtype=pl.Int32))
     )
 
@@ -231,9 +232,14 @@ def get_line_luminosities_from_pops(
     """Return each feature's luminosity against time, computed from the NLTE level populations."""
     _arr_tstart, _arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
 
+    # the volume column holds the volume of each cell at the model time for a model of any dimension. A 1D model
+    # also has shell velocities, but a 2D or 3D model has none
     lzmodel, modelmeta = get_modeldata(modelpath)
     modeldata = (
-        add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).select("vel_r_min_kmps", "vel_r_max_kmps").collect()
+        add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select("modelgridindex", "volume")
+        .sort("modelgridindex")
+        .collect()
     )
 
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
@@ -242,10 +248,10 @@ def get_line_luminosities_from_pops(
     # one read gives the populations of every ion, thus each feature filters this frame
     dfnltepops_allions = read_nltepops(modelpath)
 
-    # the shell velocities do not change with time, thus the volume of a shell scales with t^3
-    v_inner = modeldata["vel_r_min_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
-    v_outer = modeldata["vel_r_max_kmps"].cast(pl.Float64).to_numpy() * km_to_cm
-    shell_volumes_at_1s = (4 * math.pi / 3) * (v_outer**3 - v_inner**3)
+    # the flow is homologous, thus the volume of a cell scales with t^3
+    shell_volumes_at_1s = (
+        modeldata["volume"].cast(pl.Float64).to_numpy() / (modelmeta["t_model_init_days"] * day_to_s) ** 3
+    )
 
     timesteps = [get_timestep_of_timedays(modelpath, float(timedays)) for timedays in arr_tmid]
     dftimes = pl.DataFrame({
@@ -344,12 +350,20 @@ def sum_line_luminosities(
         dfcells
         .filter(~hasdata)
         .group_by("timeindex", "lineindex", maintain_order=True)
-        .agg(pl.col("modelgridindex"), emptycellcount=pl.len())
+        .agg(pl.col("modelgridindex"), pl.col("timestep").first(), pl.col("level").first(), emptycellcount=pl.len())
     )
-    for _timeindex, _lineindex, modelgridindices, _ in emptycells.iter_rows():
-        print(f"No data for cells {modelgridindices} (expected for empty cells)")
+    for modelgridindices in emptycells["modelgridindex"]:
+        print(f"No data for cells {modelgridindices.to_list()} (expected for empty cells)")
 
-    assert (emptycells["emptycellcount"] < len(shell_volumes_at_1s)).all()  # must be data for at least one shell
+    if not (nocelldata := emptycells.filter(pl.col("emptycellcount") >= len(shell_volumes_at_1s))).is_empty():
+        timestep, level = nocelldata.select("timestep", "level").row(0)
+        msg = (
+            f"The NLTE populations hold no value of the upper level {level} at timestep {timestep} in any cell."
+            " ARTIS writes the populations of the NLTE levels alone, at the timesteps of its NLTE output. Give"
+            " -timebins_tstart and -timebins_tend that hold such timesteps, and features of lines with an NLTE"
+            " upper level"
+        )
+        raise ValueError(msg)
 
     # a cumulative sum adds the terms in the order of the lines and the cells, as a loop does
     dfluminosity = (
@@ -392,6 +406,13 @@ def get_closelines(
         lzdflinelistclosematches = lzdflinelistclosematches.filter(pl.col("upperlevelindex") == upperlevelindex)
 
     dflinelistclosematches = lzdflinelistclosematches.collect()
+    if dflinelistclosematches.is_empty():
+        msg = (
+            f"The line list holds no {get_ionstring(atomic_number, ion_stage)} line for the feature"
+            f" {approxlambdalabel} Å (lambdamin {lambdamin}, lambdamax {lambdamax}, lower level {lowerlevelindex},"
+            f" upper level {upperlevelindex}). The line list gives vacuum wavelengths"
+        )
+        raise ValueError(msg)
 
     colname = f"lum_{get_ionstring(atomic_number, ion_stage, sep='')}_{approxlambdalabel}"
     featurelabel = f"{get_ionstring(atomic_number, ion_stage)} {approxlambdalabel} Å"
@@ -581,7 +602,8 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     if args.write_data and plotteddata:
         write_plotted_data(plotteddata, args.outputfile)
 
-    save_figure(fig, args.outputfile, format="pdf", args=args)
+    # the suffix of the file name sets the format, e.g. .pdf or .png
+    save_figure(fig, args.outputfile, args=args)
 
 
 def write_plotted_data(plotteddata: Sequence[pl.DataFrame], outputfile: Path | str) -> None:
@@ -632,9 +654,15 @@ def read_te_nne_refdata(
 ) -> tuple[list[str], npt.NDArray[np.floating], list[dict[str, list[float]]]]:
     """Return the time keys, the times in days, and the points of one file of reference data.
 
-    The file is either in the working folder or in the data folder of the package.
+    The file is either in the working folder or in the data folder of the package. The package holds no copy
+    of the data, thus the message names the option that plots the model data alone.
     """
-    refdatapath = require_reference_data_file(refdatafilename, "data", "reference data")
+    refdatapath = find_reference_data_file(refdatafilename, "data")
+    if refdatapath is None:
+        exit_with_error(
+            f"could not find the reference data file {refdatafilename}",
+            f"Put {refdatafilename} in the working folder, or give --norefdata to plot the model data alone",
+        )
 
     te_nne: dict[str, dict[str, list[float]]] = json.loads(refdatapath.read_text(encoding="utf-8"))
     # the keys are strings and not floats, thus the sort takes a key function
@@ -648,16 +676,22 @@ def get_emission_columns(dfpackets: pl.LazyFrame, emtypecolumn: str) -> tuple[st
     """Return the timestep column and the cell column of the emission that emtypecolumn selects.
 
     The cell and the timestep must come from the same event. The last interaction (em) and the last thermal
-    emission (trueem) of a packet can be in different cells and in different timesteps. A packets file that has
-    no trueem_time gives the timestep of the last interaction.
+    emission (trueem) of a packet can be in different cells and in different timesteps. A packets file that does
+    not give both the time and the cell of the thermal emission gives the timestep and the cell of the last
+    interaction.
     """
     if emtypecolumn == "emissiontype":
         return "em_timestep", "em_modelgridindex"
 
-    # add_derived_columns_lazy adds emtrue_timestep when the packets have a trueem_time
-    if "emtrue_timestep" not in dfpackets.collect_schema().names():
-        print_warning("The packets have no trueem_time, thus the timestep comes from the last interaction")
-        return "em_timestep", "emtrue_modelgridindex"
+    # add_derived_columns_lazy adds emtrue_timestep from trueem_time. It adds emtrue_modelgridindex from the
+    # position of the thermal emission, or from its velocity for a 1D model
+    columnnames = dfpackets.collect_schema().names()
+    if missing := [column for column in ("emtrue_timestep", "emtrue_modelgridindex") if column not in columnnames]:
+        print_warning(
+            f"The packets give no {' and no '.join(missing)} of the thermal emission, thus the timestep and the cell"
+            " come from the last interaction"
+        )
+        return "em_timestep", "em_modelgridindex"
 
     return "emtrue_timestep", "emtrue_modelgridindex"
 
@@ -707,9 +741,48 @@ def get_emitting_regions_data(
     return emdata
 
 
+def format_label_fields(template: str, **fields: t.Any) -> str:
+    """Return the template with each field of these names replaced, e.g. {timeavg} or {timeavg:.0f}.
+
+    A label can hold LaTeX braces, e.g. $M_{ej}$, which str.format reads as a field. Thus only the named
+    fields change, and every other brace stays.
+    """
+    import re
+
+    def replace_field(match: re.Match[str]) -> str:
+        return format(fields[match["name"]], match["spec"] or "")
+
+    fieldnames = "|".join(re.escape(name) for name in fields)
+    return re.sub(rf"\{{(?P<name>{fieldnames})(?::(?P<spec>[^{{}}]*))?\}}", replace_field, template)
+
+
+def set_emitting_regions_limits(
+    axis: mplax.Axes,
+    emdata_all: Sequence[dict[tuple[float, str], dict[str, npt.NDArray[np.floating]]]],
+    tmid: float,
+    args: argparse.Namespace,
+) -> None:
+    """Set the limits of the emitting regions plot, which grow to show all the points of the time bin.
+
+    The default limits are the range of the reference data of Flörs et al. (2020). -ymin and -ymax set the
+    temperature range. The x axis gives the log of the electron density, thus -xmin and -xmax, which give a time
+    in days, do not apply.
+    """
+    allpoints = [
+        emdata[key] for emdata in emdata_all for key in emdata if key[0] == tmid and len(emdata[key]["em_Te"]) > 0
+    ]
+    log10nne = np.concatenate([[4.5, 7.15], *(points["em_log10nne"] for points in allpoints)])
+    te = np.concatenate([[3000.0, 10000.0], *(points["em_Te"] for points in allpoints)])
+    axis.set_xlim(float(np.min(log10nne)), float(np.max(log10nne)))
+    axis.set_ylim(
+        args.ymin if args.ymin is not None else float(np.min(te)),
+        args.ymax if args.ymax is not None else float(np.max(te)),
+    )
+
+
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     """Plot the electron density and temperature of the cells emitting each feature, and save the figure."""
-    refdatafilenames = ["floers_te_nne.json"]
+    refdatafilenames: list[str] = [] if args.norefdata else ["floers_te_nne.json"]
     refdatalabels = ["Flörs+2020"]
     refdatacolors = ["0.0", "C1", "C2", "C4"]
     refdata = [read_te_nne_refdata(refdatafilename) for refdatafilename in refdatafilenames]
@@ -772,26 +845,27 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
             # a circle has more area than a triangle, thus this factor decreases the marker size
             normtotalpackets = len(em_log10nne) * 8.0
-            label = args.label[modelindex].format(timeavg=tmid, modeltag=args.modeltag[modelindex] or "all")
+            label = format_label_fields(
+                args.label[modelindex], timeavg=tmid, modeltag=args.modeltag[modelindex] or "all"
+            )
             plot_nne_te_points(axis, label, em_log10nne, em_Te, normtotalpackets, args.color[modelindex], marker="s")
 
-        if tmid == times_days[-1]:
-            set_legend(axis, args, loc="best", frameon=False, handlelength=1, borderpad=0, numpoints=1, markerscale=2.5)
+        # each time bin has its own figure, thus each figure needs its own legend
+        set_legend(axis, args, loc="best", frameon=False, handlelength=1, borderpad=0, numpoints=1, markerscale=2.5)
 
-        axis.set_ylim(3000, 10000)
-        axis.set_xlim(4.5, 7.15)
+        set_emitting_regions_limits(axis, emdata_all, tmid, args)
 
         axis.set_xlabel(r"log$_{10}$(n$_{\mathrm{e}}$ [cm$^{-3}$])")
         axis.set_ylabel(r"Electron Temperature [K]")
 
         # one figure holds every model, thus the name of the file joins the tags of all of them
         filetag = "_".join(tag for tag in args.modeltag if tag) or "all"
-        outputfile = Path(str(args.outputfile).format(timeavg=tmid, modeltag=filetag))
+        outputfile = Path(format_label_fields(str(args.outputfile), timeavg=tmid, modeltag=filetag))
         # each time bin gives one figure, thus a name with no {timeavg} field gets the time, or each figure
         # would replace the one before it
         if len(times_days) > 1 and "{timeavg" not in str(args.outputfile):
             outputfile = outputfile.with_stem(f"{outputfile.stem}_{tmid:.{ndecimals}f}d")
-        save_figure(fig, outputfile, format="pdf", args=args)
+        save_figure(fig, outputfile, args=args)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -871,9 +945,24 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
 
-    parser.add_argument("--plotemittingregions", action="store_true", help="Plot conditions where flux line is emitted")
+    parser.add_argument(
+        "--plotemittingregions",
+        action="store_true",
+        help=(
+            "Plot conditions where flux line is emitted. The plot shows the reference data of floers_te_nne.json,"
+            " which the package does not hold. Put that file in the working folder, or give --norefdata"
+        ),
+    )
 
-    addarg_output(parser, kind="file", helptext="Path/filename for PDF file")
+    parser.add_argument(
+        "--norefdata",
+        action="store_true",
+        help="Plot the emitting regions without the reference data of Flörs et al. (2020)",
+    )
+
+    addarg_output(
+        parser, kind="file", helptext="Path/filename for the plot file. The suffix sets the format, e.g. .pdf or .png"
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

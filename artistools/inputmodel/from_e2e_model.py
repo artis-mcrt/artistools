@@ -562,10 +562,12 @@ def map_to_artis(
     local_dyn_scale: npt.NDArray[np.floating] | None = None,
     interpolate: bool = False,
     M_2Ddyn: float | None = None,
+    outputfolder: Path = Path(),
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     """Assemble the interpolated grid into an ARTIS model, returning the model, the abundances, and the metadata.
 
-    When equatorial symmetry was assumed, the upper half space is reflected to fill the lower half.
+    When equatorial symmetry was assumed, the upper half space is reflected to fill the lower half. The interpolation
+    with the dynamical ejecta writes its files for a consistency check to outputfolder.
     """
     dfmodel: pl.DataFrame
     if model_dim == 2:
@@ -725,7 +727,7 @@ def map_to_artis(
             dyn_model = dyn_model.join(
                 dfmodel.select(["inputcellid", "bin_state"]), on="inputcellid", how="left", maintain_order="left"
             ).with_columns((pl.col("rho") * pl.col("bin_state")).alias("rho"))
-            save_initelemabundances(dfelabundances=dyn_abunds, outpath=Path("dyn_abunds.txt"))
+            save_initelemabundances(dfelabundances=dyn_abunds, outpath=outputfolder / "dyn_abunds.txt")
             dyn_modelmeta = {
                 "dimensions": 3,
                 "ncoordgridx": grid_dims[0],
@@ -739,7 +741,7 @@ def map_to_artis(
             save_modeldata(
                 dfmodel=dyn_model,
                 modelmeta=dyn_modelmeta,
-                outpath=Path("dyn_model_notrescaled.txt"),
+                outpath=outputfolder / "dyn_model_notrescaled.txt",
                 extracols=dyn_extracols,
             )
             # 2) 3D dynamical ejecta weighted and scaled
@@ -747,7 +749,7 @@ def map_to_artis(
             save_modeldata(
                 dfmodel=dyn_model,
                 modelmeta=dyn_modelmeta,
-                outpath=Path("dyn_model_rescaled.txt"),
+                outpath=outputfolder / "dyn_model_rescaled.txt",
                 extracols=dyn_extracols,
             )
 
@@ -1165,7 +1167,7 @@ def float_or_str(x: str) -> float | str:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_output(parser, kind="folder", default=None, helptext="Path of output ARTIS model file")
+    addarg_output(parser, kind="folder", default=None, helptext="Folder for the output ARTIS model files")
 
     parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
 
@@ -1232,7 +1234,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-replacethr",
         type=float,
         default=0.5,
-        help="Threshold in the binary state variable for replacing dynamical ejecta with the 3D model. (default: 0.5)",
+        help="Threshold in the binary state variable for replacing dynamical ejecta with the 3D model",
     )
 
     parser.add_argument(
@@ -1268,7 +1270,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-perturb3Dmodel",
         type=float_or_str,
         nargs="+",
-        help="Apply density perturbations to 3D model. Provide perturbation parameters. Options implemented:\n-sinusoidal, A, d\n-random, A",
+        help=(
+            "Apply density perturbations to the 3D model. Give the mode and its parameters as separate values:"
+            " sinusoidal A d (A is the relative amplitude and d is the period in units of c), or random A"
+            " (A is the maximum relative change)"
+        ),
     )
     # deprecated double-dash spelling kept as a hidden alias
     parser.add_argument("--perturb3Dmodel", dest="perturb3Dmodel", type=float_or_str, nargs="+", help=argparse.SUPPRESS)
@@ -1391,6 +1397,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             local_dyn_scale=args.localdynscale,
             interpolate=args.interpolate,
             M_2Ddyn=args.interpolrescale,
+            outputfolder=Path(args.outputfile),
         )
 
         if args.perturb3Dmodel:

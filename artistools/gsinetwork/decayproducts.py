@@ -26,6 +26,7 @@ from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timest
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_output
+from artistools.misc import exit_with_error
 from artistools.misc import get_file_identity
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
@@ -208,16 +209,23 @@ def process_trajectory(
     nuclide_contrib: bool,
     traj_parquet_dir: Path | None,
     traj_ID: int,
-) -> dict[str, npt.NDArray[np.floating]]:
-    """Process a single trajectory to extract decay powers."""
+) -> dict[str, npt.NDArray[np.floating]] | None:
+    """Process a single trajectory to extract decay powers.
+
+    Return None for a trajectory with no network data, which the sums then leave out, as comparetogsinetwork does.
+    """
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
-    dfheatingthermo = (
-        read_wsv(
-            get_tar_member_extracted_path(
-                traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
-            )
+    try:
+        heatingpath = get_tar_member_extracted_path(
+            traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
         )
+    except FileNotFoundError:
+        print_warning(f"trajectory {traj_ID} has no network data, thus the sums leave it out")
+        return None
+
+    dfheatingthermo = (
+        read_wsv(heatingpath)
         .select("#count", "hbeta", "htot")
         .with_columns(fix_fortran_exponents(pl.Float64))
         .join(
@@ -382,6 +390,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ("mid", args.yemax / 3, args.yemax * 2 / 3),
         ("high", args.yemax * 2 / 3, args.yemax),
     ]
+    # a Ye on the boundary of two bins goes to the upper bin alone. Both ends closed summed it in the two bins
+    closed_of_bin: dict[str, t.Literal["left", "both"]] = {"all": "both", "low": "left", "mid": "left", "high": "both"}
 
     if args.npz:
         npz_dict = np.load(args.npz)
@@ -419,7 +429,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_masses_g = {int(trajid): mass * Msun_to_g for trajid, mass in traj_summ_data[["Id", "Mass"]].to_numpy()}
 
-    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]]] = parallel_map(
+    alltraj_decay_powers: list[dict[str, npt.NDArray[np.floating]] | None] = parallel_map(
         partial(
             process_trajectory,
             nuc_data,
@@ -438,6 +448,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     print()
 
+    decay_powers_of_traj = {
+        traj_id: trajdata
+        for traj_id, trajdata in zip(traj_ids, alltraj_decay_powers, strict=True)
+        if trajdata is not None
+    }
+    if not decay_powers_of_traj:
+        exit_with_error(f"no trajectory of {summarypath} has network data")
+    decay_power_keys = [key for key in next(iter(decay_powers_of_traj.values())) if key != "timedays"]
+
     ej_states = ["any", -1, 0, 1]
     ej_names = ["all", "dyn", "hmns", "torus"]
     for i in range(4):
@@ -446,7 +465,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             label, Ye_lower, Ye_upper = Ye_bins[i]
             labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
             print(f"Processing Ye bin {label}... Ye: [{Ye_lower}, {Ye_upper}]")
-            selected_traj_ids = traj_summ_data.filter(pl.col("Ye").is_between(Ye_lower, Ye_upper))["Id"].to_list()
+            selected_traj_ids = traj_summ_data.filter(
+                pl.col("Ye").is_between(Ye_lower, Ye_upper, closed=closed_of_bin[label])
+            )["Id"].to_list()
 
             print(f" {len(selected_traj_ids)} trajectories selected")
             if len(selected_traj_ids) == 0:
@@ -467,15 +488,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         selected_traj_id_set = set(selected_traj_ids)
         decay_powers: dict[str, npt.NDArray[np.floating]] = {
             k: sum(
-                (
-                    trajdata[k]
-                    for traj_id, trajdata in zip(traj_ids, alltraj_decay_powers, strict=True)
-                    if traj_id in selected_traj_id_set
-                ),
+                (trajdata[k] for traj_id, trajdata in decay_powers_of_traj.items() if traj_id in selected_traj_id_set),
                 start=np.zeros_like(arr_t_day),
             )
-            for k in alltraj_decay_powers[0]
-            if k != "timedays"
+            for k in decay_power_keys
         }
         decay_powers["timedays"] = np.array(arr_t_day)
 

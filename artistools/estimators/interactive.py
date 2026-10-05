@@ -84,7 +84,7 @@ from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
 from artistools.viewertools.core import get_row_values
-from artistools.viewertools.core import get_short_number
+from artistools.viewertools.core import get_short_limits
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_parser
 from artistools.viewertools.core import OptionRows
@@ -100,6 +100,8 @@ from artistools.viewertools.sections import add_y_axis_actions
 from artistools.viewertools.sections import connect_time_keys
 from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import read_limit_fields
+from artistools.viewertools.sections import read_selected_range
+from artistools.viewertools.sections import WAIT_FOR_PLOT_MESSAGE
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import fit_canvas
@@ -1105,9 +1107,9 @@ class EstimatorViewer:
         marginwidth = ncols * LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
         return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
 
-    def get_xlimit_text(self, xdata: float) -> str:
-        """Return the -xmin or -xmax text of a position on the x axis, with 3 significant digits for a short command."""
-        return get_short_number(xdata * self.xlimitscale)
+    def get_xlimit_texts(self, low: float, high: float) -> tuple[str, str] | None:
+        """Return the -xmin and -xmax texts of two positions on the x axis for a short command, or None for no width."""
+        return get_short_limits(low * self.xlimitscale, high * self.xlimitscale)
 
 
 def get_item_directive(item: str) -> str | None:
@@ -1783,7 +1785,9 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens)
 
 
-def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
+def open_window(
+    tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]", *, newwindow: bool = True
+) -> str | None:
     """Open a window of the viewer for the plotestimators arguments in tokens, or return the reason for no window."""
     from matplotlib.collections import QuadMesh
     from PySide6 import QtCore
@@ -1791,7 +1795,10 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     from PySide6 import QtWidgets
 
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
-    viewer = EstimatorViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
+    # a window of the last session keeps its command, and a new window takes the options of the Settings window
+    viewer = EstimatorViewer(
+        add_default_options(make_parser(addargs), tokens) if newwindow else tokens, mplfig.Figure()
+    )
     viewerwindow = start_viewer_window(
         APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.modelpath, resolve_modelpath(viewer.modelpath).name)
     )
@@ -3073,9 +3080,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return f"x = {event.xdata:.4g}c   y = {event.ydata:.4g}c{valuetext}"
 
     def on_select(low: float, high: float) -> None:
-        xmin, xmax = viewer.get_xlimit_text(low), viewer.get_xlimit_text(high)
-        if plot_shows_values() and float(xmin) < float(xmax):
-            apply(dc.replace(viewer.values, xmin=xmin, xmax=xmax))
+        if not plot_shows_values():
+            show_error(WAIT_FOR_PLOT_MESSAGE)
+        elif (limits := viewer.get_xlimit_texts(low, high)) is None:
+            show_error("The selected x range has no width. Drag across a wider range")
+        else:
+            apply(dc.replace(viewer.values, xmin=limits[0], xmax=limits[1]))
 
     def plot_shows_values() -> bool:
         """Return True if the plot on the screen has the subplots, the x variable, and the options of the controls.
@@ -3128,10 +3138,12 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         )
 
     def on_select_y(frameindex: int, low: float, high: float) -> None:
-        row = get_subplot_row(frameindex)
-        ymin, ymax = get_short_number(low), get_short_number(high)
-        if row is not None and plot_shows_values() and float(ymin) < float(ymax):
-            set_directives(row, {"ymin": ymin, "ymax": ymax})
+        if (row := get_subplot_row(frameindex)) is None:
+            return
+        if not plot_shows_values():
+            show_error(WAIT_FOR_PLOT_MESSAGE)
+        elif (limits := read_selected_range(low, high, "y", show_error)) is not None:
+            set_directives(row, {"ymin": limits[0], "ymax": limits[1]})
 
     def set_row_yscale(row: int, yscale: str) -> None:
         set_directives(row, {"yscale": yscale})

@@ -2,6 +2,7 @@
 
 import re
 import string
+from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -69,10 +70,15 @@ def add_lte_pops(
     columntemperature_tuples: Sequence[tuple[str, float | int]],
     noprint: bool = False,
     maxlevel: int = -1,
+    nlevelsmax_of_element: Mapping[int, int] | None = None,
 ) -> pl.DataFrame:
     """Add columns to dfpop with LTE populations.
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
+
+    nlevelsmax_of_element gives the nlevelsmax of each element in compositiondata.txt. ARTIS keeps only that many
+    levels of an ion, thus its superlevel holds no level above them. A negative value keeps every level of the
+    atomic data, as in ARTIS. An element that the mapping does not hold also keeps every level.
     """
     ionlevels_of_ion = {
         (Z, ion_stage): adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["levels"].item(0)
@@ -128,8 +134,10 @@ def add_lte_pops(
 
         if (Z, ion_stage, levelnumber_sl) not in superlevelpops_of_ion:
             ionlevels = ionlevels_of_ion[Z, ion_stage]
+            nlevelsmax = (nlevelsmax_of_element or {}).get(Z, -1)
+            nlevelskept = ionlevels.height if nlevelsmax < 0 else min(nlevelsmax, ionlevels.height)
             superlevelpops_of_ion[Z, ion_stage, levelnumber_sl] = (
-                ionlevels[levelnumber_sl:].select(ltepop_exprs(ionlevels)).sum()
+                ionlevels[levelnumber_sl:nlevelskept].select(ltepop_exprs(ionlevels)).sum()
             )
 
     lte_columns = [columnname for columnname, _ in columntemperature_tuples]

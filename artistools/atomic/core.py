@@ -1,5 +1,6 @@
 """Read the ARTIS atomic data files, and convert between the names of elements, ions, and nuclides."""
 
+import re
 import string
 import time
 import typing as t
@@ -41,9 +42,16 @@ def parse_adata(
     fadata: t.IO[str],
     phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]],
     ionlist: Collection[tuple[int, int]] | None,
+    firstlevelnumber: int = 1,
 ) -> Generator[tuple[int, int, int, float, pl.DataFrame]]:
-    """Generate ions and their level lists from adata.txt."""
-    firstlevelnumber = 1
+    """Generate ions and their level lists from adata.txt.
+
+    ARTIS takes the number of the first level, 0 or 1, from the first level line of adata.txt. The same numbering
+    applies to transitiondata.txt and phixsdata_v2.txt. firstlevelnumber is the numbering that the caller used for
+    phixsdict and for the transitions. A file with a different numbering raises ValueError, because the level indices
+    of the other files would then be wrong.
+    """
+    detectedfirstlevelnumber: int | None = None
 
     for line in fadata:
         # artisatomic writes a block of comment lines before the header line of each ion
@@ -64,7 +72,27 @@ def parse_adata(
                 strtransition_count, _, namefield = tail.partition(" ")
 
                 inputlevelnumber = int(strlevelnumber)
-                assert levelindex == inputlevelnumber - firstlevelnumber
+                if detectedfirstlevelnumber is None:
+                    if inputlevelnumber not in {0, 1}:
+                        msg = (
+                            f"adata.txt: Z={Z} ion_stage={ion_stage}: the first level has the number {inputlevelnumber},"
+                            " but ARTIS numbers the levels from 0 or from 1"
+                        )
+                        raise ValueError(msg)
+                    if inputlevelnumber != firstlevelnumber:
+                        msg = (
+                            f"adata.txt numbers the levels from {inputlevelnumber}, but the reader took the numbering"
+                            f" from {firstlevelnumber} for the transitions and the photoionisation tables"
+                        )
+                        raise ValueError(msg)
+                    detectedfirstlevelnumber = inputlevelnumber
+                if inputlevelnumber != levelindex + firstlevelnumber:
+                    msg = (
+                        f"adata.txt: Z={Z} ion_stage={ion_stage}: level {levelindex + 1} of the ion has the number"
+                        f" {inputlevelnumber}, but the numbering from {firstlevelnumber} gives it the number"
+                        f" {levelindex + firstlevelnumber}"
+                    )
+                    raise ValueError(msg)
                 # parse_phixsdata() keys on the zero-based level index, so look up levelindex and not the
                 # one-based inputlevelnumber, which would attach each level the next level's cross-sections
                 phixstargetlist, phixstable = phixsdict.get((Z, ion_stage, levelindex), (None, None))
@@ -123,11 +151,41 @@ def read_level_line(fadata: t.IO[str], atomic_number: int, ion_stage: int) -> st
     raise ValueError(msg)
 
 
+def get_first_level_number(modelpath: Path | str) -> int:
+    """Return the number of the first level of adata.txt, 0 or 1, or 1 if the model has no adata.txt.
+
+    ARTIS takes this number from the first level line of adata.txt, and it applies the same numbering to
+    transitiondata.txt and phixsdata_v2.txt.
+    """
+    adatafilename = Path(modelpath, "adata.txt")
+    try:
+        with zopen(adatafilename, encoding="utf-8") as fadata:
+            # the first line that is not blank and not a comment is the header line of the first ion
+            datalines = (line for line in fadata if line.strip() and not line.lstrip().startswith("#"))
+            next(datalines, None)
+            firstlevelline = next(datalines, None)
+    except FileNotFoundError:
+        return 1
+
+    if firstlevelline is None:
+        return 1
+
+    firstlevelnumber = int(firstlevelline.split()[0])
+    if firstlevelnumber not in {0, 1}:
+        msg = f"{adatafilename}: the first level has the number {firstlevelnumber}, but ARTIS numbers the levels from 0 or 1"
+        raise ValueError(msg)
+
+    return firstlevelnumber
+
+
 def parse_phixsdata(
-    phixs_filename: Path | str, ionlist: Collection[tuple[int, int]] | None = None
+    phixs_filename: Path | str, ionlist: Collection[tuple[int, int]] | None = None, firstlevelnumber: int = 1
 ) -> dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]]:
-    """Return the photoionisation cross section tables of phixsdata_v2.txt, keyed by (Z, ion stage, level)."""
-    firstlevelnumber = 1
+    """Return the photoionisation cross section tables of phixsdata_v2.txt, keyed by (Z, ion stage, level).
+
+    The level numbers of the file start at firstlevelnumber, which ARTIS takes from adata.txt. The keys and the
+    target levels are zero-based level indices.
+    """
     phixsdict: dict[tuple[int, int, int], tuple[npt.NDArray[np.void], npt.NDArray[np.void]]] = {}
     with misc.zopen(phixs_filename) as fphixs:
         nphixspoints = int(fphixs.readline())
@@ -143,14 +201,17 @@ def parse_phixsdata(
             ionheader = line.split()
             Z = int(ionheader[0])
             upperion_stage = int(ionheader[1])
-            upperionlevel = int(ionheader[2]) - firstlevelnumber
+            upperionlevelnumber = int(ionheader[2])
             lowerion_stage = int(ionheader[3])
             lowerionlevel = int(ionheader[4]) - firstlevelnumber
 
             assert upperion_stage == lowerion_stage + 1
 
             nptargetlist: npt.NDArray[np.void]
-            if upperionlevel >= 0:
+            # as in ARTIS, a level number of zero or more names the one target level. A negative number, e.g. -1, says
+            # that a list of the target levels follows
+            if upperionlevelnumber >= 0:
+                upperionlevel = upperionlevelnumber - firstlevelnumber
                 nptargetlist = np.array([(upperionlevel, 1.0)], dtype=[("level", np.int32), ("fraction", np.float32)])
             else:
                 ntargets = int(fphixs.readline())
@@ -259,7 +320,9 @@ def get_transitiondata_cached(
     if not quiet:
         print(f"Reading {transition_filename.relative_to(Path(modelpath).parent)}...")
 
-    transitionsdict = read_transitiondata(transition_filename, ionlist=ionset)
+    transitionsdict = read_transitiondata(
+        transition_filename, ionlist=ionset, firstlevelnumber=get_first_level_number(modelpath)
+    )
 
     if not quiet:
         print(f"  took {time.perf_counter() - time_start:.2f} seconds")
@@ -343,6 +406,8 @@ def get_levels_cached(
     cache parsed the same file many times. Do not change the frame that this function returns.
     """
     adatafilename = Path(modelpath, "adata.txt")
+    # the numbering of adata.txt applies to the transitions and the photoionisation tables
+    firstlevelnumber = get_first_level_number(modelpath)
 
     transitionsdict: dict[tuple[int, int], pl.DataFrame] = (
         get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet) if get_transitions else {}
@@ -355,7 +420,7 @@ def get_levels_cached(
         if not quiet:
             print(f"Reading {phixs_filename.relative_to(Path(modelpath).parent)}")
 
-        phixsdict = parse_phixsdata(phixs_filename, ionlist)
+        phixsdict = parse_phixsdata(phixs_filename, ionlist, firstlevelnumber=firstlevelnumber)
 
     class IonTuple(t.NamedTuple):
         Z: int
@@ -371,7 +436,9 @@ def get_levels_cached(
         if not quiet:
             print(f"Reading {adatafilename.relative_to(Path(modelpath).parent)}")
 
-        for Z, ion_stage, level_count, ionisation_energy_ev, dflevels in parse_adata(fadata, phixsdict, ionlist):
+        for Z, ion_stage, level_count, ionisation_energy_ev, dflevels in parse_adata(
+            fadata, phixsdict, ionlist, firstlevelnumber=firstlevelnumber
+        ):
             if (Z, ion_stage) in transitionsdict:
                 dftransitions = transitionsdict[Z, ion_stage].lazy()
                 if derived_transitions_columns is not None:
@@ -438,24 +505,28 @@ roman_numerals = (
 
 @modelpath_cache(maxsize=8)
 @on_model_host
-def get_composition_data(filename: Path) -> pl.DataFrame:
+def get_composition_data(filename: Path | str) -> pl.DataFrame:
     """Return a DataFrame containing details of included elements and ions.
 
-    filename is the model folder or the path of compositiondata.txt.
+    filename is the model folder or the path of compositiondata.txt. ARTIS ignores the text to the right of a #
+    character, and it reads the numbers in sequence and not line by line. This reader does the same.
     """
-    filename = Path(filename, "compositiondata.txt") if filename.is_dir() else filename
+    filename = Path(filename, "compositiondata.txt") if Path(filename).is_dir() else Path(filename)
 
-    rows = []
     with zopen(filename, encoding="utf-8") as fcompdata:
-        nelements = int(fcompdata.readline())
-        fcompdata.readline()  # T_preset
-        fcompdata.readline()  # homogeneous_abundances
-        for _ in range(nelements):
-            line = fcompdata.readline()
-            linesplit = line.split()
-            row = [int(x) for x in linesplit[:5]] + [float(x) for x in linesplit[5:]]
+        numbers = [number for line in fcompdata for number in line.partition("#")[0].split()]
 
-            rows.append(row)
+    # the count of elements, T_preset, and homogeneous_abundances come first, then seven numbers for each element
+    nelements = int(numbers[0]) if numbers else 0
+    elementnumbers = numbers[3:]
+    if not numbers or len(elementnumbers) < 7 * nelements:
+        msg = f"{filename} gives {nelements} elements, but it does not hold seven numbers for each element"
+        raise ValueError(msg)
+
+    rows = [
+        [int(x) for x in elementnumbers[index : index + 5]] + [float(x) for x in elementnumbers[index + 5 : index + 7]]
+        for index in range(0, 7 * nelements, 7)
+    ]
 
     return pl.DataFrame(
         rows,
@@ -473,39 +544,37 @@ def get_composition_data(filename: Path) -> pl.DataFrame:
 
 
 def get_composition_data_from_outputfile(modelpath: Path | str) -> pl.DataFrame:
-    """Read ion list from output file, in case compositiondata.txt is not available."""
-    element_Z = []
-    lowermost_ion_stage: list[int | None] = []
-    uppermost_ion_stage: list[int | None] = []
+    """Read the ion list from the log of a run, in case compositiondata.txt is not available.
 
-    with zopen(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
-        Z: int | None = None
-        elementindex = -1
-        for row in foutput:
-            if not row.split():
-                continue
-            if row.split()[0] == "[input.c]":
-                split_row = row.split()
-                if split_row[1] == "element":
-                    Z = int(split_row[4])
-                    elementindex += 1
-                    element_Z.append(Z)
-                    lowermost_ion_stage.append(None)
-                    uppermost_ion_stage.append(None)
-                elif split_row[1] == "ion":
-                    assert Z is not None
-                    ion_stage = int(split_row[2])
-                    if lowermost_ion_stage[-1] is None:
-                        lowermost_ion_stage[-1] = ion_stage
-                    else:
-                        lowermost_ion_stage[-1] = min(lowermost_ion_stage[-1], ion_stage)
-                    if uppermost_ion_stage[-1] is None:
-                        uppermost_ion_stage[-1] = ion_stage
-                    else:
-                        uppermost_ion_stage[-1] = max(uppermost_ion_stage[-1], ion_stage)
+    After the read of the atomic data, the log lists each element and its ion stages in one block of lines:
+    - a classic run writes "[input.c]   element Z = 26" and "[input.c]     ion 2 with ...";
+    - a later run writes "[input]  element 0 (Z=26 Fe)" and "[input]    ionstage 2: ...";
+    - a current run writes the same lines with an [info] tag.
+    """
+    elementpattern = re.compile(r"\[(?:input\.c|input|info)\]\s+element (?:Z = |\d+ \(Z=\s*)(\d+)")
+    ionpattern = re.compile(r"\[(?:input\.c|input|info)\]\s+(?:ionstage|ion) (\d+)\b")
+    logpath = Path(modelpath, "output_0-0.txt")
+
+    ionstages_of_element: dict[int, list[int]] = {}
+    with zopen(logpath, encoding="utf-8") as foutput:
+        for line in foutput:
+            if (elementmatch := elementpattern.search(line)) is not None:
+                ionstages_of_element.setdefault(int(elementmatch.group(1)), [])
+            elif ionstages_of_element and (ionmatch := ionpattern.search(line)) is not None:
+                ionstages_of_element[next(reversed(ionstages_of_element))].append(int(ionmatch.group(1)))
+            elif ionstages_of_element:
+                # the block ends here, thus the read stops before the rest of a log that can hold gigabytes
+                break
+
+    if not ionstages_of_element:
+        msg = f"{logpath} holds no list of the elements and the ion stages of the run"
+        raise ValueError(msg)
 
     return pl.DataFrame(
-        zip(element_Z, lowermost_ion_stage, uppermost_ion_stage, strict=True),
+        [
+            (Z, min(ionstages, default=None), max(ionstages, default=None))
+            for Z, ionstages in ionstages_of_element.items()
+        ],
         schema=[("Z", pl.Int32), ("lowermost_ion_stage", pl.Int32), ("uppermost_ion_stage", pl.Int32)],
         orient="row",
     ).with_columns(nions=pl.col("uppermost_ion_stage") - pl.col("lowermost_ion_stage") + 1)
@@ -860,8 +929,12 @@ def read_linestatfile(
 
     print(f"Reading {filepath}")
 
+    # each of the five rows holds one value for each line. A file of one line gives a one-dimensional array without
+    # ndmin, and a file of no line gives no row
     with zopen(filepath) as linestatfile:
-        data = np.loadtxt(linestatfile)
+        data = np.loadtxt(linestatfile, ndmin=2)
+    if data.shape[0] < 5:
+        data = np.zeros((5, 0))
     lambda_angstroms = data[0] * 1e8
     nlines = len(lambda_angstroms)
 

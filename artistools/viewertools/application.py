@@ -15,8 +15,10 @@ from artistools.misc import exit_with_error
 from artistools.misc import import_optional
 from artistools.misc import print_error
 from artistools.misc.fileio import resolve_modelpath
+from artistools.viewertools.core import is_flag
 from artistools.viewertools.core import MACOS_BUNDLE_VARIABLE
 from artistools.viewertools.core import run_command_step
+from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import ThreadOutput
 
 if t.TYPE_CHECKING:
@@ -293,19 +295,24 @@ def start_application(
         - a slider;
         - a list;
         - a popup, e.g. the list of names of a completer;
+        - a text field or a text box, which uses the arrow keys, Home, End, and the page keys;
         - a button, which uses only the space key;
         - a text field or a text box with selected text, which uses the Copy key.
 
-        For example, the Up key in -maxseriescount made the time range wider, and the Copy key in the Command box
-        copied the figure.
+        For example, the Up key in -maxseriescount or in the field of -xmin made the time range wider, and the Copy
+        key in the Command box copied the figure.
         """
         focuswidget = QtWidgets.QApplication.focusWidget()
         # the field of a completer keeps the focus while its popup shows, and the popup takes the keys
-        usesarrows = QtWidgets.QApplication.activePopupWidget() is not None or isinstance(
+        popupshows = QtWidgets.QApplication.activePopupWidget() is not None
+        isselector = isinstance(
             focuswidget,
             QtWidgets.QAbstractSpinBox | QtWidgets.QComboBox | QtWidgets.QAbstractSlider | QtWidgets.QAbstractItemView,
         )
-        usesspace = usesarrows or isinstance(focuswidget, QtWidgets.QAbstractButton)
+        # a text field moves its cursor with the arrow keys, and a text box also scrolls with them
+        istext = isinstance(focuswidget, QtWidgets.QLineEdit | QtWidgets.QPlainTextEdit | QtWidgets.QTextEdit)
+        usesarrows = popupshows or isselector or istext
+        usesspace = popupshows or isselector or isinstance(focuswidget, QtWidgets.QAbstractButton)
         hastextselection = (
             isinstance(focuswidget, QtWidgets.QPlainTextEdit | QtWidgets.QTextEdit)
             and focuswidget.textCursor().hasSelection()
@@ -549,15 +556,29 @@ def add_session_window(tokens: "Sequence[str]") -> None:
     )
 
 
+# the options that give a text or a style of the plot. Such a value is not a path, also when a folder of the working
+# folder has the same name, e.g. the label run1 of the folder run1
+TEXT_FLAGS: t.Final = frozenset({*SERIES_STYLE_FLAGS, "-title"})
+
+
 def get_absolute_tokens(tokens: "Sequence[str]") -> list[str]:
     """Return the tokens of a command with an absolute path for each path that exists in the working folder.
 
-    An empty token, e.g. the value of -label "", stays empty. Path("") is the working folder, and it exists.
+    An empty token, e.g. the value of -label "", stays empty. Path("") is the working folder, and it exists. A value of
+    an option of TEXT_FLAGS stays the same.
     """
-    return [
-        str(Path(word).absolute()) if word and not word.startswith("-") and Path(word).exists() else word
-        for word in tokens
-    ]
+    absolutetokens: list[str] = []
+    # the flag of the option that takes the next value. A flag that holds its value, e.g. -ymin=-1, takes no more
+    flag = ""
+    for word in tokens:
+        if is_flag(word):
+            flag = "" if "=" in word else word
+            absolutetokens.append(word)
+        elif word and flag not in TEXT_FLAGS and Path(word).exists():
+            absolutetokens.append(str(Path(word).absolute()))
+        else:
+            absolutetokens.append(word)
+    return absolutetokens
 
 
 def take_session_windows() -> list[list[str]]:
@@ -572,15 +593,27 @@ def take_session_windows() -> list[list[str]]:
     return [[str(token) for token in json.loads(item)] for item in saved]
 
 
-def reopen_session_windows(
-    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
-    windows: "list[QtWidgets.QMainWindow]",
-) -> None:
+class OpenWindow(t.Protocol):
+    """The function of a viewer that opens a window for the arguments of a command, or returns the reason for none.
+
+    A new window takes the options of the Settings window that the command does not give, e.g. -figscale. A window of
+    the last session keeps its command, thus newwindow is then False.
+    """
+
+    def __call__(
+        self, tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]", *, newwindow: bool = True
+    ) -> str | None:
+        """Open a window for the tokens, and return None, or the reason for no window."""
+
+
+def reopen_session_windows(open_window: OpenWindow, windows: "list[QtWidgets.QMainWindow]") -> None:
     """Open the windows of the last session, as the apps of macOS do, and keep the first window in front.
 
     A window with the same command as an open window does not open again. The comparison leaves out -figwidthscale,
     because each window fits it to its own size. An error of a window goes to the terminal. Each window opens after
-    the event loop runs again, thus the first window can draw and take input while the others read their runs.
+    the event loop runs again, thus the first window can draw and take input while the others read their runs. A
+    window gets the command of the last session, and no option of the Settings window, because the user can have
+    removed such an option, e.g. -figscale.
     """
     from PySide6 import QtCore
 
@@ -599,7 +632,7 @@ def reopen_session_windows(
                     activate_window(window)
             return
         tokens = pending.pop(0)
-        message = run_command_step(lambda: open_window(tokens, windows), quiet=False)
+        message = run_command_step(lambda: open_window(tokens, windows, newwindow=False), quiet=False)
         if message is not None:
             print_error(f"The viewer cannot open the window of the last session: {message}")
         QtCore.QTimer.singleShot(0, open_next_window)
@@ -611,7 +644,7 @@ def reopen_session_windows(
 def run_viewer_application(
     applicationname: str,
     iconcurve: "npt.NDArray[np.float64]",
-    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
+    open_window: OpenWindow,
     tokens: "Sequence[str]",
     documenttypes: "Sequence[str]" = ("public.folder",),
 ) -> None:

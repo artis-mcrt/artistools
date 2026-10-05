@@ -50,29 +50,33 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: P
     hesma_spec = hesma_spec.with_columns(pl.col(timecolumn) * dist_mpc**2)  # refspecditance Mpc / 1 Mpc ** 2
 
     for ax in axes:
-        ax.plot(hesma_spec[lambdacolumn], hesma_spec[timecolumn], label="HESMA model")
+        ax.plot(hesma_spec[lambdacolumn], hesma_spec[timecolumn], label=f"HESMA {Path(hesmafile).stem}")
 
 
-def plothesmaresspec(ax: mplax.Axes, specfiles: Sequence[Path | str], args: argparse.Namespace) -> None:
-    """Plot the first five direction bins of each HESMA direction-resolved spectrum file."""
+def plothesmaresspec(
+    ax: mplax.Axes, specfiles: Sequence[Path | str], timedays: float, args: argparse.Namespace
+) -> None:
+    """Plot each direction bin of each HESMA direction-resolved spectrum file at the time closest to timedays.
+
+    A file holds one table for each direction bin. The first row of each table gives the time of each spectrum
+    column, thus the file sets the times and the number of tables.
+    """
     for specfilename in specfiles:
-        specdata = read_wsv(specfilename, has_header=False).cast(pl.Float64)
+        specdata = read_wsv(specfilename, has_header=False, comment_prefix="#").cast(pl.Float64)
 
         res_specdata = {dirbin: pldf.collect() for dirbin, pldf in split_multitable_dataframe(specdata).items()}
 
-        # the first row of each table holds the time of each spectrum column
-        new_column_names = ["lambda", *(str(time) for time in res_specdata[0].row(0)[1:])]
-        print(new_column_names)
+        searchtimes = list(res_specdata[0].row(0)[1:])
+        closest_time = match_closest_time(timedays, searchtimes)
+        timecolumnindex = searchtimes.index(closest_time) + 1
+        print(f"{specfilename}: the spectrum at {closest_time} d is closest to {timedays} d")
 
-        res_specdata = {
-            i: df.rename(dict(zip(df.columns, new_column_names, strict=True))).slice(1)
-            for i, df in res_specdata.items()
-        }
-
-        # 11.7935 d is the epoch these HESMA files were tabulated at, and 1e-5 rescales 10 pc to 1 Mpc
-        for dirbin in range(5):
+        # 1e-5 rescales 10 pc to 1 Mpc
+        for dirbin, dftable in res_specdata.items():
             ax.plot(
-                res_specdata[dirbin]["lambda"], res_specdata[dirbin]["11.7935"] * (1e-5) ** 2, label=f"hesma {dirbin}"
+                dftable[:, 0].slice(1),
+                dftable[:, timecolumnindex].slice(1) * (1e-5) ** 2,
+                label=f"{Path(specfilename).stem} {dirbin}",
             )
 
     set_legend(ax, args)
@@ -230,7 +234,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-hesmafile", type=Path, nargs="+", help="HESMA spectrum file(s) to plot (plotspectrum, plotresspec)"
     )
     # this command declares no -timestep, thus the -t alias would read that word as a value
-    addarg_timedays(parser, kind="float", helptext="Time in days to plot (plotspectrum)")
+    addarg_timedays(
+        parser,
+        kind="float",
+        helptext="Time in days to plot. Each file gives its closest time (plotspectrum, plotresspec)",
+    )
     # this command selects a time in days alone, thus -timestep must give a message and not "-t imestep"
     addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
     parser.add_argument("-band", default="B", help="Filter band of the viewing angle data (widthluminosity)")
@@ -283,15 +291,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     elif args.action == "plotspectrum":
         fig, axesgrid = make_frame_figure()
         axis = axesgrid[0][0]
-        plot_hesma_spectrum(
-            require(args.timedays, "-timedays", args.action),
-            [axis],
-            require(args.hesmafile, "-hesmafile", args.action)[0],
-        )
+        timedays = require(args.timedays, "-timedays", args.action)
+        for hesmafile in require(args.hesmafile, "-hesmafile", args.action):
+            plot_hesma_spectrum(timedays, [axis], hesmafile)
+        set_legend(axis, args)
         save_or_show(fig, args.plotfile)
 
     else:
         fig, axesgrid = make_frame_figure()
         axis = axesgrid[0][0]
-        plothesmaresspec(axis, require(args.hesmafile, "-hesmafile", args.action), args)
+        plothesmaresspec(
+            axis,
+            require(args.hesmafile, "-hesmafile", args.action),
+            require(args.timedays, "-timedays", args.action),
+            args,
+        )
         save_or_show(fig, args.plotfile)

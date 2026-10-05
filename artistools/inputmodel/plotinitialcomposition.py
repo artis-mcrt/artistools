@@ -25,6 +25,7 @@ from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
 from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
+from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.plottools import save_figure
@@ -151,12 +152,51 @@ def plot_slice_modelcolumn(
     return im
 
 
+def add_ye_from_yefile(lzdfmodel: pl.LazyFrame, modelpath: Path | str) -> pl.LazyFrame:
+    """Add the Ye column of Ye.txt to a model whose model.txt holds no Ye column.
+
+    Ye.txt gives the number of lines first, and then the cell id and Ye of each cell. The ids are the ids of
+    model.txt, thus a join on the id is correct also for a file that holds only some of the cells.
+    """
+    dfye = read_wsv(Path(modelpath) / "Ye.txt", has_header=False, skip_rows=1, new_columns=["inputcellid", "Ye"])
+    return lzdfmodel.join(
+        dfye.lazy().select(pl.col("inputcellid").cast(pl.Int32), pl.col("Ye").cast(pl.Float32)),
+        on="inputcellid",
+        how="left",
+        maintain_order="left",
+    )
+
+
+def get_colorbar_label(colname: str, logcolorscale: bool) -> str:
+    """Return the label of the colour bar of one panel, which names the quantity of that panel."""
+    if colname == "rho":
+        quantity = r"$\rho$ [g/cm³]"
+    elif colname.startswith("X_"):
+        # the panel of a mass fraction shows the density of that species, which is the mass fraction times rho
+        quantity = rf"$\rho_\mathrm{{{colname.removeprefix('X_')}}}$ [g/cm³]"
+    else:
+        quantity = colname
+    return f"log10({quantity})" if logcolorscale else quantity
+
+
 def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) -> None:
     """Plot each of args.plotvars as a 2D slice through the model and save the figure."""
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
     lzdfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=get_elemabundances)
-    assert modelmeta["dimensions"] > 1
+    if modelmeta["dimensions"] not in {2, 3}:
+        msg = f"plotinitialcomposition plots a 2D or a 3D model, but the model in {modelpath} is 1D"
+        raise ValueError(msg)
+
+    if "Ye" in args.plotvars and "Ye" not in lzdfmodel.collect_schema().names():
+        # the model file can hold no Ye column, and then Ye.txt gives it, as for the 3D plot
+        lzdfmodel = add_ye_from_yefile(lzdfmodel, modelpath)
+
+    modelcolumns = lzdfmodel.collect_schema().names()
+    colnames = [plotvar if plotvar in modelcolumns else f"X_{plotvar.title()}" for plotvar in args.plotvars]
+    if missingcolumns := [colname for colname in colnames if colname not in modelcolumns]:
+        msg = f"The model in {modelpath} holds no column {', '.join(missingcolumns)} to plot"
+        raise ValueError(msg)
     # the plot reads the cell edges, which are derived columns in 2D. The other derived columns stay out of memory
     dfmodel = (
         add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
@@ -199,27 +239,22 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     )
     gs = gridspec.GridSpec(nrows + 1, ncols, height_ratios=[0.05, 1], width_ratios=[1] * ncols)
 
-    axcbar = fig.add_subplot(gs[0, :])
     axes = [fig.add_subplot(gs[1, y]) for y in range(ncols)]
 
-    for plotvar, ax in zip(args.plotvars, axes, strict=False):
-        colname = plotvar if plotvar in df2dslice.columns else f"X_{plotvar.title()}"
-
+    # each panel has its own colour limits, e.g. a fixed range for rho and an automatic range for a mass fraction,
+    # thus each panel gets its own colour bar
+    for column, (colname, ax) in enumerate(zip(colnames, axes, strict=True)):
         im = plot_slice_modelcolumn(
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
+        cbar = fig.colorbar(im, cax=fig.add_subplot(gs[0, column]), location="top", use_gridspec=True)
+        cbar.set_label(get_colorbar_label(colname, args.logcolorscale))
 
     xlabel = r"v$_{" + str(plotaxis1) + r"}$ [$c$]"
     ylabel = r"v$_{" + str(plotaxis2) + r"}$ [$c$]"
 
-    cbar = fig.colorbar(im, cax=axcbar, location="top", use_gridspec=True)
     axes[0].set_xlabel(xlabel)
     axes[0].set_ylabel(ylabel)
-
-    if "Ye" not in args.plotvars and "tracercount" not in args.plotvars:
-        cbar.set_label(r"log10($\rho$ [g/cm³])" if args.logcolorscale else r"$\rho$ [g/cm³]")
-    else:
-        cbar.set_label("Ye" if "Ye" in args.plotvars else "tracercount")
 
     defaultfilename = f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     outfilename = resolve_outputfile(args.outputfile, defaultfilename)
@@ -242,13 +277,10 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     coloursurfaceby = plotvar if plotvar in {*plmodel.collect_schema().names(), "Ye"} else f"X_{plotvar.title()}"
     print(f"Colours set by {coloursurfaceby}")
     vmax = modelmeta["vmax_cmps"]
-    # the model file can hold no Ye column, and then the Ye.txt file below gives it
+    if "Ye" in args.plotvars and "Ye" not in plmodel.collect_schema().names():
+        # the model file can hold no Ye column, and then Ye.txt gives it
+        plmodel = add_ye_from_yefile(plmodel, modelpath)
     model = plmodel.select(cs.by_name({"rho", coloursurfaceby}, require_all=False)).collect()
-
-    if "Ye" in args.plotvars and "Ye" not in model.columns:
-        # ndmin keeps the (cellid, Ye) columns separate even for a single-cell model
-        file_contents = np.loadtxt(Path(modelpath) / "Ye.txt", unpack=True, skiprows=1, ndmin=2)
-        model = model.with_columns(Ye=pl.Series(file_contents[1]))
 
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))

@@ -26,6 +26,8 @@ from artistools.inputmodel.rprocess_from_trajectory import add_abundancecontribu
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_output
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_unsupported
 from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -372,7 +374,7 @@ def makemodelfromgriddata(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument(
-        "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.dat"
+        "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.txt"
     )
     parser.add_argument(
         "-trajectoryroot",
@@ -387,9 +389,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D, 2 for 2D cylindrical, 3 for 3D Cartesian",
     )
-    parser.add_argument(
-        "-targetmodeltime_days", "-t", type=float, default=0.1, help="Time in days for the output model snapshot"
-    )
+    # -t means -timedays on every command, thus the time of the snapshot takes that name
+    addarg_timedays(parser, kind="float", helptext="Time in days for the output model snapshot")
+    parser.set_defaults(timedays=0.1)
+    # the name of this argument before it took the name -timedays
+    parser.add_argument("-targetmodeltime_days", dest="timedays", type=float, help=argparse.SUPPRESS)
+    addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
     parser.add_argument(
         "-scalemass",
         type=float,
@@ -421,7 +426,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     makemodelfromgriddata(
         gridfolderpath=gridfolderpath,
         outputpath=outputpath,
-        targetmodeltime_days=args.targetmodeltime_days,
+        targetmodeltime_days=args.timedays,
         traj_root=args.trajectoryroot,
         dimensions=args.dimensions,
         scalemass=args.scalemass,

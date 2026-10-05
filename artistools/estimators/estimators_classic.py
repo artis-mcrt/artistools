@@ -15,18 +15,18 @@ from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import resolve_modelpath
 
 
-def get_atomic_composition(modelpath: Path) -> dict[int, int]:
-    """Return the number of ions of each element, counted from the [input.c] lines of output_0-0.txt.
+def get_atomic_composition(modelpath: Path) -> dict[int, list[int]]:
+    """Return the ion stages of each element, from the [input.c] lines of output_0-0.txt.
 
-    This counts ion lines rather than reusing get_composition_data_from_outputfile, which returns
-    uppermost - lowermost + 1 and yields a null count for an element with no ion lines at all. The
-    estimator rows are sliced by these counts, so a null or a gap-inflated count misaligns every
-    element after it.
+    This reads the ion lines rather than get_composition_data_from_outputfile, which gives
+    uppermost - lowermost + 1 and a null count for an element with no ion lines at all. The
+    estimator rows are sliced by the number of ions, so a null or a gap-inflated count misaligns every
+    element after it. Each line "ion N" gives the ion stage N. An element whose lowest ion stage is
+    above I, e.g. Co from Co II, thus keeps the correct names.
     """
-    atomic_composition = {}
+    atomic_composition: dict[int, list[int]] = {}
 
     with zopen(Path(modelpath, "output_0-0.txt"), encoding="utf-8") as foutput:
-        ioncount = 0
         Z = None
         for row in foutput:
             split_row = row.split()
@@ -34,22 +34,18 @@ def get_atomic_composition(modelpath: Path) -> dict[int, int]:
             if split_row and split_row[0] == "[input.c]":
                 if split_row[1] == "element":
                     Z = int(split_row[4])
-                    ioncount = 0
                 elif split_row[1] == "ion":
-                    ioncount += 1
-                    assert Z is not None, "Z should be set before ioncount"
-                    atomic_composition[Z] = ioncount
+                    assert Z is not None, "Z should be set before the ion stages"
+                    atomic_composition.setdefault(Z, []).append(int(split_row[2]))
     return atomic_composition
 
 
-def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, int]) -> None:
+def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, list[int]]) -> None:
     """Parse the per-ion populations of one estimator row into outdict."""
-    elements = atomic_composition.keys()
-
     i = 6  # skip first 6 numbers in est file. These are n, TR, Te, W, TJ, grey_depth.
     # Numbers after these 6 are populations
-    for atomic_number in elements:
-        for ion_stage in range(1, atomic_composition[atomic_number] + 1):
+    for atomic_number, ion_stages in atomic_composition.items():
+        for ion_stage in ion_stages:
             value_thision = float(row[i])
             ionstr = get_ionstring(atomic_number, ion_stage, sep="_")
             outdict[f"nnion_{ionstr}"] = value_thision
@@ -133,6 +129,8 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
     # later one takes the place of the earlier. folderofkey names the folder that wrote each key, so
     # that this reports the loss rather than passing wrong data to a plot
     folderofkey: dict[tuple[int, int], Path] = {}
+    # a restarted job writes its first timestep again, as sn3d does. When both logs give their first
+    # timestep, the row of the earlier job stays, as the reader of a modern run keeps it
     for estfilepath in estimfiles:
         if str(estfilepath.parent) in first_timesteps_in_dir:
             timestep = first_timesteps_in_dir[str(estfilepath.parent)]
@@ -167,13 +165,26 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
                 estimcell: dict[str, t.Any] = {}
                 previousfolder = folderofkey.get((timestep, modelgridindex))
                 if previousfolder is not None and previousfolder != estfilepath.parent:
-                    msg = (
-                        f"{estfilepath.parent} and {previousfolder} both give timestep {timestep} of cell "
-                        f"{modelgridindex}. A restarted run numbers each folder from its own first "
-                        "timestep, and output_0-0.txt gives that number. One of these folders holds no "
-                        "such record, thus its data would take the place of the other folder's"
-                    )
-                    raise ValueError(msg)
+                    previousfirst = first_timesteps_in_dir.get(str(previousfolder))
+                    thisfirst = first_timesteps_in_dir.get(str(estfilepath.parent))
+                    if previousfirst is None or thisfirst is None:
+                        msg = (
+                            f"{estfilepath.parent} and {previousfolder} both give timestep {timestep} of cell "
+                            f"{modelgridindex}. A restarted run numbers each folder from its own first "
+                            "timestep, and output_0-0.txt gives that number. One of these folders holds no "
+                            "such record, thus its data would take the place of the other folder's"
+                        )
+                        raise ValueError(msg)
+                    if previousfirst == thisfirst or timestep != max(previousfirst, thisfirst):
+                        msg = (
+                            f"{estfilepath.parent} and {previousfolder} both give timestep {timestep} of cell "
+                            f"{modelgridindex}. A restarted job repeats only its first timestep, thus the logs of "
+                            "these folders give first timesteps that do not agree with their estimator files"
+                        )
+                        raise ValueError(msg)
+                    if thisfirst == timestep:
+                        # this folder holds the later job, and the row of the earlier job stays
+                        continue
 
                 folderofkey[timestep, modelgridindex] = estfilepath.parent
                 estimators[timestep, modelgridindex] = estimcell

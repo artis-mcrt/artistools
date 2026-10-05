@@ -17,6 +17,7 @@ import polars as pl
 from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
 from artistools.misc.cliutils import print_detail
+from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import extra_csv_columns_ignored
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
@@ -55,6 +56,8 @@ def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
         "time_limits_enabled": int(config.override_tminmax),
         "initial_time": config.vspec_tmin_in_days,
         "final_time": config.vspec_tmax_in_days,
+        # an empty list means the single range of the constants of the ARTIS build, which the file does not give
+        "custom_lambda_ranges": config.custom_lambda_ranges,
     }
 
 
@@ -312,7 +315,11 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 
 
 def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
-    """Get the set of timesteps covered by the output files in an ARTIS run folder."""
+    """Return the sorted timesteps of the estimator files in an ARTIS run folder.
+
+    A restarted run repeats the last timestep of the folder before it, and the result holds that timestep. Only
+    get_runfolders knows the order of the folders, thus it gives such a timestep to the earlier folder.
+    """
     return get_runfolder_timesteps_cached(resolve_modelpath(folderpath))
 
 
@@ -320,13 +327,10 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
 @lru_cache(maxsize=1024)
 def get_runfolder_timesteps_cached(folderpath: Path) -> tuple[int, ...]:
     """Return the timesteps of the run folder at an absolute path."""
-    timesteps_contained = get_runfolder_timesteps_with_restart(folderpath)
-    # a restarted run repeats its first timestep, thus the function drops that timestep
-    restart_timestep = timesteps_contained[0] if timesteps_contained and 0 not in timesteps_contained else None
-    return tuple(ts for ts in timesteps_contained if ts != restart_timestep)
+    return tuple(read_runfolder_timesteps(folderpath))
 
 
-def get_runfolder_timesteps_with_restart(folderpath: Path) -> Sequence[int]:
+def read_runfolder_timesteps(folderpath: Path) -> Sequence[int]:
     """Return the sorted timesteps of the estimators of a run folder, with the repeated timestep of a restart."""
     # this import runs at call time, because artistools.estimators imports artistools.misc
     from artistools.estimators import estimbatch_parquet_is_current
@@ -384,21 +388,29 @@ def get_runfolders(
 ) -> Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
-    Without a timestep, the list holds each folder whose estimator files give at least one timestep.
+    Without a timestep, the list holds each folder whose estimator files give at least one timestep. A restarted run
+    repeats the last timestep of the folder before it, and the earlier folder keeps each timestep that two folders
+    hold, as in scan_estimators. A folder with no earlier folder keeps its first timestep, e.g. a run whose first job
+    folder is gone.
     """
-    folderlist_all = get_run_subfolders(modelpath)
+    ownedtimesteps_of_folder: dict[Path, set[int]] = {}
+    earliertimesteps: set[int] = set()
+    for folderpath in get_run_subfolders(modelpath):
+        foldertimesteps = get_runfolder_timesteps(folderpath)
+        ownedtimesteps_of_folder[folderpath] = set(foldertimesteps) - earliertimesteps
+        earliertimesteps.update(foldertimesteps)
+
     if (timestep is not None and timestep > -1) or (timesteps is not None and len(timesteps) > 0):
-        folder_list_matching = []
-        for folderpath in folderlist_all:
-            folder_timesteps = get_runfolder_timesteps(folderpath)
-            if timesteps is None and timestep is not None and timestep in folder_timesteps:
-                return (folderpath,)  # return a single folder if only one timestep is specified
-            if timesteps is not None and any(ts in folder_timesteps for ts in timesteps):
-                folder_list_matching.append(folderpath)
+        if timesteps is None:
+            # a single timestep gives the single folder that keeps it
+            return next(
+                ((folderpath,) for folderpath, owned in ownedtimesteps_of_folder.items() if timestep in owned), ()
+            )
+        return tuple(
+            folderpath for folderpath, owned in ownedtimesteps_of_folder.items() if not owned.isdisjoint(timesteps)
+        )
 
-        return tuple(folder_list_matching)
-
-    return [folderpath for folderpath in folderlist_all if get_runfolder_timesteps(folderpath)]
+    return [folderpath for folderpath, owned in ownedtimesteps_of_folder.items() if owned]
 
 
 def get_mpiranklist(
@@ -453,10 +465,21 @@ def read_rank_outputfiles(
     When a timestep, a model grid cell, or a sequence of cells is given, only the run folders and ranks
     that could contain them are read, and the rows are filtered to that selection (negative values mean no filter).
     """
+    # the format holds a field for the rank, thus a message names the family rather than one file
+    filefamily = re.sub(r"\{mpirank[^}]*\}", "*", filenameformat)
     nonemptycounts = get_nonempty_cellcounts(modelpath)
+    runfolders = get_runfolders(modelpath, timestep=timestep)
+    if not runfolders and timestep is not None and timestep >= 0 and (allfolders := get_runfolders(modelpath)):
+        heldtimesteps = sorted({ts for folder in allfolders for ts in get_runfolder_timesteps(folder)})
+        msg = (
+            f"No run folder of {modelpath} holds timestep {timestep}. The estimator files of the run folders give "
+            f"timesteps {heldtimesteps[0]} to {heldtimesteps[-1]}"
+        )
+        raise ValueError(msg)
+
     filepathsofeachfolder: list[list[Path]] = []
     emptyranks = []
-    for folderpath in get_runfolders(modelpath, timestep=timestep):
+    for folderpath in runfolders:
         folderfilepaths: list[Path] = []
         for mpirank in get_mpiranklist(modelpath, modelgridindex=modelgridindex):
             # the loop above reads each run folder. A search below one of them would read the
@@ -479,8 +502,6 @@ def read_rank_outputfiles(
             filepathsofeachfolder.append(folderfilepaths)
 
     if not filepathsofeachfolder:
-        # the format holds a field for the rank, thus name the family rather than one file
-        filefamily = re.sub(r"\{mpirank[^}]*\}", "*", filenameformat)
         if emptyranks and isinstance(modelgridindex, int) and modelgridindex >= 0:
             msg = (
                 f"Cell {modelgridindex} holds no matter, thus it has no {filefamily} data. ARTIS "
@@ -493,7 +514,7 @@ def read_rank_outputfiles(
 
     dfofeachfolder = [
         pl
-        .concat((read_wsv(filepath) for filepath in folderfilepaths), how="vertical_relaxed")
+        .concat(dfsoffolder, how="vertical_relaxed")
         .rename({"ionstage": "ion_stage"}, strict=False)
         .with_columns(
             pl.col("modelgridindex").cast(pl.Int64),
@@ -501,7 +522,11 @@ def read_rank_outputfiles(
             pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
         )
         for folderindex, folderfilepaths in enumerate(filepathsofeachfolder)
+        if (dfsoffolder := [dfrank for filepath in folderfilepaths if (dfrank := read_rank_file(filepath)) is not None])
     ]
+    if not dfofeachfolder:
+        msg = f"Each {filefamily} file of {modelpath} is empty"
+        raise ValueError(msg)
 
     # the first timestep of a restarted run repeats the last timestep of the folder before it.
     # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
@@ -522,6 +547,19 @@ def read_rank_outputfiles(
         dfout = dfout.filter(pl.col("timestep") == timestep)
 
     return dfout
+
+
+def read_rank_file(filepath: Path) -> pl.DataFrame | None:
+    """Return the rows of the output file of one rank, or None when the file is empty.
+
+    ARTIS writes the header of a rank file at the first flush, after the first timestep. Thus a job that stopped
+    before it leaves an empty file.
+    """
+    try:
+        return read_wsv(filepath)
+    except pl.exceptions.NoDataError:
+        print_warning(f"{filepath} is empty, thus its rank gives no rows. The job stopped before its first timestep")
+        return None
 
 
 def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:

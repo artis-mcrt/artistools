@@ -28,6 +28,7 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import get_escaped_arrivalrange
@@ -403,7 +404,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
     parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
     addarg_maxpacketfiles(parser)
-    parser.add_argument("-gaussian_sigma", type=int, default=None, help="Apply Gaussian filter")
+    parser.add_argument(
+        "-gaussian_sigma",
+        type=int,
+        default=None,
+        help=(
+            "Smooth the map with a Gaussian of this width in degrees of phi. The cos(theta) axis takes the same"
+            " number of bins, and a cos(theta) bin spans a different angle"
+        ),
+    )
     parser.add_argument(
         "-plotvars",
         default=list(DEFAULT_PLOTVARS),
@@ -414,12 +423,19 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " density of that element, e.g. nnelement_Fe"
         ),
     )
-    parser.add_argument("-elem", type=str, default=None, help="Filter emitted packets by element of last emission")
+    packetfilterhelp = (
+        "The map then holds the packets whose last emission or last absorption was in a bound-bound line of {}."
+        " A bound-free emission does not count"
+    )
+    parser.add_argument("-elem", type=str, default=None, help=packetfilterhelp.format("this element symbol, e.g. Fe"))
     parser.add_argument(
-        "-atomic_number", type=int, default=None, help="Filter emitted packets by element of last emission"
+        "-atomic_number",
+        type=int,
+        default=None,
+        help=packetfilterhelp.format("the element of this atomic number, e.g. 26. Give -elem or -atomic_number"),
     )
     parser.add_argument(
-        "-ion_stage", type=int, default=None, help="Filter emitted packets by ionistion stage of last emission"
+        "-ion_stage", type=int, default=None, help=packetfilterhelp.format("this ionisation stage, e.g. 2 for Fe II")
     )
     parser.add_argument("-cmap", default=None, type=str, help="Matplotlib color map name")
 
@@ -434,9 +450,19 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
 
-    addarg_output(parser, kind="file", helptext="Filename for plot output file")
+    addarg_output(
+        parser,
+        kind="file",
+        helptext="Filename for plot output file. The suffix of the name sets the format, e.g. .pdf or .png",
+    )
 
-    parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
+    parser.add_argument(
+        "-format",
+        "-f",
+        default="pdf",
+        choices=["pdf", "png"],
+        help="Set format of output plot files that take the default name. A name from -o keeps its own suffix",
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:
@@ -444,8 +470,11 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.elem is not None:
-        assert args.atomic_number is None
+        if args.atomic_number is not None:
+            exit_with_error("give one of -elem and -atomic_number", "Both select the element of the packets")
         args.atomic_number = get_atomic_number(args.elem)
+        if args.atomic_number < 1:
+            exit_with_error(f"-elem {args.elem} is not an element symbol", "Give a symbol, e.g. -elem Fe")
 
     set_mpl_style()
 
@@ -534,9 +563,8 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
             frameset.frametemplate, timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat
         )
 
-        save_figure(
-            fig, outfilename, format=outformat, dpi=args.dpi, pad_inches=0.0, args=args, isframe=frameset.combines
-        )
+        # the suffix of the file name sets the format. The default name takes the suffix of -format
+        save_figure(fig, outfilename, dpi=args.dpi, pad_inches=0.0, args=args, isframe=frameset.combines)
 
         outputfilenames.append(outfilename)
 

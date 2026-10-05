@@ -34,9 +34,12 @@ def make_remotepath_pattern(*, windows: bool) -> re.Pattern[str]:
     local path with such a colon starts with "./", e.g. "./run:2". An IPv6 address is in brackets, e.g.
     "user@[2001:db8::1]:/lustre/mymodel". On Windows, a host of one letter in front of a path separator is a drive,
     e.g. "C:\Users\me\mymodel". On a different system, it is an ssh host alias, e.g. "a:/lustre/mymodel".
+
+    An ssh host, a user name, and an ssh host alias hold no space. Thus a label such as "Model B: Fe/Ni" is no
+    remote path.
     """
     drivelookahead = r"(?![A-Za-z]:[\\/])" if windows else ""
-    return re.compile(rf"^{drivelookahead}(?P<host>(?:[^/:@\[]*@)?\[[^\]/]*\]|[^/:\[]+):(?P<path>.*)$", re.DOTALL)
+    return re.compile(rf"^{drivelookahead}(?P<host>(?:[^/:@\[\s]*@)?\[[^\]/\s]*\]|[^/:\[\s]+):(?P<path>.*)$", re.DOTALL)
 
 
 REMOTEPATH_PATTERN = make_remotepath_pattern(windows=os.name == "nt")
@@ -194,11 +197,17 @@ def check_local_path(path: Path | str) -> None:
 def names_a_remote_folder(text: str) -> bool:
     """Return whether a word of the command line names a folder on a different host.
 
-    A label such as "second:label" has the form host:path, thus only a path that starts with "~" or "/", or that
-    holds a "/", counts. A relative remote path such as "vae26:model" must then come before the options.
+    A label such as "second:label" has the form host:path, thus only a path that starts with "~", or that holds a
+    "/", counts. A label can also hold a space, e.g. "W7: 56Ni/56Co", and a remote folder seldom does. Thus a word
+    with a space does not count. Such a remote folder, and a relative remote path such as "vae26:model", must then
+    come before the options.
     """
     remote = REMOTEPATH_PATTERN.match(text)
-    return remote is not None and (remote["path"].startswith(("~", "/")) or "/" in remote["path"])
+    return (
+        remote is not None
+        and re.search(r"\s", text) is None
+        and (remote["path"].startswith("~") or "/" in remote["path"])
+    )
 
 
 def is_plain_value(value: t.Any) -> bool:
@@ -956,13 +965,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # the results use the standard output, thus the messages of a reader go to the standard error, which the client
     # shows to the user. The file descriptors are the ones of the process, because --quiet replaces sys.stdout
-    resultstream = os.fdopen(os.dup(1), "wb")
-    os.dup2(2, 1)
-    # the standard output was a pipe at the start, thus Python gave it a large buffer. The user then saw each
-    # message of a reader only when the buffer was full
-    if isinstance(sys.stdout, io.TextIOWrapper):
-        sys.stdout.reconfigure(line_buffering=True)
+    with os.fdopen(os.dup(1), "wb") as resultstream:
+        os.dup2(2, 1)
+        # the standard output was a pipe at the start, thus Python gave it a large buffer. The user then saw each
+        # message of a reader only when the buffer was full
+        if isinstance(sys.stdout, io.TextIOWrapper):
+            sys.stdout.reconfigure(line_buffering=True)
 
-    serve(sys.stdin.buffer, resultstream)
+        serve(sys.stdin.buffer, resultstream)
     # the client reports the time of its command, thus the server stops with no report of its own
     raise SystemExit(0)

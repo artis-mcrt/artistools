@@ -41,7 +41,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         positional=True,
         multiplepaths=True,
         default=[],
-        helptext="Path(s) to model.txt file(s) or folders containing model.txt)",
+        helptext="Path(s) to model.txt file(s) or folders containing model.txt",
     )
 
     addarg_seriesstyle(
@@ -51,7 +51,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_axislimits(parser, include_y=False)
 
     parser.add_argument(
-        "-nbins", type=int, default=None, help="Use specified number of fixed velocity bins up to maximum plot velocity"
+        "-nbins",
+        type=int,
+        default=None,
+        help="Use this number of fixed velocity bins from zero to the larger of the model vmax and -xmax",
     )
 
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
@@ -129,6 +132,11 @@ def get_coarse_velocity_bins(dfmodel: pl.DataFrame, nbins: int | None, vmax_cmps
         pl.col("vel_r_mid").max().alias("xmax"),
         pl.col("vel_r_mid").sort().diff().max().alias("xdeltamax"),
     ).row(0)
+    if not xdeltamax:
+        # every cell has the same mid-point velocity, e.g. a grid of 2 x 2 x 2 cells, or the grid has one cell.
+        # One bin to the outer corner of the cells then holds the whole model
+        return [dfmodel.select(pl.col("vel_r_max").max()).item()]
+
     # the bins are open at the upper edge, thus the last bin must end above the outermost cell
     ncoarsevelbins = math.floor((xmax - xmin) / xdeltamax) + 1
     print(f"Using {ncoarsevelbins} velocity bins from {xmin} to {xmax} with max delta {xdeltamax}")

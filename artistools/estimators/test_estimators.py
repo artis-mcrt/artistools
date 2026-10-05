@@ -467,9 +467,30 @@ def test_a_binned_line_reaches_the_edge_of_the_data(mockplot: mock.MagicMock) ->
     # the velocity of the x axis starts the line at zero, thus the low end reaches past the data
     assert xvalues[0] == 0.0
 
-    # every bin has the same width, thus the last two points differ by half of it
-    halfwidth = (xvalues[-2] - xvalues[-3]) / 2.0
-    assert xvalues[-1] == pytest.approx(xvalues[-2] + halfwidth)
+    # the bins divide the range of the axis, thus the line ends at the upper limit of the axis
+    ax = mockplot.call_args_list[0].args[0]
+    assert xvalues[-1] == pytest.approx(ax.get_xlim()[1])
+
+
+def test_a_binned_line_with_empty_bins_ends_at_the_edge_of_its_bin() -> None:
+    """A gap of empty bins before the last bin must not set the width of the end of the line.
+
+    The line took half of the space between its last two points as the half width of a bin. Bins 0 and 24 of a cone
+    held the data alone, thus the line ran twelve bins past the edge of the data.
+    """
+    from artistools.estimators.plotestimators import draw_series
+
+    dflinepoints = pl.DataFrame({
+        "xvalue_binned": [0.5, 9.5],
+        "yvalue_binned": [1.0, 2.0],
+        "yvalue_binned_min": [1.0, 2.0],
+        "yvalue_binned_max": [1.0, 2.0],
+    })
+    ax = mplfig.Figure().add_subplot()
+    args = argparse.Namespace(xbins=10, markers=False)
+    draw_series(dflinepoints, None, ax, label=None, args=args, xbinwidth=1.0)
+
+    assert np.allclose(ax.get_lines()[0].get_xdata(), [0.0, 0.5, 9.5, 10.0])
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -534,15 +555,21 @@ def test_estimator_snapshot_classic_3d_x_axis(mockplot: mock.MagicMock) -> None:
 
 
 @pytest.mark.benchmark
-def test_estimator_timeevolution() -> None:
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_timeevolution(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """A plot of one cell against time draws one point at the middle of each timestep of the estimators."""
     at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        outputfile=outputpath / "test_estimator_timeevolution",
-        plotlist=[["Te", "nne"]],
-        modelgridindex=0,
-        x="time",
+        argsraw=[], modelpath=modelpath, outputfile=tmp_path, plotlist=[["Te", "nne"]], modelgridindex=0, x="time"
     )
+
+    tmids = at.get_timestep_times(modelpath, loc="mid")
+    dfestim = at.estimators.scan_estimators(modelpath, modelgridindex=0).select("timestep", "Te").collect()
+    dfestim = dfestim.sort("timestep")
+    assert len(mockplot.call_args_list) == 2, "one line for Te and one line for nne"
+    xvalues, yvalues = (np.asarray(values, dtype=float) for values in mockplot.call_args_list[0].args[1:3])
+    assert np.allclose(xvalues, [tmids[timestep] for timestep in dfestim["timestep"]], rtol=1e-6)
+    assert np.allclose(yvalues, dfestim["Te"].to_numpy(), rtol=1e-5)
+    assert (tmp_path / "plotestimators_cell00000.pdf").is_file()
 
 
 def test_estimparse_xz_high_preset(tmp_path: Path) -> None:
@@ -557,25 +584,33 @@ def test_estimparse_xz_high_preset(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "line",
+    ("line", "column"),
     [
-        "timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e39",
-        "heating: ff 1.0e39 bf 2.0",
-        "populations Z=26 1: 1.0e39 2: 2.0",
+        ("timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e39", "nne"),
+        ("heating: ff 1.0e39 bf 2.0", "heating_ff"),
+        ("populations Z=26 1: 1.0e39 2: 2.0", "nnion_Fe_I"),
     ],
 )
-def test_estimparse_rejects_a_value_above_the_f32_range(tmp_path: Path, line: str) -> None:
-    """A value that f32 cannot hold must stop the parse and not give infinity.
+def test_estimparse_stores_infinity_for_a_value_above_the_f32_range(tmp_path: Path, line: str, column: str) -> None:
+    """A value that f32 cannot hold gives infinity and a warning that names the file and the line.
 
-    Only the rows of the ions had the check, thus a cell header or a heating row stored infinity with no error.
+    ARTIS can write such a value, e.g. the photoionisation correction ratio of a cell whose analytic rate is subnormal
+    (update_grid.cc). The parse stopped with an error, thus one such value stopped every command on the run.
     """
     cellheader = "timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e5\n"
-    (tmp_path / "estimators_0000.out").write_text(
-        line + "\n\n" if line.startswith("timestep") else cellheader + line + "\n\n", encoding="utf-8"
-    )
+    text = line + "\n\n" if line.startswith("timestep") else cellheader + line + "\n\n"
+    linenum = 1 if line.startswith("timestep") else 2
+    (tmp_path / "estimators_0000.out").write_text(text, encoding="utf-8")
+    (tmp_path / "estimators_allranks.out").write_text(text, encoding="utf-8")
 
-    with pytest.raises(Exception, match="outside the range that f32 holds"):
-        at.rustext.estimparse(tmp_path, 0, 0)
+    for filename, parse in (
+        ("estimators_0000.out", lambda: at.rustext.estimparse(tmp_path, 0, 0)),
+        ("estimators_allranks.out", lambda: at.rustext.estimparse_allranks(tmp_path / "estimators_allranks.out")),
+    ):
+        with pytest.warns(RuntimeWarning, match=rf"{filename}:{linenum}: the file holds 1 values above the range"):
+            dfestimators = parse()
+        assert dfestimators[column].item() == np.inf
+        assert np.isclose(dfestimators["Te"].item(), 3000.0)
 
 
 def test_estimparse() -> None:
@@ -1635,11 +1670,11 @@ def test_estimparse_index_columns_are_integers() -> None:
     assert dfestim.schema["Te"] == pl.Float32
 
 
-def test_a_current_parquet_cache_starts_no_progress_bar(tmp_path: Path) -> None:
-    """The bar counts a conversion of the estimator text files, thus a current cache starts none.
+def test_the_stamp_of_a_batch_cache_decides_the_conversion(tmp_path: Path) -> None:
+    """A cache with the stamp of the text source is current, and a different stamp needs the conversion again.
 
-    The scan of the parquet files is lazy, thus a run whose caches were current showed a bar that
-    came and went with no work behind it.
+    The test checks the stamp alone. test_an_older_text_does_not_replace_a_newer_cache tests a scan of a current
+    cache.
     """
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import get_rankbatch_parquetpath
@@ -1916,7 +1951,7 @@ def test_parse_ion_row_classic_keys_elements_by_symbol() -> None:
     outdict: dict[str, t.Any] = {}
     # six leading values that the reader skips, then one population for each ion
     row = ["0", "1", "2", "3", "4", "5", "10.0", "20.0", "40.0"]
-    parse_ion_row_classic(row, outdict, {26: 2, 28: 1})
+    parse_ion_row_classic(row, outdict, {26: [1, 2], 28: [1]})
 
     assert np.isclose(outdict["nnion_Fe_I"], 10.0)
     assert np.isclose(outdict["nnion_Fe_II"], 20.0)
@@ -1989,9 +2024,8 @@ def test_estimator_listvariables_collapses_the_species_families(capsys: pytest.C
 
 
 @pytest.mark.parametrize("prefix", ["", "_"])
-def test_estimator_directive_underscore_is_optional(
-    prefix: str, capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
+@mock.patch.object(mplax.Axes, "set_yscale", side_effect=mplax.Axes.set_yscale, autospec=True)
+def test_estimator_directive_underscore_is_optional(mockyscale: mock.MagicMock, prefix: str, tmp_path: Path) -> None:
     """A plot directive works with or without its underscore, and each subplot keeps its own scale."""
     at.estimators.plot(
         argsraw=[],
@@ -2001,9 +2035,9 @@ def test_estimator_directive_underscore_is_optional(
         plotlist=[["TR", [f"{prefix}yscale", "lin"]], ["rho", [f"{prefix}yscale", "log"]]],
     )
 
-    # exit_with_error writes to the standard error and then raises SystemExit, thus a rejected directive
-    # would already have ended this test. Read the scale that the directive asked for instead
-    assert not capsys.readouterr().err
+    # draw_subplot sets the scale of the directive first, one subplot after the other
+    yscales = [call.args[1] for call in mockyscale.call_args_list]
+    assert yscales[:2] == ["linear", "log"]
 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
@@ -2469,7 +2503,6 @@ def test_classic_restart_with_an_offset_reads_both_folders(tmp_path: Path) -> No
 CLASSIC1DPATH = at.get_path("testdata") / "test-classicmode_1d"
 
 
-@pytest.mark.skipif(not CLASSIC1DPATH.is_dir(), reason="run tests/data/setuptestdata.sh for the 1D classic model")
 def test_classic_estimators_read_a_real_run() -> None:
     """Read the estimators of a classic ARTIS run of one dimension.
 
@@ -2510,7 +2543,6 @@ def test_classicartis_on_a_modern_model_names_the_difference() -> None:
         read_classic_estimators(modelpath_classic_3d)
 
 
-@pytest.mark.skipif(not CLASSIC1DPATH.is_dir(), reason="run tests/data/setuptestdata.sh for the 1D classic model")
 def test_classicartis_reads_a_classic_run_through_the_scanner() -> None:
     """The whole path from --classicartis to a dataframe must work for a classic ARTIS run."""
     estimators = at.estimators.scan_estimators(modelpath=CLASSIC1DPATH, classicartis=True).collect()
@@ -4093,11 +4125,13 @@ def test_interactive_unexpected_error_keeps_the_old_plot() -> None:
 
     Such an error left draw and change, thus the figure stayed empty and the viewer kept the failed values.
     """
-    # this model has no estimator files, thus its query holds only the model data, e.g. rho
-    classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
-    viewer = make_headless_viewer(["rho", str(classic1dpath), "-ts", "5", "--interactive"])
+    viewer = make_headless_viewer(["rho", str(modelpath), "-ts", "5", "--interactive"])
     command = viewer.get_command()
-    message = viewer.change(dc.replace(viewer.values, otheroptions=(("-readonlymgi", ("alongaxis",)),)))
+    # a mock gives the unexpected error, thus the test does not depend on a fault of the code
+    with mock.patch.object(
+        plotestimators, "get_figures_data", side_effect=pl.exceptions.ColumnNotFoundError("mocked fault")
+    ):
+        message = viewer.change(dc.replace(viewer.values, xbins="5"))
     assert message is not None
     assert message.startswith("ColumnNotFoundError")
     assert viewer.get_command() == command
@@ -4218,8 +4252,8 @@ def test_interactive_directives_of_a_subplot() -> None:
     )
     assert interactive.replace_directives(subplot, {"ymin": None, "ymax": None}) == ("rho", "yscale=log")
     assert interactive.replace_directives(subplot, {"yscale": "linear"}) == ("rho", "ymin=1e-16", "yscale=linear")
-    assert interactive.get_short_number(12345.678) == "12300"
-    assert interactive.get_short_number(1.23456e-5) == "1.23e-05"
+    assert interactive.get_short_limits(12345.678, 23456.7) == ("12300", "23500")
+    assert interactive.get_short_limits(1.23456e-5, 2.3456e-5) == ("1.23e-05", "2.35e-05")
 
 
 def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -> None:
@@ -4803,7 +4837,6 @@ def test_multiplot_leaves_out_a_timestep_with_no_estimators(tmp_path: Path, caps
     assert "no row for 2 of the 4 timesteps, from 11 to 12" in capsys.readouterr().err
 
 
-@pytest.mark.skipif(not CLASSIC1DPATH.is_dir(), reason="run tests/data/setuptestdata.sh for the 1D classic model")
 def test_classic_atomic_composition_takes_a_log_with_an_empty_line(tmp_path: Path) -> None:
     """A log can hold an empty line, e.g. where a scheduler cut it. The read of the log stopped with IndexError."""
     from artistools.estimators.estimators_classic import get_atomic_composition
@@ -4829,3 +4862,231 @@ def test_image_takes_the_label_font_size_and_the_x_range(tmp_path: Path) -> None
     assert all(ticklabel.get_fontsize() == 7 for ticklabel in panelaxis.get_xticklabels())
     xlimit_on_c = 15000 * 1e5 / 2.99792458e10
     assert np.allclose(panelaxis.get_xlim(), (-xlimit_on_c, xlimit_on_c))
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_x_values_with_no_finite_value_are_left_out(
+    mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A null x value, e.g. of tmid_days_prevtimestep at the first timestep, has no place on the axis.
+
+    The list of x values kept the null, and its minimum gave a TypeError.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=tmp_path,
+        plotlist=[["Te"]],
+        x="tmid_days_prevtimestep",
+        timestep="0-20",
+    )
+
+    xvalues = np.asarray(mockplot.call_args_list[0].args[1], dtype=float)
+    assert xvalues.size > 0
+    assert np.isfinite(xvalues).all()
+    assert "have no finite value of tmid_days_prevtimestep" in capsys.readouterr().err
+
+
+def test_multiplot_gives_snapshots_of_the_whole_run() -> None:
+    """--multiplot gives one snapshot for each timestep, and a plot against time is one plot.
+
+    --multiplot with no time made one plot against time, and its title and its file name gave the first timestep alone.
+    """
+    from artistools.estimators.plotestimators import set_x_and_timesteps
+
+    args = parse_estimator_args(["Te", str(modelpath), "--multiplot"])
+    timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
+    assert args.x == "velocity"
+    assert (timestepmin, timestepmax) == (0, len(at.get_timestep_times(modelpath)) - 1)
+
+    for flag in ("--multiplot", "--makegif"):
+        args = parse_estimator_args(["Te", str(modelpath), flag, "-x", "time"])
+        with pytest.raises(SystemExit):
+            set_x_and_timesteps(args, modelpath)
+
+
+def test_snapshot_of_a_model_of_one_cell_has_the_name_of_a_snapshot(tmp_path: Path) -> None:
+    """A snapshot over a time range of the one cell of a model gets the name of a snapshot and not of a cell."""
+    at.estimators.plot(
+        argsraw=[], modelpath=modelpath, outputfile=tmp_path, plotlist=[["Te"]], x="velocity", timestep="50-52"
+    )
+
+    (outputfile,) = tmp_path.glob("*.pdf")
+    assert outputfile.name.startswith("plotestimators_ts050-ts052_")
+
+
+def get_bin_value(seriestype: str, poptype: str, columns: dict[str, list[float]]) -> float:
+    """Return the value of the one x bin of an ion series of Fe II over two cells with equal volumes."""
+    from artistools.estimators.plotestimators import get_line_points
+    from artistools.estimators.plotestimators import plot_multi_ion_series
+
+    estimators = pl.LazyFrame({
+        "timestep": [0, 0],
+        "modelgridindex": [0, 1],
+        "deltavol_deltat": [1.0, 1.0],
+        "tmid_days": [1.0, 1.0],
+        "xvalue": [0.5, 0.5],
+        "xvalue_binned": [0.5, 0.5],
+        **columns,
+    })
+    args = argparse.Namespace(classicartis=True, colorbyion=False)
+    (plan,) = plot_multi_ion_series({}, seriestype, ["Fe II"], estimators, modelpath, poptype, args)
+    return float(get_line_points(plan.dfseries, args).collect()["yvalue_binned"].item())
+
+
+def test_ion_fraction_of_a_bin_is_the_ratio_of_its_totals() -> None:
+    """The fraction of an element in a bin is the ratio of the number of the ion to the number of the element.
+
+    The mean of the fraction of each cell took the volume as the weight. A tenuous cell of a high fraction then
+    gave the bin a fraction that was not the ratio of the totals, and that disagreed with averageionisation.
+    """
+    columns = {"nnion_Fe_II": [1.0, 1.0], "nnelement_Fe": [1.0, 1000.0], "nntot": [1.0, 1000.0]}
+    assert np.isclose(get_bin_value("populations", "elpop", columns), 2.0 / 1001.0, rtol=1e-9)
+    assert np.isclose(get_bin_value("populations", "totalpop", columns), 2.0 / 1001.0, rtol=1e-9)
+    # a number density is the number in the bin for each unit of volume
+    assert np.isclose(get_bin_value("populations", "absolute", columns), 1.0, rtol=1e-9)
+
+    panels = at.estimators.plotestimators.get_image_panels(
+        [[["populations", ["Fe II"]]]], [*columns, "deltavol_deltat"], "elpop"
+    )
+    weightexpr = panels[0].weightexpr
+    assert weightexpr is not None
+    assert weightexpr.meta.root_names() == ["nnelement_Fe"]
+
+
+def test_rate_of_an_ion_leaves_out_a_cell_with_none_of_the_element() -> None:
+    """The reader gives 0 for the rate of an ion in a cell with none of the element, and that cell has no rate.
+
+    The mean took the volume as the weight, thus such a cell halved the rate of the bin. A rate for each unit of
+    volume, e.g. cooling_coll_Fe_II, is 0 in such a cell, and it keeps the volume as the weight.
+    """
+    columns = {
+        "nnion_Fe_II": [1.0, 0.0],
+        "nnelement_Fe": [2.0, 0.0],
+        "gamma_NT_Fe_II": [2.0e-6, 0.0],
+        "cooling_coll_Fe_II": [2.0e-9, 0.0],
+    }
+    assert np.isclose(get_bin_value("gamma_NT", "absolute", columns), 2.0e-6, rtol=1e-9)
+    assert np.isclose(get_bin_value("cooling_coll", "absolute", columns), 1.0e-9, rtol=1e-9)
+
+
+def test_exportmassfractions_leaves_out_an_empty_cell(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A cell with no matter has no estimators. The export stopped with a KeyError and left an empty file."""
+    outfile = tmp_path / "massfracs.txt"
+    with pytest.raises(ValueError, match="hold no row for the cell 13 at timestep 12"):
+        at.estimators.exportmassfractions.main(
+            argsraw=[], modelpath=modelpath_classic_3d, timestep="12", modelgridindex="13", outputpath=outfile
+        )
+    assert not outfile.exists()
+
+    at.estimators.exportmassfractions.main(
+        argsraw=[], modelpath=modelpath_classic_3d, timestep="12", modelgridindex="13-14", outputpath=outfile
+    )
+    assert "cell 13 at timestep 12, thus the file leaves them out" in capsys.readouterr().err
+    lines = outfile.read_text(encoding="utf-8").splitlines()
+    assert lines[0].endswith("d shell 14")
+    assert np.isclose(sum(float(line.split()[2]) for line in lines[1:]), 1.0)
+
+
+def test_a_model_with_no_estimators_gives_a_message(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A run with no estimator files has no column Te, and the plot read Te as tellurium and drew an empty subplot.
+
+    exportmassfractions stopped on an assert with no message, and --classicartis on such a folder did the same.
+    """
+    copy_model_inputs(tmp_path)
+
+    with pytest.raises(SystemExit):
+        at.estimators.plot(
+            argsraw=[], modelpath=tmp_path, outputfile=tmp_path, plotlist=[["Te"]], timestep="5", x="velocity"
+        )
+    assert "'Te' is an estimator variable" in capsys.readouterr().err
+
+    with pytest.raises(ValueError, match="give no element number density"):
+        at.estimators.exportmassfractions.main(
+            argsraw=[], modelpath=tmp_path, timestep="5", outputpath=tmp_path / "massfracs.txt"
+        )
+
+    with pytest.raises(FileNotFoundError, match=r"no estimators_\?\?\?\?\.out file"):
+        at.estimators.scan_estimators(tmp_path, classicartis=True)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({"plotlist": [[["averageexcitation", ["Fe"]]]], "timedays": 300}, "names an element"),
+        (
+            {
+                "modelpath": modelpath_classic_3d,
+                "plotlist": [[["levelpopulation_dn_on_dvel", ["Fe II 0"]]]],
+                "timestep": "5",
+                "x": "velocity",
+            },
+            "only a 1D model has shells",
+        ),
+        (
+            {"modelpath": CLASSIC1DPATH, "plotlist": [["rho"]], "timestep": "5", "readonlymgi": "alongaxis"},
+            "-readonlymgi alongaxis needs a 3D model",
+        ),
+        ({"modelpath": modelpath_classic_3d, "plotlist": [["Te"]], "x": "time", "modelgridindex": "0"}, "no row"),
+    ],
+)
+def test_a_selection_that_cannot_give_a_plot_stops_with_a_message(
+    kwargs: dict[str, t.Any], expected: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Each of these selections gave a traceback, or no plot with a status of success."""
+    plotkwargs: dict[str, t.Any] = {"modelpath": modelpath} | kwargs
+    with pytest.raises(SystemExit) as excinfo:
+        at.estimators.plot(None, [], outputfile=tmp_path, **plotkwargs)
+
+    assert excinfo.value.code == 1
+    assert expected in capsys.readouterr().err
+    assert not list(tmp_path.glob("*.pdf"))
+
+
+def test_classic_ion_names_take_the_ion_stage_of_the_log(tmp_path: Path) -> None:
+    """The log gives the ion stage of each ion. Co with ions from Co II took the names Co I, Co II, and Co III."""
+    from artistools.estimators.estimators_classic import get_atomic_composition
+    from artistools.estimators.estimators_classic import parse_ion_row_classic
+
+    (tmp_path / "output_0-0.txt").write_text(
+        "[input.c]   element Z = 26\n"
+        "[input.c]     ion 1 with 10 levels (10 ionising)\n"
+        "[input.c]   element Z = 27\n"
+        "[input.c]     ion 2 with 10 levels (10 ionising)\n"
+        "[input.c]     ion 3 with 1 levels (0 ionising)\n",
+        encoding="utf-8",
+    )
+    composition = get_atomic_composition(tmp_path)
+    assert composition == {26: [1], 27: [2, 3]}
+
+    outdict: dict[str, t.Any] = {}
+    parse_ion_row_classic(["0", "1", "2", "3", "4", "5", "10.0", "20.0", "40.0"], outdict, composition)
+    assert {key for key in outdict if key.startswith("nnion_")} == {"nnion_Fe_I", "nnion_Co_II", "nnion_Co_III"}
+    assert np.isclose(outdict["nnion_Co_II"], 20.0)
+
+
+def test_classic_restart_repeats_its_first_timestep(tmp_path: Path) -> None:
+    """A restarted job writes its first timestep again, and the row of the earlier job stays.
+
+    The reader refused the repeat as two folders with no offset, although both logs gave their first timestep.
+    """
+    from artistools.estimators.estimators_classic import read_classic_estimators
+
+    modelpath = build_classic_restart_model(tmp_path, secondfolderfirsttimestep=1)
+    (tmp_path / "job0" / "output_0-0.txt").write_text("[debug] update_packets: updating packet 0 for timestep 0\n")
+
+    def get_rows(temperature: str) -> str:
+        return "".join(
+            " ".join([str(mgi), "5000", temperature, "0.5", "4500", *["0.0"] * 9]) + "\n"
+            for _ in range(2)
+            for mgi in (0, 1)
+        )
+
+    (tmp_path / "job0" / "estimators_0000.out").write_text(get_rows("4000"))
+    (tmp_path / "job1" / "estimators_0000.out").write_text(get_rows("9000"))
+
+    estimators = read_classic_estimators(modelpath)
+    assert estimators is not None
+    assert sorted(estimators) == [(timestep, mgi) for timestep in range(3) for mgi in (0, 1)]
+    assert np.isclose(estimators[1, 0]["Te"], 4000.0)
+    assert np.isclose(estimators[2, 0]["Te"], 9000.0)

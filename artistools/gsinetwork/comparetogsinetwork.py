@@ -14,6 +14,7 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_composition_data
 from artistools.constants import day_to_s
 from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
@@ -159,6 +160,10 @@ def get_artis_abund_sequences(
             estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
 
         estimatorcolumns = estimators_lazy.collect_schema().names()
+        # ARTIS gives the number density of the stable isotopes that it does not follow as <El>_otherstable. Such a
+        # nucleus has the mean stable mass of the element in compositiondata.txt (decay.cc)
+        compositiondata = get_composition_data(modelpath)
+        meannucmass_amu_of_z = dict(zip(compositiondata["Z"].to_list(), compositiondata["mass"].to_list(), strict=True))
         cellmassfrac_exprs = []
         for strspecies in arr_species:
             isnuclide = strspecies[-1].isdigit() and f"nniso_{strspecies}" in estimatorcolumns
@@ -172,11 +177,21 @@ def get_artis_abund_sequences(
                     if col.startswith(f"nniso_{strspecies}") and col.removeprefix(f"nniso_{strspecies}").isdigit()
                 ]
             )
+            # ARTIS adds a decay daughter that model.txt does not hold, and such an isotope has no init_X column
+            # and no correction
             isotopemassfrac_exprs = [
                 pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH_g / pl.col("rho")
-                + pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)
+                + (
+                    pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)
+                    if f"init_X_{striso}" in estimatorcolumns
+                    else pl.lit(0.0)
+                )
                 for striso in speciesisotopes
             ]
+            otherstablecol = f"nniso_{strspecies}_otherstable"
+            if not isnuclide and otherstablecol in estimatorcolumns:
+                meannucmass_amu = meannucmass_amu_of_z[get_atomic_number(strspecies)]
+                isotopemassfrac_exprs.append(pl.col(otherstablecol) * meannucmass_amu * MH_g / pl.col("rho"))
             if isnuclide:
                 cellmassfrac_exprs.append(isotopemassfrac_exprs[0])
             elif isotopemassfrac_exprs:
@@ -559,8 +574,12 @@ def get_dfcontribsparticledata(
     print("  done")
 
     # each particle gives an eager frame of one row. A lazy concat of 1957 such frames took most of 198.5 s on
-    # the streaming engine. The time of that engine increases with the square of the number of inputs
-    allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
+    # the streaming engine. The time of that engine increases with the square of the number of inputs. A particle
+    # with no network data gives a frame of no columns, thus the concat can hold no particleid column
+    allparticledata = pl.concat(
+        [pl.DataFrame(schema={"particleid": pl.Int32}), *list_particledata_withabund, *list_particledata_noabund],
+        how="diagonal",
+    )
 
     # a semi join removes the pairs of a particle without network data, and it copies no arrays. The result
     # holds one row for each pair, thus one collect serves the queries of every cell
@@ -578,8 +597,13 @@ def plot_qdot_abund_modelcells(
     args: argparse.Namespace,
     timedaysmax: float | None = None,
     nogsinet: bool = False,
+    outputfolder: Path | None = None,
 ) -> None:
-    """Plot the heating rate and the abundance evolution of each cell in mgiplotlist."""
+    """Plot the heating rate and the abundance evolution of each cell in mgiplotlist.
+
+    The plots go to outputfolder, or to the model folder if outputfolder is None.
+    """
+    outputfolder = modelpath if outputfolder is None else outputfolder
     lzdfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=True)
     lzdfmodel = add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
 
@@ -637,8 +661,11 @@ def plot_qdot_abund_modelcells(
             griddata_root=griddata_root,
             lzdfmodel=lzdfmodel,
         )
+        if dfpairs.is_empty():
+            print("No particle of the model has network data, thus the plots show the ARTIS data alone")
+            gsinet_available = False
 
-    else:
+    if not gsinet_available:
         dfpairs = None
         dfparticledata = None
         arr_time_gsi_days = None
@@ -648,7 +675,7 @@ def plot_qdot_abund_modelcells(
         dfpairs,
         dfparticledata,
         arr_time_gsi_days,
-        pdfoutpath=Path(modelpath, "gsinetwork_global-qdot.pdf"),
+        pdfoutpath=outputfolder / "gsinetwork_global-qdot.pdf",
         args=args,
         xmax=timedaysmax,
     )
@@ -674,7 +701,7 @@ def plot_qdot_abund_modelcells(
                 arr_species,
                 arr_abund_artis.get(mgi),
                 mgi=mgi,
-                pdfoutpath=Path(modelpath, f"gsinetwork_{strmgi}-abundance.pdf"),
+                pdfoutpath=outputfolder / f"gsinetwork_{strmgi}-abundance.pdf",
                 args=args,
             )
 
@@ -691,7 +718,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Base path for merger snapshot and trajectory data specified in model.txt",
     )
 
-    addarg_output(parser, kind="folder", default=Path())
+    # the plots went to the model folder before the command read -o, thus that folder stays the default
+    addarg_output(parser, kind="folder", helptext="Folder for the plots (default: the model folder)")
 
     parser.add_argument("-xmax", default=None, type=float, help="Maximum time in days to plot")
 
@@ -741,4 +769,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args=args,
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,
+        outputfolder=Path(args.outputfile) if args.outputfile else None,
     )

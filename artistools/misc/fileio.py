@@ -215,12 +215,23 @@ def zopenpl(filename: Path | str) -> t.IO[bytes] | Path:
 
 @contextlib.contextmanager
 def polars_error_note(filepath: Path) -> Generator[None]:
-    """Name the file in a polars error, because the parser sees a path or in-memory bytes only."""
+    """Name the file in a read error, because the parser sees a path or in-memory bytes only.
+
+    A cut compressed file gives one of three errors. polars gives an OSError for a .gz file that it reads itself. A
+    Python reader gives an EOFError, and polars gives a panic when it reads from that reader. The dispatcher reports
+    an OSError with no traceback, thus an EOFError becomes an OSError.
+    """
     try:
         yield
-    except pl.exceptions.PolarsError as exc:
+    except (pl.exceptions.PolarsError, pl.exceptions.PanicException, OSError) as exc:
         exc.add_note(f"while reading {filepath}")
         raise
+    except EOFError as exc:
+        msg = (
+            f"{filepath} ends before the end of its compressed data."
+            " A partial copy or a run that has not finished can leave such a file"
+        )
+        raise OSError(msg) from exc
 
 
 def scan_lines(filepath: Path, skip_rows: int = 0, encoding: t.Literal["utf8", "utf8-lossy"] = "utf8") -> pl.LazyFrame:
@@ -696,23 +707,43 @@ class ModelpathCache[**P, R]:
     """Call a reader with the absolute path of the model, and keep the results in an lru_cache.
 
     The default model path is the relative Path("."). A cache of a relative path keeps the first answer after the user
-    changes the working folder, thus the key holds the path that resolve_modelpath gives.
+    changes the working folder, thus the key holds the path that resolve_modelpath gives. A call gives the path by
+    position, by the keyword modelpath, or by the name of the first parameter of the reader, e.g. filename.
     """
 
     def __init__(self, function: Callable[t.Concatenate[Path, P], R], maxsize: int) -> None:
         """Put an lru_cache of maxsize entries on the reader."""
         cached = lru_cache(maxsize=maxsize)(function)
         # the types of lru_cache take each argument as Hashable, and the reader gives the types of its arguments
-        self.callcached = t.cast("Callable[t.Concatenate[Path, P], R]", cached)
+        self.callcached = t.cast("Callable[..., R]", cached)
         self.cache_clear = cached.cache_clear
         self.cache_info = cached.cache_info
         self.name = str(getattr(function, "__qualname__", function))
+        self.pathkeywords = {"modelpath", next(iter(inspect.signature(function).parameters))}
         # the server of a remote model follows __wrapped__ to the reader below the cache
         functools.update_wrapper(self, cached)
 
-    def __call__(self, modelpath: Path | str, /, *args: P.args, **kwargs: P.kwargs) -> R:
-        """Return the result of the reader for the absolute path of the model."""
-        return self.callcached(resolve_modelpath(modelpath), *args, **kwargs)
+    if t.TYPE_CHECKING:
+        # the type checkers know only the keyword modelpath, because a ParamSpec cannot rename a parameter
+        def __call__(self, modelpath: Path | str, *args: P.args, **kwargs: P.kwargs) -> R:
+            """Return the result of the reader for the absolute path of the model."""
+            ...
+
+    else:
+
+        def __call__(self, *args: t.Any, **kwargs: t.Any) -> t.Any:
+            """Return the result of the reader for the absolute path of the model.
+
+            A path that a keyword gives goes to the first position, thus a call by keyword and a call by position
+            share one cache entry.
+            """
+            if not args and (pathkeyword := next((key for key in self.pathkeywords if key in kwargs), None)):
+                args = (kwargs.pop(pathkeyword),)
+            if not args:
+                # the reader raises the TypeError of the missing argument
+                return self.callcached(**kwargs)
+
+            return self.callcached(resolve_modelpath(args[0]), *args[1:], **kwargs)
 
     def __reduce__(self) -> str:
         """Give pickle the name of the module attribute, because pickle cannot copy the cache."""
@@ -739,6 +770,16 @@ def readnoncommentline(file: t.IO[str]) -> str:
 
     msg = "Reached end of file without finding a non-comment, non-blank line"
     raise EOFError(msg)
+
+
+def check_metadata_mapping(metadata: object, metafile: Path) -> dict[str, t.Any]:
+    """Return the metadata of a file, or raise ValueError when the metadata file gives a value that is not a mapping."""
+    if isinstance(metadata, dict):
+        return t.cast("dict[str, t.Any]", metadata)
+
+    # the dispatcher reports a ValueError as a fault of the input, without a traceback
+    msg = f"The metadata in {metafile} must be a mapping of names to values, not {metadata!r}"
+    raise ValueError(msg)
 
 
 def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
@@ -777,7 +818,7 @@ def get_file_metadata_cached(filepath: Path, givenpath: str) -> dict[str, t.Any]
             # a file of comments alone gives None
             metadata = yaml.safe_load(yamlfile) or {}
 
-        return add_derived_metadata(metadata)
+        return add_derived_metadata(check_metadata_mapping(metadata, individualmetafile))
 
     # check if the metadata is in the big combined metadata file (todo: eliminate this file)
     combinedmetafile = Path(filepath.parent.resolve(), "metadata.yml")
@@ -788,10 +829,11 @@ def get_file_metadata_cached(filepath: Path, givenpath: str) -> dict[str, t.Any]
         # the file sits beside the data files
         metadata = next(
             (combined_metadata[key] for key in (givenpath, str(filepath), filepath.name) if key in combined_metadata),
-            {},
+            None,
         )
 
-        return add_derived_metadata(metadata)
+        # an absent key and a key with no value both give None
+        return add_derived_metadata(check_metadata_mapping(metadata or {}, combinedmetafile))
 
     print(f"No metadata found for: {filepath}")
 
@@ -962,10 +1004,14 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
         return
 
     lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
-    # flock locks a read-only descriptor, so a different user regenerating a cache in a shared model
-    # directory needs only read access to the lock file. The chmod grants that under a restrictive umask,
-    # and fails harmlessly for a user who does not own the lock
-    lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY, 0o666)
+    # NFS gives flock as a POSIX lock, and an exclusive POSIX lock needs a descriptor that can write. A user without
+    # write access to the lock of a different user reads it, which flock accepts on a local file system
+    try:
+        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR, 0o666)
+    except PermissionError:
+        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY, 0o666)
+    # the chmod lets each user write the lock under a restrictive umask, and fails harmlessly for a user who does
+    # not own the lock
     with contextlib.suppress(OSError):
         lockpath.chmod(0o666)
     try:

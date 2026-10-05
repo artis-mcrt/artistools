@@ -283,7 +283,11 @@ def apply_time_range_args(
         if args.timestep is not None:
             for otherpath in artispaths[1:]:
                 _, _, othermin, othermax = get_time_range(otherpath, timestep_range_str=args.timestep)
-                if abs(othermin - rangemin) > 1e-4 or abs(othermax - rangemax) > 1e-4:
+                # timesteps.out gives each time with 6 significant digits, and the fallback of input.txt gives
+                # more, thus one grid from the two sources differs by up to 5e-6 of the time
+                if not (
+                    math.isclose(othermin, rangemin, rel_tol=1e-5) and math.isclose(othermax, rangemax, rel_tol=1e-5)
+                ):
                     exit_with_error(
                         f"timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
                         f"{get_model_logname(artispaths[0])} and {othermin:.2f} to {othermax:.2f} days in "

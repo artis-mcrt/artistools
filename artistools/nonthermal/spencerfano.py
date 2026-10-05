@@ -3,6 +3,7 @@
 import argparse
 import math
 import typing as t
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from artistools.atomic import get_elsymbolslist
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
+from artistools.atomic import roman_numerals
 from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
@@ -35,9 +37,9 @@ from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
+from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
-from artistools.nltepops import read_nltepops
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -45,6 +47,9 @@ from artistools.plottools import set_legend
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
 
 defaultoutputfile = "spencerfano_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
+
+# ARTIS normalises the Spencer-Fano solution with the deposition of these particles (nonthermal.cc)
+NTLEPTON_DEPOSITION_CHANNELS = ("gamma", "positron", "electron")
 
 
 def write_ntstats_file(ntstatfile: str | Path, rows: Sequence[dict[str, float]]) -> None:
@@ -67,18 +72,41 @@ def write_ntstats_file(ntstatfile: str | Path, rows: Sequence[dict[str, float]])
         )
 
 
+def get_ion_column_name(atomic_number: int, ion_stage: int) -> str:
+    """Return the name of an ion in a column of the statistics file, e.g. FeII.
+
+    The table of roman numerals stops at XX, thus a higher ion stage takes the name of its charge, e.g. Fe25+.
+    """
+    style = "spectral" if ion_stage < len(roman_numerals) else "charge"
+    return get_ionstring(atomic_number, ion_stage, style=style, sep="")
+
+
+def get_sweep_column(dfstats: pl.DataFrame) -> str:
+    """Return the column of the parameter that a -vary sweep changes, or x_e if no parameter changes.
+
+    -vary emax,npts changes two columns, and emax then gives the horizontal axis.
+    """
+    return next((col for col in ("x_e", "emax", "emin", "npts") if dfstats[col].n_unique() > 1), "x_e")
+
+
 def make_ntstats_plot(ntstatfile: str | Path, args: argparse.Namespace) -> None:
-    """Plot the fractions of nonthermal energy going to heating, ionisation, and excitation over time."""
+    """Plot the fractions of the non-thermal energy that go to heating, ionisation, and excitation.
+
+    The horizontal axis shows the parameter that the sweep changes. A sweep of the energy grid keeps x_e, thus an
+    axis of x_e put every step at one position.
+    """
     fig, axesgrid = make_frame_figure(fullwidth=False)
     ax = axesgrid[0][0]
 
     # the header line was written as a "#" comment
     dfstats = read_wsv(ntstatfile, comment_prefix="#", header_from_comment=True).fill_null(0)
 
+    # the table is the product of -plotstats, thus --quiet keeps it
     with pl.Config(tbl_cols=-1, tbl_rows=50):
-        print(dfstats)
+        print_product(args, dfstats)
 
-    xarr = np.log10(dfstats["x_e"])
+    sweepcolumn = get_sweep_column(dfstats)
+    xarr = np.log10(dfstats[sweepcolumn])
     ax.plot(xarr, dfstats["frac_ionization"], label="Ionisation")
     max_frac_excitation = dfstats["frac_excitation"].max()
     assert isinstance(max_frac_excitation, int | float)
@@ -90,8 +118,9 @@ def make_ntstats_plot(ntstatfile: str | Path, args: argparse.Namespace) -> None:
         ion = ioncol.replace("frac_ionization_", "")
         ax.plot(xarr, dfstats[ioncol], label=f"{ion} ionisation")
 
+    xlabels = {"x_e": r"log x$_e$", "emax": r"log E$_{max}$ [eV]", "emin": r"log E$_{min}$ [eV]", "npts": "log npts"}
     ax.set_ylabel(r"Energy fraction")
-    ax.set_xlabel(r"log x$_e$")
+    ax.set_xlabel(xlabels[sweepcolumn])
     set_legend(ax, args)
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
@@ -151,7 +180,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timestep(parser)
 
-    addarg_modelgridindex(parser, default=[0])
+    # the command solves one cell, thus the help names no range
+    addarg_modelgridindex(parser, default=[0], helptext="Model grid cell to solve, e.g. 12")
 
     parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
 
@@ -166,8 +196,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)",
     )
 
+    # the help lists the choices, because the comma of emax,npts made the default list of choices unclear
     parser.add_argument(
-        "-vary", action="store", choices=["emin", "emax", "npts", "emax,npts", "x_e"], help="Which parameter to vary"
+        "-vary",
+        action="store",
+        choices=["emin", "emax", "npts", "emax,npts", "x_e"],
+        metavar="PARAMETER",
+        help="Which parameter to vary: emin, emax, npts, x_e, or emax,npts for emax and npts together",
     )
 
     parser.add_argument(
@@ -175,7 +210,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store",
         default="artis",
         choices=["artis", *get_elsymbolslist()[1:]],
-        help="Composition comes from artis or specific an element to use",
+        help="The composition: artis for the ARTIS cell, or the symbol of one element, e.g. Fe",
     )
 
     parser.add_argument(
@@ -228,6 +263,20 @@ class PlasmaConditions(t.NamedTuple):
     ionpopdict: dict[tuple[int, int] | int, float]
 
 
+def get_ntlepton_deposition_rate_density(estim: Mapping[str, t.Any]) -> float | None:
+    """Return the deposition rate in erg/s/cm3 that ARTIS uses for the Spencer-Fano solution of a cell.
+
+    A newer run gives the deposition of each particle, and ARTIS takes the sum of NTLEPTON_DEPOSITION_CHANNELS. An
+    older run gives total_dep, which is the rate that such a run used. heating_dep holds only the heating part of
+    the rate, and a newer run adds the alpha and the fission deposition to it. Return None if the estimators give
+    no deposition.
+    """
+    if "deposition_gamma" in estim:
+        return sum(float(estim.get(f"deposition_{channel}", 0.0)) for channel in NTLEPTON_DEPOSITION_CHANNELS)
+
+    return estim.get("total_dep")
+
+
 def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaConditions:
     """Return the conditions of the ARTIS cell and timestep that the arguments name.
 
@@ -253,8 +302,15 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
     assert isinstance(args.timestep, int)
     estim = estimators[args.timestep, args.modelgridindex]
 
-    if read_nltepops(modelpath, modelgridindex=args.modelgridindex, timestep=args.timestep).is_empty():
-        exit_with_error(f"no NLTE populations for cell {args.modelgridindex} at timestep {args.timestep}")
+    deposition_erg = get_ntlepton_deposition_rate_density(estim)
+    if deposition_erg is None:
+        exit_with_error(f"the estimators of cell {args.modelgridindex} at timestep {args.timestep} hold no deposition")
+    if not 0.0 < deposition_erg < math.inf:
+        exit_with_error(
+            f"cell {args.modelgridindex} has a deposition rate of {deposition_erg} erg/s/cm3 at timestep"
+            f" {args.timestep}",
+            "ARTIS solves the Spencer-Fano equation only for a positive rate. Give a later time or a different cell",
+        )
 
     nntot = estim["nntot"]
     print_warning("Use LTE pops at Te for now")
@@ -267,7 +323,7 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
         nntot=nntot,
         x_e=estim["nne"] / nntot,
         T_e=estim["Te"],
-        deposition_density_ev=estim["heating_dep"] / EV_to_erg,
+        deposition_density_ev=deposition_erg / EV_to_erg,
         ionpopdict={get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))},
     )
 
@@ -319,8 +375,13 @@ def get_plot_filename(args: argparse.Namespace, step: int) -> str:
     return outputfilename
 
 
-def solve_step(args: argparse.Namespace, modelpath: Path, conditions: PlasmaConditions, step: int) -> dict[str, float]:
-    """Solve the Spencer-Fano equation at one step of a sweep, plot the solution, and return its statistics."""
+def solve_step(
+    args: argparse.Namespace, modelpath: Path, conditions: PlasmaConditions, step: int
+) -> dict[str, float] | None:
+    """Solve the Spencer-Fano equation at one step of a sweep, and plot the solution.
+
+    Return the statistics of the step for -ostat, or None without -ostat.
+    """
     pynt = import_optional("pynonthermal")
     emin, emax, npts = get_sweep_parameters(args, step)
     ionpopdict = conditions.ionpopdict
@@ -342,6 +403,11 @@ def solve_step(args: argparse.Namespace, modelpath: Path, conditions: PlasmaCond
         )
 
     with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True, use_ar1985=args.ar1985) as sf:
+        if not args.noexcitation:
+            # the excitation takes the LTE populations of the levels at T_e, and the level data of the model
+            sf.set_temperature(conditions.T_e)
+            sf.set_atomic_data(adata_polars=adata)
+
         for Z, ion_stage in ions:
             nnion = ionpopdict[Z, ion_stage]
             if nnion == 0.0:
@@ -350,14 +416,26 @@ def solve_step(args: argparse.Namespace, modelpath: Path, conditions: PlasmaCond
 
             sf.add_ionisation(Z, ion_stage, nnion)
             if not args.noexcitation:
-                sf.add_ion_ltepopexcitation(Z, ion_stage, nnion, adata_polars=adata, temperature=conditions.T_e)
+                sf.add_ion_excitation(Z, ion_stage, nnion)
 
-        sf.solve(depositionratedensity_ev=conditions.deposition_density_ev)
+        sf.solve(deposition_ev_per_s_per_cm3=conditions.deposition_density_ev)
 
         sf.analyse_ntspectrum()
 
         if args.makeplot:
             sf.plot_spec_channels(outputfilename=get_plot_filename(args, step))
+
+        # the energy fractions are the product of the command, thus --quiet keeps them. The solver prints its
+        # analysis as progress messages
+        print_product(
+            args,
+            f"emin {emin} emax {emax} npts {npts} x_e {conditions.x_e:.4g}:"
+            f" frac_heating {sf.get_frac_heating():.4f} frac_ionization {sf.get_frac_ionisation_tot():.4f}"
+            f" frac_excitation {sf.get_frac_excitation_tot():.4f} frac_sum {sf.get_frac_sum():.4f}",
+        )
+
+        if not args.ostat:
+            return None
 
         return {
             "emin": emin,
@@ -369,7 +447,7 @@ def solve_step(args: argparse.Namespace, modelpath: Path, conditions: PlasmaCond
             "frac_ionization": sf.get_frac_ionisation_tot(),
             "frac_heating": sf.get_frac_heating(),
         } | {
-            f"frac_ionization_{get_ionstring(atomic_number, ion_stage, sep='')}": (
+            f"frac_ionization_{get_ion_column_name(atomic_number, ion_stage)}": (
                 sf.get_frac_ionisation_ion(atomic_number, ion_stage)
                 if ionpopdict[atomic_number, ion_stage] > 0.0
                 else 0.0
@@ -407,7 +485,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ostatrows: list[dict[str, float]] = []
     for step in range(stepcount):
         conditions = artisconditions if artisconditions is not None else get_element_conditions(args, step, stepcount)
-        ostatrows.append(solve_step(args, modelpath, conditions, step))
+        if (ostatrow := solve_step(args, modelpath, conditions, step)) is not None:
+            ostatrows.append(ostatrow)
 
     if args.ostat:
         write_ntstats_file(args.ostat, ostatrows)

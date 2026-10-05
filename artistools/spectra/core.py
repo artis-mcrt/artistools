@@ -51,6 +51,9 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
+from artistools.misc import zopen
+from artistools.misc.fileio import polars_error_note
+from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import on_model_host
 from artistools.packets import filter_packets_dirbin
@@ -63,6 +66,7 @@ from artistools.packets import get_virtual_packets
 from artistools.packets import has_emission_record_expr
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
+from artistools.packets.core import get_vpkt_in_spectrum_range_expr
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -134,6 +138,11 @@ def get_dfspectrum_x_y_with_units(
             # adjust flux to required distance
             # [erg/s/cm^2/xunit]
             dfspectrum = dfspectrum.with_columns(y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2)
+
+        case "eflux" if unit.kind == "wavelength":
+            # E^2 dN/dE = E F_E, which equals lambda F_lambda. A wavelength unit is not a unit of energy, thus the
+            # energy stays in erg [erg/s/cm^2]
+            dfspectrum = dfspectrum.with_columns(y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 * pl.col("x"))
 
         case "eflux":
             # adjust for distance, convert erg to xunit and multiply by another factor of x
@@ -548,6 +557,25 @@ def filter_packets_by_time(
     )
 
 
+def check_time_range_inside_vpkt_window(
+    vpkt_config: Mapping[str, t.Any], timemindays: float, timemaxdays: float
+) -> None:
+    """Raise a ValueError if the time range leaves the time window of the virtual packets in vpkt.txt.
+
+    ARTIS writes a virtual packet only for an arrival time inside the window. The flux takes the full width of the
+    time range, thus a range that leaves the window gives a low flux. With no time override, vpkt.txt takes the window
+    of the constants of the ARTIS build. The file does not give that window, thus no check is possible.
+    """
+    if vpkt_config["time_limits_enabled"] and (
+        timemindays < vpkt_config["initial_time"] or timemaxdays > vpkt_config["final_time"]
+    ):
+        msg = (
+            f"The time range {timemindays:.2f} to {timemaxdays:.2f} days is outside the virtual packets, which "
+            f"cover {vpkt_config['initial_time']} to {vpkt_config['final_time']} days"
+        )
+        raise ValueError(msg)
+
+
 @on_model_host
 def get_from_packets(
     modelpath: Path | str,
@@ -600,11 +628,12 @@ def get_from_packets(
     dfbinned_lazy = get_binned_lambda_frame(lambda_bin_edges)
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
+        check_time_range_inside_vpkt_window(vpkt_config, timelowdays, timehighdays)
         alldirbins = list(range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"]))
         dirbinsums = sum_virtual_packets_by_observer(
             dfpackets,
             select_dirbins(alldirbins, directionbins),
-            vpkt_config["nspectraperobs"],
+            vpkt_config,
             lambda obsdirindex: constants.c_ang_per_s / pl.col(f"dir{obsdirindex}_nu_rf"),
             lambda_bin_edges,
             arrivaltimerange_days=(timelowdays, timehighdays),
@@ -675,20 +704,61 @@ def get_from_packets(
     }
 
 
+def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
+    """Return the names of the files that can hold the spectrum of each timestep, in the order of the search.
+
+    A POL_ON run of ARTIS also writes specpol.out and specpol_res.out. The Stokes I part of these files is the
+    spectrum of spec.out and spec_res.out, thus a run that holds only the polarisation files still gives a spectrum.
+    """
+    if gamma:
+        return ["gamma_spec_res.out"] if directionresolved else ["gamma_spec.out"]
+
+    return ["spec_res.out", "specpol_res.out"] if directionresolved else ["spec.out", "specpol.out"]
+
+
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
 # scan would hold only the query plan, thus each collect by a caller would parse the file again.
 @lru_cache(maxsize=2)
 def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
-    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
+    """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
 
     Callers must not mutate the returned frame, which is shared between calls.
     """
-    specfilename = firstexisting("gamma_spec.out" if gamma else "spec.out", folder=modelpath, tryzipped=True)
+    specfilename = firstexisting(
+        get_spectrum_filenames(gamma, directionresolved=False), folder=modelpath, tryzipped=True
+    )
     print(f"Reading {specfilename}")
 
+    # sn3d writes the whole file again at each timestep, thus a run that stops during that write leaves an empty file
+    # or a cut last line. A cut compressed file stops the read, thus the error must name the file
+    with polars_error_note(specfilename):
+        with zopen(specfilename, encoding="utf-8") as specfile:
+            spectext = specfile.read()
+        if not spectext.strip():
+            msg = f"{specfilename} holds no spectrum. A run that stops while sn3d writes this file leaves it empty"
+            raise ValueError(msg)
+        with polars_source_open(specfilename) as source:
+            # get_spectra counts the time columns, thus the column of a trailing space on each line must go
+            dfspec = drop_trailing_null_column(
+                pl.read_csv(source, separator=" ", infer_schema=False, truncate_ragged_lines=True)
+            )
+
+    # the cut number of a cut line is a valid number, thus only the missing line end shows the cut
+    if not spectext.endswith("\n"):
+        print_warning(f"{specfilename} ends with a cut line, thus the command reads the file without its last line")
+        dfspec = dfspec.head(-1)
+    if dfspec.is_empty() or dfspec.null_count().sum_horizontal().item() > 0:
+        msg = (
+            f"{specfilename} holds no spectrum or a line with fewer values than the times."
+            " A run that stops while sn3d writes this file gives this"
+        )
+        raise ValueError(msg)
+
     return (
-        pl
-        .read_csv(polars_source(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        dfspec
+        # specpol.out repeats the times for the Stokes Q and U spectra, and polars adds a suffix to each repeated
+        # name. Thus the columns with no suffix are the Stokes I spectra
+        .select(cs.exclude(cs.contains("_duplicated_")))
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
         .lazy()
@@ -696,7 +766,7 @@ def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
 
 
 def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
-    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
+    """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
     """
@@ -710,7 +780,7 @@ def read_spec_res_cached(modelpath: Path, gamma: bool = False) -> dict[int, pl.L
 
     Callers must not mutate the returned dict, which is shared between calls.
     """
-    resfilenames = ["gamma_spec_res.out"] if gamma else ["spec_res.out", "specpol_res.out"]
+    resfilenames = get_spectrum_filenames(gamma, directionresolved=True)
     specfilename = (
         modelpath if Path(modelpath).is_file() else firstexisting(resfilenames, folder=modelpath, tryzipped=True)
     )
@@ -824,17 +894,31 @@ def get_spectra(
             msg = "ERROR: No spherically averaged gamma spectrum found."
             raise FileNotFoundError(msg) from e
         if not specdata_alltimesteps:
-            # a run with specpol.out alone has no spec.out, thus only a run with no spectrum file fails here
+            # the direction bins of spec_res.out can still give a plot, thus only a run with no spectrum file fails here
             msg = (
-                f"{modelpath} holds no spec.out and no spec_res.out"
+                f"{modelpath} holds no spec.out, no specpol.out, and no spec_res.out"
                 if readsresbins
-                else f"{modelpath} holds no spec.out"
+                else f"{modelpath} holds no spec.out and no specpol.out"
             )
             raise FileNotFoundError(msg) from e
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     specdataout: dict[int, pl.LazyFrame] = {}
     for dirbin in specdata_alltimesteps if directionbins is None else set(specdata_alltimesteps) & set(directionbins):
+        # ARTIS writes one column for each timestep that ran, thus the file of a run that stopped early holds fewer
+        # columns. The first column holds the frequencies
+        ntimesteps_infile = len(specdata_alltimesteps[dirbin].collect_schema()) - 1
+        if timestepmax >= ntimesteps_infile:
+            specfilename = firstexisting(
+                get_spectrum_filenames(gamma, directionresolved=dirbin >= 0), folder=modelpath, tryzipped=True
+            )
+            msg = (
+                f"{specfilename} holds the timesteps 0 to {ntimesteps_infile - 1}, thus it has no spectrum of timestep"
+                f" {timestepmax}. ARTIS writes only the timesteps that ran, thus the run had not reached timestep"
+                f" {timestepmax} when it wrote this file"
+            )
+            raise ValueError(msg)
+
         dfspectrum = (
             specdata_alltimesteps[dirbin]
             .select(
@@ -1081,6 +1165,36 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
     return stokes_params
 
 
+def check_time_range_overlaps_time_bins(
+    timemids: Sequence[float], timemin: float, timemax: float, filedescription: str
+) -> None:
+    """Stop if no time bin of a spectrum file overlaps the time range. Warn if the time range goes past the bins.
+
+    The file gives the middle time of each bin. The first bin and the last bin reach half the distance to the next
+    middle time beyond their own middle time. A caller takes the bin with the nearest middle time, thus a time outside
+    every bin gave the spectrum of the first or the last bin, and the label gave the requested time.
+    """
+    if len(timemids) < 2:
+        # one middle time gives no width of the bin
+        return
+
+    firstbinstart = timemids[0] - (timemids[1] - timemids[0]) / 2.0
+    lastbinend = timemids[-1] + (timemids[-1] - timemids[-2]) / 2.0
+    rangetext = f"{timemin:.2f} days" if timemin == timemax else f"{timemin:.2f} to {timemax:.2f} days"
+    if timemax < firstbinstart or timemin > lastbinend:
+        msg = (
+            f"The time bins of {filedescription} cover {firstbinstart:.2f} to {lastbinend:.2f} days, thus no bin holds"
+            f" {rangetext}"
+        )
+        raise ValueError(msg)
+
+    if timemin < firstbinstart or timemax > lastbinend:
+        print_warning(
+            f"The time bins of {filedescription} cover {firstbinstart:.2f} to {lastbinend:.2f} days, thus the spectrum"
+            f" holds only a part of {rangetext}"
+        )
+
+
 def get_vspecpol_spectrum(
     modelpath: Path | str,
     timeavg: float,
@@ -1103,6 +1217,13 @@ def get_vspecpol_spectrum(
 
     arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
+
+    check_time_range_overlaps_time_bins(
+        arr_tmid,
+        timeavg if timemin is None or timemax is None else timemin,
+        timeavg if timemin is None or timemax is None else timemax,
+        f"vspecpol_total-{angle}.out of {modelpath}",
+    )
 
     if timemin is not None and timemax is not None:
         timestepmin = arr_tmid.index(match_closest_time(timemin, arr_tmid))
@@ -1230,15 +1351,16 @@ def get_flux_contributions_cached(
     nu_select[selectedbins] = True
     arraynu = arraynu_full[nu_select]
     arraylambda = arraylambda_full[nu_select]
-    if not Path(modelpath, "compositiondata.txt").is_file():
-        print_warning("compositiondata.txt not found. Using output*.txt instead")
+    from artistools.atomic import get_composition_data
+
+    # get_composition_data also reads a compressed copy, thus only a model with no copy needs the log
+    try:
+        elementlist = get_composition_data(modelpath)
+    except FileNotFoundError:
+        print_warning("compositiondata.txt not found. Using output_0-0.txt instead")
         from artistools.atomic import get_composition_data_from_outputfile
 
         elementlist = get_composition_data_from_outputfile(modelpath)
-    else:
-        from artistools.atomic import get_composition_data
-
-        elementlist = get_composition_data(modelpath)
     nelements = len(elementlist)
 
     # the bin -1 is the average over all the directions, also with an average over one angle
@@ -1658,6 +1780,10 @@ def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "
 # the shell index of a packet with no thermal emission record, which takes the label NOT SET as in the ion grouping
 SHELL_NOT_SET: t.Final = -1
 
+# the absorption type of ARTIS (packet.h) for a bound-bound absorption in a binned expansion opacity. ARTIS sets
+# absorption_freq for it, but it records no line index
+ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY: t.Final = -11
+
 
 def get_shell_index_expr(
     column: str, shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps"
@@ -1703,7 +1829,8 @@ def add_ye_columns(
         msg = "The model has no Ye column, thus no Ye shell can hold a packet"
         raise ValueError(msg)
 
-    dfcellye = dfmodel.select((pl.col("inputcellid") - 1).cast(pl.Int32).alias("modelgridindex"), "Ye").collect()
+    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of get_modeldata gives the cell
+    dfcellye = dfmodel.select(pl.col("modelgridindex").cast(pl.Int32), "Ye").collect()
     for column, position in positions:
         indexcolumn = f"{position}_modelgridindex"
         if position == "trueem" and thermalfromvelocity:
@@ -1879,10 +2006,17 @@ def get_flux_contributions_from_packets(
     inverse_solidangle_fraction = 1.0
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
+        check_time_range_inside_vpkt_window(vpkt_config, timelowdays, timehighdays)
         obsdirindex, opacchoiceindex = divmod(directionbin, vpkt_config["nspectraperobs"])
         nprocs_read, lzdfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
-        lzdfpackets = lzdfpackets.with_columns(e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"))
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
+        # ARTIS keeps a row with nu_rf outside the ranges out of vspecpol, thus the row gives no emission. The row
+        # stays for the absorption, because ARTIS writes it for a real packet with an absorption inside a range
+        inspectrumrange = get_vpkt_in_spectrum_range_expr(obsdirindex, vpkt_config["custom_lambda_ranges"])
+        lzdfpackets = lzdfpackets.with_columns(
+            pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}").alias("e_rf"),
+            pl.when(inspectrumrange).then(pl.col(dirbin_nu_column)).alias(dirbin_nu_column),
+        )
 
         cols |= {dirbin_nu_column, f"dir{obsdirindex}_t_arrive_d", f"dir{obsdirindex}_e_rf_{opacchoiceindex}"}
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
@@ -1914,6 +2048,16 @@ def get_flux_contributions_from_packets(
     condition_nu_emit = pl.col(dirbin_nu_column).is_between(nu_min, nu_max) if getemission else pl.lit(value=False)
     condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(value=False)
     lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
+
+    if getabsorption:
+        # ARTIS sets absorption_freq only at a bound-bound absorption. A free-free or a bound-free absorption keeps the
+        # frequency of an earlier line, and exspec leaves it out of absorption.out. A null frequency fails each filter
+        absorptiontype = pl.col("absorption_type")
+        lzdfpackets = lzdfpackets.with_columns(
+            absorption_freq=pl.when(
+                (absorptiontype >= 0) | (absorptiontype == ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY)
+            ).then(pl.col("absorption_freq"))
+        ).filter(condition_nu_emit | condition_nu_abs)
 
     if velocityranges:
 
@@ -2122,8 +2266,9 @@ def get_flux_contributions_from_packets(
         z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
         keptlabel: pl.Expr | None = None
         if z_exclude == -1:
-            # no bound-bound
-            keptlabel = pl.col("emissiontype_str").str.contains("bound-free")
+            # no bound-bound, thus the bound-free, the free-free, and the NOT SET emission stay
+            label = pl.col("emissiontype_str")
+            keptlabel = label.str.contains("bound-free") | label.is_in(["free-free", "NOT SET"])
         elif z_exclude == -2:
             # no bound-free
             keptlabel = pl.col("emissiontype_str").str.contains("bound-free").not_()
@@ -2163,10 +2308,14 @@ def get_flux_contributions_from_packets(
         ).drop(emtypecolumn)
 
     if dfabsorption is not None and groupby not in SHELLCOLUMNS:
+        # an absorption in an expansion opacity has no line index, thus it has no element and no ion
         abstypelabels = pl.concat([
             get_line_labels(dflines, dfabsorption["absorption_type"], groupby, "absorptiontype_str"),
             pl.LazyFrame(
-                {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
+                {
+                    "absorption_type": [ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY],
+                    "absorptiontype_str": ["bound-bound (expansion opacity)"],
+                },
                 schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
                 orient="col",
             ),

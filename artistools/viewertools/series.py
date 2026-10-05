@@ -10,6 +10,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from artistools.misc.cliutils import dashes_arg
+from artistools.misc.cliutils import SERIES_DEFAULT
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import split_remote_path
@@ -110,6 +111,20 @@ PREVIEW_MILLISECONDS: t.Final = 250
 
 # the options of the dialog of the line properties, which each give one value for each series
 SERIES_PROPERTY_FLAGS: t.Final = ("-label", "-color", "-linestyle", "-dashes", "-linewidth", "-linealpha")
+
+
+def get_label_error(label: str) -> str | None:
+    """Return why the command cannot give a label to one series of several, or None if it can.
+
+    A list option reads a word that starts with "-" as the next flag, and it reads SERIES_DEFAULT as the automatic label
+    of its series. The command then rejected the plot with a message that did not name the label, or it gave the
+    automatic label.
+    """
+    if label.startswith("-"):
+        return 'The command reads a label that starts with "-" as a flag. Start the label with a different character'
+    if label == SERIES_DEFAULT:
+        return f'The command reads the label "{SERIES_DEFAULT}" as the automatic label. Give a different label'
+    return None
 
 
 def edit_series_properties(
@@ -217,17 +232,28 @@ def edit_series_properties(
         except argparse.ArgumentTypeError as exc:
             raise ValueError(str(exc)) from exc
 
+    def get_label() -> str | None:
+        """Return the label of the field, or None for an empty field. Raise ValueError for a label of no command.
+
+        The label of the command stays valid, e.g. "-1 day" of the only series of the command, which joins its flag.
+        """
+        label = labeledit.text().strip()
+        if label != (style.get("-label") or "") and (error := get_label_error(label)) is not None:
+            raise ValueError(error)
+        return label or None
+
     def show_preview() -> None:
         previewtimer.start()
         colour = chosencolour[0] or defaultcolour
         colourbutton.setIcon(QtGui.QIcon(make_line_swatch(colour, 1.0, 5.0, None)))
         colourbutton.setText(colour if chosencolour[0] else f"Default ({colour})")
+        dashes = None
         try:
+            get_label()
             dashes = get_dashes()
         except ValueError as exc:
             errorlabel.setText(str(exc))
             errorlabel.show()
-            dashes = None
         else:
             errorlabel.hide()
         previewlabel.setPixmap(
@@ -264,13 +290,14 @@ def edit_series_properties(
         show_preview()
 
     def get_widget_values() -> dict[str, str | None] | None:
-        """Return the value of each option of flags that the fields show, or None for a bad dash pattern."""
+        """Return the value of each option of flags that the fields show, or None for a bad label or dash pattern."""
         try:
+            label = get_label()
             dashes = get_dashes()
         except ValueError:
             return None
         values = {
-            "-label": labeledit.text().strip() or None,
+            "-label": label,
             "-color": chosencolour[0],
             "-linestyle": linestylebox.currentData(),
             "-dashes": dashes,
@@ -280,7 +307,7 @@ def edit_series_properties(
         return {flag: value for flag, value in values.items() if flag in flags}
 
     def get_changes() -> dict[str, str | None] | None:
-        """Return the value of each option of flags, or None for a bad dash pattern.
+        """Return the value of each option of flags, or None for a bad label or dash pattern.
 
         A field cannot show each value of the command, e.g. a width above the range of its box, an empty label that
         hides the series, or a line style that the box does not list. Thus an option keeps its value of the command
@@ -311,9 +338,14 @@ def edit_series_properties(
     previewtimer.timeout.connect(show_plot_changes)
 
     def on_accept() -> None:
-        # a bad dash pattern keeps the dialog open, and the red text gives the reason
+        # a bad label or dash pattern keeps the dialog open, and the red text gives the reason
         if get_changes() is None:
-            dashesedit.setFocus()
+            try:
+                get_label()
+            except ValueError:
+                labeledit.setFocus()
+            else:
+                dashesedit.setFocus()
             return
         dialog.accept()
 
@@ -336,7 +368,7 @@ def edit_series_properties(
         ("-linealpha", alphabox),
     ):
         form.setRowVisible(field, flag in flags)
-    labeledit.textChanged.connect(previewtimer.start)
+    labeledit.textChanged.connect(show_preview)
     show_preview()
     previewtimer.stop()
     openwidgetvalues = get_widget_values() or {}

@@ -1254,7 +1254,12 @@ def scan_estimators(
         from artistools.estimators.estimators_classic import read_classic_estimators
 
         estimatorsdict = read_classic_estimators(modelpath)
-        assert estimatorsdict is not None
+        if estimatorsdict is None:
+            msg = (
+                f"{modelpath} and its run folders hold no estimators_????.out file, thus --classicartis has no data"
+                " to read"
+            )
+            raise FileNotFoundError(msg)
         pldflazy = lazyframe_from_estimator_dict(estimatorsdict)
     else:
         pldflazy = scan_artis_estimators(

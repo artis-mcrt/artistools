@@ -708,28 +708,109 @@ def test_radfield(mockstep: mock.MagicMock, mockplot: mock.MagicMock) -> None:
     fitted_xarr, fitted_yarr = get_plot_xy(plot_calls["Radiation field model"])
     assert np.isclose(fitted_xarr.min(), 2000.0030554517798, rtol=1e-4)
     assert np.isclose(fitted_xarr.max(), 20000.030554517798, rtol=1e-4)
-    assert np.isclose(fitted_yarr.mean(), 48.342355990852596, rtol=1e-4)
-    assert np.isclose(abs(np.trapezoid(fitted_yarr, fitted_xarr)), 489588.12007010705, rtol=1e-4)
+    # nine bins of this cell have no fit (W < 0). Their model takes the full-spectrum fit, as ARTIS radfield() does,
+    # and their band average takes J. Both were zero before
+    assert np.isclose(fitted_yarr.mean(), 45.14912462715829, rtol=1e-4)
+    assert np.isclose(abs(np.trapezoid(fitted_yarr, fitted_xarr)), 492291.22990819113, rtol=1e-4)
 
     bandavg_xarr, bandavg_yarr = get_plot_xy(mockstep.call_args_list[0])
     assert np.isclose(bandavg_xarr.min(), 2000.0030554517798, rtol=1e-4)
     assert np.isclose(bandavg_xarr.max(), 20000.030554517798, rtol=1e-4)
-    assert np.isclose(bandavg_yarr.mean(), 43.58807185509511, rtol=1e-4)
-    assert np.isclose(abs(np.trapezoid(bandavg_yarr, bandavg_xarr)), 475489.00963827176, rtol=1e-4)
+    assert np.isclose(bandavg_yarr.mean(), 43.854670073915386, rtol=1e-4)
+    assert np.isclose(abs(np.trapezoid(bandavg_yarr, bandavg_xarr)), 476000.8181544015, rtol=1e-4)
+
+
+def test_radfield_bin_with_no_fit_takes_the_full_spectrum_fit() -> None:
+    """A bin with a negative W takes the full-spectrum dilute blackbody, as radfield() of ARTIS does.
+
+    The plot drew zero for such a bin, and the band average drew zero although the bin holds its J.
+    """
+    from artistools.plotradfield import get_binaverage_field
+    from artistools.plotradfield import get_fitted_field
+    from artistools.plotradfield import j_nu_dbb
+
+    radfielddata = pl.DataFrame({
+        "timestep": [5, 5, 5],
+        "modelgridindex": [0, 0, 0],
+        "bin_num": [-1, 0, 1],
+        "nu_lower": [0.0, 5.0e14, 6.0e14],
+        "nu_upper": [0.0, 6.0e14, 7.0e14],
+        "J": [1.0, 40.0, 30.0],
+        "T_R": [6000.0, -1.0, 7000.0],
+        "W": [0.5, -1.0, 0.1],
+    })
+
+    arr_lambda, j_lambda = get_fitted_field(radfielddata, modelgridindex=0, timestep=5)
+    arr_nu = at.constants.c_ang_per_s / np.array(arr_lambda)
+    j_nu_fullspec = np.array(j_nu_dbb(arr_nu, 0.5, 6000.0))
+    j_nu_bins = np.array(j_nu_dbb(arr_nu, 0.1, 7000.0))
+    j_nu = np.array(j_lambda) * np.array(arr_lambda) / arr_nu
+    assert np.allclose(j_nu[:200], j_nu_fullspec[:200], rtol=1e-10)
+    assert np.allclose(j_nu[200:], j_nu_bins[200:], rtol=1e-10)
+
+    # before FIRST_NLTE_RADFIELD_TIMESTEP, ARTIS takes the full-spectrum fit for every bin
+    _, j_lambda_fullspec = get_fitted_field(radfielddata, modelgridindex=0, timestep=5, usebinfits=False)
+    assert np.allclose(np.array(j_lambda_fullspec) * np.array(arr_lambda) / arr_nu, j_nu_fullspec, rtol=1e-10)
+
+    _, bandaverage = get_binaverage_field(radfielddata, modelgridindex=0, timestep=5)
+    dlambda = at.constants.c_ang_per_s * (1 / 5.0e14 - 1 / 6.0e14)
+    assert np.isclose(bandaverage[1], 40.0 / dlambda, rtol=1e-10)
+
+
+def test_radfield_takes_the_last_timestep_with_data(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """With no timestep, the plot takes the last timestep that holds data, and a run with no plot gives an error.
+
+    The command took the last timestep of the time grid. For a run that stopped early, it wrote no file and ended
+    with no error.
+    """
+    radfielddata = at.plotradfield.read_radfield(modelpath, modelgridindex=[0])
+    with mock.patch.object(
+        at.plotradfield, "read_radfield", return_value=radfielddata.filter(pl.col("timestep") <= 59)
+    ):
+        at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=tmp_path)
+        assert [path.name for path in tmp_path.glob("*.pdf")] == ["plotradfield_cell00000_ts059.pdf"]
+
+        with pytest.raises(SystemExit):
+            at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=5, outputfile=tmp_path)
+    assert "no radiation field data" in capsys.readouterr().err
+
+
+def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
+    """The suffix of -o sets the format of the file, e.g. -o rf.png gives a PNG file.
+
+    The commands gave format="pdf" to savefig, thus a file named rf.png held a PDF document.
+    """
+    pngmagic = b"\x89PNG"
+    at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=40, outputfile=tmp_path / "rf.png")
+    assert (tmp_path / "rf.png").read_bytes().startswith(pngmagic)
+
+    at.plottransitions.main(argsraw=[], modelpath=modelpath, timedays=300, outputfile=tmp_path / "trans.png")
+    assert (tmp_path / "trans.png").read_bytes().startswith(pngmagic)
+
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, timestep=40, outputfile=tmp_path / "map.png")
+    assert (tmp_path / "map.png").read_bytes().startswith(pngmagic)
 
 
 @pytest.mark.benchmark
-def test_plotspherical() -> None:
-    funcoutpath = outputpath / funcname()
-    funcoutpath.mkdir(exist_ok=True, parents=True)
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=funcoutpath)
+def test_plotspherical(tmp_path: Path) -> None:
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
+
+    assert [path.name for path in tmp_path.glob("plotspherical_*.pdf")] == ["plotspherical_256.67-333.82d.pdf"]
 
 
-def test_plotspherical_gaussian_filter() -> None:
-    """-gaussian_sigma must reach the smoothing helper, which lives in artistools.misc."""
-    funcoutpath = outputpath / funcname()
-    funcoutpath.mkdir(exist_ok=True, parents=True)
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, gaussian_sigma=20, outputfile=funcoutpath)
+def test_plotspherical_gaussian_filter(tmp_path: Path) -> None:
+    """-gaussian_sigma must reach smooth_direction_map, which takes the width in phi bins and not in degrees."""
+    from artistools.plotspherical import smooth_direction_map
+
+    with mock.patch.object(at.plotspherical, "smooth_direction_map", side_effect=smooth_direction_map) as mocksmooth:
+        at.plotspherical.main(argsraw=[], modelpath=modelpath, gaussian_sigma=20, outputfile=tmp_path)
+
+    # one map for each of the three default plot variables, on the default grid of 64 phi bins
+    assert mocksmooth.call_count == 3
+    for callargs in mocksmooth.call_args_list:
+        _, sigma_bins, nphibins = callargs.args
+        assert nphibins == 64
+        assert np.isclose(sigma_bins, 20 / 360 * 64)
 
 
 def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
@@ -831,14 +912,24 @@ def test_plotspherical_smoothing_with_odd_phi_bins_crosses_the_pole_at_phi_plus_
 
 
 def test_plotspherical_gif(tmp_path: Path) -> None:
-    """The frames and the gif go in a folder of this test alone.
+    """The gif holds one frame for each timestep in the time range, in the order of time.
 
-    A pytest run clears the test output folder when it starts. Thus a second run deleted the frames
-    of this test before the gif read them.
+    The frames and the gif go in a folder of this test alone. A pytest run clears the test output folder when it
+    starts. Thus a second run deleted the frames of this test before the gif read them.
     """
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemax=270, outputfile=tmp_path)
+    from PIL import Image
 
-    assert (tmp_path / "sphericalplot.gif").is_file()
+    # the timesteps 0, 1, and 2 end before 253 d. Three frames cover the code of the gif
+    at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=tmp_path)
+
+    framenames = sorted(path.name for path in tmp_path.glob("plotspherical_*.png"))
+    assert framenames == [
+        "plotspherical_250.00-250.84d.png",
+        "plotspherical_250.84-251.69d.png",
+        "plotspherical_251.69-252.54d.png",
+    ]
+    with Image.open(tmp_path / "sphericalplot.gif") as gif:
+        assert getattr(gif, "n_frames", 1) == 3
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -855,14 +946,14 @@ def test_logfiles(mockplot: mock.MagicMock) -> None:
     ]
 
     timetaken = at.plotlogfiles.read_time_taken(logfilepaths)
-    assert set(timetaken) == {"update_grid", "update_packets", "write_estimators"}
+    assert set(timetaken) == {"update_grid", "update_packets", "communicate_estimators"}
     for stage, bytimestep in timetaken.items():
         assert len(bytimestep) == 30, f"expected 30 timesteps of {stage} timings"
         for byrank in bytimestep.values():
             assert set(byrank) == {0, 1}, f"expected both mpi ranks for {stage}"
     assert timetaken["update_grid"][0] == {0: 2, 1: 2}
     assert timetaken["update_packets"][0] == {0: 1, 1: 1}
-    assert timetaken["write_estimators"][2] == {0: 1, 1: 1}
+    assert timetaken["communicate_estimators"][2] == {0: 1, 1: 1}
 
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
@@ -870,6 +961,72 @@ def test_logfiles(mockplot: mock.MagicMock) -> None:
 
     # one line per stage on each of the 30 per-timestep pages
     assert len(mockplot.call_args_list) == 3 * 30
+
+
+def test_logfiles_read_the_old_and_the_current_log_format(tmp_path: Path) -> None:
+    """The timings of the current ARTIS log lines and of the old log lines must both be read.
+
+    The patterns held the Unix time and the whole seconds of the old lines. The current lines hold no Unix time,
+    the grid line says "on all processes", and the seconds have decimals. Thus the command found no timing data.
+    """
+    (tmp_path / "output_0-0.txt").write_text(
+        "2026-10-04T12:00:00Z timestep 3: time after update grid on all processes"
+        " (rank 0 took 1.2s, waited 0.3s, total 1.5s)\n"
+        "2026-10-04T12:00:05Z timestep 3: time after update packets for all processes"
+        " (rank 0 took 3.5s, waited 0.1s, total 3.6s)\n"
+        "2026-10-04T12:00:06Z timestep 3: time after estimators have been communicated (took 0.4 seconds)\n"
+        "2023-11-14T15:01:59Z timestep 2: time after update grid for all processes 1699974119"
+        " (rank 0 took 2s, waited 0s, total 2s)\n"
+        "2023-11-14T15:02:09Z timestep 2: time after update packets for all processes 1699974129"
+        " (rank 0 took 7s, waited 0s, total 7s)\n"
+        "2023-11-14T15:02:10Z timestep 2: time after estimators have been communicated 1699974130 (took 1 seconds)\n",
+        encoding="utf-8",
+    )
+
+    timetaken = at.plotlogfiles.read_time_taken([tmp_path / "output_0-0.txt"])
+
+    assert timetaken["update_grid"] == {3: {0: pytest.approx(1.2)}, 2: {0: pytest.approx(2.0)}}
+    assert timetaken["update_packets"] == {3: {0: pytest.approx(3.5)}, 2: {0: pytest.approx(7.0)}}
+    assert timetaken["communicate_estimators"] == {3: {0: pytest.approx(0.4)}, 2: {0: pytest.approx(1.0)}}
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_transitions_with_a_model_also_draws_the_lte_temperatures(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """With a model path, each -T gives an LTE series beside the NLTE series.
+
+    The command drew the NLTE series alone and ignored -T with no message.
+    """
+    at.plottransitions.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path, timedays=300, T=[5000.0, 8000.0])
+
+    labels = [callargs.kwargs["label"] for callargs in mockplot.call_args_list]
+    # one series of each type in each panel of the seven ions
+    assert labels.count("NLTE") == 7
+    assert labels.count("LTE T1 = 5000 K") == 7
+    assert labels.count("LTE T2 = 8000 K") == 7
+
+
+def test_plotspherical_element_arguments_give_messages(capsys: pytest.CaptureFixture[str]) -> None:
+    """-elem with -atomic_number, or an -elem that is no element symbol, gives a message.
+
+    The first stopped with a bare AssertionError, and the second plotted the packets of "Z=-1".
+    """
+    with pytest.raises(SystemExit):
+        at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Fe", atomic_number=26)
+    assert "give one of -elem and -atomic_number" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Xx")
+    assert "-elem Xx is not an element symbol" in capsys.readouterr().err
+
+
+def test_plotviewingangles_writes_an_animation_of_each_direction_bin(tmp_path: Path) -> None:
+    """The html file holds one frame of the animation for each of the 100 direction bins."""
+    pytest.importorskip("plotly")
+    outputfile = tmp_path / "viewingangles.html"
+    at.plotviewingangles.main(argsraw=[str(modelpath_3d), "-o", str(outputfile)])
+
+    framenames = set(re.findall(r'"name":"(\d\d)"', outputfile.read_text(encoding="utf-8")))
+    assert framenames == {f"{dirbin:02d}" for dirbin in range(100)}
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -907,10 +1064,38 @@ def test_transitions(mockplot: mock.MagicMock) -> None:
 
 
 @pytest.mark.benchmark
-def test_writecomparisondata() -> None:
-    at.writecomparisondata.main(
-        argsraw=[], modelpath=modelpath, outputpath=outputpath, selected_timesteps=list(range(99))
-    )
+def test_writecomparisondata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The files take the name of the model folder, and the spectra keep the luminosity of spec.out.
+
+    The default model path "." gave an empty model name, e.g. spectra__artisnebular.txt.
+    """
+    monkeypatch.chdir(modelpath)
+    at.writecomparisondata.main(argsraw=[], modelpath=Path(), outputpath=tmp_path, selected_timesteps=list(range(99)))
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "edep_testmodel_artisnebular.txt",
+        "ionfrac_co_testmodel_artisnebular.txt",
+        "ionfrac_fe_testmodel_artisnebular.txt",
+        "phys_testmodel_artisnebular.txt",
+        "spectra_testmodel_artisnebular.txt",
+    ]
+
+    from artistools.spectra.core import read_spec
+
+    # the spectra give L_lambda, and spec.out gives F_nu at 1 Mpc
+    dfspecout = read_spec(modelpath).collect()
+    arr_specout_nu = dfspecout["nu"].to_numpy()
+    arr_written = np.loadtxt(tmp_path / "spectra_testmodel_artisnebular.txt", comments="#")
+    assert arr_written.shape == (len(arr_specout_nu), 1 + 99)
+    area = 4.0 * math.pi * at.constants.megaparsec_to_cm**2
+    for timestep in (10, 50):
+        lum_written = np.trapezoid(arr_written[:, 1 + timestep], arr_written[:, 0])
+        lum_specout = abs(np.trapezoid(dfspecout[:, 1 + timestep].to_numpy(), arr_specout_nu)) * area
+        assert np.isclose(lum_written, lum_specout, rtol=1e-4)
+
+    # the ion fractions of an element sum to one, as the format of the workshop requires
+    arr_ionfrac_fe = np.loadtxt(tmp_path / "ionfrac_fe_testmodel_artisnebular.txt", comments="#")
+    assert np.allclose(arr_ionfrac_fe[:, 1:].sum(axis=1), 1.0, rtol=1e-3)
 
 
 def test_get_z_a_nucname() -> None:
@@ -1201,6 +1386,82 @@ def test_make_vpkt_input_interactive_clears_list() -> None:
     assert config.opacityexclusions == []
 
 
+@pytest.mark.parametrize(
+    ("changes", "reason"),
+    [
+        ({"opacityexclusions": [0, -5]}, "below -4"),
+        ({"custom_lambda_ranges": [(0.0, 6000.0)]}, "lambdamin > 0"),
+        ({"tau_max_vpkt": 0.0}, "tau_max_vpkt 0 must be more than zero"),
+        ({"cell_is_optically_thick_vpkt": -1.0}, "thick cell optical depth -1"),
+        ({"override_tminmax": True, "vspec_tmin_in_days": 4.0, "vspec_tmax_in_days": 4.0}, "time window"),
+        ({"vgrid_on": True, "tmin_vgrid_in_days": 2.0, "tmax_vgrid_in_days": 1.0}, "velocity grid map time range"),
+        ({"vgrid_on": True, "vgrid_lambda_ranges": []}, "at least one wavelength range"),
+        ({"vgrid_on": True, "vgrid_lambda_ranges": [(0.0, 6000.0)]}, "lambdamin > 0"),
+    ],
+)
+def test_make_vpkt_input_refuses_each_fatal_setting_of_artis(changes: dict[str, t.Any], reason: str) -> None:
+    """Each setting that read_vpktparameterfile() in vpkt.cc stops on must give an error, not a file.
+
+    The command wrote a vpkt.txt with such a setting, and ARTIS then stopped at the start of the run.
+    """
+    config = dc.replace(at.make_vpkt_input.VpktConfig(), **changes)
+    assert reason in str(at.make_vpkt_input.fatal_config_error(config))
+    with pytest.raises(ValueError, match=re.escape(reason)):
+        at.make_vpkt_input.format_vpkt_input(config)
+
+    # ARTIS reads the ranges of the velocity grid map only when the map is on
+    assert (
+        at.make_vpkt_input.fatal_config_error(dc.replace(at.make_vpkt_input.VpktConfig(), vgrid_lambda_ranges=[]))
+        is None
+    )
+    assert (
+        at.make_vpkt_input.fatal_config_error(
+            dc.replace(at.make_vpkt_input.VpktConfig(), vgrid_lambda_ranges=[(0.0, 6000.0)])
+        )
+        is None
+    )
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_hesma_plots_take_the_times_and_the_tables_of_each_file(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The action plotresspec takes the closest time and each table, and plotspectrum takes each file.
+
+    The action plotresspec read the column 11.7935 and the tables 0 to 4 of every file. The action plotspectrum
+    read the first file alone.
+    """
+    resfile = tmp_path / "model_vspec_res.dat"
+    tables = [
+        f"0 10.0 12.0\n3000.0 {dirbin + 1.0} {dirbin + 2.0}\n4000.0 {dirbin + 3.0} {dirbin + 4.0}\n"
+        for dirbin in range(2)
+    ]
+    resfile.write_text("# a comment line of the file\n" + "".join(tables), encoding="utf-8")
+    at.hesma_scripts.main(
+        argsraw=["plotresspec", "-hesmafile", str(resfile), "-timedays", "11.5", "-plotfile", str(tmp_path / "a.pdf")]
+    )
+    assert len(mockplot.call_args_list) == 2
+    for dirbin, callargs in enumerate(mockplot.call_args_list):
+        xarr, yarr = get_plot_xy(callargs)
+        assert np.allclose(xarr, [3000.0, 4000.0])
+        assert np.allclose(yarr, np.array([dirbin + 2.0, dirbin + 4.0]) * 1e-10)
+
+    mockplot.reset_mock()
+    specfiles = [tmp_path / "a_spec.dat", tmp_path / "b_spec.dat"]
+    for specfile in specfiles:
+        specfile.write_text("0.0000 11.7935\n3000.0 1.0\n4000.0 3.0\n", encoding="utf-8")
+    at.hesma_scripts.main(
+        argsraw=[
+            "plotspectrum",
+            "-hesmafile",
+            *map(str, specfiles),
+            "-timedays",
+            "12",
+            "-plotfile",
+            str(tmp_path / "b.pdf"),
+        ]
+    )
+    assert [callargs.kwargs["label"] for callargs in mockplot.call_args_list] == ["HESMA a_spec", "HESMA b_spec"]
+
+
 def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
     """The widthluminosity action must build a file that plotwidthluminosity can read back."""
     (tmp_path / "Bband_testmodel_viewing_angle_data.txt").write_text(
@@ -1398,11 +1659,19 @@ def test_radfield_line_estimators_filter_cell_zero(mockscatter: mock.MagicMock) 
     assert np.allclose(sorted(lambdas), sorted(at.constants.c_ang_per_s / np.array([1.0e15, 2.0e15])))
 
 
-def test_ejectaopacity() -> None:
-    """Binned expansion opacities need the level statistical weights, not only the transition wavelengths."""
+def test_ejectaopacity(capsys: pytest.CaptureFixture[str]) -> None:
+    """The global Planck mean opacity of the binned expansion opacities agrees with the reference value.
+
+    The opacities need the statistical weights of the levels. A sum without them gives 13.90 cm^2/g.
+    """
     at.ejectaopacity.main(
         argsraw=[], modelpath=modelpath, timestep=40, lambdamin=3000.0, lambdamax=4000.0, deltalambda=10.0
     )
+
+    (planckmeanline,) = [
+        line for line in capsys.readouterr().out.splitlines() if line.startswith("Global Planck mean opacity:")
+    ]
+    assert np.isclose(float(planckmeanline.split(":")[1].split()[0]), 13.21, rtol=1e-3)
 
 
 @mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
@@ -1777,7 +2046,7 @@ def test_expansion_opacity_keeps_a_weak_line() -> None:
 
 
 @pytest.mark.parametrize("edges", [[0.0, 1.0, 2.0, 3.0], [0.0, 0.5, 2.0, 3.0]])
-def test_rust_bin_sums_match_the_polars_bins(edges: list[float]) -> None:
+def test_rust_bin_sums_match_numpy_histogram(edges: list[float]) -> None:
     """The Rust kernel gives the bins of np.histogram, for uniform and for other edges.
 
     A bin is [lower, upper), the last bin also holds its upper edge, and a value outside the edges or NaN is in no
@@ -2036,8 +2305,8 @@ def test_linefluxes_timebins_keep_a_rounding_gap_and_drop_a_real_gap() -> None:
     assert timebins.to_series().to_list() == [None, 0, 0, 1, 1, None, None, 2, 2, None]
 
 
-def test_linefluxes_from_pops_reads_the_shell_velocities() -> None:
-    """The luminosity from the populations needs the inner and the outer velocity of each shell of a 1D model."""
+def test_linefluxes_from_pops_reads_the_cell_volumes() -> None:
+    """The luminosity from the populations needs the volume of each cell of the model."""
     from artistools.plotlinefluxes import FeatureTuple
     from artistools.plotlinefluxes import get_line_luminosities_from_pops
 
@@ -2052,6 +2321,63 @@ def test_linefluxes_from_pops_reads_the_shell_velocities() -> None:
     )
     assert dflcdata.height == 1
     assert dflcdata["Fe II 1-0"].item() > 0.0
+
+
+def test_linefluxes_from_pops_takes_the_cell_volumes_of_a_3d_model(tmp_path: Path) -> None:
+    """A 3D model has no shell velocities, thus the luminosity takes the volume of each cell.
+
+    The function selected vel_r_min_kmps, which only a 1D model has, and a 3D model stopped with ColumnNotFoundError.
+    """
+    import itertools
+
+    from artistools.plotlinefluxes import FeatureTuple
+    from artistools.plotlinefluxes import get_line_luminosities_from_pops
+
+    # a 3D grid of 2^3 cells with the files of the 1D test model. Only cell 0 has NLTE populations
+    model3dpath = tmp_path / "model3d"
+    model3dpath.mkdir()
+    for filepath in modelpath.iterdir():
+        if filepath.is_file() and filepath.name != "model.txt" and not filepath.name.startswith("."):
+            (model3dpath / filepath.name).symlink_to(filepath)
+    t_model_days = 0.00115740740741
+    vmax = 8.0e8
+    cellwidth = vmax * t_model_days * 86400.0
+    cellrows = "".join(
+        f"{cellid} {x} {y} {z} {10**-0.18}\n1.0 0.9 0.0 0.0 0.0\n"
+        for cellid, (z, y, x) in enumerate(itertools.product((-cellwidth, 0.0), repeat=3), start=1)
+    )
+    (model3dpath / "model.txt").write_text(f"8\n{t_model_days}\n{vmax}\n{cellrows}", encoding="utf-8")
+
+    emfeatures = [FeatureTuple("Fe II 1-0", "Fe II", 0.0, [0], 0.0, 0.0, 26, 2, [1], [0])]
+    arr_tstart = [at.get_timestep_times(modelpath, loc="start")[10]]
+    arr_tend = [at.get_timestep_times(modelpath, loc="end")[10]]
+    lum1d = get_line_luminosities_from_pops(emfeatures, modelpath, arr_tstart, arr_tend)["Fe II 1-0"].item()
+    lum3d = get_line_luminosities_from_pops(emfeatures, model3dpath, arr_tstart, arr_tend)["Fe II 1-0"].item()
+
+    # the cell of the 3D model is a cube of side vmax, and the shell of the 1D model is a sphere of radius vmax
+    assert np.isclose(lum3d / lum1d, 3.0 / (4.0 * math.pi), rtol=1e-5)
+
+
+def test_linefluxes_from_pops_names_a_level_or_a_time_with_no_populations() -> None:
+    """A line with no NLTE population at a time gives a message, not a bare AssertionError.
+
+    The test model writes NLTE populations only at even timesteps from 10.
+    """
+    from artistools.plotlinefluxes import FeatureTuple
+    from artistools.plotlinefluxes import get_closelines
+    from artistools.plotlinefluxes import get_line_luminosities_from_pops
+
+    emfeatures = [FeatureTuple("Fe II 1-0", "Fe II", 0.0, [0], 0.0, 0.0, 26, 2, [1], [0])]
+    with pytest.raises(ValueError, match="hold no value of the upper level 1 at timestep 11"):
+        get_line_luminosities_from_pops(
+            emfeatures,
+            modelpath,
+            arr_tstart=[at.get_timestep_times(modelpath, loc="start")[11]],
+            arr_tend=[at.get_timestep_times(modelpath, loc="end")[11]],
+        )
+
+    with pytest.raises(ValueError, match="holds no Fe II line for the feature 7155"):
+        get_closelines(modelpath_classic_3d, 26, 2, 7155, 7155.0, 7155.01)
 
 
 def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
@@ -3652,6 +3978,23 @@ def test_writecomparisondata_rejects_an_empty_timestep_list(tmp_path: Path) -> N
         at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[])
 
 
+def test_writecomparisondata_of_a_run_with_no_estimators_gives_a_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A run with no estimator files stopped with a raw ColumnNotFoundError for Te."""
+    runpath = tmp_path / "noestimators"
+    runpath.mkdir()
+    for sourcefile in modelpath.iterdir():
+        if sourcefile.is_file() and not sourcefile.name.startswith("estimators"):
+            (runpath / sourcefile.name).symlink_to(sourcefile.resolve())
+
+    with pytest.raises(SystemExit) as excinfo:
+        at.writecomparisondata.main(argsraw=[], modelpath=runpath, outputpath=tmp_path / "out", selected_timesteps=[50])
+
+    assert excinfo.value.code == 1
+    assert "holds no estimator files" in capsys.readouterr().err
+
+
 def test_ionfrac_header_counts_the_stages_from_neutral(tmp_path: Path) -> None:
     """The format labels the neutral stage 0, thus the stages below the lowest ion of an element hold zero.
 
@@ -3774,6 +4117,32 @@ def test_linefluxes_refuse_overlapping_time_bins() -> None:
     at.plotlinefluxes.get_timebin_expr(pl.col("t_arrive_d"), [200.0, 100.0], [300.0, 200.0])
 
 
+def test_linefluxes_timebins_in_reverse_order_take_the_order_in_time() -> None:
+    """The bins in reverse order must give each time the same bin as the bins in the order of time.
+
+    The upper edge went to the last bin of the list, and a rounding gap closed only between neighbours of the list.
+    """
+    from artistools.plotlinefluxes import get_timebin_expr
+
+    dftimes = pl.DataFrame({"t": [100.0, 150.0, 200.0, 250.0, 300.0]})
+    assert dftimes.select(get_timebin_expr(pl.col("t"), [200.0, 100.0], [300.0, 200.0])).to_series().to_list() == [
+        1,
+        1,
+        0,
+        0,
+        0,
+    ]
+
+    dftimes = pl.DataFrame({"t": [1.0, 1.999995, 2.0, 3.0, 3.1]})
+    assert dftimes.select(get_timebin_expr(pl.col("t"), [2.0, 1.0], [3.0, 1.99999])).to_series().to_list() == [
+        1,
+        1,
+        0,
+        0,
+        None,
+    ]
+
+
 def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: Path) -> None:
     """Each time bin of the emitting regions has its own figure, thus two bins can overlap.
 
@@ -3815,9 +4184,67 @@ def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission()
     # the last interaction keeps its own timestep and cell
     assert at.plotlinefluxes.get_emission_columns(dfpackets, "emissiontype") == ("em_timestep", "em_modelgridindex")
 
-    # an old packets file has no trueem_time, thus the timestep of the last interaction is all that it gives
-    tscolumn, _ = at.plotlinefluxes.get_emission_columns(dfpackets.drop("emtrue_timestep"), "trueemissiontype")
-    assert tscolumn == "em_timestep"
+    # an old packets file has no trueem_time, thus the cell and the timestep both come from the last interaction
+    assert at.plotlinefluxes.get_emission_columns(dfpackets.drop("emtrue_timestep"), "trueemissiontype") == (
+        "em_timestep",
+        "em_modelgridindex",
+    )
+
+    # a 3D packets file with trueem_time and no trueem_posx gives no cell of the thermal emission. The join on
+    # emtrue_modelgridindex then stopped with ColumnNotFoundError
+    assert at.plotlinefluxes.get_emission_columns(dfpackets.drop("emtrue_modelgridindex"), "trueemissiontype") == (
+        "em_timestep",
+        "em_modelgridindex",
+    )
+
+
+def test_linefluxes_emitting_regions_without_the_reference_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The package holds no floers_te_nne.json, thus the message names --norefdata, which plots the model alone.
+
+    Each figure of a time bin has its own legend, and a label that holds LaTeX braces stays as it is.
+    str.format read the braces of such a label as a field and raised KeyError, and only the last figure had a legend.
+    """
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):
+        at.plotlinefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d], plotemittingregions=True)
+    assert "--norefdata" in capsys.readouterr().err
+
+    # the packets give no position of the thermal emission, thus the cell comes from the last interaction
+    with (
+        mock.patch.object(at.plotlinefluxes, "set_legend") as mocklegend,
+        mock.patch.object(
+            at.plotlinefluxes, "plot_nne_te_points", side_effect=at.plotlinefluxes.plot_nne_te_points
+        ) as mockpoints,
+    ):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            plotemittingregions=True,
+            norefdata=True,
+            label=["$M_{\\rm ej}$ = 1 at {timeavg:.0f}d"],
+            timebins_tstart=[4.0, 5.0],
+            timebins_tend=[6.0, 7.0],
+            outputfile=tmp_path / "emreg.png",
+        )
+
+    assert sorted(path.name for path in tmp_path.glob("*.png")) == ["emreg_5.0d.png", "emreg_6.0d.png"]
+    assert mocklegend.call_count == 2, "each figure needs a legend"
+    assert [callargs.args[1] for callargs in mockpoints.call_args_list] == [
+        "$M_{\\rm ej}$ = 1 at 5d",
+        "$M_{\\rm ej}$ = 1 at 6d",
+    ]
+
+
+def test_linefluxes_label_fields_keep_latex_braces() -> None:
+    """Only the fields timeavg and modeltag change, thus a LaTeX brace of a label stays."""
+    from artistools.plotlinefluxes import format_label_fields
+
+    assert (
+        format_label_fields("$M_{\\rm ej}$ {modeltag} {timeavg:.0f}d", timeavg=250.4, modeltag="w7")
+        == "$M_{\\rm ej}$ w7 250d"
+    )
 
 
 def test_viewer_status_line_gives_the_error() -> None:
@@ -4139,11 +4566,13 @@ def test_viewer_queue_draws_in_a_worker_thread() -> None:
     renderthreads: list[str] = []
     showthreads: list[str] = []
     rendered: list[int] = []
+    # the plot waits until the test releases it. A limit of the wall time failed on a busy machine
+    releaseplot = threading.Event()
 
     def render(values: int) -> Callable[[], str | None]:
         renderthreads.append(threading.current_thread().name)
         rendered.append(values)
-        time.sleep(0.2)
+        assert releaseplot.wait(timeout=10.0), "the test did not release the plot"
 
         def show() -> str | None:
             showthreads.append(threading.current_thread().name)
@@ -4155,18 +4584,25 @@ def test_viewer_queue_draws_in_a_worker_thread() -> None:
     afterdraw = mock.Mock()
     queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), afterdraw, render=render)
 
-    def wait_for_plots() -> None:
+    def wait_until(condition: Callable[[], bool]) -> None:
         deadline = time.perf_counter() + 10.0
-        while (queue.rendering is not None or queue.requestedvalues is not None) and time.perf_counter() < deadline:
+        while not condition() and time.perf_counter() < deadline:
             app.processEvents()
             time.sleep(0.005)
 
-    for values in (1, 2, 3):
-        starttime = time.perf_counter()
-        queue.apply(values)
-        app.processEvents()
-        assert time.perf_counter() - starttime < 0.1, "the window must not wait for the plot"
-    wait_for_plots()
+    def plots_ended() -> bool:
+        return queue.rendering is None and queue.requestedvalues is None
+
+    queue.apply(1)
+    wait_until(lambda: rendered == [1])
+    # the plot of 1 waits for the release, thus the window thread runs these changes while the plot is in progress
+    queue.apply(2)
+    queue.apply(3)
+    app.processEvents()
+    assert rendered == [1], "a change during a plot must wait for the end of that plot"
+    assert viewer.values == 3, "the window must show the values of a change at once"
+    releaseplot.set()
+    wait_until(plots_ended)
     assert rendered == [1, 3]
     assert "MainThread" not in renderthreads
     assert showthreads == ["MainThread", "MainThread"]
@@ -4174,9 +4610,10 @@ def test_viewer_queue_draws_in_a_worker_thread() -> None:
 
     # a rejection keeps the values of the last plot
     queue.apply(-1)
-    wait_for_plots()
+    wait_until(plots_ended)
     assert viewer.values == queue.drawnvalues == 3
     afterdraw.assert_called_with("rejected")
+    queue.close()
 
 
 def test_viewer_open_model_gives_the_reason_of_the_new_window() -> None:

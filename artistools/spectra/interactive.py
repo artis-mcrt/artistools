@@ -57,7 +57,6 @@ from artistools.viewertools.core import get_option_tokens
 from artistools.viewertools.core import get_path_colours
 from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_series_style
-from artistools.viewertools.core import get_short_number
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
@@ -67,7 +66,7 @@ from artistools.viewertools.core import parse_viewer_tokens
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import run_has_direction_data
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
-from artistools.viewertools.core import set_row_values
+from artistools.viewertools.core import set_figscale_row
 from artistools.viewertools.core import set_series_rows
 from artistools.viewertools.core import SLIDER_STEPS
 from artistools.viewertools.menus import add_default_options
@@ -81,9 +80,12 @@ from artistools.viewertools.sections import add_y_limits_row
 from artistools.viewertools.sections import connect_time_keys
 from artistools.viewertools.sections import DirectionChoice
 from artistools.viewertools.sections import make_figscale_box
+from artistools.viewertools.sections import make_select_y_handler
 from artistools.viewertools.sections import make_xscale_box
 from artistools.viewertools.sections import make_yscale_box
+from artistools.viewertools.sections import read_selected_range
 from artistools.viewertools.sections import show_auto_yscale
+from artistools.viewertools.sections import WAIT_FOR_PLOT_MESSAGE
 from artistools.viewertools.series import add_series_list
 from artistools.viewertools.series import edit_series_properties
 from artistools.viewertools.series import make_series_swatch
@@ -164,6 +166,10 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "fixedionlist",
     "figwidthscale",
     "gamma",
+    # the window shows the plot, thus the command opens no second window and no file. Copy Figure and Export Animation
+    # run the command for a temporary file, and --open opened each such file
+    "show",
+    "open",
     "interactive",
 })
 
@@ -303,7 +309,8 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
 
     The two spectra have different units, x ranges, and series, thus the x unit, the x range, the y range, the
     grouping, and the locked series return to the defaults of the new spectrum. The data source stays. For a run with
-    no gamma_spec.out, plotspectra reads the packets of a gamma-ray spectrum.
+    no gamma_spec.out, plotspectra reads the packets of a gamma-ray spectrum. A -deltax of a different unit does not
+    apply, as for convert_xunit, and -deltalogx has no unit.
     """
     xunit = get_default_xunit(gamma=gamma)
     xmin, xmax = get_default_xlimits(xunit, gamma=gamma)
@@ -312,6 +319,7 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
         gamma=gamma,
         usethermalemissiontype=values.usethermalemissiontype and not gamma,
         xunit=xunit,
+        deltax=values.deltax if xunit == values.xunit else "",
         xmin=format(xmin, ".10g"),
         xmax=format(xmax, ".10g"),
         ymin="",
@@ -474,6 +482,18 @@ def get_shortest_decimal(low: float, high: float, *, roundup: bool) -> str:
     return format_days(high if not roundup else low)
 
 
+def read_finite_number(text: str) -> float:
+    """Return the number of a text, and raise ValueError for a text that is not a finite number, e.g. "nan".
+
+    float() reads "nan" and "inf", and a count of timesteps of such a width raised an error with no message.
+    """
+    value = float(text)
+    if not math.isfinite(value):
+        msg = f"{text} is not a finite number"
+        raise ValueError(msg)
+    return value
+
+
 def get_snapped_timedays_argument(
     tmids: "Sequence[float]", tstarts: "Sequence[float]", tends: "Sequence[float]", first: int, last: int
 ) -> str:
@@ -615,6 +635,10 @@ class SpectrumViewer:
         resolve_plot_args(args)
         check_viewer_args(args)
         self.args = args
+        # the results of the tests of the choices of the controls, which load_runs clears. See get_choice_rejections
+        self.rejections: dict[ControlValues, tuple[list[str | None], str | None, str | None]] = {}
+        # the option that makes Auto read the packets files, for the values without the time. See get_auto_reason
+        self.autoreasons: dict[ControlValues, str | None] = {}
 
         if not get_artis_run_folders(args.modelspecpaths):
             exit_with_error(
@@ -718,7 +742,12 @@ class SpectrumViewer:
         plotspectra rejects a time outside the timesteps of a run, and a time outside the arrival times of the escaped
         packets of a run. Thus the controls stay inside the times that are valid for all the runs. With
         --plotinvalidpart, plotspectra accepts all the arrival times. A reference spectrum has no run.
+
+        The files of the runs give the results of the tests of the choices, e.g. a new gamma_spec.out after Reload
+        Data. Thus each read of the runs clears those results.
         """
+        self.rejections.clear()
+        self.autoreasons.clear()
         runfolders = get_artis_run_folders([Path(path) for path in spectra])
         gridfolder = next(iter(get_artis_run_folders([Path(timegrid)] if timegrid else [])), runfolders[0])
         tmids = get_timestep_times(gridfolder, loc="mid")
@@ -1042,6 +1071,108 @@ class SpectrumViewer:
         return "   ".join(parts)
 
 
+def get_continuous_values(viewer: "SpectrumViewer", values: ControlValues) -> ControlValues:
+    """Return the continuous values of a snapped range, with the days of its whole timesteps.
+
+    A snapped range reads its timesteps from the start of the first timestep to the end of the last timestep. The
+    middles of the timesteps gave a range that was one timestep shorter, and a snap then lost a timestep. A range
+    of one timestep takes Δ ln t, because a continuous width of 0 reads the whole timestep.
+    """
+    grid = viewer.grid
+    first, last = get_grid_selection(grid, values)
+    if first == last:
+        return dc.replace(values, notimeclamp=True, centre=float(f"{values.centre:.4g}"), width=0.0, widthmode="dlogt")
+    start, end = grid.tstarts[first], grid.tends[last]
+    # the rounding gives a short command, and it moves each bound much less than half a timestep, thus the middle
+    # of each timestep stays inside
+    return dc.replace(
+        values,
+        notimeclamp=True,
+        centre=float(f"{(start + end) / 2.0:.4g}"),
+        width=float(f"{end - start:.3g}"),
+        widthmode="days",
+    )
+
+
+def get_choice_rejections(viewer: "SpectrumViewer") -> tuple[list[str | None], str | None, str | None]:
+    """Return why plotspectra rejects each -groupby choice, --showemission, and --showabsorption.
+
+    Each option can cause a rejection, e.g. --shownoise, thus the cache key holds all the values except these:
+    - the time;
+    - the axis limits;
+    - the size and the dpi of the figure;
+    - the number of a bin width (the key keeps only the bin mode).
+    A change of these values causes no rejection, and some of them change at each drag.
+    """
+    values = viewer.values
+    key = dc.replace(
+        values,
+        centre=0.0,
+        width=0.0,
+        widthmode="dlogt",
+        dlogt=0.0,
+        xmin="",
+        xmax="",
+        ymin="",
+        ymax="",
+        figwidthscale=1.0,
+        dpi=None,
+        deltax="custom" if values.deltax else "",
+        deltalogx=values.deltalogx if values.deltalogx in DELTALOGX_SCALES else "custom" if values.deltalogx else "",
+    )
+    if key not in viewer.rejections:
+        groupbys = [
+            None
+            if choice == (values.groupby or get_default_groupby(gamma=values.gamma))
+            else viewer.get_rejection(dc.replace(values, groupby=choice, showemission=True))
+            for choice in viewer.groupbychoices
+        ]
+        emission = None if values.showemission else viewer.get_rejection(dc.replace(values, showemission=True))
+        absorption = None if values.showabsorption else viewer.get_rejection(dc.replace(values, showabsorption=True))
+        viewer.rejections[key] = (groupbys, emission, absorption)
+    return viewer.rejections[key]
+
+
+def get_auto_reason(viewer: "SpectrumViewer", values: ControlValues) -> str | None:
+    """Return the option that makes the data source Auto read the packets files, or None for the text files.
+
+    The time does not change the files that Auto selects, thus the key of a result holds no time.
+    """
+    key = dc.replace(values, datasource="auto", centre=0.0, width=0.0)
+    if key not in viewer.autoreasons:
+        viewer.autoreasons[key] = get_packets_reason(viewer.get_plot_tokens(dc.replace(values, datasource="auto")))
+    return viewer.autoreasons[key]
+
+
+def get_animation_frames(viewer: "SpectrumViewer") -> "tuple[int, Callable[[int], list[str]]]":
+    """Return the count of the steps of Play, from the first valid timestep to the last, and the command of each.
+
+    The window can read new runs during the export, e.g. after Add Model. The frames then mixed the timesteps of two
+    grids, thus each command comes from the grid of this call. A run has a few hundred timesteps, thus the list is
+    short.
+    """
+    values, grid = viewer.values, viewer.grid
+    validtimesteps = grid.validtimesteps
+    if values.notimeclamp:
+        # a continuous range keeps its width and moves its middle to the middle of each timestep
+        frames = [
+            viewer.get_plot_tokens(viewer.clamp_time(dc.replace(values, centre=float(f"{grid.tmids[timestep]:.4g}"))))
+            for timestep in validtimesteps
+        ]
+    else:
+        firstpos, lastpos = viewer.get_selection_positions()
+        count = lastpos - firstpos
+        frames = [
+            viewer.get_plot_tokens(viewer.snap(values, validtimesteps[index], validtimesteps[index + count]))
+            for index in range(len(validtimesteps) - count)
+        ]
+
+    def get_frame_tokens(index: int) -> list[str]:
+        return frames[index]
+
+    return len(frames), get_frame_tokens
+
+
 def get_binmode(values: ControlValues) -> str:
     """Return the item of the bins box for the values: "", "deltax", "deltalogx", or a keyword of -deltalogx."""
     if values.deltax:
@@ -1181,8 +1312,14 @@ def run_viewer(tokens: "Sequence[str]") -> None:
     run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens, ("public.folder", "public.data"))
 
 
-def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]") -> str | None:
-    """Open a window of the viewer for the plotspectra arguments in tokens, or return the reason for no window."""
+def open_window(
+    tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]", *, newwindow: bool = True
+) -> str | None:
+    """Open a window of the viewer for the plotspectra arguments in tokens, or return the reason for no window.
+
+    A new window takes the options of the Settings window that the tokens do not give. A window of the last session
+    keeps its command, thus newwindow is then False.
+    """
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
@@ -1190,7 +1327,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     from artistools.commands import get_path
 
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
-    viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens), mplfig.Figure())
+    viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens) if newwindow else tokens, mplfig.Figure())
     # a command with no path reads the model of the working folder
     modelnames = [resolve_modelpath(path).name for path in viewer.modelpathtokens] or [
         resolve_modelpath(viewer.grid.runfolders[0]).name
@@ -1477,8 +1614,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(dc.replace(viewer.values, otheroptions=rows))
 
     def on_figscale(figscale: float) -> None:
-        change = None if math.isclose(figscale, defaultfigscale) else (format(figscale, "g"),)
-        on_option_rows(set_row_values(viewer.values.otheroptions, {"-figscale": change}))
+        on_option_rows(set_figscale_row(viewer.values.otheroptions, figscale, defaultfigscale))
 
     figuresection, set_option_rows, commandtext, pythontext, (copybutton, pythoncopybutton), statusbar = (
         add_command_sections(
@@ -1559,11 +1695,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         if binmode in DELTALOGX_SCALES:
             # the disabled box shows the value of the keyword in the drawn plot
             decimals, low, high, default = binwidthranges["deltalogx"]
+            binwidthbox.setToolTip(f"The value of -deltalogx {binmode} in the plot")
             binwidthbox.setDecimals(decimals)
             binwidthbox.setRange(low, high)
             binwidthbox.setValue(viewer.drawndeltalogx or default)
             return
         decimals, low, high, default = binwidthranges[binmode]
+        binwidthbox.setToolTip(helptexts.get(binmode, ""))
         binwidthbox.setDecimals(decimals)
         binwidthbox.setRange(low, high)
         binwidthbox.setValue(float(lastbinwidths.get(binmode, default)))
@@ -1608,66 +1746,13 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         widthmodebox.setVisible(continuous)
         slidermode = continuous
 
-    # the test of each choice parses the arguments again, thus the code keeps one result for each set of options
-    rejections: dict[ControlValues, tuple[list[str | None], str | None, str | None]] = {}
-
-    def get_rejections() -> tuple[list[str | None], str | None, str | None]:
-        """Return why plotspectra rejects each -groupby choice, --showemission, and --showabsorption.
-
-        Each option can cause a rejection, e.g. --shownoise, thus the cache key holds all the values except these:
-        - the time;
-        - the axis limits;
-        - the size and the dpi of the figure;
-        - the number of a bin width (the key keeps only the bin mode).
-        A change of these values causes no rejection, and some of them change at each drag.
-        """
-        values = viewer.values
-        key = dc.replace(
-            values,
-            centre=0.0,
-            width=0.0,
-            widthmode="dlogt",
-            dlogt=0.0,
-            xmin="",
-            xmax="",
-            ymin="",
-            ymax="",
-            figwidthscale=1.0,
-            dpi=None,
-            deltax="custom" if values.deltax else "",
-            deltalogx=values.deltalogx
-            if values.deltalogx in DELTALOGX_SCALES
-            else "custom"
-            if values.deltalogx
-            else "",
-        )
-        if key not in rejections:
-            groupbys = [
-                None
-                if choice == (values.groupby or get_default_groupby(gamma=values.gamma))
-                else viewer.get_rejection(dc.replace(values, groupby=choice, showemission=True))
-                for choice in viewer.groupbychoices
-            ]
-            emission = None if values.showemission else viewer.get_rejection(dc.replace(values, showemission=True))
-            absorption = (
-                None if values.showabsorption else viewer.get_rejection(dc.replace(values, showabsorption=True))
-            )
-            rejections[key] = (groupbys, emission, absorption)
-        return rejections[key]
-
-    # the time does not change the files that Auto selects, thus the key of a result holds no time
-    autoreasons: dict[ControlValues, str | None] = {}
-
     def show_data_source(values: ControlValues) -> None:
         """Select the data source of the values, and show the files that Auto selects for the other options.
 
         Text files stays available while it is the source of the values, thus the user can change it in either
         direction.
         """
-        key = dc.replace(values, datasource="auto", centre=0.0, width=0.0)
-        if key not in autoreasons:
-            autoreasons[key] = get_packets_reason(viewer.get_plot_tokens(dc.replace(values, datasource="auto")))
-        reason = autoreasons[key]
+        reason = get_auto_reason(viewer, values)
         autoitem.setText(f"Auto ({'packets' if reason else 'text files'})")
         autoitem.setToolTip(
             f"Read the packets files, because {reason} needs them"
@@ -1684,7 +1769,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
 
     def show_rejections() -> None:
         """Disable each choice that plotspectra rejects, and give the reason in its tooltip."""
-        groupbys, emission, absorption = get_rejections()
+        groupbys, emission, absorption = get_choice_rejections(viewer)
         model = groupbybox.model()
         if isinstance(model, QtGui.QStandardItemModel):
             for index, reason in enumerate(groupbys):
@@ -1883,18 +1968,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     def on_time_mode() -> None:
         values = viewer.values
         if modesegments.currentIndex() == 1 and not values.notimeclamp:
-            # a snapped range of several timesteps keeps its width in days. A snapped range of one timestep has a
-            # width of 0, thus it takes Δ ln t
-            width = float(f"{values.width:.3g}")
-            apply(
-                dc.replace(
-                    values,
-                    notimeclamp=True,
-                    centre=float(f"{values.centre:.4g}"),
-                    width=width,
-                    widthmode="days" if width > 0.0 else "dlogt",
-                )
-            )
+            apply(get_continuous_values(viewer, values))
         elif modesegments.currentIndex() == 0 and values.notimeclamp:
             apply(viewer.snap(values, *viewer.get_selection(values)))
 
@@ -1951,8 +2025,8 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             return
         values = viewer.values
         try:
-            centre = float(timeedit.text()) if timeedited else values.centre
-            width = float(widthedit.text()) if widthedited else None
+            centre = read_finite_number(timeedit.text()) if timeedited else values.centre
+            width = read_finite_number(widthedit.text()) if widthedited else None
         except ValueError:
             show_error("Give a number of days for the time, and a number for the width")
             return
@@ -2018,10 +2092,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         return queue.drawnvalues.xunit == viewer.values.xunit
 
     def set_xlimits(low: float, high: float) -> None:
-        # a value of 3 significant digits gives a short command, and a text field gives an exact value
-        low, high = float(f"{low:.3g}"), float(f"{high:.3g}")
-        if low < high and plot_has_xunit():
-            apply(dc.replace(viewer.values, xmin=format(low, ".10g"), xmax=format(high, ".10g")))
+        # a short number gives a short command, and a text field gives an exact value
+        if not plot_has_xunit():
+            show_error(WAIT_FOR_PLOT_MESSAGE)
+        elif (limits := read_selected_range(low, high, "x", show_error)) is not None:
+            apply(dc.replace(viewer.values, xmin=limits[0], xmax=limits[1]))
 
     def on_xrange(handle: int, position: int) -> None:
         """Set the limit of the handle that moved, and keep the other limit as its text field gives it.
@@ -2063,7 +2138,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         apply(values)
 
     def on_emission_options() -> None:
-        binmode: str = binmodebox.currentData()
+        """Apply the check boxes and the boxes of choices of the emission plot and of the data source.
+
+        The boxes of -maxseriescount and of the bin width round and clamp a value, e.g. -deltax 12.34567 to 12.346.
+        Thus only their own handlers read them, and a different control keeps the values of the command.
+        """
         groupby = groupbybox.currentText()
         showemission = emissioncheck.isChecked()
         # -groupby colours the emission plot, thus a choice of -groupby also sets --showemission.
@@ -2081,16 +2160,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             showemission=showemission,
             showabsorption=absorptioncheck.isChecked(),
             groupby=groupby,
-            maxseriescount=countbox.value(),
             nostack=nostackcheck.isChecked(),
-            deltax=format(binwidthbox.value(), ".10g") if binmode == "deltax" else "",
-            deltalogx=(
-                format(binwidthbox.value(), ".10g")
-                if binmode == "deltalogx"
-                else binmode
-                if binmode in DELTALOGX_SCALES
-                else ""
-            ),
             datasource=datasourcebox.currentData(),
             shownoise=noisecheck.isChecked(),
             histogram=histogramcheck.isChecked(),
@@ -2106,19 +2176,38 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             values = dc.replace(values, directionbins=values.directionbins[:1])
         apply(values)
 
+    def on_count(count: int) -> None:
+        apply(dc.replace(viewer.values, maxseriescount=count))
+
+    def apply_bins(binmode: str, width: str) -> None:
+        """Apply a bin mode of the bins box, and the width of the bin mode -deltax or -deltalogx."""
+        apply(
+            dc.replace(
+                viewer.values,
+                deltax=width if binmode == "deltax" else "",
+                deltalogx=width if binmode == "deltalogx" else binmode if binmode in DELTALOGX_SCALES else "",
+            )
+        )
+
+    def on_binwidth(width: float) -> None:
+        if (binmode := get_binmode(viewer.values)) in {"deltax", "deltalogx"}:
+            apply_bins(binmode, format(width, ".10g"))
+
     def on_binmode() -> None:
+        binmode: str = binmodebox.currentData()
         # after a change from a keyword item to the -deltalogx item, the box starts at the value of the keyword. Then
         # the user can adjust it
         if (
-            binmodebox.currentData() == "deltalogx"
+            binmode == "deltalogx"
             and get_binmode(viewer.values) in DELTALOGX_SCALES
             and viewer.drawndeltalogx is not None
         ):
             lastbinwidths["deltalogx"] = format(viewer.drawndeltalogx, ".3g")
         # the box holds the width of the previous mode, thus it takes the width of the new mode before the values change
         with QtCore.QSignalBlocker(binwidthbox):
-            set_binwidth_box(binmodebox.currentData() or "deltax")
-        on_emission_options()
+            set_binwidth_box(binmode or "deltax")
+        # the last width of the mode is the exact text, and the box shows a rounded value
+        apply_bins(binmode, lastbinwidths.get(binmode) or format(binwidthbox.value(), ".10g"))
 
     def get_direction_choice(values: ControlValues) -> tuple[DirectionChoice, bool]:
         """Return the viewing direction of the values, and whether the plot draws one bin, e.g. an emission plot."""
@@ -2137,7 +2226,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             apply(remove_series_lock(viewer.values))
             return
         if not plot_shows_values():
-            show_error("The plot on the screen does not show the new values yet. Wait for the plot, then try again")
+            show_error(WAIT_FOR_PLOT_MESSAGE)
             return
         if not (series := viewer.get_drawn_series()):
             show_error("The plot has no series of contributions to lock")
@@ -2180,22 +2269,6 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
             show_changes,
         )
 
-    def get_animation_frames() -> "tuple[int, Callable[[int], list[str]]]":
-        """Return the count of the steps of Play, from the first valid timestep to the last, and the command of each."""
-        values, grid = viewer.values, viewer.grid
-        validtimesteps = grid.validtimesteps
-        firstpos, lastpos = viewer.get_selection_positions()
-        count = lastpos - firstpos
-
-        def get_frame_tokens(index: int) -> list[str]:
-            if values.notimeclamp:
-                # a continuous range keeps its width and moves its middle to the middle of each timestep
-                centre = float(f"{grid.tmids[validtimesteps[index]]:.4g}")
-                return viewer.get_plot_tokens(viewer.clamp_time(dc.replace(values, centre=centre)))
-            return viewer.get_plot_tokens(viewer.snap(values, validtimesteps[index], validtimesteps[index + count]))
-
-        return (len(validtimesteps) if values.notimeclamp else len(validtimesteps) - count), get_frame_tokens
-
     command = ViewerCommand(
         name="plotspectra",
         main=plotspectra_main,
@@ -2204,7 +2277,7 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     )
 
     def on_export_animation() -> None:
-        export_animation(window, queue, command, get_animation_frames(), fpsbox.value())
+        export_animation(window, queue, command, get_animation_frames(viewer), fpsbox.value())
 
     def is_run_folder(path: str) -> bool:
         return bool(get_artis_run_folders([Path(path)]))
@@ -2256,11 +2329,9 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
         extracallbacks={"Reload Data": on_reload, "Export Animation…": on_export_animation},
     )
 
-    def on_select_y(frameindex: int, low: float, high: float) -> None:
-        """Give the frame of the spectra the y range of a Shift-drag. A residual panel has its own range."""
-        ymin, ymax = get_short_number(low), get_short_number(high)
-        if frameindex == 0 and plot_shows_values() and float(ymin) < float(ymax):
-            apply(dc.replace(viewer.values, ymin=ymin, ymax=ymax))
+    on_select_y = make_select_y_handler(
+        plot_shows_values, lambda ymin, ymax: apply(dc.replace(viewer.values, ymin=ymin, ymax=ymax)), show_error
+    )
 
     def on_plot_menu(frameindex: int, _event: t.Any) -> None:
         """Show the actions on the frame and the figure under the pointer, as the context menu of a Mac app does."""
@@ -2303,11 +2374,11 @@ def open_window(tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]")
     emissioncheck.toggled.connect(on_emission_options)
     absorptioncheck.toggled.connect(on_emission_options)
     groupbybox.currentTextChanged.connect(on_emission_options)
-    countbox.valueChanged.connect(on_emission_options)
+    countbox.valueChanged.connect(on_count)
     nostackcheck.toggled.connect(on_emission_options)
     lockbutton.toggled.connect(on_lock)
     binmodebox.currentIndexChanged.connect(on_binmode)
-    binwidthbox.valueChanged.connect(on_emission_options)
+    binwidthbox.valueChanged.connect(on_binwidth)
     datasourcebox.currentIndexChanged.connect(on_emission_options)
     for checkbox in (noisecheck, histogramcheck, hidenetcheck, hideothercheck):
         checkbox.toggled.connect(on_emission_options)

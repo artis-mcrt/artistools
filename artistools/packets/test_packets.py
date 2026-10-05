@@ -15,18 +15,18 @@ import artistools as at
 def get_reference_dirbin(dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int) -> int:
     """Return the direction bin of one packet, computed in float64 for a viewing direction along +z.
 
-    The polars binning of the package works in Float32, thus this function checks it by a separate path.
+    The polars binning of the package works in Float32, thus this function checks it by a separate path. The function
+    follows get_escapedirectionbin of ARTIS (vectors.h). ARTIS takes cosphi = 1 for a direction along the z axis,
+    thus such a direction is in the phi bin of the angle pi and not in the phi bin 0.
     """
     syn_dir = np.array([0.0, 0.0, 1.0])
     pkt_dir = np.array([dirx, diry, dirz]) / math.sqrt(dirx**2 + diry**2 + dirz**2)
     costhetabin = min(int((float(pkt_dir @ syn_dir) + 1.0) / 2.0 * ncosthetabins), ncosthetabins - 1)
 
     vec1 = np.cross(pkt_dir, syn_dir)
-    if np.linalg.norm(vec1) == 0.0:
-        return costhetabin * nphibins
-
+    vec1len = float(np.linalg.norm(vec1))
     vec2 = np.cross(np.array([1.0, 0.0, 0.0]), syn_dir)
-    cosphi = float(vec1 @ vec2) / float(np.linalg.norm(vec1)) / float(np.linalg.norm(vec2))
+    cosphi = float(vec1 @ vec2) / vec1len / float(np.linalg.norm(vec2)) if vec1len > 1e-12 else 1.0
     phi = math.acos(cosphi) if float(vec1 @ np.cross(vec2, syn_dir)) > 0 else math.acos(cosphi) + math.pi
     return costhetabin * nphibins + min(int(phi / 2.0 / math.pi * nphibins), nphibins - 1)
 
@@ -125,6 +125,34 @@ def test_directionbins_phibin_upper_edge(nphibins: int) -> None:
     assert binned["dirbin"].item() == get_reference_dirbin(dirx, diry, dirz, nphibins, ncosthetabins)
 
 
+@pytest.mark.parametrize(
+    ("direction", "expecteddirbin"),
+    [
+        ((0.0, 0.0, 1.0), 95),
+        ((0.0, 0.0, -1.0), 5),
+        ((0.0, 1e-30, -1.0), 5),
+        ((0.0, -1e-30, 1.0), 90),
+        ((0.0, 1e-13, 1.0), 95),
+    ],
+)
+def test_a_direction_along_the_z_axis_gets_the_bin_of_artis(
+    direction: tuple[float, float, float], expecteddirbin: int
+) -> None:
+    """A direction along the z axis has no phi angle, and ARTIS takes cosphi = 1 for it (vectors.h).
+
+    The division 0/0 gave cosphi = NaN, thus the direction got phi bin 0 and not the phi bin of ARTIS. A small
+    component across the axis gave the true phi, which ARTIS ignores below 1e-12.
+    """
+    dirx, diry, dirz = direction
+    dfpackets = at.packets.add_packet_directions_lazypolars(
+        pl.DataFrame({"dirx": [dirx], "diry": [diry], "dirz": [dirz]})
+    )
+    binned = at.packets.bin_packet_directions_polars(dfpackets, nphibins=10, ncosthetabins=10).collect()
+
+    assert binned["dirbin"].item() == expecteddirbin
+    assert get_reference_dirbin(dirx, diry, dirz, nphibins=10, ncosthetabins=10) == expecteddirbin
+
+
 def test_get_virtual_packets() -> None:
     nprocs_read, dfvpkt = at.packets.get_virtual_packets(
         modelpath=at.get_path("testdata") / "vpktcontrib", maxpacketfiles=2
@@ -212,9 +240,10 @@ def test_readfile_text_drops_trailing_null_column(tmp_path: Path) -> None:
 
 
 def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> None:
-    """A text file of the first rank that is newer than the cache makes the cache stale.
+    """A change of the text file of a later rank makes the cache stale, also to a time before the stamp.
 
-    ARTIS writes the files of all the ranks at the same time, thus the first rank gives the time of the batch.
+    The check read only the file of the first rank, and it compared in one direction. Thus a cache from a batch
+    that a copy still wrote kept the partial data after the copy ended, e.g. a copy with cp -p.
     """
     import shutil
 
@@ -223,17 +252,61 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
     for rank in (0, 1):
         shutil.copy(sourcedir / f"packets00_{rank:04d}.out.zst", tmp_path)
+    textfiles = [tmp_path / f"packets00_{rank:04d}.out.zst" for rank in (0, 1)]
 
-    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
-    firstwrite = parquetpath.stat().st_mtime_ns
+    def get_stamp() -> float:
+        parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+        return float(pl.read_parquet_metadata(parquetpath)["textsource_mtime"])
 
-    firstrankfile = tmp_path / "packets00_0000.out.zst"
-    newtime = firstrankfile.stat().st_mtime + 100.0
-    os.utime(firstrankfile, (newtime, newtime))
+    assert np.isclose(get_stamp(), max(path.stat().st_mtime for path in textfiles), rtol=0.0, atol=1e-3)
 
-    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+    laterrankfile = textfiles[1]
+    newtime = laterrankfile.stat().st_mtime + 100.0
+    os.utime(laterrankfile, (newtime, newtime))
+    assert np.isclose(get_stamp(), newtime, rtol=0.0, atol=1e-3)
 
-    assert parquetpath.stat().st_mtime_ns > firstwrite
+    oldtime = newtime - 1000.0
+    os.utime(laterrankfile, (oldtime, oldtime))
+    assert np.isclose(get_stamp(), textfiles[0].stat().st_mtime, rtol=0.0, atol=1e-3)
+
+
+def test_virtual_packets_file_with_no_data_lines_gives_no_rows(tmp_path: Path) -> None:
+    """ARTIS writes a line only for a virtual packet that escapes, thus the file of a rank can hold only the header.
+
+    polars stopped with "empty CSV" for such a file, thus the conversion of the whole batch stopped.
+    """
+    import shutil
+
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
+
+    sourcedir = at.get_path("testdata") / "vpktcontrib"
+    shutil.copy(sourcedir / "vpackets_0000.out.zst", tmp_path)
+    with at.zopen(sourcedir / "vpackets_0000.out.zst", mode="rt", encoding="utf-8") as sourcefile:
+        headerline = sourcefile.readline()
+    (tmp_path / "vpackets_0001.out").write_text(headerline, encoding="utf-8")
+
+    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=True)
+    dfvpkt = pl.read_parquet(parquetpath)
+
+    assert dfvpkt.height == 9402
+    assert dfvpkt["mpirank"].unique().to_list() == [0]
+    assert dfvpkt.schema["dir0_t_arrive_d"] == pl.Float32
+    assert dfvpkt.schema["emissiontype"] == pl.Int32
+
+
+def test_a_packets_file_with_a_cut_line_stops_the_conversion(tmp_path: Path) -> None:
+    """A file that ARTIS or a copy still writes ends in a cut line, and its cache must not keep the partial data.
+
+    The reader gave the values of the cut line to the first columns and null to the others, with no error.
+    """
+    from artistools.packets.core import readfile_text
+
+    columns = ["number", "where", "type_id", "e_cmf", "e_rf", "pellet_nucindex"]
+    packetsfile = tmp_path / "packets00_0000.out"
+    packetsfile.write_text("1 58900 32 1.2e45 1.00799e+45 5 \n2 58900 32 1.2e45 1.007", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="fewer values than the header"):
+        readfile_text(packetsfile, column_names=columns)
 
 
 def test_packets_cache_without_stamps_is_stale_when_the_text_files_exist(tmp_path: Path) -> None:
@@ -383,6 +456,7 @@ def test_add_derived_columns_gives_the_timestep_of_the_thermal_emission() -> Non
         "em_posz": [0.0, 0.0, 0.0],
         "em_time": [tmids_s[52], tmids_s[52], tmids_s[3]],
         "trueem_time": [tmids_s[50], -1.0, tmids_s[3]],
+        "true_emission_velocity": [1.0e8, math.nan, 1.0e8],
         "dirx": [0.0, 0.0, 0.0],
         "diry": [0.0, 0.0, 0.0],
         "dirz": [1.0, 1.0, 1.0],
@@ -391,25 +465,56 @@ def test_add_derived_columns_gives_the_timestep_of_the_thermal_emission() -> Non
     dfderived = at.packets.add_derived_columns_lazy(dfpackets, modelpath).collect()
     assert dfderived["em_timestep"].to_list() == [52, 52, 3]
     assert dfderived["emtrue_timestep"].to_list() == [50, -1, 3]
+    assert dfderived["emtrue_modelgridindex"].to_list() == [0, None, 0]
 
     # an old packets file has no trueem_time, thus it gets no timestep of the thermal emission
     dfold = at.packets.add_derived_columns_lazy(dfpackets.drop("trueem_time"), modelpath)
     assert "emtrue_timestep" not in dfold.collect_schema().names()
 
 
+def test_a_3d_model_with_no_thermal_emission_position_gets_no_thermal_emission_timestep() -> None:
+    """The timestep and the cell of the thermal emission select the estimators together, thus each needs the other.
+
+    A 3D model with the thermal emission velocity and no position got the timestep and no cell. Thus the join of
+    plotlinefluxes --plotemittingregions stopped with ColumnNotFoundError for emtrue_modelgridindex.
+    """
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    emtime_s = 5.0 * at.constants.day_to_s
+    dfpackets = pl.DataFrame({
+        "em_posx": [0.0],
+        "em_posy": [0.0],
+        "em_posz": [0.0],
+        "em_time": [emtime_s],
+        "true_emission_velocity": [1.0e9],
+        "trueem_time": [emtime_s],
+        "dirx": [0.0],
+        "diry": [0.0],
+        "dirz": [1.0],
+    })
+
+    derivedcolumns = at.packets.add_derived_columns_lazy(dfpackets, modelpath).collect_schema().names()
+
+    assert "em_modelgridindex" in derivedcolumns
+    assert "emtrue_modelgridindex" not in derivedcolumns
+    assert "emtrue_timestep" not in derivedcolumns
+
+
 def test_emission_expressions_give_no_value_for_a_packet_with_no_record() -> None:
-    """ARTIS gives a time of 0 or -1 and a position of zero to a packet with no thermal emission record."""
+    """ARTIS gives a time of 0 or -1 to a packet with no thermal emission record.
+
+    An older ARTIS gives that packet a position of zero, and the current ARTIS gives it a position of NaN.
+    """
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
     dfmodel, modelmeta = at.get_modeldata(modelpath, printwarningsonly=True)
     emtime_s = 5.0 * at.constants.day_to_s
     dfpackets = pl.DataFrame({
-        "trueem_posx": [1.0e9 * emtime_s, 0.0, 0.0],
-        "trueem_posy": [0.0, 0.0, 0.0],
-        "trueem_posz": [0.5e9 * emtime_s, 0.0, 0.0],
-        "trueem_time": [emtime_s, -1.0, 0.0],
-        "dirx": [0.0, 0.0, 0.0],
-        "diry": [0.0, 0.0, 0.0],
-        "dirz": [1.0, 1.0, 1.0],
+        "trueem_posx": [1.0e9 * emtime_s, 0.0, 0.0, math.nan],
+        "trueem_posy": [0.0, 0.0, 0.0, math.nan],
+        "trueem_posz": [0.5e9 * emtime_s, 0.0, 0.0, math.nan],
+        "trueem_time": [emtime_s, -1.0, 0.0, -1.0],
+        "dirx": [0.0, 0.0, 0.0, 0.0],
+        "diry": [0.0, 0.0, 0.0, 0.0],
+        "dirz": [1.0, 1.0, 1.0, 1.0],
     })
 
     dfvalues = dfpackets.select(
@@ -421,7 +526,7 @@ def test_emission_expressions_give_no_value_for_a_packet_with_no_record() -> Non
     assert np.isclose(dfvalues["velocity"][0], math.hypot(1.0e9, 0.5e9), rtol=1e-12, atol=0.0)
     assert np.isclose(dfvalues["losvelocity"][0], 0.5e9, rtol=1e-12, atol=0.0)
     assert dfvalues["modelgridindex"][0] is not None
-    for norecordrow in (1, 2):
+    for norecordrow in (1, 2, 3):
         assert math.isnan(dfvalues["velocity"][norecordrow])
         assert math.isnan(dfvalues["losvelocity"][norecordrow])
         assert dfvalues["modelgridindex"][norecordrow] is None
@@ -575,3 +680,90 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
     heatmap = mockimshow.call_args.args[1].T
     assert heatmap.count() == 1
     assert heatmap[0, 25] > 0.0
+
+
+def test_get_packets_stops_for_a_run_with_no_escaped_gamma_packets(tmp_path: Path) -> None:
+    """ARTIS removes the escaped gamma packets unless KEEP_ESCAPED_GAMMAS is true, which is not the default.
+
+    The empty frame gave a gamma-ray light curve and a gamma-ray spectrum of zero with no message.
+    """
+    type_escape, type_rpkt = at.packets.core.type_ids["TYPE_ESCAPE"], at.packets.core.type_ids["TYPE_RPKT"]
+    cachepath = tmp_path / "packetsbatch00_0000_0000.out.parquet.tmp"
+    pl.DataFrame(
+        {"type_id": [type_escape, type_escape], "escape_type_id": [type_rpkt, type_rpkt]},
+        schema={"type_id": pl.Int32, "escape_type_id": pl.Int32},
+    ).write_parquet(cachepath)
+
+    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
+        _, dfrpkt = at.packets.get_packets(tmp_path, escape_type="TYPE_RPKT")
+        assert dfrpkt.collect().height == 2
+
+        with pytest.raises(ValueError, match="KEEP_ESCAPED_GAMMAS"):
+            at.packets.get_packets(tmp_path, escape_type="TYPE_GAMMA")
+
+
+@pytest.mark.parametrize(
+    ("columnname", "values"),
+    [("originated_from_positron", [True, False]), ("originated_from_particlenotgamma", [1, 0])],
+)
+def test_get_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(
+    tmp_path: Path, columnname: str, values: list[bool] | list[int]
+) -> None:
+    """An older ARTIS writes originated_from_positron, and the current ARTIS writes originated_from_particlenotgamma.
+
+    The cache keeps the name and the type of its text file, thus the two formats gave two names and two types.
+    """
+    cachepath = tmp_path / "packetsbatch00_0000_0000.out.parquet.tmp"
+    pl.DataFrame({"type_id": [32, 32], columnname: values}).write_parquet(cachepath)
+
+    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
+        _, dfpackets = at.packets.get_packets(tmp_path)
+
+    dfflag = dfpackets.select("originated_from_particlenotgamma").collect()
+    pltest.assert_frame_equal(dfflag, pl.DataFrame({"originated_from_particlenotgamma": [True, False]}))
+
+
+def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_path: Path) -> None:
+    """The command takes -timedays as the other commands do, and -o gives the folder or the file of the plot.
+
+    The command took only its own -tdays, and it always wrote its file to the working folder.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    plotlastpacketinteraction.main(argsraw=["-modelpath", str(modelpath), "-timedays", "300", "-o", str(tmp_path)])
+    assert (tmp_path / "testmodel_allelements_allions_t_arrive_d_300.0_ts54_into_dirbin-1.pdf").is_file()
+
+    # -tdays is the old spelling, and -o can also name the file
+    outputfile = tmp_path / "lastinteraction.pdf"
+    plotlastpacketinteraction.main(argsraw=["-modelpath", str(modelpath), "-tdays", "300", "-o", str(outputfile)])
+    assert outputfile.is_file()
+
+
+@pytest.mark.parametrize(
+    ("argsraw", "expectedmessage"),
+    [
+        (["-element", "Xx"], "-element Xx is no element symbol"),
+        (["-dirbin", "100"], "-dirbin 100 is not the first direction bin"),
+        (["-dirbin", "35"], "-dirbin 35 is not the first direction bin"),
+        (["-dirbin", "-10"], "-dirbin -10 is not the first direction bin"),
+        ([], "the time is missing"),
+    ],
+)
+def test_lastpacketinteraction_refuses_a_selection_that_matches_no_packet(
+    argsraw: list[str], expectedmessage: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unknown element and a direction bin outside the costheta bins gave an empty plot with no error."""
+    from artistools.packets import plotlastpacketinteraction
+
+    timeargs = [] if not argsraw else ["-timedays", "300"]
+    modelpath = at.get_path("testdata") / "testmodel"
+    with (
+        mock.patch.object(plotlastpacketinteraction, "packets_2d_hist_bin_and_ejecta_vel") as mockplot,
+        pytest.raises(SystemExit),
+    ):
+        plotlastpacketinteraction.main(argsraw=["-modelpath", str(modelpath), *timeargs, *argsraw])
+
+    assert mockplot.call_count == 0
+    captured = capsys.readouterr()
+    assert expectedmessage in captured.err + captured.out
