@@ -1377,17 +1377,12 @@ def dimension_reduce_model(
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
     dfgridcontributions: pl.DataFrame | None = None,
     modelmeta: dict[str, t.Any] | None = None,
-    rightclosedbins: bool = False,
     **kwargs: t.Any,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     """Convert a 3D Cartesian grid model to a 1D spherical model or a 2D cylindrical model.
 
     The function can also change the particle gridcontributions and the table of the elemental abundances to agree
     with the new model.
-
-    rightclosedbins gives the velocity bins of an older version of artistools, which were closed on the right. Use
-    it only to make an older model again, because those bins drop the centre cell of a grid with an odd cell count.
-    The other keyword arguments go into the metadata of the output model.
     """
     assert outputdimensions in {0, 1, 2}
 
@@ -1465,23 +1460,16 @@ def dimension_reduce_model(
     # the bins are closed on the left, because the centre cell of an odd grid has a mid-point velocity of zero.
     # A bin that is closed on the right puts that cell below the first bin, and the filter then drops its mass
     dfmodel_out = dfmodel_out.with_columns(
-        (col_vel_r.cut(breaks=vel_r_bins, left_closed=not rightclosedbins).to_physical().cast(pl.Int32) - 1).alias(
-            "out_n_r"
-        )
+        (col_vel_r.cut(breaks=vel_r_bins, left_closed=True).to_physical().cast(pl.Int32) - 1).alias("out_n_r")
     ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
 
     if outputdimensions == 2:
         dfmodel_out = (
             dfmodel_out
             .with_columns(
-                (
-                    pl
-                    .col("vel_z_mid")
-                    .cut(breaks=vel_z_bins, left_closed=not rightclosedbins)
-                    .to_physical()
-                    .cast(pl.Int32)
-                    - 1
-                ).alias("out_n_z")
+                (pl.col("vel_z_mid").cut(breaks=vel_z_bins, left_closed=True).to_physical().cast(pl.Int32) - 1).alias(
+                    "out_n_z"
+                )
             )
             .filter(
                 pl.col("out_n_r").is_between(0, ncoordgridr - 1) & (pl.col("out_n_z").is_between(0, ncoordgridz - 1))

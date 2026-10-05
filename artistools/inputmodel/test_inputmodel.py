@@ -398,8 +398,8 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path) -> None:
                     assert math.isclose(lowerd_mass, model3_mass, rel_tol=5e-2)
 
 
-def test_legacy_options_make_the_model_of_an_older_version_again(tmp_path: Path) -> None:
-    """The legacy options of maptogrid and makeartismodelfromparticlegridmap give the files of the older version.
+def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path: Path) -> None:
+    """The option --sample_cell_lower_corner of maptogrid gives the grid files and the model of the older version.
 
     The expected checksums are those that the test of the SPH particles expected before the kernel took the
     centre of each cell. A user can thus make a historical model again from the same particles.
@@ -430,7 +430,6 @@ def test_legacy_options_make_the_model_of_an_older_version_again(tmp_path: Path)
         outputpath=outpath,
         dimensions=3,
         timedays=0.1,
-        legacy_cell_selection=True,
     )
     verify_file_checksums(
         {
@@ -3542,8 +3541,7 @@ def test_add_mass_to_center_fills_a_sphere_symmetric_about_the_origin() -> None:
 
     ncoordgrid = 8
     t_model_days = 1.0
-    # no cell centre and no cell corner lies exactly on 0.1 c, where the float rounding would decide
-    xmax = 0.23 * CLIGHT * t_model_days * day_to_s
+    xmax = 0.2 * CLIGHT * t_model_days * day_to_s
     wid = 2 * xmax / ncoordgrid
     indices = np.arange(ncoordgrid)
     posmin = -xmax + wid * indices
@@ -3565,14 +3563,6 @@ def test_add_mass_to_center_fills_a_sphere_symmetric_about_the_origin() -> None:
     np.testing.assert_array_equal(filled, filled[::-1, ::-1, ::-1])
     centreradius = np.sqrt((gridx + wid / 2) ** 2 + (gridy + wid / 2) ** 2 + (gridz + wid / 2) ** 2)
     np.testing.assert_array_equal(filled, centreradius < 0.1 * CLIGHT * t_model_days * day_to_s)
-
-    # the legacy option selects the cells by the radius of their lower corner, as the older version did
-    dffilled_legacy = add_mass_to_center(griddata, modelmeta, holebylowercorner=True)
-    filled_legacy = (dffilled_legacy["rho"].to_numpy() > 0.0).reshape((ncoordgrid, ncoordgrid, ncoordgrid), order="F")
-    # the same order of operations as the older version, because some corners lie exactly on 0.1 c
-    cornerspeed_on_c = np.sqrt(gridx**2 + gridy**2 + gridz**2) / (t_model_days * day_to_s) / CLIGHT
-    np.testing.assert_array_equal(filled_legacy, cornerspeed_on_c < 0.1)
-    assert not np.array_equal(filled_legacy, filled)
 
 
 def test_get_coarse_velocity_bins_cover_the_outermost_cell() -> None:
@@ -3624,7 +3614,7 @@ def test_dimension_reduce_keeps_the_centre_cell_of_an_odd_grid(outputdimensions:
     """A 5^3 model has a centre cell with a mid-point velocity of zero, and the reduction keeps its mass.
 
     The bins were closed on the right, thus a velocity of exactly zero fell below the first bin and the
-    filter dropped the cell. rightclosedbins gives those old bins again, to make an older model again.
+    filter dropped the cell.
     """
     ncoordgrid = 5
     dfmodel3d, modelmeta_3d = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
@@ -3640,17 +3630,6 @@ def test_dimension_reduce_keeps_the_centre_cell_of_an_odd_grid(outputdimensions:
     )
 
     assert dfmodel_lowerd["mass_g"].sum() == pytest.approx(mass_inside_vmax, rel=1e-10)
-
-    centrecellmass = dfmodel3d_derived.filter(pl.col("vel_r_mid") == 0.0)["mass_g"].sum()
-    dfmodel_legacy, _, _, modelmeta_legacy = at.inputmodel.dimension_reduce_model(
-        dfmodel=dfmodel3d_derived.select([*dfmodel3d.columns, "mass_g"]),
-        modelmeta=modelmeta_3d,
-        outputdimensions=outputdimensions,
-        rightclosedbins=True,
-    )
-    assert dfmodel_legacy["mass_g"].sum() == pytest.approx(float(mass_inside_vmax) - float(centrecellmass), rel=1e-10)
-    # the option selects the bins, and it is not metadata of the output model
-    assert "rightclosedbins" not in modelmeta_legacy
 
 
 def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Path) -> None:

@@ -229,14 +229,8 @@ def read_griddat_file(
     return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
 
 
-def add_mass_to_center(
-    griddata: pl.DataFrame, modelmeta: dict[str, t.Any], holebylowercorner: bool = False
-) -> pl.DataFrame:
-    """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16.
-
-    holebylowercorner selects the cells of the hole by the velocity of their lower corner, as an older version of
-    artistools did. Use it only to make an older model again.
-    """
+def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> pl.DataFrame:
+    """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16."""
     print(griddata)
 
     # Just (2021) Fig. 16 top left panel
@@ -252,20 +246,12 @@ def add_mass_to_center(
 
     # cells with a mid-point velocity below 0.1 c get the hole density added and a Ye floor of 0.4. The mid-point
     # and not the lower edge sets the velocity, because the lower edge makes the hole asymmetric about the origin
-    if holebylowercorner:
-        griddata = griddata.with_columns(
-            inhole=(pl.col("pos_x_min") ** 2 + pl.col("pos_y_min") ** 2 + pl.col("pos_z_min") ** 2).sqrt()
-            / (modelmeta["t_model_init_days"] * day_to_s)
-            / CLIGHT
-            < 0.1
-        )
-    else:
-        griddata = griddata.with_columns(
-            add_derived_cols_to_modeldata(griddata, modelmeta)
-            .select(inhole=pl.col("vel_r_mid_on_c") < 0.1)
-            .collect()
-            .to_series()
-        )
+    griddata = griddata.with_columns(
+        add_derived_cols_to_modeldata(griddata, modelmeta)
+        .select(inhole=pl.col("vel_r_mid_on_c") < 0.1)
+        .collect()
+        .to_series()
+    )
     inhole = pl.col("inhole")
 
     showcols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
@@ -292,19 +278,14 @@ def makemodelfromgriddata(
     scalevelocity: float = 1.0,
     fillcentralhole: bool = False,
     getcellopacityfromYe: bool = False,
-    legacycellselection: bool = False,
 ) -> None:
-    """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given.
-
-    legacycellselection selects the cells as an older version of artistools did, to make an older model again. The
-    velocity bins of a reduction are then closed on the right, and the central hole takes the lower corner of a cell.
-    """
+    """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given."""
     dfmodel, t_model_days, t_mergertime_s, _vmax, modelmeta = read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
 
     if fillcentralhole:
-        dfmodel = add_mass_to_center(dfmodel, modelmeta, holebylowercorner=legacycellselection)
+        dfmodel = add_mass_to_center(dfmodel, modelmeta)
 
     dfgridcontributions = get_gridparticlecontributions_or_none(gridfolderpath)
 
@@ -361,7 +342,6 @@ def makemodelfromgriddata(
             dfelabundances=dfelabundances,
             dfgridcontributions=dfgridcontributions,
             modelmeta=modelmeta,
-            rightclosedbins=legacycellselection,
         )
         dfelabundances = dfelabundances_reduced if gave_elabundances else None
         dfgridcontributions = dfgridcontributions_reduced if gave_gridcontributions else None
@@ -427,12 +407,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=1.0,
         help="Multiply ejecta velocities by some factor (adjusting density to conserve mass) before writing the model file",
     )
-    parser.add_argument(
-        "--legacy_cell_selection",
-        action="store_true",
-        help="Select the cells as artistools did before, to recreate an older model. The velocity bins of -dimensions 0,"
-        " 1, or 2 are then closed on the right, which drops the centre cell of a grid with an odd cell count",
-    )
     addarg_output(parser, kind="folder", default=None, helptext="Path for output model files")
 
 
@@ -457,5 +431,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dimensions=args.dimensions,
         scalemass=args.scalemass,
         scalevelocity=args.scalevelocity,
-        legacycellselection=args.legacy_cell_selection,
     )
