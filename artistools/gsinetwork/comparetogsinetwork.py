@@ -15,6 +15,7 @@ import polars as pl
 
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_composition_data
+from artistools.atomic import get_composition_data_from_outputfile
 from artistools.constants import day_to_s
 from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
@@ -40,6 +41,7 @@ from artistools.misc import get_timesteps
 from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
+from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -137,6 +139,20 @@ def strnuc_to_latex(strnuc: str) -> str:
     return rf"$^{{{massnum}}}${elsym.title()}" if massnum else elsym.title()
 
 
+def get_mean_stable_masses_amu(modelpath: str | Path) -> dict[int, float] | None:
+    """Return the mean stable nucleus mass of each element of the run, or None if the run gives no composition.
+
+    compositiondata.txt gives the masses. An older run that has no such file gives them in output_0-0.txt.
+    """
+    for reader in (get_composition_data, get_composition_data_from_outputfile):
+        try:
+            compositiondata = reader(modelpath)
+        except (FileNotFoundError, ValueError):
+            continue
+        return dict(zip(compositiondata["Z"].to_list(), compositiondata["mass"].to_list(), strict=True))
+    return None
+
+
 def get_artis_abund_sequences(
     modelpath: str | Path,
     dftimesteps: pl.DataFrame,
@@ -161,9 +177,9 @@ def get_artis_abund_sequences(
 
         estimatorcolumns = estimators_lazy.collect_schema().names()
         # ARTIS gives the number density of the stable isotopes that it does not follow as <El>_otherstable. Such a
-        # nucleus has the mean stable mass of the element in compositiondata.txt (decay.cc)
-        compositiondata = get_composition_data(modelpath)
-        meannucmass_amu_of_z = dict(zip(compositiondata["Z"].to_list(), compositiondata["mass"].to_list(), strict=True))
+        # nucleus has the mean stable mass of the element in compositiondata.txt (decay.cc). Only such a column
+        # needs the file, thus a run with no compositiondata.txt still gives every other curve
+        meannucmass_amu_of_z: dict[int, float] | None = None
         cellmassfrac_exprs = []
         for strspecies in arr_species:
             isnuclide = strspecies[-1].isdigit() and f"nniso_{strspecies}" in estimatorcolumns
@@ -190,8 +206,16 @@ def get_artis_abund_sequences(
             ]
             otherstablecol = f"nniso_{strspecies}_otherstable"
             if not isnuclide and otherstablecol in estimatorcolumns:
-                meannucmass_amu = meannucmass_amu_of_z[get_atomic_number(strspecies)]
-                isotopemassfrac_exprs.append(pl.col(otherstablecol) * meannucmass_amu * MH_g / pl.col("rho"))
+                if meannucmass_amu_of_z is None:
+                    meannucmass_amu_of_z = get_mean_stable_masses_amu(modelpath)
+                if meannucmass_amu_of_z is None:
+                    print_warning(
+                        f"{modelpath} gives no compositiondata.txt and no output_0-0.txt, thus the {strspecies}"
+                        " abundance leaves out the stable isotopes that ARTIS does not follow"
+                    )
+                else:
+                    meannucmass_amu = meannucmass_amu_of_z[get_atomic_number(strspecies)]
+                    isotopemassfrac_exprs.append(pl.col(otherstablecol) * meannucmass_amu * MH_g / pl.col("rho"))
             if isnuclide:
                 cellmassfrac_exprs.append(isotopemassfrac_exprs[0])
             elif isotopemassfrac_exprs:

@@ -282,6 +282,28 @@ def test_artis_abundance_of_an_element_takes_every_isotope(tmp_path: Path) -> No
     )
 
 
+def test_artis_abundance_of_a_run_with_no_compositiondata(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A run with no compositiondata.txt still gives each curve, and an element leaves out its other stable isotopes.
+
+    The abundances read compositiondata.txt for every species, thus a missing file gave no ARTIS curve at all.
+    """
+    from artistools.constants import MH_g
+    from artistools.gsinetwork import comparetogsinetwork
+
+    dfestimators = make_estimators_of_strontium(tmp_path)
+    (tmp_path / "compositiondata.txt").unlink()
+    with mock.patch.object(comparetogsinetwork, "scan_estimators", return_value=dfestimators):
+        abund_of_mgi = comparetogsinetwork.get_artis_abund_sequences(
+            tmp_path, pl.DataFrame({"timestep": [0]}), [0], ["Sr", "Sr88"], {"Sr89": 1.5}
+        )
+
+    expected_sr88 = 1.0e12 * 88 * MH_g / 1.0e-10
+    expected_sr89 = 3.0e11 * 89 * MH_g / 1.0e-10 + 0.1 * (1.5 - 1.0)
+    assert math.isclose(abund_of_mgi[0]["X_Sr88"].item(), expected_sr88, rel_tol=1e-9)
+    assert math.isclose(abund_of_mgi[0]["X_Sr"].item(), expected_sr88 + expected_sr89, rel_tol=1e-9)
+    assert "leaves out the stable isotopes" in capsys.readouterr().err
+
+
 def test_comparetogsinetwork_takes_particles_with_no_network_data(tmp_path: Path) -> None:
     """The pairs of particle and cell are empty if no particle has network data, and the plots then show ARTIS alone.
 

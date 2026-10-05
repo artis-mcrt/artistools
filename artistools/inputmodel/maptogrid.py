@@ -73,8 +73,13 @@ def maptogrid(
     dtextra_seconds: float = 0.5,
     setgrid_fractionrmax: float = 0.5,
     modifysmoothinglength: str = "option4",
+    samplelowercorner: bool = False,
 ) -> None:
-    """Map an SPH ejecta snapshot onto an ncoordgrid^3 Cartesian grid and write grid.dat and gridcontributions.txt."""
+    """Map an SPH ejecta snapshot onto an ncoordgrid^3 Cartesian grid and write grid.dat and gridcontributions.txt.
+
+    samplelowercorner evaluates the kernel at the lower corner of each cell, as artistools did before. Use it only
+    to make a grid.dat again that an older version of artistools wrote.
+    """
     if not ejectasnapshotpath.is_file():
         msg = f"{ejectasnapshotpath} does not exist"
         raise FileNotFoundError(msg)
@@ -196,8 +201,9 @@ def maptogrid(
     logprint(f"grid properties {x0=}, {dx=}, {x0 + dx * (ncoordgrid - 1)=}")
 
     # grid.dat gives the lower edge x0 + i * dx of each cell, thus the kernel samples each cell at its centre.
-    # A sample at the lower edge moves the mapped ejecta by half a cell towards +x, +y, and +z
-    arrgx = x0 + dx * (np.arange(ncoordgrid) + 0.5)
+    # A sample at the lower corner moves the mapped ejecta by half a cell towards +x, +y, and +z
+    logprint(f"kernel sample point of each cell: {'lower corner' if samplelowercorner else 'centre'}")
+    arrgx = x0 + dx * (np.arange(ncoordgrid) + (0.0 if samplelowercorner else 0.5))
     arrgy = arrgx
     arrgz = arrgx
 
@@ -435,6 +441,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "Default modifies h. Set to False for no modifications to h",
     )
 
+    parser.add_argument(
+        "--sample_cell_lower_corner",
+        action="store_true",
+        help="Evaluate the kernel at the lower corner of each cell, as artistools did before. This recreates an older"
+        " grid.dat. The default samples the centre of each cell, because the lower corner moves the ejecta by half a"
+        " cell towards +x, +y, and +z",
+    )
+
     addarg_output(parser, kind="folder", default=Path())
 
 
@@ -452,4 +466,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dtextra_seconds=args.dtextra_seconds,
         setgrid_fractionrmax=args.setgrid_fractionrmax,
         modifysmoothinglength=args.modifysmoothinglength,
+        samplelowercorner=args.sample_cell_lower_corner,
     )

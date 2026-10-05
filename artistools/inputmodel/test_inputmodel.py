@@ -398,6 +398,51 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path) -> None:
                     assert math.isclose(lowerd_mass, model3_mass, rel_tol=5e-2)
 
 
+def test_legacy_options_make_the_model_of_an_older_version_again(tmp_path: Path) -> None:
+    """The legacy options of maptogrid and makeartismodelfromparticlegridmap give the files of the older version.
+
+    The expected checksums are those that the test of the SPH particles expected before the kernel took the
+    centre of each cell. A user can thus make a historical model again from the same particles.
+    """
+    gridfolderpath = tmp_path / "kilonova"
+    shutil.copytree(
+        testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
+    )
+    at.inputmodel.maptogrid.main(
+        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=16, sample_cell_lower_corner=True
+    )
+    verify_file_checksums(
+        {
+            "grid.dat": "d7dbe63efe3544f5d6f77acc202e110e197b02dcfa953d8f2bf84b24d9b8e76d",
+            "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
+        },
+        digest="sha256",
+        folder=gridfolderpath,
+    )
+
+    outpath = tmp_path / "kilonova_3d"
+    outpath.mkdir()
+    shutil.copyfile(gridfolderpath / "gridcontributions.txt", outpath / "gridcontributions.txt")
+    at.inputmodel.modelfromhydro.main(
+        argsraw=[],
+        gridfolderpath=gridfolderpath,
+        trajectoryroot=copy_trajectories(tmp_path),
+        outputpath=outpath,
+        dimensions=3,
+        timedays=0.1,
+        legacy_cell_selection=True,
+    )
+    verify_file_checksums(
+        {
+            "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
+            "abundances.txt": "fb8b4f7c81e6b223ec9506d625cfc78cb778ad2056b8143078d7bfeb9451c1d2",
+            "model.txt": "e92e6f54d3e494df42c56213a9778a4594c65f370d6f1109975f4f6470627a12",
+        },
+        digest="sha256",
+        folder=outpath,
+    )
+
+
 @pytest.mark.benchmark
 def test_makeartismodelfrom_fortrangriddat(tmp_path: Path) -> None:
     gridfolderpath = testdatapath / "kilonova"
@@ -3465,14 +3510,15 @@ def test_save_modeldata_1d_keeps_a_negative_custom_value(tmp_path: Path) -> None
     """A negative value of a custom column of a 1D model survives a write and a read.
 
     The writer gave 0.0 to each value that was not above zero, thus it lost a negative value. The 3D
-    writer kept the sign. A NaN value still becomes zero.
+    writer kept the sign. A NaN value still becomes zero. A negative mass fraction, e.g. from the noise of an
+    interpolation, still becomes zero, because ARTIS needs a valid composition.
     """
     dfmodel = pl.DataFrame({
         "inputcellid": [1, 2, 3],
         "vel_r_max_kmps": [1000.0, 2000.0, 3000.0],
         "logrho": [-10.0, -11.0, -12.0],
         "X_Fegroup": [1.0, 1.0, 1.0],
-        "X_Ni56": [0.5, 0.4, 0.3],
+        "X_Ni56": [0.5, -1.0e-12, 0.3],
         "mycolumn": [-3.2e4, 6.0, float("nan")],
     })
     at.inputmodel.save_modeldata(
@@ -3482,6 +3528,7 @@ def test_save_modeldata_1d_keeps_a_negative_custom_value(tmp_path: Path) -> None
     dfwritten = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfwritten["mycolumn"].to_list() == pytest.approx([-3.2e4, 6.0, 0.0])
+    assert dfwritten["X_Ni56"].to_list() == pytest.approx([0.5, 0.0, 0.3])
 
 
 def test_add_mass_to_center_fills_a_sphere_symmetric_about_the_origin() -> None:
@@ -3495,7 +3542,8 @@ def test_add_mass_to_center_fills_a_sphere_symmetric_about_the_origin() -> None:
 
     ncoordgrid = 8
     t_model_days = 1.0
-    xmax = 0.2 * CLIGHT * t_model_days * day_to_s
+    # no cell centre and no cell corner lies exactly on 0.1 c, where the float rounding would decide
+    xmax = 0.23 * CLIGHT * t_model_days * day_to_s
     wid = 2 * xmax / ncoordgrid
     indices = np.arange(ncoordgrid)
     posmin = -xmax + wid * indices
@@ -3517,6 +3565,14 @@ def test_add_mass_to_center_fills_a_sphere_symmetric_about_the_origin() -> None:
     np.testing.assert_array_equal(filled, filled[::-1, ::-1, ::-1])
     centreradius = np.sqrt((gridx + wid / 2) ** 2 + (gridy + wid / 2) ** 2 + (gridz + wid / 2) ** 2)
     np.testing.assert_array_equal(filled, centreradius < 0.1 * CLIGHT * t_model_days * day_to_s)
+
+    # the legacy option selects the cells by the radius of their lower corner, as the older version did
+    dffilled_legacy = add_mass_to_center(griddata, modelmeta, holebylowercorner=True)
+    filled_legacy = (dffilled_legacy["rho"].to_numpy() > 0.0).reshape((ncoordgrid, ncoordgrid, ncoordgrid), order="F")
+    # the same order of operations as the older version, because some corners lie exactly on 0.1 c
+    cornerspeed_on_c = np.sqrt(gridx**2 + gridy**2 + gridz**2) / (t_model_days * day_to_s) / CLIGHT
+    np.testing.assert_array_equal(filled_legacy, cornerspeed_on_c < 0.1)
+    assert not np.array_equal(filled_legacy, filled)
 
 
 def test_get_coarse_velocity_bins_cover_the_outermost_cell() -> None:
@@ -3568,7 +3624,7 @@ def test_dimension_reduce_keeps_the_centre_cell_of_an_odd_grid(outputdimensions:
     """A 5^3 model has a centre cell with a mid-point velocity of zero, and the reduction keeps its mass.
 
     The bins were closed on the right, thus a velocity of exactly zero fell below the first bin and the
-    filter dropped the cell.
+    filter dropped the cell. rightclosedbins gives those old bins again, to make an older model again.
     """
     ncoordgrid = 5
     dfmodel3d, modelmeta_3d = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
@@ -3584,6 +3640,17 @@ def test_dimension_reduce_keeps_the_centre_cell_of_an_odd_grid(outputdimensions:
     )
 
     assert dfmodel_lowerd["mass_g"].sum() == pytest.approx(mass_inside_vmax, rel=1e-10)
+
+    centrecellmass = dfmodel3d_derived.filter(pl.col("vel_r_mid") == 0.0)["mass_g"].sum()
+    dfmodel_legacy, _, _, modelmeta_legacy = at.inputmodel.dimension_reduce_model(
+        dfmodel=dfmodel3d_derived.select([*dfmodel3d.columns, "mass_g"]),
+        modelmeta=modelmeta_3d,
+        outputdimensions=outputdimensions,
+        rightclosedbins=True,
+    )
+    assert dfmodel_legacy["mass_g"].sum() == pytest.approx(float(mass_inside_vmax) - float(centrecellmass), rel=1e-10)
+    # the option selects the bins, and it is not metadata of the output model
+    assert "rightclosedbins" not in modelmeta_legacy
 
 
 def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Path) -> None:
