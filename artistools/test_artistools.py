@@ -2424,10 +2424,23 @@ def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
                 )
                 unaccounted_shellvol = 0.0
 
-    lumdata = sum_line_luminosities(dfnltepops, dflines, dftimes, shell_volumes_at_1s)
+    lumdata = sum_line_luminosities(dfnltepops, dflines, dftimes, shell_volumes_at_1s, fillshellgaps=True)
 
     assert lumdata.shape == expected.shape
     assert np.allclose(lumdata, expected, rtol=1e-13)
+
+    # the cells of a 2D or 3D model have no radial order, thus an empty cell gives its volume to no other cell
+    expected_cells = np.zeros(dftimes.height)
+    for timeindex, timestep, t_sec_cubed in dftimes.iter_rows():
+        for level, A_val, delta_ergs in dflines.select("level", "A", "delta_ergs").iter_rows():
+            for modelgridindex in range(ncells):
+                if (levelpop := levelpop_of_key.get((timestep, level, modelgridindex))) is not None:
+                    expected_cells[timeindex] += (
+                        delta_ergs * A_val * levelpop * shell_volumes_at_1s[modelgridindex] * t_sec_cubed
+                    )
+    lumdata_cells = sum_line_luminosities(dfnltepops, dflines, dftimes, shell_volumes_at_1s, fillshellgaps=False)
+    assert np.allclose(lumdata_cells, expected_cells, rtol=1e-13)
+    assert not np.allclose(lumdata_cells, expected, rtol=1e-6)
 
 
 def test_linefluxes_rejects_lone_timebin_argument() -> None:

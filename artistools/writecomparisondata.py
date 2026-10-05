@@ -33,7 +33,7 @@ from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc.modelinfo import get_runfolder_timesteps
-from artistools.spectra.core import read_spec
+from artistools.spectra import read_spec
 
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:

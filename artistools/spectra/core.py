@@ -63,10 +63,10 @@ from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
+from artistools.packets import get_vpkt_in_spectrum_range_expr
 from artistools.packets import has_emission_record_expr
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
-from artistools.packets.core import get_vpkt_in_spectrum_range_expr
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt

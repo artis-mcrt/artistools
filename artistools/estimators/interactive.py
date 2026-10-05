@@ -70,7 +70,7 @@ from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
-from artistools.nltepops.core import read_nltepops_cached
+from artistools.nltepops import read_nltepops_cached
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES

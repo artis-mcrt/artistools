@@ -15,7 +15,6 @@ import polars as pl
 
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_composition_data
-from artistools.atomic import get_composition_data_from_outputfile
 from artistools.constants import day_to_s
 from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
@@ -140,17 +139,15 @@ def strnuc_to_latex(strnuc: str) -> str:
 
 
 def get_mean_stable_masses_amu(modelpath: str | Path) -> dict[int, float] | None:
-    """Return the mean stable nucleus mass of each element of the run, or None if the run gives no composition.
+    """Return the mean stable nucleus mass of each element of the run, or None if the run has no compositiondata.txt.
 
-    compositiondata.txt gives the masses. An older run that has no such file gives them in output_0-0.txt.
+    Only compositiondata.txt gives the masses. The composition in output_0-0.txt gives no masses.
     """
-    for reader in (get_composition_data, get_composition_data_from_outputfile):
-        try:
-            compositiondata = reader(modelpath)
-        except (FileNotFoundError, ValueError):
-            continue
-        return dict(zip(compositiondata["Z"].to_list(), compositiondata["mass"].to_list(), strict=True))
-    return None
+    try:
+        compositiondata = get_composition_data(modelpath)
+    except (FileNotFoundError, ValueError):
+        return None
+    return dict(zip(compositiondata["Z"].to_list(), compositiondata["mass"].to_list(), strict=True))
 
 
 def get_artis_abund_sequences(
@@ -210,7 +207,7 @@ def get_artis_abund_sequences(
                     meannucmass_amu_of_z = get_mean_stable_masses_amu(modelpath)
                 if meannucmass_amu_of_z is None:
                     print_warning(
-                        f"{modelpath} gives no compositiondata.txt and no output_0-0.txt, thus the {strspecies}"
+                        f"{modelpath} gives no compositiondata.txt, thus the {strspecies}"
                         " abundance leaves out the stable isotopes that ARTIS does not follow"
                     )
                 else:

@@ -145,11 +145,9 @@ def scan_lightcurve(
         )
         raise ValueError(msg)
     lcdata = split_multitable_dataframe(lzdf)
-    # a user can name the file, thus its tables must agree with the layout that the caller gives. An old
-    # light_curve.out holds a second table, which repeats the times
-    if directionresolved and len(lcdata) <= 2:
-        msg = f"{filepath} holds {len(lcdata)} tables, thus it is not a direction-resolved light curve"
-        raise ValueError(msg)
+    # a user can name the file, thus an angle-averaged light curve must not hold the tables of the direction bins.
+    # An old light_curve.out holds a second table, which repeats the times. A build of ARTIS with one or two
+    # direction bins writes as few tables, thus the count check below gives a warning and no error for that case
     if not directionresolved and len(lcdata) > 2:
         msg = f"{filepath} holds {len(lcdata)} tables, thus it is a direction-resolved light curve"
         raise ValueError(msg)

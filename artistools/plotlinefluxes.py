@@ -305,7 +305,9 @@ def get_line_luminosities_from_pops(
         for timedays, timestep in zip(arr_tmid, timesteps, strict=True):
             print(f"{feature.approxlambda}A {timedays}d (ts {timestep})")
 
-        dictlcdata[feature.colname] = sum_line_luminosities(dfnltepops, dflines, dftimes, shell_volumes_at_1s)
+        dictlcdata[feature.colname] = sum_line_luminosities(
+            dfnltepops, dflines, dftimes, shell_volumes_at_1s, fillshellgaps=modelmeta["dimensions"] == 1
+        )
 
     return pl.DataFrame(dictlcdata)
 
@@ -315,14 +317,19 @@ def sum_line_luminosities(
     dflines: pl.DataFrame,
     dftimes: pl.DataFrame,
     shell_volumes_at_1s: npt.NDArray[np.floating],
+    *,
+    fillshellgaps: bool,
 ) -> npt.NDArray[np.floating]:
     """Return the luminosity of the lines at each time, summed over the lines and the cells.
 
     dfnltepops gives the population of each upper level (timestep, level, modelgridindex, n_NLTE).
     dflines gives each line (lineindex, level, A, delta_ergs), and dftimes gives each time
-    (timeindex, timestep, t_sec_cubed). A cell with no population data gives its volume to the next
-    cell outward that has data. Thus an empty shell inside the ejecta counts, and the outermost empty
-    shells do not. Each time must have data for at least one cell.
+    (timeindex, timestep, t_sec_cubed). Each time must have data for at least one cell.
+
+    With fillshellgaps, the cells are the radial shells of a 1D model, in order. A shell with no population data
+    then gives its volume to the next shell outward that has data. Thus an empty shell inside the ejecta counts,
+    and the outermost empty shells do not. The cells of a 2D or 3D model have no radial order, thus each cell with
+    data counts its own volume, and a cell with no data counts nothing.
     """
     keydtypes = {colname: dfnltepops.schema[colname] for colname in ("timestep", "level", "modelgridindex")}
     dfshells = pl.DataFrame({
@@ -340,8 +347,12 @@ def sum_line_luminosities(
         .sort("timeindex", "lineindex", "modelgridindex")
         .with_columns(
             shell_volume=pl.col("shell_volume_at_1s") * pl.col("t_sec_cubed"),
-            # the empty cells in front of a cell with data belong to its volume segment
-            volumesegment=hasdata.cast(pl.Int32).cum_sum().shift(1, fill_value=0).over("timeindex", "lineindex"),
+            # the empty shells in front of a shell with data belong to its volume segment
+            volumesegment=(
+                hasdata.cast(pl.Int32).cum_sum().shift(1, fill_value=0).over("timeindex", "lineindex")
+                if fillshellgaps
+                else pl.col("modelgridindex").cast(pl.Int32)
+            ),
         )
         .with_columns(effective_volume=pl.col("shell_volume").cum_sum().over("timeindex", "lineindex", "volumesegment"))
     )

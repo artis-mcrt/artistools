@@ -286,12 +286,17 @@ def test_artis_abundance_of_a_run_with_no_compositiondata(tmp_path: Path, capsys
     """A run with no compositiondata.txt still gives each curve, and an element leaves out its other stable isotopes.
 
     The abundances read compositiondata.txt for every species, thus a missing file gave no ARTIS curve at all.
+    output_0-0.txt gives no masses of the elements, thus it is no replacement for the file.
     """
     from artistools.constants import MH_g
     from artistools.gsinetwork import comparetogsinetwork
 
     dfestimators = make_estimators_of_strontium(tmp_path)
     (tmp_path / "compositiondata.txt").unlink()
+    (tmp_path / "output_0-0.txt").write_text(
+        "[info]  element 0 (Z=38 Sr)\n[info]    ionstage 1:  50 levels ( 50 ionising)\nend of the list\n",
+        encoding="utf-8",
+    )
     with mock.patch.object(comparetogsinetwork, "scan_estimators", return_value=dfestimators):
         abund_of_mgi = comparetogsinetwork.get_artis_abund_sequences(
             tmp_path, pl.DataFrame({"timestep": [0]}), [0], ["Sr", "Sr88"], {"Sr89": 1.5}

@@ -2524,8 +2524,6 @@ def test_scan_lightcurve_takes_the_layout_from_the_caller(tmp_path: Path) -> Non
     )
     with pytest.raises(ValueError, match="holds 100 tables"):
         at.lightcurve.scan_lightcurve(copypath)
-    with pytest.raises(ValueError, match="holds 2 tables"):
-        at.lightcurve.scan_lightcurve(modelpath_classic_3d / "light_curve.out", directionresolved=True)
 
 
 def test_scan_lightcurve_of_a_build_with_a_different_count_of_direction_bins(
@@ -2543,6 +2541,12 @@ def test_scan_lightcurve_of_a_build_with_a_different_count_of_direction_bins(
     assert sorted(lcdataframes) == [0, 1, 2, 3]
     assert np.allclose(lcdataframes[3].collect()["luminosity_Lsun"].to_numpy(), [2.0, 4.0])
     assert "holds 4 tables" in capsys.readouterr().err
+
+    # a build with one or two direction bins writes as many tables as an angle-averaged light curve
+    for nbins in (1, 2):
+        lcpath.write_text(table * nbins, encoding="utf-8")
+        assert sorted(at.lightcurve.scan_lightcurve(lcpath, directionresolved=True)) == list(range(nbins))
+        assert f"holds {nbins} tables" in capsys.readouterr().err
 
 
 def test_named_light_curve_file_must_agree_with_the_direction_bins(
