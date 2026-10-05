@@ -94,7 +94,8 @@ def copy_trajectories(tmp_path: Path) -> Path:
     files out of tests/data, and each run then tests the extraction too.
     """
     traj_root = tmp_path / "trajectories"
-    traj_root.mkdir()
+    # CodSpeed runs a benchmark test more than one time in one process, with the same tmp_path
+    traj_root.mkdir(exist_ok=True)
     for filepath in (testdatapath / "kilonova" / "trajectories").glob("*.*"):
         shutil.copy(filepath, traj_root)
     return traj_root

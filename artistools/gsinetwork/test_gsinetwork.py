@@ -23,7 +23,8 @@ def copy_trajectories(tmp_path: Path) -> Path:
     import shutil
 
     trajpath = tmp_path / "trajectories"
-    trajpath.mkdir()
+    # CodSpeed runs a benchmark test more than one time in one process, with the same tmp_path
+    trajpath.mkdir(exist_ok=True)
     for filepath in (at.get_path("testdata") / "kilonova" / "trajectories").iterdir():
         if filepath.is_file() and filepath.name != ".gitignore":
             shutil.copy(filepath, trajpath)
