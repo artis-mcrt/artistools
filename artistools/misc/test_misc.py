@@ -2400,14 +2400,24 @@ def test_resolve_frameset_paths(tmp_path: Path) -> None:
 
     # a -o path that has a file extension names the product, thus the frames go beside it
     frameset = at.misc.resolve_frameset_paths(
-        tmp_path / "out" / "movie.gif", framecount=3, framename=framename, productname="movie.gif", combines=True
+        tmp_path / "out" / "movie.gif",
+        framecount=3,
+        framename=framename,
+        productname="movie.gif",
+        combines=True,
+        gifduration=500,
     )
     assert frameset.productpath == tmp_path / "out" / "movie.gif"
     assert frameset.frametemplate == tmp_path / "out" / framename
 
     # the folder of the product can carry a suffix of its own
     frameset = at.misc.resolve_frameset_paths(
-        tmp_path / "results.v1" / "movie.gif", framecount=3, framename=framename, productname="movie.gif", combines=True
+        tmp_path / "results.v1" / "movie.gif",
+        framecount=3,
+        framename=framename,
+        productname="movie.gif",
+        combines=True,
+        gifduration=500,
     )
     assert frameset.productpath == tmp_path / "results.v1" / "movie.gif"
     assert (tmp_path / "results.v1").is_dir()
@@ -2421,6 +2431,10 @@ def test_resolve_frameset_paths(tmp_path: Path) -> None:
     frameset = at.misc.resolve_frameset_paths(tmp_path / "merged.pdf", framecount=2, framename=framename, combines=True)
     assert frameset.productpath == tmp_path / "merged.pdf"
     assert frameset.frametemplate == tmp_path / framename
+
+    # a merge writes pdf data, thus a product name with a different suffix stops before the plots
+    with pytest.raises(ValueError, match="a merge writes a pdf file"):
+        at.misc.resolve_frameset_paths(tmp_path / "merged.png", framecount=2, framename=framename, combines=True)
 
     # a name that holds no field cannot take more than one frame
     with pytest.raises(ValueError, match="names one file, and this command writes 3 frames"):

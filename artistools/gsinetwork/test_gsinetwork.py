@@ -220,6 +220,41 @@ def test_decayproducts_counts_each_trajectory_in_one_ye_bin(tmp_path: Path, traj
     assert math.isclose(qdot_of_bin["mid"] + qdot_of_bin["high"], qdot_of_bin["all"], rel_tol=1e-9)
 
 
+def test_decayproducts_skips_a_ye_bin_with_no_network_data(
+    tmp_path: Path, trajectory_copy: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A Ye bin that holds only trajectories with no network data gives no plot and a warning.
+
+    The sum of no trajectory gave zero rates, and the ratios of the plot then divided zero by zero.
+    """
+    from artistools.gsinetwork import decayproducts
+
+    summarylines = (trajectory_copy / "summary-all.dat").read_text(encoding="utf-8").splitlines()
+    rows = [line.split() for line in summarylines[1:]]
+    # trajectory 109215 moves to the mid bin. A trajectory with no tar file has no network data, and Ye 0.05 puts it
+    # alone in the low bin
+    rows[0][4] = "0.3"
+    rows.append(["999999", *rows[0][1:4], "0.05", *rows[0][5:]])
+    (trajectory_copy / "summary-all.dat").write_text(
+        "\n".join([summarylines[0], *(" ".join(row) for row in rows)]) + "\n", encoding="utf-8"
+    )
+
+    plottedbins: list[str] = []
+
+    def record_bin(*callargs: t.Any, outfilepath: Path) -> None:
+        del callargs
+        plottedbins.append(outfilepath.stem.split("_Ye")[-1])
+
+    with mock.patch.object(decayproducts, "plot_decay_powers", side_effect=record_bin):
+        decayproducts.main(
+            argsraw=[], trajectoryroot=trajectory_copy, tmin=0.1, tmax=0.1, nsteps=1, yemax=0.75, outputpath=tmp_path
+        )
+
+    assert "low" not in plottedbins
+    assert "all" in plottedbins
+    assert "has network data" in capsys.readouterr().err
+
+
 def make_estimators_of_strontium(tmp_path: Path) -> pl.LazyFrame:
     """Return the estimators of one cell that hold an isotope with no init_X column and the other stable isotopes."""
     (tmp_path / "compositiondata.txt").write_text("1\n0\n0\n38 3 1 3 -1 0.0 87.62\n", encoding="utf-8")

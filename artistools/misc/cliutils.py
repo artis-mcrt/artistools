@@ -1386,6 +1386,14 @@ def resolve_frameset_paths(
     givenpath = Path(outputfile) if outputfile else Path()
 
     if combines and givenpath.suffix and not givenpath.is_dir() and "{" not in givenpath.name:
+        # a merge of the frames always writes pdf data, thus a different suffix would name the format incorrectly
+        if gifduration is None and givenpath.suffix.lower() != ".pdf":
+            msg = (
+                f"'{givenpath.name}' names the merged product of {framecount} frames, and a merge writes a pdf file."
+                f" Give a name that ends with .pdf, or a folder with -o"
+            )
+            raise ValueError(msg)
+
         # the folder of the product can carry a suffix of its own, e.g. results.v1, thus make it here
         # and let resolve_outputfile read it as a folder and not as the name of one frame
         givenpath.parent.mkdir(parents=True, exist_ok=True)

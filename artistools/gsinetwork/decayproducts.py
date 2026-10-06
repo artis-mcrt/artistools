@@ -486,11 +486,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             label = ej_names[i]
 
         selected_traj_id_set = set(selected_traj_ids)
+        selectedtrajdata = [
+            trajdata for traj_id, trajdata in decay_powers_of_traj.items() if traj_id in selected_traj_id_set
+        ]
+        # a sum of no trajectory gives zero rates, and the ratios of the plot then divide zero by zero
+        if not selectedtrajdata:
+            print_warning(f"No selected trajectory of {labelfull} has network data")
+            continue
         decay_powers: dict[str, npt.NDArray[np.floating]] = {
-            k: sum(
-                (trajdata[k] for traj_id, trajdata in decay_powers_of_traj.items() if traj_id in selected_traj_id_set),
-                start=np.zeros_like(arr_t_day),
-            )
+            k: sum((trajdata[k] for trajdata in selectedtrajdata), start=np.zeros_like(arr_t_day))
             for k in decay_power_keys
         }
         decay_powers["timedays"] = np.array(arr_t_day)
