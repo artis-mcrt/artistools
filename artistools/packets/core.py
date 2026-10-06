@@ -330,6 +330,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         "escape_type_id": pl.Int32,
         "interactions": pl.Int32,
         "last_event": pl.Int32,
+        "nemissiontype_updates": pl.Int32,
         "nscatterings": pl.Int32,
         "nu_cmf": pl.Float32,
         "nu_rf": pl.Float32,
@@ -339,6 +340,9 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         "pol_dirx": pl.Float32,
         "pol_diry": pl.Float32,
         "pol_dirz": pl.Float32,
+        "sampled_absorption_freq": pl.Float32,
+        "sampled_absorption_type": pl.Int32,
+        "sampled_emissiontype": pl.Int32,
         "scat_count": pl.Int32,
         "stokes1": pl.Float32,
         "stokes2": pl.Float32,
@@ -532,6 +536,20 @@ def has_packets_files(modelpath: Path) -> bool:
     """
     textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=modelpath)
     return textfile is not None or any((modelpath / "packets").glob("packetsbatch00_*.parquet.tmp"))
+
+
+@on_model_host
+def get_packets_column_names(modelpath: Path) -> list[str] | None:
+    """Return the names of the columns of the packets of a run, or None if the run holds no packets.
+
+    The text file of the first rank gives the names. Without it, the parquet cache of the first batch gives them. The
+    host of a remote path gives the answer.
+    """
+    textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=modelpath)
+    if textfile is not None:
+        return get_packets_text_columns(textfile, modelpath)
+    parquetfile = next(iter(sorted((modelpath / "packets").glob("packetsbatch00_*.parquet.tmp"))), None)
+    return None if parquetfile is None else list(pl.read_parquet_schema(parquetfile))
 
 
 def get_packets_rankbatch_parquetfile(

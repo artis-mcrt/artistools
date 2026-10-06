@@ -87,6 +87,7 @@ from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import model_path_from_text
 from artistools.misc.timesteps import parse_timedays_range
 from artistools.packets import get_packets
+from artistools.packets import get_packets_column_names
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
@@ -110,6 +111,7 @@ from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_xlimits_to_lambda_range
 from artistools.spectra.core import convert_xunit_aliases_to_canonical
 from artistools.spectra.core import DEFAULT_YE_SHELLS
+from artistools.spectra.core import EmissionEvent
 from artistools.spectra.core import FluxContributionTuple
 from artistools.spectra.core import get_default_losvelocity_shells
 from artistools.spectra.core import get_default_velocity_shells
@@ -118,6 +120,7 @@ from artistools.spectra.core import get_flux_contributions
 from artistools.spectra.core import get_flux_contributions_from_packets
 from artistools.spectra.core import get_from_packets
 from artistools.spectra.core import get_lambda_bin_edges
+from artistools.spectra.core import get_no_sampled_emission_message
 from artistools.spectra.core import get_reference_spectrum
 from artistools.spectra.core import get_shell_labels
 from artistools.spectra.core import get_specpol_data
@@ -127,6 +130,7 @@ from artistools.spectra.core import get_vspecpol_spectrum
 from artistools.spectra.core import get_xunit
 from artistools.spectra.core import make_averaged_vspecfiles
 from artistools.spectra.core import make_virtual_spectra_summed_file
+from artistools.spectra.core import NO_SAMPLED_EMISSION_HELP
 from artistools.spectra.core import parse_velocity_argument
 from artistools.spectra.core import parse_xunit_argument
 from artistools.spectra.core import print_integrated_flux
@@ -1318,7 +1322,7 @@ def get_emission_contributions(
         fixedionlist=args.fixedionlist,
         maxseriescount=args.maxseriescount + 20,
         gamma=args.gamma,
-        usethermal=args.use_thermalemissiontype,
+        emissionevent=get_emission_event(args),
         directionbin=dirbin,
         average_over_phi=args.average_over_phi_angle,
         average_over_theta=args.average_over_theta_angle,
@@ -2078,10 +2082,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     timegroup.add_argument("--use_emissiontime", action="store_true", help="Use the time of packet last emission")
 
-    parser.add_argument(
+    emissioneventgroup = parser.add_mutually_exclusive_group()
+    emissioneventgroup.add_argument(
         "--use_thermalemissiontype",
         action="store_true",
         help="Tag packets by their last thermal emission type rather than their last emission process",
+    )
+
+    emissioneventgroup.add_argument(
+        "--use_sampledemissiontype",
+        action="store_true",
+        help=(
+            "Use one emission of each packet for the emission type. ARTIS samples this emission with equal"
+            " probability from the emissions that set the emission type. The absorption is the last absorption"
+            " before that emission. On average, each emission of a packet thus gets an equal part of the energy."
+            " ARTIS writes the necessary columns only with SAMPLE_RPKT_EMISSION (artis-mcrt/artis#661). Use -groupby"
+            " element, ion, or line. Implies --frompackets"
+        ),
     )
 
     parser.add_argument(
@@ -2304,6 +2321,14 @@ VELOCITYRANGEARGS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
 })
 
 
+def get_emission_event(args: argparse.Namespace) -> EmissionEvent:
+    """Return the emission that gives the emission type of a packet."""
+    assert not (args.use_thermalemissiontype and args.use_sampledemissiontype)
+    if args.use_sampledemissiontype:
+        return "sampled"
+    return "thermal" if args.use_thermalemissiontype else "last"
+
+
 def exit_if_no_emission_position(args: argparse.Namespace) -> None:
     """Stop if a shell grouping or a velocity range needs an emission position that the packets do not hold.
 
@@ -2321,6 +2346,12 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
         exit_with_error(
             f"a gamma packet has no thermal emission, thus {option} cannot use --use_thermalemissiontype",
             "Remove --use_thermalemissiontype. The gamma packets then use the position of the last interaction",
+        )
+
+    if args.use_sampledemissiontype:
+        exit_with_error(
+            f"the packets hold no position of the sampled emission, thus {option} cannot use --use_sampledemissiontype",
+            "Remove --use_sampledemissiontype, or give --use_thermalemissiontype for the last thermal emission",
         )
 
     if args.plotvspecpol is not None:
@@ -2388,6 +2419,17 @@ def has_gamma_spec_file(runfolder: Path) -> bool:
     return firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None
 
 
+@lru_cache(maxsize=64)
+def get_no_sampled_emission_reason(runfolder: Path) -> str | None:
+    """Return why the packets of the run hold no sampled emission, or None if they hold it or the run has no packets.
+
+    A run with no packets gets the error of the packets reader later. The spectrum viewer resolves the arguments at
+    each change. Thus the cache keeps the result until Reload Data clears it.
+    """
+    columnnames = get_packets_column_names(runfolder)
+    return None if columnnames is None else get_no_sampled_emission_message(runfolder, columnnames)
+
+
 def resolve_frompackets(args: argparse.Namespace) -> None:
     """Set args.frompackets and the default of -groupby, from the options that the exspec files cannot serve.
 
@@ -2403,6 +2445,8 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
     # each entry names an option in the message, and gives the condition under which it needs the packets
     packetreasons = {
         "-plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
+        # the emission files of exspec hold only the last emission and the last thermal emission
+        "--use_sampledemissiontype": showcontributions and args.use_sampledemissiontype,
         "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
         "--gamma with no gamma_spec.out": args.gamma
         and not all(
@@ -2494,6 +2538,24 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
             "a gamma packet holds no absorption record, thus a gamma-ray spectrum does not accept --showabsorption",
             "Remove --showabsorption",
         )
+
+    # ARTIS samples only the emissions of r-packets. A nuclide grouping takes the nuclide of the pellet and not an
+    # emission
+    if args.use_sampledemissiontype and (
+        args.gamma or args.plotvspecpol is not None or args.groupby in {"nuc", "nucmass"}
+    ):
+        exit_with_error(
+            "the sampled emission gives the element, the ion, or the line of an r-packet emission. Thus"
+            " --use_sampledemissiontype needs r-packets that are not virtual, and -groupby element, ion, or line",
+            "Remove --use_sampledemissiontype. As an alternative, remove --gamma and -plotvspecpol, and give -groupby"
+            " element, ion, or line",
+        )
+
+    # most runs have no sampled emission, thus the command stops before it reads the packets
+    if args.use_sampledemissiontype:
+        for runfolder in get_artis_run_folders(args.modelspecpaths):
+            if (reason := get_no_sampled_emission_reason(runfolder)) is not None:
+                exit_with_error(reason, NO_SAMPLED_EMISSION_HELP)
 
     # get_flux_contributions_from_packets makes the same test, but only after it reads the packets
     if args.showabsorption and args.groupby == "nuc":

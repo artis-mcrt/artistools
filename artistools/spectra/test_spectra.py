@@ -560,7 +560,7 @@ def test_spectra_no_thermal_emission_record_gives_no_thermal_velocity() -> None:
     lies above 11 000 km/s. Thus a packet below 10 000 km/s has no thermal emission record.
     """
     contributions, _, _ = get_contributions_classic_3d(
-        groupby="velocity", usethermal=True, shelledges=[0.0, 10000.0, 51000.0], getabsorption=False
+        groupby="velocity", emissionevent="thermal", shelledges=[0.0, 10000.0, 51000.0], getabsorption=False
     )
     fluxes = {contrib.linelabel: contrib.fluxcontrib for contrib in contributions}
     assert "[0, 10000) km/s" not in fluxes
@@ -568,9 +568,71 @@ def test_spectra_no_thermal_emission_record_gives_no_thermal_velocity() -> None:
     assert fluxes["[10000, 51000) km/s"] > 0.0
 
     contributions_range, _, _ = get_contributions_classic_3d(
-        usethermal=True, velocityranges={"velocity": (0.0, 10000.0)}, getabsorption=False
+        emissionevent="thermal", velocityranges={"velocity": (0.0, 10000.0)}, getabsorption=False
     )
     assert not contributions_range
+
+
+def test_spectra_sampled_emission_replaces_the_emission_type_and_the_absorption() -> None:
+    """The sampled emission gives the emission type and the absorption, and the last interaction gives neither.
+
+    The test model has no sampled emission. Thus the test copies the emission type of the last thermal emission and
+    the last absorption to the sampled columns. It then sets the columns of the last absorption to null. The plot must
+    then equal the plot of the last thermal emission.
+    """
+    get_packets = atspectra.get_packets
+
+    def get_packets_with_sample(*args: t.Any, **kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+        nprocs_read, lzdfpackets = get_packets(*args, **kwargs)
+        return nprocs_read, lzdfpackets.with_columns(
+            sampled_emissiontype=pl.col("trueemissiontype"),
+            sampled_absorption_type=pl.col("absorption_type"),
+            sampled_absorption_freq=pl.col("absorption_freq"),
+            absorption_type=pl.lit(None, dtype=pl.Int32),
+            absorption_freq=pl.lit(None, dtype=pl.Float32),
+        )
+
+    with mock.patch.object(atspectra, "get_packets", side_effect=get_packets_with_sample):
+        sampledcontributions, sampledtotal, _ = get_contributions_classic_3d(emissionevent="sampled")
+    thermalcontributions, thermaltotal, _ = get_contributions_classic_3d(emissionevent="thermal")
+
+    assert np.allclose(sampledtotal, thermaltotal, rtol=1e-10, atol=0.0)
+    assert [contrib.linelabel for contrib in sampledcontributions] == [
+        contrib.linelabel for contrib in thermalcontributions
+    ]
+    assert any(np.any(contrib.array_flambda_absorption > 0.0) for contrib in sampledcontributions)
+    for sampledcontrib, thermalcontrib in zip(sampledcontributions, thermalcontributions, strict=True):
+        for arrayname in ("array_flambda_emission", "array_flambda_absorption"):
+            assert np.allclose(
+                getattr(sampledcontrib, arrayname), getattr(thermalcontrib, arrayname), rtol=1e-10, atol=0.0
+            )
+
+
+def test_spectraemissionplot_of_a_run_with_no_sampled_emission_gives_a_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Stop with a message before the command reads the packets of a run with no sampled emission.
+
+    Each preset of ARTIS sets SAMPLE_RPKT_EMISSION to false.
+    """
+    with (
+        mock.patch.object(plotspectra, "get_flux_contributions_from_packets") as mockcontributions,
+        pytest.raises(SystemExit),
+    ):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            timemin=4,
+            timemax=6.5,
+            emissionabsorption=True,
+            use_sampledemissiontype=True,
+            outputfile=tmp_path / "nosample.pdf",
+        )
+
+    mockcontributions.assert_not_called()
+    errortext = capsys.readouterr().err
+    assert "hold no sampled emission" in errortext
+    assert "SAMPLE_RPKT_EMISSION" in errortext
 
 
 def test_spectra_velocity_argument_takes_kmps_or_c() -> None:

@@ -33,7 +33,9 @@ from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
+from artistools.spectra.core import EmissionEvent
 from artistools.spectra.core import get_xunit
+from artistools.spectra.core import SHELLCOLUMNS
 from artistools.spectra.core import XUNITS
 from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
@@ -41,6 +43,8 @@ from artistools.spectra.plotspectra import DELTALOGX_SCALES
 from artistools.spectra.plotspectra import draw_plot
 from artistools.spectra.plotspectra import find_reference_spectrum_file_or_none
 from artistools.spectra.plotspectra import get_default_xlimits
+from artistools.spectra.plotspectra import get_emission_event
+from artistools.spectra.plotspectra import get_no_sampled_emission_reason
 from artistools.spectra.plotspectra import main as plotspectra_main
 from artistools.spectra.plotspectra import make_plot_figure
 from artistools.spectra.plotspectra import path_is_reference_spectrum
@@ -158,6 +162,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "hidenetspectrum",
     "hideother",
     "use_thermalemissiontype",
+    "use_sampledemissiontype",
     "plotviewingangle",
     "plotvspecpol",
     "average_over_phi_angle",
@@ -231,7 +236,9 @@ class ControlValues:
     normalised: bool
     hidenetspectrum: bool
     hideother: bool
-    usethermalemissiontype: bool
+    # the emission that gives the emission type of a packet: "last", "thermal" (--use_thermalemissiontype), or
+    # "sampled" (--use_sampledemissiontype)
+    emissionevent: EmissionEvent
     # the kind of viewing direction:
     # - "" for all directions;
     # - "bin" for -plotviewingangle;
@@ -283,14 +290,33 @@ def get_packets_reason(tokens: "Sequence[str]") -> str | None:
     return reasons[0] if reasons else None
 
 
-def get_thermal_emission_reason(values: "ControlValues") -> str | None:
-    """Return why the choice of the last thermal emission does not change the plot, or None if it changes the plot."""
+def get_emission_event_reason(
+    values: "ControlValues", emissionevent: EmissionEvent, nosampledemissionreason: str | None
+) -> str | None:
+    """Return why a choice of the emission event does not apply to the plot, or None if it applies.
+
+    nosampledemissionreason gives why the packets of a run hold no sampled emission, or it is None.
+    """
+    if emissionevent == "last":
+        return None
+    eventname = "thermal emission" if emissionevent == "thermal" else "sampled emission"
     if values.gamma:
-        return "A gamma packet has no thermal emission"
+        return f"A gamma packet has no {eventname}"
     if (groupby := values.groupby or get_default_groupby(gamma=values.gamma)) in {"nuc", "nucmass"}:
         return f"-groupby {groupby} takes the nuclide of the pellet, and not an emission"
-    if not values.showemission:
-        return "An absorption always takes the last interaction, thus only an emission plot reads this choice"
+    if emissionevent == "thermal":
+        if not values.showemission:
+            return "An absorption always takes the last interaction, thus only an emission plot reads this choice"
+        return None
+    if groupby in SHELLCOLUMNS:
+        return f"The packets hold no position of the sampled emission, thus -groupby {groupby} cannot use it"
+    if values.directionkind == "vpkt":
+        return "A virtual packet holds no sampled emission"
+    if nosampledemissionreason is not None:
+        return (
+            f"{nosampledemissionreason}. ARTIS writes the sampled emission only if artisoptions.h of the run sets"
+            " SAMPLE_RPKT_EMISSION to true"
+        )
     return None
 
 
@@ -312,7 +338,7 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
     return dc.replace(
         values,
         gamma=gamma,
-        usethermalemissiontype=values.usethermalemissiontype and not gamma,
+        emissionevent="last" if gamma else values.emissionevent,
         xunit=xunit,
         deltax=values.deltax if xunit == values.xunit else "",
         xmin=format(xmin, ".10g"),
@@ -365,6 +391,8 @@ class RunGrid(t.NamedTuple):
     timebounds: tuple[float, float]
     validtimesteps: tuple[int, ...]
     hasgammaspectrum: bool
+    # why the packets of a run hold no sampled emission, or None if the packets of each run hold it
+    nosampledemissionreason: str | None
     directionkinds: tuple[str, ...]
     # the spectra and the time grid of the load
     runkey: tuple[tuple[str, ...], str]
@@ -700,7 +728,7 @@ class SpectrumViewer:
             normalised=bool(args.normalised),
             hidenetspectrum=bool(args.hidenetspectrum),
             hideother=bool(args.hideother),
-            usethermalemissiontype=bool(args.use_thermalemissiontype),
+            emissionevent=get_emission_event(args),
             directionkind=get_direction_kind(args),
             directionbins=tuple(args.plotvspecpol or args.plotviewingangle or ()),
             usedegrees=bool(args.usedegrees),
@@ -785,6 +813,14 @@ class SpectrumViewer:
             timebounds=(timebounds[0], timebounds[1]),
             validtimesteps=tuple(validtimesteps),
             hasgammaspectrum=has_gamma_spectrum(runfolders),
+            nosampledemissionreason=next(
+                (
+                    reason
+                    for runfolder in runfolders
+                    if (reason := get_no_sampled_emission_reason(runfolder)) is not None
+                ),
+                None,
+            ),
             # the direction controls read the first run, e.g. for the observers of -plotvspecpol
             directionkinds=tuple(get_direction_kinds(runfolders[0])),
             runkey=(tuple(str(path) for path in spectra), timegrid),
@@ -850,7 +886,8 @@ class SpectrumViewer:
             (values.histogram, "--histogram"),
             (values.hidenetspectrum, "--hidenetspectrum"),
             (values.hideother, "--hideother"),
-            (values.usethermalemissiontype, "--use_thermalemissiontype"),
+            (values.emissionevent == "thermal", "--use_thermalemissiontype"),
+            (values.emissionevent == "sampled", "--use_sampledemissiontype"),
             (values.directionkind == "phi", "--average_over_phi_angle"),
             (values.directionkind == "theta", "--average_over_theta_angle"),
             # the angles of a direction go in the labels, thus the flag has no effect without a direction
@@ -1533,19 +1570,29 @@ def open_window(
     hideothercheck = QtWidgets.QCheckBox("--hideother")
     for widget, dest in ((hidenetcheck, "hidenetspectrum"), (hideothercheck, "hideother")):
         widget.setToolTip(helptexts.get(dest, ""))
-    # the index of an item: 0 for the last emission, and 1 for the last thermal emission (--use_thermalemissiontype)
-    thermalbox = QtWidgets.QComboBox()
-    thermaltooltip = f"--use_thermalemissiontype: {helptexts.get('use_thermalemissiontype', '')}"
-    for text, tooltip in (
-        ("Last emission", "The last emission or scattering of each packet"),
-        ("Last thermal emission", thermaltooltip),
-    ):
-        thermalbox.addItem(text)
-        thermalbox.setItemData(thermalbox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
-    thermalbox.setToolTip("The emission of each packet that gives its emission series and its shell")
-    thermalmodel = thermalbox.model()
-    assert isinstance(thermalmodel, QtGui.QStandardItemModel)
-    thermalitem = thermalmodel.item(1)
+    # the data of an item is the value of ControlValues.emissionevent
+    emissioneventbox = QtWidgets.QComboBox()
+    emissioneventtooltips: dict[EmissionEvent, str] = {
+        "last": "The last emission or scattering of each packet",
+        "thermal": f"--use_thermalemissiontype: {helptexts.get('use_thermalemissiontype', '')}",
+        "sampled": f"--use_sampledemissiontype: {helptexts.get('use_sampledemissiontype', '')}",
+    }
+    eventchoices: tuple[tuple[str, EmissionEvent], ...] = (
+        ("Last emission", "last"),
+        ("Last thermal emission", "thermal"),
+        ("Sampled emission", "sampled"),
+    )
+    for text, itemevent in eventchoices:
+        emissioneventbox.addItem(text, itemevent)
+        emissioneventbox.setItemData(
+            emissioneventbox.count() - 1, emissioneventtooltips[itemevent], QtCore.Qt.ItemDataRole.ToolTipRole
+        )
+    emissioneventbox.setToolTip(
+        "The emission of each packet that gives its emission series. The last emission and the last thermal emission"
+        " also give its shell"
+    )
+    emissioneventmodel = emissioneventbox.model()
+    assert isinstance(emissioneventmodel, QtGui.QStandardItemModel)
     # these rows apply only to an emission or absorption plot, thus they show only for such a plot
     emissionoptions = QtWidgets.QWidget()
     emissionoptionslayout = QtWidgets.QVBoxLayout(emissionoptions)
@@ -1555,7 +1602,7 @@ def open_window(
         make_row_layout([QtWidgets.QLabel("-groupby"), groupbybox, countlabel, countbox, lockbutton])
     )
     emissionoptionslayout.addLayout(
-        make_row_layout([hidenetcheck, hideothercheck, QtWidgets.QLabel("--use_thermalemissiontype"), thermalbox])
+        make_row_layout([hidenetcheck, hideothercheck, QtWidgets.QLabel("--use_thermalemissiontype"), emissioneventbox])
     )
     emissiongrid.addWidget(emissionoptions, 1, 0, 1, -1)
 
@@ -1645,7 +1692,7 @@ def open_window(
         normalisedcheck,
         hidenetcheck,
         hideothercheck,
-        thermalbox,
+        emissioneventbox,
     ]
 
     # the x slider and the step of -deltax follow the unit of the x axis, thus a new unit sets them again
@@ -1901,12 +1948,17 @@ def open_window(
             noisecheck.setChecked(values.shownoise)
             histogramcheck.setChecked(values.histogram)
             hideothercheck.setChecked(values.hideother)
-            thermalbox.setCurrentIndex(1 if values.usethermalemissiontype else 0)
+            emissioneventbox.setCurrentIndex(emissioneventbox.findData(values.emissionevent))
             # the current choice stays available, thus the user can switch back from it
-            thermalreason = get_thermal_emission_reason(values)
-            if thermalitem.isEnabled() != (thermalavailable := thermalreason is None or values.usethermalemissiontype):
-                thermalitem.setEnabled(thermalavailable)
-            thermalitem.setToolTip(thermaltooltip if thermalreason is None else thermalreason)
+            for index in range(emissioneventbox.count()):
+                emissionevent = emissioneventbox.itemData(index)
+                eventreason = get_emission_event_reason(values, emissionevent, viewer.grid.nosampledemissionreason)
+                eventitem = emissioneventmodel.item(index)
+                if eventitem.isEnabled() != (
+                    eventavailable := eventreason is None or values.emissionevent == emissionevent
+                ):
+                    eventitem.setEnabled(eventavailable)
+                eventitem.setToolTip(emissioneventtooltips[emissionevent] if eventreason is None else eventreason)
             show_direction()
             show_series_rows(get_spectra_key(values), partial(make_spectrum_rows, values))
             set_option_rows(values.otheroptions)
@@ -2155,7 +2207,7 @@ def open_window(
             histogram=histogramcheck.isChecked(),
             hidenetspectrum=hidenetcheck.isChecked(),
             hideother=hideothercheck.isChecked(),
-            usethermalemissiontype=thermalbox.currentIndex() == 1,
+            emissionevent=emissioneventbox.currentData(),
         )
         # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
         if groupby != viewer.values.groupby:
@@ -2371,7 +2423,7 @@ def open_window(
     datasourcebox.currentIndexChanged.connect(on_emission_options)
     for checkbox in (noisecheck, histogramcheck, hidenetcheck, hideothercheck):
         checkbox.toggled.connect(on_emission_options)
-    thermalbox.currentIndexChanged.connect(on_emission_options)
+    emissioneventbox.currentIndexChanged.connect(on_emission_options)
     yvariablebox.currentTextChanged.connect(on_axes)
     normalisedcheck.toggled.connect(on_axes)
     timegridbox.currentIndexChanged.connect(on_timegrid)
