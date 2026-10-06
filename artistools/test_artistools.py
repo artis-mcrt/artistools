@@ -19,7 +19,6 @@ import typing as t
 from collections.abc import Callable
 from collections.abc import Iterator
 from collections.abc import Sequence
-from datetime import date
 from pathlib import Path
 from unittest import mock
 
@@ -76,45 +75,6 @@ def funcname() -> str:
 
 def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
     return np.array(callargs[0][1], dtype=float), np.array(callargs[0][2], dtype=float)
-
-
-def test_polars_series_expr_dispatch() -> None:
-    """Polars leaves most Series methods unimplemented, so check that they reach their Expr implementations.
-
-    On CPython 3.15 polars fails to rebind them and they silently return None, which artistools/_polarscompat.py
-    repairs. Sample the plain Series methods and each namespace that the repair covers.
-    """
-    assert pl.Series("x", [2, 1, 1, None]).unique().sort().to_list() == [None, 1, 2]
-    assert pl.Series("x", [-1, 2]).abs().to_list() == [1, 2]
-    assert pl.Series("x", [1, None]).drop_nulls().to_list() == [1]
-    assert pl.Series("x", ["ab"]).str.to_uppercase().to_list() == ["AB"]
-    assert pl.Series("x", [[1, 1, 2]]).list.unique().list.len().to_list() == [2]
-    assert pl.Series("x", [[1, 2]], dtype=pl.Array(pl.Int64, 2)).arr.sum().to_list() == [3]
-    assert pl.Series("x", [date(2026, 8, 8)]).dt.year().to_list() == [2026]
-    assert pl.Series("x", [{"a": 7}]).struct.field("a").to_list() == [7]
-    assert pl.Series("x", ["a"], dtype=pl.Categorical).cat.len_bytes().to_list() == [1]
-    assert pl.Series("x", [b"ab"]).bin.size().to_list() == [2]
-
-
-@pytest.mark.skipif(sys.version_info < (3, 15), reason="polars rebinds its own Series stubs below 3.15")
-def test_polarscompat_is_still_necessary() -> None:
-    """Fail once polars rebinds its Series methods without help, so that the repair can go.
-
-    polars leaves most Series methods as docstring-only stubs, and it rebinds each one to the Expr
-    version when it imports. It picks them by inspecting co_consts, which CPython 3.15 no longer fills
-    for such a function, thus every stub returns None. artistools/_polarscompat.py repairs that.
-
-    This test reads the state of polars alone. test_polars_series_expr_dispatch reads the state after
-    the repair, thus the two together say both that the repair works and that it is still needed.
-    """
-    # a fresh interpreter, because importing artistools applies the repair
-    result = run_fresh_python("import polars as pl; print(pl.Series('x', [1]).unique() is None)")
-
-    assert result.stdout.strip() == "True", (
-        f"polars {pl.__version__} rebinds its own Series methods on Python "
-        f"{'.'.join(str(part) for part in sys.version_info[:3])}. Delete artistools/_polarscompat.py, "
-        "the call to repair_series_expr_dispatch in artistools/__init__.py, and this test"
-    )
 
 
 def run_fresh_python(code: str, *pythonflags: str) -> subprocess.CompletedProcess[str]:
@@ -279,11 +239,7 @@ def test_top_level_api_is_the_documented_list() -> None:
 
     # getattr and not vars: on Python 3.15 an entry of vars is a lazy proxy until its first use
     public = {
-        name
-        for name in vars(at)
-        if not name.startswith("_")
-        and not isinstance(getattr(at, name), types.ModuleType)
-        and getattr(getattr(at, name), "__module__", "") != "artistools._polarscompat"
+        name for name in vars(at) if not name.startswith("_") and not isinstance(getattr(at, name), types.ModuleType)
     }
     assert public == TOPLEVEL_API
 
