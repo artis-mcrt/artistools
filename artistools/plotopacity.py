@@ -14,6 +14,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import DEFAULT_TAUCAPS
+from artistools.ejectaopacity import format_taucap
 from artistools.ejectaopacity import get_capped_columns
 from artistools.ejectaopacity import get_cell_batches
 from artistools.ejectaopacity import get_cell_estimators
@@ -86,7 +87,7 @@ def get_opacity_series(taucaps: Sequence[float]) -> list[tuple[str, str, "mplt.L
         *(
             (
                 column,
-                rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {taucap:g}",
+                rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {format_taucap(taucap)}",
                 CAPPEDLINESTYLES[index % len(CAPPEDLINESTYLES)],
             )
             for index, (column, taucap) in enumerate(get_capped_columns(taucaps).items())

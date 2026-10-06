@@ -1752,8 +1752,8 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
 def test_plotopacity_draws_each_cap_and_the_line_count(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """-taucaps draws an opacity for each cap, and --showlinecount adds a panel with the number of lines in each bin.
 
-    The panel counts each line that the opacities sum. A cap of 1.0000001 has the column name and the label of 1, and
-    the two caps gave two columns with one name, thus the kernel stopped with an error.
+    The panel counts each line that the opacities sum. A cap that is given two times gives one opacity. The :g format
+    gave 1.0000001 the column name of 1, thus the kernel stopped with an error.
     """
     at.plotopacity.main(
         argsraw=[
@@ -1781,11 +1781,11 @@ def test_plotopacity_draws_each_cap_and_the_line_count(mockplot: mock.MagicMock,
     labels = [call.kwargs["label"] for call in mockplot.call_args_list if call.kwargs.get("label")]
     assert labels == [
         "Expansion opacity",
-        *(rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {taucap}" for taucap in ("0.1", "1", "10")),
+        *(rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {taucap}" for taucap in ("0.1", "1", "10", "1.0000001")),
         "Line-binned",
     ]
     ratioplots = [call for call in mockplot.call_args_list if call.args[0] is axes[1]]
-    assert len(ratioplots) == 4, "each line-binned opacity needs a ratio"
+    assert len(ratioplots) == 5, "each line-binned opacity needs a ratio"
 
     (linecountplot,) = [call for call in mockplot.call_args_list if call.args[0] is axes[2]]
     timestep = 40
@@ -1902,6 +1902,7 @@ def test_expansion_opacities_give_each_cap_its_own_column() -> None:
     dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days, taucaps)
 
     sums = {taucap: dfopacities[at.ejectaopacity.get_capped_column(taucap)].sum() for taucap in sorted(taucaps)}
+    assert at.ejectaopacity.get_capped_column(1234567.0) != at.ejectaopacity.get_capped_column(1234568.0)
     assert math.isclose(sums[1.0], 1652.4668052744682, rel_tol=1e-12)
     assert math.isclose(sums[1e300], dfopacities["linebinned"].sum(), rel_tol=1e-12)
     assert list(sums.values()) == sorted(sums.values())

@@ -77,21 +77,25 @@ class OpacityLines(t.NamedTuple):
     """
 
 
+def format_taucap(taucap: float) -> str:
+    """Return the shortest text that gives the cap again, e.g. "1", "0.1", or "1234567".
+
+    The :g format keeps six significant digits, thus 1234567 and 1234568 gave one column name.
+    """
+    return repr(float(taucap)).removesuffix(".0")
+
+
 def get_capped_column(taucap: float) -> str:
     """Return the name of the column of the line-binned opacity with each tau_sobolev capped at taucap."""
-    return f"linebinned_cap{taucap:g}"
+    return f"linebinned_cap{format_taucap(taucap)}"
 
 
 def get_capped_columns(taucaps: Sequence[float]) -> dict[str, float]:
     """Return the cap of each capped column, in the order of the caps.
 
-    Two caps with one name, e.g. 1 and 1.0000001, give one column, because a dataframe cannot hold two columns with
-    one name. The first of the caps sets the value.
+    Two equal caps give one column, because a dataframe cannot hold two columns with one name.
     """
-    cappedcolumns: dict[str, float] = {}
-    for taucap in taucaps:
-        cappedcolumns.setdefault(get_capped_column(taucap), taucap)
-    return cappedcolumns
+    return {get_capped_column(taucap): taucap for taucap in taucaps}
 
 
 def get_opacity_columns(taucaps: Sequence[float]) -> list[str]:

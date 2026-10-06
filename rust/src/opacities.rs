@@ -139,7 +139,8 @@ fn sum_cell_group(
         }
         for (cappedsums, &taucap) in linebinned_capped.iter_mut().zip(taucaps) {
             for (&celltau, lbcapped) in tau.iter().zip(&mut cappedsums[bin]) {
-                // f64::min returns the cap for a NaN optical depth. NaN must reach each of the sums
+                // the comparison is false for a NaN optical depth, thus NaN reaches the sum. f64::min gives
+                // the cap for NaN, thus the code does not use it
                 *lbcapped += (if celltau > taucap { taucap } else { celltau }) * lambda;
             }
         }
