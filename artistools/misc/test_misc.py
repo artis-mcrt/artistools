@@ -1229,6 +1229,10 @@ def test_bin_index_of_nan_is_null_and_of_an_outside_value_is_outside_the_bins() 
     rightclosed = df.select(get_bin_index_expr(x, [0.0, 1.0, 2.0], right_closed=True)).to_series().to_list()
     assert rightclosed == [-1, -1, 0, 0, 1, 2, None, None]
 
+    # plotestimators bins an integer column for -x timestep or -x modelgridindex, and the NaN test must accept it
+    dfint = pl.DataFrame({"x": [0, 1, 2, None]}, schema={"x": pl.Int32})
+    assert dfint.lazy().select(get_bin_index_expr(x, [0.5, 1.5])).collect().to_series().to_list() == [-1, 0, 1, None]
+
 
 def test_df_filter_minmax_bracketed() -> None:
     df = pl.DataFrame({"x": list(range(11))})  # 0..10
