@@ -110,11 +110,13 @@ def clear_output_caches() -> None:
     from artistools.spectra.core import read_spec_cached
     from artistools.spectra.core import read_spec_res_cached
     from artistools.spectra.core import read_specpol_res_cached
+    from artistools.spectra.plotspectra import get_no_sampled_emission_reason
     from artistools.spectra.plotspectra import has_gamma_spec_file
 
     for cachedfunction in (
         # the file tests of the client also go, e.g. after exspec writes gamma_spec.out
         has_gamma_spec_file,
+        get_no_sampled_emission_reason,
         run_has_direction_data,
         get_nu_grid_cached,
         get_deposition_cached,
@@ -952,7 +954,6 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--showemission": "Show emission",
     "--shownoise": "Show noise",
     "--use_pellet_decay_time": "Pellet decay time",
-    "--use_thermalemissiontype": "Event",
     "--usedegrees": "Degrees",
     "-axis": "Axis",
     "-cell": "Cells",

@@ -329,6 +329,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         "escape_type_id": pl.Int32,
         "interactions": pl.Int32,
         "last_event": pl.Int32,
+        "nemissiontype_updates": pl.Int32,
         "nscatterings": pl.Int32,
         "nu_cmf": pl.Float32,
         "nu_rf": pl.Float32,
@@ -338,6 +339,9 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         "pol_dirx": pl.Float32,
         "pol_diry": pl.Float32,
         "pol_dirz": pl.Float32,
+        "sampled_absorption_freq": pl.Float32,
+        "sampled_absorption_type": pl.Int32,
+        "sampled_emissiontype": pl.Int32,
         "scat_count": pl.Int32,
         "stokes1": pl.Float32,
         "stokes2": pl.Float32,
@@ -523,14 +527,46 @@ def get_packets_textfilename(rank: int, virtual: bool) -> str:
     return f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out"
 
 
+def get_first_packets_file(modelpath: Path) -> Path | None:
+    """Return the packets text file of the first rank, or the parquet cache of the first batch, or None.
+
+    The name of a cache holds the ranks of its batch. A cache of an earlier run with a different number of ranks is
+    not the cache that get_packets reads. If only such a cache exists, the function returns None.
+    """
+    textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=modelpath)
+    if textfile is not None:
+        return textfile
+    # the name of the cache needs the number of ranks in input.txt, thus the function reads that file only if a
+    # cache exists
+    if not any((modelpath / "packets").glob("packetsbatch00_*.parquet.tmp")):
+        return None
+    (batchindex, batch_mpiranks), *_ = get_packets_mpirank_groups(modelpath, maxpacketfiles=None)
+    parquetfile = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual=False)
+    return parquetfile if parquetfile.is_file() else None
+
+
 @on_model_host
 def has_packets_files(modelpath: Path) -> bool:
     """Return True if the run holds the packets text files, or the parquet cache of their first batch.
 
     A run can keep only the parquet cache of its packets. The host of a remote path gives the answer.
     """
-    textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=modelpath)
-    return textfile is not None or any((modelpath / "packets").glob("packetsbatch00_*.parquet.tmp"))
+    return get_first_packets_file(modelpath) is not None
+
+
+@on_model_host
+def get_packets_column_names(modelpath: Path) -> list[str] | None:
+    """Return the names of the columns of the packets of a run, or None if the run holds no packets.
+
+    The text file of the first rank gives the names, or else the parquet cache of the first batch. The host of a
+    remote path gives the answer.
+    """
+    packetsfile = get_first_packets_file(modelpath)
+    if packetsfile is None:
+        return None
+    if packetsfile.name.endswith(".parquet.tmp"):
+        return list(pl.read_parquet_schema(packetsfile))
+    return get_packets_text_columns(packetsfile, modelpath)
 
 
 def get_packets_rankbatch_parquetfile(

@@ -1759,6 +1759,53 @@ SHELL_NOT_SET: t.Final = -1
 # absorption_freq for it, but it records no line index
 ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY: t.Final = -11
 
+# the emission that gives the emission type of a packet. "last" is the last interaction, and "thermal" is the last
+# thermal emission. "sampled" is one emission that ARTIS samples with equal probability from the emissions that set
+# the emission type
+type EmissionEvent = t.Literal["last", "thermal", "sampled"]
+
+# the packet column of the sampled emission that replaces each column of the last interaction. ARTIS writes these
+# columns with SAMPLE_RPKT_EMISSION (artis-mcrt/artis#661)
+SAMPLEDCOLUMNS: t.Final[Mapping[str, str]] = MappingProxyType({
+    "sampled_emissiontype": "emissiontype",
+    "sampled_absorption_type": "absorption_type",
+    "sampled_absorption_freq": "absorption_freq",
+})
+
+
+# the help does not name --use_thermalemissiontype, because it also applies to an absorption plot, and an absorption
+# always takes the last interaction
+NO_SAMPLED_EMISSION_HELP: t.Final = (
+    "ARTIS writes the sampled emission only if artisoptions.h of the run sets SAMPLE_RPKT_EMISSION to true"
+    " (artis-mcrt/artis#661), and each preset sets it to false. Run the simulation again with that option, or"
+    " remove --use_sampledemissiontype"
+)
+
+
+def get_no_sampled_emission_message(modelpath: Path | str, columnnames: Sequence[str]) -> str | None:
+    """Return why the packets with these columns hold no sampled emission, or None if they hold it.
+
+    The spectrum viewer shows only the first line of an error, thus the message names the option of ARTIS.
+    """
+    missingcolumns = [column for column in SAMPLEDCOLUMNS if column not in columnnames]
+    if not missingcolumns:
+        return None
+    return (
+        f"The packets of {modelpath} hold no sampled emission, because they do not have the columns that ARTIS writes"
+        f" with SAMPLE_RPKT_EMISSION: {', '.join(missingcolumns)}"
+    )
+
+
+def use_sampled_emission_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str) -> pl.LazyFrame:
+    """Replace the emission type and the absorption of the last interaction with those of the sampled emission.
+
+    The absorption of the sampled emission is the last absorption before it.
+    """
+    if (message := get_no_sampled_emission_message(modelpath, lzdfpackets.collect_schema().names())) is not None:
+        msg = f"{message}. {NO_SAMPLED_EMISSION_HELP}"
+        raise ValueError(msg)
+    return lzdfpackets.drop(SAMPLEDCOLUMNS.values()).rename(dict(SAMPLEDCOLUMNS))
+
 
 def get_shell_index_expr(
     column: str, shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps"
@@ -1891,7 +1938,7 @@ def get_flux_contributions_from_packets(
     maxseriescount: int | None = None,
     fixedionlist: list[str] | None = None,
     use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
-    usethermal: bool = False,
+    emissionevent: EmissionEvent = "last",
     directionbin: int | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
@@ -1908,10 +1955,16 @@ def get_flux_contributions_from_packets(
     radial velocity (velocity), of the velocity along the line of sight (losvelocity), or of the
     initial electron fraction of the cell (ye).
 
-    An emission belongs to the last interaction of the packet, or to the last thermal emission when
-    usethermal is true. This choice sets the emission type of an ion group and of a line group. It also
-    sets the shell of an emission and the velocity that velocityranges reads. A nuclide group always
-    takes the nuclide of the pellet.
+    emissionevent selects the emission of each packet: the last interaction, the last thermal emission, or
+    the sampled emission. This choice sets the emission type of an ion group and of a line group. The last
+    interaction and the last thermal emission also set the shell of an emission and the velocity that
+    velocityranges reads. A nuclide group always takes the nuclide of the pellet.
+
+    ARTIS samples one emission of each packet with equal probability from the emissions that set the emission
+    type. The sampled emission takes the full energy of the packet. Thus, on average, each emission of a packet
+    gets an equal part of the energy. The sampled emission also gives the absorption: the last absorption before
+    that emission. The packets hold no position of the sampled emission, thus a shell and a velocity range cannot
+    use it.
 
     A shell holds the packets whose emission position lies inside it. shelledges gives the edges of the
     shells, and shellunit gives the unit of the labels. The last absorption of a packet happens at the
@@ -1924,6 +1977,15 @@ def get_flux_contributions_from_packets(
     """
     assert groupby in {"element", "ion", "line", "nuc", "nucmass", *SHELLCOLUMNS}
     assert use_time in {"arrival", "emission", "escape"}
+    usethermal = emissionevent == "thermal"
+    if emissionevent == "sampled" and (
+        groupby not in {"element", "ion", "line"} or gamma or velocityranges or directionbins_are_vpkt_observers
+    ):
+        msg = (
+            "The sampled emission gives an element, an ion, or a line of an r-packet emission. Use -groupby element,"
+            " ion, or line. Do not use gamma packets, a velocity range, or virtual packets"
+        )
+        raise ValueError(msg)
     if groupby in SHELLCOLUMNS:
         emtypecolumn = SHELLCOLUMNS[groupby][1 if usethermal else 0]
         if groupby == "ye":
@@ -2004,6 +2066,13 @@ def get_flux_contributions_from_packets(
             escape_type="TYPE_GAMMA" if gamma else "TYPE_RPKT",
         )
         dirbin_nu_column = "nu_rf"
+        if emissionevent == "sampled":
+            lzdfpackets = use_sampled_emission_columns(lzdfpackets, modelpath)
+            print(
+                "Each packet takes the emission type of its sampled emission, and the last absorption before it."
+                " ARTIS samples each emission of a packet with equal probability. Thus, on average, each emission"
+                " gets an equal part of the energy of the packet"
+            )
 
         for shellgrouping in SHELLCOLUMNS:
             if shellgrouping == groupby or shellgrouping in velocityranges:
