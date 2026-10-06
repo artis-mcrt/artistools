@@ -209,7 +209,8 @@ def bin_packets_by_direction(
             [ion_stage] if ion_stage is not None else None,
         )
         dfpackets = dfpackets.filter(
-            pl.col("emissiontype").is_in(selected_emtypes) | pl.col("absorption_type").is_in(selected_emtypes)
+            pl.col("emissiontype").is_in(selected_emtypes.implode())
+            | pl.col("absorption_type").is_in(selected_emtypes.implode())
         )
 
     aggs.append(pl.len().alias("count"))
