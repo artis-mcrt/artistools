@@ -44,9 +44,8 @@ from artistools.rustext import sum_binned_line_opacities
 
 HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
 
-# exopac is the expansion opacity. linebinned is the sum of tau_sobolev, and linebinned_maxone
-# limits each tau_sobolev to 1
-OPACITYCOLUMNS = ("exopac", "linebinned", "linebinned_maxone")
+# the caps of tau_sobolev of the capped line-binned opacities, if the caller gives no caps
+DEFAULT_TAUCAPS: t.Final = (1.0,)
 
 # the estimator columns that can give the excitation temperature T_exc of the LTE level populations
 EXCITATIONTEMPERATURE_NAMES: t.Final = MappingProxyType({
@@ -76,6 +75,36 @@ class OpacityLines(t.NamedTuple):
     lower and upper give the row of each level in dflevels. The Sobolev optical depth of a line is
     pop_lower * sobolev_lower - pop_upper * sobolev_upper.
     """
+
+
+def format_taucap(taucap: float) -> str:
+    """Return the shortest text that gives the cap again, e.g. "1", "0.1", or "1234567".
+
+    The :g format keeps six significant digits, thus 1234567 and 1234568 gave one column name.
+    """
+    return repr(float(taucap)).removesuffix(".0")
+
+
+def get_capped_column(taucap: float) -> str:
+    """Return the name of the column of the line-binned opacity with each tau_sobolev capped at taucap."""
+    return f"linebinned_cap{format_taucap(taucap)}"
+
+
+def get_capped_columns(taucaps: Sequence[float]) -> dict[str, float]:
+    """Return the cap of each capped column, in the order of the caps.
+
+    Two equal caps give one column, because a dataframe cannot hold two columns with one name.
+    """
+    return {get_capped_column(taucap): taucap for taucap in taucaps}
+
+
+def get_opacity_columns(taucaps: Sequence[float]) -> list[str]:
+    """Return the names of the opacity columns.
+
+    exopac is the expansion opacity. linebinned is the sum of tau_sobolev. Each capped column caps each tau_sobolev
+    at one value of taucaps.
+    """
+    return ["exopac", "linebinned", *get_capped_columns(taucaps)]
 
 
 def get_expopac_grid(modelpath: Path | str) -> tuple[float, float, float] | None:
@@ -191,9 +220,15 @@ def get_opacity_lines(
 
 
 def get_expansion_opacities(
-    opacitylines: OpacityLines, dfcells: pl.DataFrame, lambda_bin_edges: list[float], time_days: float
+    opacitylines: OpacityLines,
+    dfcells: pl.DataFrame,
+    lambda_bin_edges: list[float],
+    time_days: float,
+    taucaps: Sequence[float] = DEFAULT_TAUCAPS,
 ) -> pl.DataFrame:
     """Return the binned expansion opacity and the line-binned opacities of each cell.
+
+    The columns of the opacities have the names that get_opacity_columns(taucaps) gives.
 
     The Rust function sum_binned_line_opacities() calculates the LTE level populations and sums the lines of
     each bin. A query in polars took 12 times longer, because each operation writes a full column.
@@ -202,6 +237,7 @@ def get_expansion_opacities(
     deltalambda = lambda_bin_edges[1] - lambda_bin_edges[0]
     time_s = time_days * day_to_s
     nnioncolumns = [f"nnion_{ionstr}" for ionstr in opacitylines.ionstrs]
+    opacitycolumns = get_opacity_columns(taucaps)
 
     dfsums = sum_binned_line_opacities(
         opacitylines.dflevels,
@@ -210,6 +246,7 @@ def get_expansion_opacities(
         # population. Thus a null temperature and a null population take a zero
         dfcells.select(pl.col("T_exc", *nnioncolumns).cast(pl.Float64).fill_null(0.0)),
         nnioncolumns,
+        list(get_capped_columns(taucaps).items()),
         numbins,
         K_B_ev_per_K,
     )
@@ -224,7 +261,7 @@ def get_expansion_opacities(
             + deltalambda / 2,
             **{
                 column: dfsums[column] / deltalambda / (C_cm_per_s * time_s * pl.col("rho"))
-                for column in OPACITYCOLUMNS
+                for column in opacitycolumns
             },
         )
         .select(
@@ -233,7 +270,7 @@ def get_expansion_opacities(
             "lambda_angstroms_bin_mid",
             "T_exc",
             "mass_g",
-            *OPACITYCOLUMNS,
+            *opacitycolumns,
         )
     )
 

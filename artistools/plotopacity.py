@@ -13,6 +13,9 @@ import polars as pl
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.ejectaopacity import addarg_excitationtemperature
+from artistools.ejectaopacity import DEFAULT_TAUCAPS
+from artistools.ejectaopacity import format_taucap
+from artistools.ejectaopacity import get_capped_columns
 from artistools.ejectaopacity import get_cell_batches
 from artistools.ejectaopacity import get_cell_estimators
 from artistools.ejectaopacity import get_excitation_temperature_column
@@ -20,10 +23,10 @@ from artistools.ejectaopacity import get_expansion_opacities
 from artistools.ejectaopacity import get_expopac_grid
 from artistools.ejectaopacity import get_lambda_bin_edges
 from artistools.ejectaopacity import get_opacity_atomic_data
+from artistools.ejectaopacity import get_opacity_columns
 from artistools.ejectaopacity import get_opacity_lines
 from artistools.ejectaopacity import get_planck_mean_opacities
 from artistools.ejectaopacity import get_selected_timestep
-from artistools.ejectaopacity import OPACITYCOLUMNS
 from artistools.ejectaopacity import print_planck_mean_method
 from artistools.inputmodel import get_cell_selection
 from artistools.misc import addarg_axislimits
@@ -47,7 +50,8 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.misc.general import get_progress_class
-from artistools.plottools import make_frame_figure_with_residuals
+from artistools.plottools import make_frame_figure
+from artistools.plottools import RESIDUALROWHEIGHT
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
 from artistools.plottools import set_axis_properties
@@ -64,15 +68,32 @@ if t.TYPE_CHECKING:
 # the width of a bin in Angstroms for a run with no rpkt.h. ARTIS used this width in 2026
 DEFAULT_DELTALAMBDA: t.Final = 20.0
 
-# each opacity with its label and its line style. The expansion opacity and the capped opacity are often almost
-# equal, thus the dashes keep them apart
-OPACITYSERIES = (
-    ("exopac", "Expansion opacity", "-"),
-    ("linebinned_maxone", r"Line-binned, $\tau_\mathrm{S}$ capped at 1", "--"),
-    ("linebinned", "Line-binned", "-"),
-)
+# the line style of each capped opacity, in the order of the caps. The expansion opacity and an opacity capped at 1
+# are often almost equal, thus the dashes show the difference. The Planck mean uses the dotted line, thus this list
+# has none
+CAPPEDLINESTYLES: t.Final = ("--", "-.", (0, (5, 1, 1, 1, 1, 1)), (0, (8, 2)))
 # where two opacities are equal, their lines are at the same place. A thin line covers less of the line below it
 OPACITYLINE_WIDTH: t.Final = 0.6
+
+
+def get_opacity_series(taucaps: Sequence[float]) -> list[tuple[str, str, "mplt.LineStyleType"]]:
+    """Return the column, the label, and the line style of each opacity.
+
+    The capped opacities are between the expansion opacity and the line-binned opacity in the list, because their
+    values are between these two opacities.
+    """
+    return [
+        ("exopac", "Expansion opacity", "-"),
+        *(
+            (
+                column,
+                rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {format_taucap(taucap)}",
+                CAPPEDLINESTYLES[index % len(CAPPEDLINESTYLES)],
+            )
+            for index, (column, taucap) in enumerate(get_capped_columns(taucaps).items())
+        ),
+        ("linebinned", "Line-binned", "-"),
+    ]
 
 
 def get_massweighted_opacities(
@@ -81,12 +102,16 @@ def get_massweighted_opacities(
     dfestimators: pl.DataFrame,
     lambda_bin_edges: Sequence[float],
     planckrange: tuple[float, float] | None = None,
+    taucaps: Sequence[float] = DEFAULT_TAUCAPS,
 ) -> tuple[pl.DataFrame, float]:
     """Return the mean binned opacities over the cells, and the mean Planck mean of the expansion opacity.
 
     The mass of each cell is the weight of both means. For one cell, the result is the opacity of that cell. The bins
     have one width. The Planck mean takes the bins with a middle in planckrange. A planckrange of None, or a run with
     no cell temperature, gives a Planck mean of NaN.
+
+    The column linecount gives the number of lines in each bin. It counts each line that the opacities sum, thus it
+    is the same for each cell.
     """
     if dfestimators.height > 1:
         print_detail(f"The curves are the mass-weighted mean of the opacities of {dfestimators.height} cells")
@@ -95,6 +120,7 @@ def get_massweighted_opacities(
     lambda_bin_edges = list(lambda_bin_edges)
     deltalambda = lambda_bin_edges[1] - lambda_bin_edges[0]
     opacitylines = get_opacity_lines(adata, dfestimators.columns, lambda_bin_edges, time_days)
+    opacitycolumns = get_opacity_columns(taucaps)
 
     batchsums: list[pl.DataFrame] = []
     planckmean_times_mass = 0.0
@@ -103,10 +129,10 @@ def get_massweighted_opacities(
     for dfcellbatch in get_progress_class()(
         get_cell_batches(dfestimators, len(lambda_bin_edges) - 1), desc="Calculating the opacities", unit="batch"
     ):
-        dfbinnedopacities = get_expansion_opacities(opacitylines, dfcellbatch, lambda_bin_edges, time_days)
+        dfbinnedopacities = get_expansion_opacities(opacitylines, dfcellbatch, lambda_bin_edges, time_days, taucaps)
         batchsums.append(
             dfbinnedopacities.group_by("lambda_angstroms_binindex").agg(
-                (pl.col(*OPACITYCOLUMNS) * pl.col("mass_g")).sum(), pl.col("mass_g").sum()
+                (pl.col(*opacitycolumns) * pl.col("mass_g")).sum(), pl.col("mass_g").sum()
             )
         )
         if planckrange is None:
@@ -117,15 +143,18 @@ def get_massweighted_opacities(
         planckmean_times_mass += dfplanckmean.select(pl.col("planckmean_opacity").dot(pl.col("mass_g"))).item()
         planckmass += dfplanckmean.select(pl.col("mass_g").sum()).item()
 
+    linecounts = opacitylines.dflines.group_by("lambda_angstroms_binindex").agg(linecount=pl.len())
     # the index of a bin gives its middle, thus the sums of the batches need no float key
     dfopacities = (
         pl
         .concat(batchsums)
         .group_by("lambda_angstroms_binindex")
         .agg(pl.all().sum())
+        .join(linecounts, on="lambda_angstroms_binindex", how="left")
         .sort("lambda_angstroms_binindex")
         .select(
-            pl.col(*OPACITYCOLUMNS) / pl.col("mass_g"),
+            pl.col(*opacitycolumns) / pl.col("mass_g"),
+            pl.col("linecount").fill_null(0),
             lambda_angstroms_bin_mid=lambda_bin_edges[0] + (pl.col("lambda_angstroms_binindex") + 0.5) * deltalambda,
             lambda_angstroms_lower=lambda_bin_edges[0] + pl.col("lambda_angstroms_binindex") * deltalambda,
             lambda_angstroms_upper=lambda_bin_edges[0] + (pl.col("lambda_angstroms_binindex") + 1) * deltalambda,
@@ -185,14 +214,13 @@ def get_window_bins(width: float, deltalambda: float) -> int:
     return 2 * math.floor(width / deltalambda / 2 + 1e-9) + 1
 
 
-def get_moving_averages(dfopacities: pl.DataFrame, windowbins: int) -> pl.DataFrame:
-    """Return the centred moving average of each opacity at the middle of each bin.
+def get_moving_averages(dfopacities: pl.DataFrame, windowbins: int, columns: Sequence[str]) -> pl.DataFrame:
+    """Return the centred moving average of each column at the middle of each bin.
 
     Near each end of the range, the window holds fewer bins.
     """
     return dfopacities.select(
-        "lambda_angstroms_bin_mid",
-        pl.col(*OPACITYCOLUMNS).rolling_mean(window_size=windowbins, center=True, min_samples=1),
+        "lambda_angstroms_bin_mid", pl.col(*columns).rolling_mean(window_size=windowbins, center=True, min_samples=1)
     )
 
 
@@ -203,12 +231,12 @@ def plot_opacities(
     title: str,
     args: argparse.Namespace,
 ) -> None:
-    """Plot each type of binned opacity against wavelength, with a panel of ratios below, and save the figure.
+    """Plot each type of binned opacity against wavelength, with the panels below it, and save the figure.
 
     Each bin is a short horizontal line from its lower edge to its upper edge. With a moving average, a line in the
     same colour gives the moving average of each opacity. The panel below gives the ratio of each line-binned
     opacity to the expansion opacity. A finite planckmean gives a dotted line at the Planck mean of the expansion
-    opacity.
+    opacity. With --showlinecount, a third panel gives the number of lines in each bin.
 
     The plot takes the bins of the x range, and the moving average keeps one point past each end, thus its line
     reaches the edge of the frame. A value outside the x range then does not change the y range.
@@ -220,8 +248,11 @@ def plot_opacities(
         dfmovingaverages = df_filter_minmax_bracketed(
             dfmovingaverages, "lambda_angstroms_bin_mid", args.xmin, args.xmax
         ).collect()
+    rowheights = (1.0, RESIDUALROWHEIGHT, RESIDUALROWHEIGHT) if args.showlinecount else (1.0, RESIDUALROWHEIGHT)
     # the frame takes one column of the page, as the plots of the other ejecta properties do, e.g. plotdensity
-    fig, ax, ratioaxis = make_frame_figure_with_residuals(args, fullwidth=False)
+    fig, axes = make_frame_figure(args, rows=len(rowheights), fullwidth=False, rowheights=rowheights)
+    ax, ratioaxis = axes[0, 0], axes[1, 0]
+    bottomaxis = axes[-1, 0]
 
     # a NaN after each bin breaks the line, thus each series stays one line for the legend and for the y scale
     binbreaks = np.full(dfopacities.height, np.nan)
@@ -236,8 +267,9 @@ def plot_opacities(
             return get_bin_line(column)
         return dfmovingaverages["lambda_angstroms_bin_mid"].to_numpy(), dfmovingaverages[column].to_numpy()
 
+    opacityseries = get_opacity_series(args.taucaps)
     colors: dict[str, mplt.ColorType] = {}
-    for column, label, linestyle in OPACITYSERIES:
+    for column, label, linestyle in opacityseries:
         # the moving average goes on top of the bins, and the legend shows the moving average when there is one
         (binlines,) = ax.plot(
             *get_bin_line(column),
@@ -263,7 +295,7 @@ def plot_opacities(
         )
 
     linex, expansion = get_line("exopac")
-    for column, _label, linestyle in OPACITYSERIES[1:]:
+    for column, _label, linestyle in opacityseries[1:]:
         _, opacities = get_line(column)
         ratioaxis.plot(
             linex,
@@ -274,10 +306,23 @@ def plot_opacities(
             solid_capstyle="butt",
         )
 
+    if args.showlinecount:
+        print_detail(
+            "The number of lines in each bin counts each line of an ion with estimators, if ARTIS keeps the lower"
+            " level and the upper level"
+        )
+        bottomaxis.plot(*get_bin_line("linecount"), linewidth=OPACITYLINE_WIDTH, color="0.3", solid_capstyle="butt")
+        bottomaxis.set_ylabel("Lines\nper bin")
+        # the number of lines in a bin is from zero to some thousands. A log scale hides a bin with no line
+        bottomaxis.set_yscale("log")
+        set_axis_properties(bottomaxis, args, setyaxis=False)
+        set_log_ticks_every_decade(bottomaxis.yaxis)
+
     ax.set_ylabel(r"Opacity [cm$^2$/g]")
-    ratioaxis.set_xlabel(r"Wavelength ($\mathrm{\AA}$)")
+    bottomaxis.set_xlabel(r"Wavelength ($\mathrm{\AA}$)")
     ratioaxis.set_ylabel("Ratio to\nexpansion")
-    # the line-binned opacity is up to 1000 times the expansion opacity, and the capped opacity is 1 to 1.58 times it
+    # the line-binned opacity is up to 1000 times the expansion opacity, and the opacity capped at 1 is 1 to 1.58
+    # times it
     ratioaxis.set_yscale("log")
     set_auto_yscale(ax, args)
     set_axis_properties(ax, args)
@@ -386,6 +431,19 @@ def get_cells_text(
     return f"mean composition of {cellstext} at {averagetemperaturetext}"
 
 
+def parse_taucap(text: str) -> float:
+    """Return the cap of tau_sobolev in the text, which must be above zero."""
+    try:
+        value = float(text)
+    except ValueError as exc:
+        msg = f"invalid float value: {text!r}"
+        raise argparse.ArgumentTypeError(msg) from exc
+    if not value > 0.0:
+        msg = f"{text} is not a positive cap of tau_sobolev. Give a value above 0"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path(), helptext="Path of the ARTIS model")
@@ -445,6 +503,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument(
+        "-taucaps",
+        type=parse_taucap,
+        nargs="+",
+        default=list(DEFAULT_TAUCAPS),
+        metavar="TAUCAP",
+        help=(
+            "Caps of tau_sobolev. The plot shows one line-binned opacity for each cap, with each tau_sobolev capped"
+            " at that value, e.g. -taucaps 0.1 1 10"
+        ),
+    )
+    parser.add_argument(
+        "--showlinecount", action="store_true", help="Add a panel with the number of lines in each wavelength bin"
+    )
+    parser.add_argument(
         "--showplanckmean",
         action="store_true",
         help="Draw a line at the mass-weighted Planck mean of the expansion opacity over the wavelength range",
@@ -486,6 +558,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         dfestimators=dfestimators,
         lambda_bin_edges=lambda_bin_edges,
         planckrange=(args.xmin, args.xmax) if args.showplanckmean else None,
+        taucaps=args.taucaps,
     )
 
     # the frame takes one column of the page, thus the cells take a second line of the title
@@ -494,5 +567,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         f"{get_cells_text(modelgridindex, args.vmin, args.vmax, averagetemperaturetext)}"
     )
     windowbins = get_window_bins(args.movingaveragewidth, deltalambda)
-    dfmovingaverages = get_moving_averages(dfopacities, windowbins) if args.movingaveragewidth > 0.0 else None
+    dfmovingaverages = (
+        get_moving_averages(dfopacities, windowbins, get_opacity_columns(args.taucaps))
+        if args.movingaveragewidth > 0.0
+        else None
+    )
     plot_opacities(dfopacities, dfmovingaverages, planckmean, title, args)
