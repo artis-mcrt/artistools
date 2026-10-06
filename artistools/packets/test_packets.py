@@ -767,3 +767,13 @@ def test_lastpacketinteraction_refuses_a_selection_that_matches_no_packet(
     assert mockplot.call_count == 0
     captured = capsys.readouterr()
     assert expectedmessage in captured.err + captured.out
+
+
+def test_timestep_of_a_time_at_the_start_of_a_timestep() -> None:
+    """An ARTIS timestep holds its start time. A time at a start went to the timestep before it, and the first gave -1."""
+    from artistools.packets.core import get_timestep_expr
+
+    dftimes = pl.DataFrame({"time": [0.5, 1.0, 1.5, 2.0, 3.0, 3.5]})
+    timesteps = dftimes.select(get_timestep_expr(pl.col("time"), [1.0, 2.0, 3.0])).to_series().to_list()
+
+    assert timesteps == [-1, 0, 0, 1, 2, 2]

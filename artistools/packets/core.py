@@ -241,8 +241,9 @@ def get_timestep_expr(time: pl.Expr, timebins: Sequence[float]) -> pl.Expr:
 
     A time before the first timestep gives -1, and a time after the last timestep gives the timestep count.
     """
-    # the first category of cut() holds the times below the first edge, thus the first timestep has the index 1
-    return time.cut(breaks=timebins).to_physical().cast(pl.Int32) - 1
+    # the first category of cut() holds the times below the first edge, thus the first timestep has the index 1. An
+    # ARTIS timestep holds its start time and not its end time
+    return time.cut(breaks=timebins, left_closed=True).to_physical().cast(pl.Int32) - 1
 
 
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: Path | str) -> pl.LazyFrame:

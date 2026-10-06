@@ -59,6 +59,14 @@ def average_direction_bins(
         )
         raise ValueError(msg)
 
+    # a different build of ARTIS can write more bins, and the geometry of the default bins would ignore the others
+    if extrabins := sorted(set(dirbindataframes) - set(range(dirbincount))):
+        msg = (
+            f"Cannot average over {overangle}: artistools takes the geometry of {dirbincount} direction bins, but the"
+            f" data holds {len(extrabins)} more bins (first extra bin is {extrabins[0]})"
+        )
+        raise ValueError(msg)
+
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function
     dirbindataframesout: dict[int, pl.LazyFrame] = {}

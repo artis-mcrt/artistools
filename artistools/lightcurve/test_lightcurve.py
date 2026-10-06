@@ -2549,6 +2549,15 @@ def test_scan_lightcurve_of_a_build_with_a_different_count_of_direction_bins(
         assert f"holds {nbins} tables" in capsys.readouterr().err
 
 
+def test_average_of_a_light_curve_with_more_direction_bins_stops(tmp_path: Path) -> None:
+    """The average takes the geometry of 100 direction bins. It ignored each table above bin 99 with no message."""
+    lcpath = tmp_path / "light_curve_res.out"
+    lcpath.write_text("1.0 2.0 3.0\n2.0 4.0 6.0\n" * 101, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="1 more bins"):
+        at.lightcurve.scan_lightcurve(lcpath, directionresolved=True, average_over_phi=True)
+
+
 def test_named_light_curve_file_must_agree_with_the_direction_bins(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
