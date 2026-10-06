@@ -1,6 +1,9 @@
 import argparse
 import dataclasses as dc
+import gzip
+import lzma
 import shlex
+import shutil
 import typing as t
 import warnings
 from collections.abc import Sequence
@@ -16,6 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.testing as pltest
 import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.container import ErrorbarContainer
@@ -112,6 +116,62 @@ def test_lightcurve_of_a_virtual_observer_holds_the_energy_of_its_packets() -> N
     assert np.isclose(energy, dfinrange["dir1_e_rf_1"].to_numpy().sum(dtype=np.float64), rtol=1e-10, atol=0.0)
 
 
+def test_lightcurve_of_a_virtual_observer_keeps_the_vpkt_window_and_ranges(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The light curve of a virtual observer holds only the timesteps inside the time window of vpkt.txt.
+
+    The energy comes only from the rows with nu_rf inside a wavelength range of vpkt.txt, as for the spectrum. A
+    timestep outside the window gave zero luminosity, and a timestep across an edge gave a low luminosity.
+    """
+    sourcedir = at.get_path("testdata") / "vpktcontrib"
+    for filename in ("input.txt", "vpackets_0000.out.zst", "vpackets_0001.out.zst"):
+        shutil.copy(sourcedir / filename, tmp_path / filename)
+    vpktlines = (sourcedir / "vpkt.txt").read_text(encoding="utf-8").splitlines()
+    # the fifth line is the time window override, and the sixth line is the custom wavelength range flag
+    vpktlines[4:6] = ["1 130 140", "1 2 3500 6000 6400 7200"]
+    (tmp_path / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
+    nprocs_read, dfvpackets = at.packets.get_virtual_packets(tmp_path)
+    dirbin = 4
+
+    dflightcurve = at.lightcurve.get_from_packets(
+        tmp_path, directionbins=[dirbin], directionbins_are_vpkt_observers=True
+    )[dirbin].collect()
+
+    assert "leaves out" in capsys.readouterr().err
+    dftimesteps = (
+        at.misc.get_timesteps(tmp_path).filter(pl.col("timestep").is_in(dflightcurve["timestep"].implode())).collect()
+    )
+    windowstart, windowend = (
+        float(dftimesteps["tstart_days"].to_numpy().min()),
+        float(dftimesteps["tend_days"].to_numpy().max()),
+    )
+    assert windowstart >= 130.0
+    assert windowend <= 140.0
+    assert 0 < dftimesteps.height < at.misc.get_timesteps(tmp_path).collect().height
+
+    c = at.constants.c_ang_per_s
+    lambda_rf = c / pl.col("dir1_nu_rf")
+    dfinrange = dfvpackets.filter(
+        pl.col("dir1_t_arrive_d").is_between(windowstart, windowend)
+        & (lambda_rf.is_between(3500.0, 6000.0, closed="none") | lambda_rf.is_between(6400.0, 7200.0, closed="none"))
+    ).collect()
+    assert dflightcurve["packetcount"].sum() == dfinrange.height > 0
+    energy = (
+        np.sum(dflightcurve["luminosity_Lsun"].to_numpy() * dftimesteps["twidth_days"].to_numpy())
+        * at.constants.day_to_s
+        * Lsun_to_erg_per_s
+        * nprocs_read
+        / (4 * np.pi)
+    )
+    assert np.isclose(energy, dfinrange["dir1_e_rf_1"].to_numpy().sum(dtype=np.float64), rtol=1e-10, atol=0.0)
+
+    vpktlines[4] = "1 100 110"
+    (tmp_path / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="No selected timestep lies fully inside the time window"):
+        at.lightcurve.get_from_packets(tmp_path, directionbins=[dirbin], directionbins_are_vpkt_observers=True)
+
+
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 def test_lightcurve_plot_reflightcurves_keep_their_errorbars(mockerrorbar: mock.MagicMock) -> None:
     """Reference light curves keep their error bars by either route, the model path list or -reflightcurves."""
@@ -156,7 +216,7 @@ def test_filter_data_is_sorted_by_wavelength() -> None:
     rawpairs = {float(row.split()[0]): float(row.split()[1]) for row in rawlines if row.split()}
     assert sorted(rawpairs) != list(rawpairs), "this fixture is only meaningful while the file is unsorted"
 
-    _, wavefilter, transmission, wavefilter_min, wavefilter_max = at.lightcurve.get_filter_data(filterdir, "NOT/B")
+    _, _, wavefilter, transmission, wavefilter_min, wavefilter_max = at.lightcurve.get_filter_data(filterdir, "NOT/B")
 
     assert np.all(np.diff(wavefilter) > 0), "wavelengths must be strictly ascending after sorting"
     assert wavefilter_min == wavefilter[0]
@@ -249,6 +309,7 @@ def test_band_magnitude_selection_and_colour() -> None:
 
 
 def test_band_lightcurve_peakmag_risetime_plot(tmp_path: Path) -> None:
+    """The export writes one file for each band, with the fit values of the angle average and delta m40."""
     at.lightcurve.plot(
         argsraw=[],
         modelpath=modelpath,
@@ -260,6 +321,19 @@ def test_band_lightcurve_peakmag_risetime_plot(tmp_path: Path) -> None:
         save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
         outputfile=tmp_path,
     )
+
+    for band_name in ("bol", "B"):
+        dfdata = at.misc.read_wsv(tmp_path / f"{band_name}band_TEST MODEL_viewing_angle_data.txt")
+        assert dfdata.columns == [
+            "dirbin",
+            "peak_mag_polyfit",
+            "risetime_polyfit",
+            "deltam15_polyfit",
+            "deltam40_polyfit",
+        ]
+        assert dfdata["dirbin"].to_list() == [-1]
+        assert 250.0 <= dfdata["risetime_polyfit"].item() <= 300.0
+        assert -20.0 < dfdata["peak_mag_polyfit"].item() < -5.0
 
 
 def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -317,8 +391,14 @@ def test_viewing_angle_scatter_plot_colours_each_direction_bin_of_the_data_file(
     assert np.allclose(mockscatter.call_args_list[0].kwargs["color"], dirbincolors)
 
 
-def test_band_lightcurve_subplots(tmp_path: Path) -> None:
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_band_lightcurve_subplots(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """Two bands give two panels, and each panel takes the light curve of its band."""
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=tmp_path)
+
+    assert (tmp_path / "plotlightcurves.pdf").is_file()
+    assert len(mockplot.call_args_list) == 2
+    assert mockplot.call_args_list[0].args[0] is not mockplot.call_args_list[1].args[0]
 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
@@ -501,8 +581,18 @@ def test_colour_evolution_plot_single_dirbin_colour(mockplot: mock.MagicMock, tm
     assert [callargs.kwargs["color"] for callargs in mockplot.call_args_list] == ["magenta"]
 
 
-def test_colour_evolution_subplots(tmp_path: Path) -> None:
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_colour_evolution_subplots(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """Two colours give two panels, and each panel takes the colour of its pair of bands."""
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, colour_evolution=["U-B", "B-V"], outputfile=tmp_path)
+
+    assert (tmp_path / "plotcolorevolutionU-B_B-V.pdf").is_file()
+    assert len(mockplot.call_args_list) == 2
+    assert mockplot.call_args_list[0].args[0] is not mockplot.call_args_list[1].args[0]
+    bandmags = at.lightcurve.generate_band_lightcurve_data(modelpath, filter=["U", "B", "V"])
+    for callargs, bands in zip(mockplot.call_args_list, (["U", "B"], ["B", "V"]), strict=True):
+        _, expectedcolours = at.lightcurve.get_colour_delta_mag(bandmags, bands)
+        assert np.allclose(callargs.args[2], expectedcolours)
 
 
 def test_get_colour_delta_mag_unequal_sampling() -> None:
@@ -723,6 +813,21 @@ def test_read_hesma_lightcurve_file_no_header(tmp_path: Path) -> None:
 
     assert list(dfhesma.columns) == ["time", "bol"]
     assert dfhesma["bol"].to_list() == [2.0, 4.0]
+
+
+def test_hesma_lightcurve_on_a_grid_with_more_panels_than_bands(tmp_path: Path) -> None:
+    """Four bands take a grid of six panels. The strict zip of the panels and the bands then stopped the plot."""
+    from artistools.lightcurve.plotlightcurve import plot_hesma_lightcurve
+
+    hesmafile = tmp_path / "hesma_model.dat"
+    hesmafile.write_text("# t U B V R\n1.0 1.0 2.0 3.0 4.0\n5.0 5.0 6.0 7.0 8.0\n", encoding="utf-8")
+    fig, axesgrid = plt.subplots(2, 3)
+    axes = list(axesgrid.flatten())
+    plot_hesma_lightcurve(axes, ["U", "B", "V", "R"], argparse.Namespace(plot_hesma_model=str(hesmafile)), None)
+
+    assert [len(axis.get_lines()) for axis in axes] == [1, 1, 1, 1, 0, 0]
+    assert np.allclose(np.asarray(axes[3].get_lines()[0].get_ydata(), dtype=float), [4.0, 8.0])
+    plt.close(fig)
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
@@ -1172,14 +1277,40 @@ def test_plotdeposition(mockplot: mock.MagicMock, lumunit: str) -> None:
     assert np.allclose(np.asarray(gammacurves[0][0][2], dtype=float), expected, equal_nan=True)
 
 
-def test_plotthermalisation() -> None:
-    """The thermalisation curves use the kwargs in the same way as plot_energy_rates."""
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotthermalisation(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """--plotthermalisation draws the deposition rate over the emission rate of each particle, and the Barnes curves.
+
+    The ratios and the Barnes curves go in the panel below the light curves, and each ratio takes the -linewidth value.
+    """
     at.lightcurve.plot(
         argsraw=[],
         modelpath=[modelpath_classic_3d],
         plotthermalisation=True,
-        outputfile=outputpath / "lc_thermalisation.pdf",
+        linewidth=[2.5],
+        outputfile=tmp_path / "lc_thermalisation.pdf",
     )
+
+    depdata = at.get_deposition(modelpath_classic_3d).collect()
+    ratiocalls = {
+        callargs.kwargs["label"]: callargs
+        for callargs in mockplot.call_args_list
+        if r"\middle/" in str(callargs.kwargs.get("label", ""))
+    }
+    assert len(ratiocalls) == 3
+    gammacall = next(callargs for label, callargs in ratiocalls.items() if r"dep,\gamma" in label)
+    assert np.allclose(
+        np.asarray(gammacall.args[2], dtype=float),
+        (depdata["gammadep_Lsun"] / depdata["eps_gamma_Lsun"]).to_numpy(),
+        equal_nan=True,
+    )
+    assert {callargs.kwargs["linewidth"] for callargs in ratiocalls.values()} == {2.5}
+    barnescalls = [callargs for callargs in mockplot.call_args_list if "Barnes" in str(callargs.kwargs.get("label"))]
+    assert len(barnescalls) == 3
+    thermaxes = {id(callargs.args[0]) for callargs in [*ratiocalls.values(), *barnescalls]}
+    assert len(thermaxes) == 1
+    lightcurveaxis = mockplot.call_args_list[0].args[0]
+    assert id(lightcurveaxis) not in thermaxes
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
@@ -1427,7 +1558,9 @@ def test_averaged_direction_bin_magnitude_is_rebuilt(mockplot: mock.MagicMock) -
     )
 
     lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
-    averaged = at.misc.average_direction_bins(at.lightcurve.scan_lightcurve(lcpath), overangle="phi")[0].collect()
+    averaged = at.misc.average_direction_bins(
+        at.lightcurve.scan_lightcurve(lcpath, directionresolved=True), overangle="phi"
+    )[0].collect()
     lum_lsun_by_time = dict(zip(averaged["time_days"], averaged["luminosity_Lsun"], strict=True))
     meanofmags_by_time = dict(zip(averaged["time_days"], averaged["mag"], strict=True))
 
@@ -1511,8 +1644,10 @@ def test_readfile_rebuilds_the_magnitude_after_averaging() -> None:
     """
     lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
 
-    averaged = at.lightcurve.scan_lightcurve(lcpath, average_over_phi=True)[0].collect()
-    stalemean = at.misc.average_direction_bins(at.lightcurve.scan_lightcurve(lcpath), overangle="phi")[0].collect()
+    averaged = at.lightcurve.scan_lightcurve(lcpath, directionresolved=True, average_over_phi=True)[0].collect()
+    stalemean = at.misc.average_direction_bins(
+        at.lightcurve.scan_lightcurve(lcpath, directionresolved=True), overangle="phi"
+    )[0].collect()
 
     with np.errstate(divide="ignore"):
         magofmeanlum = Mbol_sun - 2.5 * np.log10(averaged["luminosity_Lsun"].to_numpy())
@@ -1807,7 +1942,6 @@ def test_lightcurve_day_range_of_a_model_clamps_to_its_timesteps() -> None:
 CLASSIC1DPATH = at.get_path("testdata") / "test-classicmode_1d"
 
 
-@pytest.mark.skipif(not CLASSIC1DPATH.is_dir(), reason="run tests/data/setuptestdata.sh for the 1D classic model")
 def test_lightcurve_timestep_must_mean_the_same_days_for_every_model() -> None:
     """A timestep names different days on a different timestep grid.
 
@@ -2321,3 +2455,684 @@ def test_viewer_gives_a_magnitude_plot_no_log_scale() -> None:
     viewer = interactive.LightCurveViewer([str(modelpath), "--magnitude", "-yscale", "log", "--interactive"], fig)
     assert viewer.values.yscale == viewer.defaultyscale
     assert "-yscale" not in viewer.get_command()
+
+
+def test_plotcmf_refuses_a_magnitude_and_skips_the_virtual_packet_observers(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A magnitude has no comoving frame luminosity, and the virtual packets hold no comoving frame energy.
+
+    --plotcmf --magnitude reached an assert after the first light curve. --plotcmf -plotvspecpol stopped with
+    ColumnNotFoundError, because the light curve of an observer has no luminosity_cmf_Lsun column.
+    """
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(argsraw=[], modelpath=[modelpath], plotcmf=True, magnitude=True, outputfile=tmp_path)
+    assert "has no magnitude" in capsys.readouterr().err
+
+    outputfile = tmp_path / "observer.pdf"
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[at.get_path("testdata") / "vpktcontrib"],
+        frompackets=True,
+        plotvspecpol=[0],
+        plotcmf=True,
+        outputfile=outputfile,
+    )
+    assert "draws no curve of an observer" in capsys.readouterr().err
+    assert outputfile.is_file()
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_average_over_phi_without_a_direction_bin_plots_the_angle_average(
+    mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--average_over_phi_angle with no -plotviewingangle, or with bin -1 alone, reads light_curve.out.
+
+    The command averaged the one bin of light_curve.out and stopped with ValueError. The angle average of bin -1 is
+    the mean over every direction already, thus the flag changes nothing.
+    """
+    at.lightcurve.plot(
+        argsraw=[], modelpath=[modelpath_classic_3d], average_over_phi_angle=True, outputfile=tmp_path / "lc.pdf"
+    )
+    assert "gives none" in capsys.readouterr().err
+    curves = len(mockplot.call_args_list)
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        plotviewingangle=[-1],
+        average_over_phi_angle=True,
+        outputfile=tmp_path / "lc2.pdf",
+    )
+    assert len(mockplot.call_args_list) == 2 * curves
+
+
+def test_scan_lightcurve_takes_the_layout_from_the_caller(tmp_path: Path) -> None:
+    """The caller says whether a file holds one table for each direction bin. The name of the file decides nothing.
+
+    scan_lightcurve read a file as direction resolved when its name held "_res". A copy with a different name then
+    gave one table. An average over the one bin of light_curve.out gave a ValueError about 100 missing bins.
+    """
+    lcpath = at.firstexisting("light_curve_res.out", folder=modelpath_classic_3d, tryzipped=True)
+    copypath = tmp_path / "lightcurve_copy.out"
+    copypath.write_bytes(lcpath.read_bytes())
+    lcdataframes = at.lightcurve.scan_lightcurve(copypath, directionresolved=True)
+    assert sorted(lcdataframes) == list(range(100))
+    # the angle average of bin -1 is the mean over every direction already, thus it takes no average
+    pltest.assert_frame_equal(
+        at.lightcurve.scan_lightcurve(modelpath_classic_3d / "light_curve.out", average_over_phi=True)[-1].collect(),
+        at.lightcurve.scan_lightcurve(modelpath_classic_3d / "light_curve.out")[-1].collect(),
+    )
+    with pytest.raises(ValueError, match="holds 100 tables"):
+        at.lightcurve.scan_lightcurve(copypath)
+
+
+def test_scan_lightcurve_of_a_build_with_a_different_count_of_direction_bins(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """ARTIS sets MABINS when it compiles. A file of a different count of direction bins gives a warning.
+
+    scan_lightcurve stopped for each count other than 100, thus the light curves of such a run were not readable.
+    """
+    lcpath = tmp_path / "light_curve_res.out"
+    table = "1.0 2.0 3.0\n2.0 4.0 6.0\n"
+    lcpath.write_text(table * 4, encoding="utf-8")
+    lcdataframes = at.lightcurve.scan_lightcurve(lcpath, directionresolved=True)
+
+    assert sorted(lcdataframes) == [0, 1, 2, 3]
+    assert np.allclose(lcdataframes[3].collect()["luminosity_Lsun"].to_numpy(), [2.0, 4.0])
+    assert "holds 4 tables" in capsys.readouterr().err
+
+    # a build with one or two direction bins writes as many tables as an angle-averaged light curve
+    for nbins in (1, 2):
+        lcpath.write_text(table * nbins, encoding="utf-8")
+        assert sorted(at.lightcurve.scan_lightcurve(lcpath, directionresolved=True)) == list(range(nbins))
+        assert f"holds {nbins} tables" in capsys.readouterr().err
+
+
+def test_average_of_a_light_curve_with_more_direction_bins_stops(tmp_path: Path) -> None:
+    """The average takes the geometry of 100 direction bins. It ignored each table above bin 99 with no message."""
+    lcpath = tmp_path / "light_curve_res.out"
+    lcpath.write_text("1.0 2.0 3.0\n2.0 4.0 6.0\n" * 101, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="1 more bins"):
+        at.lightcurve.scan_lightcurve(lcpath, directionresolved=True, average_over_phi=True)
+
+
+def test_named_light_curve_file_must_agree_with_the_direction_bins(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A user can name light_curve_res.out with no -plotviewingangle. The command then stops with a message.
+
+    The command read the 100 tables of the file as one table of the angle average, and plotted half of them.
+    """
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(
+            argsraw=[], modelpath=[modelpath_classic_3d / "light_curve_res.out"], outputfile=tmp_path / "lc.pdf"
+        )
+    assert "-plotviewingangle" in capsys.readouterr().err
+
+
+def test_colour_at_peak_stops_before_the_fits_without_the_phillips_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The package holds no CfA3_Phillips.dat, thus --colouratpeak must stop with its name before the slow fits.
+
+    The command fitted the light curve of each direction bin first, then stopped with FileNotFoundError.
+    """
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B", "V"], colouratpeak=True)
+    assert "CfA3_Phillips.dat" in capsys.readouterr().err
+    assert not list(tmp_path.iterdir())
+
+
+def test_topnucs_with_virtual_packet_observers_stops_with_a_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The virtual packets hold no pellet. Thus -topnucs or --use_pellet_decay_time with -plotvspecpol gives a message.
+
+    get_from_packets stopped with a bare AssertionError, which the viewer showed as its reason.
+    """
+    vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(argsraw=[], modelpath=[vpktmodelpath], plotvspecpol=[0], topnucs=2, outputfile=tmp_path)
+    assert "hold no pellet" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[vpktmodelpath],
+            frompackets=True,
+            plotvspecpol=[0],
+            use_pellet_decay_time=True,
+            outputfile=tmp_path,
+        )
+    assert "hold no pellet" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="hold no pellet"):
+        at.lightcurve.get_from_packets(
+            vpktmodelpath, directionbins=[0], directionbins_are_vpkt_observers=True, pellet_nucname="Ni56"
+        )
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_nuclide_light_curve_label_keeps_the_model_name(mockplot: mock.MagicMock) -> None:
+    """The label of the light curve of one nuclide holds the model name and the gamma marker.
+
+    The label held the nuclide alone, thus a second model or --gamma gave the legend the same label again.
+    """
+    from artistools.lightcurve import plotlightcurve
+
+    args = at.misc.parse_cli_args(plotlightcurve.addargs, None, None, [str(modelpath), "--frompackets", "--gamma"])
+    plotlightcurve.resolve_plot_args(args)
+    fig = mplfig.Figure()
+    axis = fig.add_subplot()
+    lcdataframes = at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")
+    with mock.patch.object(plotlightcurve, "get_from_packets", return_value=lcdataframes):
+        plotlightcurve.plot_artis_lightcurve(
+            modelpath, axis, escape_type="TYPE_GAMMA", frompackets=True, args=args, pellet_nucname="Ni56"
+        )
+    assert mockplot.call_args.kwargs["label"] == rf"{at.misc.get_model_name(modelpath)} $\gamma$ Ni56"
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_hesma_model_is_drawn_on_the_panel_of_each_band(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """-plot_hesma_model draws each band of the HESMA file on the panel of that band, with the file name as its label.
+
+    The command asserted one axes, which a figure with two bands never has, and the package holds no data/hesma folder.
+    """
+    hesmafile = tmp_path / "hesma_model.dat"
+    hesmafile.write_text("# t B V\n10.0 -18.0 -18.5\n20.0 -17.0 -17.8\n", encoding="utf-8")
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath],
+        filter=["B", "V"],
+        plot_hesma_model=hesmafile,
+        outputfile=tmp_path / "bands.pdf",
+    )
+    hesmacalls = [callargs for callargs in mockplot.call_args_list if callargs.kwargs.get("color") == "black"]
+    assert len(hesmacalls) == 2
+    assert {callargs.kwargs["label"] for callargs in hesmacalls} == {"hesma_model"}
+    assert len({id(callargs.args[0]) for callargs in hesmacalls}) == 2
+    assert [list(callargs.args[2]) for callargs in hesmacalls] == [[-18.0, -17.0], [-18.5, -17.8]]
+    assert (tmp_path / "bands.pdf").is_file()
+
+
+def test_filter_data_gives_the_reference_wavelength() -> None:
+    """The reference wavelength of a band comes from the same cached read as its transmission curve."""
+    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
+    assert np.isclose(
+        at.lightcurve.get_filter_data(filterdir, "B")[1],
+        float((filterdir / "B.txt").read_text(encoding="utf-8").splitlines()[2]),
+    )
+
+
+def test_viewer_drops_the_options_that_the_command_refuses_together() -> None:
+    """The window starts from a command with --magnitude --plotcmf, or with -topnucs and an observer, and draws a plot.
+
+    The command stops for these pairs, and the viewer stopped with it at the start. The controls of the window drop
+    the same options, thus the start does the same.
+    """
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.LightCurveViewer([str(modelpath), "--magnitude", "--plotcmf", "--interactive"], fig)
+    assert (viewer.values.lumunit, viewer.values.plotcmf) == ("mag", False)
+    assert viewer.draw() is None
+
+    vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.LightCurveViewer(
+        [str(vpktmodelpath), "-plotvspecpol", "0", "-topnucs", "2", "--use_pellet_decay_time", "--interactive"], fig
+    )
+    assert viewer.values.directionkind == "vpkt"
+    assert (viewer.values.frompackets, viewer.values.topnucs, viewer.values.usepelletdecaytime) == (True, 0, False)
+    assert viewer.draw() is None
+    assert "--frompackets -plotvspecpol 0" in viewer.get_command()
+
+
+def test_viewer_controls_read_the_refused_options_of_the_command() -> None:
+    """A change of a control drops the options that plotlightcurves refuses, and the control shows the reason.
+
+    The viewer held its own copy of each rule of the command, thus a new rule of the command did not reach the window.
+    """
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
+    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "--frompackets", "-topnucs", "2", "--interactive"], fig)
+    observervalues = dc.replace(
+        viewer.values, directionkind="vpkt", directionbins=(0,), topnucs=2, usepelletdecaytime=True, plotcmf=True
+    )
+    assert {option.flag for option in viewer.get_refused_options(observervalues)} == {
+        "--plotcmf",
+        "-topnucs",
+        "--use_pellet_decay_time",
+    }
+    droppedvalues = viewer.drop_refused_options(observervalues)
+    assert (droppedvalues.topnucs, droppedvalues.usepelletdecaytime, droppedvalues.plotcmf) == (0, False, False)
+    assert not viewer.get_refused_options(droppedvalues)
+
+    magnitudevalues = dc.replace(viewer.values, lumunit="mag")
+    reasons = interactive.get_refused_reasons(viewer, magnitudevalues)
+    assert set(reasons) == {"--plotcmf"}
+    assert "has no magnitude" in reasons["--plotcmf"]
+
+
+def test_ab_filter_zero_point_is_the_flux_of_an_ab_flat_spectrum() -> None:
+    """The first line of an AB filter file is the energy flux of a flat 3631 Jy spectrum through the filter.
+
+    PS1/ws.txt held the zero point of gs.txt, thus each PS1/ws magnitude was 1.62 mag too bright. The zero points of
+    the Swift UVOT files uvw1_ab and uvw2_ab are 35 % below this integral. The repository cannot confirm their source.
+    """
+    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
+    unconfirmed = {"uvw1_ab", "uvw2_ab"}
+    ratios: dict[str, float] = {}
+    for filterpath in sorted(filterdir.rglob("*.txt")):
+        filtername = filterpath.relative_to(filterdir).with_suffix("").as_posix()
+        if filtername in unconfirmed or filterpath.read_text(encoding="utf-8").splitlines()[3].strip() != "ab":
+            continue
+        zeropoint, _, wavelengths, transmission, _, _ = at.lightcurve.get_filter_data(filterdir, filtername)
+        f_lambda_ab = 3631e-23 * at.constants.C_cm_per_s * 1e8 / wavelengths**2
+        ratios[filtername] = float(np.trapezoid(f_lambda_ab * transmission, wavelengths)) / zeropoint
+
+    assert len(ratios) > 30
+    assert all(0.85 < ratio < 1.25 for ratio in ratios.values()), ratios
+    assert np.isclose(ratios["PS1/ws"], 1.0, rtol=1e-3)
+
+
+def test_pellet_decay_time_without_packets_stops_with_a_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only the packets give the decay time of a pellet. The command and the viewer read one rule.
+
+    The command reached a bare assert, and the viewer kept its own copy of the rule in a tooltip.
+    """
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(
+            argsraw=[], modelpath=[modelpath_classic_3d], use_pellet_decay_time=True, outputfile=tmp_path / "lc.pdf"
+        )
+    assert "decay time of a pellet" in capsys.readouterr().err
+
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.LightCurveViewer([str(modelpath), "--use_pellet_decay_time", "--interactive"], fig)
+    assert not viewer.values.usepelletdecaytime
+    assert viewer.draw() is None
+    reasons = interactive.get_refused_reasons(viewer, viewer.values)
+    assert "decay time of a pellet" in reasons["--use_pellet_decay_time"]
+    assert "--use_pellet_decay_time" not in interactive.get_refused_reasons(
+        viewer, dc.replace(viewer.values, frompackets=True)
+    )
+
+
+def test_gamma_light_curve_of_a_virtual_packet_observer_stops_with_a_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """ARTIS makes the virtual packets from the r-packets, thus an observer has no gamma-ray light curve.
+
+    --gamma with -plotvspecpol drew the UVOIR light curve of the observer with a gamma-ray label.
+    """
+    vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[vpktmodelpath],
+            frompackets=True,
+            plotvspecpol=[1],
+            gamma=True,
+            outputfile=tmp_path / "lc.pdf",
+        )
+    assert "no gamma-ray light curve" in capsys.readouterr().err
+
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "-plotvspecpol", "1", "--gamma", "--interactive"], fig)
+    assert not viewer.values.gamma
+    assert "no gamma-ray light curve" in interactive.get_refused_reasons(viewer, viewer.values)["--gamma"]
+    assert not viewer.drop_refused_options(dc.replace(viewer.values, gamma=True)).gamma
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_direction_bins_of_a_model_with_no_direction_file_give_a_warning(
+    mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A model with no direction-resolved file shows the angle average for -plotviewingangle, and the command says so.
+
+    The command gave the angle average with no message.
+    """
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], plotviewingangle=[0], outputfile=tmp_path / "lc.pdf")
+    assert "holds no direction-resolved file" in capsys.readouterr().err
+    assert mockplot.call_args.kwargs["label"] == "TEST MODEL"
+
+
+def test_band_data_files_of_several_models_hold_the_model_name(tmp_path: Path) -> None:
+    """--write_data writes one band file for each model. The second model overwrote the file of the first model."""
+    modelcopy = tmp_path / "secondmodel"
+    modelcopy.mkdir()
+    for filepath in modelpath.iterdir():
+        if filepath.name != "plotlabel.txt":
+            (modelcopy / filepath.name).symlink_to(filepath)
+    outputfolder = tmp_path / "out"
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath, modelcopy],
+        filter=["B"],
+        timemin=290,
+        timemax=300,
+        write_data=True,
+        outputfile=outputfolder,
+    )
+    assert sorted(path.name for path in outputfolder.glob("band_*.txt")) == [
+        "band_B_TEST MODEL.txt",
+        "band_B_secondmodel.txt",
+    ]
+
+
+def test_band_name_with_an_instrument_folder_gives_valid_file_names(tmp_path: Path) -> None:
+    """A filter of an instrument has a name with a folder, e.g. NOT/B. Its slash must not reach a file name.
+
+    The default name of the plot named the folder plotNOT, and the save stopped with FileNotFoundError.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath],
+        filter=["NOT/B"],
+        timemin=290,
+        timemax=300,
+        write_data=True,
+        outputfile=tmp_path,
+    )
+    assert (tmp_path / "plotNOT_Blightcurves.pdf").is_file()
+    assert (tmp_path / "band_NOT_B.txt").is_file()
+
+    args = at.misc.parse_cli_args(
+        at.lightcurve.plotlightcurve.addargs, None, None, [str(modelpath), "-colour_evolution", "NOT/B-NOT/V"]
+    )
+    at.lightcurve.plotlightcurve.resolve_plot_args(args)
+    assert args.outputfile.name == "plotcolorevolutionNOT_B-NOT_V.pdf"
+
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath],
+        filter=["NOT/B"],
+        timemin=250,
+        timemax=300,
+        save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
+        outputfile=tmp_path,
+    )
+    assert (tmp_path / "NOT_Bband_TEST MODEL_viewing_angle_data.txt").is_file()
+
+
+def test_average_over_an_angle_needs_the_first_bin_of_each_group(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An average over phi gives one curve for each cos(theta) bin, which its first direction bin names.
+
+    A direction bin that starts no group reached a bare assert of get_dirbin_labels.
+    """
+    for averageflag, dirbin in (("average_over_phi_angle", 5), ("average_over_theta_angle", 15)):
+        plotkwargs: dict[str, t.Any] = {averageflag: True}
+        with pytest.raises(SystemExit):
+            at.lightcurve.plot(
+                argsraw=[],
+                modelpath=[modelpath_classic_3d],
+                plotviewingangle=[dirbin],
+                outputfile=tmp_path / "lc.pdf",
+                **plotkwargs,
+            )
+        assert f"bins {dirbin} start no group" in capsys.readouterr().err
+
+    fig = mplfig.Figure()
+    FigureCanvasAgg(fig)
+    viewer = interactive.LightCurveViewer(
+        [str(modelpath_classic_3d), "-plotviewingangle", "5", "--average_over_phi_angle", "--interactive"], fig
+    )
+    assert viewer.values.directionkind == "bin"
+    assert viewer.draw() is None
+
+
+def test_brightness_at_time_takes_the_output_folder_and_one_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--brightnessattime saves in the folder of -o, and a range of -timedays gives a message.
+
+    The plot went to the working folder, and a range stopped with a ValueError of float.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "sub").mkdir()
+    at.lightcurve.plot(
+        argsraw=[], modelpath=[modelpath_classic_3d], brightnessattime=True, timedays="5", outputfile="sub/x.pdf"
+    )
+    assert [path.name for path in (tmp_path / "sub").iterdir()] == ["plotviewinganglebrightnessat5.0days.pdf"]
+    assert not list(tmp_path.glob("*.pdf"))
+
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(argsraw=[], modelpath=[modelpath_classic_3d], brightnessattime=True, timedays="4-5")
+    assert "takes one time" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "datatext",
+    [
+        "#time magnitude band\n55800.0 12.0 B\n55801.0 12.5 B\n",
+        "#time,magnitude,band\n55800.0,12.0,B\n55801.0,12.5,B\n",
+    ],
+)
+def test_reference_band_data_takes_a_header_line_that_starts_with_a_hash(tmp_path: Path, datatext: str) -> None:
+    """A header line can start with "#", as in a bolometric reference light curve.
+
+    The reader cut each line at the "#", thus it lost the header and stopped with ColumnNotFoundError.
+    """
+    datafile = tmp_path / "refband.dat"
+    datafile.write_text(datatext, encoding="utf-8")
+    (tmp_path / "refband.dat.meta.yml").write_text(
+        "label: ref\ntimecorrection: 55790.0\ndist_mpc: 10.0\n", encoding="utf-8"
+    )
+
+    dfband, metadata = at.lightcurve.core.read_reflightcurve_band_data(datafile)
+
+    assert metadata["label"] == "ref"
+    assert dfband["band"].to_list() == ["B", "B"]
+    assert np.allclose(dfband["time"].to_numpy(), [10.0, 11.0])
+    assert np.allclose(dfband["magnitude"].to_numpy(), [12.0 - 5 * np.log10(10e6) + 5, 12.5 - 5 * np.log10(10e6) + 5])
+
+
+def test_band_outside_a_virtual_packet_spectrum_gives_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
+    """The spectrum of a virtual packet observer covers the range of vpkt.txt. A band outside it has a too faint value.
+
+    The bol band and a filter that reaches outside the spectrum gave a magnitude with no message.
+    """
+    from artistools.lightcurve.core import generate_band_lightcurve_data
+
+    vspecpolmodel = at.get_path("testdata") / "vspecpolmodel"
+    bandmags = generate_band_lightcurve_data(vspecpolmodel, dirbin=0, plotvspecpol=[0], filter=["bol", "uvw1"])
+    assert bandmags["bol"]
+    stderr = capsys.readouterr().err
+    assert "the bol band of a virtual packet observer integrates only the range of its spectrum" in stderr
+    assert "the uvw1 filter" in stderr
+
+
+def test_band_light_curve_of_a_run_with_only_specpol_out() -> None:
+    """A POL_ON run can write specpol.out and no spec.out. Its Stokes I spectrum gives the angle average.
+
+    The band light curve of bin -1 stopped with FileNotFoundError, because get_spectra read spec.out only.
+    """
+    from artistools.lightcurve.core import generate_band_lightcurve_data
+
+    bandmags = generate_band_lightcurve_data(at.get_path("testdata") / "vspecpolmodel", filter=["B"])
+    assert bandmags["B"]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_packets_of_a_band_plot_give_a_warning(
+    mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A band light curve comes from the spectra. --frompackets has no effect there, and the command says so.
+
+    --frompackets marked the direction bins as present, thus a model with no spec_res.out stopped with KeyError.
+    """
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath],
+        filter=["B"],
+        plotviewingangle=[0],
+        frompackets=True,
+        timemin=290,
+        timemax=300,
+        outputfile=tmp_path / "lc.pdf",
+    )
+    assert "-filter reads no packets files, thus --frompackets has no effect" in capsys.readouterr().err
+    assert mockplot.call_args.kwargs["label"] == "TEST MODEL"
+
+
+def test_plot_with_no_light_curve_stops_with_a_message(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The command skips each model that has no light curve file, and a plot with no curve then stops with a message.
+
+    The command stopped with a bare AssertionError, and python -O saved an empty figure.
+    """
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            gamma=True,
+            plotviewingangle=[0],
+            outputfile=tmp_path / "x.pdf",
+        )
+    assert "the plot holds no light curve" in capsys.readouterr().err
+    assert not (tmp_path / "x.pdf").exists()
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_packets_light_curve_of_a_model_with_no_model_file(
+    mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The rest frame light curve of the packets needs no model.txt. Only the comoving frame needs it.
+
+    A copy of a run with no model.txt stopped with FileNotFoundError, also with no --plotcmf.
+    """
+    modelcopy = tmp_path / "nomodel"
+    modelcopy.mkdir()
+    for filepath in modelpath.iterdir():
+        if filepath.name != "model.txt":
+            (modelcopy / filepath.name).symlink_to(filepath)
+
+    at.lightcurve.plot(
+        argsraw=[], modelpath=[modelcopy], frompackets=True, plotcmf=True, outputfile=tmp_path / "lc.pdf"
+    )
+    stderr = capsys.readouterr().err
+    assert "holds no model.txt" in stderr
+    assert "--plotcmf draws no curve" in stderr
+    assert len(mockplot.call_args_list) == 1
+    assert (tmp_path / "lc.pdf").is_file()
+
+
+def test_options_that_change_nothing_give_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
+    """--test_viewing_angle_fit needs a fit, and --plotcmf has no time axis of the decay time. Each one gives a warning.
+
+    --test_viewing_angle_fit with no save flag or scatter flag drew no fit, and --plotcmf with --use_pellet_decay_time
+    drew the comoving frame curve on the axis of the arrival time.
+    """
+    args = at.misc.parse_cli_args(
+        at.lightcurve.plotlightcurve.addargs,
+        None,
+        None,
+        [str(modelpath), "--test_viewing_angle_fit", "--frompackets", "--use_pellet_decay_time", "--plotcmf"],
+    )
+    at.lightcurve.plotlightcurve.resolve_plot_args(args)
+    stderr = capsys.readouterr().err
+    assert "only a save flag or a scatter flag makes these fits" in stderr
+    assert "different time axes" in stderr
+    assert (args.test_viewing_angle_fit, args.plotcmf, args.use_pellet_decay_time) == (False, False, True)
+
+
+def test_colour_arguments_must_name_two_bands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """-colour_evolution and --colouratpeak each need two bands, and a different count gives a message.
+
+    One band stopped with IndexError, and U-B-V used the first two bands with no message.
+    """
+    for colour in ("B", "U-B-V"):
+        with pytest.raises(SystemExit):
+            at.lightcurve.plot(argsraw=[], modelpath=[modelpath], colour_evolution=[colour], outputfile=tmp_path)
+        assert "-colour_evolution takes two bands for each colour" in capsys.readouterr().err
+
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):
+        at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], colouratpeak=True)
+    assert "-filter must name two bands" in capsys.readouterr().err
+
+
+def test_scan_lightcurve_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """sn3d writes light_curve.out again at each timestep. A run that stops during that write leaves a bad file.
+
+    An empty file gave a polars NoDataError with no file name. A cut last line gave its cut number as the value, and
+    tables of different lengths reached a bare assert.
+    """
+    lcpath = tmp_path / "light_curve.out"
+    lcpath.write_text("", encoding="utf-8")
+    with pytest.raises(ValueError, match="holds no light curve"):
+        at.lightcurve.scan_lightcurve(lcpath)
+
+    lcpath.write_text("1.0 2.0 3.0\n2.0 4.0 6.0\n3.0 2.37598e+09 1.59", encoding="utf-8")
+    dflc = at.lightcurve.scan_lightcurve(lcpath)[-1].collect()
+    assert dflc["time_days"].to_list() == [1.0, 2.0]
+    assert "ends with a cut line" in capsys.readouterr().err
+
+    lcpath.write_text("1.0 2.0 3.0\n2.0 4.0 6.0\n1.0 2.5 3.5\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="tables have different lengths"):
+        at.lightcurve.scan_lightcurve(lcpath)
+
+
+def test_scan_lightcurve_of_a_cut_compressed_file(tmp_path: Path) -> None:
+    """A cut .gz file gave an EOFError, and a cut .xz file gave a polars panic. Neither error named the file."""
+    fulltext = (modelpath / "light_curve.out").read_bytes()
+    for compressedname, compress in (("light_curve.out.gz", gzip.compress), ("light_curve.out.xz", lzma.compress)):
+        compressedpath = tmp_path / compressedname
+        compressedpath.write_bytes(compress(fulltext)[:1000])
+        with pytest.raises((OSError, pl.exceptions.PanicException)) as excinfo:
+            at.lightcurve.scan_lightcurve(tmp_path / "light_curve.out")
+        assert any("light_curve.out" in note for note in [str(excinfo.value), *getattr(excinfo.value, "__notes__", [])])
+        compressedpath.unlink()
+
+
+def test_writebollightcurvedata_writes_the_light_curve_of_each_model(tmp_path: Path) -> None:
+    """The command writes the time and the luminosity of light_curve.out, or of the spectra of each direction bin."""
+    from artistools.lightcurve import writebollightcurvedata
+
+    writebollightcurvedata.main(argsraw=[str(modelpath), "-o", str(tmp_path)])
+    lines = (tmp_path / "bol_lightcurvedata_TEST MODEL.txt").read_text(encoding="utf-8").splitlines()
+    dflc = at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")[-1].collect()
+    assert lines[0].startswith("# 1st col is time in days")
+    values = np.array([[float(value) for value in line.split()] for line in lines[1:]])
+    assert np.allclose(values[:, 0], dflc["time_days"].to_numpy())
+    assert np.allclose(values[:, 1], dflc["luminosity_erg/s"].to_numpy())
+
+    writebollightcurvedata.main(argsraw=[str(modelpath_classic_3d), "--fromspectra", "-o", str(tmp_path)])
+    header, *rows = (
+        (tmp_path / "bol_lightcurvedata_test-classicmode_3d_fromspectra.txt").read_text(encoding="utf-8").splitlines()
+    )
+    assert header.startswith("# 1st col is time in days")
+    assert {len(row.split()) for row in rows} == {101}
+
+
+def test_viewer_direction_removes_the_packets_that_it_gave_to_the_observers() -> None:
+    """A direction after the observers of the virtual packets removes the --frompackets that the window gave.
+
+    The window gave --frompackets to the observers, and the flag stayed for all the directions.
+    """
+    vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
+    observers = interactive.DirectionChoice(kind="vpkt", bins=(0,), usedegrees=False)
+    alldirections = interactive.DirectionChoice(kind="", bins=(), usedegrees=False)
+    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "--interactive"], mplfig.Figure())
+    assert not viewer.values.frompackets
+    observervalues = viewer.set_direction(viewer.values, observers)
+    assert observervalues.frompackets
+    assert not viewer.set_direction(observervalues, alldirections).frompackets
+
+    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "--frompackets", "--interactive"], mplfig.Figure())
+    observervalues = viewer.set_direction(viewer.values, observers)
+    assert viewer.set_direction(observervalues, alldirections).frompackets
+
+    # a command with an observer and no --frompackets gets the flag from the window
+    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "-plotvspecpol", "0", "--interactive"], mplfig.Figure())
+    assert viewer.values.frompackets
+    assert not viewer.set_direction(viewer.values, alldirections).frompackets

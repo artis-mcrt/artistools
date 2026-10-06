@@ -54,7 +54,7 @@ def get_bol_lc_from_lightcurveout(modelpath: Path) -> pl.DataFrame:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
+    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
     parser.add_argument(
         "--fromspectra",
         action="store_true",

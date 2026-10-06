@@ -1055,6 +1055,12 @@ def make_option_table(
         if (completer := box.completer()) is not None:
             set_search_completion(completer)
         box.setCurrentText(flag)
+        # the box of a row gives the help of its option, as each other control does
+        box.setToolTip(
+            helptexts.get(actionsbyflag[flag].dest, "")
+            if flag in actionsbyflag
+            else "Add an option of the command. The tooltip of each item gives the help of its option"
+        )
         if (lineedit := box.lineEdit()) is not None:
             lineedit.setPlaceholderText("Add an option")
 
@@ -1070,6 +1076,8 @@ def make_option_table(
         action = actionsbyflag[flag]
         kind = get_option_kind(action)
         editor = QtWidgets.QWidget()
+        # a control in the editor with no tooltip of its own shows this tooltip
+        editor.setToolTip(helptexts.get(action.dest, ""))
         layout = QtWidgets.QHBoxLayout(editor)
         layout.setContentsMargins(2, 0, 2, 0)
         if kind == "flag":
@@ -1281,6 +1289,20 @@ def get_python_call(functionname: str, kwargs: "Mapping[str, t.Any]") -> str:
     arguments = "".join(f"    {name}={format_python_value(value, 4)},\n" for name, value in kwargs.items())
     call = f"{functionname}(\n{arguments})" if arguments else f"{functionname}()"
     return f"import artistools as at\n\n{call}"
+
+
+def get_python_code(
+    parser: argparse.ArgumentParser, tokens: "Sequence[str]", commandname: str, functionname: str
+) -> str:
+    """Return the Python code that draws the plot of the command, with each argument that differs from its default.
+
+    commandname names the command in the comment of a rejection. functionname is the function that the code calls,
+    e.g. "at.lightcurve.plot".
+    """
+    args = parse_command_tokens(parser, tokens)
+    if args is None:
+        return f"# {commandname} rejects the command"
+    return get_python_call(functionname, get_changed_arguments(parser, args))
 
 
 # a box of text shows at least this number of lines

@@ -87,6 +87,7 @@ from artistools.misc.fileio import folder_is_artis_run as folder_is_artis_run
 from artistools.misc.fileio import get_artis_run_folders as get_artis_run_folders
 from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
+from artistools.misc.fileio import get_file_state as get_file_state
 from artistools.misc.fileio import get_model_folder as get_model_folder
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import open_file as open_file
@@ -110,6 +111,7 @@ from artistools.misc.general import gaussian_filter_wrap as gaussian_filter_wrap
 from artistools.misc.general import import_optional as import_optional
 from artistools.misc.general import parallel_map as parallel_map
 from artistools.misc.general import savgol_filter as savgol_filter
+from artistools.misc.modelinfo import get_artis_option as get_artis_option
 from artistools.misc.modelinfo import get_artis_source_text as get_artis_source_text
 from artistools.misc.modelinfo import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping

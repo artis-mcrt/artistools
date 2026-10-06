@@ -28,12 +28,16 @@ def get_examples() -> tuple[tuple[str, str], ...]:
     return tuple(walk(subcommandtree, ""))
 
 
-def get_command_epilog(subcommand: str, spec: "CommandSpec") -> str | None:
-    """Return the examples of one command for its own help, or None when it has none."""
+def get_command_epilog(words: "Sequence[str]", spec: "CommandSpec") -> str | None:
+    """Return the examples of one command for its own help, or None when it has none.
+
+    words is the full name of the command, e.g. ("inputmodel", "describe"), thus each example runs as it is.
+    """
     if not spec.examples:
         return None
 
-    lines = [f"  artistools {subcommand} {arguments}  # {description}" for arguments, description in spec.examples]
+    command = " ".join(words)
+    lines = [f"  artistools {command} {arguments}  # {description}" for arguments, description in spec.examples]
 
     return "examples (a path of . reads the model in the working folder):\n" + "\n".join(lines)
 
@@ -45,9 +49,11 @@ def get_epilog() -> str:
     lines = [f"  artistools {command:{width}}  # {description}" for command, description in examples]
 
     return (
-        "examples (a path of . reads the model in the working folder, and the path is the last argument):\n"
+        "examples (a path of . reads the model in the working folder):\n"
         + "\n".join(lines)
         + '\n\nRun "artistools <command> --help" for the arguments of one command.'
+        + "\nA command that reads a model takes its folder with -modelpath. Most of these commands also take the"
+        + "\nfolder as the last positional argument."
         + "\nSet ARTISTOOLS_TRACEBACK=1 to get the full traceback of an error."
     )
 
@@ -81,6 +87,10 @@ class CommandSpec:
     """Example invocations as (arguments, description) pairs. A test runs each one against the test
     model, thus an example cannot name an argument that a later commit takes away. A path of "."
     reads the model in the working folder."""
+
+    def get_description(self) -> str:
+        """Return the description of the help of the command: the help text and the note."""
+        return f"{self.helptext} {self.note}".strip()
 
 
 type CommandTree = dict[str, CommandSpec | CommandTree]
@@ -160,15 +170,15 @@ subcommandtree: CommandTree = {
         note="The values come from the estimators, and the command writes a text file.",
     ),
     "getpath": CommandSpec("commands", funcname="get_artistools_path", helptext="Print the folder of the package."),
-    "hesma": CommandSpec(
-        "hesma_scripts",
-        helptext="Convert ARTIS output to the HESMA formats.",
-        note="The HESMA model archive takes these file formats.",
-    ),
     "gsinetworkdecayproducts": CommandSpec(
         "gsinetwork.decayproducts",
         helptext="Read the beta-decay energy of a trajectory.",
         note="The data comes from the trajectories of a nucleosynthesis calculation.",
+    ),
+    "hesma": CommandSpec(
+        "hesma_scripts",
+        helptext="Convert ARTIS output to the HESMA formats.",
+        note="The HESMA model archive takes these file formats.",
     ),
     "inputmodel": {
         "describe": DESCRIBEINPUTMODEL,
@@ -217,7 +227,9 @@ subcommandtree: CommandTree = {
         helptext="Write a vpkt.txt for a run.",
         note="The file holds the configuration of the virtual packets.",
     ),
-    "plotdensity": CommandSpec("inputmodel.plotdensity", helptext="Plot the density against the radius."),
+    "plotdensity": CommandSpec(
+        "inputmodel.plotdensity", helptext="Plot the enclosed mass and the mass per unit velocity against velocity."
+    ),
     "plotestimators": CommandSpec(
         "estimators.plotestimators",
         script="plotartisestimators",
@@ -546,8 +558,12 @@ def build_script_parser(scriptname: str) -> argparse.ArgumentParser | None:
         node = node[word]
 
     assert isinstance(node, CommandSpec)
+    # the help of the script shows the same note and examples as the help of the subcommand
     parser = SuggestingArgumentParser(
-        prog=scriptname, description=node.helptext, formatter_class=CustomArgHelpFormatter
+        prog=scriptname,
+        description=node.get_description(),
+        epilog=get_command_epilog(words, node),
+        formatter_class=CustomArgHelpFormatter,
     )
     addcommandargs(parser, node)
 
@@ -594,9 +610,17 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         from artistools.misc import suggest_names
 
         choices = [str(choice) for choice in action.choices]
+        listed = choices
+        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
+            # the help lists no hidden command, e.g. server, thus no message names one. The list names each
+            # command once, and a suggestion can also name an alias
+            listed = [subaction.dest for subaction in action._get_subactions()]  # ruff:ignore[private-member-access]
+            parsermap = action._name_parser_map  # ruff:ignore[private-member-access]
+            listedparsers = {id(parsermap[command]) for command in listed}
+            choices = [command for command, subparser in parsermap.items() if id(subparser) in listedparsers]
         name = action.metavar or action.dest
         # a close match answers the question, thus the long list of every choice serves the other case
-        helptext = suggest_names(str(value), choices) or f"The choices are {', '.join(choices)}"
+        helptext = suggest_names(str(value), choices) or f"The choices are {', '.join(listed)}"
         self.exit_with_help(f"invalid choice '{value}' for {name}", helptext)
 
     def get_visible_flags(self) -> list[str]:
@@ -736,15 +760,39 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         if leftover:
             from artistools.misc import suggest_names
 
-            flag = next((word.partition("=")[0] for word in leftover if word.startswith("-")), None)
+            # separate_trailing_folders puts "--" in front of the folders at the end, thus the user did not write it
+            words = [word for word in leftover if word != "--"]
+            flag = next((word.partition("=")[0] for word in words if word.startswith("-")), None)
             subparser = getattr(parsednamespace, "argparser", None) or self
             helptext = ""
-            if flag is not None and isinstance(subparser, SuggestingArgumentParser):
-                helptext = suggest_names(flag, subparser.get_visible_flags())
+            if isinstance(subparser, SuggestingArgumentParser):
+                helptext = (
+                    suggest_names(flag, subparser.get_visible_flags())
+                    if flag is not None
+                    else subparser.get_folder_help(words)
+                )
             # the usage of the command that the user ran, thus it holds the arguments of that command
-            subparser.exit_with_help(f"unrecognized arguments: {' '.join(leftover)}", helptext)
+            subparser.exit_with_help(f"unrecognized arguments: {' '.join(words)}", helptext)
 
         return parsednamespace
+
+    def get_folder_help(self, words: "Sequence[str]") -> str:
+        """Return the help line for words that this command refuses and that name a folder, or an empty string.
+
+        A command reads its positional paths as one group. A command with no positional path reads the folder from
+        -modelpath alone.
+        """
+        from artistools.misc.cliutils import KeepGivenPaths
+        from artistools.misc.remote import is_remote_path
+
+        folder = next((word for word in words if is_remote_path(word) or Path(word).is_dir()), None)
+        if folder is None:
+            return ""
+        if any(isinstance(action, KeepGivenPaths) for action in self._actions):
+            return "Write the paths in one group, in front of the options or after them"
+        if "-modelpath" in self._option_string_actions:
+            return f"This command reads the folder from -modelpath, e.g. -modelpath {folder}"
+        return ""
 
     @t.override
     def error(self, message: str) -> t.NoReturn:
@@ -767,8 +815,8 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         self.exit_with_help(message, helptext)
 
 
-def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) -> None:
-    """Register the subcommands in the tree on the parser."""
+def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree, path: tuple[str, ...] = ()) -> None:
+    """Register the subcommands in the tree on the parser. path holds the names of the groups above the tree."""
 
     def func(args: argparse.Namespace) -> None:  # ruff:ignore[unused-function-argument]
         parser.print_help()
@@ -787,7 +835,7 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) 
                 epilog=f'Run "artistools {subcommand} <command> --help" for the arguments of one command.',
                 formatter_class=CustomArgHelpFormatter,
             )
-            addsubparsers(parser=subparser, subcommandtree=spec)
+            addsubparsers(parser=subparser, subcommandtree=spec, path=(*path, subcommand))
         else:
             # omitting help= entirely keeps a hidden entry out of the parent help listing. Do not use
             # help=argparse.SUPPRESS here: argparse only honours it for arguments, not subparsers, and
@@ -795,8 +843,8 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) 
             addparserkwargs: dict[str, t.Any] = {} if spec.hidden else {"help": spec.helptext}
             subparser = subparsers.add_parser(
                 subcommand,
-                description=f"{spec.helptext} {spec.note}".strip(),
-                epilog=get_command_epilog(subcommand, spec),
+                description=spec.get_description(),
+                epilog=get_command_epilog((*path, subcommand), spec),
                 aliases=spec.aliases,
                 formatter_class=CustomArgHelpFormatter,
                 **addparserkwargs,
@@ -804,11 +852,13 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree) 
             addcommandargs(subparser, spec)
 
 
-def show_version(*args: t.Any, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
-    """Print the artistools version."""
+def show_version(args: argparse.Namespace | None = None, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
+    """Print the artistools version. The version is the product of the command, thus --quiet keeps it."""
     from importlib.metadata import version
 
-    print(f"artistools {version('artistools')}")
+    from artistools.misc import print_product
+
+    print_product(args or argparse.Namespace(), f"artistools {version('artistools')}")
 
 
 def get_path(key: str) -> Path:
@@ -835,6 +885,13 @@ def get_path(key: str) -> Path:
             raise KeyError(msg)
 
 
-def get_artistools_path(**kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
-    """Print the installed artistools package directory."""
-    print(get_path("artistools_dir"))
+def get_artistools_path(args: argparse.Namespace | None = None, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
+    """Print the installed artistools package directory. The path is the product, thus --quiet keeps it."""
+    from artistools.misc import print_product
+
+    print_product(args or argparse.Namespace(), get_path("artistools_dir"))
+
+
+def get_hidden_commands() -> list[str]:
+    """Return the top-level commands that the help hides, thus tab completion offers none of them."""
+    return [name for name, spec in subcommandtree.items() if isinstance(spec, CommandSpec) and spec.hidden]

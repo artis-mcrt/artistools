@@ -10,6 +10,8 @@ from pathlib import Path
 from types import MappingProxyType
 
 from artistools.misc.cliutils import dashes_arg
+from artistools.misc.cliutils import SERIES_DEFAULT
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import split_remote_path
 from artistools.viewertools.application import add_recent_model
@@ -109,6 +111,20 @@ PREVIEW_MILLISECONDS: t.Final = 250
 
 # the options of the dialog of the line properties, which each give one value for each series
 SERIES_PROPERTY_FLAGS: t.Final = ("-label", "-color", "-linestyle", "-dashes", "-linewidth", "-linealpha")
+
+
+def get_label_error(label: str) -> str | None:
+    """Return why the command cannot give a label to one series of several, or None if it can.
+
+    A list option reads a word that starts with "-" as the next flag, and it reads SERIES_DEFAULT as the automatic label
+    of its series. The command then rejected the plot with a message that did not name the label, or it gave the
+    automatic label.
+    """
+    if label.startswith("-"):
+        return 'The command reads a label that starts with "-" as a flag. Start the label with a different character'
+    if label == SERIES_DEFAULT:
+        return f'The command reads the label "{SERIES_DEFAULT}" as the automatic label. Give a different label'
+    return None
 
 
 def edit_series_properties(
@@ -216,17 +232,28 @@ def edit_series_properties(
         except argparse.ArgumentTypeError as exc:
             raise ValueError(str(exc)) from exc
 
+    def get_label() -> str | None:
+        """Return the label of the field, or None for an empty field. Raise ValueError for a label of no command.
+
+        The label of the command stays valid, e.g. "-1 day" of the only series of the command, which joins its flag.
+        """
+        label = labeledit.text().strip()
+        if label != (style.get("-label") or "") and (error := get_label_error(label)) is not None:
+            raise ValueError(error)
+        return label or None
+
     def show_preview() -> None:
         previewtimer.start()
         colour = chosencolour[0] or defaultcolour
         colourbutton.setIcon(QtGui.QIcon(make_line_swatch(colour, 1.0, 5.0, None)))
         colourbutton.setText(colour if chosencolour[0] else f"Default ({colour})")
+        dashes = None
         try:
+            get_label()
             dashes = get_dashes()
         except ValueError as exc:
             errorlabel.setText(str(exc))
             errorlabel.show()
-            dashes = None
         else:
             errorlabel.hide()
         previewlabel.setPixmap(
@@ -263,13 +290,14 @@ def edit_series_properties(
         show_preview()
 
     def get_widget_values() -> dict[str, str | None] | None:
-        """Return the value of each option of flags that the fields show, or None for a bad dash pattern."""
+        """Return the value of each option of flags that the fields show, or None for a bad label or dash pattern."""
         try:
+            label = get_label()
             dashes = get_dashes()
         except ValueError:
             return None
         values = {
-            "-label": labeledit.text().strip() or None,
+            "-label": label,
             "-color": chosencolour[0],
             "-linestyle": linestylebox.currentData(),
             "-dashes": dashes,
@@ -279,7 +307,7 @@ def edit_series_properties(
         return {flag: value for flag, value in values.items() if flag in flags}
 
     def get_changes() -> dict[str, str | None] | None:
-        """Return the value of each option of flags, or None for a bad dash pattern.
+        """Return the value of each option of flags, or None for a bad label or dash pattern.
 
         A field cannot show each value of the command, e.g. a width above the range of its box, an empty label that
         hides the series, or a line style that the box does not list. Thus an option keeps its value of the command
@@ -310,9 +338,14 @@ def edit_series_properties(
     previewtimer.timeout.connect(show_plot_changes)
 
     def on_accept() -> None:
-        # a bad dash pattern keeps the dialog open, and the red text gives the reason
+        # a bad label or dash pattern keeps the dialog open, and the red text gives the reason
         if get_changes() is None:
-            dashesedit.setFocus()
+            try:
+                get_label()
+            except ValueError:
+                labeledit.setFocus()
+            else:
+                dashesedit.setFocus()
             return
         dialog.accept()
 
@@ -335,7 +368,7 @@ def edit_series_properties(
         ("-linealpha", alphabox),
     ):
         form.setRowVisible(field, flag in flags)
-    labeledit.textChanged.connect(previewtimer.start)
+    labeledit.textChanged.connect(show_preview)
     show_preview()
     previewtimer.stop()
     openwidgetvalues = get_widget_values() or {}
@@ -579,13 +612,35 @@ class ReferenceData(t.NamedTuple):
 
     # the kind of one series, e.g. "reference spectrum"
     kind: str
-    names: "Sequence[str]"
+    # the folder of the reference data in the data of artistools
     folder: Path
     # return the file of a name in the working folder or in the reference data, or None
     find: "Callable[[str], Path | None]"
-    # return the token of the command for the path of a file, e.g. a name of the reference data
-    get_token: "Callable[[str], str]"
     example: str
+
+
+def get_reference_names(folder: Path) -> list[str]:
+    """Return the names of the files of a folder of reference data, without the suffix of a compressed file.
+
+    A command finds a compressed file by the name without the suffix. A metadata file with no data file beside it
+    gives no name, because the command has no data to read.
+    """
+    names = {
+        path.name.removesuffix(path.suffix) if path.suffix in COMPRESSED_EXTENSIONS else path.name
+        for path in folder.iterdir()
+        if path.is_file() and not path.name.startswith(".") and not path.name.endswith(".meta.yml")
+    }
+    return sorted(names, key=str.lower)
+
+
+def get_reference_token(filename: str, find: "Callable[[str], Path | None]") -> str:
+    """Return the name of a reference file if find gives that same file for the name, and the path if not.
+
+    A command searches the working folder before the reference data of artistools. Thus a file of the same name in
+    the working folder takes the place of a file from the reference data. The name alone gives a short command.
+    """
+    found = find(Path(filename).name)
+    return Path(filename).name if found is not None and found.resolve() == Path(filename).resolve() else filename
 
 
 class SeriesListActions(t.NamedTuple):
@@ -652,7 +707,7 @@ def add_series_list(
         f"Type part of the name of a {reference.kind} in the data of artistools, then press Return. A name of a file"
         " in the working folder also works."
     )
-    referencecompleter = make_completer(reference.names, referenceedit)
+    referencecompleter = make_completer(get_reference_names(reference.folder), referenceedit)
     referenceedit.setCompleter(referencecompleter)
     openreferencebutton = QtWidgets.QPushButton("Open…")
     openreferencebutton.setToolTip(f"Add the file of a {reference.kind} from a folder")
@@ -875,7 +930,7 @@ def add_series_list(
 
     def on_open_reference() -> None:
         filenames, _ = QtWidgets.QFileDialog.getOpenFileNames(window, f"Add a {reference.kind}", str(reference.folder))
-        add_paths([reference.get_token(filename) for filename in filenames])
+        add_paths([get_reference_token(filename, reference.find) for filename in filenames])
 
     def add_reference_name(name: str) -> None:
         name = name.strip()
@@ -898,7 +953,7 @@ def add_series_list(
         runs = [folder for folder in folders if actions.is_run(folder)]
         if len(runs) < len(folders):
             actions.show_error("A dropped folder is not the folder of an ARTIS run, which holds input.txt")
-        add_paths([*runs, *(reference.get_token(path) for path in paths if Path(path).is_file())])
+        add_paths([*runs, *(get_reference_token(path, reference.find) for path in paths if Path(path).is_file())])
 
     addmodelbutton.clicked.connect(on_add_model)
     recentmodelsmenu.aboutToShow.connect(show_recent_models)

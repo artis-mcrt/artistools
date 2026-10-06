@@ -14,6 +14,7 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_composition_data
 from artistools.constants import day_to_s
 from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
@@ -39,7 +40,7 @@ from artistools.misc import get_timesteps
 from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
-from artistools.misc import parse_range_list
+from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -53,7 +54,10 @@ def get_abundance_correction_factors(
     modelpath: str | Path,
     modelmeta: dict[str, t.Any],
 ) -> dict[str, float]:
-    """Get a dictionary of abundance multipliers that ARTIS will apply to correct for missing mass due to skipped shells, and volume error due to Cartesian grid mapping.
+    """Return the abundance multipliers that ARTIS applies to correct the mass fractions of the cells.
+
+    The multipliers correct the mass that the skipped shells lose, and the volume error of the map to a Cartesian
+    grid.
 
     It is important to follow the same method as artis to get the correct mass fractions.
     """
@@ -134,6 +138,18 @@ def strnuc_to_latex(strnuc: str) -> str:
     return rf"$^{{{massnum}}}${elsym.title()}" if massnum else elsym.title()
 
 
+def get_mean_stable_masses_amu(modelpath: str | Path) -> dict[int, float] | None:
+    """Return the mean stable nucleus mass of each element of the run, or None if the run has no compositiondata.txt.
+
+    Only compositiondata.txt gives the masses. The composition in output_0-0.txt gives no masses.
+    """
+    try:
+        compositiondata = get_composition_data(modelpath)
+    except (FileNotFoundError, ValueError):
+        return None
+    return dict(zip(compositiondata["Z"].to_list(), compositiondata["mass"].to_list(), strict=True))
+
+
 def get_artis_abund_sequences(
     modelpath: str | Path,
     dftimesteps: pl.DataFrame,
@@ -157,6 +173,14 @@ def get_artis_abund_sequences(
             estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
 
         estimatorcolumns = estimators_lazy.collect_schema().names()
+        # ARTIS gives the number density of the stable isotopes that it does not follow as <El>_otherstable. Such a
+        # nucleus has the mean stable mass of the element in compositiondata.txt (decay.cc). Only such a column
+        # needs the file, thus a run with no compositiondata.txt still gives every other curve
+        meannucmass_amu_of_z = (
+            get_mean_stable_masses_amu(modelpath)
+            if any(col.endswith("_otherstable") for col in estimatorcolumns)
+            else None
+        )
         cellmassfrac_exprs = []
         for strspecies in arr_species:
             isnuclide = strspecies[-1].isdigit() and f"nniso_{strspecies}" in estimatorcolumns
@@ -170,11 +194,27 @@ def get_artis_abund_sequences(
                     if col.startswith(f"nniso_{strspecies}") and col.removeprefix(f"nniso_{strspecies}").isdigit()
                 ]
             )
+            # ARTIS adds a decay daughter that model.txt does not hold, and such an isotope has no init_X column
+            # and no correction
             isotopemassfrac_exprs = [
                 pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH_g / pl.col("rho")
-                + pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)
+                + (
+                    pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)
+                    if f"init_X_{striso}" in estimatorcolumns
+                    else pl.lit(0.0)
+                )
                 for striso in speciesisotopes
             ]
+            otherstablecol = f"nniso_{strspecies}_otherstable"
+            if not isnuclide and otherstablecol in estimatorcolumns:
+                if meannucmass_amu_of_z is None:
+                    print_warning(
+                        f"{modelpath} gives no compositiondata.txt, thus the {strspecies}"
+                        " abundance leaves out the stable isotopes that ARTIS does not follow"
+                    )
+                else:
+                    meannucmass_amu = meannucmass_amu_of_z[get_atomic_number(strspecies)]
+                    isotopemassfrac_exprs.append(pl.col(otherstablecol) * meannucmass_amu * MH_g / pl.col("rho"))
             if isnuclide:
                 cellmassfrac_exprs.append(isotopemassfrac_exprs[0])
             elif isotopemassfrac_exprs:
@@ -217,7 +257,7 @@ def get_artis_abund_sequences(
 
 
 def sum_weighted_particle_arrays(
-    dfpairs: pl.LazyFrame, dfparticledata: pl.DataFrame, pairweight: pl.Expr, columns: Sequence[str], ntimes: int
+    dfpairs: pl.DataFrame, dfparticledata: pl.DataFrame, pairweight: pl.Expr, columns: Sequence[str], ntimes: int
 ) -> pl.DataFrame:
     """Return the sum over the pairs of particle and cell of each array column, multiplied by the weight of the pair.
 
@@ -226,6 +266,7 @@ def sum_weighted_particle_arrays(
     """
     return (
         dfpairs
+        .lazy()
         .group_by("particleid")
         .agg(weight=pairweight.sum())
         .join(dfparticledata.lazy().select("particleid", *columns), on="particleid", how="inner")
@@ -242,7 +283,7 @@ def sum_weighted_particle_arrays(
 
 def plot_qdot(
     modelpath: Path,
-    dfpairs: pl.LazyFrame | None,
+    dfpairs: pl.DataFrame | None,
     dfparticledata: pl.DataFrame | None,
     arr_time_gsi_days: Sequence[float] | None,
     pdfoutpath: Path | str,
@@ -253,8 +294,9 @@ def plot_qdot(
     try:
         depdata = df_filter_minmax_bracketed(get_deposition(modelpath=modelpath), "tmid_days", None, xmax).collect()
 
-    except FileNotFoundError:
-        print("Can't do qdot plot because no deposition.out file")
+    except (FileNotFoundError, ValueError) as exc:
+        # a mismatched deposition.out belongs to a different run, thus the plot of the heating rate stops as for no file
+        print(f"Can't do qdot plot: {exc}")
         return
 
     if dfpairs is not None and dfparticledata is not None:
@@ -265,7 +307,7 @@ def plot_qdot(
         # the semi join removes the pairs of a particle that has no network data, thus the weights of the pairs
         # that remain do not sum to one. Divide by that sum. The rate then stays a rate for each gram
         expr_weight = pl.col("frac_of_cellmass") * pl.col("cellmass_on_mtot")
-        weightsum = dfpairs.select(expr_weight.sum()).collect().item()
+        weightsum = dfpairs.select(expr_weight.sum()).item()
         dfgsiglobalheating = (
             sum_weighted_particle_arrays(dfpairs, dfparticledata, expr_weight, heatcols, len(arr_time_gsi_days))
             .select(pl.col(heatcols) / weightsum)
@@ -319,7 +361,7 @@ def plot_qdot(
 
 def plot_cell_abund_evolution(
     modelpath: Path,
-    dfpairs: pl.LazyFrame | None,
+    dfpairs: pl.DataFrame | None,
     dfparticledata: pl.DataFrame | None,
     arr_time_gsi_days: Sequence[float] | None,
     arr_species: Sequence[str],
@@ -332,19 +374,13 @@ def plot_cell_abund_evolution(
     if dfpairs is not None and dfparticledata is not None:
         print(f"Calculating abundances in model cell {mgi} from the individual particle abundances")
         dfpartcontrib_thiscell = dfpairs.filter(pl.col("modelgridindex") == mgi) if mgi >= 0 else dfpairs
-        frac_of_cellmass_sum = dfpartcontrib_thiscell.select(pl.col("frac_of_cellmass").sum()).collect().item()
+        # the cells of this plot can be a part of the model, thus a normalisation factor is necessary. Each
+        # cell has one mass, thus the sum takes the first pair of each cell
+        frac_of_cellmass_sum, normfactor = dfpartcontrib_thiscell.select(
+            pl.col("frac_of_cellmass").sum(),
+            pl.col("cellmass_on_mtot").filter(pl.col("modelgridindex").is_first_distinct()).sum(),
+        ).row(0)
         print(f"frac_of_cellmass_sum: {frac_of_cellmass_sum} (can be < 1.0 because of missing particles)")
-
-        # the cells of this plot can be a part of the model, thus a normalisation factor is necessary
-        normfactor = (
-            dfpartcontrib_thiscell
-            .group_by("modelgridindex")
-            .agg(pl.col("cellmass_on_mtot").first())
-            .drop("modelgridindex")
-            .sum()
-            .collect()
-            .item()
-        )
 
         assert arr_time_gsi_days is not None
         df_gsi_abunds = sum_weighted_particle_arrays(
@@ -415,7 +451,11 @@ def get_particledata(
     particleid: int,
     verbose: bool = False,
 ) -> pl.DataFrame:
-    """For an array of times (NSM time including time before merger), interpolate the heating rates of various decay channels and (if arr_strnuc is not empty) the nuclear mass fractions."""
+    """Interpolate the heating rates of the decay channels to an array of times.
+
+    The times are neutron star merger (NSM) times, which include the time before the merger. If arr_strnuc_z_n
+    is not empty, the function also interpolates the nuclear mass fractions.
+    """
     try:  # ruff:ignore[too-many-statements-in-try-clause]
         if verbose:
             print(
@@ -444,11 +484,17 @@ def get_particledata(
         )
 
         if arr_strnuc_z_n:
-            ntslowers = get_closest_network_timesteps(traj_root, particleid, arr_time_s_incpremerger, cond="lessthan")
-            ntsuppers = get_closest_network_timesteps(
-                traj_root, particleid, arr_time_s_incpremerger, cond="greaterthan"
+            # the bracket includes a step at the exact time. Then a time at the first or the last step reads
+            # that step, and a time at an inner step reads no neighbour step
+            ntslowers = get_closest_network_timesteps(
+                traj_root, particleid, arr_time_s_incpremerger, cond="lessorequal"
             )
-            nts_list = sorted(set(ntslowers + ntsuppers))
+            ntsuppers = get_closest_network_timesteps(
+                traj_root, particleid, arr_time_s_incpremerger, cond="greaterorequal"
+            )
+            # a time outside the range of the network steps has no step on one side, which gives None.
+            # np.interp then holds the end value, as it does for the heating rates above
+            nts_list = sorted({nts for nts in ntslowers + ntsuppers if nts is not None})
             dftrajnucabund, traj_times_s = get_trajectory_timestepfiles_nuc_abund(
                 traj_root, particleid, [f"./Run_rprocess/nz-plane{nts:05d}" for nts in nts_list]
             )
@@ -507,7 +553,7 @@ def get_dfcontribsparticledata(
     griddata_root: Path,
     lzdfmodel: pl.LazyFrame,
     arr_time_gsi_days: list[float],
-) -> tuple[pl.LazyFrame, pl.DataFrame]:
+) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return the pairs of particle and cell for the network particles, and the frame of the particle data."""
     # times in artis are relative to merger, but NSM simulation time started earlier
     mergertime_geomunits = get_merger_time_geomunits(griddata_root)
@@ -551,14 +597,18 @@ def get_dfcontribsparticledata(
     print("  done")
 
     # each particle gives an eager frame of one row. A lazy concat of 1957 such frames took most of 198.5 s on
-    # the streaming engine. The time of that engine increases with the square of the number of inputs
-    allparticledata = pl.concat(list_particledata_withabund + list_particledata_noabund, how="diagonal")
+    # the streaming engine. The time of that engine increases with the square of the number of inputs. A particle
+    # with no network data gives a frame of no columns, thus the concat can hold no particleid column
+    allparticledata = pl.concat(
+        [pl.DataFrame(schema={"particleid": pl.Int32}), *list_particledata_withabund, *list_particledata_noabund],
+        how="diagonal",
+    )
 
-    # a semi join removes the pairs of a particle without network data, and it copies no arrays. The frame
-    # stays lazy, thus a query for one cell reads the pairs of that cell alone
+    # a semi join removes the pairs of a particle without network data, and it copies no arrays. The result
+    # holds one row for each pair, thus one collect serves the queries of every cell
     dfpairs = dfpartcontrib.join(
         allparticledata.lazy().select("particleid"), on="particleid", how="semi", maintain_order="left"
-    )
+    ).collect()
     return dfpairs, allparticledata
 
 
@@ -570,8 +620,13 @@ def plot_qdot_abund_modelcells(
     args: argparse.Namespace,
     timedaysmax: float | None = None,
     nogsinet: bool = False,
+    outputfolder: Path | None = None,
 ) -> None:
-    """Plot the heating rate and the abundance evolution of each cell in mgiplotlist."""
+    """Plot the heating rate and the abundance evolution of each cell in mgiplotlist.
+
+    The plots go to outputfolder, or to the model folder if outputfolder is None.
+    """
+    outputfolder = modelpath if outputfolder is None else outputfolder
     lzdfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=True)
     lzdfmodel = add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
 
@@ -629,8 +684,11 @@ def plot_qdot_abund_modelcells(
             griddata_root=griddata_root,
             lzdfmodel=lzdfmodel,
         )
+        if dfpairs.is_empty():
+            print("No particle of the model has network data, thus the plots show the ARTIS data alone")
+            gsinet_available = False
 
-    else:
+    if not gsinet_available:
         dfpairs = None
         dfparticledata = None
         arr_time_gsi_days = None
@@ -640,7 +698,7 @@ def plot_qdot_abund_modelcells(
         dfpairs,
         dfparticledata,
         arr_time_gsi_days,
-        pdfoutpath=Path(modelpath, "gsinetwork_global-qdot.pdf"),
+        pdfoutpath=outputfolder / "gsinetwork_global-qdot.pdf",
         args=args,
         xmax=timedaysmax,
     )
@@ -666,7 +724,7 @@ def plot_qdot_abund_modelcells(
                 arr_species,
                 arr_abund_artis.get(mgi),
                 mgi=mgi,
-                pdfoutpath=Path(modelpath, f"gsinetwork_{strmgi}-abundance.pdf"),
+                pdfoutpath=outputfolder / f"gsinetwork_{strmgi}-abundance.pdf",
                 args=args,
             )
 
@@ -683,7 +741,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Base path for merger snapshot and trajectory data specified in model.txt",
     )
 
-    addarg_output(parser, kind="folder", default=Path())
+    # the plots went to the model folder before the command read -o, thus that folder stays the default
+    addarg_output(parser, kind="folder", helptext="Folder for the plots (default: the model folder)")
 
     parser.add_argument("-xmax", default=None, type=float, help="Maximum time in days to plot")
 
@@ -728,9 +787,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     plot_qdot_abund_modelcells(
         modelpath=Path(args.modelpath),
         merger_root=Path(args.mergerroot),
-        mgiplotlist=parse_range_list(args.modelgridindex) if args.modelgridindex is not None else [],
+        mgiplotlist=args.modelgridindex or [],
         arr_species=args.species,
         args=args,
         timedaysmax=args.xmax,
         nogsinet=args.nogsinet,
+        outputfolder=Path(args.outputfile) if args.outputfile else None,
     )

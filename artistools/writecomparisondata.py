@@ -25,27 +25,26 @@ from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import exit_with_error
-from artistools.misc import firstexisting
 from artistools.misc import get_deposition
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc import zopen
 from artistools.misc.modelinfo import get_runfolder_timesteps
+from artistools.spectra import read_spec
 
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     """Write the spectra at the selected timesteps in code comparison workshop format."""
-    with zopen(firstexisting("spec.out", folder=modelpath, tryzipped=True)) as specfile:
-        spec_data = np.loadtxt(specfile)
+    dfspec = read_spec(modelpath).collect()
 
-    times = spec_data[0, 1:]
-    freqs = spec_data[1:, 0]
+    # the header names each column of flux with its time in days
+    times = [float(colname) for colname in dfspec.columns[1:]]
+    freqs = dfspec["nu"].to_numpy()
     lambdas = c_ang_per_s / freqs
 
-    fluxes_nu = spec_data[1:, 1:]
+    fluxes_nu = dfspec.drop("nu").to_numpy()
 
     # area in cm^2 of a sphere of radius 1 Mpc
     area = 4.0 * math.pi * megaparsec_to_cm**2
@@ -328,7 +327,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.outputfile.mkdir(parents=True, exist_ok=True)
 
     for modelpath in modelpathlist:
-        model_id = Path(modelpath).name.split("_")[0]
+        # the name of "." is empty, thus the model name comes from the absolute path of the folder
+        model_id = Path(modelpath).absolute().name.split("_")[0]
         print(f"{model_id=}")
 
         allnonemptymgilist = (
@@ -340,6 +340,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         modeldata, modelmeta = get_nonempty_cells(modelpath, allnonemptymgilist)
         dfestimators = scan_cell_estimators(modelpath, selected_timesteps, modeldata, modelmeta)
+
+        # with no estimator files, the scan gives only the columns of the model, thus each select of Te stops
+        if "Te" not in dfestimators.columns:
+            exit_with_error(
+                f"{modelpath} holds no estimator files, thus the code comparison data has no temperatures",
+                "Give the folder of a run that wrote estimators_????.out files",
+            )
 
         # a timestep that the run did not write gives an empty block, thus the file promises rows that it has not
         if missingtimesteps := sorted(set(selected_timesteps) - set(dfestimators["timestep"].to_list())):

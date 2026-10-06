@@ -31,6 +31,8 @@ from artistools.lightcurve.core import find_lightcurve_file
 from artistools.lightcurve.core import generate_band_lightcurve_data
 from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag
+from artistools.lightcurve.core import get_filename_part
+from artistools.lightcurve.core import get_filter_data
 from artistools.lightcurve.core import get_from_packets
 from artistools.lightcurve.core import get_top_nuclides
 from artistools.lightcurve.core import lum_lsun_to_mag
@@ -68,6 +70,7 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import get_deposition
+from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_folder
@@ -177,6 +180,14 @@ ENERGYRATEDESTS: t.Final = ("deposition", "emission", "analyticemission", "therm
 
 # the height of the thermalisation panel as a part of the height of the light curve frame
 THERMALISATIONROWHEIGHT: t.Final = 0.6
+
+# the arguments that fit the peak magnitudes of the light curves of each direction bin
+PEAKMAGDESTS: t.Final = (
+    "save_angle_averaged_peakmag_risetime_delta_m15_to_file",
+    "save_viewing_angle_peakmag_risetime_delta_m15_to_file",
+    "make_viewing_angle_peakmag_risetime_scatter_plot",
+    "make_viewing_angle_peakmag_delta_m15_scatter_plot",
+)
 
 
 def get_plot_lum_unit(args: argparse.Namespace) -> LumUnit:
@@ -569,7 +580,8 @@ def plot_artis_lightcurve(
     if escape_type == "TYPE_GAMMA" and linelabel:
         linelabel += r" $\gamma$"
     if pellet_nucname is not None:
-        linelabel = rf"$\;$ {pellet_nucname}"
+        # the model name and the gamma marker stay, because a second model or --gamma gives the same nuclide again
+        linelabel = f"{linelabel} {pellet_nucname}" if linelabel else pellet_nucname
 
     print_heading(linelabel)
     print_detail(f"modelpath: {modelpath.resolve().parts[-1]}")
@@ -580,6 +592,8 @@ def plot_artis_lightcurve(
     # resolve the direction bins first, because "-plotviewingangle -2" expands to every bin. The
     # packet-derived data must hold the same bin keys that the plot loop reads.
     dirbins, angle_definition = parse_directionbin_args(modelpath, args)
+    # bin -1 is the angle average, which only light_curve.out holds
+    directionresolved = list(dirbins) != [-1]
 
     if frompackets:
         lcdataframes = get_from_packets(
@@ -596,8 +610,9 @@ def plot_artis_lightcurve(
             timedaysmax=args.timemax,
         )
     else:
-        assert pellet_nucname is None, "pellet_nucname is only valid with frompackets=True"
-        assert not use_pellet_decay_time, "use_pellet_decay_time is only valid with frompackets=True"
+        if pellet_nucname is not None or use_pellet_decay_time:
+            msg = "only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
+            raise ValueError(msg)
         if args.plotvspecpol is not None:
             exit_with_error(
                 "-plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
@@ -608,14 +623,26 @@ def plot_artis_lightcurve(
                 firstexisting(lcfilename, folder=modelpath, tryzipped=True)
                 if lcfilename is not None
                 else find_lightcurve_file(
-                    modelpath, directionresolved=dirbins != [-1], gamma=escape_type == "TYPE_GAMMA"
+                    modelpath, directionresolved=directionresolved, gamma=escape_type == "TYPE_GAMMA"
                 )
             )
         except FileNotFoundError as exc:
             print_warning(f"Skipping {modelpath}: {exc}")
             return None
 
-        lcdataframes = scan_lightcurve(lcpath, average_over_phi=average_over_phi, average_over_theta=average_over_theta)
+        try:
+            lcdataframes = scan_lightcurve(
+                lcpath,
+                directionresolved=directionresolved,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )
+        except ValueError as exc:
+            exit_with_error(
+                str(exc),
+                "Give -plotviewingangle with light_curve_res.out, give no -plotviewingangle with light_curve.out, and"
+                " give a file that the run wrote in full",
+            )
         # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
         if -1 in dirbins and -1 not in lcdataframes:
             lcdataframes[-1] = scan_lightcurve(
@@ -769,8 +796,12 @@ def plot_artis_lightcurve(
         if args.print_data:
             print_product(args, lcdata)
 
-        if args.plotcmf:
-            assert lumunit != "mag", "Cannot plot cmf luminosity if magnitude is selected"
+        cmfcolumn = ycolumn.replace("luminosity_", "luminosity_cmf_")
+        if args.plotcmf and cmfcolumn not in lcdata.columns:
+            print_warning(
+                f"the light curve of {linelabel} has no comoving frame luminosity, thus --plotcmf draws no curve"
+            )
+        elif args.plotcmf:
             # a copy, because the next direction bin keeps the rest-frame style and the -linewidth value
             plotkwargs_cmf: dict[str, t.Any] = plotkwargs | {"linewidth": 1, "linestyle": "dashed"}
             # a colour bar leaves the series with no label, thus there is no label to mark as comoving frame
@@ -779,12 +810,7 @@ def plot_artis_lightcurve(
                 if label_with_tags is not None and not linelabel_is_custom
                 else label_with_tags
             )
-            axis.plot(
-                lcdata["time_days"],
-                lcdata[ycolumn.replace("luminosity_", "luminosity_cmf_")],
-                label=label_cmf,
-                **plotkwargs_cmf,
-            )
+            axis.plot(lcdata["time_days"], lcdata[cmfcolumn], label=label_cmf, **plotkwargs_cmf)
 
     return lcdataframes
 
@@ -927,7 +953,11 @@ def draw_plot(
             )
             plottedsomething = True
 
-    assert plottedsomething, "No light curve was plotted"
+    if not plottedsomething:
+        exit_with_error(
+            "the plot holds no light curve, because the command skipped each path",
+            "The warnings above give the reason for each path",
+        )
 
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
     if thermaxis is not None:
@@ -1101,6 +1131,9 @@ def make_band_lightcurves_plot(
     # y axis label and the output file name. main() dispatches here only when -filter has a value
     bandnames: list[str] = list(args.filter)
     filterfunc = get_filterfunc(args)
+    # each model writes its own data files, thus the name of a file holds the model name if the plot holds several
+    # models. The file name of one model stays the same
+    namesmodel = len(modelpaths) > 1
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, dirbin_definition = parse_directionbin_args(modelpath, args)
@@ -1112,10 +1145,6 @@ def make_band_lightcurves_plot(
                 print(f"Reading spectra: {get_model_logname(modelpath)} (angle {dirbin})")
             band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, dirbin, filternames=bandnames)
 
-            if modelnumber == 0 and args.plot_hesma_model:  # TODO: does this work?
-                hesma_model = read_hesma_lightcurve(args)
-                plotkwargs["label"] = str(args.plot_hesma_model).split("_")[:3]
-
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 axis = axes[plotnumber]
                 time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
@@ -1125,9 +1154,11 @@ def make_band_lightcurves_plot(
                     txtlinesout.extend(f"{t_d} {m}" for t_d, m in zip(time, brightness_in_mag, strict=False))
                     txtout = "\n".join(txtlinesout)
                 if args.write_data:
+                    filestem = f"band_{get_filename_part(band_name)}"
+                    if namesmodel:
+                        filestem += f"_{get_filename_part(modelname)}"
                     bandoutfile = Path(
-                        outputfolder,
-                        f"band_{band_name}_angle_{dirbin}.txt" if dirbin != -1 else f"band_{band_name}.txt",
+                        outputfolder, f"{filestem}_angle_{dirbin}.txt" if dirbin != -1 else f"{filestem}.txt"
                     )
                     bandoutfile.write_text(txtout, encoding="utf-8")
                     print_saved(bandoutfile)
@@ -1138,14 +1169,6 @@ def make_band_lightcurves_plot(
 
                 if filterfunc is not None:
                     brightness_in_mag = filterfunc(brightness_in_mag)
-
-                if (
-                    modelnumber == 0 and args.plot_hesma_model and band_name in hesma_model.columns
-                ):  # TODO: see if this works
-                    assert isinstance(ax, mplax.Axes)
-                    ax.plot(hesma_model["t"], hesma_model[band_name], color="black")
-                    if residualseries is not None:
-                        print_warning("the residual panel does not include the HESMA model")
 
                 text_key = FILTERNAME_ALIASES.get(band_name, band_name)
 
@@ -1208,6 +1231,9 @@ def make_band_lightcurves_plot(
             residualseries=residualseries,
         )
 
+    if args.plot_hesma_model:
+        plot_hesma_lightcurve(axes, bandnames, args, residualseries)
+
     ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=bandnames[0] if bandnames else None)
     set_lightcurveplot_legend(ax, args)
@@ -1224,6 +1250,27 @@ def make_band_lightcurves_plot(
             write_residual_stats(dfresidualstats, args.outputfile)
 
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
+
+
+def plot_hesma_lightcurve(
+    axes: Sequence[mplax.Axes],
+    bandnames: Sequence[str],
+    args: argparse.Namespace,
+    residualseries: list[ResidualSeries] | None,
+) -> None:
+    """Draw each band of the HESMA model of -plot_hesma_model on the panel of that band.
+
+    The first column of the file holds the time, and a column with the name of a band holds its magnitudes. The grid
+    of panels can hold more panels than bands, e.g. six panels for four bands.
+    """
+    hesma_model = read_hesma_lightcurve(args)
+    timecolumn = hesma_model.columns[0]
+    label = Path(args.plot_hesma_model).stem
+    for axis, band_name in zip(axes[: len(bandnames)], bandnames, strict=True):
+        if band_name in hesma_model.columns:
+            axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
+    if residualseries is not None:
+        print_warning("the residual panel does not include the HESMA model")
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
@@ -1324,12 +1371,6 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
-def get_filter_lambda0(filterdir: Path, filter_name_raw: str) -> float:
-    """Return the reference wavelength of the band in Angstroms, from the filter transmission file."""
-    with (filterdir / f"{filter_name_raw}.txt").open(encoding="utf-8") as f:
-        return float(f.readlines()[2])
-
-
 def deredden_band_magnitudes(dfband: pl.DataFrame, lambda0: float, a_v: float, r_v: float) -> pl.DataFrame:
     """Return the band data with the magnitudes corrected for reddening by the CCM89 extinction law.
 
@@ -1350,7 +1391,7 @@ def get_dereddened_band_data(
     lightcurve_data: pl.DataFrame, metadata: dict[str, t.Any], filter_name_raw: str, filterdir: Path
 ) -> pl.DataFrame:
     """Return the points of one band of a reference light curve, dereddened when the metadata gives the extinction."""
-    lambda0 = get_filter_lambda0(filterdir, filter_name_raw)
+    _, lambda0, *_ = get_filter_data(filterdir, filter_name_raw)
     filter_name = FILTERNAME_ALIASES.get(filter_name_raw, filter_name_raw)
     dfband = lightcurve_data.filter(pl.col("band") == filter_name)
 
@@ -1590,11 +1631,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument("-colour_evolution", nargs="*", help="Plot of colour evolution. Give two filters e.g. B-V")
+    parser.add_argument(
+        "-colour_evolution", nargs="*", help="Plot the colour evolution of each pair of bands, e.g. B-V U-B"
+    )
 
     parser.add_argument("--print_data", action="store_true", help="Print plotted data")
 
-    parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a text file")
+    parser.add_argument(
+        "--write_data",
+        action="store_true",
+        help="Save the band light curves of -filter and the statistics of --residuals in text files",
+    )
 
     addarg_residuals(parser, "reference light curve")
 
@@ -1674,7 +1721,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "as these values take a long time to calculate for all "
             "viewing angles. Need to run this command first alongside "
             "-plotviewingangle in order to save the data for the "
-            "viewing angles you want to use before making the scatter"
+            "viewing angles you want to use before making the scatter "
             "plots"
         ),
     )
@@ -1683,10 +1730,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--test_viewing_angle_fit",
         action="store_true",
         help=(
-            "Plots the lightcurves for each  viewing angle along with"
-            "the polynomial fit for each viewing angle specified"
-            "to check the fit is working properly: use alongside"
-            "-plotviewingangle "
+            "Plot the light curve and its fit for each viewing angle, to check the fit. Use it with"
+            " --save_viewing_angle_peakmag_risetime_delta_m15_to_file or with a scatter plot flag, which make the fits"
         ),
     )
 
@@ -1695,8 +1740,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help=(
             "Makes scatter plot of band peak mag with risetime with the "
-            "angle averaged values being the solid dot and the errors bars"
-            "representing the standard deviation of the viewing angle"
+            "angle averaged values being the solid dot and the error bars "
+            "representing the standard deviation of the viewing angle "
             "distribution"
         ),
     )
@@ -1705,7 +1750,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--make_viewing_angle_peakmag_delta_m15_scatter_plot",
         action="store_true",
         help=(
-            "Makes scatter plot of band peak with delta m15 with the angle"
+            "Makes scatter plot of band peak with delta m15 with the angle "
             "averaged values being the solid dot and the error bars representing "
             "the standard deviation of the viewing angle distribution"
         ),
@@ -1749,11 +1794,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--nomodelname", action="store_true", help="Model name not added to linename in legend")
 
-    parser.add_argument(
-        "-legendsubplotnumber", type=int, default=1, help="Subplot number to place legend in. Default is subplot[1]"
-    )
+    parser.add_argument("-legendsubplotnumber", type=int, default=1, help="Subplot number to place legend in")
 
-    parser.add_argument("-legendposition", type=str, default="best", help="Position of legend in plot. Default is best")
+    parser.add_argument("-legendposition", type=str, default="best", help="Position of legend in plot")
 
     # the old spelling of -legendcols, which addarg_legend adds
     parser.add_argument("-ncolslegend", dest="legendcols", type=positive_int_arg, help=argparse.SUPPRESS)
@@ -1762,6 +1805,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--legendframeon", dest="legendframe", action="store_true", help=argparse.SUPPRESS)
 
     addarg_labelfontsize(parser)
+
+
+def check_colour_evolution_args(args: argparse.Namespace) -> None:
+    """Stop the command when a value of -colour_evolution does not name two bands."""
+    for colour in args.colour_evolution or ():
+        if len(colour.split("-")) != 2:
+            exit_with_error(
+                f"-colour_evolution takes two bands for each colour, and {colour} names {len(colour.split('-'))} bands",
+                "Give each colour as two bands with a minus sign between them, e.g. -colour_evolution B-V",
+            )
 
 
 def check_residual_args(args: argparse.Namespace) -> None:
@@ -1797,14 +1850,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         from artistools.lightcurve.interactive import run_viewer
         from artistools.viewertools.core import get_command_tokens
 
-        run_viewer(
-            get_command_tokens(
-                argsraw,
-                kwargs,
-                fromdispatcher=fromdispatcher,
-                dispatcherargsraw=getattr(args, "dispatcherargsraw", None),
-            )
-        )
+        run_viewer(get_command_tokens(args, argsraw, kwargs, fromdispatcher=fromdispatcher))
         return
 
     resolve_plot_args(args)
@@ -1812,12 +1858,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     outputfolder = args.outputfile.parent
 
     # determine if this will be a scatter plot or not
-    if (  # args.calculate_peakmag_risetime_delta_m15 or
-        args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
-        or args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
-        or args.make_viewing_angle_peakmag_risetime_scatter_plot
-        or args.make_viewing_angle_peakmag_delta_m15_scatter_plot
-    ):
+    if any(getattr(args, dest) for dest in PEAKMAGDESTS):
         peakmag_risetime_declinerate_init(modelpaths, args)
         return
 
@@ -1829,7 +1870,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.timedays is None:
             misc.exit_with_error("specify a single time with -timedays")
         # this plot takes one time rather than a range
-        args.timedays = float(args.timedays)
+        try:
+            args.timedays = float(args.timedays)
+        except ValueError:
+            exit_with_error(
+                f"--brightnessattime takes one time, and -timedays gives {args.timedays}",
+                "Give one time in days, e.g. -timedays 5",
+            )
         if not args.plotviewingangle:
             args.plotviewingangle = [-1]
         if not args.colorbarcostheta and not args.colorbarphi:
@@ -1850,18 +1897,182 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
+class RefusedOption(t.NamedTuple):
+    """An option that plotlightcurves refuses together with a different option of the command."""
+
+    flag: str
+    reason: str
+    # the help text of the error if the command stops, or None if the command drops the option with a warning
+    remedy: str | None
+
+
+def get_other_plot_flag(args: argparse.Namespace) -> str | None:
+    """Return the flag of the plot that is not the plot of the bolometric light curves, or None for that plot.
+
+    Such a plot reads the spectra or the light curve files of ARTIS, and no packets files.
+    """
+    otherplotflags = (
+        ("-filter", args.filter),
+        ("-colour_evolution", args.colour_evolution),
+        ("--colouratpeak", args.colouratpeak),
+        ("--brightnessattime", args.brightnessattime),
+        *((f"--{dest}", getattr(args, dest)) for dest in PEAKMAGDESTS),
+    )
+    return next((flag for flag, isgiven in otherplotflags if isgiven), None)
+
+
+def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
+    """Return each option of args that plotlightcurves refuses together with a different option, and the reason.
+
+    The command stops for an option with a remedy, and it drops a different option with a warning. The viewer drops
+    each option. Thus the command and the viewer read the same rules.
+    """
+    refused: list[RefusedOption] = []
+    isobserver = args.plotvspecpol is not None
+    otherplotflag = get_other_plot_flag(args)
+    # the comoving frame energy of the packets gives a luminosity, which has no magnitude. The virtual packets hold
+    # the energy of their observer in the rest frame only
+    if args.plotcmf and args.magnitude:
+        refused.append(
+            RefusedOption(
+                "--plotcmf",
+                "--plotcmf gives a comoving frame luminosity, which has no magnitude",
+                "Remove --plotcmf or --magnitude",
+            )
+        )
+    elif args.plotcmf and isobserver:
+        refused.append(
+            RefusedOption(
+                "--plotcmf",
+                "the virtual packets hold no comoving frame energy, thus --plotcmf draws no curve of an observer",
+                None,
+            )
+        )
+    elif args.plotcmf and args.use_pellet_decay_time:
+        refused.append(
+            RefusedOption(
+                "--plotcmf",
+                "--plotcmf bins the comoving frame light curve by the arrival time, and --use_pellet_decay_time bins by"
+                " the decay time. Thus the two curves have different time axes",
+                None,
+            )
+        )
+    pelletremedy = "Remove -plotvspecpol, or remove -topnucs and --use_pellet_decay_time"
+    for flag, isgiven in (("-topnucs", args.topnucs), ("--use_pellet_decay_time", args.use_pellet_decay_time)):
+        if isgiven and isobserver:
+            reason = f"the virtual packets hold no pellet, thus {flag} gives no light curve of an observer"
+            refused.append(RefusedOption(flag, reason, pelletremedy))
+    if args.gamma and isobserver:
+        refused.append(
+            RefusedOption(
+                "--gamma",
+                "ARTIS makes the virtual packets from the r-packets, thus an observer has no gamma-ray light curve",
+                "Remove -plotvspecpol or --gamma",
+            )
+        )
+    if otherplotflag is not None:
+        refused.extend(
+            RefusedOption(flag, f"{otherplotflag} reads no packets files, thus {flag} has no effect", None)
+            for flag, isgiven in (
+                ("--frompackets", args.frompackets),
+                ("-topnucs", args.topnucs),
+                ("--use_pellet_decay_time", args.use_pellet_decay_time),
+            )
+            if isgiven
+        )
+    elif args.use_pellet_decay_time and not isobserver and not (args.frompackets or args.topnucs):
+        refused.append(
+            RefusedOption(
+                "--use_pellet_decay_time",
+                "only the packets give the decay time of a pellet, and the command reads no packets files",
+                "Give --frompackets, or remove --use_pellet_decay_time",
+            )
+        )
+    refused.extend(get_refused_average_options(args))
+    if args.test_viewing_angle_fit and not any(getattr(args, dest) for dest in PEAKMAGDESTS):
+        refused.append(
+            RefusedOption(
+                "--test_viewing_angle_fit",
+                "--test_viewing_angle_fit plots the fits of the peak magnitudes, and only a save flag or a scatter"
+                " flag makes these fits",
+                None,
+            )
+        )
+    return refused
+
+
+def get_refused_average_options(args: argparse.Namespace) -> list[RefusedOption]:
+    """Return each average over an angle that plotlightcurves refuses for the direction bins of args."""
+    averageflags = (
+        ("--average_over_phi_angle", args.average_over_phi_angle, {"average_over_phi": True}),
+        ("--average_over_theta_angle", args.average_over_theta_angle, {"average_over_theta": True}),
+    )
+    if not args.plotviewingangle:
+        return [
+            RefusedOption(
+                flag, f"{flag} groups the direction bins of -plotviewingangle, and the command gives none", None
+            )
+            for flag, isgiven, _ in averageflags
+            if isgiven
+        ]
+    refused: list[RefusedOption] = []
+    # the virtual packet observers are no direction bins, thus an average does not group them
+    if args.plotvspecpol is None:
+        for flag, isgiven, averagekwargs in averageflags:
+            groupstarts = get_dirbins(**averagekwargs)
+            # -1 is the angle average, and -2 selects the first bin of each group
+            if isgiven and (
+                badbins := [dirbin for dirbin in args.plotviewingangle if dirbin not in {-1, -2, *groupstarts}]
+            ):
+                refused.append(
+                    RefusedOption(
+                        flag,
+                        f"{flag} gives one curve for each group of direction bins, and the bins"
+                        f" {' '.join(str(dirbin) for dirbin in badbins)} start no group",
+                        "Give the first bin of each group, e.g. -plotviewingangle"
+                        f" {' '.join(map(str, groupstarts[:3]))}, or give -plotviewingangle -2",
+                    )
+                )
+    return refused
+
+
+def drop_refused_options(
+    args: argparse.Namespace, refused: Iterable[RefusedOption], warningformat: str = "{reason}"
+) -> None:
+    """Give each refused option the value of no selection, and print a warning.
+
+    The value of no selection is 0 for -topnucs and False for a different flag. warningformat makes the text of the
+    warning from the fields flag and reason.
+    """
+    for option in refused:
+        print_warning(warningformat.format(flag=option.flag, reason=option.reason))
+        setattr(args, option.flag.lstrip("-"), 0 if option.flag == "-topnucs" else False)
+
+
+def check_refused_options(args: argparse.Namespace) -> None:
+    """Stop the command for a refused option that has a remedy, and drop each other refused option with a warning."""
+    refused = get_refused_options(args)
+    for option in refused:
+        if option.remedy is not None:
+            exit_with_error(option.reason, option.remedy)
+    drop_refused_options(args, refused)
+
+
 def resolve_plot_args(args: argparse.Namespace) -> None:
     """Give args the values that the plot reads: the paths, the time range, the styles, and the output file.
 
     Each change here also applies to the plot of the viewer, which calls this function for each command.
     """
-    if getattr(args, "average_every_tenth_viewing_angle", False):
-        print_warning("--average_every_tenth_viewing_angle is deprecated. use --average_over_phi_angle instead")
-        args.average_over_phi_angle = True
-
     args.modelpath = normalize_path_list(args.modelpath)
     apply_time_range_args(args, args.modelpath)
     resolve_energy_rate_args(args)
+    if args.escape_type is not None:
+        # -escape_type is the old spelling of --rpkt and --gamma. It reached no reader before, thus
+        # -escape_type TYPE_GAMMA gave an R-packet light curve. It names one type, thus it sets one
+        args.gamma = args.escape_type == "TYPE_GAMMA"
+        args.rpkt = not args.gamma
+    check_refused_options(args)
+    check_colour_evolution_args(args)
 
     nmodels = len(args.modelpath)
     args.reflightcurves = makelist(args.reflightcurves)
@@ -1890,12 +2101,6 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         marker or defaultmarkers[i % len(defaultmarkers)] for i, marker in enumerate(args.refspecmarkers)
     ]
 
-    if args.escape_type is not None:
-        # -escape_type is the old spelling of --rpkt and --gamma. It reached no reader before, thus
-        # -escape_type TYPE_GAMMA gave an R-packet light curve. It names one type, thus it sets one
-        args.gamma = args.escape_type == "TYPE_GAMMA"
-        args.rpkt = not args.gamma
-
     if args.rpkt is False and not args.gamma:
         # if we're not plotting gamma, then we want to plot the r-packets by default
         args.rpkt = True
@@ -1909,9 +2114,13 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     # the default name says what the figure holds. -o keeps the name that the user gave, thus the
     # plot functions below take the resolved name and do not make one of their own
     if args.filter:
-        defaultoutputfile = f"plot{args.filter[0]}lightcurves.pdf" if len(args.filter) == 1 else "plotlightcurves.pdf"
+        defaultoutputfile = (
+            f"plot{get_filename_part(args.filter[0])}lightcurves.pdf"
+            if len(args.filter) == 1
+            else "plotlightcurves.pdf"
+        )
     elif args.colour_evolution:
-        defaultoutputfile = f"plotcolorevolution{'_'.join(args.colour_evolution)}.pdf"
+        defaultoutputfile = f"plotcolorevolution{get_filename_part('_'.join(args.colour_evolution))}.pdf"
     else:
         defaultoutputfile = "plotlightcurves.pdf"
 

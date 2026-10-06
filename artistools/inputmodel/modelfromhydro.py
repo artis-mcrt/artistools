@@ -14,6 +14,7 @@ from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
+from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances
@@ -25,6 +26,8 @@ from artistools.inputmodel.rprocess_from_trajectory import add_abundancecontribu
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_output
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_unsupported
 from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -226,7 +229,7 @@ def read_griddat_file(
     return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
 
 
-def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float) -> pl.DataFrame:
+def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> pl.DataFrame:
     """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16."""
     print(griddata)
 
@@ -236,17 +239,20 @@ def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float) -> pl.Dat
     mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
 
     v_outer_hole = 0.1 * CLIGHT  # cm/s
-    pos_outer_hole = v_outer_hole * t_model_in_days * (24.0 * 3600)  # cm
+    pos_outer_hole = v_outer_hole * modelmeta["t_model_init_days"] * day_to_s  # cm
     vol_hole = 4 / 3 * np.pi * pos_outer_hole**3  # cm^3
     density_hole = (mass_integrated * MSUN) / vol_hole  # g / cm^3
     print(density_hole)
 
-    # cells with velocity below 0.1 c get the hole density added and a Ye floor of 0.4
-    inhole = (
-        (pl.col("pos_x_min") ** 2 + pl.col("pos_y_min") ** 2 + pl.col("pos_z_min") ** 2).sqrt()
-        / (t_model_in_days * (24.0 * 3600))
-        / CLIGHT
-    ) < 0.1
+    # cells with a mid-point velocity below 0.1 c get the hole density added and a Ye floor of 0.4. The mid-point
+    # and not the lower edge sets the velocity, because the lower edge makes the hole asymmetric about the origin
+    griddata = griddata.with_columns(
+        add_derived_cols_to_modeldata(griddata, modelmeta)
+        .select(inhole=pl.col("vel_r_mid_on_c") < 0.1)
+        .collect()
+        .to_series()
+    )
+    inhole = pl.col("inhole")
 
     showcols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
     print("Inner empty cells")
@@ -259,7 +265,7 @@ def add_mass_to_center(griddata: pl.DataFrame, t_model_in_days: float) -> pl.Dat
 
     print(griddata.filter(inhole).select(showcols))
 
-    return griddata
+    return griddata.drop("inhole")
 
 
 def makemodelfromgriddata(
@@ -279,7 +285,7 @@ def makemodelfromgriddata(
     )
 
     if fillcentralhole:
-        dfmodel = add_mass_to_center(dfmodel, t_model_days)
+        dfmodel = add_mass_to_center(dfmodel, modelmeta)
 
     dfgridcontributions = get_gridparticlecontributions_or_none(gridfolderpath)
 
@@ -368,7 +374,7 @@ def makemodelfromgriddata(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument(
-        "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.dat"
+        "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.txt"
     )
     parser.add_argument(
         "-trajectoryroot",
@@ -383,9 +389,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="Number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D, 2 for 2D cylindrical, 3 for 3D Cartesian",
     )
-    parser.add_argument(
-        "-targetmodeltime_days", "-t", type=float, default=0.1, help="Time in days for the output model snapshot"
-    )
+    # -t means -timedays on every command, thus the time of the snapshot takes that name
+    addarg_timedays(parser, kind="float", helptext="Time in days for the output model snapshot")
+    parser.set_defaults(timedays=0.1)
+    # the name of this argument before it took the name -timedays
+    parser.add_argument("-targetmodeltime_days", dest="timedays", type=float, help=argparse.SUPPRESS)
+    addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
     parser.add_argument(
         "-scalemass",
         type=float,
@@ -417,7 +426,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     makemodelfromgriddata(
         gridfolderpath=gridfolderpath,
         outputpath=outputpath,
-        targetmodeltime_days=args.targetmodeltime_days,
+        targetmodeltime_days=args.timedays,
         traj_root=args.trajectoryroot,
         dimensions=args.dimensions,
         scalemass=args.scalemass,

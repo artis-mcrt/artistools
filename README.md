@@ -2,7 +2,7 @@
 
 [![DOI](https://zenodo.org/badge/53433932.svg)](https://zenodo.org/badge/latestdoi/53433932)
 [![PyPI - Version](https://img.shields.io/pypi/v/artistools)](https://pypi.org/project/artistools)
-[![License](https://img.shields.io/github/license/artis-mcrt/artistools)](https://github.com/artis-mcrt/artistools/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/artis-mcrt/artistools)](https://github.com/artis-mcrt/artistools/blob/main/LICENSE.txt)
 
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/artistools)](https://pypi.org/project/artistools/)
 [![Installation and pytest](https://github.com/artis-mcrt/artistools/actions/workflows/pytest.yml/badge.svg)](https://github.com/artis-mcrt/artistools/actions/workflows/pytest.yml)
@@ -22,11 +22,13 @@ git clone https://github.com/artis-mcrt/artistools.git
 cd artistools
 ```
 
-To make the artistools command available using an isolated [uv](https://docs.astral.sh/uv/getting-started/installation/) virtual environment, run:
+To make a [uv](https://docs.astral.sh/uv/getting-started/installation/) virtual environment in the clone, with the development tools, run:
 ```sh
-uv tool install --editable .[extras]
-prek install
+uv sync --all-extras
+uv run -- prek install
 ```
+
+`uv run -- artistools` then runs the command of the clone. To make the artistools command available outside the clone, also run `uv tool install --editable .[extras]`.
 
 Alternatively, to avoid uv and install into the system environment with pip:
 ```sh
@@ -39,24 +41,24 @@ steps for it.
 
 ## Citing artistools
 
-If you artistools for a paper or presentation, please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
+If you use artistools for a paper or a presentation, please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
 
 ## Usage
 Run "artistools" (or the short alias "at") at the command-line to get a full list of subcommands, and "artistools --version" to check the installed version. Some common commands are:
 - artistools plotspectra (alias: at spec)
-- artistools plotlightcurve (alias: at lc)
+- artistools plotlightcurves (alias: at lc)
 - artistools plotestimators (alias: at estimators)
 - artistools plotnltepops
 - artistools inputmodel describe
 
-Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Most of these commands should be run either within an ARTIS simulation folder or by passing the folder path as the last argument.
+Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Run a command in an ARTIS run folder, or give the path of the folder. A command that reads a model takes the folder with `-modelpath`, e.g. `artistools timesteps -modelpath mymodel`. Most of these commands also take the folder as the last positional argument, e.g. `artistools plotspectra -t 300 mymodel`.
 
 ### A model on a different host
 
 These commands accept a model path of the form `host:path`, where `host` is a name that ssh knows:
 
 - plotestimators and its `--interactive` viewer;
-- plotlightcurve;
+- plotlightcurves and its `--interactive` viewer;
 - plotspectra and its `--interactive` viewer;
 - `at.scan_estimators` in a Python script.
 
@@ -66,7 +68,7 @@ artistools plotspectra -t 300 vae26:~/scratch/mymodel
 
 The rule of rsync decides whether a path is remote: a colon before the first slash makes a remote path. A local folder with such a colon in its name needs "./" at the start, e.g. `./run:2`.
 
-artistools starts `uvx artistools@<version> server` on that host through ssh, with the versions of the local artistools and polars. Thus the host needs only [uv](https://docs.astral.sh/uv/). The command sets `POLARS_MAX_THREADS=16`, because a login node can have hundreds of cores, and other users share them. The server reads the files and makes the data of each plot, e.g. it puts the packets into bins. Only the data to draw comes back, and the parquet caches stay beside the data on the host. A script sends the filter and the columns of each query to the host, and only the rows of the query come back.
+artistools starts the server on that host through ssh, and it prints the command and the reason for it. A release of artistools starts `uvx artistools@<version> server`, with the versions of the local artistools and polars. Thus the host needs only [uv](https://docs.astral.sh/uv/). A clone whose package code differs from the release starts its git commit with uvx, if the commit is on a remote branch. The host then also needs git and Rust. For a commit that is only in the clone, the release starts, because the host cannot get the commit. The command sets `POLARS_MAX_THREADS=16`, because a login node can have hundreds of cores, and other users share them. The server reads the files and makes the data of each plot, e.g. it puts the packets into bins. Only the data to draw comes back, and the parquet caches stay beside the data on the host. A script sends the filter and the columns of each query to the host, and only the rows of the query come back.
 
 An option that reads its files on the local host stops with an error. To start the server with a different command on the host, e.g. an artistools in a clone, set `ARTISTOOLS_REMOTE_COMMAND`:
 
@@ -124,10 +126,10 @@ A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame 
 | Name | Purpose |
 | --- | --- |
 | `at.estimators.read_estimators` | Read the estimators of a few cells into a dictionary. This is slow for many cells, thus prefer `at.scan_estimators`. |
-| `at.spectra.get_spectra` | Return the spectrum of each direction bin, as an average over a range of timesteps. |
-| `at.spectra.get_from_packets` | Return a spectrum from the packets files, for a range of arrival times. |
+| `at.spectra.get_spectra` | Return a dictionary with a LazyFrame of the spectrum of each direction bin, as an average over a range of timesteps. |
+| `at.spectra.get_from_packets` | Return a dictionary with a LazyFrame of the spectrum of each direction bin from the packets files, for a range of arrival times. |
 | `at.lightcurve.scan_lightcurve` | Read a light curve file. Return one LazyFrame for each direction bin. |
-| `at.lightcurve.get_from_packets` | Return the luminosity against time from the packets files. |
+| `at.lightcurve.get_from_packets` | Return a dictionary with a LazyFrame of the luminosity against time of each direction bin, from the packets files. |
 | `at.packets.get_packets` | Return the number of ranks and a LazyFrame of the packets of a run. |
 | `at.nltepops.read_nltepops` | Read the NLTE populations of a timestep and of one or more cells. |
 | `at.atomic.get_levels` | Return the energy levels of each ion, with the transitions as an option. |
@@ -136,7 +138,7 @@ A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame 
 
 ### The command of a package
 
-A package that has a plot command gives it as `plot`, e.g. `at.spectra.plot`, `at.lightcurve.plot`, `at.estimators.plot`, `at.nltepops.plot`, `at.packets.plot`, `at.nonthermal.plot`, and `at.gsinetwork.plot`. This function is the command itself. Each keyword is one command-line argument:
+A package that has a plot command gives it as `plot`, e.g. `at.spectra.plot`, `at.lightcurve.plot`, `at.estimators.plot`, `at.nltepops.plot`, `at.packets.plot`, `at.nonthermal.plot`, and `at.gsinetwork.plot`. This function is the command itself. Each keyword is one command-line argument, and `argsraw` gives more arguments as text, e.g. `argsraw=["-t", "300"]`:
 
 ```python
 at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile="spectrum.pdf")

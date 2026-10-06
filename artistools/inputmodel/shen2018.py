@@ -2,7 +2,6 @@
 
 import argparse
 import math
-import string
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -26,6 +25,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="folder", default=Path())
 
 
+def get_nuclide_atomic_number(species: str) -> int:
+    """Return the atomic number of a nuclide column of the input file, and 0 for the neutron.
+
+    A nuclide list gives a mass number with each element, thus "n" and "p" without one are the free nucleons. The
+    function get_atomic_number reads such a name without digits as nitrogen and phosphorus.
+    """
+    match species.lower():
+        case "n" | "n1":
+            return 0
+        case "p" | "p1":
+            return 1
+        case _:
+            return get_atomic_number(species)
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Convert Shen et al. 2018 models to ARTIS format."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -34,7 +48,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     isotopesofelem: dict[int, list[str]] = {}
     for species in datain.columns[5:]:
-        atomic_number = get_atomic_number(species.rstrip(string.digits))
+        atomic_number = get_nuclide_atomic_number(species)
         isotopesofelem.setdefault(atomic_number, []).append(species)
 
     t_model_init_seconds = 10.0
@@ -83,9 +97,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfelabundances = dfshells.select(
         pl.col("cellid").alias("inputcellid"),
         *(
-            pl.sum_horizontal([pl.col(species) for species in isotopesofelem[atomic_number]]).alias(
-                f"X_{get_elsymbol(atomic_number)}"
-            )
+            # an element with no column in the file has a mass fraction of zero
+            (
+                pl.sum_horizontal(isotopesofelem[atomic_number]) if atomic_number in isotopesofelem else pl.lit(0.0)
+            ).alias(f"X_{get_elsymbol(atomic_number)}")
             for atomic_number in range(1, 31)
         ),
     )

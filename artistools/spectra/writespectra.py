@@ -31,10 +31,10 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
 
 
 def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> None:
-    """Write out spectra to text files.
+    """Write the spectrum of each timestep of the valid time range to a text file.
 
-    Writes lambda_angstroms and f_lambda to .txt files for all timesteps and create
-    a text file that holds the time in days of each timestep. The files go to
+    Each file holds lambda_angstroms and f_lambda, and its name gives the timestep and the time in days. A model
+    with direction bins also gets one file of the first polar angle bin for each timestep. The files go to
     outdirectory, or to the spectra folder of the model when the caller gives none.
     """
     if outdirectory is None:
@@ -64,7 +64,7 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
         for timestep in timesteps
     ]
     if any(-1 not in lzspectra for lzspectra in lzspectra_of_timestep):
-        msg = f"{modelpath} holds no spec.out, thus there is no angle-averaged spectrum to write"
+        msg = f"{modelpath} holds no spec.out and no specpol.out, thus there is no angle-averaged spectrum to write"
         raise FileNotFoundError(msg)
 
     # one collect_all call evaluates the queries of all the timesteps together

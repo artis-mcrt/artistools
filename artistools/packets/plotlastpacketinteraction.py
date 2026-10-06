@@ -16,11 +16,16 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
+from artistools.misc import addarg_timedays
+from artistools.misc import addarg_unsupported
 from artistools.misc import exit_with_error
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import parse_cli_args
+from artistools.misc import resolve_outputfile
 from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_packets
@@ -104,8 +109,12 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ion_stage_str: str | None = None,
     wavelen: float | None = None,
     binwidth: float | None = None,
+    outputfile: Path | None = None,
 ) -> None:
-    """Plot a 2D histogram of packet emission position against ejecta velocity, and save the figure."""
+    """Plot a 2D histogram of packet emission position against ejecta velocity, and save the figure.
+
+    An outputfile of None or of a folder gives the file a name from the selection of the packets.
+    """
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if wavelen is not None:
         start_of_filename = f"{start_of_filename}{wavelen:.0f}A_"
@@ -143,7 +152,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
             raise ValueError(message)
         position = "trueem"
     print(f"t_min selected: {t_min} t_max_selected: {t_max}, is {Delta_t_secs} seconds")
-    dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="right"))
+    # a timestep holds the times from its start up to its end, and the end belongs to the next timestep
+    dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="left"))
     # a packet with no record of the emission has a time of NaN, thus it is outside each bin of the histogram
     emtime = get_emission_time_expr(position)
     dfpackets = dfpackets.with_columns(
@@ -211,7 +221,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6))
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
 
-    outfilename = start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf"
+    outfilename = resolve_outputfile(outputfile, start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf")
     save_figure(fig, outfilename, dpi=300)
 
 
@@ -219,12 +229,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, required=True, helptext="Path to ARTIS simulation")
 
-    parser.add_argument(
-        "-tdays",
-        type=float,
-        required=True,
-        help="Time in days, collects packets for the timestep in which the specified value lies in",
+    addarg_timedays(
+        parser,
+        kind="float",
+        helptext="Time in days. The plot takes the packets that arrive in the timestep of this time",
     )
+    parser.add_argument("-tdays", dest="timedays", type=float, help=argparse.SUPPRESS)
+    addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
 
     parser.add_argument("-wavelen", type=float, default=None, help="Central wavelength in Angstrom")
     parser.add_argument("-binwidth", type=float, default=None, help="Wavelength bin width in Angstrom")
@@ -232,7 +243,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-element", type=str, default=None, help="Element symbol")
     parser.add_argument("-ionstage", type=str, default=None, help="Ionisation stage (spectroscopic notation)")
 
-    parser.add_argument("-dirbin", type=int, default=-1, help="Viewing direction bin. Default is isotropic (-1)")
+    parser.add_argument(
+        "-dirbin",
+        type=int,
+        default=-1,
+        help=(
+            "The first direction bin of a costheta bin, e.g. 0, 10, or 90. The plot takes all the phi bins of that"
+            " costheta bin. The value -1 takes all directions"
+        ),
+    )
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument("--colorlogscale", action="store_true", help="Log scale for color bar in 2D plot")
 
@@ -241,6 +260,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Plot true thermal emission rather than last interaction location",
     )
+
+    addarg_output(parser, kind="file", helptext="Path/filename for the PDF file")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -251,19 +272,32 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         message = "Wavelength mode requires both -wavelen and -binwidth to be provided."
         raise ValueError(message)
 
-    assert args.dirbin == -1 or (args.dirbin % get_viewingdirection_phibincount()) == 0, (
-        "dirbin needs to be -1 (isotropic) or a multiple of 10 (to be improved)"
-    )
+    if args.timedays is None:
+        exit_with_error("the time is missing", "Give the time in days, e.g. -timedays 300")
+
+    nphibins = get_viewingdirection_phibincount()
+    ndirbins = get_viewingdirectionbincount()
+    if args.dirbin != -1 and not (0 <= args.dirbin < ndirbins and args.dirbin % nphibins == 0):
+        exit_with_error(
+            f"-dirbin {args.dirbin} is not the first direction bin of a costheta bin",
+            f"Give -1 for all directions, or a multiple of {nphibins} from 0 to {ndirbins - nphibins}",
+        )
+
+    # get_atomic_number gives -1 for a text that is no element symbol, and 0 for the free neutron, which has no lines
+    atomic_number = get_atomic_number(args.element) if args.element else None
+    if atomic_number is not None and atomic_number < 1:
+        exit_with_error(f"-element {args.element} is no element symbol", "Give the element as e.g. Sr")
 
     packets_2d_hist_bin_and_ejecta_vel(
         Path(args.modelpath),
-        args.tdays,
+        args.timedays,
         args.srIItriplet,
         args.colorlogscale,
         dirbin=args.dirbin,
-        Z=get_atomic_number(args.element) if args.element else None,
+        Z=atomic_number,
         trueem=args.use_thermalemissiontype,
         ion_stage_str=args.ionstage,
         wavelen=args.wavelen,
         binwidth=args.binwidth,
+        outputfile=args.outputfile,
     )

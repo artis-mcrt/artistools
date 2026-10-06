@@ -2,14 +2,19 @@
 
 import re
 import string
+from collections.abc import Mapping
 from collections.abc import Sequence
+from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 
 from artistools.atomic import get_ionstring
+from artistools.atomic import get_kept_levels
 from artistools.constants import K_B_ev_per_K
 from artistools.misc import read_rank_outputfiles
+from artistools.misc.fileio import resolve_modelpath
 
 
 def texifyterm(strterm: str) -> str:
@@ -66,10 +71,15 @@ def add_lte_pops(
     columntemperature_tuples: Sequence[tuple[str, float | int]],
     noprint: bool = False,
     maxlevel: int = -1,
+    keptlevelcount_of_element: Mapping[int, int | None] | None = None,
 ) -> pl.DataFrame:
     """Add columns to dfpop with LTE populations.
 
     columntemperature_tuples is a sequence of tuples of column name and temperature, e.g., ('mycolumn', 3000)
+
+    keptlevelcount_of_element gives the count of levels that ARTIS keeps for each ion of an element, see
+    get_kept_level_counts. The superlevel holds no level above them. A value of None keeps every level of the
+    atomic data. An element that the mapping does not hold also keeps every level.
     """
     ionlevels_of_ion = {
         (Z, ion_stage): adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["levels"].item(0)
@@ -125,8 +135,9 @@ def add_lte_pops(
 
         if (Z, ion_stage, levelnumber_sl) not in superlevelpops_of_ion:
             ionlevels = ionlevels_of_ion[Z, ion_stage]
+            keptlevels = get_kept_levels(ionlevels, (keptlevelcount_of_element or {}).get(Z))
             superlevelpops_of_ion[Z, ion_stage, levelnumber_sl] = (
-                ionlevels[levelnumber_sl:].select(ltepop_exprs(ionlevels)).sum()
+                keptlevels[levelnumber_sl:].select(ltepop_exprs(ionlevels)).sum()
             )
 
     lte_columns = [columnname for columnname, _ in columntemperature_tuples]
@@ -171,7 +182,29 @@ def add_lte_pops(
 
 
 def read_nltepops(
-    modelpath: str | Path, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
+    modelpath: str | Path,
+    timestep: int | np.integer | None = None,
+    modelgridindex: int | np.integer | Sequence[int] | None = None,
 ) -> pl.DataFrame:
-    """Read in NLTE populations from a model for a particular timestep and one or more grid cells."""
+    """Read in NLTE populations from a model for a particular timestep and one or more grid cells.
+
+    A figure of several subplots reads the same populations for each one, and a window reads them again for each of
+    its plots. Thus the last reads stay in memory. Do not change the frame that this function returns.
+    """
+    # a numpy integer is not iterable, thus the test of a sequence decides between one cell and a list of cells
+    if modelgridindex is None:
+        cells = None
+    elif isinstance(modelgridindex, Sequence):
+        cells = tuple(int(mgi) for mgi in modelgridindex)
+    else:
+        cells = int(modelgridindex)
+    return read_nltepops_cached(resolve_modelpath(modelpath), None if timestep is None else int(timestep), cells)
+
+
+# a window reads the levels of one cell for its menu, and a cache of one read would then drop the frame of the plot.
+# A frame of a large run can hold several GB, thus the cache keeps only these two reads
+@lru_cache(maxsize=2)
+def read_nltepops_cached(modelpath: Path, timestep: int | None, cells: int | tuple[int, ...] | None) -> pl.DataFrame:
+    """Read the NLTE populations of the model at an absolute path. One read of a large run takes minutes."""
+    modelgridindex = list(cells) if isinstance(cells, tuple) else cells
     return read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex)

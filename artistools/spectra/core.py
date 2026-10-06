@@ -1,6 +1,7 @@
 """Artistools - spectra related functions."""
 
 import argparse
+import io
 import itertools
 import math
 import typing as t
@@ -37,6 +38,7 @@ from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbins
 from artistools.misc import get_file_metadata
+from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times
@@ -50,6 +52,9 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
+from artistools.misc.fileio import polars_error_note
+from artistools.misc.fileio import raise_if_cut_line
+from artistools.misc.fileio import read_complete_lines
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import on_model_host
 from artistools.packets import filter_packets_dirbin
@@ -59,12 +64,18 @@ from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
+from artistools.packets import get_vpkt_in_spectrum_range_expr
 from artistools.packets import has_emission_record_expr
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
+
+
+# the label, the emitted f_nu, and the absorbed f_nu of a series of emission.out. Only a bound-bound series has an
+# absorbed f_nu
+type FluxSeries = tuple[str, npt.NDArray[np.float64], npt.NDArray[np.float64] | None]
 
 
 class FluxContributionTuple(t.NamedTuple):
@@ -129,6 +140,11 @@ def get_dfspectrum_x_y_with_units(
             # [erg/s/cm^2/xunit]
             dfspectrum = dfspectrum.with_columns(y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2)
 
+        case "eflux" if unit.kind == "wavelength":
+            # E^2 dN/dE = E F_E, which equals lambda F_lambda. A wavelength unit is not a unit of energy, thus the
+            # energy stays in erg [erg/s/cm^2]
+            dfspectrum = dfspectrum.with_columns(y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 * pl.col("x"))
+
         case "eflux":
             # adjust for distance, convert erg to xunit and multiply by another factor of x
             # [xunit/s/cm^2]
@@ -190,6 +206,8 @@ def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> n
                 f"No gamma_spec.out found. Using default gamma bins: mnubins {mnubins} nu_min_r {min_mev_on_h:.2f} MeV/H nu_max_r {max_mev_on_h:.2f} MeV/H"
             )
         else:
+            # NU_MAX_R is 5e16 Hz in the kilonova artisoptions.h files of ARTIS and 5e15 Hz in the others. The
+            # default keeps the kilonova value, because most runs with no spec.out are kilonova runs
             nu_min_r = 1e13
             nu_max_r = 5e16
             print(
@@ -225,7 +243,7 @@ def get_lambda_bin_edges(
     modelpath: Path | str,
     gamma: bool = False,
 ) -> npt.NDArray[np.floating]:
-    """Get the minimum and maximum wavelength to collect data for, and the bin width to ensure coverage of the plotted range."""
+    """Return the wavelength bin edges [Å] that cover the plotted x range, with the bin width of the options."""
     assert sum(param is not None for param in (deltax, deltalogx, deltalambda)) <= 1, (
         "Options deltax, deltalogx, and deltalambda are mutually exclusive, but more than one was provided."
     )
@@ -249,6 +267,11 @@ def get_lambda_bin_edges(
     elif deltax is not None:
         if not deltax > 0:
             msg = f"deltax must be positive, got {deltax}"
+            raise ValueError(msg)
+        if not xmin_plot - deltax * 0.5 > 0:
+            # an edge at or below zero gives a negative wavelength or frequency, thus one bin would hold every
+            # packet below the second edge
+            msg = f"deltax {deltax} needs a lower x limit above half a bin width, got {xmin_plot}"
             raise ValueError(msg)
         x_bin_edges = np.arange(xmin_plot - deltax * 0.5, xmax_plot + deltax * 1.5, deltax)
         lambda_bin_edges = np.sort(convert_unit_to_angstroms(x_bin_edges, xunit))
@@ -536,6 +559,25 @@ def filter_packets_by_time(
     )
 
 
+def check_time_range_inside_vpkt_window(
+    vpkt_config: Mapping[str, t.Any], timemindays: float, timemaxdays: float
+) -> None:
+    """Raise a ValueError if the time range leaves the time window of the virtual packets in vpkt.txt.
+
+    ARTIS writes a virtual packet only for an arrival time inside the window. The flux takes the full width of the
+    time range, thus a range that leaves the window gives a low flux. With no time override, vpkt.txt takes the window
+    of the constants of the ARTIS build. The file does not give that window, thus no check is possible.
+    """
+    if vpkt_config["time_limits_enabled"] and (
+        timemindays < vpkt_config["initial_time"] or timemaxdays > vpkt_config["final_time"]
+    ):
+        msg = (
+            f"The time range {timemindays:.2f} to {timemaxdays:.2f} days is outside the virtual packets, which "
+            f"cover {vpkt_config['initial_time']} to {vpkt_config['final_time']} days"
+        )
+        raise ValueError(msg)
+
+
 @on_model_host
 def get_from_packets(
     modelpath: Path | str,
@@ -588,11 +630,12 @@ def get_from_packets(
     dfbinned_lazy = get_binned_lambda_frame(lambda_bin_edges)
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
+        check_time_range_inside_vpkt_window(vpkt_config, timelowdays, timehighdays)
         alldirbins = list(range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"]))
         dirbinsums = sum_virtual_packets_by_observer(
             dfpackets,
             select_dirbins(alldirbins, directionbins),
-            vpkt_config["nspectraperobs"],
+            vpkt_config,
             lambda obsdirindex: constants.c_ang_per_s / pl.col(f"dir{obsdirindex}_nu_rf"),
             lambda_bin_edges,
             arrivaltimerange_days=(timelowdays, timehighdays),
@@ -663,20 +706,52 @@ def get_from_packets(
     }
 
 
+def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
+    """Return the names of the files that can hold the spectrum of each timestep, in the order of the search.
+
+    A POL_ON run of ARTIS also writes specpol.out and specpol_res.out. The Stokes I part of these files is the
+    spectrum of spec.out and spec_res.out, thus a run that holds only the polarisation files still gives a spectrum.
+    """
+    if gamma:
+        return ["gamma_spec_res.out"] if directionresolved else ["gamma_spec.out"]
+
+    return ["spec_res.out", "specpol_res.out"] if directionresolved else ["spec.out", "specpol.out"]
+
+
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
 # scan would hold only the query plan, thus each collect by a caller would parse the file again.
 @lru_cache(maxsize=2)
 def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
-    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
+    """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
 
     Callers must not mutate the returned frame, which is shared between calls.
     """
-    specfilename = firstexisting("gamma_spec.out" if gamma else "spec.out", folder=modelpath, tryzipped=True)
+    specfilename = firstexisting(
+        get_spectrum_filenames(gamma, directionresolved=False), folder=modelpath, tryzipped=True
+    )
     print(f"Reading {specfilename}")
 
+    # sn3d writes the whole file again at each timestep, thus the file can be empty or end with a cut line
+    specbytes = read_complete_lines(specfilename, content="spectrum")
+    with polars_error_note(specfilename):
+        # get_spectra counts the time columns, thus the column of a trailing space on each line must go
+        dfspec = drop_trailing_null_column(
+            pl.read_csv(io.BytesIO(specbytes), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        )
+
+    if dfspec.is_empty():
+        msg = (
+            f"{specfilename} holds no spectrum after its line of times."
+            " A run that stops while sn3d writes this file gives this"
+        )
+        raise ValueError(msg)
+    raise_if_cut_line(dfspec, specfilename)
+
     return (
-        pl
-        .read_csv(polars_source(specfilename), separator=" ", infer_schema=False, truncate_ragged_lines=True)
+        dfspec
+        # specpol.out repeats the times for the Stokes Q and U spectra, and polars adds a suffix to each repeated
+        # name. Thus the columns with no suffix are the Stokes I spectra
+        .select(cs.exclude(cs.contains("_duplicated_")))
         .with_columns(pl.all().cast(pl.Float64))
         .rename({"0": "nu"})
         .lazy()
@@ -684,7 +759,7 @@ def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
 
 
 def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
-    """Return the angle-averaged spectra from spec.out, or from gamma_spec.out when gamma is set.
+    """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
     """
@@ -698,7 +773,7 @@ def read_spec_res_cached(modelpath: Path, gamma: bool = False) -> dict[int, pl.L
 
     Callers must not mutate the returned dict, which is shared between calls.
     """
-    resfilenames = ["gamma_spec_res.out"] if gamma else ["spec_res.out", "specpol_res.out"]
+    resfilenames = get_spectrum_filenames(gamma, directionresolved=True)
     specfilename = (
         modelpath if Path(modelpath).is_file() else firstexisting(resfilenames, folder=modelpath, tryzipped=True)
     )
@@ -752,16 +827,13 @@ def read_emission_absorption_file(emabsfilename: Path) -> pl.DataFrame:
     300 MB for that model. A running simulation writes the file again, thus the state of the file is part of the
     key of the cache.
     """
-    filestat = Path(emabsfilename).stat()
-    return read_emission_absorption_file_cached(
-        emabsfilename, (filestat.st_ino, filestat.st_mtime_ns, filestat.st_size)
-    )
+    return read_emission_absorption_file_cached(emabsfilename, get_file_state(Path(emabsfilename)))
 
 
 @lru_cache(maxsize=2)
-def read_emission_absorption_file_cached(emabsfilename: Path, filestate: tuple[int, int, int]) -> pl.DataFrame:
-    """Read an emission or absorption file with the inode, the modification time, and the size of the file."""
-    _, _, filesize = filestate
+def read_emission_absorption_file_cached(emabsfilename: Path, filestate: tuple[int, int, int, int]) -> pl.DataFrame:
+    """Read an emission or absorption file with the state of the file that get_file_state gives."""
+    *_, filesize = filestate
     print(f" Reading {emabsfilename} ({filesize / 1024 / 1024:.2f} MiB)")
 
     dfemabs = pl.scan_csv(
@@ -782,7 +854,7 @@ def get_spectra(
     gamma: bool = False,
     directionbins: Sequence[int] | None = None,
 ) -> dict[int, pl.LazyFrame]:
-    """Return the emergent ultraviolet, optical, and infrared (UVOIR) spectra, with one LazyFrame for each direction bin.
+    """Return the emergent ultraviolet, optical, and infrared (UVOIR) spectra, one LazyFrame for each direction bin.
 
     directionbins selects the bins, and None gives every bin. A 3D model has 100 bins in spec_res.out, and a remote
     model sends each bin through ssh, thus a caller asks for its own bins. A request of bin -1 alone reads no
@@ -815,17 +887,31 @@ def get_spectra(
             msg = "ERROR: No spherically averaged gamma spectrum found."
             raise FileNotFoundError(msg) from e
         if not specdata_alltimesteps:
-            # a run with specpol.out alone has no spec.out, thus only a run with no spectrum file fails here
+            # the direction bins of spec_res.out can still give a plot, thus only a run with no spectrum file fails here
             msg = (
-                f"{modelpath} holds no spec.out and no spec_res.out"
+                f"{modelpath} holds no spec.out, no specpol.out, and no spec_res.out"
                 if readsresbins
-                else f"{modelpath} holds no spec.out"
+                else f"{modelpath} holds no spec.out and no specpol.out"
             )
             raise FileNotFoundError(msg) from e
 
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     specdataout: dict[int, pl.LazyFrame] = {}
     for dirbin in specdata_alltimesteps if directionbins is None else set(specdata_alltimesteps) & set(directionbins):
+        # ARTIS writes one column for each timestep that ran, thus the file of a run that stopped early holds fewer
+        # columns. The first column holds the frequencies
+        ntimesteps_infile = len(specdata_alltimesteps[dirbin].collect_schema()) - 1
+        if timestepmax >= ntimesteps_infile:
+            specfilename = firstexisting(
+                get_spectrum_filenames(gamma, directionresolved=dirbin >= 0), folder=modelpath, tryzipped=True
+            )
+            msg = (
+                f"{specfilename} holds the timesteps 0 to {ntimesteps_infile - 1}, thus it has no spectrum of timestep"
+                f" {timestepmax}. ARTIS writes only the timesteps that ran, thus the run had not reached timestep"
+                f" {timestepmax} when it wrote this file"
+            )
+            raise ValueError(msg)
+
         dfspectrum = (
             specdata_alltimesteps[dirbin]
             .select(
@@ -1040,7 +1126,10 @@ def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.La
 
 
 def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[str, pl.LazyFrame]:
-    """DataFrames read from specpol*.out and vspecpol*.out are repeated over I, Q, U parameters. Split these into a dictionary of DataFrames."""
+    """Split the data of specpol*.out or vspecpol*.out into one LazyFrame for each Stokes parameter.
+
+    The files repeat the table for the Stokes parameters I, Q, and U.
+    """
     specdata = specdata.rename({specdata.collect_schema().names()[0]: "nu"}).lazy()
     stokes_params = {
         "I": specdata.select(cs.exclude(cs.contains("_duplicated_"))),
@@ -1069,6 +1158,36 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
     return stokes_params
 
 
+def check_time_range_overlaps_time_bins(
+    timemids: Sequence[float], timemin: float, timemax: float, filedescription: str
+) -> None:
+    """Stop if no time bin of a spectrum file overlaps the time range. Warn if the time range goes past the bins.
+
+    The file gives the middle time of each bin. The first bin and the last bin reach half the distance to the next
+    middle time beyond their own middle time. A caller takes the bin with the nearest middle time, thus a time outside
+    every bin gave the spectrum of the first or the last bin, and the label gave the requested time.
+    """
+    if len(timemids) < 2:
+        # one middle time gives no width of the bin
+        return
+
+    firstbinstart = timemids[0] - (timemids[1] - timemids[0]) / 2.0
+    lastbinend = timemids[-1] + (timemids[-1] - timemids[-2]) / 2.0
+    rangetext = f"{timemin:.2f} days" if timemin == timemax else f"{timemin:.2f} to {timemax:.2f} days"
+    if timemax < firstbinstart or timemin > lastbinend:
+        msg = (
+            f"The time bins of {filedescription} cover {firstbinstart:.2f} to {lastbinend:.2f} days, thus no bin holds"
+            f" {rangetext}"
+        )
+        raise ValueError(msg)
+
+    if timemin < firstbinstart or timemax > lastbinend:
+        print_warning(
+            f"The time bins of {filedescription} cover {firstbinstart:.2f} to {lastbinend:.2f} days, thus the spectrum"
+            f" holds only a part of {rangetext}"
+        )
+
+
 def get_vspecpol_spectrum(
     modelpath: Path | str,
     timeavg: float,
@@ -1091,6 +1210,13 @@ def get_vspecpol_spectrum(
 
     arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
+
+    timerangelow, timerangehigh = (timeavg, timeavg) if timemin is None or timemax is None else (timemin, timemax)
+    check_time_range_overlaps_time_bins(
+        arr_tmid, timerangelow, timerangehigh, f"vspecpol_total-{angle}.out of {modelpath}"
+    )
+    # the vspecpol files hold only the arrival times inside the time window of vpkt.txt
+    check_time_range_inside_vpkt_window(get_vpkt_config(modelpath), timerangelow, timerangehigh)
 
     if timemin is not None and timemax is not None:
         timestepmin = arr_tmid.index(match_closest_time(timemin, arr_tmid))
@@ -1171,9 +1297,8 @@ def get_emabs_average(
 @on_model_host
 def get_flux_contributions_cached(
     modelpath: Path,
-    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    timestepmin: int = -1,
-    timestepmax: int = -1,
+    timestepmin: int,
+    timestepmax: int,
     getemission: bool = True,
     getabsorption: bool = True,
     use_lastemissiontype: bool = True,
@@ -1184,11 +1309,13 @@ def get_flux_contributions_cached(
     lambda_max: float = math.inf,
     maxseriescount: int | None = None,
     fixedionlist: tuple[str, ...] | None = None,
-) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
+) -> tuple[list[FluxSeries], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the label, the emitted f_nu, and the absorbed f_nu of each series, with the nu and wavelength arrays.
 
-    With maxseriescount, merge_other_flux_contributions puts the small series into one "Other" series. A 3D kilonova
-    model has 647 series, and a remote model sends each one through ssh.
+    The absorbed f_nu is None for a series without an absorption column, i.e. bound-free and free-free. With
+    maxseriescount, merge_other_flux_series puts the small series into one "Other" series. A 3D kilonova model has 647
+    series, and a remote model sends each one through ssh. get_flux_contributions applies the filter, because a filter
+    function has no stable hash. Thus the cache serves each plot of the viewer, whatever filter the plot gives.
 
     The returned spectra hold the bins with a centre from lambda_min to lambda_max [Å], and the nearest bin beyond
     each bound. These are the bins of get_lambda_bin_edges, thus a series fills the plotted range, and the ranking of
@@ -1196,6 +1323,10 @@ def get_flux_contributions_cached(
     centre inside the range, thus each series stopped short of the edges of the plot.
     """
     arr_tmid = get_timestep_times(modelpath, loc="mid")
+    if not 0 <= timestepmin <= timestepmax < len(arr_tmid):
+        # polars takes a negative row index from the end, thus a bad timestep gave the rows of other bins
+        msg = f"timesteps {timestepmin} to {timestepmax} are outside the {len(arr_tmid)} timesteps of {modelpath}"
+        raise ValueError(msg)
     arr_tdelta = get_timestep_times(modelpath, loc="delta")
     arraynu_full = get_nu_grid(modelpath)
     arraylambda_full = constants.c_ang_per_s / arraynu_full
@@ -1213,15 +1344,16 @@ def get_flux_contributions_cached(
     nu_select[selectedbins] = True
     arraynu = arraynu_full[nu_select]
     arraylambda = arraylambda_full[nu_select]
-    if not Path(modelpath, "compositiondata.txt").is_file():
-        print_warning("compositiondata.txt not found. Using output*.txt instead")
+    from artistools.atomic import get_composition_data
+
+    # get_composition_data also reads a compressed copy, thus only a model with no copy needs the log
+    try:
+        elementlist = get_composition_data(modelpath)
+    except FileNotFoundError:
+        print_warning("compositiondata.txt not found. Using output_0-0.txt instead")
         from artistools.atomic import get_composition_data_from_outputfile
 
         elementlist = get_composition_data_from_outputfile(modelpath)
-    else:
-        from artistools.atomic import get_composition_data
-
-        elementlist = get_composition_data(modelpath)
     nelements = len(elementlist)
 
     # the bin -1 is the average over all the directions, also with an average over one angle
@@ -1290,11 +1422,6 @@ def get_flux_contributions_cached(
             )
             check_maxion(absorptiondata[dbin].width / nelements, "absorption")
 
-    array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
-    contribution_list = []
-    if filterfunc:
-        print("Applying filter to ARTIS spectrum")
-
     assert maxion is not None
     timesteps = range(timestepmin, timestepmax + 1)
     fnu_emission_of_column = (
@@ -1307,6 +1434,7 @@ def get_flux_contributions_cached(
         if absorptiondata
         else None
     )
+    series: list[FluxSeries] = []
     for elementindex in range(nelements):
         nions = elementlist["nions"][elementindex]
         for ion in range(nions):
@@ -1329,22 +1457,8 @@ def get_flux_contributions_cached(
                 array_fnu_absorption = (
                     fnu_absorption_of_column[:, selectedcolumn]
                     if fnu_absorption_of_column is not None and selectedcolumn < nelements * maxion
-                    else np.zeros_like(arraylambda, dtype=float)
+                    else None
                 )
-
-                if filterfunc:
-                    array_fnu_emission = filterfunc(array_fnu_emission)
-                    if selectedcolumn < nelements * maxion:
-                        array_fnu_absorption = filterfunc(array_fnu_absorption)
-
-                array_flambda_emission = array_fnu_emission * arraynu / arraylambda
-                array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
-
-                array_flambda_emission_total += array_flambda_emission
-                fluxcontribthisseries = abs(np.trapezoid(array_fnu_emission, x=arraynu)) + abs(
-                    np.trapezoid(array_fnu_absorption, x=arraynu)
-                )
-                assert isinstance(fluxcontribthisseries, float)
 
                 if emissiontypeclass == "bound-bound":
                     linelabel = get_ionstring(elementlist["Z"][elementindex], ion_stage)
@@ -1353,55 +1467,96 @@ def get_flux_contributions_cached(
                 else:
                     linelabel = f"{get_ionstring(elementlist['Z'][elementindex], ion_stage)} {emissiontypeclass}"
 
-                contribution_list.append(
-                    FluxContributionTuple(
-                        fluxcontrib=fluxcontribthisseries,
-                        linelabel=linelabel,
-                        array_flambda_emission=array_flambda_emission,
-                        array_flambda_absorption=array_flambda_absorption,
-                        color=None,
-                    )
-                )
+                series.append((linelabel, array_fnu_emission, array_fnu_absorption))
 
     if maxseriescount is not None:
-        contribution_list = merge_other_flux_contributions(contribution_list, maxseriescount, fixedionlist)
+        series = merge_other_flux_series(series, arraynu, maxseriescount, fixedionlist)
+    return series, arraynu, arraylambda
 
-    return contribution_list, array_flambda_emission_total, arraylambda
+
+def get_series_flux(series: FluxSeries, arraynu: npt.NDArray[np.floating]) -> float:
+    """Return the flux of a series, which is the sum of its emitted flux and its absorbed flux."""
+    _, fnu_emission, fnu_absorption = series
+    fluxabsorption = 0.0 if fnu_absorption is None else abs(float(np.trapezoid(fnu_absorption, x=arraynu)))
+    return abs(float(np.trapezoid(fnu_emission, x=arraynu))) + fluxabsorption
 
 
-def merge_other_flux_contributions(
-    contributions: Sequence[FluxContributionTuple], maxseriescount: int, fixedionlist: Sequence[str] | None
-) -> list[FluxContributionTuple]:
+def merge_other_flux_series(
+    series: Sequence[FluxSeries],
+    arraynu: npt.NDArray[np.floating],
+    maxseriescount: int,
+    fixedionlist: Sequence[str] | None,
+) -> list[FluxSeries]:
     """Return the series that rank_flux_series_names keeps, the 20 largest other series, and one "Other" series.
 
     sort_and_reduce_flux_contribution_list prints the 20 largest other series, thus they stay. "Other" sums the rest.
+    The ranking takes the f_nu with no filter. A filter of a plot is linear, thus the filter of the sum is the sum of
+    the filtered series.
     """
-    rowofname = {row.linelabel: row for row in contributions}
+    seriesofname = {row[0]: row for row in series}
     keptnames, othernames = rank_flux_series_names(
-        {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
+        {name: get_series_flux(row, arraynu) for name, row in seriesofname.items()}, maxseriescount, fixedionlist
     )
     printednames = [name for name in othernames if name != "Other"][:20]
-    kept = [rowofname[name] for name in (*keptnames, *printednames)]
-    other = [rowofname[name] for name in othernames if name not in printednames]
+    kept = [seriesofname[name] for name in (*keptnames, *printednames)]
+    other = [seriesofname[name] for name in othernames if name not in printednames]
     if not other:
         return kept
 
+    absorptions = [fnu_absorption for _, _, fnu_absorption in other if fnu_absorption is not None]
     return [
         *kept,
-        FluxContributionTuple(
-            fluxcontrib=sum(row.fluxcontrib for row in other),
-            linelabel="Other",
-            array_flambda_emission=np.sum([row.array_flambda_emission for row in other], axis=0),
-            array_flambda_absorption=np.sum([row.array_flambda_absorption for row in other], axis=0),
+        (
+            "Other",
+            np.sum([fnu_emission for _, fnu_emission, _ in other], axis=0),
+            np.sum(absorptions, axis=0) if absorptions else None,
         ),
     ]
 
 
+def get_flux_contribution_tuples(
+    series: Sequence[FluxSeries],
+    arraynu: npt.NDArray[np.floating],
+    arraylambda: npt.NDArray[np.floating],
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating]]:
+    """Apply the filter to each series, convert it to f_lambda, and return the contributions and the total emission."""
+    array_flambda_emission_total = np.zeros_like(arraylambda, dtype=float)
+    contribution_list = []
+    for linelabel, fnu_emission, fnu_absorption in series:
+        array_fnu_emission = filterfunc(fnu_emission) if filterfunc else fnu_emission
+        if fnu_absorption is None:
+            array_fnu_absorption = np.zeros_like(arraylambda, dtype=float)
+        else:
+            array_fnu_absorption = filterfunc(fnu_absorption) if filterfunc else fnu_absorption
+
+        array_flambda_emission = array_fnu_emission * arraynu / arraylambda
+        array_flambda_absorption = array_fnu_absorption * arraynu / arraylambda
+
+        array_flambda_emission_total += array_flambda_emission
+        fluxcontribthisseries = abs(np.trapezoid(array_fnu_emission, x=arraynu)) + abs(
+            np.trapezoid(array_fnu_absorption, x=arraynu)
+        )
+        assert isinstance(fluxcontribthisseries, float)
+
+        contribution_list.append(
+            FluxContributionTuple(
+                fluxcontrib=fluxcontribthisseries,
+                linelabel=linelabel,
+                array_flambda_emission=array_flambda_emission,
+                array_flambda_absorption=array_flambda_absorption,
+                color=None,
+            )
+        )
+
+    return contribution_list, array_flambda_emission_total
+
+
 def get_flux_contributions(
     modelpath: Path | str,
+    timestepmin: int,
+    timestepmax: int,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
-    timestepmin: int = -1,
-    timestepmax: int = -1,
     getemission: bool = True,
     getabsorption: bool = True,
     use_lastemissiontype: bool = True,
@@ -1415,26 +1570,32 @@ def get_flux_contributions(
 ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the per-ion emission and absorption contributions from emission.out, and the flux and wavelength arrays.
 
-    The spectra cover lambda_min to lambda_max [Å], and the nearest bin beyond each bound, as in
-    get_flux_contributions_cached. With maxseriescount, the other series join one "Other" series. The cache takes the
-    absolute path, thus a change of the working folder gives the new model.
+    get_flux_contributions_cached reads the files, gives the f_nu of each series, and merges the small series. This
+    function applies the filter and converts each series to f_lambda. The cache takes the absolute path, thus a change
+    of the working folder gives the new model.
     """
-    return get_flux_contributions_cached(
+    series, arraynu, arraylambda = get_flux_contributions_cached(
         resolve_modelpath(modelpath),
-        filterfunc,
         timestepmin,
         timestepmax,
-        getemission,
-        getabsorption,
-        use_lastemissiontype,
-        directionbin,
-        average_over_phi,
-        average_over_theta,
-        lambda_min,
-        lambda_max,
-        maxseriescount,
-        None if fixedionlist is None else tuple(fixedionlist),
+        getemission=getemission,
+        getabsorption=getabsorption,
+        use_lastemissiontype=use_lastemissiontype,
+        directionbin=directionbin,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        lambda_min=lambda_min,
+        lambda_max=lambda_max,
+        maxseriescount=maxseriescount,
+        fixedionlist=None if fixedionlist is None else tuple(fixedionlist),
     )
+    if filterfunc:
+        print("Applying filter to ARTIS spectrum")
+
+    contribution_list, array_flambda_emission_total = get_flux_contribution_tuples(
+        series, arraynu, arraylambda, filterfunc
+    )
+    return contribution_list, array_flambda_emission_total, arraylambda
 
 
 def get_linelist_label_columns(modelpath: Path | str, groupby: str) -> pl.DataFrame:
@@ -1612,6 +1773,10 @@ def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "
 # the shell index of a packet with no thermal emission record, which takes the label NOT SET as in the ion grouping
 SHELL_NOT_SET: t.Final = -1
 
+# the absorption type of ARTIS (packet.h) for a bound-bound absorption in a binned expansion opacity. ARTIS sets
+# absorption_freq for it, but it records no line index
+ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY: t.Final = -11
+
 
 def get_shell_index_expr(
     column: str, shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps"
@@ -1657,7 +1822,8 @@ def add_ye_columns(
         msg = "The model has no Ye column, thus no Ye shell can hold a packet"
         raise ValueError(msg)
 
-    dfcellye = dfmodel.select((pl.col("inputcellid") - 1).cast(pl.Int32).alias("modelgridindex"), "Ye").collect()
+    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of get_modeldata gives the cell
+    dfcellye = dfmodel.select(pl.col("modelgridindex").cast(pl.Int32), "Ye").collect()
     for column, position in positions:
         indexcolumn = f"{position}_modelgridindex"
         if position == "trueem" and thermalfromvelocity:
@@ -1833,10 +1999,17 @@ def get_flux_contributions_from_packets(
     inverse_solidangle_fraction = 1.0
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
+        check_time_range_inside_vpkt_window(vpkt_config, timelowdays, timehighdays)
         obsdirindex, opacchoiceindex = divmod(directionbin, vpkt_config["nspectraperobs"])
         nprocs_read, lzdfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
-        lzdfpackets = lzdfpackets.with_columns(e_rf=pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}"))
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
+        # ARTIS keeps a row with nu_rf outside the ranges out of vspecpol, thus the row gives no emission. The row
+        # stays for the absorption, because ARTIS writes it for a real packet with an absorption inside a range
+        inspectrumrange = get_vpkt_in_spectrum_range_expr(obsdirindex, vpkt_config["custom_lambda_ranges"])
+        lzdfpackets = lzdfpackets.with_columns(
+            pl.col(f"dir{obsdirindex}_e_rf_{opacchoiceindex}").alias("e_rf"),
+            pl.when(inspectrumrange).then(pl.col(dirbin_nu_column)).alias(dirbin_nu_column),
+        )
 
         cols |= {dirbin_nu_column, f"dir{obsdirindex}_t_arrive_d", f"dir{obsdirindex}_e_rf_{opacchoiceindex}"}
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
@@ -1868,6 +2041,16 @@ def get_flux_contributions_from_packets(
     condition_nu_emit = pl.col(dirbin_nu_column).is_between(nu_min, nu_max) if getemission else pl.lit(value=False)
     condition_nu_abs = pl.col("absorption_freq").is_between(nu_min, nu_max) if getabsorption else pl.lit(value=False)
     lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
+
+    if getabsorption:
+        # ARTIS sets absorption_freq only at a bound-bound absorption. A free-free or a bound-free absorption keeps the
+        # frequency of an earlier line, and exspec leaves it out of absorption.out. A null frequency fails each filter
+        absorptiontype = pl.col("absorption_type")
+        lzdfpackets = lzdfpackets.with_columns(
+            absorption_freq=pl.when(
+                (absorptiontype >= 0) | (absorptiontype == ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY)
+            ).then(pl.col("absorption_freq"))
+        ).filter(condition_nu_emit | condition_nu_abs)
 
     if velocityranges:
 
@@ -2076,8 +2259,9 @@ def get_flux_contributions_from_packets(
         z_exclude = int(vpkt_config["z_excludelist"][opacchoiceindex])
         keptlabel: pl.Expr | None = None
         if z_exclude == -1:
-            # no bound-bound
-            keptlabel = pl.col("emissiontype_str").str.contains("bound-free")
+            # no bound-bound, thus the bound-free, the free-free, and the NOT SET emission stay
+            label = pl.col("emissiontype_str")
+            keptlabel = label.str.contains("bound-free") | label.is_in(["free-free", "NOT SET"])
         elif z_exclude == -2:
             # no bound-free
             keptlabel = pl.col("emissiontype_str").str.contains("bound-free").not_()
@@ -2117,10 +2301,14 @@ def get_flux_contributions_from_packets(
         ).drop(emtypecolumn)
 
     if dfabsorption is not None and groupby not in SHELLCOLUMNS:
+        # an absorption in an expansion opacity has no line index, thus it has no element and no ion
         abstypelabels = pl.concat([
             get_line_labels(dflines, dfabsorption["absorption_type"], groupby, "absorptiontype_str"),
             pl.LazyFrame(
-                {"absorption_type": [-1, -2], "absorptiontype_str": ["free-free", "bound-free"]},
+                {
+                    "absorption_type": [ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY],
+                    "absorptiontype_str": ["bound-bound (expansion opacity)"],
+                },
                 schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
                 orient="col",
             ),

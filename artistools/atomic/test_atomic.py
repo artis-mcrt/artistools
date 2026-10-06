@@ -1,5 +1,6 @@
 import math
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -29,15 +30,28 @@ def test_get_levels() -> None:
 
 
 def test_read_transitiondata_xz_high_preset(tmp_path: Path) -> None:
-    """A transition data file compressed with xz -9 declares a 64 MiB dictionary and must still be readable."""
+    """A transition data file compressed with xz -9 declares a 64 MiB dictionary and must still be readable.
+
+    A file of a few lines declares the same dictionary. A compression of the full 73 MB file took minutes.
+    """
+    import itertools
     import lzma
 
-    (tmp_path / "transitiondata.txt.xz").write_bytes(
-        lzma.compress((modelpath / "transitiondata.txt").read_bytes(), preset=9)
-    )
+    # the first three transitions of Fe II, which start on line 141966 of the file of the test model
+    with (modelpath / "transitiondata.txt").open(encoding="utf-8") as ftransitions:
+        fe2lines = list(itertools.islice(ftransitions, 141965, 141968))
+    (tmp_path / "transitiondata.txt.xz").write_bytes(lzma.compress(("26 2 3\n" + "".join(fe2lines)).encode(), preset=9))
 
     transitionsdict = at.rustext.read_transitiondata(tmp_path / "transitiondata.txt.xz")
-    assert (26, 2) in transitionsdict
+    assert transitionsdict.keys() == {(26, 2)}
+    assert transitionsdict[26, 2].shape == (3, 5)
+    assert transitionsdict[26, 2].row(0, named=True) == pytest.approx({
+        "lower": 0,
+        "upper": 1,
+        "A": 0.00209,
+        "collstr": 3.23,
+        "forbidden": 1,
+    })
 
 
 def test_read_transitiondata() -> None:
@@ -271,3 +285,246 @@ def test_the_cached_photoionisation_arrays_refuse_a_write() -> None:
 
     with pytest.raises(ValueError, match="read-only"):
         arrays[0][0] = 0.0
+
+
+def get_composition_z(folder: Path) -> int:
+    """Return the atomic number of the one element of compositiondata.txt in the folder."""
+    return int(at.get_composition_data(folder)["Z"].item())
+
+
+def get_ground_level_energy(folder: Path) -> float:
+    """Return the energy of the ground level of the one ion of adata.txt in the folder."""
+    return float(at.atomic.get_levels(folder)["levels"].item()["energy_ev"].item())
+
+
+@pytest.mark.parametrize(
+    ("filename", "filetext", "readvalue"),
+    [
+        ("compositiondata.txt", "1\n0\n0\n{value} 2 1 2 300 1.0 56.0\n", get_composition_z),
+        ("adata.txt", "26 1 1 7.9\n1 {value} 9.000 0 ground\n", get_ground_level_energy),
+    ],
+)
+def test_atomic_data_follows_the_working_folder(
+    filename: str, filetext: str, readvalue: Callable[[Path], float], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The atomic data of the default model path must change with the working folder.
+
+    A cache held the relative Path("."). Thus a second model in the same process got the data of the first one.
+    """
+    for foldername, value in (("modelA", 26), ("modelB", 28)):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / filename).write_text(filetext.format(value=value), encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path / "modelA")
+    assert readvalue(Path()) == pytest.approx(26)
+    monkeypatch.chdir(tmp_path / "modelB")
+    assert readvalue(Path()) == pytest.approx(28)
+
+
+def test_get_ion_levels_shares_the_cache_entry_of_get_levels(tmp_path: Path) -> None:
+    """A repeated ion and the same ion through get_levels must use one cache entry, and parse adata.txt once.
+
+    A copy of the atomic data has a path that no other test reads. Thus no other test of the same worker can put
+    the entry in the cache first, and the count of misses is exact.
+    """
+    from artistools.atomic.core import get_levels_cached
+
+    (tmp_path / "adata.txt.xz").symlink_to(modelpath / "adata.txt.xz")
+    missesbefore = get_levels_cached.cache_info().misses
+    dffe2 = at.atomic.get_ion_levels(tmp_path, 26, 2)
+    assert dffe2 is not None
+    assert at.atomic.get_ion_levels(tmp_path, 26, 2) is not None
+    dflevels = at.atomic.get_levels(tmp_path, ionlist=[(26, 2)])
+    assert get_levels_cached.cache_info().misses == missesbefore + 1
+    assert dffe2.height == len(dflevels["levels"].item())
+    assert at.atomic.get_ion_levels(tmp_path, 1, 1) is None
+
+
+def test_get_levels_stops_at_an_adata_file_that_ends_inside_an_ion(tmp_path: Path) -> None:
+    """A file that ends inside the levels of an ion must give an error, also for an ion that the caller skips.
+
+    The parser read past the end of the file for a skipped ion, thus the ions after the cut went with no message.
+    """
+    (tmp_path / "adata.txt").write_text("26 1 2 7.9\n1 0.0 9.000 0 ground\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="ends inside the levels of Z=26 ion_stage=1"):
+        at.atomic.get_levels(tmp_path)
+    with pytest.raises(ValueError, match="ends inside the levels of Z=26 ion_stage=1"):
+        at.atomic.get_levels(tmp_path, ionlist=[(28, 2)])
+
+
+def test_get_composition_data_ignores_comments(tmp_path: Path) -> None:
+    """ARTIS ignores the text to the right of a # character, and a line that holds only a comment.
+
+    The reader read fixed lines with int(), thus a comment stopped it with a ValueError.
+    """
+    (tmp_path / "compositiondata.txt").write_text(
+        "# the elements of the model\n2  # number of elements\n0\n0\n\n26 5 1 5 500 0.0 55.845  # iron\n"
+        "# cobalt follows\n27 3 2 4 -1 0.0 58.9332\n",
+        encoding="utf-8",
+    )
+
+    dfcomposition = at.get_composition_data(tmp_path)
+    assert dfcomposition["Z"].to_list() == [26, 27]
+    assert dfcomposition["nlevelsmax_readin"].to_list() == [500, -1]
+    assert dfcomposition["mass"].to_list() == pytest.approx([55.845, 58.9332])
+
+    (tmp_path / "short").mkdir()
+    (tmp_path / "short" / "compositiondata.txt").write_text("2\n0\n0\n26 5 1 5 500 0.0 55.845\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="seven numbers for each element"):
+        at.get_composition_data(tmp_path / "short")
+
+
+@pytest.mark.parametrize(
+    "loglines",
+    [
+        ["[input.c]   element Z = 26", "[input.c]     ion 1 with 500 levels", "[input.c]     ion 2 with 400 levels"],
+        [
+            "2023-11-14T15:01:58Z [input]  element 0 (Z=26 Fe)",
+            "2023-11-14T15:01:58Z [input]    ionstage 1:  500 levels (1 in groundterm,  500 ionising)",
+            "2023-11-14T15:01:58Z [input]    ionstage 2:  400 levels (1 in groundterm,  400 ionising)",
+        ],
+        [
+            "2026-10-02T10:00:00Z [info]  element 0 (Z=26 Fe)",
+            "2026-10-02T10:00:00Z [info]    ionstage 1:  500 levels ( 500 ionising)",
+            "2026-10-02T10:00:00Z [info]    ionstage 2:  400 levels ( 400 ionising)",
+        ],
+    ],
+)
+def test_get_composition_data_from_outputfile_reads_each_log_format(loglines: list[str], tmp_path: Path) -> None:
+    """The log of a run lists the elements and the ion stages, in the form of the version of ARTIS.
+
+    The reader took only the classic form, thus it gave no element for the log of a later run.
+    """
+    (tmp_path / "output_0-0.txt").write_text(
+        "\n".join(["start of the log", *loglines, "end of the list", "[info]  element 9 (Z=28 Ni)"]) + "\n",
+        encoding="utf-8",
+    )
+
+    dfcomposition = at.atomic.get_composition_data_from_outputfile(tmp_path)
+    assert dfcomposition.select("Z", "lowermost_ion_stage", "uppermost_ion_stage", "nions").rows() == [(26, 1, 2, 2)]
+
+
+def test_get_composition_data_from_outputfile_of_the_test_models() -> None:
+    """The log of each test model gives the elements and the ion stages of its compositiondata.txt."""
+    for testmodelpath in (modelpath_classic_3d, at.get_path("testdata") / "test-classicmode_1d"):
+        columns = ["Z", "lowermost_ion_stage", "uppermost_ion_stage", "nions"]
+        pltest.assert_frame_equal(
+            at.atomic.get_composition_data_from_outputfile(testmodelpath).select(columns),
+            at.get_composition_data(testmodelpath).select(columns),
+        )
+
+
+def test_get_composition_data_from_outputfile_refuses_a_log_with_no_list(tmp_path: Path) -> None:
+    """A log with no list of the elements gives a message, and not a frame of no elements."""
+    (tmp_path / "output_0-0.txt").write_text("start of the log\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="holds no list of the elements"):
+        at.atomic.get_composition_data_from_outputfile(tmp_path)
+
+
+@pytest.mark.parametrize("nlines", [0, 1, 2])
+def test_read_linestatfile_of_few_lines(nlines: int, tmp_path: Path) -> None:
+    """linestat.out holds one column for each line, thus a file of one line gave a one-dimensional array.
+
+    The reader then stopped with a TypeError, and a file of no line stopped it with an IndexError.
+    """
+    from artistools.atomic.core import read_linestatfile
+
+    rows = [[6.5e-5] * nlines, [26] * nlines, [2] * nlines, [5] * nlines, [1] * nlines]
+    (tmp_path / "linestat.out").write_text(
+        "".join(" ".join(str(value) for value in row) + "\n" for row in rows), encoding="utf-8"
+    )
+
+    lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(tmp_path)
+    assert np.allclose(lambda_angstroms, [6500.0] * nlines)
+    assert atomic_numbers.tolist() == [26] * nlines
+    assert ion_stages.tolist() == [2] * nlines
+    assert len(upper_levels) == len(lower_levels) == nlines
+
+
+def make_zero_based_atomic_data(folder: Path, atomic_number: int, ion_stage: int) -> None:
+    """Write a copy of the atomic data of one ion of the test model, with level numbers that start at 0."""
+    import lzma
+
+    folder.mkdir()
+    adatalines = lzma.decompress((modelpath / "adata.txt.xz").read_bytes()).decode().splitlines()
+    for linenumber, line in enumerate(adatalines):
+        header = line.split()
+        if len(header) == 4 and header[:2] == [str(atomic_number), str(ion_stage)]:
+            levellines = adatalines[linenumber + 1 : linenumber + 1 + int(header[2])]
+            break
+    (folder / "adata.txt").write_text(
+        "\n".join([
+            "# a comment line in front of the first ion",
+            line,
+            *(
+                f"{int(levelline.split(maxsplit=1)[0]) - 1} {levelline.split(maxsplit=1)[1]}"
+                for levelline in levellines
+            ),
+        ])
+        + "\n",
+        encoding="utf-8",
+    )
+
+    transitionlines: list[str] = []
+    with (modelpath / "transitiondata.txt").open(encoding="utf-8") as ftransitions:
+        for line in ftransitions:
+            header = line.split()
+            if len(header) == 3 and header[:2] == [str(atomic_number), str(ion_stage)]:
+                transitionlines.append(line)
+                for _ in range(int(header[2])):
+                    lower, upper, rest = next(ftransitions).split(maxsplit=2)
+                    transitionlines.append(f"{int(lower) - 1} {int(upper) - 1} {rest.rstrip()}\n")
+                break
+    (folder / "transitiondata.txt").write_text("".join(transitionlines), encoding="utf-8")
+
+    phixslines = iter(lzma.decompress((modelpath / "phixsdata_v2.txt.xz").read_bytes()).decode().splitlines())
+    nphixspoints = int(next(phixslines))
+    outlines = [str(nphixspoints), next(phixslines)]
+    for line in phixslines:
+        fields = line.split()
+        ntargets = 0
+        # a single target level and the lower level take the zero-based number. -1 marks a list of targets
+        if int(fields[2]) < 0:
+            ntargets = int(next(phixslines))
+        targetlines = [next(phixslines) for _ in range(ntargets)]
+        tablelines = [next(phixslines) for _ in range(nphixspoints)]
+        if (int(fields[0]), int(fields[3])) == (atomic_number, ion_stage):
+            upperlevel = int(fields[2]) - 1 if int(fields[2]) > 0 else -1
+            outlines.append(f"{fields[0]} {fields[1]} {upperlevel} {fields[3]} {int(fields[4]) - 1} {fields[5]}")
+            if ntargets:
+                outlines.append(str(ntargets))
+                outlines.extend(f"{int(target.split()[0]) - 1} {target.split()[1]}" for target in targetlines)
+            outlines.extend(tablelines)
+    (folder / "phixsdata_v2.txt").write_text("\n".join(outlines) + "\n", encoding="utf-8")
+
+
+def test_get_levels_of_atomic_data_numbered_from_zero(tmp_path: Path) -> None:
+    """ARTIS takes the number of the first level from adata.txt, and it applies it to the other two files.
+
+    get_levels took the numbering from 1 for each file, thus a zero-based copy gave the wrong level indices.
+    """
+    ion = (27, 3)
+    make_zero_based_atomic_data(tmp_path / "zerobased", *ion)
+
+    assert at.atomic.core.get_first_level_number(tmp_path / "zerobased") == 0
+    assert at.atomic.core.get_first_level_number(modelpath) == 1
+
+    zerobased, onebased = (
+        at.atomic.get_levels(folder, ionlist=[ion], get_transitions=True, get_photoionisations=True, quiet=True).row(
+            0, named=True
+        )
+        for folder in (tmp_path / "zerobased", modelpath)
+    )
+
+    levelcolumns = ["levelindex", "energy_ev", "g", "transition_count", "levelname"]
+    pltest.assert_frame_equal(zerobased["levels"].select(levelcolumns), onebased["levels"].select(levelcolumns))
+    pltest.assert_frame_equal(zerobased["transitions"].collect(), onebased["transitions"].collect())
+    assert zerobased["transitions"].collect()["lower"].min() == 0
+
+    for column in ("phixstargetlist", "phixstable"):
+        for zerovalue, onevalue in zip(zerobased["levels"][column], onebased["levels"][column], strict=True):
+            assert (zerovalue is None) == (onevalue is None)
+            if zerovalue is not None:
+                assert zerovalue.tolist() == onevalue.tolist()

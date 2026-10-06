@@ -31,12 +31,14 @@ from artistools.constants import K_B_ev_per_K
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import get_file_identity
+from artistools.misc import get_file_state
 from artistools.misc import get_mpiranklist
 from artistools.misc import get_runfolders
 from artistools.misc import get_timesteps
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
+from artistools.misc.cliutils import contiguous_runs
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import mtime_matches_stamp
@@ -235,18 +237,6 @@ def split_species_suffix(colname: str) -> tuple[str, str] | None:
             return ("_".join(parts[:index]), species)
 
     return None
-
-
-def contiguous_runs(numbers: Sequence[int]) -> list[list[int]]:
-    """Split a sorted sequence of integers into the runs that have no gap."""
-    runs: list[list[int]] = []
-    for number in numbers:
-        if runs and number == runs[-1][-1] + 1:
-            runs[-1].append(number)
-        else:
-            runs.append([number])
-
-    return runs
 
 
 def summarise_ions(species: Collection[str]) -> str:
@@ -468,8 +458,10 @@ def folder_has_estimator_cache(folderpath: Path | str) -> bool:
     )
 
 
-# The name of a column of a quantity of one ion, e.g. gamma_R_Fe_II. The element "n" is the neutron.
-PERION_COLUMN_PATTERN = r"_(?:n|[A-Z][a-z]{0,2})_[IVX]+$"
+# The name of a column of a quantity of one ion, element, or isotope, e.g. gamma_R_Fe_II, nnelement_Fe, or nniso_Ni56.
+# ARTIS omits a species with no abundance, thus the reader gives a zero where a cell does not write such a column.
+# The element "n" is the neutron.
+SPECIES_COLUMN_PATTERN = r"_(?:n|[A-Z][a-z]{0,2})_[IVX]+$|^nnelement_|^nniso_"
 
 # The version of the estimator parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type.
@@ -587,7 +579,15 @@ def allranks_textsource_change(parquetfilepath: Path, runfolder: Path | str, tex
     if foundsource is not None and foundsource != expectedsource:
         return f"the cache holds the {foundsource}, but the text is now the {expectedsource}"
     stampedsize = pqmetadata.get("textsource_size")
-    if stampedsize is not None and (textsize := str(get_estimator_textsize(Path(runfolder), textfile))) != stampedsize:
+    if stampedsize is None:
+        return None
+    # a compression of the text after the conversion keeps its time and changes its size, thus the size can show a
+    # change only in a text with the same compression as the stamp
+    textfiles = get_estimator_textfiles(Path(runfolder), textfile)
+    stampedcompression = pqmetadata.get("textsource_compression")
+    if stampedcompression is not None and stampedcompression != get_estimator_textcompression(textfiles):
+        return None
+    if (textsize := str(get_estimator_textsize(textfiles))) != stampedsize:
         return f"the text changed from {stampedsize} to {textsize} bytes after the conversion"
     return None
 
@@ -597,12 +597,16 @@ def text_is_older_than_cache(parquetfilepath: Path, textsource_mtime: float | No
 
     Older text cannot hold newer data. For example, the script of ARTIS combined the files of the ranks while the job
     still ran, and the user later removed the files of the ranks. A conversion of the older text would then replace
-    the cache with fewer timesteps, thus the cache stays.
+    the cache with fewer timesteps, thus the cache stays. A cache of a different format version cannot stay, because
+    the reader cannot read it. The conversion of the older text then replaces it.
     """
     if textsource_mtime is None:
         return False
     try:
-        stampedmtime = pl.read_parquet_metadata(parquetfilepath).get("textsource_mtime")
+        pqmetadata = pl.read_parquet_metadata(parquetfilepath)
+        if pqmetadata.get("cacheversion") != str(CACHEVERSION):
+            return False
+        stampedmtime = pqmetadata.get("textsource_mtime")
         return stampedmtime is not None and textsource_mtime < float(stampedmtime) - MTIME_TOLERANCE_S
     except (FileNotFoundError, pl.exceptions.PolarsError, OSError, ValueError):
         return False
@@ -671,6 +675,12 @@ def read_estimator_text(state: "EstimatorBatchState") -> pl.DataFrame:
         print(f"    reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
         dfestimators = estimparse(state.runfolder, min(state.mpiranks), max(state.mpiranks))
 
+    if dfestimators.width == 0:
+        # a job that stopped during the write of the first cell leaves a text with no complete cell, and the reader
+        # then gives no column. A text of empty cells gives the key columns. A cache with no row adds nothing to a scan
+        print_warning(f"{state.runfolder}: the estimator text holds no complete cell, thus the cache holds no row")
+        return pl.DataFrame(schema={"timestep": pl.Int32, "modelgridindex": pl.Int32})
+
     if not state.allranks:
         return dfestimators
     # sn3d and the script of ARTIS write the file of all ranks in this order. A sort copies every column, thus the
@@ -681,25 +691,40 @@ def read_estimator_text(state: "EstimatorBatchState") -> pl.DataFrame:
     return dfestimators.sort("timestep", "modelgridindex")
 
 
-def get_estimator_textsize(runfolder: Path, textfile: Path | None) -> int:
-    """Return the size of the estimator text of a run folder: the file of all ranks, or the sum of the rank files.
+def get_estimator_textfiles(runfolder: Path, textfile: Path | None) -> list[Path]:
+    """Return the files of the estimator text: the file of all ranks, or the file of each rank that the reader reads.
 
-    The sum takes only the file of each rank that the reader reads. Thus a leftover sibling, e.g.
-    estimators_0000.out.bak, has no effect on the sum.
+    A leftover sibling, e.g. estimators_0000.out.bak, is not in the list.
     """
-    if textfile is not None:
-        return textfile.stat().st_size
-    return sum(rankfile.stat().st_size for rankfile in get_rank_textfiles(runfolder).values())
+    return [textfile] if textfile is not None else list(get_rank_textfiles(runfolder).values())
 
 
-def read_unchanged_estimator_text(state: "EstimatorBatchState") -> tuple[pl.DataFrame, "EstimatorBatchState", int]:
+def get_estimator_textsize(textfiles: Sequence[Path]) -> int:
+    """Return the size of the estimator text, which is the sum of the sizes of its files."""
+    return sum(file.stat().st_size for file in textfiles)
+
+
+def get_estimator_textcompression(textfiles: Sequence[Path]) -> str:
+    """Return the compression suffixes of the estimator text, e.g. ".zst", or "" for plain text.
+
+    A user can compress the text after the conversion, and zstd keeps the time of the file. The size of the text then
+    changes, and its data stays the same. Thus the cache compares its stamp of the size only with a text of the same
+    compression. The files of the ranks can have different compressions, e.g. during a compression of the run, and the
+    result then holds each one.
+    """
+    return ",".join(sorted({file.suffix if file.suffix in COMPRESSED_EXTENSIONS else "" for file in textfiles}))
+
+
+def read_unchanged_estimator_text(
+    state: "EstimatorBatchState",
+) -> tuple[pl.DataFrame, "EstimatorBatchState", list[Path], int]:
     """Read the estimator text of a cache, and read it again when a job changed the text during the read.
 
     sn3d can add a timestep to the text during the read. The time of the text then moves by less than the tolerance
     of the cache stamp, thus a cache with the earlier time would stay current without that timestep. The size of the
     text shows such a change. The returned state holds the form and the time of the text before the last read. The
-    third value is the size of that text. After three reads with a change, the state holds a time of zero, which makes
-    the cache stale at the next scan.
+    third value is the list of the files of that text, and the fourth value is its size. After three reads with a
+    change, the state holds a time of zero, which makes the cache stale at the next scan.
     """
     for _ in range(3):
         # the next read must not keep the large frame of the read before it in the memory
@@ -710,23 +735,24 @@ def read_unchanged_estimator_text(state: "EstimatorBatchState") -> tuple[pl.Data
         state = state._replace(
             textfile=textfile, textsource_mtime=textsource_mtime, textsource_complete=textsource_complete
         )
-        textsize = get_estimator_textsize(state.runfolder, textfile)
+        textfiles = get_estimator_textfiles(state.runfolder, textfile)
+        textsize = get_estimator_textsize(textfiles)
         dfestimators = read_estimator_text(state)
         textfile_after, textsource_mtime_after, _ = get_estimator_textsource(state.runfolder, state.mpiranks)
         if (
             textfile_after == textfile
-            and get_estimator_textsize(state.runfolder, textfile) == textsize
+            and get_estimator_textsize(get_estimator_textfiles(state.runfolder, textfile)) == textsize
             and textsource_mtime_after is not None
             and mtime_matches_stamp(str(textsource_mtime), textsource_mtime_after)
         ):
-            return dfestimators, state, textsize
+            return dfestimators, state, textfiles, textsize
         print("the text changed during the read.", flush=True)
 
     print_warning(
         f"{state.runfolder}: the estimator text changed during each of three reads. The cache can lack the last"
         " timestep, thus artistools converts the text again at the next scan."
     )
-    return dfestimators, state._replace(textsource_mtime=0.0), textsize
+    return dfestimators, state._replace(textsource_mtime=0.0), textfiles, textsize
 
 
 def drop_incomplete_last_timestep(
@@ -809,7 +835,7 @@ def get_estimators_parquetfile(
 
         time_start = time.perf_counter()
 
-        pldf_batch, state, textsize = read_unchanged_estimator_text(state)
+        pldf_batch, state, textfiles, textsize = read_unchanged_estimator_text(state)
         if state.allranks:
             nonempty_cellcounts = get_nonempty_cellcounts(modelpath)
             if nonempty_cellcounts is not None and state.textfile is None:
@@ -835,6 +861,7 @@ def get_estimators_parquetfile(
                 # a job that still runs can add to the text after the read, within the tolerance of the cache stamp.
                 # The size of the text then shows the change, see allranks_textsource_change()
                 "textsource_size": str(textsize),
+                "textsource_compression": get_estimator_textcompression(textfiles),
             }
             if state.allranks
             else {"batch_rank_min": str(min(state.mpiranks)), "batch_rank_max": str(max(state.mpiranks))}
@@ -1100,8 +1127,7 @@ def scan_parquet_file(
 
 def scan_kept_parquet_file(parquetfile: Path) -> pl.LazyFrame:
     """Return the kept scan of a parquet cache, or a new scan if the file changed."""
-    filestat = parquetfile.stat()
-    return scan_parquet_file(parquetfile, (filestat.st_dev, filestat.st_ino, filestat.st_mtime_ns, filestat.st_size))
+    return scan_parquet_file(parquetfile, get_file_state(parquetfile))
 
 
 def drop_restart_duplicates(
@@ -1176,7 +1202,7 @@ def scan_estimators(
 ) -> pl.LazyFrame:
     """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
 
-    Selecting particular timesteps or modelgrid cells will speed this up by reducing the number of files that must be read.
+    A selection of timesteps or cells decreases the number of files to read, thus the scan is faster.
     batchcaches gives the current parquet caches of all the batches of an ARTIS run, as convert_estimator_batch_caches
     gives them. The scan then selects the caches of the timesteps and the cells, and it checks and converts no file.
     """
@@ -1218,7 +1244,12 @@ def scan_estimators(
         from artistools.estimators.estimators_classic import read_classic_estimators
 
         estimatorsdict = read_classic_estimators(modelpath)
-        assert estimatorsdict is not None
+        if estimatorsdict is None:
+            msg = (
+                f"{modelpath} and its run folders hold no estimators_????.out file, thus --classicartis has no data"
+                " to read"
+            )
+            raise FileNotFoundError(msg)
         pldflazy = lazyframe_from_estimator_dict(estimatorsdict)
     else:
         pldflazy = scan_artis_estimators(
@@ -1496,11 +1527,11 @@ def scan_artis_estimators(
         scans = [
             pl.scan_parquet(pfile) if batchcaches is None else scan_kept_parquet_file(pfile) for pfile in parquetfiles
         ]
-        # Within one file, the reader gives zero to an ion that a cell does not write. A batch cache of an earlier
-        # artistools version gives a null to such an ion when a whole rank lacks it, thus a zero replaces that null.
+        # The reader gives zero to a species that a cell does not write. A batch cache of an earlier artistools
+        # version gives a null to such a species when a whole rank lacks it. Thus a zero replaces that null.
         # The quantities of a cell, e.g. Te, keep their nulls, because a null there is missing data
         pldflazy = drop_restart_duplicates(scans, runfolder_of_file, match_timestep).with_columns(
-            (cs.float() & cs.matches(PERION_COLUMN_PATTERN)).fill_null(0)
+            (cs.float() & cs.matches(SPECIES_COLUMN_PATTERN)).fill_null(0)
         )
     else:
         # get_runfolders() gives no folder for two different reasons. Name the one that applies.
@@ -1531,7 +1562,7 @@ def read_estimators(
 ) -> dict[tuple[int, int], dict[str, t.Any]]:
     """Read ARTIS estimator data into a dictionary keyed by (timestep, modelgridindex).
 
-    When collecting many cells and timesteps, this is very slow, and it's almost always better to use scan_estimators instead.
+    This function is very slow for many cells and timesteps. Use scan_estimators for such a selection.
     """
     # scan_estimators already applies the modelgridindex and timestep filters
     pldfestimators = scan_estimators(modelpath, modelgridindex, timestep).collect()

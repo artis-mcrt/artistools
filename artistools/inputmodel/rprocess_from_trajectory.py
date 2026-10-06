@@ -110,19 +110,17 @@ def fix_fortran_exponents(dtype: pl.DataType | type[pl.DataType]) -> pl.Expr:
     """Return an expression that repairs Fortran triple-digit exponents, then casts to dtype.
 
     Fortran writes a value like 1.735904-244 without the "e", thus the column parses as strings. The cast is
-    strict, thus a value that is corrupt for a different reason still raises.
+    strict, thus a value that is corrupt for a different reason still raises. Only the sign before the three
+    exponent digits gets the "e", thus a negative mantissa keeps its sign.
     """
-    return (
-        pl
-        .when(cs.by_dtype(pl.String).str.slice(-4, 1) == "-")
-        .then(cs.by_dtype(pl.String).str.replace_all("-", "e-"))
-        .otherwise(cs.by_dtype(pl.String))
-        .cast(dtype)
-    )
+    return cs.by_dtype(pl.String).str.replace(r"(\d)([+-])(\d{3})$", "${1}e${2}${3}").cast(dtype)
 
 
 def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, memberfilename: str) -> Path:
-    """Trajectory files are generally stored as {particleid}.tar.xz, but this is slow to access, so first check for extracted files, or decompressed .tar files, which are much faster to access.
+    """Return the path of a member file of a trajectory, and prefer a form of the file that is fast to read.
+
+    A trajectory is usually in the file {particleid}.tar.xz, which is slow to read. Thus the function first looks
+    for an extracted file or for a decompressed .tar file, because these are much faster to read.
 
     memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
     """
@@ -179,35 +177,39 @@ def get_closest_network_timesteps(
     traj_root: Path,
     particleid: int,
     timesec: float | Sequence[float] | npt.NDArray[np.floating],
-    cond: t.Literal["lessthan", "greaterthan", "nearest"] = "nearest",
-) -> list[int]:
+    cond: t.Literal["lessorequal", "greaterorequal", "nearest"] = "nearest",
+) -> list[int | None]:
     """Find the closest network timestep to a given time in seconds.
 
     cond:
-      - 'lessthan': find highest timestep less than time_sec
-      - 'greaterthan': find lowest timestep greater than time_sec.
+      - 'lessorequal': find the highest timestep at or before the time
+      - 'greaterorequal': find the lowest timestep at or after the time.
+
+    A time that equals the time of a timestep gives that timestep for both conditions. For 'lessorequal' and
+    'greaterorequal', a time with no network timestep on that side gives None.
     """
-    dfevol = get_traj_network_timesteps(traj_root, particleid)
+    dfevol = get_traj_network_timesteps(traj_root, particleid).unique(subset=["timesec"], keep="first").sort("timesec")
+    # the times of the file are Float32, thus a time compares in Float32 as the polars filters did before
+    arrtimesec = dfevol["timesec"].to_numpy()
+    arrnstep: list[int] = dfevol["nstep"].to_list()
+    arrtime_wanted = np.atleast_1d(np.asarray(timesec, dtype=np.float32))
+    # one binary search for all the times replaces one polars query for each time
+    if cond == "lessorequal":
+        indices = np.searchsorted(arrtimesec, arrtime_wanted, side="right") - 1
+        return [arrnstep[index] if index >= 0 else None for index in indices]
 
-    if isinstance(timesec, float):
-        timesec = [timesec]
-    assert not isinstance(timesec, float)
-    assert not isinstance(timesec, int)
+    if cond == "greaterorequal":
+        indices = np.searchsorted(arrtimesec, arrtime_wanted, side="left")
+        return [arrnstep[index] if index < len(arrnstep) else None for index in indices]
 
-    dfevol = dfevol.unique(subset=["timesec"], keep="first")
     if cond == "nearest":
-        return [
-            dfevol
-            .filter(pl.col("timesec") == pl.col("timesec").bottom_k_by((pl.col("timesec") - t).abs(), k=1))
-            .get_column("nstep")
-            .item()
-            for t in timesec
-        ]
-    if cond == "greaterthan":
-        return [dfevol.select(pl.col("nstep").filter(pl.col("timesec") > tsec).min()).item() for tsec in timesec]
-
-    if cond == "lessthan":
-        return [dfevol.select(pl.col("nstep").filter(pl.col("timesec") < tsec).max()).item() for tsec in timesec]
+        if not arrnstep:
+            msg = f"The trajectory of particle {particleid} has no network timesteps"
+            raise ValueError(msg)
+        upper = np.clip(np.searchsorted(arrtimesec, arrtime_wanted, side="left"), 0, len(arrnstep) - 1)
+        lower = np.clip(upper - 1, 0, len(arrnstep) - 1)
+        islowercloser = np.abs(arrtime_wanted - arrtimesec[lower]) <= np.abs(arrtimesec[upper] - arrtime_wanted)
+        return [arrnstep[index] for index in np.where(islowercloser, lower, upper)]
 
     msg = f"Unknown cond value {cond}"
     raise AssertionError(msg)
@@ -289,7 +291,10 @@ def get_trajectory_timestepfiles_nuc_abund(
 def get_trajectory_timestepfile_nuc_abund(
     traj_root: Path, particleid: int, memberfilename: str
 ) -> tuple[pl.DataFrame, float]:
-    """Get the nuclear abundances for a particular trajectory id number and time memberfilename should be something like "./Run_rprocess/tday_nz-plane"."""
+    """Return the nuclear abundances of a trajectory at one time, and that time in seconds.
+
+    memberfilename names the file of that time in the trajectory, e.g. "./Run_rprocess/tday_nz-plane".
+    """
     dfnucabund, timesecs = get_trajectory_timestepfiles_nuc_abund(traj_root, particleid, [memberfilename])
     return dfnucabund.drop("fileindex"), timesecs[0]
 
@@ -329,6 +334,8 @@ def get_trajectory_abund_q(
         nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
     except FileNotFoundError:
         return {}
+    # the nearest timestep always exists, thus only "lessorequal" and "greaterorequal" can give None
+    assert nts is not None
     memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
 
     try:
@@ -502,7 +509,10 @@ def add_abundancecontributions(
     t_model_days_incpremerger: float,
     traj_root: Path | str,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-    """Contribute trajectory network calculation abundances to model cell abundances and return dfmodel, dfelabundances, dfcontribs."""
+    """Add the abundances of the network calculations of the trajectories to the abundances of the model cells.
+
+    Return dfmodel, dfelabundances, and dfcontribs.
+    """
     t_model_s = t_model_days_incpremerger * day_to_s
     dfcontribs = dfgridcontributions
 
@@ -544,7 +554,18 @@ def add_abundancecontributions(
 
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
-    dfmodel = dfmodel.join(dfnucabundances, how="left", on="inputcellid", maintain_order="left").fill_null(0)
+    # The trajectories give q at t_model, and an old grid.dat can also give q, at the end of the hydrodynamics run.
+    # The value of the trajectories replaces each column of the model that they also give. A join that keeps both
+    # columns names the second one q_right, which no writer and no dimension reduction reads
+    replacedcols = [col for col in dfnucabundances.columns if col != "inputcellid" and col in dfmodel.columns]
+    if replacedcols:
+        print(f" the trajectory values replace the model columns {replacedcols}...", end="", flush=True)
+    dfmodel = (
+        dfmodel
+        .drop(replacedcols)
+        .join(dfnucabundances, how="left", on="inputcellid", maintain_order="left")
+        .fill_null(0)
+    )
     print(f" took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, get_dfelemabund_from_dfmodel(dfmodel), dfcontribs
@@ -552,6 +573,16 @@ def add_abundancecontributions(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
+    # the defaults are the trajectory of the first use of this command
+    parser.add_argument(
+        "-trajectoryroot",
+        "-trajroot",
+        type=Path,
+        default=Path.home()
+        / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy",
+        help="Folder of the nuclear network trajectories",
+    )
+    parser.add_argument("-particleid", type=int, default=133371, help="Particle id of the trajectory")
     addarg_output(parser, kind="folder", default=Path())
 
 
@@ -559,10 +590,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Create ARTIS model from single trajectory abundances."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    traj_root = Path(
-        Path.home() / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy"
-    )
-    particleid = 133371  # Ye = 0.403913230
+    traj_root = Path(args.trajectoryroot)
+    particleid = args.particleid
     print(f"trajectory particle id {particleid}")
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
         traj_root, particleid, "./Run_rprocess/tday_nz-plane"

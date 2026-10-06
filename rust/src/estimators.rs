@@ -1,13 +1,16 @@
+use crate::parse::error_at_line;
+use crate::parse::io_error_at;
 use crate::parse::malformed;
 use crate::parse::open_decompressed;
-use crate::parse::parse_f32_field;
 use crate::parse::parse_field;
 use polars::prelude::*;
+use pyo3::exceptions::PyRuntimeWarning;
 use pyo3::prelude::*;
 use pyo3_polars::PyDataFrame;
 use pyo3_polars::error::PyPolarsErr;
 use rayon::prelude::*;
 use std::collections::{BTreeSet, HashMap};
+use std::ffi::CString;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
@@ -22,9 +25,10 @@ const ELSYMBOLS: [&str; 119] = [
     "Uut", "Fl", "Uup", "Lv", "Uus", "Uuo",
 ];
 
-const ROMAN: [&str; 17] = [
+/// The roman numeral of each ion stage. The table must agree with `roman_numerals` in artistools/atomic/core.py
+const ROMAN: [&str; 21] = [
     "", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV",
-    "XV", "XVI",
+    "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
 ];
 
 /// Split a line into (name, value) token pairs, ignoring an unpaired trailing token
@@ -70,6 +74,8 @@ struct EstimatorColumns {
     intcoldata: HashMap<String, Vec<i32>>,
     /// number of cells seen so far, including the one currently being filled
     rownum: usize,
+    /// the count of the values above the range of f32, which the columns hold as infinity
+    overflowcount: usize,
 }
 
 /// Columns that identify a row rather than measure a quantity, and so must stay exact integers.
@@ -91,6 +97,11 @@ fn push_value<T: Copy + Default>(
     colname: String,
     colvalue: T,
 ) -> PolarsResult<()> {
+    if rownum == 0 {
+        return Err(malformed(
+            "the line gives a value, but no cell header with values comes before it".into(),
+        ));
+    }
     let values = coldata.entry(colname).or_default();
     if values.len() >= rownum {
         return Err(malformed(
@@ -121,6 +132,26 @@ impl EstimatorColumns {
         push_value(&mut self.intcoldata, self.rownum, colname, colvalue)
     }
 
+    /// Parse a measured value into f32
+    ///
+    /// ARTIS writes a rate far below the smallest f32, e.g. "5.313e-95" in the `gamma_R` row of the test model. Rust
+    /// parses such a token to 0.0 with no error, which is the right value for a rate that small. ARTIS can also write a
+    /// value above the largest f32, e.g. the photoionisation correction ratio of a cell whose analytic rate is
+    /// subnormal. Such a value becomes infinity, and the reader counts it for a warning.
+    fn parse_value(&mut self, token: &str) -> PolarsResult<f32> {
+        let value: f64 = parse_field(token, "a number")?;
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a value above the range of f32 becomes infinity, and the reader counts it for a warning"
+        )]
+        let value_f32 = value as f32;
+        if value.is_finite() && value_f32.is_infinite() {
+            self.overflowcount += 1;
+        }
+
+        Ok(value_f32)
+    }
+
     /// Parse a single line from an estimator file and update the column data
     fn parse_line(&mut self, line: &str) -> PolarsResult<()> {
         let tokens: Vec<&str> = line.split_whitespace().collect();
@@ -135,10 +166,8 @@ impl EstimatorColumns {
         } else if let Some(prefix) = firsttoken.strip_suffix(':') {
             // deposition, heating, cooling
             for (name, value) in token_pairs(rest) {
-                self.push(
-                    format!("{prefix}_{name}"),
-                    parse_f32_field(value, "a number")?,
-                )?;
+                let value = self.parse_value(value)?;
+                self.push(format!("{prefix}_{name}"), value)?;
             }
         }
 
@@ -159,7 +188,18 @@ impl EstimatorColumns {
             if INDEX_COLUMNS.contains(&colname) {
                 self.push_int(colname.to_owned(), parse_field(value, "an integer")?)?;
             } else {
-                self.push(colname.to_owned(), parse_f32_field(value, "a number")?)?;
+                let value = self.parse_value(value)?;
+                self.push(colname.to_owned(), value)?;
+            }
+        }
+        // the row of a cell with no index value would get a zero, which names a different cell
+        for colname in INDEX_COLUMNS {
+            if self
+                .intcoldata
+                .get(colname)
+                .is_none_or(|values| values.len() < self.rownum)
+            {
+                return Err(malformed(format!("the cell header gives no {colname}")));
             }
         }
 
@@ -188,7 +228,7 @@ impl EstimatorColumns {
             let ionstage = ionstage.strip_suffix(':').ok_or_else(|| {
                 malformed(format!("ion stage {ionstage:?} has no trailing colon"))
             })?;
-            let colvalue = parse_f32_field(value, "a number")?;
+            let colvalue = self.parse_value(value)?;
 
             if variablename == "populations" {
                 if ionstage == "SUM" {
@@ -235,8 +275,14 @@ impl EstimatorColumns {
     }
 
     /// Finish the last cell and convert the columns into a `DataFrame`
+    ///
+    /// The frame always holds the index columns. Thus a text whose cells are all empty gives the index columns and no
+    /// row. Only a text with no complete cell gives a frame with no column.
     fn into_dataframe(mut self) -> PolarsResult<DataFrame> {
         self.end_cell();
+        for colname in INDEX_COLUMNS {
+            self.intcoldata.entry(colname.to_owned()).or_default();
+        }
 
         let columns: Vec<Column> = self
             .intcoldata
@@ -261,25 +307,65 @@ fn find_estimator_file(folderpath: &Path, rank: i32) -> Option<PathBuf> {
         .find(|filepath| filepath.is_file())
 }
 
-/// Parse the lines of an estimator text into a `DataFrame`. An error names the file and the line, and the
-/// first line has the number `firstlinenum`.
-fn parse_estimator_lines<S: AsRef<str>>(
-    lines: impl Iterator<Item = std::io::Result<S>>,
-    filepath: &Path,
-    firstlinenum: usize,
-) -> PolarsResult<DataFrame> {
-    let mut columns = EstimatorColumns::default();
-    for (index, line) in lines.enumerate() {
-        columns.parse_line(line?.as_ref()).map_err(|err| {
-            err.wrap_msg(|msg| format!("{}:{}: {msg}", filepath.display(), firstlinenum + index))
-        })?;
-    }
-
-    columns.into_dataframe()
+/// The count of the values above the range of f32 in a text, and the line of the first such value
+#[derive(Clone, Copy, Default)]
+struct Overflows {
+    count: usize,
+    firstline: usize,
 }
 
-/// Read a single ARTIS estimators*.out[.zst] file and return a `DataFrame`
-fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> {
+impl Overflows {
+    /// Add the overflows of a later part of the same text
+    fn add(&mut self, later: Self) {
+        if self.count == 0 {
+            self.firstline = later.firstline;
+        }
+        self.count += later.count;
+    }
+
+    /// Return the text of a warning about the values of a file above the range of f32, or None for no such value
+    fn warning(self, filepath: &Path) -> Option<String> {
+        (self.count > 0).then(|| {
+            format!(
+                "{}:{}: the file holds {} values above the range of f32, and this line holds the first of them. The \
+                 columns hold infinity for each of these values",
+                filepath.display(),
+                self.firstline,
+                self.count
+            )
+        })
+    }
+}
+
+/// Parse the lines of an estimator text into a `DataFrame`. An error names the file and the line, and the
+/// first line has the number `firstlinenum`.
+fn parse_estimator_lines<'a>(
+    lines: impl Iterator<Item = &'a str>,
+    filepath: &Path,
+    firstlinenum: usize,
+) -> PolarsResult<(DataFrame, Overflows)> {
+    let mut columns = EstimatorColumns::default();
+    let mut firstoverflowline = 0;
+    for (linenum, line) in (firstlinenum..).zip(lines) {
+        columns
+            .parse_line(line)
+            .map_err(|err| error_at_line(&err, filepath, linenum))?;
+        if firstoverflowline == 0 && columns.overflowcount > 0 {
+            firstoverflowline = linenum;
+        }
+    }
+    let overflows = Overflows {
+        count: columns.overflowcount,
+        firstline: firstoverflowline,
+    };
+
+    Ok((columns.into_dataframe()?, overflows))
+}
+
+/// Read the estimator file of one MPI rank, e.g. `estimators_0000.out[.zst]`, and return a `DataFrame`
+///
+/// The second item is a warning about the values above the range of f32, or None if the file holds none.
+fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<(DataFrame, Option<String>)> {
     let filepath = find_estimator_file(folderpath, rank).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -290,11 +376,7 @@ fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> 
         )
     })?;
 
-    parse_estimator_lines(
-        BufReader::new(open_decompressed(&filepath)?).lines(),
-        &filepath,
-        1,
-    )
+    read_estimator_text(&filepath)
 }
 
 /// Join the `DataFrame`s of the files of the ranks, or of the parts of one file, into one `DataFrame`
@@ -302,9 +384,14 @@ fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<DataFrame> 
 /// Within one file, `EstimatorColumns` gives a zero to a cell that does not write a quantity, e.g. the ion of an
 /// element that the cell does not hold. A diagonal join gives a null to the rows of a file or a part that does not
 /// write the quantity at all. The boundaries of the ranks and of the parts are arbitrary, thus a zero replaces each
-/// such null, and both forms of the text give the same values.
+/// such null, and both forms of the text give the same values. No frame gives a frame with no column.
 fn concat_estimator_frames(vecdfs: &[DataFrame]) -> PolarsResult<DataFrame> {
-    polars::functions::concat_df_diagonal(vecdfs)?.fill_null(FillNullStrategy::Zero)
+    match vecdfs {
+        // concat_df_diagonal panics on no frame. A text with no complete cell gives no part
+        [] => Ok(DataFrame::empty()),
+        [dfsingle] => Ok(dfsingle.clone()),
+        _ => polars::functions::concat_df_diagonal(vecdfs)?.fill_null(FillNullStrategy::Zero),
+    }
 }
 
 /// Read the estimator files from rankmin to rankmax and concatenate them into a single `DataFrame`
@@ -318,22 +405,44 @@ pub fn estimparse(
     rankmin: i32,
     rankmax: i32,
 ) -> PyResult<PyDataFrame> {
-    let dfbatch = py
+    let (dfbatch, warnings) = py
         .detach(|| {
-            let vecdfs: Vec<DataFrame> = (rankmin..=rankmax)
+            if rankmin > rankmax {
+                polars_bail!(ComputeError: "the rank range {rankmin} to {rankmax} holds no rank");
+            }
+            let rankresults: Vec<(DataFrame, Option<String>)> = (rankmin..=rankmax)
                 .into_par_iter()
                 .map(|rank| read_estimator_file(&folderpath, rank))
                 .collect::<PolarsResult<_>>()?;
+            let (vecdfs, warnings): (Vec<DataFrame>, Vec<Option<String>>) =
+                rankresults.into_iter().unzip();
 
-            concat_estimator_frames(&vecdfs)
+            Ok((concat_estimator_frames(&vecdfs)?, warnings))
         })
         .map_err(PyPolarsErr::from)?;
+    give_warnings(py, warnings.iter().flatten())?;
 
     Ok(PyDataFrame(dfbatch))
 }
 
-/// The minimum size of the text of one part of the estimator file of all ranks. One thread parses each part.
-const ALLRANKS_PART_BYTES: usize = 16 * 1024 * 1024;
+/// Give a Python warning for each text, e.g. a warning about the values of a file above the range of f32
+///
+/// The warning needs the GIL, thus the caller gives it after the parse.
+fn give_warnings<'a>(py: Python<'_>, warnings: impl Iterator<Item = &'a String>) -> PyResult<()> {
+    for warning in warnings {
+        PyErr::warn(
+            py,
+            py.get_type::<PyRuntimeWarning>().as_any(),
+            &CString::new(warning.as_str())?,
+            1,
+        )?;
+    }
+
+    Ok(())
+}
+
+/// The minimum size of the text of one part of an estimator file. One thread parses each part.
+const TEXTPART_BYTES: usize = 16 * 1024 * 1024;
 
 /// A part of an estimator text, and the line number of its first line in the file
 struct TextPart {
@@ -343,13 +452,15 @@ struct TextPart {
 
 /// Split the text of a reader into parts that end at the end of a cell. An empty line ends each cell, thus no
 /// cell spans two parts. The last part drops a cell that the end of the text cuts.
-struct TextParts<R: BufRead> {
+struct TextParts<'a, R: BufRead> {
     reader: R,
+    /// the file of the text, which an I/O error names
+    filepath: &'a Path,
     nextlinenum: usize,
     finished: bool,
 }
 
-impl<R: BufRead> Iterator for TextParts<R> {
+impl<R: BufRead> Iterator for TextParts<'_, R> {
     type Item = std::io::Result<TextPart>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -378,14 +489,15 @@ impl<R: BufRead> Iterator for TextParts<R> {
                         .is_some_and(|line| line.trim().is_empty());
                     if lineisempty {
                         cellsend = text.len();
-                        if text.len() >= ALLRANKS_PART_BYTES {
+                        if text.len() >= TEXTPART_BYTES {
                             break;
                         }
                     }
                 }
                 Err(err) => {
                     self.finished = true;
-                    return Some(Err(err));
+                    let place = format!("{}:{}", self.filepath.display(), self.nextlinenum);
+                    return Some(Err(io_error_at(&err, &place)));
                 }
             }
         }
@@ -394,50 +506,71 @@ impl<R: BufRead> Iterator for TextParts<R> {
     }
 }
 
+/// Read an estimator text, which is the file of one rank or the file of all ranks, and return a `DataFrame`
+///
+/// The threads parse the parts of the text in parallel, and the rows keep the order of the file. A text that does
+/// not end with an empty line ends inside a cell, e.g. because a job stopped during the write. The reader drops
+/// that cell in both forms of the text, thus a zero never stands for a value that the text does not hold. The
+/// second item is a warning about the values above the range of f32, or None if the text holds none.
+fn read_estimator_text(filepath: &Path) -> PolarsResult<(DataFrame, Option<String>)> {
+    let parse_part = |part: std::io::Result<TextPart>| -> PolarsResult<(DataFrame, Overflows)> {
+        let part = part?;
+        parse_estimator_lines(part.text.lines(), filepath, part.firstlinenum)
+    };
+    let mut parts = TextParts {
+        reader: BufReader::new(open_decompressed(filepath)?),
+        filepath,
+        nextlinenum: 1,
+        finished: false,
+    };
+    let (dfestimators, overflows) = match parts.next() {
+        None => (concat_estimator_frames(&[])?, Overflows::default()),
+        // the text of a rank is usually smaller than one part, and it then needs no thread and no concatenation
+        Some(firstpart) if parts.finished => parse_part(firstpart)?,
+        Some(firstpart) => {
+            let mut indexedparts: Vec<(usize, (DataFrame, Overflows))> = std::iter::once(firstpart)
+                .chain(parts)
+                .enumerate()
+                .par_bridge()
+                .map(|(partindex, part)| Ok((partindex, parse_part(part)?)))
+                .collect::<PolarsResult<_>>()?;
+
+            indexedparts.sort_unstable_by_key(|(partindex, _)| *partindex);
+            let mut overflows = Overflows::default();
+            let vecdfs: Vec<DataFrame> = indexedparts
+                .into_iter()
+                .map(|(_, (dfpart, partoverflows))| {
+                    overflows.add(partoverflows);
+                    dfpart
+                })
+                .collect();
+            (concat_estimator_frames(&vecdfs)?, overflows)
+        }
+    };
+
+    Ok((dfestimators, overflows.warning(filepath)))
+}
+
 /// Read the estimator file of all ranks, e.g. `estimators_allranks.out.zst`, and return a `DataFrame`
 ///
-/// ARTIS writes this file in place of one file for each rank. The threads parse the parts of the text in
-/// parallel, and the rows keep the order of the file. The parse runs without the GIL.
+/// ARTIS writes this file in place of one file for each rank. The parse runs without the GIL.
 #[pyfunction]
 #[expect(clippy::needless_pass_by_value)]
 pub fn estimparse_allranks(py: Python<'_>, filepath: PathBuf) -> PyResult<PyDataFrame> {
-    let dfallranks = py
-        .detach(|| {
-            let parts = TextParts {
-                reader: BufReader::new(open_decompressed(&filepath)?),
-                nextlinenum: 1,
-                finished: false,
-            };
-            let mut indexeddfs: Vec<(usize, DataFrame)> = parts
-                .enumerate()
-                .par_bridge()
-                .map(|(partindex, part)| {
-                    let part = part?;
-                    let dfpart = parse_estimator_lines(
-                        part.text.lines().map(Ok::<_, std::io::Error>),
-                        &filepath,
-                        part.firstlinenum,
-                    )?;
-                    Ok((partindex, dfpart))
-                })
-                .collect::<PolarsResult<_>>()?;
-
-            if indexeddfs.is_empty() {
-                return EstimatorColumns::default().into_dataframe();
-            }
-            indexeddfs.sort_unstable_by_key(|(partindex, _)| *partindex);
-            let vecdfs: Vec<DataFrame> = indexeddfs.into_iter().map(|(_, dfpart)| dfpart).collect();
-            concat_estimator_frames(&vecdfs)
-        })
+    let (dfallranks, warning) = py
+        .detach(|| read_estimator_text(&filepath))
         .map_err(PyPolarsErr::from)?;
+    give_warnings(py, warning.iter())?;
 
     Ok(PyDataFrame(dfallranks))
 }
 
 /// Return the timesteps of the cells of an estimator file in ascending order, without repeats
 ///
-/// The scan parses only the number after "timestep" in each line that starts with that word, thus it is much
-/// faster than a full parse of the file.
+/// The scan parses only the timestep of each cell header, thus it is much faster than a full parse of the file. A
+/// header counts when its line is complete, i.e. a newline ends it. The end of a cut file can cut a header line,
+/// e.g. "timestep " or "timestep 1" of "timestep 11". Such a line gave an error, or it named a timestep that the file
+/// does not hold, thus the scan ignores it.
 #[pyfunction]
 #[expect(clippy::needless_pass_by_value)]
 pub fn estimtimesteps(py: Python<'_>, filepath: PathBuf) -> PyResult<Vec<i32>> {
@@ -447,18 +580,25 @@ pub fn estimtimesteps(py: Python<'_>, filepath: PathBuf) -> PyResult<Vec<i32>> {
             let mut timesteps = BTreeSet::new();
             let mut line = String::new();
             let mut linenum: usize = 0;
-            while {
+            loop {
                 line.clear();
-                reader.read_line(&mut line)? > 0
-            } {
-                linenum += 1;
-                if let Some(rest) = line.strip_prefix("timestep ") {
-                    let token = rest.split_whitespace().next().unwrap_or_default();
-                    let timestep: i32 = parse_field(token, "an integer").map_err(|err| {
-                        err.wrap_msg(|msg| format!("{}:{linenum}: {msg}", filepath.display()))
-                    })?;
-                    timesteps.insert(timestep);
+                let bytecount = reader.read_line(&mut line).map_err(|err| {
+                    io_error_at(&err, &format!("{}:{}", filepath.display(), linenum + 1))
+                })?;
+                if bytecount == 0 {
+                    break;
                 }
+                linenum += 1;
+                let mut tokens = line.split_whitespace();
+                if tokens.next() != Some("timestep") || !line.ends_with('\n') {
+                    continue;
+                }
+                let timestep: i32 = tokens
+                    .next()
+                    .ok_or_else(|| malformed("the cell header gives no timestep".into()))
+                    .and_then(|token| parse_field(token, "an integer"))
+                    .map_err(|err| error_at_line(&err, &filepath, linenum))?;
+                timesteps.insert(timestep);
             }
             Ok(timesteps.into_iter().collect())
         })

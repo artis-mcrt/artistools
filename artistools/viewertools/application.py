@@ -15,13 +15,16 @@ from artistools.misc import exit_with_error
 from artistools.misc import import_optional
 from artistools.misc import print_error
 from artistools.misc.fileio import resolve_modelpath
+from artistools.viewertools.core import is_flag
 from artistools.viewertools.core import MACOS_BUNDLE_VARIABLE
 from artistools.viewertools.core import run_command_step
+from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import ThreadOutput
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Generator
+    from collections.abc import Mapping
     from collections.abc import Sequence
 
     import numpy.typing as npt
@@ -72,6 +75,7 @@ def get_macos_bundle_executable(applicationname: str, documenttypes: "Sequence[s
     no disk space. On a different volume, it holds a copy. If the Python executable changes, this function replaces
     the link. documenttypes gives the uniform type identifiers that the Dock icon accepts, e.g. "public.folder".
     """
+    import filecmp
     import os
     import plistlib
     import shutil
@@ -80,7 +84,8 @@ def get_macos_bundle_executable(applicationname: str, documenttypes: "Sequence[s
     baseexecutable = Path(sys.executable).resolve()
     contents = Path.home() / "Library" / "Caches" / "artistools" / f"{applicationname}.app" / "Contents"
     executable = contents / "MacOS" / baseexecutable.name
-    if not (executable.exists() and executable.samefile(baseexecutable)):
+    # a copy on a different volume is not the same file, thus the test also accepts a copy with the same contents
+    if not (executable.exists() and filecmp.cmp(executable, baseexecutable, shallow=True)):
         executable.parent.mkdir(parents=True, exist_ok=True)
         # two viewers can make the bundle at the same time, thus each file receives its final name in one step
         tmpexecutable = executable.with_name(f"{executable.name}.{os.getpid()}.tmp")
@@ -180,6 +185,23 @@ def serialise_mathtext_parser() -> None:
     mplmathtext.MathTextParser.parse = serialised_parse
 
 
+# the Qt platform plugins of Linux that show a window on an X11 display or on a Wayland display
+DISPLAY_PLATFORMS: t.Final = ("xcb", "wayland")
+
+
+def needs_missing_display(environment: "Mapping[str, str]") -> bool:
+    """Return True if the Qt platform of the environment needs a display, and the environment gives no display.
+
+    QT_QPA_PLATFORM can select a platform that needs no display, e.g. offscreen, vnc, or eglfs. Its value is a list
+    of platforms with ";" between them, and Qt uses the first platform that it can load. Each platform can have
+    options after a ":".
+    """
+    if environment.get("DISPLAY") or environment.get("WAYLAND_DISPLAY"):
+        return False
+    platforms = [entry.partition(":")[0].strip() for entry in environment.get("QT_QPA_PLATFORM", "").split(";")]
+    return all(not platform or platform.startswith(DISPLAY_PLATFORMS) for platform in platforms)
+
+
 def start_application(
     applicationname: str, iconcurve: "npt.NDArray[np.float64]", documenttypes: "Sequence[str]" = ("public.folder",)
 ) -> "QtWidgets.QApplication":
@@ -201,7 +223,7 @@ def start_application(
     from PySide6 import QtWidgets
 
     # Qt stops the process with no Python error when it cannot find a display
-    if sys.platform == "linux" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+    if sys.platform == "linux" and needs_missing_display(os.environ):
         exit_with_error(
             "--interactive needs a window, and this computer has no display",
             "Run the command on a computer with a display, e.g. with ssh -X",
@@ -273,19 +295,24 @@ def start_application(
         - a slider;
         - a list;
         - a popup, e.g. the list of names of a completer;
+        - a text field or a text box, which uses the arrow keys, Home, End, and the page keys;
         - a button, which uses only the space key;
         - a text field or a text box with selected text, which uses the Copy key.
 
-        For example, the Up key in -maxseriescount made the time range wider, and the Copy key in the Command box
-        copied the figure.
+        For example, the Up key in -maxseriescount or in the field of -xmin made the time range wider, and the Copy
+        key in the Command box copied the figure.
         """
         focuswidget = QtWidgets.QApplication.focusWidget()
         # the field of a completer keeps the focus while its popup shows, and the popup takes the keys
-        usesarrows = QtWidgets.QApplication.activePopupWidget() is not None or isinstance(
+        popupshows = QtWidgets.QApplication.activePopupWidget() is not None
+        isselector = isinstance(
             focuswidget,
             QtWidgets.QAbstractSpinBox | QtWidgets.QComboBox | QtWidgets.QAbstractSlider | QtWidgets.QAbstractItemView,
         )
-        usesspace = usesarrows or isinstance(focuswidget, QtWidgets.QAbstractButton)
+        # a text field moves its cursor with the arrow keys, and a text box also scrolls with them
+        istext = isinstance(focuswidget, QtWidgets.QLineEdit | QtWidgets.QPlainTextEdit | QtWidgets.QTextEdit)
+        usesarrows = popupshows or isselector or istext
+        usesspace = popupshows or isselector or isinstance(focuswidget, QtWidgets.QAbstractButton)
         hastextselection = (
             isinstance(focuswidget, QtWidgets.QPlainTextEdit | QtWidgets.QTextEdit)
             and focuswidget.textCursor().hasSelection()
@@ -529,9 +556,29 @@ def add_session_window(tokens: "Sequence[str]") -> None:
     )
 
 
+# the options that give a text or a style of the plot. Such a value is not a path, also when a folder of the working
+# folder has the same name, e.g. the label run1 of the folder run1
+TEXT_FLAGS: t.Final = frozenset({*SERIES_STYLE_FLAGS, "-title"})
+
+
 def get_absolute_tokens(tokens: "Sequence[str]") -> list[str]:
-    """Return the tokens of a command with an absolute path for each path that exists in the working folder."""
-    return [str(Path(word).absolute()) if not word.startswith("-") and Path(word).exists() else word for word in tokens]
+    """Return the tokens of a command with an absolute path for each path that exists in the working folder.
+
+    An empty token, e.g. the value of -label "", stays empty. Path("") is the working folder, and it exists. A value of
+    an option of TEXT_FLAGS stays the same.
+    """
+    absolutetokens: list[str] = []
+    # the flag of the option that takes the next value. A flag that holds its value, e.g. -ymin=-1, takes no more
+    flag = ""
+    for word in tokens:
+        if is_flag(word):
+            flag = "" if "=" in word else word
+            absolutetokens.append(word)
+        elif word and flag not in TEXT_FLAGS and Path(word).exists():
+            absolutetokens.append(str(Path(word).absolute()))
+        else:
+            absolutetokens.append(word)
+    return absolutetokens
 
 
 def take_session_windows() -> list[list[str]]:
@@ -546,15 +593,27 @@ def take_session_windows() -> list[list[str]]:
     return [[str(token) for token in json.loads(item)] for item in saved]
 
 
-def reopen_session_windows(
-    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
-    windows: "list[QtWidgets.QMainWindow]",
-) -> None:
+class OpenWindow(t.Protocol):
+    """The function of a viewer that opens a window for the arguments of a command, or returns the reason for none.
+
+    A new window takes the options of the Settings window that the command does not give, e.g. -figscale. A window of
+    the last session keeps its command, thus newwindow is then False.
+    """
+
+    def __call__(
+        self, tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]", *, newwindow: bool = True
+    ) -> str | None:
+        """Open a window for the tokens, and return None, or the reason for no window."""
+
+
+def reopen_session_windows(open_window: OpenWindow, windows: "list[QtWidgets.QMainWindow]") -> None:
     """Open the windows of the last session, as the apps of macOS do, and keep the first window in front.
 
     A window with the same command as an open window does not open again. The comparison leaves out -figwidthscale,
     because each window fits it to its own size. An error of a window goes to the terminal. Each window opens after
-    the event loop runs again, thus the first window can draw and take input while the others read their runs.
+    the event loop runs again, thus the first window can draw and take input while the others read their runs. A
+    window gets the command of the last session, and no option of the Settings window, because the user can have
+    removed such an option, e.g. -figscale.
     """
     from PySide6 import QtCore
 
@@ -573,7 +632,7 @@ def reopen_session_windows(
                     activate_window(window)
             return
         tokens = pending.pop(0)
-        message = run_command_step(lambda: open_window(tokens, windows), quiet=False)
+        message = run_command_step(lambda: open_window(tokens, windows, newwindow=False), quiet=False)
         if message is not None:
             print_error(f"The viewer cannot open the window of the last session: {message}")
         QtCore.QTimer.singleShot(0, open_next_window)
@@ -585,7 +644,7 @@ def reopen_session_windows(
 def run_viewer_application(
     applicationname: str,
     iconcurve: "npt.NDArray[np.float64]",
-    open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
+    open_window: OpenWindow,
     tokens: "Sequence[str]",
     documenttypes: "Sequence[str]" = ("public.folder",),
 ) -> None:

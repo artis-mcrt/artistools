@@ -13,6 +13,8 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.atomic import get_ionstring
+from artistools.atomic import get_kept_level_counts
+from artistools.atomic import get_kept_levels
 from artistools.atomic import get_levels
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -25,6 +27,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
+from artistools.misc import get_artis_option
 from artistools.misc import get_artis_source_text
 from artistools.misc import get_model_logname
 from artistools.misc import get_npts_model
@@ -35,6 +38,7 @@ from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
+from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.rustext import sum_binned_line_opacities
 
@@ -124,6 +128,13 @@ def get_opacity_lines(
         if f"nnion_{ionstr}" not in estimatorcolumns:
             continue
 
+        if "lambda_angstroms" not in dftransitions.collect_schema().names():
+            msg = (
+                f"transitiondata.txt holds no table for {ionstr}, but ARTIS needs one. A copy that was cut short can"
+                " lose the tables of the last ions"
+            )
+            raise ValueError(msg)
+
         # a line reads its level populations by the position of the level
         if not dflevels.select((pl.col("levelindex") == pl.int_range(pl.len())).all()).item():
             msg = f"The levels of {ionstr} do not have the level indices 0 to {dflevels.height - 1} in order"
@@ -195,19 +206,9 @@ def get_expansion_opacities(
     dfsums = sum_binned_line_opacities(
         opacitylines.dflevels,
         opacitylines.dflines,
-        dfcells.select(
-            # the kernel skips an ion with no population, thus it does not use the temperature 0 of such a cell
-            pl.col("T_exc").cast(pl.Float64).fill_null(0.0),
-            # a null population or a null temperature gives no opacity
-            *(
-                pl
-                .when(pl.col("T_exc").is_not_null())
-                .then(pl.col(column).cast(pl.Float64))
-                .fill_null(0.0)
-                .alias(column)
-                for column in nnioncolumns
-            ),
-        ),
+        # the kernel gives no opacity to a cell with a T_exc of zero or below, and no opacity to an ion with no
+        # population. Thus a null temperature and a null population take a zero
+        dfcells.select(pl.col("T_exc", *nnioncolumns).cast(pl.Float64).fill_null(0.0)),
         nnioncolumns,
         numbins,
         K_B_ev_per_K,
@@ -280,13 +281,8 @@ def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:
 
     A run with no such file, or a file with no such option, gives None.
     """
-    optionstext = get_artis_source_text(modelpath, "artisoptions.h")
-    if optionstext is None:
-        return None
-    match = re.search(
-        r"^\s*constexpr\s+bool\s+LTEPOP_EXCITATION_USE_TJ\s*=\s*(true|false)\s*;", optionstext, flags=re.MULTILINE
-    )
-    return None if match is None else match.group(1) == "true"
+    value = get_artis_option(modelpath, "LTEPOP_EXCITATION_USE_TJ")
+    return value == "true" if value in {"true", "false"} else None
 
 
 def get_excitation_temperature_column(modelpath: Path | str, selection: str) -> str:
@@ -376,12 +372,24 @@ def get_next_cell_with_estimators_text(modelpath: Path | str, timestep: int, mod
 
 
 def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:
-    """Return the levels and the transitions of each ion, with the columns that the opacities need."""
+    """Return the levels that ARTIS keeps and the transitions of each ion, with the columns that the opacities need.
+
+    ARTIS keeps the first nlevelsmax_readin levels of each ion from compositiondata.txt, or all the levels for a
+    negative value. The partition function then sums only the kept levels. get_opacity_lines() drops each line to a
+    level that ARTIS does not keep.
+    """
     # get_opacity_lines() needs the statistical weights as well as the wavelength, and
     # add_transition_columns() drops each derived column that this call does not request
-    return get_levels(
+    adata = get_levels(
         modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms", "lower_g", "upper_g"]
     )
+
+    keptlevelcount_of_element = get_kept_level_counts(modelpath)
+    keptlevels = [
+        get_kept_levels(dflevels, keptlevelcount_of_element.get(Z))
+        for Z, dflevels in zip(adata["Z"], adata["levels"], strict=True)
+    ]
+    return adata.with_columns(pl.Series("levels", keptlevels, dtype=pl.Object))
 
 
 def get_cell_batches(dfestimators: pl.DataFrame, numbins: int) -> list[pl.DataFrame]:
@@ -464,11 +472,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for dfcellbatch in get_cell_batches(dfestimators, len(lambda_bin_edges) - 1):
         dfbinnedopacities = get_expansion_opacities(opacitylines, dfcellbatch, lambda_bin_edges, time_days)
         if args.show_binned_opacities:
-            print(dfbinnedopacities)
+            print_product(args, dfbinnedopacities)
 
         dfplanckmean = get_planck_mean_opacities(dfbinnedopacities)
 
-        print(dfplanckmean)
+        print_product(args, dfplanckmean)
         planckmeanopacity_times_mass += (dfplanckmean.select(pl.col("planckmean_opacity").dot(pl.col("mass_g")))).item()
         mass_g_sum += dfplanckmean.select(pl.col("mass_g").sum()).item()
 
@@ -482,4 +490,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     print()
     globalplanckmeanopacity = planckmeanopacity_times_mass / mass_g_sum
-    print(f"Global Planck mean opacity: {globalplanckmeanopacity:.2f} cm^2/g")
+    print_product(args, f"Global Planck mean opacity: {globalplanckmeanopacity:.2f} cm^2/g")

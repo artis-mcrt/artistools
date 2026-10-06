@@ -24,17 +24,34 @@ pub fn unlimited_decompressor(
     })
 }
 
-/// Open a file with transparent decompression detected from its content (not the file name),
-/// placing no memory limit on the xz decoder.
-pub fn open_decompressed(filepath: &Path) -> std::io::Result<impl Read> {
-    let mut reader = BufReader::new(std::fs::File::open(filepath)?);
-    let decompressor: Box<dyn Processor + Send + Unpin> =
-        match FileFormat::from_buf_reader(&mut reader)? {
-            Some(format) => unlimited_decompressor(format)?,
-            None => Box::new(PlainProcessor::new()),
-        };
+/// Return an I/O error with the place in a file before its text, e.g. `estimators_0000.out:12`
+///
+/// pyo3-polars gives Python the text of the `io::Error` and not the message of the `PolarsError`. Thus the place
+/// must be in the `io::Error` itself.
+pub fn io_error_at(err: &std::io::Error, place: &str) -> std::io::Error {
+    std::io::Error::new(err.kind(), format!("{place}: {err}"))
+}
 
-    Ok(ProcessorReader::with_processor(decompressor, reader))
+/// Open a file with transparent decompression detected from its content (not the file name),
+/// placing no memory limit on the xz decoder. An error names the file.
+pub fn open_decompressed(filepath: &Path) -> std::io::Result<impl Read> {
+    let open = || -> std::io::Result<_> {
+        let mut reader = BufReader::new(std::fs::File::open(filepath)?);
+        let decompressor: Box<dyn Processor + Send + Unpin> =
+            match FileFormat::from_buf_reader(&mut reader)? {
+                Some(format) => unlimited_decompressor(format)?,
+                None => Box::new(PlainProcessor::new()),
+            };
+
+        Ok(ProcessorReader::with_processor(decompressor, reader))
+    };
+
+    open().map_err(|err| io_error_at(&err, &filepath.display().to_string()))
+}
+
+/// Add the file and the line number to the message of an error
+pub fn error_at_line(err: &PolarsError, filepath: &Path, linenum: usize) -> PolarsError {
+    err.wrap_msg(|msg| format!("{}:{linenum}: {msg}", filepath.display()))
 }
 
 /// Parse a token taken from a line, naming what was expected if it doesn't parse
@@ -42,29 +59,6 @@ pub fn parse_field<T: FromStr>(token: &str, expected: &str) -> PolarsResult<T> {
     token
         .parse()
         .map_err(|_| malformed(format!("could not parse {token:?} as {expected}")))
-}
-
-/// Parse a measured value into f32 and reject a number that f32 cannot hold
-///
-/// ARTIS writes a rate far below the smallest f32, e.g. "5.313e-95" in the `gamma_R` row of the test
-/// model. Rust parses such a token to 0.0 with no error, which is the right value for a rate that
-/// small. A token above the largest f32 parses to infinity. Such a value spreads through every mean
-/// and sum that reads the column, thus this function rejects it.
-pub fn parse_f32_field(token: &str, expected: &str) -> PolarsResult<f32> {
-    let value: f64 = parse_field(token, expected)?;
-    #[allow(
-        clippy::cast_possible_truncation,
-        reason = "the check below rejects a value that f32 cannot hold"
-    )]
-    let value_f32 = value as f32;
-
-    if value.is_finite() && !value_f32.is_finite() {
-        return Err(malformed(format!(
-            "{token:?} is outside the range that f32 holds"
-        )));
-    }
-
-    Ok(value_f32)
 }
 
 /// Take the next token of a line and parse it, failing if the line ends first

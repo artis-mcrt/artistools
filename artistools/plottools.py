@@ -1251,6 +1251,9 @@ def save_figure(
     gif. Such a figure does not open on its own, because the product opens in its place, and it takes no
     line of its own, because a merge takes the frames away and that line would name a file that went.
     --show still opens each figure, because the user asked to see them.
+
+    A suffix of outpath that matplotlib can write sets the format, thus a format argument applies only to a path
+    with no such suffix. A file named rf.png then holds PNG data, also when the caller gives format="pdf".
     """
     show = args is not None and getattr(args, "show", False)
     openfile = args is not None and not isframe and getattr(args, "open", False)
@@ -1264,6 +1267,11 @@ def save_figure(
     # keeps its width. The pad keeps a stroke on the boundary whole.
     savefig_kwargs.setdefault("bbox_inches", "tight")
     savefig_kwargs.setdefault("pad_inches", 0.02)
+
+    from pathlib import Path
+
+    if Path(outpath).suffix.removeprefix(".").lower() in fig.canvas.get_supported_filetypes():
+        savefig_kwargs.pop("format", None)
 
     fig.savefig(outpath, **savefig_kwargs)
     if not isframe:
@@ -1349,7 +1357,7 @@ def get_next_color(ax: mplax.Axes) -> str:
     Call this to keep colours consistent with the automatic ones, or to skip a colour that would otherwise
     be reused. matplotlib exposes no public accessor, hence the private attribute.
     """
-    nextcolor: str = ax._get_lines.get_next_color()  # type: ignore[attr-defined] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+    nextcolor: str = ax._get_lines.get_next_color()  # pyrefly: ignore[missing-attribute] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
     return nextcolor
 
 
@@ -1524,8 +1532,6 @@ def set_axis_properties(
     setyaxis=False leaves the y scale and the y range alone, e.g. for a residual panel, which has its
     own y range.
     """
-    if "subplots" not in args:
-        args.subplots = False
     # a Namespace membership test matches the name, thus a parser default of None reached tick_params
     # as labelsize=None, which is a silent no-op that left the rcParams size in place
     labelfontsize = getattr(args, "labelfontsize", None)
@@ -1584,7 +1590,7 @@ def set_axis_labels(
     fig: mplfig.Figure, ax: AxesTree, xlabel: str, ylabel: str, labelfontsize: int | None, args: argparse.Namespace
 ) -> None:
     """Set the x and y axis labels, placing them on the figure rather than the axes when there are subplots."""
-    if args.subplots:
+    if getattr(args, "subplots", False):
         fig.text(0.5, 0.02, xlabel, ha="center", va="center")
         fig.text(0.02, 0.5, ylabel, ha="center", va="center", rotation="vertical")
     else:

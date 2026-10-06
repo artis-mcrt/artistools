@@ -92,8 +92,12 @@ def get_kurucz_transitions(
                 # gfall.dat is fixed-width: wavelength in nm is F11.4 (columns 0-10) and loggf is F7.3 (columns 11-17)
                 lambda_angstroms = float(line[:11]) * 10
                 loggf = float(line[11:18])
-                lower_energy_ev, upper_energy_ev = hc_in_ev_cm * float(line[24:36]), hc_in_ev_cm * float(line[52:64])
-                lower_statweight, upper_statweight = 2 * float(line[36:42]) + 1, 2 * float(line[64:70]) + 1
+                # gfall.dat does not order the two levels by energy, thus the sort finds the lower level.
+                # A negative energy marks a predicted level, and its absolute value is the energy
+                (lower_energy_ev, lower_statweight), (upper_energy_ev, upper_statweight) = sorted([
+                    (hc_in_ev_cm * abs(float(line[24:36])), 2 * float(line[36:42]) + 1),
+                    (hc_in_ev_cm * abs(float(line[52:64])), 2 * float(line[64:70]) + 1),
+                ])
                 fij = (10**loggf) / lower_statweight
                 A = fij / (1.49919e-16 * upper_statweight / lower_statweight * lambda_angstroms**2)
                 translist.append(
@@ -242,7 +246,8 @@ def make_plot(
         axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r"$\propto$ F$_\lambda$")
 
-    save_figure(fig, outputfilename, args=args, format="pdf")
+    # the suffix of the file name sets the format, e.g. .pdf or .png
+    save_figure(fig, outputfilename, args=args)
 
 
 def add_upper_lte_pop(
@@ -277,7 +282,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         wavelength_aliases=True,
     )
 
-    parser.add_argument("-T", type=float, dest="T", default=[], nargs="*", help="Temperature in Kelvin")
+    parser.add_argument(
+        "-T",
+        type=float,
+        dest="T",
+        default=[],
+        nargs="*",
+        help=(
+            "Temperatures in Kelvin of the LTE series. With a model path, each LTE series takes the ion populations"
+            " of the cell, beside the NLTE series"
+        ),
+    )
 
     parser.add_argument("-sigma_v", type=float, default=5500.0, help="Gaussian width in km/s")
 
@@ -291,7 +306,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timestep(parser, default="last")
 
-    addarg_modelgridindex(parser, default=0)
+    addarg_modelgridindex(parser, default=[0], helptext="Model grid cell to plot, e.g. 12")
 
     parser.add_argument("--normalised", action="store_true", help="Normalise all spectra to their peak values")
 
@@ -308,7 +323,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--atomicdatabase", dest="atomicdatabase", choices=["artis", "kurucz", "nist"], help=argparse.SUPPRESS
     )
 
-    addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Path/filename for PDF file")
+    addarg_output(
+        parser,
+        kind="file",
+        defaultname=defaultoutputfile,
+        helptext="Path/filename for the plot file. The suffix sets the format, e.g. .pdf or .png",
+    )
     addarg_show(parser)
 
 
@@ -389,8 +409,13 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
     )
 
 
-def get_model_conditions(modelpath: Path, cell: CellConditions, ionlist: Sequence[tuple[int, int]]) -> PlotConditions:
-    """Return the NLTE populations and the temperatures of one cell of a model."""
+def get_model_conditions(
+    modelpath: Path, cell: CellConditions, ionlist: Sequence[tuple[int, int]], ltetemperatures: Sequence[float]
+) -> PlotConditions:
+    """Return the NLTE populations and the temperatures of one cell of a model.
+
+    Each temperature of ltetemperatures gives an LTE series with the ion populations of the cell.
+    """
     dfnltepops = read_nltepops(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
 
     if dfnltepops.is_empty():
@@ -406,6 +431,7 @@ def get_model_conditions(modelpath: Path, cell: CellConditions, ionlist: Sequenc
     if cell.time_days != -1:
         figure_title += f" ({cell.time_days:.1f}d)"
 
+    ltenames = [f"T{index + 1}" for index in range(len(ltetemperatures))]
     return PlotConditions(
         ionpopdict={
             (Z, ion_stage): float(
@@ -413,8 +439,8 @@ def get_model_conditions(modelpath: Path, cell: CellConditions, ionlist: Sequenc
             )
             for Z, ion_stage in ionlist
         },
-        temperature_list=["NOTEMPNLTE"],
-        vardict={"Te": T_e, "TR": T_R},
+        temperature_list=["NOTEMPNLTE", *ltenames],
+        vardict={"Te": T_e, "TR": T_R, **dict(zip(ltenames, ltetemperatures, strict=True))},
         figure_title=figure_title,
         dfnltepops=dfnltepops,
     )
@@ -694,7 +720,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     adata = get_levels(modelpath, tuple(ionlist), get_transitions=True) if args.atomicdatabase == "artis" else None
 
     conditions = (
-        get_model_conditions(modelpath, cell, ionlist)
+        get_model_conditions(modelpath, cell, ionlist, args.T)
         if cell is not None
         else get_fixed_temperature_conditions(args, ionlist)
     )

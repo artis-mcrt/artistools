@@ -27,6 +27,7 @@ from artistools.misc import get_single_modelgridindex
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
+from artistools.misc import print_product
 
 
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
@@ -80,81 +81,94 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     t_model_init_days, vmax = modelmeta["t_model_init_days"], modelmeta["vmax_cmps"]
 
     t_model_init_seconds = t_model_init_days * day_to_s
-    print(f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
+    print_product(args, f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
     if modelmeta["dimensions"] == 1:
-        print(
+        print_product(
+            args,
             f"Model contains {modelmeta['npts_model']} 1D spherical shells with vmax = {vmax / km_to_cm} km/s"
-            f" ({vmax / C_cm_per_s:.2f} * c)"
+            f" ({vmax / C_cm_per_s:.2f} * c)",
         )
     else:
         nonemptycells = dfmodel.select(pl.len()).collect().item()
-        print(
+        print_product(
+            args,
             f"Model contains {modelmeta['npts_model']} grid cells ({nonemptycells} nonempty) with "
-            f"vmax = {vmax} cm/s ({vmax / C_cm_per_s:.2f} * c)"
+            f"vmax = {vmax} cm/s ({vmax / C_cm_per_s:.2f} * c)",
         )
         vmax_corner_3d = vmax * math.sqrt(3)
-        print(f"  3D corner vmax: {vmax_corner_3d:.2e} cm/s ({vmax_corner_3d / C_cm_per_s:.2f} * c)")
+        print_product(args, f"  3D corner vmax: {vmax_corner_3d:.2e} cm/s ({vmax_corner_3d / C_cm_per_s:.2f} * c)")
         if modelmeta["dimensions"] == 2:
             vmax_corner_2d = vmax * math.sqrt(2)
-            print(f"  2D corner vmax: {vmax_corner_2d:.2e} cm/s ({vmax_corner_2d / C_cm_per_s:.2f} * c)")
+            print_product(args, f"  2D corner vmax: {vmax_corner_2d:.2e} cm/s ({vmax_corner_2d / C_cm_per_s:.2f} * c)")
 
     minrho, maxrho = dfmodel.select(minrho=pl.col("rho").min(), maxrho=pl.col("rho").max()).collect().row(0)
     for minmaxlabel, rho in (("min", minrho), ("max", maxrho)):
         cellcount = dfmodel.filter(pl.col("rho") == rho).select(pl.len()).collect().item()
-        print(f"  {minmaxlabel} density: {rho:.2e} g/cm³. Cells with this density: {cellcount}")
+        print_product(args, f"  {minmaxlabel} density: {rho:.2e} g/cm³. Cells with this density: {cellcount}")
 
     mgi = get_single_modelgridindex(args.modelgridindex)
     # a negative cell number selects no cell, as -cell -1 did before
     if mgi is not None and mgi >= 0:
-        print(f"Selected single cell mgi {mgi}:")
-        dfmodel = dfmodel.filter(pl.col("inputcellid") == (mgi + 1))
+        npts_model = modelmeta["npts_model"]
+        if mgi >= npts_model:
+            msg = f"The model has the cells 0 to {npts_model - 1}, thus -modelgridindex {mgi} names no cell"
+            raise ValueError(msg)
+        print_product(args, f"Selected single cell mgi {mgi}:")
+        # the ids of model.txt can start at 0 or 1, and modelgridindex starts at 0 for both
+        dfmodel = dfmodel.filter(pl.col("modelgridindex") == mgi)
+        if dfmodel.select(pl.len()).collect().item() == 0:
+            # the masses below divide by the mass of the selected cells
+            print_product(args, f"  cell {mgi} is empty (rho = 0), thus it has no mass to describe")
+            return
 
-        print(dfmodel.collect())
+        print_product(args, dfmodel.collect())
 
     try:
         assoc_cells, mgi_of_propcells, direct_model_propgrid_map = get_grid_mapping(modelpath)
-        print(f"  {len(assoc_cells)} model cells have associated prop cells")
+        print_product(args, f"  {len(assoc_cells)} model cells have associated prop cells")
     except FileNotFoundError:
-        print("  no cell mapping file found")
+        print_product(args, "  no cell mapping file found")
         assoc_cells, mgi_of_propcells, direct_model_propgrid_map = None, None, True
 
     if "Ye" in dfmodel.collect_schema().names():
         electronfrac = dfmodel.select(pl.col("Ye").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).collect().item()
         assert electronfrac is not None
-        print(f"  {'electron frac Ye':19s} {electronfrac:.3f}")
+        print_product(args, f"  {'electron frac Ye':19s} {electronfrac:.3f}")
         if args.isotopes:
             # currently assumes that all isotopes are specified (i.e. not for Type Ia models)
             calcelectronfrac = calculate_model_electron_frac(dfmodel)
             assert calcelectronfrac is not None
-            print(f"  {'snapshot Ye':19s} {calcelectronfrac:.3f}")
+            print_product(args, f"  {'snapshot Ye':19s} {calcelectronfrac:.3f}")
 
     if "q" in dfmodel.collect_schema().names():
         initial_energy = dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().item()
         assert initial_energy is not None
-        print(f"  {'initial energy':19s} {initial_energy:.3e} erg")
+        print_product(args, f"  {'initial energy':19s} {initial_energy:.3e} erg")
     else:
         initial_energy = 0.0
 
     ejecta_ke_erg: float | int = dfmodel.select("kinetic_en_erg").sum().collect().item()
 
-    print(f"  {'kinetic energy':19s} {ejecta_ke_erg:.2e} erg")
+    print_product(args, f"  {'kinetic energy':19s} {ejecta_ke_erg:.2e} erg")
 
     mass_g_rho = dfmodel.select(pl.col("mass_g").sum()).collect().item()
 
     # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
     ejecta_v = np.sqrt(2 * ejecta_ke_erg / mass_g_rho)
-    print(f"  {'v_ej=√(2KE/m)':19s} {ejecta_v / C_cm_per_s:.2f}c")
+    print_product(args, f"  {'v_ej=√(2KE/m)':19s} {ejecta_v / C_cm_per_s:.2f}c")
 
     mass_msun_rho = mass_g_rho / Msun_to_g
 
     if assoc_cells is not None and mgi_of_propcells is not None:
         if direct_model_propgrid_map:
-            print("  detected direct mapping of model cells to propagation grid")
+            print_product(args, "  detected direct mapping of model cells to propagation grid")
         else:
-            print_mapped_masses(dfmodel, assoc_cells, mgi_of_propcells, modelmeta, vmax, initial_energy, mass_msun_rho)
+            print_mapped_masses(
+                args, dfmodel, assoc_cells, mgi_of_propcells, modelmeta, vmax, initial_energy, mass_msun_rho
+            )
 
-    print(f"  {'M_tot_rho':19s} {mass_msun_rho:7.5f} MSun (density * volume)")
+    print_product(args, f"  {'M_tot_rho':19s} {mass_msun_rho:7.5f} MSun (density * volume)")
 
     if modelmeta["dimensions"] > 1:
         corner_mass = (
@@ -165,9 +179,10 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
             .collect()
             .item()
         ) / Msun_to_g
-        print(
+        print_product(
+            args,
             f"  {'M_corners':19s} {corner_mass:7.5f} MSun ("
-            f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)"
+            f" {100 * corner_mass / mass_msun_rho:.2f}% of M_tot in cells with v_r_mid > vmax)",
         )
 
     if not args.noabund:
@@ -175,6 +190,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
 
 def print_mapped_masses(
+    args: argparse.Namespace,
     dfmodel: pl.LazyFrame,
     assoc_cells: dict[int, list[int]],
     mgi_of_propcells: dict[int, int],
@@ -201,16 +217,18 @@ def print_mapped_masses(
 
     if "q" in dfmodel.collect_schema().names():
         initial_energy_mapped = dfmapped.select(pl.col("q").dot(pl.col("mass_g_mapped"))).collect().item()
-        print(
+        print_product(
+            args,
             f"  {'initial energy':19s} {initial_energy_mapped:.3e} erg (when mapped to"
             f" {ncoordgridx}^3 cubic grid, error"
-            f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)"
+            f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)",
         )
 
     mtot_mapped_msun = dfmapped.select(pl.col("mass_g_mapped").sum()).collect().item() / Msun_to_g
-    print(
+    print_product(
+        args,
         f"  {'M_tot_rho_map':19s} {mtot_mapped_msun:7.5f} MSun (density * volume when mapped to {ncoordgridx}^3"
-        f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)"
+        f" cubic grid, error {100 * (mtot_mapped_msun / mass_msun_rho - 1):.2f}%)",
     )
 
 
@@ -268,30 +286,35 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
             elif 89 <= atomic_number <= 103:
                 mass_msun_actinides += species_mass_msun
 
-    print(
-        f"  {'M_tot_elem':19s} {mass_msun_elem:7.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
+    print_product(
+        args,
+        f"  {'M_tot_elem':19s} {mass_msun_elem:7.5f} MSun ({mass_msun_elem / mass_msun_rho * 100:6.2f}% of M_tot_rho)",
     )
 
     if args.isotopes:
-        print(
+        print_product(
+            args,
             f"  {'M_tot_iso':19s} {mass_msun_isotopes:7.5f} MSun ({mass_msun_isotopes / mass_msun_rho * 100:6.2f}% "
-            "of M_tot_rho, but can be < 100% if stable isotopes not tracked)"
+            "of M_tot_rho, but can be < 100% if stable isotopes not tracked)",
         )
 
     mass_msun_fegroup = dfmodel.select(pl.col("X_Fegroup").dot(pl.col("mass_g"))).collect().item() / Msun_to_g
-    print(
+    print_product(
+        args,
         f"  {'M_Fegroup':19s} {mass_msun_fegroup:7.5f} MSun"
-        f" ({mass_msun_fegroup / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
+        f" ({mass_msun_fegroup / mass_msun_rho * 100:6.2f}% of M_tot_rho)",
     )
 
-    print(
+    print_product(
+        args,
         f"  {'M_lanthanide_isosum':19s} {mass_msun_lanthanides:7.5f} MSun"
-        f" ({mass_msun_lanthanides / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
+        f" ({mass_msun_lanthanides / mass_msun_rho * 100:6.2f}% of M_tot_rho)",
     )
 
-    print(
+    print_product(
+        args,
         f"  {'M_actinide_isosum':19s} {mass_msun_actinides:7.5f} MSun"
-        f" ({mass_msun_actinides / mass_msun_rho * 100:6.2f}% of M_tot_rho)"
+        f" ({mass_msun_actinides / mass_msun_rho * 100:6.2f}% of M_tot_rho)",
     )
 
     def sortkey(tup_species_mass_g: tuple[str, float]) -> tuple[int, int, str] | tuple[float, str]:
@@ -309,6 +332,10 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
                 return (massnumber, get_atomic_number(species), species)
 
         return (-mass_g, species)
+
+    if not speciesmasses:
+        print_product(args, "  no species has a mass above zero")
+        return
 
     mass_g_min = min(speciesmasses.values())
     mass_g_max = max(speciesmasses.values())
@@ -340,9 +367,9 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
             int(maxbarchars * math.log(mass_g / mass_g_min_lim) / logmassrange) if logmassrange > 0.0 else maxbarchars
         )
         barstr = "-" * barsize
-        print(f"{zstr:>5} {species:7s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {barstr}")
+        print_product(args, f"{zstr:>5} {species:7s} massfrac {massfrac:.3e}   {species_mass_msun:.3e} Msun  {barstr}")
         if strcomment:
-            print(f"    {strcomment}")
+            print_product(args, f"    {strcomment}")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -380,4 +407,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     for modelpath in args.modelpath:
         describe_model(modelpath, args)
-        print()
+        print_product(args)

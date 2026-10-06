@@ -32,8 +32,10 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import format_frame_path
+from artistools.misc import get_artis_option
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_of_timedays
@@ -42,6 +44,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import parse_range_list
 from artistools.misc import read_rank_outputfiles
 from artistools.misc import resolve_frameset_paths
+from artistools.misc.cliutils import format_range_list
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_exponent_label
@@ -50,13 +53,9 @@ from artistools.plottools import set_plot_title
 from artistools.spectra import get_spectra
 
 
-def read_radfield(
-    modelpath: Path | str, timestep: int | None = None, modelgridindex: int | Sequence[int] | None = None
-) -> pl.DataFrame:
-    """Read radiation field data from a model folder, possibly with timestep and modelgridindex filters."""
-    return read_rank_outputfiles(
-        modelpath, "radfield_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
-    )
+def read_radfield(modelpath: Path | str, modelgridindex: int | Sequence[int] | None = None) -> pl.DataFrame:
+    """Read radiation field data from a model folder, possibly with a modelgridindex filter."""
+    return read_rank_outputfiles(modelpath, "radfield_{mpirank:04d}.out", modelgridindex=modelgridindex)
 
 
 def select_radfield_subset(
@@ -74,7 +73,11 @@ def select_radfield_subset(
 def get_binaverage_field(
     radfielddata: pl.DataFrame, modelgridindex: int | None = None, timestep: int | None = None
 ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    """Get the dJ/dlambda constant average estimators of each bin."""
+    """Get the dJ/dlambda constant average estimators of each bin.
+
+    The estimator J of a bin does not depend on the fit of the bin, thus a bin with no fit (T_R < 0) still gives
+    its J.
+    """
     # exclude the global fit parameters and detailed lines with negative "bin_num"
     bindata = select_radfield_subset(radfielddata, pl.col("bin_num") >= 0, modelgridindex, timestep)
 
@@ -83,7 +86,7 @@ def get_binaverage_field(
     yvalues = (
         bindata
         .with_columns(dlambda=c_ang_per_s * (1 / pl.col("nu_lower") - 1 / pl.col("nu_upper")))
-        .select(pl.when(pl.col("T_R") >= 0).then(pl.col("J") / pl.col("dlambda")).otherwise(0.0))
+        .select(pl.col("J") / pl.col("dlambda"))
         .to_series()
         .to_numpy()
     )
@@ -149,37 +152,45 @@ def get_fullspecfittedfield(
 
 
 def get_fitted_field(
-    radfielddata: pl.DataFrame, modelgridindex: int | None = None, timestep: int | None = None
+    radfielddata: pl.DataFrame, modelgridindex: int | None = None, timestep: int | None = None, usebinfits: bool = True
 ) -> tuple[list[float], list[float]]:
-    """Return the fitted dilute blackbody (list of lambda, list of j_nu) made up of all bins."""
+    """Return the radiation field model of ARTIS (list of lambda, list of J_lambda) made up of all bins.
+
+    ARTIS radfield() takes the dilute blackbody fit of the bin. A bin with a negative W has no fit, and ARTIS
+    then takes the full-spectrum dilute blackbody fit, which is bin -1 of the file. usebinfits=False gives every
+    bin the full-spectrum fit, as ARTIS does before FIRST_NLTE_RADFIELD_TIMESTEP.
+    """
     arr_lambda: list[float] = []
     j_lambda_fitted: list[float] = []
 
+    fullspecfit = select_radfield_subset(radfielddata, pl.col("bin_num") == -1, modelgridindex, timestep)
+    W_fullspec, T_R_fullspec = float(fullspecfit.item(0, "W")), float(fullspecfit.item(0, "T_R"))
+
     radfielddata_subset = select_radfield_subset(radfielddata, pl.col("bin_num") >= 0, modelgridindex, timestep)
 
-    for row in radfielddata_subset.iter_rows(named=True):
-        nu_lower = row["nu_lower"]
-        nu_upper = row["nu_upper"]
+    for nu_lower, nu_upper, W_bin, T_R_bin in radfielddata_subset.select(
+        "nu_lower", "nu_upper", "W", "T_R"
+    ).iter_rows():
+        W, T_R = (float(W_bin), float(T_R_bin)) if usebinfits and W_bin >= 0 else (W_fullspec, T_R_fullspec)
+        arr_nu_hz_bin = np.linspace(nu_lower, nu_upper, num=200)
+        arr_j_nu = j_nu_dbb(arr_nu_hz_bin, W, T_R)
 
-        if row["W"] >= 0:
-            arr_nu_hz_bin = np.linspace(nu_lower, nu_upper, num=200)
-            W, T_R = row["W"], row["T_R"]
-            assert isinstance(W, float)
-            assert isinstance(T_R, float)
-            arr_j_nu = j_nu_dbb(arr_nu_hz_bin, W, T_R)
+        arr_lambda_bin = c_ang_per_s / arr_nu_hz_bin
+        arr_j_lambda_bin = arr_j_nu * arr_nu_hz_bin / arr_lambda_bin
 
-            arr_lambda_bin = c_ang_per_s / arr_nu_hz_bin
-            arr_j_lambda_bin = arr_j_nu * arr_nu_hz_bin / arr_lambda_bin
-
-            arr_lambda += arr_lambda_bin.tolist()
-        else:
-            arr_nu_hz_bin = np.array([nu_lower, nu_upper])
-            arr_j_lambda_bin = np.array([0.0, 0.0])
-
-            arr_lambda += [c_ang_per_s / nu for nu in arr_nu_hz_bin]
+        arr_lambda += arr_lambda_bin.tolist()
         j_lambda_fitted += arr_j_lambda_bin.tolist()
 
     return arr_lambda, j_lambda_fitted
+
+
+def get_first_nlte_radfield_timestep(modelpath: Path | str) -> int | None:
+    """Return FIRST_NLTE_RADFIELD_TIMESTEP of artis/artisoptions.h in the folder of the run, or None.
+
+    ARTIS uses the fits of the bins from this timestep. Before it, ARTIS uses the full-spectrum fit for every bin.
+    """
+    value = get_artis_option(modelpath, "FIRST_NLTE_RADFIELD_TIMESTEP")
+    return int(value) if value is not None and value.isdigit() else None
 
 
 def plot_line_estimators(
@@ -257,13 +268,16 @@ def plot_celltimestep(
     xmin: float,
     xmax: float,
     modelgridindex: int,
+    velocity_kmps: float,
+    modelmeta: dict[str, t.Any],
     args: argparse.Namespace,
     normalised: bool = False,
     isframe: bool = False,
 ) -> bool:
     """Plot a cell at a timestep things like the bin edges, fitted field, and emergent spectrum (from all cells).
 
-    radfielddata_cell holds the radiation field data of the cell at every timestep.
+    radfielddata_cell holds the radiation field data of the cell at every timestep. velocity_kmps is the
+    mid-point radial velocity of the cell, which the title gives.
 
     A plot that the merge takes in is one part of the product, thus --show and --open leave it alone.
     merge_pdf_files also deletes such a file, thus an application that opened it would hold nothing.
@@ -297,8 +311,17 @@ def plot_celltimestep(
             [ymax] + [float(yval) for xval, yval in zip(arr_lambda, yvalues, strict=True) if xmin <= xval <= xmax]
         )
 
+    firstnlteradfieldtimestep = get_first_nlte_radfield_timestep(modelpath)
+    if firstnlteradfieldtimestep is None:
+        print(
+            "The run holds no FIRST_NLTE_RADFIELD_TIMESTEP in artis/artisoptions.h, thus the radiation field model"
+            " takes the fits of the bins. ARTIS takes the full-spectrum fit before that timestep"
+        )
     arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
-        radfielddata, modelgridindex=modelgridindex, timestep=timestep
+        radfielddata,
+        modelgridindex=modelgridindex,
+        timestep=timestep,
+        usebinfits=firstnlteradfieldtimestep is None or timestep >= firstnlteradfieldtimestep,
     )
     ymax = max(
         [ymax] + [yval for xval, yval in zip(arr_lambda_fitted, j_lambda_fitted, strict=True) if xmin <= xval <= xmax]
@@ -316,9 +339,6 @@ def plot_celltimestep(
     except FileNotFoundError:
         print("Could not find spec.out")
         args.nospec = True
-
-    modeldata, modelmeta = get_modeldata(modelpath)
-    modeldata = add_derived_cols_to_modeldata(modeldata, modelmeta=modelmeta)
 
     if not args.nospec:
         plotkwargs: dict[str, t.Any] = {}
@@ -342,10 +362,6 @@ def plot_celltimestep(
         binedges = get_binedges(radfielddata)
         axis.vlines(binedges, ymin=0.0, ymax=ymax, linewidth=0.5, color="red", label="", zorder=-1, alpha=0.4)
 
-    velocity_kmps = (
-        modeldata.filter(pl.col("modelgridindex") == modelgridindex).select("vel_r_mid").collect().item() / km_to_cm
-    )
-
     figure_title = f"{modelname} {velocity_kmps:.0f} km/s at {time_days:.0f}d"
 
     set_plot_title(axis, figure_title, args)
@@ -364,7 +380,8 @@ def plot_celltimestep(
 
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
-    save_figure(fig, outputfile, format="pdf", args=args, isframe=isframe)
+    # the suffix of the file name sets the format, e.g. .pdf or .png
+    save_figure(fig, outputfile, args=args, isframe=isframe)
     return True
 
 
@@ -380,7 +397,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
 
-    parser.add_argument("--nospec", action="store_true", help="Don't plot the emergent specrum")
+    parser.add_argument("--nospec", action="store_true", help="Don't plot the emergent spectrum")
 
     parser.add_argument("--showbinedges", action="store_true", help="Plot vertical lines at the bin edges")
 
@@ -404,7 +421,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_figscale(parser)
 
-    addarg_output(parser, kind="file", helptext="Filename for PDF file")
+    addarg_output(
+        parser, kind="file", helptext="Filename for the plot file. The suffix sets the format, e.g. .pdf or .png"
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -420,18 +439,25 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         mgi = get_mgi_of_velocity_kms(modelpath, args.velocity)
         assert mgi is not None, f"Could not find a cell with velocity {args.velocity:.3f} km/s"
         modelgridindexlist = [mgi]
-    elif args.modelgridindex is None:
-        modelgridindexlist = [0]
     else:
-        modelgridindexlist = parse_range_list(args.modelgridindex)
+        modelgridindexlist = args.modelgridindex or [0]
 
-    timesteplast = len(get_timestep_times(modelpath)) - 1
+    # read_radfield parses a rank file on each call, thus one read of all the cells serves each cell and timestep
+    radfielddata_allcells = read_radfield(modelpath, modelgridindex=modelgridindexlist)
+
+    # a run that stopped early holds no radiation field data at the last timestep of the time grid. Thus "last"
+    # is the last timestep that holds data
+    timesteplast = (
+        int(radfielddata_allcells.select(pl.col("timestep").max()).item())
+        if not radfielddata_allcells.is_empty()
+        else len(get_timestep_times(modelpath)) - 1
+    )
     if args.timedays:
         timesteplist = [get_timestep_of_timedays(modelpath, args.timedays)]
     elif args.timestep is not None:
-        timesteplist = parse_range_list(args.timestep, dictvars={"last": timesteplast})
+        timesteplist = parse_range_list(str(args.timestep), dictvars={"last": timesteplast})
     else:
-        print("Using last timestep.")
+        print(f"Using the last timestep with radiation field data: {timesteplast}")
         timesteplist = [timesteplast]
 
     # a merge makes one pdf of every plot, thus each plot is a part of the product and not the product
@@ -442,8 +468,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         combines=len(modelgridindexlist) * len(timesteplist) > 1,
     )
 
-    # read_radfield parses a rank file on each call, thus one read of all the cells serves each cell and timestep
-    radfielddata_allcells = read_radfield(modelpath, modelgridindex=modelgridindexlist)
+    # one query of the model gives the velocity of every cell. A query in each frame ran the derivation
+    # of the model columns again for each cell and timestep
+    dfmodel, modelmeta = get_modeldata(modelpath)
+    dfcellvelocities = (
+        add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
+        .filter(pl.col("modelgridindex").is_in(modelgridindexlist))
+        .select("modelgridindex", "vel_r_mid")
+        .collect()
+    )
+    velocity_kmps_of_cell = dict(
+        zip(dfcellvelocities["modelgridindex"], dfcellvelocities["vel_r_mid"] / km_to_cm, strict=True)
+    )
+
     for modelgridindex in modelgridindexlist:
         assert modelgridindex is not None
         radfielddata_cell = radfielddata_allcells.filter(pl.col("modelgridindex") == modelgridindex)
@@ -457,11 +494,21 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 xmin=args.xmin,
                 xmax=args.xmax,
                 modelgridindex=modelgridindex,
+                # a cell that is not in the model has no radiation field data, thus no plot reads the NaN
+                velocity_kmps=velocity_kmps_of_cell.get(modelgridindex, math.nan),
+                modelmeta=modelmeta,
                 args=args,
                 normalised=args.normalised,
                 isframe=frameset.combines,
             ):
                 pdf_list.append(outputfile)
+
+    if not pdf_list:
+        exit_with_error(
+            f"no radiation field data for the cells {format_range_list(modelgridindexlist)} at the timesteps"
+            f" {format_range_list(timesteplist)}",
+            f"Give a cell and a timestep with data. The last timestep with data is {timesteplast}",
+        )
 
     # a run that holds data for one cell or one timestep alone makes one plot, and combine_frames
     # takes that plot for the product, because no plot of a merging run opened on its own

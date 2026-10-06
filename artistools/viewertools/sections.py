@@ -6,7 +6,8 @@ from pathlib import Path
 
 from artistools.viewertools.core import get_direction_choices
 from artistools.viewertools.core import get_direction_kinds
-from artistools.viewertools.core import get_short_number
+from artistools.viewertools.core import get_short_limits
+from artistools.viewertools.core import get_yscale_choices
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import make_fps_box
@@ -17,6 +18,7 @@ from artistools.viewertools.widgets import make_step_button
 from artistools.viewertools.widgets import set_edit_text
 
 if t.TYPE_CHECKING:
+    import argparse
     from collections.abc import Callable
     from collections.abc import Mapping
     from collections.abc import Sequence
@@ -64,6 +66,16 @@ def get_direction_summary(choice: DirectionChoice, labels: "Mapping[int, str]") 
     names = ["All" if dirbin == ALL_DIRECTIONS_BIN else str(dirbin) for dirbin in bins]
     shownnames = ", ".join(names[:8]) + ("…" if len(names) > 8 else "")
     return f"{len(bins)} directions: {shownnames}"
+
+
+def get_bin_tooltip(kind: str, dirbin: int) -> str:
+    """Return the tooltip of the button of a bin in the list of directions: the option that the bin gives."""
+    if dirbin == ALL_DIRECTIONS_BIN:
+        packets = "the real packets in " if kind == "vpkt" else ""
+        return f"The average of {packets}all the directions, which gives no direction option"
+    flag = "-plotvspecpol" if kind == "vpkt" else "-plotviewingangle"
+    averageflag = {"phi": " --average_over_phi_angle", "theta": " --average_over_theta_angle"}.get(kind, "")
+    return f"{flag} {dirbin}{averageflag}"
 
 
 def get_new_direction_choice(
@@ -114,6 +126,10 @@ def add_direction_section(
 
     _, directiongrid = add_section(panellayout, "Viewing direction")
     kindbox = QtWidgets.QComboBox()
+    kindbox.setToolTip(
+        "The kind of viewing direction: the direction bins (-plotviewingangle), or the observers of the virtual"
+        " packets (-plotvspecpol)"
+    )
     usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
     usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
     add_row(directiongrid, 0, [kindbox])
@@ -230,7 +246,7 @@ def add_direction_section(
                 check.setChecked(dirbin in checkedbins)
             check.setEnabled(dirbin == ALL_DIRECTIONS_BIN or haslistbins)
             check.setToolTip(
-                ""
+                get_bin_tooltip(listkind, dirbin)
                 if dirbin == ALL_DIRECTIONS_BIN or haslistbins
                 else "The run and the data source give no plot of this direction, e.g. no *_res.out file"
             )
@@ -328,6 +344,48 @@ def add_y_axis_actions(
     menu.addSeparator()
 
 
+# the message of an action that reads the plot on the screen while the worker draws the plot of new values
+WAIT_FOR_PLOT_MESSAGE: t.Final = (
+    "The plot on the screen does not show the new values yet. Wait for the plot, then try again"
+)
+
+
+def read_selected_range(
+    low: float, high: float, axisname: str, show_error: "Callable[[str], None]"
+) -> tuple[str, str] | None:
+    """Return the limits of a range that a drag across the plot selects, for a short command.
+
+    A range with no width gives the reason to show_error and None. Without a message, the user saw no change and no
+    reason.
+    """
+    if (limits := get_short_limits(low, high)) is None:
+        show_error(f"The selected {axisname} range has no width. Drag across a wider range")
+    return limits
+
+
+def make_select_y_handler(
+    plot_shows_values: "Callable[[], bool]",
+    set_limits: "Callable[[str, str], None]",
+    show_error: "Callable[[str], None]",
+) -> "Callable[[int, float, float], None]":
+    """Return the handler of a Shift-drag that gives the first frame its y range, e.g. the frame of the spectra.
+
+    The handler receives the index of the frame and the two y values of the drag. A panel below the first frame, e.g.
+    of the residuals, has its own range, thus a drag there changes nothing. set_limits receives -ymin and -ymax.
+    """
+
+    def on_select_y(frameindex: int, low: float, high: float) -> None:
+        if frameindex != 0:
+            return
+        if not plot_shows_values():
+            show_error(WAIT_FOR_PLOT_MESSAGE)
+            return
+        if (limits := read_selected_range(low, high, "y", show_error)) is not None:
+            set_limits(*limits)
+
+    return on_select_y
+
+
 def read_limit_fields(
     fields: "Sequence[tuple[QtWidgets.QLineEdit, str]]", show_error: "Callable[[str], None]"
 ) -> list[str] | None:
@@ -385,12 +443,14 @@ def add_y_limits_row(
 
     def on_set_range() -> None:
         if (drawnlimits := get_drawn_limits()) is None:
-            show_error("The plot on the screen does not show the new values yet. Wait for the plot, then try again")
+            show_error(WAIT_FOR_PLOT_MESSAGE)
             return
         # the limits of the plot on the screen become the limits of the command, thus the plot does not change. An
         # inverted axis, e.g. of a magnitude, gives the lower number to -ymin
-        low, high = (get_short_number(limit) for limit in sorted(drawnlimits))
-        set_limits(low, high)
+        if (limits := get_short_limits(*sorted(drawnlimits))) is None:
+            show_error("The y axis on the screen has no range. Give the limits in the fields")
+            return
+        set_limits(*limits)
 
     def show_limits(ymin: str, ymax: str) -> None:
         set_edit_text(yminedit, ymin)
@@ -429,6 +489,27 @@ def make_xscale_box(helptexts: "Mapping[str, str]") -> "QtWidgets.QComboBox":
         xscalebox.setItemData(xscalebox.count() - 1, tooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
     xscalebox.setToolTip("The scale of the x axis. Log gives --logscalex")
     return xscalebox
+
+
+def make_yscale_box(parser: "argparse.ArgumentParser", helptexts: "Mapping[str, str]") -> "QtWidgets.QComboBox":
+    """Return a box with an item for each choice of -yscale. The data of each item is its choice.
+
+    The text of the item "auto" gives the scale of the drawn plot, thus show_auto_yscale changes it after each plot.
+    """
+    from PySide6 import QtWidgets
+
+    yscalebox = QtWidgets.QComboBox()
+    for yscale in get_yscale_choices(parser):
+        yscalebox.addItem(yscale.capitalize(), yscale)
+    # the box keeps a width for the longest text of the item "auto"
+    yscalebox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
+    yscalebox.setToolTip(helptexts.get("yscale", ""))
+    return yscalebox
+
+
+def show_auto_yscale(yscalebox: "QtWidgets.QComboBox", yscale: str) -> None:
+    """Show the scale that -yscale auto gave to the drawn plot, e.g. "Auto (log)", in the box of make_yscale_box."""
+    yscalebox.setItemText(yscalebox.findData("auto"), f"Auto ({yscale})")
 
 
 class TimeControls(t.NamedTuple):

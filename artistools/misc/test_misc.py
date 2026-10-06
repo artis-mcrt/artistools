@@ -1,7 +1,7 @@
 """Unit tests for the shared helpers in artistools.misc.
 
-These tests use only synthetic data written under tmp_path, so they run quickly and do not require
-the downloaded ARTIS test model.
+Most tests write synthetic data under tmp_path. Some tests read the test models that setuptestdata.sh extracts into
+tests/data, e.g. testmodel and test-classicmode_3d.
 """
 
 import argparse
@@ -30,6 +30,7 @@ from artistools.estimators import plotestimators
 from artistools.estimators.core import join_cell_modeldata
 from artistools.misc import dirbins
 from artistools.misc import fileio
+from artistools.misc import modelinfo
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
 from artistools.viewertools.core import run_command_step_with_warning
@@ -309,7 +310,7 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
 
     stale_folder = tmp_path / "stale"
     stale_folder.mkdir()
-    (stale_folder / "estimators_0000.out").write_text("timestep 0 header\ntimestep 1 header\n")
+    (stale_folder / "estimators_0000.out").write_text("timestep 0 header\n\ntimestep 1 header\n\n")
     at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         stale_folder / "estimbatch00_0000_0000.out.parquet.tmp",
@@ -320,7 +321,7 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
     current_folder = tmp_path / "current"
     current_folder.mkdir()
     textfile = current_folder / "estimators_0000.out"
-    textfile.write_text("timestep 0 header\ntimestep 1 header\n")
+    textfile.write_text("timestep 0 header\n\ntimestep 1 header\n\n")
     at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0]}),
         current_folder / "estimbatch00_0000_0000.out.parquet.tmp",
@@ -426,8 +427,7 @@ def test_add_cli_arg_helper_variants() -> None:
     at.misc.addarg_modelgridindex(parserrepeat)
     argsrepeat = parserrepeat.parse_args(["-ts", "5", "-ts", "6", "-mgi", "3", "-mgi", "5-7"])
     assert argsrepeat.timestep == "5,6"
-    assert argsrepeat.modelgridindex == "3,5-7"
-    assert at.misc.parse_range_list(argsrepeat.modelgridindex) == [3, 5, 6, 7]
+    assert argsrepeat.modelgridindex == [3, 5, 6, 7]
     # one occurrence replaces the default and does not join to it
     assert parserrepeat.parse_args(["-ts", "5"]).timestep == "5"
 
@@ -435,6 +435,50 @@ def test_add_cli_arg_helper_variants() -> None:
     at.misc.addarg_modelpath(parserrequired, required=True)
     with pytest.raises(SystemExit):
         parserrequired.parse_args([])
+
+
+def test_the_cells_of_modelgridindex_are_a_list_from_every_source() -> None:
+    """The parser, the default, and a keyword argument each give -modelgridindex as a sorted list of cells.
+
+    The parser stored the text, thus each command expanded it again, and the defaults had four different types.
+    """
+    parser = argparse.ArgumentParser()
+    at.misc.addarg_modelgridindex(parser, default=[0])
+    assert parser.parse_args([]).modelgridindex == [0]
+    assert parser.parse_args(["-cell", "7-9", "-mgi", "4", "-cell", "8"]).modelgridindex == [4, 7, 8, 9]
+
+    for keywordvalue, expectedcells in ((5, [5]), ("0,2-3", [0, 2, 3]), ([6, 2], [2, 6])):
+        keywordparser = argparse.ArgumentParser()
+        at.misc.addarg_modelgridindex(keywordparser)
+        at.misc.set_args_from_dict(keywordparser, {"cell": keywordvalue})
+        assert keywordparser.parse_args([]).modelgridindex == expectedcells
+
+    assert at.misc.cliutils.format_range_list([9, 3, 4, 5, 7, 6, 12]) == "3-7,9,12"
+    assert at.misc.parse_range_list(at.misc.cliutils.format_range_list([-1, 0, 2])) == [-1, 0, 2]
+
+
+def test_get_cell_list_takes_a_numpy_integer_and_rejects_a_float() -> None:
+    """A numpy integer is one cell, and a float is an error, because a cell index is an integer.
+
+    The function took only an int as a number, thus set() iterated a numpy integer and raised a TypeError.
+    """
+    assert at.misc.cliutils.get_cell_list(np.int64(5)) == [5]
+    assert at.misc.cliutils.get_cell_list(np.array([7, 3])) == [3, 7]
+    assert at.misc.cliutils.get_cell_list([np.int32(4), "6-7"]) == [4, 6, 7]
+    with pytest.raises(TypeError):
+        at.misc.cliutils.get_cell_list(5.0)  # ty:ignore[invalid-argument-type]  # pyrefly: ignore[bad-argument-type]
+
+
+def test_the_old_spelling_of_the_phi_average_sets_the_phi_average(capsys: pytest.CaptureFixture[str]) -> None:
+    """--average_every_tenth_viewing_angle sets average_over_phi_angle, thus no command copies it to that dest."""
+    parser = argparse.ArgumentParser()
+    at.misc.addarg_viewingangle(parser)
+    args = parser.parse_args(["--average_every_tenth_viewing_angle"])
+    assert args.average_over_phi_angle
+    assert not hasattr(args, "average_every_tenth_viewing_angle")
+    assert "is deprecated" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--average_every_tenth_viewing_angle", "--average_over_theta_angle"])
 
 
 def test_legendcols_rejects_a_count_below_one() -> None:
@@ -1025,10 +1069,13 @@ def test_write_parquet_atomic_replaces_only_the_file_found_outdated(tmp_path: Pa
     # the rival reads the same inputs and finishes its replacement first
     pl.DataFrame({"a": [4, 5, 6]}).write_parquet(tmp_path / "rival")
     (tmp_path / "rival").replace(parquetpath)
+    rival = at.misc.get_file_identity(parquetpath)
 
     at.misc.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath, replaces=outdated)
 
-    assert at.misc.get_file_identity(parquetpath) != outdated, "the rival's file must still be in place"
+    # tmpfs does not give the freed inode of the outdated file to the next file. A comparison with that inode thus
+    # passed there when the writer replaced the file of the rival
+    assert at.misc.get_file_identity(parquetpath) == rival, "the rival's file must still be in place"
     assert list(tmp_path.glob("*.partial*")) == []
 
 
@@ -1143,9 +1190,9 @@ def test_replace_outdated_file_ignores_a_leftover_lock_file(tmp_path: Path) -> N
 
     assert destpath.read_text(encoding="utf-8") == "replacement"
     assert lockpath.exists()
-    # a different user in a shared model directory needs to open and flock the lock, which takes only read
-    # access: the lock is opened read-only and made world-readable whatever the umask
-    assert lockpath.stat().st_mode & 0o444 == 0o444
+    # a different user in a shared model directory opens the lock for writing, because NFS needs that for an
+    # exclusive flock. The chmod gives that access whatever the umask
+    assert lockpath.stat().st_mode & 0o666 == 0o666
 
 
 def test_get_file_identity(tmp_path: Path) -> None:
@@ -1276,7 +1323,7 @@ def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pyte
 def test_reply_of_the_server_cannot_call_a_function(tmp_path: Path) -> None:
     """The client refuses a reply that calls a function, because a different user can control the remote host.
 
-    subprocess is a module of the replies, because a reply can hold its CalledProcessError. Its functions stay out.
+    subprocess.call runs a command on the client, and subprocess is not a module of the replies.
     numpy.memmap is a class of numpy that writes a file, thus only the numpy classes of a result pass.
     """
     import pickle  # ruff:ignore[suspicious-pickle-import]
@@ -1686,7 +1733,7 @@ def test_get_deposition(tmp_path: Path) -> None:
     badlines.extend(f"{999 + ts} {ts + 1.0} {(ts + 1) * 0.1} {(ts + 1) * 1.1}" for ts in range(5))
     (baddir / "deposition.out").write_text("\n".join(badlines) + "\n")
 
-    with pytest.raises(AssertionError, match="Deposition times do not match"):
+    with pytest.raises(ValueError, match="Deposition times do not match"):
         at.get_deposition(baddir).collect()
 
     # a file with more rows than the model has timesteps gets the same message, not a broadcast error
@@ -1696,8 +1743,35 @@ def test_get_deposition(tmp_path: Path) -> None:
     longlines = deplines + [f"{155 + ts * 10} 1.0 0.1 1.1" for ts in range(2)]
     (longdir / "deposition.out").write_text("\n".join(longlines) + "\n")
 
-    with pytest.raises(AssertionError, match="Deposition times do not match"):
+    with pytest.raises(ValueError, match="Deposition times do not match"):
         at.get_deposition(longdir).collect()
+
+
+def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_different_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A deposition.out whose times do not match the timesteps gives the arrival range a warning, not a stop.
+
+    Only the energy rates need deposition.out, but the check of its times stopped every light curve plot of the model.
+    """
+    from artistools.misc import get_escaped_arrivalrange
+    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
+
+    modelcopy = tmp_path / "model"
+    modelcopy.mkdir()
+    for sourcefile in (at.get_path("testdata") / "testmodel").iterdir():
+        (modelcopy / sourcefile.name).symlink_to(sourcefile)
+    ntimesteps = len(at.get_timestep_times(modelcopy, loc="mid"))
+    deplines = ["#tmid_days gammadep_Lsun positrondep_Lsun total_dep_Lsun"]
+    deplines.extend(f"{999 + ts} 1.0 0.1 1.1" for ts in range(ntimesteps))
+    (modelcopy / "deposition.out").write_text("\n".join(deplines) + "\n")
+
+    get_escaped_arrivalrange_cached.cache_clear()
+    nts_last, _, _ = get_escaped_arrivalrange(modelcopy)
+    assert nts_last == ntimesteps - 1
+    assert "Deposition times do not match the timesteps. The plot takes every timestep as complete" in (
+        capsys.readouterr().err
+    )
 
 
 def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2014,7 +2088,8 @@ def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
 
     (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n")
     # a folder counts as a run folder when it holds an estimators file
-    (tmp_path / "estimators_0000.out").write_text("timestep 0 modelgridindex 0\n")
+    # ARTIS ends each cell of an estimator file with an empty line, and a reader takes a cell without it as cut
+    (tmp_path / "estimators_0000.out").write_text("timestep 0 modelgridindex 0\n\n")
     (tmp_path / "model.txt").write_text("1\n1.0\n0 0.0 0.0 0.0 0.0\n")
 
     with pytest.raises(ValueError, match="Cell 0 holds no matter"):
@@ -2037,10 +2112,10 @@ def write_rank_output_model(modelpath: Path, rowsoffolder: dict[str, list[tuple[
     for foldername, rows in rowsoffolder.items():
         folderpath = modelpath / foldername
         folderpath.mkdir(parents=True, exist_ok=True)
-        # a folder counts as a run folder when it holds an estimators file
+        # a folder counts as a run folder when it holds an estimators file. ARTIS ends each cell with an empty line
         timesteps = sorted({timestep for timestep, _, _ in rows})
         (folderpath / "estimators_0000.out").write_text(
-            "".join(f"timestep {timestep} modelgridindex 0\n" for timestep in timesteps), encoding="utf-8"
+            "".join(f"timestep {timestep} modelgridindex 0\n\n" for timestep in timesteps), encoding="utf-8"
         )
         (folderpath / "nlte_0000.out").write_text(
             "timestep modelgridindex nnlevel\n"
@@ -2325,14 +2400,24 @@ def test_resolve_frameset_paths(tmp_path: Path) -> None:
 
     # a -o path that has a file extension names the product, thus the frames go beside it
     frameset = at.misc.resolve_frameset_paths(
-        tmp_path / "out" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
+        tmp_path / "out" / "movie.gif",
+        framecount=3,
+        framename=framename,
+        productname="movie.gif",
+        combines=True,
+        gifduration=500,
     )
     assert frameset.productpath == tmp_path / "out" / "movie.gif"
     assert frameset.frametemplate == tmp_path / "out" / framename
 
     # the folder of the product can carry a suffix of its own
     frameset = at.misc.resolve_frameset_paths(
-        tmp_path / "results.v1" / "movie.gif", framecount=3, framename=framename, productname="movie.gif"
+        tmp_path / "results.v1" / "movie.gif",
+        framecount=3,
+        framename=framename,
+        productname="movie.gif",
+        combines=True,
+        gifduration=500,
     )
     assert frameset.productpath == tmp_path / "results.v1" / "movie.gif"
     assert (tmp_path / "results.v1").is_dir()
@@ -2346,6 +2431,10 @@ def test_resolve_frameset_paths(tmp_path: Path) -> None:
     frameset = at.misc.resolve_frameset_paths(tmp_path / "merged.pdf", framecount=2, framename=framename, combines=True)
     assert frameset.productpath == tmp_path / "merged.pdf"
     assert frameset.frametemplate == tmp_path / framename
+
+    # a merge writes pdf data, thus a product name with a different suffix stops before the plots
+    with pytest.raises(ValueError, match="a merge writes a pdf file"):
+        at.misc.resolve_frameset_paths(tmp_path / "merged.png", framecount=2, framename=framename, combines=True)
 
     # a name that holds no field cannot take more than one frame
     with pytest.raises(ValueError, match="names one file, and this command writes 3 frames"):
@@ -2461,11 +2550,11 @@ def test_get_runfolder_timesteps_tries_every_rank_stem(tmp_path: Path) -> None:
 
     (tmp_path / "estimators_0000.out.bak").write_text("junk\n", encoding="utf-8")
     (tmp_path / "estimators_0001.out").write_text(
-        "timestep 7 modelgridindex 0\ntimestep 8 modelgridindex 0\n", encoding="utf-8"
+        "timestep 7 modelgridindex 0\n\ntimestep 8 modelgridindex 0\n\n", encoding="utf-8"
     )
 
-    # the first timestep of the file counts as the duplicate of a restart, thus 8 remains
-    assert get_runfolder_timesteps(tmp_path) == (8,)
+    # the result holds the first timestep of the folder. Only get_runfolders knows if an earlier folder holds it
+    assert get_runfolder_timesteps(tmp_path) == (7, 8)
 
 
 def test_gaussian_filter_wrap_passes_over_a_nan() -> None:
@@ -2616,3 +2705,722 @@ def test_remote_path_is_not_reference_data_and_needs_no_connection() -> None:
     """
     with mock.patch("artistools.misc.remote.call_on_host", side_effect=AssertionError("ssh started")):
         assert not at.misc.fileio.path_is_reference_data("nohost.invalid:/runs/model", "data/refspectra")
+
+
+def test_a_windows_drive_letter_is_no_remote_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A path such as C:/Users/me/model names a drive on Windows, and not a host of one letter.
+
+    The pattern of a remote path read the drive letter as a host. Thus each absolute path on Windows went to ssh.
+    """
+    monkeypatch.setattr(remote, "REMOTEPATH_PATTERN", remote.make_remotepath_pattern(windows=True))
+    assert not remote.is_remote_path("C:/Users/me/model")
+    assert not remote.is_remote_path("C:\\Users\\me\\model")
+    assert not remote.names_a_remote_folder("C:/Users/me/model")
+    assert remote.split_remote_path("host:/path") == ("host", Path("/path"))
+    assert remote.split_remote_path("user@host:path") == ("user@host", Path("~/path"))
+    assert remote.split_remote_path("[::1]:path") == ("[::1]", Path("~/path"))
+
+
+def test_a_host_alias_of_one_letter_stays_remote_outside_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An ssh host alias of one letter with an absolute path must stay remote on Linux and macOS.
+
+    The lookahead of the Windows drive applied on each system, thus "a:/lustre/model" became a local path.
+    """
+    monkeypatch.setattr(remote, "REMOTEPATH_PATTERN", remote.make_remotepath_pattern(windows=False))
+    assert remote.split_remote_path("a:/lustre/model") == ("a", Path("/lustre/model"))
+    assert remote.names_a_remote_folder("a:/lustre/model")
+
+
+def test_get_file_metadata_reads_the_sidecar_of_a_link_and_a_key_with_a_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A metadata file beside a symbolic link and a key of metadata.yml with a folder must each give the metadata.
+
+    The function resolved the link before the lookups, thus it looked beside the target and keyed on the target.
+    """
+    (tmp_path / "store").mkdir()
+    (tmp_path / "store" / "spec.txt").write_text("data", encoding="utf-8")
+    linkfolder = tmp_path / "links"
+    linkfolder.mkdir()
+    (linkfolder / "spec.txt").symlink_to(tmp_path / "store" / "spec.txt")
+    (linkfolder / "spec.txt.meta.yml").write_text("a_v: 1.5\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(linkfolder / "spec.txt")["a_v"] == pytest.approx(1.5)
+
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "obs.txt").write_text("data", encoding="utf-8")
+    (tmp_path / "data" / "metadata.yml").write_text(yaml.safe_dump({"data/obs.txt": {"a_v": 2.5}}), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    assert at.misc.get_file_metadata("data/obs.txt")["a_v"] == pytest.approx(2.5)
+
+
+def test_get_file_metadata_follows_the_working_folder_and_takes_an_empty_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The metadata of a relative path must change with the working folder, and a file of comments gives no metadata.
+
+    A cache held the relative path, thus a second file of the same name got the metadata of the first one. A file
+    of comments alone gave a TypeError, because yaml gives None for it.
+    """
+    for foldername, a_v in (("modelA", 1.0), ("modelB", 2.0)):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "ref.txt").write_text("data", encoding="utf-8")
+        (tmp_path / foldername / "ref.txt.meta.yml").write_text(f"a_v: {a_v}\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path / "modelA")
+    assert at.misc.get_file_metadata("ref.txt")["a_v"] == pytest.approx(1.0)
+    monkeypatch.chdir(tmp_path / "modelB")
+    assert at.misc.get_file_metadata("ref.txt")["a_v"] == pytest.approx(2.0)
+
+    (tmp_path / "empty.txt").write_text("data", encoding="utf-8")
+    (tmp_path / "empty.txt.meta.yml").write_text("# a comment alone\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(tmp_path / "empty.txt") == {}
+
+    combineddir = tmp_path / "combined"
+    combineddir.mkdir()
+    (combineddir / "spec.txt").write_text("data", encoding="utf-8")
+    (combineddir / "metadata.yml").write_text("# a comment alone\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(combineddir / "spec.txt") == {}
+    # the combined file sits beside the data file, thus a key can hold the name of the file alone
+    (combineddir / "metadata.yml").write_text(yaml.safe_dump({"spec.txt": {"a_v": 3.0}}), encoding="utf-8")
+    at.misc.fileio.get_file_metadata_cached.cache_clear()
+    assert at.misc.get_file_metadata(combineddir / "spec.txt")["a_v"] == pytest.approx(3.0)
+
+
+def test_get_mpiranklist_takes_a_numpy_array_of_cells() -> None:
+    """A numpy array of cells must give the same ranks as a list, and an empty array gives all the ranks.
+
+    A comparison of a numpy array with an empty list raises, thus the function stopped before it read the cells.
+    """
+    modelpath = at.get_path("testdata") / "testmodel"
+    assert list(at.misc.get_mpiranklist(modelpath, modelgridindex=np.array([0]))) == list(
+        at.misc.get_mpiranklist(modelpath, modelgridindex=[0])
+    )
+    assert list(at.misc.get_mpiranklist(modelpath, modelgridindex=np.array([], dtype=np.int64))) == list(
+        at.misc.get_mpiranklist(modelpath)
+    )
+
+
+def test_addarg_modelpath_positional_single_path_takes_the_option() -> None:
+    """A command with a positional path of one model must also accept -modelpath, and the path is not required.
+
+    The positional argument had no nargs, thus argparse made it required and the option could never stand in
+    for it.
+    """
+
+    def addargs(parser: argparse.ArgumentParser) -> None:
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=False)
+
+    assert parse_cli_args(addargs, "x", None, ["-modelpath", "mymodel"]).modelpath == Path("mymodel")
+    assert parse_cli_args(addargs, "x", None, ["mymodel"]).modelpath == Path("mymodel")
+    assert parse_cli_args(addargs, "x", None, []).modelpath is None
+
+
+def test_the_option_form_of_the_model_path_names_the_path_that_it_replaces(capsys: pytest.CaptureFixture[str]) -> None:
+    """The option form wins over the positional path in either order, and the user gets a warning.
+
+    The option stored its paths in place of the positional paths, thus a model that the user wrote went away with no
+    message. A positional path after the option replaced the option for a command of one path.
+    """
+
+    def addargs_many(parser: argparse.ArgumentParser) -> None:
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[])
+
+    def addargs_one(parser: argparse.ArgumentParser) -> None:
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=False)
+
+    for addargs, argsraw, expected in (
+        (addargs_many, ["model1", "-modelpath", "model2"], [Path("model2")]),
+        (addargs_many, ["-modelpath", "model2", "--quiet", "model1"], [Path("model2")]),
+        (addargs_one, ["model1", "-modelpath", "model2"], Path("model2")),
+        (addargs_one, ["-modelpath", "model2", "model1"], Path("model2")),
+    ):
+        assert parse_cli_args(addargs, "x", None, argsraw).modelpath == expected
+        assert "ignores the path 'model1'" in capsys.readouterr().err
+
+    assert parse_cli_args(addargs_one, "x", None, ["model1", "-modelpath", "model1"]).modelpath == Path("model1")
+    assert "ignores" not in capsys.readouterr().err
+
+
+def test_the_option_form_names_a_positional_path_that_equals_the_default(capsys: pytest.CaptureFixture[str]) -> None:
+    """A positional path that the user writes must get the warning also when it equals the default.
+
+    The actions compared the value with the default, thus "." of writebollightcurvedata counted as no path.
+    """
+
+    def addargs(parser: argparse.ArgumentParser) -> None:
+        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
+
+    for argsraw in ([".", "-modelpath", "model2"], ["-modelpath", "model2", "--quiet", "."]):
+        assert parse_cli_args(addargs, "x", None, argsraw).modelpath == [Path("model2")]
+        assert "ignores the path '.'" in capsys.readouterr().err
+
+    assert parse_cli_args(addargs, "x", None, ["-modelpath", "model2"]).modelpath == [Path("model2")]
+    assert parse_cli_args(addargs, "x", None, []).modelpath == [Path()]
+    assert "ignores" not in capsys.readouterr().err
+
+
+# --- the command line: remote paths, list options, the dispatcher, and the command tree ------------------------
+
+
+def test_a_label_with_a_colon_is_no_remote_folder_and_starts_no_ssh() -> None:
+    """A -label value with a colon must stay a label, and the test of the trailing folders must not start ssh.
+
+    The host of a remote path took a space, thus "Model B: Fe/Ni" named the host "Model B". A label such as
+    "W7:Kasen" went to folder_is_artis_run, which asked the host W7 through ssh and stopped the command.
+    """
+    from artistools.lightcurve import plotlightcurve
+    from artistools.spectra import plotspectra
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    assert not remote.is_remote_path("Model B: Fe/Ni")
+    assert not remote.names_a_remote_folder("W7: 56Ni/56Co")
+    # a real remote path keeps its host
+    assert remote.split_remote_path("host:/path") == ("host", Path("/path"))
+    assert remote.split_remote_path("user@host:path") == ("user@host", Path("~/path"))
+    assert remote.split_remote_path("[::1]:path") == ("[::1]", Path("~/path"))
+    assert remote.names_a_remote_folder("user@vae26:/lustre/model")
+
+    with mock.patch.object(remote, "call_on_host", side_effect=AssertionError("ssh started")):
+        for label in ("W7: 56Ni/56Co", "W7:Kasen", "Model B: Fe/Ni"):
+            args = parse_cli_args(plotspectra.addargs, None, None, ["-label", label, str(modelpath)])
+            assert args.specpath == [modelpath], label
+            assert args.label == [label]
+
+            args = parse_cli_args(plotlightcurve.addargs, None, None, [str(modelpath), "-label", "A", label])
+            assert args.modelpath == [modelpath], label
+            assert args.label == ["A", label]
+
+    # an empty label at the end is a label, and not the working folder
+    assert at.misc.cliutils.trailing_folder_count(["A", ""]) == 0
+
+
+def test_a_list_option_that_takes_a_file_or_a_folder_gives_a_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A reference file or a model folder with no input.txt after -label must not go away with no message.
+
+    -label took "run1" and "sn2011fe.txt" as labels, and the command then plotted the working folder.
+    """
+    from artistools.spectra import plotspectra
+
+    (tmp_path / "run1").mkdir()
+    (tmp_path / "sn2011fe.txt").write_text("4000 1\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    args = parse_cli_args(plotspectra.addargs, None, None, ["-label", "ARTIS", "SN 2011fe", "run1", "sn2011fe.txt"])
+    assert args.label == ["ARTIS", "SN 2011fe", "run1", "sn2011fe.txt"]
+    assert "-label read 'run1', 'sn2011fe.txt' as values" in capsys.readouterr().err
+
+    # every value names a path, thus the option can read paths, e.g. -reflightcurves
+    parse_cli_args(plotspectra.addargs, None, None, ["-label", "run1", "sn2011fe.txt"])
+    assert "WARNING" not in capsys.readouterr().err
+
+
+def test_the_option_form_keeps_its_path_when_a_list_option_ends_with_a_folder() -> None:
+    """A -modelpath that equals the default must keep its path, thus no folder of -label replaces it.
+
+    The take-back compared the value with the default, thus "-modelpath ." counted as no path.
+    """
+    modelpath = at.get_path("testdata") / "testmodel"
+    parser = at.commands.SuggestingArgumentParser()
+    at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
+    at.misc.addarg_seriesstyle(parser)
+
+    args = parser.parse_args(["-modelpath", ".", "-label", "A", str(modelpath)])
+    assert args.modelpath == [Path()]
+    assert args.label == ["A", str(modelpath)]
+
+
+def test_the_remote_path_pattern_follows_this_system() -> None:
+    """The module pattern must apply the drive rule on Windows alone, with no patch of the pattern.
+
+    The other tests replace the pattern, thus a wrong choice at the module level passed them.
+    """
+    windows = os.name == "nt"
+    assert remote.REMOTEPATH_PATTERN.pattern == remote.make_remotepath_pattern(windows=windows).pattern
+    assert remote.is_remote_path("a:/lustre/model") is not windows
+
+
+def test_a_bad_cell_names_the_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    """A -cell value that names no cell must give an argparse error that names the flag, and no traceback."""
+    parser = at.commands.SuggestingArgumentParser(prog="demo")
+    at.misc.addarg_modelgridindex(parser)
+    for value in ("abc", "3-x"):
+        with pytest.raises(SystemExit) as exitinfo:
+            parser.parse_args(["-cell", value])
+        assert exitinfo.value.code == 2
+        assert f"-modelgridindex/-cell/-mgi: '{value}' names no cells" in capsys.readouterr().err
+
+
+def test_resolve_frameset_paths_gives_o_to_one_frame_and_fields_to_the_frames(tmp_path: Path) -> None:
+    """-o names the one frame of a run that combines nothing, and a name with fields names each frame.
+
+    plotestimators gives a gif name for --makegif also for one figure, and -o then named a product that never came.
+    A -o name with fields became the literal name of the product, and the frames kept the default names.
+    """
+    framename = "plot_{timestep:03d}.pdf"
+    frameset = at.misc.resolve_frameset_paths(
+        tmp_path / "est.pdf", framecount=1, framename=framename, productname="evo.gif", combines=False
+    )
+    assert frameset.frametemplate == tmp_path / "est.pdf"
+    assert frameset.finish([tmp_path / "est.pdf"], argparse.Namespace()) is None
+
+    template = tmp_path / "rf_{cell:05d}_{timestep}.pdf"
+    frameset = at.misc.resolve_frameset_paths(template, framecount=2, framename=framename, combines=True)
+    assert frameset.frametemplate == template
+    assert frameset.productpath is None
+
+    template = tmp_path / "frame_{timemindays:.1f}.png"
+    frameset = at.misc.resolve_frameset_paths(
+        template, framecount=2, framename=framename, productname="sphericalplot.gif", combines=True, gifduration=500
+    )
+    assert frameset.frametemplate == template
+    assert frameset.productpath == tmp_path / "sphericalplot.gif"
+
+
+def test_a_list_keyword_takes_the_type_of_its_argument() -> None:
+    """A list keyword must give the same values as the command line, e.g. "default" for the default of a series.
+
+    argparse converts a default of one text alone, thus label=["default", "B"] drew the label "default", and
+    color=["default", "red"] stopped with "Invalid RGBA argument".
+    """
+    from artistools.inputmodel import plotdensity
+    from artistools.spectra import plotspectra
+
+    args = parse_cli_args(
+        plotspectra.addargs, None, None, [], {"label": ["default", "B"], "color": ["default", "red"], "linewidth": "2"}
+    )
+    assert args.label == [None, "B"]
+    assert args.color == [None, "red"]
+    assert args.linewidth == [2.0]
+
+    # a command with a default colour for each series gives that colour to an entry "default"
+    args = parse_cli_args(plotdensity.addargs, None, None, [], {"color": ["default", "red"]})
+    assert args.color == ["C0", "red"]
+
+    with pytest.raises(ValueError, match="-color"):
+        parse_cli_args(plotspectra.addargs, None, None, [], {"color": ["notacolour"]})
+
+
+def test_keywords_and_argsraw_combine() -> None:
+    """The text of argsraw must give its arguments also when the call gives a keyword. The parser dropped it then."""
+    from artistools.spectra import plotspectra
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    args = parse_cli_args(plotspectra.addargs, None, None, ["-t", "300"], {"specpath": [modelpath]})
+    assert args.timedays == "300"
+    assert args.specpath == [modelpath]
+
+
+def test_a_keyword_and_its_alias_name_the_conflict() -> None:
+    """A dest and an alias of one argument must give an error that names the conflict, and not an unknown name."""
+    from artistools.lightcurve import plotlightcurve
+
+    with pytest.raises(ValueError, match="The keywords timemin, xmin name one argument"):
+        parse_cli_args(plotlightcurve.addargs, None, None, [], {"timemin": 250.0, "xmin": 260.0})
+
+
+@pytest.mark.parametrize(
+    ("error", "code", "expected"),
+    [
+        (KeyboardInterrupt(), 130, "stopped at a keyboard interrupt"),
+        (BrokenPipeError(), 1, ""),
+        (ImportError("This command needs plotly, which is installed but did not import: libGL"), 1, "needs plotly"),
+        (OSError("unexpected end of file"), 1, "A compressed file can be incomplete"),
+        (pl.exceptions.PanicException("PyErr { type: <class 'EOFError'> }"), 1, "ends before the end of its data"),
+    ],
+)
+def test_the_dispatcher_reports_an_error_with_no_traceback(
+    error: BaseException, code: int, expected: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Each of these errors must give a short message and an exit status, and no traceback."""
+    import artistools.__main__
+
+    monkeypatch.delenv("ARTISTOOLS_TRACEBACK", raising=False)
+    # the handler of a closed pipe sends the standard output to the null device, thus it must not be the one of pytest
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="utf-8"))
+    with mock.patch("artistools.commands.show_version", side_effect=error), pytest.raises(SystemExit) as exitinfo:
+        artistools.__main__.main(argsraw=["version"])
+
+    assert exitinfo.value.code == code
+    assert expected in capsys.readouterr().err
+
+
+def test_the_dispatcher_shows_the_context_notes_of_an_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A note of one line names the host or the file of an error, and a note of more lines is a traceback."""
+    import artistools.__main__
+
+    monkeypatch.delenv("ARTISTOOLS_TRACEBACK", raising=False)
+    error = OSError("The artistools server on vae26 stopped during a call of get_spectra")
+    error.add_note("The traceback on the server:\nTraceback (most recent call last)")
+    error.add_note("The error came from get_spectra on the artistools server of vae26")
+    with mock.patch("artistools.commands.show_version", side_effect=error), pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["version"])
+
+    message = capsys.readouterr().err
+    assert "stopped during a call of get_spectra" in message
+    assert "The error came from get_spectra on the artistools server of vae26" in message
+    assert "Traceback" not in message
+
+    # a panic of polars that has a different cause keeps its traceback
+    with (
+        mock.patch("artistools.commands.show_version", side_effect=pl.exceptions.PanicException("other")),
+        pytest.raises(pl.exceptions.PanicException),
+    ):
+        artistools.__main__.main(argsraw=["version"])
+
+
+def test_getpath_and_version_keep_their_product_with_quiet(capsys: pytest.CaptureFixture[str]) -> None:
+    """The text of getpath and version is the product of the command, thus --quiet must keep it."""
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["getpath", "--quiet"])
+    assert capsys.readouterr().out.strip() == str(at.get_path("artistools_dir"))
+
+    artistools.__main__.main(argsraw=["version", "-q"])
+    assert capsys.readouterr().out.strip() == f"artistools {importlib.metadata.version('artistools')}"
+
+
+def test_a_folder_that_the_command_refuses_names_the_remedy(capsys: pytest.CaptureFixture[str]) -> None:
+    """The error must name the folder and not a "--" that the user never wrote, and it must name -modelpath."""
+    import artistools.__main__
+
+    modelpath = at.get_path("testdata") / "testmodel"
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["timesteps", str(modelpath)])
+    message = capsys.readouterr().err
+    assert f"unrecognized arguments: {modelpath}" in message
+    assert f"-modelpath {modelpath}" in message
+
+
+def test_a_hidden_command_stays_out_of_the_suggestions(capsys: pytest.CaptureFixture[str]) -> None:
+    """The help hides server and describeinputmodel, thus a suggestion, the list, and tab completion leave them out."""
+    import artistools.__main__
+
+    assert set(at.commands.get_hidden_commands()) == {"describeinputmodel", "server"}
+    for command in ("serve", "xyzzy"):
+        with pytest.raises(SystemExit):
+            artistools.__main__.main(argsraw=[command])
+        message = capsys.readouterr().err
+        assert "server" not in message
+        assert "describeinputmodel" not in message
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspetcra"])
+    assert "Did you mean plotspectra" in capsys.readouterr().err
+
+
+def test_the_examples_name_the_full_command_in_each_help() -> None:
+    """A per-command script shows the examples, and an example of a command in a group names the group."""
+    spec = at.commands.CommandSpec("inputmodel.describeinputmodel", examples=(("-modelpath .", "the model"),))
+    epilog = at.commands.get_command_epilog(("inputmodel", "describe"), spec)
+    assert epilog is not None
+    assert "artistools inputmodel describe -modelpath ." in epilog
+
+    parser = at.commands.build_script_parser("plotartisestimators")
+    assert parser is not None
+    assert "artistools plotestimators Te TR . -t 300" in parser.format_help()
+
+
+def test_a_window_time_is_not_the_time_of_the_command(capsys: pytest.CaptureFixture[str]) -> None:
+    """A run with --show or --interactive waits for the user, thus it reports no time of the command."""
+    from artistools.__main__ import run_command
+
+    def run_nothing(args: argparse.Namespace) -> None:
+        """Do nothing."""
+
+    with mock.patch("time.monotonic", side_effect=[0.0, 100.0, 0.0, 100.0, 0.0, 100.0]):
+        run_command(run_nothing, argparse.Namespace(show=True))
+        run_command(run_nothing, argparse.Namespace(interactive=True))
+        assert "took" not in capsys.readouterr().err
+        run_command(run_nothing, argparse.Namespace())
+        assert "The command took 100.0 seconds" in capsys.readouterr().err
+
+
+def test_the_server_answers_each_request_in_this_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The main function of the server must answer each request on a copy of the standard output.
+
+    The server ran only in a subprocess of a test, thus no test of this process covered it.
+    """
+    modelpath = at.get_path("testdata") / "testmodel"
+    requests = io.BytesIO()
+    for request in (
+        ("artistools.misc.fileio", "get_remote_path_kind", (modelpath,), dict[str, t.Any](), False),
+        ("artistools.misc.fileio", "nosuchfunction", (), dict[str, t.Any](), False),
+    ):
+        remote.write_message(requests, remote.dump_message(request))
+    requests.seek(0)
+    monkeypatch.setattr(sys, "stdin", argparse.Namespace(buffer=requests))
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="utf-8"))
+
+    resultpath = tmp_path / "results.bin"
+    savedfds = os.dup(1), os.dup(2)
+    try:
+        with resultpath.open("wb") as resultfile, (tmp_path / "stderr.txt").open("wb") as errorfile:
+            os.dup2(resultfile.fileno(), 1)
+            os.dup2(errorfile.fileno(), 2)
+            with pytest.raises(SystemExit) as exitinfo:
+                remote.main(argsraw=[])
+    finally:
+        for fd, savedfd in enumerate(savedfds, start=1):
+            os.dup2(savedfd, fd)
+            os.close(savedfd)
+
+    assert exitinfo.value.code == 0
+    data = resultpath.read_bytes()
+    assert data.startswith(remote.SERVER_START_LINE)
+    replies = io.BytesIO(data[len(remote.SERVER_START_LINE) :])
+    assert remote.load_reply(remote.read_message(replies))[1] == pl.__version__
+    assert remote.load_reply(remote.read_message(replies))[:2] == (True, (True, False, True))
+    succeeded, error, _ = remote.load_reply(remote.read_message(replies))
+    assert not succeeded
+    assert "nosuchfunction" in str(error)
+
+
+# --- round three of the review: fileio.py, modelinfo.py, timesteps.py, dirbins.py ----------------------------------
+
+
+def write_input_txt(modelpath: Path, tmin: float = 2.0, tmax: float = 300.0, nprocs: int = 4) -> None:
+    """Write an input.txt with 100 logarithmic timesteps from tmin to tmax, and nprocs on the 22nd value line."""
+    valuelines = ["-1", "100", "0 99", f"{tmin} {tmax}", "0.1 10", "80", "3 250", "3", *(["0"] * 13), str(nprocs)]
+    (modelpath / "input.txt").write_text("\n".join(valuelines) + "\n", encoding="utf-8")
+
+
+def test_a_cached_reader_takes_the_model_path_by_keyword(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A reader of modelpath_cache takes the path by position or by keyword, and both calls share one cache entry.
+
+    The cache took the path by position alone, thus at.get_nprocs(modelpath=...) raised a TypeError. A reader also
+    takes the name of its own first parameter, e.g. the filename of get_composition_data.
+    """
+    write_input_txt(tmp_path)
+    (tmp_path / "model.txt").write_text("20\n", encoding="utf-8")
+    (tmp_path / "compositiondata.txt").write_text("1\n0\n0\n26 2 1 2 300 1.0 56.0\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    at.get_nprocs.cache_clear()
+    assert at.get_nprocs(modelpath=Path()) == 4
+    assert at.get_nprocs(tmp_path) == 4
+    assert at.get_nprocs.cache_info().hits == 1, "a relative keyword path and the absolute path share one entry"
+
+    assert at.get_inputparams(modelpath=tmp_path)["ntstep"] == 100
+    assert at.get_inputparams(modelpath=tmp_path) is at.get_inputparams(tmp_path)
+    assert at.misc.get_npts_model(modelpath=tmp_path) == 20
+    assert at.get_composition_data(modelpath=tmp_path)["Z"].to_list() == [26]
+    # the type checkers know only the keyword modelpath, because a ParamSpec cannot rename a parameter
+    getcompositiondata: t.Any = at.get_composition_data
+    assert getcompositiondata(filename=tmp_path)["Z"].to_list() == [26]
+
+
+def test_a_cached_reader_goes_through_pickle_and_to_the_server(tmp_path: Path) -> None:
+    """The pickle of a reader of modelpath_cache holds its name, and the server calls the reader below the cache."""
+    import pickle  # ruff:ignore[suspicious-pickle-import]
+
+    assert pickle.loads(pickle.dumps(at.get_nprocs)) is at.get_nprocs  # ruff:ignore[suspicious-pickle-usage]
+
+    write_input_txt(tmp_path)
+    (tmp_path / "compositiondata.txt").write_text("1\n0\n0\n28 2 1 2 300 1.0 58.0\n", encoding="utf-8")
+    servernprocs = remote.get_server_function("artistools.misc.modelinfo", "get_nprocs")
+    assert not hasattr(servernprocs, "cache_clear")
+    assert servernprocs(tmp_path) == 4
+    servercomposition = remote.get_server_function("artistools.atomic.core", "get_composition_data")
+    assert not hasattr(servercomposition, "cache_clear")
+    assert servercomposition(tmp_path)["Z"].to_list() == [28]
+
+
+def test_get_runfolders_gives_a_repeated_timestep_to_the_earlier_folder(tmp_path: Path) -> None:
+    """A restarted run repeats the last timestep of the folder before it, and only the earlier folder keeps it.
+
+    A folder with no earlier folder keeps its first timestep, e.g. a run whose first job folder is gone. The rule of
+    a restart dropped that timestep, thus no folder held it, and a plot of that timestep stopped.
+    """
+    import shutil
+
+    for foldername, timesteps in (("job0", (0, 1, 2)), ("job1", (2, 3, 4))):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "estimators_0000.out").write_text(
+            "".join(f"timestep {timestep} modelgridindex 0\n\n" for timestep in timesteps), encoding="utf-8"
+        )
+
+    job0, job1 = tmp_path / "job0", tmp_path / "job1"
+    assert at.misc.get_runfolders(tmp_path) == [job0, job1]
+    assert at.misc.get_runfolders(tmp_path, timestep=2) == (job0,)
+    assert at.misc.get_runfolders(tmp_path, timesteps=[2]) == (job0,)
+    assert at.misc.get_runfolders(tmp_path, timesteps=[2, 3]) == (job0, job1)
+
+    shutil.rmtree(job0)
+    assert at.misc.get_runfolders(tmp_path, timestep=2) == (job1,)
+    assert at.misc.get_runfolders(tmp_path, timesteps=[2]) == (job1,)
+
+
+def test_get_runfolders_of_one_timestep_reads_no_later_folder(tmp_path: Path) -> None:
+    """The earliest folder that holds a timestep keeps it, thus get_runfolders reads no folder after that one."""
+    for foldername, timesteps in (("job0", (0, 1, 2)), ("job1", (2, 3, 4)), ("job2", (4, 5))):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "estimators_0000.out").write_text(
+            "".join(f"timestep {timestep} modelgridindex 0\n\n" for timestep in timesteps), encoding="utf-8"
+        )
+
+    with mock.patch.object(modelinfo, "get_runfolder_timesteps", wraps=modelinfo.get_runfolder_timesteps) as mockreader:
+        assert at.misc.get_runfolders(tmp_path, timestep=2) == (tmp_path / "job0",)
+        assert [call.args[0] for call in mockreader.call_args_list] == [tmp_path / "job0"]
+
+        mockreader.reset_mock()
+        assert at.misc.get_runfolders(tmp_path, timestep=99) == ()
+        assert len(mockreader.call_args_list) == 4
+
+        mockreader.reset_mock()
+        assert at.misc.get_runfolders(tmp_path, timesteps=[4]) == (tmp_path / "job1",)
+        assert len(mockreader.call_args_list) == 4
+
+
+def test_replace_outdated_file_locks_a_descriptor_that_can_write(tmp_path: Path) -> None:
+    """The lock takes a descriptor that can write, because NFS refuses an exclusive flock on a read-only descriptor.
+
+    A user who cannot write the lock file of a different user still opens it to read, which a local file system
+    accepts.
+    """
+    import fcntl
+
+    accessmodes: list[int] = []
+
+    def record_access_mode(fd: int, _operation: int) -> None:
+        accessmodes.append(fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_ACCMODE)
+
+    realopen = os.open
+
+    def open_without_write_access(path: t.Any, flags: int, mode: int = 0o777) -> int:
+        if flags & os.O_ACCMODE != os.O_RDONLY:
+            raise PermissionError(path)
+        return realopen(path, flags, mode)
+
+    def replace(text: str) -> None:
+        destpath.write_text("outdated", encoding="utf-8")
+        replacement = tmp_path / "replacement"
+        replacement.write_text(text, encoding="utf-8")
+        fileio.replace_outdated_file(replacement, destpath, at.misc.get_file_identity(destpath))
+        assert destpath.read_text(encoding="utf-8") == text
+
+    destpath = tmp_path / "cache"
+    with mock.patch("fcntl.flock", side_effect=record_access_mode):
+        replace("first")
+        # a test can run as root, and root can write a file of any mode, thus a mock refuses the write access
+        with mock.patch.object(fileio.os, "open", side_effect=open_without_write_access):
+            replace("second")
+
+    assert accessmodes == [os.O_RDWR, os.O_RDONLY]
+
+
+def test_read_rank_outputfiles_names_a_timestep_that_no_run_folder_holds(tmp_path: Path) -> None:
+    """A timestep after the stop of a run names the timesteps of the run, and not a missing file.
+
+    The files were there, and the message "No nlte_*.out files found" sent the user to look for them.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {".": [(0, 0, 1.0), (1, 0, 2.0)]})
+
+    with pytest.raises(ValueError, match=r"holds timestep 5\. .* give timesteps 0 to 1"):
+        read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=5)
+
+
+def test_read_rank_outputfiles_skips_an_empty_rank_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A rank file of no bytes gives no rows, and the other ranks still give theirs.
+
+    ARTIS writes the header of a rank file at the end of the first timestep, thus a job that stopped earlier leaves
+    an empty file. polars then stopped the read of all the cells with an "empty CSV" error.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {".": [(0, cell, cell + 0.5) for cell in range(3)]})
+    # two ranks share the five cells, thus rank 0 handles cells 0 to 2 and rank 1 handles cells 3 and 4
+    (tmp_path / "input.txt").write_text("\n".join(["0"] * 21 + ["2"]) + "\n", encoding="utf-8")
+    (tmp_path / "nlte_0001.out").write_bytes(b"")
+
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")
+
+    assert dfout["modelgridindex"].to_list() == [0, 1, 2]
+    assert "nlte_0001.out is empty" in capsys.readouterr().err
+
+
+def test_get_file_metadata_takes_a_key_with_no_value(tmp_path: Path) -> None:
+    """A key of metadata.yml with no value gives no metadata, and a value that is not a mapping gives a message.
+
+    YAML reads a key with no value as None, and the derived values then raised a TypeError.
+    """
+    (tmp_path / "metadata.yml").write_text("sn.txt:\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(tmp_path / "sn.txt") == {}
+
+    (tmp_path / "other.txt.meta.yml").write_text("a scalar\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="must be a mapping"):
+        at.misc.get_file_metadata(tmp_path / "other.txt")
+
+
+def test_one_timestep_grid_from_timesteps_out_and_from_input_txt_gives_one_range(tmp_path: Path) -> None:
+    """A timestep of two runs with one grid names one range, also when only one run holds timesteps.out.
+
+    ARTIS writes timesteps.out with 6 significant digits, and the times of input.txt have more. The test of the grids
+    took a difference of 1e-4 d as a different grid, thus -timestep stopped with two equal ranges in its message.
+    """
+    from artistools.misc.timesteps import apply_time_range_args
+
+    modelpaths = [tmp_path / "frominput", tmp_path / "fromfile", tmp_path / "othergrid"]
+    for modelpath, tmax in zip(modelpaths, (350.0, 350.0, 360.0), strict=True):
+        modelpath.mkdir()
+        write_input_txt(modelpath, tmin=250.0, tmax=tmax)
+
+    dlogt = (math.log(350.0) - math.log(250.0)) / 100
+    (modelpaths[1] / "timesteps.out").write_text(
+        "#timestep tstart_days tmid_days twidth_days\n"
+        + "".join(
+            f"{timestep} {250.0 * math.exp(timestep * dlogt):g} {250.0 * math.exp((timestep + 0.5) * dlogt):g} "
+            f"{250.0 * (math.exp((timestep + 1) * dlogt) - math.exp(timestep * dlogt)):g}\n"
+            for timestep in range(100)
+        ),
+        encoding="utf-8",
+    )
+
+    args = argparse.Namespace(timestep="90", timedays=None, timemin=None, timemax=None)
+    apply_time_range_args(args, modelpaths[:2])
+    assert math.isclose(args.timemin, 250.0 * math.exp(90 * dlogt), rel_tol=1e-9)
+
+    # a grid that is different still stops the command
+    with pytest.raises(SystemExit):
+        apply_time_range_args(
+            argparse.Namespace(timestep="90", timedays=None, timemin=None, timemax=None), modelpaths[::2]
+        )
+
+
+def test_the_last_costheta_bin_holds_cos_theta_of_one() -> None:
+    """ARTIS puts a packet with cos θ = 1 in the last bin, thus the label of that bin includes its upper edge."""
+    from artistools.misc.dirbins import get_costheta_bins
+
+    _, _, labels = get_costheta_bins(usedegrees=False)
+    assert labels[-1] == "0.8 ≤ cos θ ≤ 1.0"
+    assert labels[-2] == "0.6 ≤ cos θ < 0.8"
+
+
+def test_a_direction_bin_outside_the_run_gives_a_message() -> None:
+    """-plotviewingangle 500 stopped with an IndexError in the labels, and now names the bins of the run."""
+    with pytest.raises(ValueError, match="not one of the 100 bins 0 to 99"):
+        dirbins.get_dirbin_labels([500])
+
+
+def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
+    """A direct call with a cut table or a bin that no average holds stopped with an AssertionError and no message."""
+    with pytest.raises(ValueError, match="tables have different lengths"):
+        dirbins.split_multitable_dataframe(pl.LazyFrame({"nu": [1.0, 2.0, 1.0], "f": [0.0, 0.0, 0.0]}))
+    with pytest.raises(ValueError, match="tables have different lengths"):
+        dirbins.split_multitable_dataframe(pl.LazyFrame({"nu": [], "f": []}))
+
+    with pytest.raises(ValueError, match=r"Direction bin 1 is not the first bin of an average group"):
+        dirbins.get_dirbin_labels([1], average_over_phi=True)
+    with pytest.raises(ValueError, match=r"Direction bin 10 is not the first bin of an average group"):
+        dirbins.get_dirbin_labels([10], average_over_theta=True)
+    with pytest.raises(ValueError, match="both the phi and theta"):
+        dirbins.get_dirbin_labels([0], average_over_phi=True, average_over_theta=True)
+
+    assert dirbins.get_dirbin_labels([10], average_over_phi=True) == {
+        10: dirbins.get_costheta_bins(usedegrees=False)[2][1]
+    }

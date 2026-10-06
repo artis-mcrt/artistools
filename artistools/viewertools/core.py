@@ -2,7 +2,9 @@
 
 import argparse
 import contextlib
+import dataclasses as dc
 import io
+import math
 import re
 import sys
 import threading
@@ -65,6 +67,10 @@ SIDEBAR_WIDTH: t.Final = 600
 # Export Animation asks before it runs the command for more frames than this
 MAX_ANIMATION_FRAMES: t.Final = 200
 
+# the window shows the plot, thus the command opens no second window and no file. Copy Figure and Export Animation
+# run the command for a temporary file, and --open opened each such file
+WINDOW_DESTS: t.Final = frozenset({"show", "open", "interactive"})
+
 # changes closer together than this, e.g. the steps of a slider drag, give one step of Undo
 UNDO_MERGE_SECONDS: t.Final = 0.8
 
@@ -76,16 +82,12 @@ DEFAULT_PLAY_FPS: t.Final = 2.0
 
 
 def get_command_tokens(
-    argsraw: "Sequence[str] | None",
-    kwargs: "Mapping[str, t.Any]",
-    *,
-    fromdispatcher: bool,
-    dispatcherargsraw: "Sequence[str] | None",
+    args: argparse.Namespace, argsraw: "Sequence[str] | None", kwargs: "Mapping[str, t.Any]", *, fromdispatcher: bool
 ) -> list[str]:
     """Return the arguments that the user gave to the command, without the name of the command.
 
     The dispatcher gives the parsed arguments alone. The tokens then come from the words of a call from Python code
-    (dispatcherargsraw, which start with the subcommand), or else from sys.argv. A script for one command, e.g.
+    (args.dispatcherargsraw, which start with the subcommand), or else from sys.argv. A script for one command, e.g.
     plotartisspectrum, takes no word for the subcommand.
     """
     if kwargs:
@@ -97,7 +99,7 @@ def get_command_tokens(
     if argsraw is not None:
         return list(argsraw)
 
-    if dispatcherargsraw is not None:
+    if (dispatcherargsraw := getattr(args, "dispatcherargsraw", None)) is not None:
         return list(dispatcherargsraw[1:])
 
     if not fromdispatcher:
@@ -145,7 +147,8 @@ def parse_viewer_tokens(
 ) -> ViewerTokens:
     """Parse the arguments that the user gave to a viewer, and split them into the parts that the viewer reads.
 
-    controlleddests gives the options that the controls of the viewer give, thus the other options leave them out.
+    controlleddests gives the options that the controls of the viewer give, thus the other options leave them out. The
+    other options also leave out WINDOW_DESTS.
     parse_cli_args puts "--" in front of the ARTIS folders at the end, thus an option that reads a list does not take
     a folder. The tokens that no option takes are the paths, e.g. the path of "--notitle mymodel".
     """
@@ -153,7 +156,7 @@ def parse_viewer_tokens(
 
     parser = make_parser(addargs)
     usertokens = remove_options(parser, tokens, {"interactive"})
-    basetokens = remove_options(parser, separate_trailing_folders(usertokens), controlleddests)
+    basetokens = remove_options(parser, separate_trailing_folders(usertokens), {*controlleddests, *WINDOW_DESTS})
     pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
     otheroptions, positionaltokens = split_option_rows(parser, basetokens[pathcount:])
     # -modelpath gives the paths of the positional argument, thus the list of the series holds them and not the options
@@ -162,9 +165,39 @@ def parse_viewer_tokens(
     otheroptions = tuple(row for row in otheroptions if row[0] not in pathflags)
     paths = [*basetokens[:pathcount], *optionpaths, *(word for word in positionaltokens if word != "--")]
     args = parse_cli_args(addargs, None, None, usertokens)
+    if not paths:
+        paths, otheroptions = take_back_folders(parser, args, otheroptions)
     return ViewerTokens(
         parser=parser, args=args, paths=paths, otheroptions=otheroptions, helptexts=get_helptexts(parser)
     )
+
+
+def take_back_folders(
+    parser: "SuggestingArgumentParser", args: argparse.Namespace, rows: OptionRows
+) -> tuple[list[str], OptionRows]:
+    """Return the paths that the command took back from a list option, and the rows without those paths.
+
+    The command gives the ARTIS folders at the end of a list option back to the paths, e.g. the folder of
+    "-label 'My model' mymodel -t 300". The list of the series must then hold the folders, and the row of the option
+    must not hold them. A command with no such folders gives no paths and the same rows.
+    """
+    from artistools.misc.cliutils import KeepGivenPaths
+
+    actions = parser._actions  # ruff:ignore[private-member-access]
+    pathaction = next((action for action in actions if isinstance(action, KeepGivenPaths)), None)
+    parsed = getattr(args, pathaction.dest, None) if pathaction is not None else None
+    if pathaction is None or not parsed or parsed == pathaction.default:
+        return [], rows
+    folders = parsed if isinstance(parsed, list) else [parsed]
+    convert = pathaction.type if callable(pathaction.type) else str
+    listflags = {flag for flag, action in get_actions_by_flag(parser).items() if action.nargs in {"*", "+"}}
+    count = len(folders)
+    # the option keeps one value at least, because the command takes no folder from an option of folders alone
+    for index, (flag, values) in enumerate(rows):
+        if flag in listflags and len(values) > count and [convert(value) for value in values[-count:]] == folders:
+            return list(values[-count:]), (*rows[:index], (flag, values[:-count]), *rows[index + 1 :])
+    # a control of the window gives the option that took the folders, thus the rows do not hold them
+    return [str(folder) for folder in folders], rows
 
 
 def exit_for_other_actions(plotname: str, otheractions: "Mapping[str, bool]") -> None:
@@ -436,6 +469,24 @@ def split_argstrings(parser: "SuggestingArgumentParser", tokens: "Sequence[str]"
     return argstrings
 
 
+def count_option_values(action: argparse.Action, argstrings: "Sequence[str]", index: int) -> int:
+    """Return the number of tokens from index that are the values of the option of this action.
+
+    An option of nargs None or of a number takes that many tokens. An option of nargs "?" takes one value, and an
+    option of nargs "*" or "+" takes each value up to the next flag.
+    """
+    if action.nargs == 0:
+        return 0
+    if action.nargs is None or isinstance(action.nargs, int):
+        count = 1 if action.nargs is None else action.nargs
+        return min(count, len(argstrings) - index)
+    maxvalues = 1 if action.nargs == "?" else len(argstrings)
+    count = 0
+    while count < maxvalues and index + count < len(argstrings) and not is_flag(argstrings[index + count]):
+        count += 1
+    return count
+
+
 def remove_options(parser: "SuggestingArgumentParser", tokens: "Sequence[str]", dests: "Collection[str]") -> list[str]:
     """Return the tokens without the options of these dests and without the values of those options."""
     argstrings = split_argstrings(parser, tokens)
@@ -453,18 +504,8 @@ def remove_options(parser: "SuggestingArgumentParser", tokens: "Sequence[str]", 
             kept.append(argstring)
             continue
 
-        if holdsvalue or action.nargs == 0:
-            continue
-
-        if action.nargs is None:
-            index += 1
-            continue
-
-        # an option of nargs "?" takes one value, and an option of nargs "*" or "+" takes each value up to the next flag
-        maxvalues = 1 if action.nargs == "?" else len(argstrings)
-        while maxvalues and index < len(argstrings) and not is_flag(argstrings[index]):
-            index += 1
-            maxvalues -= 1
+        if not holdsvalue:
+            index += count_option_values(action, argstrings, index)
 
     return kept
 
@@ -473,12 +514,15 @@ def get_table_actions(parser: argparse.ArgumentParser, hiddendests: "Collection[
     """Return the options that the table of the window offers, which are the options that are not in hiddendests.
 
     hiddendests holds the options that a different control of the window sets, and the options that give a
-    different action from one plot.
+    different action from one plot. The table also hides WINDOW_DESTS.
     """
     return [
         action
         for action in parser._actions  # ruff:ignore[private-member-access]
-        if action.option_strings and action.help != argparse.SUPPRESS and action.dest not in hiddendests
+        if action.option_strings
+        and action.help != argparse.SUPPRESS
+        and action.dest not in hiddendests
+        and action.dest not in WINDOW_DESTS
     ]
 
 
@@ -545,18 +589,9 @@ def split_option_rows(parser: "SuggestingArgumentParser", tokens: "Sequence[str]
         if holdsvalue:
             _, equals, value = argstring.partition("=")
             values.append(value if equals else argstring[2:])
-        elif action.nargs is None or isinstance(action.nargs, int):
-            count = 1 if action.nargs is None else action.nargs
-            values.extend(argstrings[index : index + count])
         else:
-            # an option of nargs "?" takes one value, and an option of nargs "*" or "+" takes each value up to the
-            # next flag
-            maxvalues = 1 if action.nargs == "?" else len(argstrings)
-            while len(values) < maxvalues and index + len(values) < len(argstrings):
-                if is_flag(argstrings[index + len(values)]):
-                    break
-                values.append(argstrings[index + len(values)])
-        index += 0 if holdsvalue else len(values)
+            values.extend(argstrings[index : index + count_option_values(action, argstrings, index)])
+            index += len(values)
         rows.append((action.option_strings[0], tuple(values)))
 
     return tuple(rows), othertokens
@@ -586,6 +621,12 @@ def set_row_values(rows: OptionRows, changes: "Mapping[str, tuple[str, ...] | No
     present = {flag for flag, _ in rows}
     added = [(flag, values) for flag, values in changes.items() if values is not None and flag not in present]
     return tuple((flag, values) for flag, values in (*changed, *added) if values is not None)
+
+
+def set_figscale_row(rows: OptionRows, figscale: float, defaultfigscale: float) -> OptionRows:
+    """Return the option rows with the -figscale of the box of the Figure section. The default gives no row."""
+    change = None if math.isclose(figscale, defaultfigscale) else (format(figscale, "g"),)
+    return set_row_values(rows, {"-figscale": change})
 
 
 def get_option_row_tokens(rows: OptionRows) -> list[str]:
@@ -721,6 +762,33 @@ def get_nearest_range_start(tmids: "Sequence[float]", centre: float, count: int)
     return min(range(len(tmids) - count + 1), key=get_centre_offset)
 
 
+class PlotValues(t.Protocol):
+    """The values of the controls of a viewer: a dataclass with the width and the resolution of the figure."""
+
+    __dataclass_fields__: t.ClassVar[dict[str, "dc.Field[t.Any]"]]
+
+    @property
+    def figwidthscale(self) -> float:
+        """The -figwidthscale of the values."""
+
+    @property
+    def dpi(self) -> int | None:
+        """The -dpi of the values, or None for the default of the command."""
+
+
+def keep_figwidthscale[ValuesT: PlotValues](restored: ValuesT, current: ValuesT) -> ValuesT:
+    """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
+    return dc.replace(restored, figwidthscale=current.figwidthscale)
+
+
+def get_yscale_choices(parser: argparse.ArgumentParser) -> list[str]:
+    """Return the choices of -yscale for a box of a viewer.
+
+    The alias "lin" gives the same scale as "linear", thus it has no item.
+    """
+    return [str(choice) for choice in get_actions_by_flag(parser)["-yscale"].choices or () if choice != "lin"]
+
+
 def get_fitted_figwidthscale(
     figsize: tuple[float, float], figwidthscale: float, marginwidth: float, areawidth: float, areaheight: float
 ) -> float:
@@ -735,6 +803,27 @@ def get_fitted_figwidthscale(
     return round(min(max(fitted, MIN_FIGWIDTHSCALE), MAX_FIGWIDTHSCALE), 2)
 
 
-def get_short_number(value: float) -> str:
-    """Return a number with 3 significant digits for a short command, e.g. 12300 or 1.23e-05."""
-    return format(float(f"{value:.3g}"), ".10g")
+def get_short_number(value: float, digits: int = 3) -> str:
+    """Return a number with the significant digits for a short command, e.g. 12300 or 1.23e-05 for 3 digits."""
+    return format(float(f"{value:.{digits}g}"), f".{max(digits, 10)}g")
+
+
+# a limit of a selected range moves by at most this part of the width of the range when get_short_limits rounds it
+SHORT_LIMITS_TOLERANCE: t.Final = 0.01
+
+
+def get_short_limits(low: float, high: float) -> tuple[str, str] | None:
+    """Return the two limits of a range with few significant digits, or None for a range with no width.
+
+    Each limit takes 3 significant digits for a short command, or more digits for a narrow range. 3 digits gave the
+    same limit at each end of a narrow range, and a wider range moved by up to a third of its width. With more
+    digits, each limit moves by at most SHORT_LIMITS_TOLERANCE of the width.
+    """
+    if not low < high:
+        return None
+    tolerance = SHORT_LIMITS_TOLERANCE * (high - low)
+    for digits in range(3, 18):
+        lowtext, hightext = get_short_number(low, digits), get_short_number(high, digits)
+        if abs(float(lowtext) - low) <= tolerance and abs(float(hightext) - high) <= tolerance:
+            return (lowtext, hightext) if float(lowtext) < float(hightext) else None
+    return None

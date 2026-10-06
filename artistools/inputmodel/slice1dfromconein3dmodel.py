@@ -14,6 +14,7 @@ import polars.selectors as cs
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
@@ -50,21 +51,17 @@ def get_profile_along_axis(dfmodel: pl.DataFrame, args: argparse.Namespace) -> p
     """Return the cells of the 3D model running along the chosen axis, nearest to the other two axes' origin."""
     print("Getting profile along axis")
 
-    # Pick the middle cell by index. For an odd cell count, the edges at -dx/2 and +dx/2 have the same
-    # magnitude, and the float rounding can select the wrong one of the two.
-    middle_lower_edges = {}
-    for axis in (args.other_axis1, args.other_axis2):
-        loweredges = dfmodel[f"pos_{axis}_min"].unique().sort()
-        middle_lower_edges[axis] = loweredges.item(len(loweredges) // 2)
-
-    # the innermost cell on the positive axis has pos_min == 0, thus the condition must keep it
-    sliceaxis_cond = (
-        (pl.col(f"pos_{args.sliceaxis}_min") >= 0) if args.positive_axis else (pl.col(f"pos_{args.sliceaxis}_min") < 0)
-    )
+    # each side of the slice axis takes the middle layer of an odd grid, because that layer holds the origin
+    sliceedge = get_middle_layer_lower_edge(dfmodel, args.sliceaxis, positive=args.positive_axis)
+    sliceposmin = pl.col(f"pos_{args.sliceaxis}_min")
+    sliceaxis_cond = (sliceposmin >= sliceedge) if args.positive_axis else (sliceposmin <= sliceedge)
 
     return dfmodel.filter(
-        (pl.col(f"pos_{args.other_axis1}_min") == middle_lower_edges[args.other_axis1])
-        & (pl.col(f"pos_{args.other_axis2}_min") == middle_lower_edges[args.other_axis2])
+        (pl.col(f"pos_{args.other_axis1}_min") == get_middle_layer_lower_edge(dfmodel, args.other_axis1, positive=True))
+        & (
+            pl.col(f"pos_{args.other_axis2}_min")
+            == get_middle_layer_lower_edge(dfmodel, args.other_axis2, positive=True)
+        )
         & sliceaxis_cond
     )
 
@@ -74,9 +71,11 @@ def get_cone_shells(
 ) -> list[dict[str, float]]:
     """Return the density and the normalised composition of each spherical shell of the cone.
 
-    The shells end at the first empty shell, because the outer shells have no mass.
+    The shells end at the first empty shell, because the outer shells have no mass. Ye and q are mass-weighted means
+    over the cells of a shell, as in dimension_reduce_model, and tracercount is the sum.
     """
     nshells = len(cone1d_bins) - 1
+    massweightedcols = [col for col in ("Ye", "q") if col in cone.columns]
     # a cell belongs to the shell with cone1d_bins[i] <= pos_r_mid < cone1d_bins[i + 1]
     shellindex = np.searchsorted(np.asarray(cone1d_bins), cone["pos_r_mid"].to_numpy(), side="right") - 1
     dfshells = (
@@ -86,7 +85,8 @@ def get_cone_shells(
         .group_by("shellindex")
         .agg(
             # mass of each species in each 3D grid cell, summed over the cells
-            *[(pl.col(species) * pl.col("mass_g")).sum().alias(species) for species in speciescols],
+            *[(pl.col(col) * pl.col("mass_g")).sum().alias(col) for col in [*speciescols, *massweightedcols]],
+            cs.by_name("tracercount", require_all=False).sum(),
             cellcount=pl.len(),
             total_mass_g=pl.col("mass_g").sum(),
             total_volume=pl.col("volume").sum(),
@@ -97,7 +97,7 @@ def get_cone_shells(
             how="right",
             maintain_order="right",
         )
-        .with_columns(cs.float().fill_null(0.0), cellcount=pl.col("cellcount").fill_null(0))
+        .with_columns(cs.float().fill_null(0.0), cs.integer().fill_null(0))
     )
 
     shellrows: list[dict[str, float]] = []
@@ -162,6 +162,8 @@ def get_cone_shells(
         shellrows.append(
             {"inputcellid": i + 1, "r_bin_max_boundary": cone1d_bins[i + 1], "rho": total_mass_g / total_volume}
             | composition
+            | {col: shell[col] / total_mass_g for col in massweightedcols}
+            | ({"tracercount": shell["tracercount"]} if "tracercount" in shell else {})
         )
 
     return shellrows

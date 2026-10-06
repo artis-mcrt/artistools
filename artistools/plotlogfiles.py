@@ -46,23 +46,33 @@ def read_logfiles(modelpath: Path | str) -> list[Path]:
     ]
 
 
-# "timestep 3: time after update grid for all processes 1699974033 (rank 0 took 1s, waited 0s, total 1s)"
-_re_stage_perrank = re.compile(
-    r"timestep (?P<timestep>\d+): time after (?P<stage>update grid|update packets) for all processes \d+ "
-    r"\(rank (?P<rank>\d+) took (?P<seconds>\d+)s"
+# ARTIS writes two forms of each line. The old form holds a Unix time and whole seconds:
+# "timestep 3: time after update grid for all processes 1699974033 (rank 0 took 1s, waited 0s, total 1s)".
+# The current form holds decimal seconds, and the grid line says "on" in place of "for":
+# "timestep 3: time after update grid on all processes (rank 0 took 1.2s, waited 0.3s, total 1.5s)"
+RE_STAGE_PERRANK = re.compile(
+    r"timestep (?P<timestep>\d+): time after (?P<stage>update grid|update packets) (?:for|on) all processes "
+    r"(?:\d+ )?\(rank (?P<rank>\d+) took (?P<seconds>\d+(?:\.\d*)?)s"
 )
 
-# "timestep 3: time after estimators have been communicated 1699974033 (took 0 seconds)"
-_re_estimators = re.compile(
-    r"timestep (?P<timestep>\d+): time after estimators have been communicated \d+ \(took (?P<seconds>\d+) seconds\)"
+# "timestep 3: time after estimators have been communicated 1699974033 (took 0 seconds)" in the old form, and
+# "timestep 3: time after estimators have been communicated (took 0.4 seconds)" in the current form
+RE_ESTIMATORS = re.compile(
+    r"timestep (?P<timestep>\d+): time after estimators have been communicated (?:\d+ )?"
+    r"\(took (?P<seconds>\d+(?:\.\d*)?) seconds\)"
 )
 
-_stagekey = {"update grid": "update_grid", "update packets": "update_packets"}
 
+def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, dict[int, float]]]:
+    """Return {stage: {timestep: {mpi rank: seconds taken}}} parsed from ARTIS log files.
 
-def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, dict[int, int]]]:
-    """Return {stage: {timestep: {mpi rank: seconds taken}}} parsed from ARTIS log files."""
-    timetaken: dict[str, dict[int, dict[int, int]]] = {"update_grid": {}, "update_packets": {}, "write_estimators": {}}
+    The stage communicate_estimators is the time of the MPI reduction of the estimators.
+    """
+    timetaken: dict[str, dict[int, dict[int, float]]] = {
+        "update_grid": {},
+        "update_packets": {},
+        "communicate_estimators": {},
+    }
 
     for logfilepath in logfilepaths:
         # the rank that wrote the file, e.g. output_12-0.txt -> 12
@@ -71,21 +81,21 @@ def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, d
             for line in logfile:
                 if "took" not in line:
                     continue
-                if match := _re_stage_perrank.search(line):
-                    stage = _stagekey[match["stage"]]
+                if match := RE_STAGE_PERRANK.search(line):
+                    stage = match["stage"].replace(" ", "_")
                     rank = int(match["rank"])
-                elif match := _re_estimators.search(line):
-                    stage = "write_estimators"
+                elif match := RE_ESTIMATORS.search(line):
+                    stage = "communicate_estimators"
                     rank = filerank
                 else:
                     continue
-                timetaken[stage].setdefault(int(match["timestep"]), {}).setdefault(rank, int(match["seconds"]))
+                timetaken[stage].setdefault(int(match["timestep"]), {}).setdefault(rank, float(match["seconds"]))
 
     return timetaken
 
 
 def make_plot(
-    logfiledict: dict[str, dict[int, dict[int, int]]],
+    logfiledict: dict[str, dict[int, dict[int, float]]],
     outputfile: Path | str,
     modelname: str = "",
     modellogname: str = "",

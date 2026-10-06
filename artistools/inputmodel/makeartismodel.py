@@ -18,8 +18,10 @@ from artistools.inputmodel.downscale3dgrid import make_downscaled_3d_grid
 from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
+from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import exit_with_error
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -45,6 +47,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-d",
         default=None,
         type=int,
+        choices=[0, 1, 2],
         help="Number of dimensions: 0 for one-zone, 1 for spherically symmetric 1D, 2 for 2D Cylindrical",
     )
 
@@ -52,7 +55,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makemodelfromgriddata", action="store_true", help="Make ARTIS model files from SPH grid.dat file"
     )
 
-    parser.add_argument("-pathtogriddata", default=".", help="Path to SPH grid.dat file")
+    parser.add_argument("-pathtogriddata", default=".", help="Folder that holds the SPH grid.dat file")
 
     parser.add_argument(
         "--fillcentralhole", action="store_true", help="Fill hole in middle of ejecta from SPH kilonova model"
@@ -94,6 +97,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath_given = bool(args.modelpath)
     args.modelpath = normalize_path_list(args.modelpath)
 
+    actions = (
+        args.downscale3dgrid,
+        args.dimensionreduce is not None,
+        args.makemodelfromgriddata,
+        args.makeenergyinputfiles,
+    )
+    if not any(actions):
+        exit_with_error(
+            "no action was given",
+            "Give --downscale3dgrid, -dimensionreduce, --makemodelfromgriddata, or --makeenergyinputfiles",
+        )
+
     if args.downscale3dgrid:
         # with no -o, the output folder is a subfolder of the model
         make_downscaled_3d_grid(
@@ -117,7 +132,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfelabundances = get_initelemabundances(modelpath)
             dfgridcontributions = get_gridparticlecontributions_or_none(modelpath)
 
-            (dfmodel_out, dfelabundances_out, _, modelmeta_out) = dimension_reduce_model(
+            (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out) = dimension_reduce_model(
                 dfmodel=dfmodel,
                 outputdimensions=ndim_out,
                 dfelabundances=dfelabundances,
@@ -137,6 +152,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             assert dfelabundances_out is not None
             save_initelemabundances(dfelabundances_out, outpath=outdir)
             save_modeldata(dfmodel=dfmodel_out, modelmeta=modelmeta_out, outpath=outdir)
+            # the function gives an empty frame for a model with no contributions, thus test the input
+            if dfgridcontributions is not None:
+                save_gridparticlecontributions(dfgridcontributions_out, outdir / "gridcontributions.txt")
 
     if args.makemodelfromgriddata:
         print(args)

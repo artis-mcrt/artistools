@@ -3,6 +3,7 @@
 import contextlib
 import datetime
 import errno
+import functools
 import inspect
 import io
 import os
@@ -113,10 +114,15 @@ def print_saved(filepath: Path | str) -> None:
     Console(highlight=False, soft_wrap=True).print(line)
 
 
+def with_compressed_extension(filename: Path | str, ext: str) -> Path:
+    """Return the path of the compressed file, e.g. spec.out.zst, or the path itself if it has the extension."""
+    return Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
+
+
 def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
-    """Return the extension and path of filename.zst, filename.gz or filename.xz, or None if no compressed file exists."""
+    """Return the extension and the path of filename.zst, .gz, or .xz, or None if no compressed file exists."""
     for ext in COMPRESSED_EXTENSIONS:
-        path_withext = Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
+        path_withext = with_compressed_extension(filename, ext)
         if path_withext.exists():
             return ext, path_withext
 
@@ -209,12 +215,23 @@ def zopenpl(filename: Path | str) -> t.IO[bytes] | Path:
 
 @contextlib.contextmanager
 def polars_error_note(filepath: Path) -> Generator[None]:
-    """Name the file in a polars error, because the parser sees a path or in-memory bytes only."""
+    """Name the file in a read error, because the parser sees a path or in-memory bytes only.
+
+    A cut compressed file gives one of three errors. polars gives an OSError for a .gz file that it reads itself. A
+    Python reader gives an EOFError, and polars gives a panic when it reads from that reader. The dispatcher reports
+    an OSError with no traceback, thus an EOFError becomes an OSError.
+    """
     try:
         yield
-    except pl.exceptions.PolarsError as exc:
+    except (pl.exceptions.PolarsError, pl.exceptions.PanicException, OSError) as exc:
         exc.add_note(f"while reading {filepath}")
         raise
+    except EOFError as exc:
+        msg = (
+            f"{filepath} ends before the end of its compressed data."
+            " A partial copy or a run that has not finished can leave such a file"
+        )
+        raise OSError(msg) from exc
 
 
 def scan_lines(filepath: Path, skip_rows: int = 0, encoding: t.Literal["utf8", "utf8-lossy"] = "utf8") -> pl.LazyFrame:
@@ -265,6 +282,61 @@ def normalised_lines(
     )
 
 
+def read_decompressed_bytes(filepath: Path) -> bytes:
+    """Return the bytes of a file. The function decompresses a .zst, .gz, or .xz file."""
+    if filepath.suffix in COMPRESSED_EXTENSIONS:
+        with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+            data: bytes = fin.read()
+        return data
+
+    return filepath.read_bytes()
+
+
+def read_complete_lines(filename: Path | str, content: str) -> bytes:
+    """Return the bytes of the complete lines of an ARTIS output file, which can be compressed.
+
+    sn3d writes some files again at each timestep, thus a run that stops during that write leaves an empty file or
+    a cut last line. The cut number of such a line is a valid number, thus only the missing line end shows the cut.
+    The function drops a cut last line with a warning, and it raises a ValueError if no line remains. The content
+    names what the file holds in that error, e.g. "light curve". The named file wins over a compressed sibling, as
+    in zopen. The caller gives the bytes to polars, thus the function decompresses the file one time only.
+    """
+    from artistools.misc.cliutils import print_warning
+
+    check_local_path(filename)
+    filepath = Path(filename)
+    if not filepath.is_file() and (found := find_compressed(filename)):
+        filepath = found[1]
+
+    with polars_error_note(filepath):
+        data = read_decompressed_bytes(filepath)
+
+    if data.strip() and not data.endswith(b"\n"):
+        print_warning(f"{filename} ends with a cut line, thus the command reads the file without its last line")
+        # a file of one cut line holds no line end, thus rfind gives -1 and no byte remains
+        data = data[: data.rfind(b"\n") + 1]
+
+    if not data.strip():
+        msg = f"{filename} holds no {content}. A run that stops while sn3d writes this file leaves it empty"
+        raise ValueError(msg)
+
+    return data
+
+
+def raise_if_cut_line(df: pl.DataFrame, textfilepath: Path | str) -> None:
+    """Stop if a line of an ARTIS text file has fewer values than the header.
+
+    ARTIS writes each value of each line, thus a missing value shows a file that is not complete. A cache from such
+    a file keeps the partial data, also after the write ends.
+    """
+    if df.null_count().sum_horizontal().item() > 0:
+        msg = (
+            f"The file {textfilepath} has a line with fewer values than the header. Possibly ARTIS or a copy"
+            " still writes the file, or the end of the file is missing"
+        )
+        raise ValueError(msg)
+
+
 def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> bool:
     """Return True if each byte that no comment holds is valid UTF-8.
 
@@ -273,11 +345,7 @@ def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_
     also hold the replacement character as data. This costs a read of the whole file, thus call it only
     after a strict read has failed.
     """
-    if filepath.suffix in COMPRESSED_EXTENSIONS:
-        with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
-            data: bytes = fin.read()
-    else:
-        data = filepath.read_bytes()
+    data = read_decompressed_bytes(filepath)
 
     start = 0
     for _ in range(skip_rows):
@@ -472,7 +540,7 @@ def firstexisting(
 
             if tryzipped:
                 for ext in COMPRESSED_EXTENSIONS:
-                    filename_withext = Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
+                    filename_withext = with_compressed_extension(filename, ext)
                     if filename_withext not in filelist:
                         thispath = Path(searchfolder, filename_withext)
                         if thispath.exists():
@@ -686,6 +754,62 @@ def resolve_modelpath(modelpath: Path | str) -> Path:
     return resolve_path_cached(str(path), "" if path.is_absolute() else str(Path.cwd()))
 
 
+class ModelpathCache[**P, R]:
+    """Call a reader with the absolute path of the model, and keep the results in an lru_cache.
+
+    The default model path is the relative Path("."). A cache of a relative path keeps the first answer after the user
+    changes the working folder, thus the key holds the path that resolve_modelpath gives. A call gives the path by
+    position, by the keyword modelpath, or by the name of the first parameter of the reader, e.g. filename.
+    """
+
+    def __init__(self, function: Callable[t.Concatenate[Path, P], R], maxsize: int) -> None:
+        """Put an lru_cache of maxsize entries on the reader."""
+        cached = lru_cache(maxsize=maxsize)(function)
+        # the types of lru_cache take each argument as Hashable, and the reader gives the types of its arguments
+        self.callcached = t.cast("Callable[..., R]", cached)
+        self.cache_clear = cached.cache_clear
+        self.cache_info = cached.cache_info
+        self.name = str(getattr(function, "__qualname__", function))
+        self.pathkeywords = {"modelpath", next(iter(inspect.signature(function).parameters))}
+        # the server of a remote model follows __wrapped__ to the reader below the cache
+        functools.update_wrapper(self, cached)
+
+    if t.TYPE_CHECKING:
+        # the type checkers know only the keyword modelpath, because a ParamSpec cannot rename a parameter
+        def __call__(self, modelpath: Path | str, *args: P.args, **kwargs: P.kwargs) -> R:
+            """Return the result of the reader for the absolute path of the model."""
+            ...
+
+    else:
+
+        def __call__(self, *args: t.Any, **kwargs: t.Any) -> t.Any:
+            """Return the result of the reader for the absolute path of the model.
+
+            A path that a keyword gives goes to the first position, thus a call by keyword and a call by position
+            share one cache entry.
+            """
+            if not args and (pathkeyword := next((key for key in self.pathkeywords if key in kwargs), None)):
+                args = (kwargs.pop(pathkeyword),)
+            if not args:
+                # the reader raises the TypeError of the missing argument
+                return self.callcached(**kwargs)
+
+            return self.callcached(resolve_modelpath(args[0]), *args[1:], **kwargs)
+
+    def __reduce__(self) -> str:
+        """Give pickle the name of the module attribute, because pickle cannot copy the cache."""
+        return self.name
+
+
+def modelpath_cache[**P, R](maxsize: int) -> Callable[[Callable[t.Concatenate[Path, P], R]], ModelpathCache[P, R]]:
+    """Return a decorator that gives a reader of a model path a cache with the key of the absolute path."""
+
+    def decorator(function: Callable[t.Concatenate[Path, P], R]) -> ModelpathCache[P, R]:
+        return ModelpathCache(function, maxsize)
+
+    return decorator
+
+
 def readnoncommentline(file: t.IO[str]) -> str:
     """Read a line from the text file, skipping blank and comment lines that begin with #.
 
@@ -699,10 +823,28 @@ def readnoncommentline(file: t.IO[str]) -> str:
     raise EOFError(msg)
 
 
-@lru_cache(maxsize=24)
+def check_metadata_mapping(metadata: object, metafile: Path) -> dict[str, t.Any]:
+    """Return the metadata of a file, or raise ValueError when the metadata file gives a value that is not a mapping."""
+    if isinstance(metadata, dict):
+        return t.cast("dict[str, t.Any]", metadata)
+
+    # the dispatcher reports a ValueError as a fault of the input, without a traceback
+    msg = f"The metadata in {metafile} must be a mapping of names to values, not {metadata!r}"
+    raise ValueError(msg)
+
+
 def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
-    """Return a dict of metadata for a file, either from a metadata file or from the big combined metadata file."""
-    filepath = Path(filepath)
+    """Return a dict of metadata for a file, either from a metadata file or from the big combined metadata file.
+
+    The cache key holds the absolute path, see ModelpathCache. The absolute path keeps a symbolic link, because the
+    metadata file of a link is beside the link. A key of metadata.yml can hold the path as the user gives it.
+    """
+    return get_file_metadata_cached(Path(filepath).absolute(), str(filepath))
+
+
+@lru_cache(maxsize=24)
+def get_file_metadata_cached(filepath: Path, givenpath: str) -> dict[str, t.Any]:
+    """Return the metadata of the file at an absolute path, and keep it for the next caller."""
 
     def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
         if "a_v" in metadata and "e_bminusv" in metadata and "r_v" not in metadata:
@@ -718,23 +860,31 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
 
     if filepath.suffix in COMPRESSED_EXTENSIONS:
         filepath = filepath.with_suffix("")
+        givenpath = str(Path(givenpath).with_suffix(""))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
     if individualmetafile.exists():
         with individualmetafile.open("r", encoding="utf-8") as yamlfile:
-            metadata = yaml.safe_load(yamlfile)
+            # a file of comments alone gives None
+            metadata = yaml.safe_load(yamlfile) or {}
 
-        return add_derived_metadata(metadata)
+        return add_derived_metadata(check_metadata_mapping(metadata, individualmetafile))
 
     # check if the metadata is in the big combined metadata file (todo: eliminate this file)
     combinedmetafile = Path(filepath.parent.resolve(), "metadata.yml")
     if combinedmetafile.exists():
         with combinedmetafile.open("r", encoding="utf-8") as yamlfile:
-            combined_metadata = yaml.safe_load(yamlfile)
-        metadata = combined_metadata.get(str(filepath), {})
+            combined_metadata = yaml.safe_load(yamlfile) or {}
+        # a key can hold the path as the user gives it, the absolute path, or the name of the file alone, because
+        # the file sits beside the data files
+        metadata = next(
+            (combined_metadata[key] for key in (givenpath, str(filepath), filepath.name) if key in combined_metadata),
+            None,
+        )
 
-        return add_derived_metadata(metadata)
+        # an absent key and a key with no value both give None
+        return add_derived_metadata(check_metadata_mapping(metadata or {}, combinedmetafile))
 
     print(f"No metadata found for: {filepath}")
 
@@ -871,6 +1021,15 @@ def get_file_identity(file: Path | os.stat_result) -> tuple[int, int] | None:
     return (filestat.st_dev, filestat.st_ino)
 
 
+def get_file_state(path: Path) -> tuple[int, int, int, int]:
+    """Return the device, the inode, the modification time, and the size of a file, for the key of a cache.
+
+    A rewrite in place changes the time or the size, and a rename onto the path changes the device or the inode.
+    """
+    filestat = path.stat()
+    return (filestat.st_dev, filestat.st_ino, filestat.st_mtime_ns, filestat.st_size)
+
+
 def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple[int, int] | None) -> None:
     """Install newfilepath at destpath, unless a file other than the given out-of-date one is there.
 
@@ -896,10 +1055,14 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
         return
 
     lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
-    # flock locks a read-only descriptor, so a different user regenerating a cache in a shared model
-    # directory needs only read access to the lock file. The chmod grants that under a restrictive umask,
-    # and fails harmlessly for a user who does not own the lock
-    lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY, 0o666)
+    # NFS gives flock as a POSIX lock, and an exclusive POSIX lock needs a descriptor that can write. A user without
+    # write access to the lock of a different user reads it, which flock accepts on a local file system
+    try:
+        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR, 0o666)
+    except PermissionError:
+        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY, 0o666)
+    # the chmod lets each user write the lock under a restrictive umask, and fails harmlessly for a user who does
+    # not own the lock
     with contextlib.suppress(OSError):
         lockpath.chmod(0o666)
     try:
@@ -1079,7 +1242,7 @@ def write_parquet_atomic(
     metadata: dict[str, str] | None = None,
     replaces: tuple[int, int] | None = None,
 ) -> None:
-    """Write a zstd-compressed parquet file through a temporary file, so a partial write is never mistaken for a complete file.
+    """Write a parquet file with zstd compression through a temporary file, thus no reader sees a partial file.
 
     A parquet file that another process wrote while this one worked is kept, and this copy of the same data
     is discarded. polars opens a parquet file again by its path between reading the metadata and reading the

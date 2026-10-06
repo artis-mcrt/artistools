@@ -22,6 +22,7 @@ from artistools.spectra.core import get_velocity_label as get_velocity_label
 from artistools.spectra.core import get_vspecpol_data as get_vspecpol_data
 from artistools.spectra.core import make_virtual_spectra_summed_file as make_virtual_spectra_summed_file
 from artistools.spectra.core import parse_velocity_argument as parse_velocity_argument
+from artistools.spectra.core import read_spec as read_spec
 from artistools.spectra.core import read_spec_res as read_spec_res
 
 # isort: split
