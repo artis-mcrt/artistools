@@ -148,7 +148,7 @@ def get_timebin_expr(timeexpr: pl.Expr, arr_tstart: Sequence[float], arr_tend: S
         msg = "The time bins overlap, thus a packet in both bins would count in one bin only. Give separate bins"
         raise ValueError(msg)
 
-    # use one bin index on all the edges, because a when() test for each bin made one column for each bin
+    # use one bin index on all the edges. A when() test for each bin made one column for each bin
     edges = np.unique(np.concatenate([arr_binedge_start, arr_binedge_end]))
     binofinterval: dict[int, int] = {}
     for listindex, tstart, tend in zip(timeorder.tolist(), arr_binedge_start, arr_binedge_end, strict=True):

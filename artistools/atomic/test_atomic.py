@@ -136,7 +136,7 @@ def test_read_transitiondata_rejects_a_table_that_the_file_ends_inside(
 def test_read_transitiondata_reads_the_legacy_format_of_four_columns(tmp_path: Path) -> None:
     """ARTIS takes the format of each table from its first line, and 4 numbers give "index lower upper A".
 
-    The reader took such a table as "lower upper A collstr", thus it gave wrong levels and A values with no error.
+    The reader took such a table as "lower upper A collstr", thus it gave incorrect levels and A values with no error.
     ARTIS gives a transition of this format the collision strength -1 and the forbidden flag 0.
     """
     transitionsfile = tmp_path / "transitiondata.txt"
@@ -165,7 +165,7 @@ def test_read_transitiondata_reads_the_legacy_format_of_four_columns(tmp_path: P
     )
     assert transitionsdict[26, 3].row(0) == pytest.approx((0, 1, 2.0, 0.5, 1))
 
-    # ARTIS reads no other count of columns
+    # ARTIS reads no other count of numbers
     transitionsfile.write_text("26 2 1\n1 2 1.0\n", encoding="utf-8")
     with pytest.raises(Exception, match=r"transitiondata\.txt:2: the first line of a table has 3 numbers"):
         read_transitiondata(transitionsfile)
@@ -192,8 +192,7 @@ def test_read_transitiondata_takes_the_format_from_the_leading_numbers_and_repor
 ) -> None:
     """The format of a table comes from the leading numbers of its first line, and not from its count of words.
 
-    The reader parses all the lines in one query, thus it must report the first bad line of the file, as a reader
-    that parses the lines in order does.
+    The reader parses all the lines in one query. It must report the first bad line of the file, as ARTIS does.
     """
     transitionsfile = tmp_path / "transitiondata.txt"
     transitionsfile.write_text(

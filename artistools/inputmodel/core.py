@@ -220,7 +220,7 @@ def read_modelfile_text(
             skip_rows=numheaderrows,
             schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
             truncate_ragged_lines=True,
-            # a trailing space gives an empty last field. polars 2 raises if the file has more fields than names
+            # a trailing space gives an empty last field. polars 2 raises if a line has more fields than column names
             extra_columns="ignore",
             # a header comment can hold one quotation mark, e.g. 5" model. A reader that takes it as a quote
             # skips the rows to the next quotation mark, and the data lines then go with the header

@@ -158,7 +158,8 @@ def get_opacity_lines(
             .with_columns(B_ul=C_cm_per_s**2 / 2 / h_erg_s / pl.col("nu_trans").pow(3) * pl.col("A"))
             .with_columns(B_lu=pl.col("upper_g") / pl.col("lower_g") * pl.col("B_ul"))
             .select(
-                # only the interior edges, thus a line at an outer edge falls into the first or the last bin
+                # the function gets only the interior edges. Thus a line at an outer edge goes into the first or the
+                # last bin
                 (get_bin_index_expr(pl.col("lambda_angstroms"), lambda_bin_edges[1:-1], right_closed=True) + 1)
                 .cast(pl.UInt32)
                 .alias("lambda_angstroms_binindex"),

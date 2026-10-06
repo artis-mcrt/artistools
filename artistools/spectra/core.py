@@ -2122,11 +2122,13 @@ def get_flux_contributions_from_packets(
         """Return the packet energy of each type and wavelength bin.
 
         The type is an emission code, an absorption code, or the index of a shell. The Rust function gives the bins of
-        the spectrum kernel. The type and its bin then form one Int64 key, because one key groups faster than two. For
-        65 million packets of a 3D kilonova run, the group_by of the code and of the bin from cut() took 0.63 s with
-        polars 1.44 and 0.36 s with polars 2.0. This method took 0.35 s and 0.16 s. A group_by of the code and of the
-        bin from bin_intervals() took 0.37 s with polars 2.0, and a Rust sum for each label after a gather of the label
-        of each line took 0.72 s.
+        the spectrum kernel. The type and its bin then form one Int64 key, because one key groups faster than two.
+        Times for 65 million packets of a 3D kilonova run (polars 1.44 / polars 2.0):
+
+        - this method: 0.35 s / 0.16 s;
+        - a group_by of the code and the bin from cut(): 0.63 s / 0.36 s;
+        - a group_by of the code and the bin from bin_intervals(): 0.37 s with polars 2.0;
+        - a Rust sum for each label after a gather of the label of each line: 0.72 s.
         """
         from artistools.rustext import get_bin_indices
 

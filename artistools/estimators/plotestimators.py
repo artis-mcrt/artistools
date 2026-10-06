@@ -1379,7 +1379,7 @@ def get_xlist(
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
         xmids = (xlower + xupper) / 2
-        # only the interior edges, thus a value at an outer edge falls into the first or the last bin
+        # the function gets only the interior edges. Thus a value at an outer edge goes into the first or the last bin
         xbinindex = get_bin_index_expr(pl.col("xvalue"), xbinedges[1:-1], right_closed=True) + 1
         estimators = (
             estimators

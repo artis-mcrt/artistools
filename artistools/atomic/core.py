@@ -276,7 +276,7 @@ def add_transition_columns(
     return dftransitions
 
 
-# the fields of a line of a transition table, keyed by the count of leading numbers in the first line of the table.
+# the fields of a line of a transition table. The key is the count of leading numbers in the first line of the table.
 # ARTIS reads 5 numbers, or 4 numbers in the legacy format, which has a transition index and no collision strength
 TRANSITION_FIELDS: t.Final = MappingProxyType({
     5: (
@@ -300,7 +300,7 @@ INTEGER_PATTERN: t.Final = re.compile(r"[+-]?\d+")
 
 
 def count_leading_numbers(line: str) -> int:
-    """Return the count of the finite numbers at the start of a line, as ARTIS counts the columns of a table."""
+    """Return the count of the finite numbers at the start of a line, as ARTIS counts them in a table."""
     count = 0
     for token in line.split():
         try:
@@ -388,7 +388,7 @@ def read_transitiondata(
 
     # ARTIS reads the next line that is not blank and not a comment as a header, then the lines of its table. Thus
     # only the few headers need a loop
-    # numpy casts a UInt32 array for each search with a Python int, thus the array takes the dtype of the int
+    # numpy casts a UInt32 array at each search with a Python int. Thus cast the array to Int64 one time
     contentrows = dflines.with_row_index("row").filter("iscontent")["row"].cast(pl.Int64).to_numpy()
     tables: list[tuple[int, int, int, int]] = []
     position = 0
