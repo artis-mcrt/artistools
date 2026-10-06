@@ -44,6 +44,7 @@ from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import rankbatch_parquet_staleness
+from artistools.misc.general import get_bin_index_expr
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
 
@@ -192,12 +193,11 @@ def get_modelgridindex_from_velocity_expr(velocity: pl.Expr, dfmodel: pl.LazyFra
     """Return the index of the cell of a 1D model that holds a radial velocity [cm/s], or null outside the grid.
 
     A cell holds the velocities from its inner edge up to its outer edge, and the outer edge belongs to the next
-    cell. A velocity of NaN gives null. A cut alone gave the index -1 to a velocity of zero. A velocity above the
+    cell. A velocity of NaN gives null. A bin index alone gave the index -1 to a velocity of zero. A velocity above the
     outer edge of the grid got the index of a cell that does not exist.
     """
     velbins = [0.0, *(dfmodel.select(pl.col("vel_r_max_kmps") * km_to_cm).collect().to_series().to_list())]
-    # the first category of cut() holds the values below the first edge, thus the first cell has the index 1
-    index = velocity.cut(breaks=velbins, left_closed=True).to_physical().cast(pl.Int32) - 1
+    index = get_bin_index_expr(velocity, velbins)
     return pl.when(index.is_between(0, len(velbins) - 2)).then(index)
 
 
@@ -241,9 +241,8 @@ def get_timestep_expr(time: pl.Expr, timebins: Sequence[float]) -> pl.Expr:
 
     A time before the first timestep gives -1, and a time after the last timestep gives the timestep count.
     """
-    # the first category of cut() holds the times below the first edge, thus the first timestep has the index 1. An
-    # ARTIS timestep holds its start time and not its end time
-    return time.cut(breaks=timebins, left_closed=True).to_physical().cast(pl.Int32) - 1
+    # an ARTIS timestep holds its start time and not its end time
+    return get_bin_index_expr(time, timebins)
 
 
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: Path | str) -> pl.LazyFrame:

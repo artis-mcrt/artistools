@@ -35,6 +35,7 @@ from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.general import get_bin_index_expr
 from artistools.misc.modelinfo import parse_npts_line
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
@@ -219,6 +220,8 @@ def read_modelfile_text(
             skip_rows=numheaderrows,
             schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
             truncate_ragged_lines=True,
+            # a trailing space gives an empty last field. polars 2 raises if a line has more fields than column names
+            extra_columns="ignore",
             # a header comment can hold one quotation mark, e.g. 5" model. A reader that takes it as a quote
             # skips the rows to the next quotation mark, and the data lines then go with the header
             quote_char=None,
@@ -1461,18 +1464,14 @@ def dimension_reduce_model(
     col_vel_r = pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid")
     # the bins are closed on the left, because the centre cell of an odd grid has a mid-point velocity of zero.
     # A bin that is closed on the right puts that cell below the first bin, and the filter then drops its mass
-    dfmodel_out = dfmodel_out.with_columns(
-        (col_vel_r.cut(breaks=vel_r_bins, left_closed=True).to_physical().cast(pl.Int32) - 1).alias("out_n_r")
-    ).filter(pl.col("out_n_r").is_between(0, ncoordgridr - 1))
+    dfmodel_out = dfmodel_out.with_columns(get_bin_index_expr(col_vel_r, vel_r_bins).alias("out_n_r")).filter(
+        pl.col("out_n_r").is_between(0, ncoordgridr - 1)
+    )
 
     if outputdimensions == 2:
         dfmodel_out = (
             dfmodel_out
-            .with_columns(
-                (pl.col("vel_z_mid").cut(breaks=vel_z_bins, left_closed=True).to_physical().cast(pl.Int32) - 1).alias(
-                    "out_n_z"
-                )
-            )
+            .with_columns(get_bin_index_expr(pl.col("vel_z_mid"), vel_z_bins).alias("out_n_z"))
             .filter(
                 pl.col("out_n_r").is_between(0, ncoordgridr - 1) & (pl.col("out_n_z").is_between(0, ncoordgridz - 1))
             )

@@ -56,6 +56,7 @@ from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import read_complete_lines
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.general import get_bin_index_expr
 from artistools.misc.remote import on_model_host
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
@@ -474,25 +475,19 @@ def get_spectrum_at_time(
 
 
 @lru_cache(maxsize=4)
-def get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) -> pl.LazyFrame:
+def get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) -> pl.DataFrame:
     """Return the wavelength bin frame for the given packed bin edges.
 
     The bytes key makes the arguments hashable for the lru_cache.
     """
     lambda_bin_edges = np.frombuffer(lambda_bin_edges_bytes, dtype=np.float64, count=count)
-    return (
-        pl
-        .DataFrame({
-            "lambda_angstroms": 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:]),
-            "delta_lambda": lambda_bin_edges[1:] - lambda_bin_edges[:-1],
-        })
-        .with_row_index("lambda_binindex")
-        .with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
-        .lazy()
-    )
+    return pl.DataFrame({
+        "lambda_angstroms": 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:]),
+        "delta_lambda": lambda_bin_edges[1:] - lambda_bin_edges[:-1],
+    }).with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
 
 
-def get_binned_lambda_frame(lambda_bin_edges: npt.NDArray[np.floating]) -> pl.LazyFrame:
+def get_binned_lambda_frame(lambda_bin_edges: npt.NDArray[np.floating]) -> pl.DataFrame:
     """Return the centre, the width and the frequency of each wavelength bin.
 
     The result is in a cache, because the code bins each emission contribution and each absorption contribution
@@ -627,7 +622,6 @@ def get_from_packets(
             escape_type="TYPE_GAMMA" if gamma else "TYPE_RPKT",
         )
 
-    dfbinned_lazy = get_binned_lambda_frame(lambda_bin_edges)
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         check_time_range_inside_vpkt_window(vpkt_config, timelowdays, timehighdays)
@@ -660,50 +654,38 @@ def get_from_packets(
             sumsquares=relnoise,
         )
 
-    dirbin_fluxes: dict[int, pl.LazyFrame] = {}
+    # the sums of each direction bin are in the order of the wavelength bins, thus they go beside the bins
+    dfbins = get_binned_lambda_frame(lambda_bin_edges)
+    delta_lambda = dfbins["delta_lambda"].to_numpy()
+    if fluxfilterfunc:
+        print("Applying filter to ARTIS spectrum")
+
+    dirbin_spectra: dict[int, pl.LazyFrame] = {}
     for dirbin, sums in dirbinsums.items():
-        flux = (
+        f_lambda = (
             sums.weightsums
             / delta_time_s
             * sums.solidanglefactor
             / (4 * math.pi * constants.megaparsec_to_cm**2)
             / nprocs_read
+            / delta_lambda
         )
-        dfflux = pl.LazyFrame({
-            "lambda_binindex": np.arange(len(flux), dtype=np.int32),
-            "flux": flux,
-            "packetcount": sums.packetcounts,
-        })
+        if fluxfilterfunc:
+            f_lambda = np.asarray(fluxfilterfunc(f_lambda), dtype=np.float64)
+        noisecolumns = []
         if sums.weightsquaresums is not None:
             relativenoise = np.sqrt(sums.weightsquaresums) / np.where(sums.weightsums > 0.0, sums.weightsums, np.nan)
             # a bin with no packets has no noise estimate, thus the value is not available
-            dfflux = dfflux.with_columns(relnoise=pl.Series(relativenoise).fill_nan(None))
-        dirbin_fluxes[dirbin] = dfflux
-
-    dirbin_spectra = {
-        dirbin: (
-            dfflux
-            .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
-            .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
-            .drop("flux")
+            noisecolumns.append(pl.Series("relnoise", relativenoise).fill_nan(None))
+        # f_nu takes the scale of the filtered f_lambda, because a filter does not commute with that scale
+        dirbin_spectra[dirbin] = (
+            dfbins
+            .with_columns(pl.Series("packetcount", sums.packetcounts), *noisecolumns, pl.Series("f_lambda", f_lambda))
+            .with_columns(f_nu=pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
+            .lazy()
         )
-        for dirbin, dfflux in dirbin_fluxes.items()
-    }
 
-    if fluxfilterfunc:
-        print("Applying filter to ARTIS spectrum")
-        dirbin_spectra = {
-            dirbin: dfspectrum.with_columns(
-                pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
-            )
-            for dirbin, dfspectrum in dirbin_spectra.items()
-        }
-
-    # f_nu takes the scale of the filtered f_lambda, because a filter does not commute with that scale
-    return {
-        dirbin: dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
-        for dirbin, dfspectrum in dirbin_spectra.items()
-    }
+    return dirbin_spectra
 
 
 def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
@@ -1791,8 +1773,7 @@ def get_shell_index_expr(
     scale = 1.0 if unit == "ye" else km_to_cm
     edges = [v * scale for v in shelledges]
     value = pl.col(column)
-    # the first category of cut() holds the values below the first edge, thus the first shell has the index 1
-    shell = value.cut(breaks=edges, left_closed=True).to_physical().cast(pl.Int32) - 1
+    shell = get_bin_index_expr(value, edges)
 
     return (
         pl
@@ -1822,10 +1803,14 @@ def add_ye_columns(
         msg = "The model has no Ye column, thus no Ye shell can hold a packet"
         raise ValueError(msg)
 
-    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of get_modeldata gives the cell
-    dfcellye = dfmodel.select(pl.col("modelgridindex").cast(pl.Int32), "Ye").collect()
+    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of get_modeldata gives the cell. A
+    # gather by the cell index keeps the order of the packets, and it is faster than a join over all the packets
+    dfcellye = dfmodel.select("modelgridindex", "Ye").collect()
+    cellcount = dfcellye.select(pl.col("modelgridindex").max() + 1).item()
+    ye_of_cell = pl.Series("Ye", [None] * cellcount, dtype=dfcellye.schema["Ye"]).scatter(
+        dfcellye["modelgridindex"], dfcellye["Ye"]
+    )
     for column, position in positions:
-        indexcolumn = f"{position}_modelgridindex"
         if position == "trueem" and thermalfromvelocity:
             if modelmeta["dimensions"] != 1:
                 msg = "The packets hold no thermal emission position, thus the Ye shells need a 1D model"
@@ -1833,12 +1818,9 @@ def add_ye_columns(
             indexexpr = get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)
         else:
             indexexpr = get_modelgridindex_expr(position, modelmeta, dfmodel)
-        lzdfpackets = (
-            lzdfpackets
-            .with_columns(indexexpr.alias(indexcolumn))
-            .join(dfcellye.lazy().rename({"modelgridindex": indexcolumn, "Ye": column}), on=indexcolumn, how="left")
-            .drop(indexcolumn)
-        )
+        # gather() gives an error for an index outside the series. Such an index and a null index give a null Ye
+        indexexpr = pl.when(indexexpr.is_between(0, ye_of_cell.len() - 1)).then(indexexpr)
+        lzdfpackets = lzdfpackets.with_columns(pl.lit(ye_of_cell).gather(indexexpr).alias(column))
 
     return lzdfpackets
 
@@ -2131,7 +2113,7 @@ def get_flux_contributions_from_packets(
         else inverse_solidangle_fraction / (delta_time_s * 4 * math.pi * constants.megaparsec_to_cm**2 * nprocs_read)
     )
     sorted_edges = np.sort(lambda_bin_edges)
-    dfbins = get_binned_lambda_frame(sorted_edges).select("lambda_angstroms", "delta_lambda").collect()
+    dfbins = get_binned_lambda_frame(sorted_edges)
     # These are the bin centres of each group spectrum. An empty selection thus also gives the correct axis.
     array_lambda = dfbins["lambda_angstroms"].to_numpy()
     array_delta_lambda = dfbins["delta_lambda"].to_numpy()
@@ -2139,10 +2121,14 @@ def get_flux_contributions_from_packets(
     def bin_by_type(dfpkts: pl.DataFrame, typecolumn: str, nucolumn: str) -> pl.DataFrame:
         """Return the packet energy of each type and wavelength bin.
 
-        The type is a code or the label of a shell. The Rust function gives the bins of the spectrum kernel. An
-        integer type and its bin then form one Int64 key, because one key groups faster than two. For 65 million
-        packets of a 3D kilonova run, the group_by of the code and of the bin from cut() took 0.63 s with polars 1.44
-        and 0.36 s with polars 2.0. This method took 0.35 s and 0.16 s.
+        The type is an emission code, an absorption code, or the index of a shell. The Rust function gives the bins of
+        the spectrum kernel. The type and its bin then form one Int64 key, because one key groups faster than two.
+        Times for 65 million packets of a 3D kilonova run (polars 1.44 / polars 2.0):
+
+        - this method: 0.35 s / 0.16 s;
+        - a group_by of the code and the bin from cut(): 0.63 s / 0.36 s;
+        - a group_by of the code and the bin from bin_intervals(): 0.37 s with polars 2.0;
+        - a Rust sum for each label after a gather of the label of each line: 0.72 s.
         """
         from artistools.rustext import get_bin_indices
 
@@ -2153,13 +2139,6 @@ def get_flux_contributions_from_packets(
         )
         binindex = get_bin_indices(dfinrange, "lambda_angstroms", sorted_edges.tolist())["binindex"]
         typedtype = dfinrange.schema[typecolumn]
-        if not typedtype.is_integer():
-            return (
-                dfinrange
-                .with_columns(binindex=binindex)
-                .group_by(typecolumn, "binindex")
-                .agg(pl.col(energy_column).sum())
-            )
         nbins = len(sorted_edges) - 1
         code = pl.col("key").floordiv(nbins)
         return (

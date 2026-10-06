@@ -255,7 +255,7 @@ def get_from_packets(
             expr = pl.col("nucname") == pellet_nucname
         dfpackets = dfpackets.filter(
             pl.col("pellet_nucindex").is_in(
-                get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series()
+                get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series().implode()
             )
         )
 
@@ -358,6 +358,7 @@ def get_top_nuclides(
         .group_by("pellet_nucindex")
         .agg(pl.sum("e_rf").alias("e_rf_sum"))
         .top_k(by="e_rf_sum", k=count)
+        .sort("e_rf_sum", descending=True)
         .join(dfnuclides, on="pellet_nucindex", how="left", maintain_order="left")
         .select(["e_rf_sum", "nucname", "pellet_nucindex"])
         .collect()

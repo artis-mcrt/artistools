@@ -9,6 +9,7 @@ import polars.testing as pltest
 import pytest
 
 import artistools as at
+from artistools.atomic.core import read_transitiondata
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -42,7 +43,7 @@ def test_read_transitiondata_xz_high_preset(tmp_path: Path) -> None:
         fe2lines = list(itertools.islice(ftransitions, 141965, 141968))
     (tmp_path / "transitiondata.txt.xz").write_bytes(lzma.compress(("26 2 3\n" + "".join(fe2lines)).encode(), preset=9))
 
-    transitionsdict = at.rustext.read_transitiondata(tmp_path / "transitiondata.txt.xz")
+    transitionsdict = read_transitiondata(tmp_path / "transitiondata.txt.xz")
     assert transitionsdict.keys() == {(26, 2)}
     assert transitionsdict[26, 2].shape == (3, 5)
     assert transitionsdict[26, 2].row(0, named=True) == pytest.approx({
@@ -55,7 +56,7 @@ def test_read_transitiondata_xz_high_preset(tmp_path: Path) -> None:
 
 
 def test_read_transitiondata() -> None:
-    transitionsdict = at.rustext.read_transitiondata(modelpath / "transitiondata.txt")
+    transitionsdict = read_transitiondata(modelpath / "transitiondata.txt")
     assert sorted(transitionsdict.keys()) == [
         (26, 1),
         (26, 2),
@@ -85,7 +86,7 @@ def test_read_transitiondata() -> None:
     })
 
     # an ionlist selects a subset of the ions without changing what is read for them
-    selectedions = at.rustext.read_transitiondata(modelpath / "transitiondata.txt", ionlist={(26, 2)})
+    selectedions = read_transitiondata(modelpath / "transitiondata.txt", ionlist={(26, 2)})
     assert selectedions.keys() == {(26, 2)}
     pltest.assert_frame_equal(selectedions[26, 2], dftransitions)
 
@@ -96,7 +97,159 @@ def test_read_transitiondata_truncated(tmp_path: Path) -> None:
     truncated.write_text("26 2\n")
 
     with pytest.raises(Exception, match="line ended where a transition count was expected"):
-        at.rustext.read_transitiondata(truncated)
+        read_transitiondata(truncated)
+
+
+@pytest.mark.parametrize("ionlist", [None, {(26, 2)}, {(27, 2)}])
+def test_read_transitiondata_rejects_a_table_that_the_file_ends_inside(
+    tmp_path: Path, ionlist: set[tuple[int, int]] | None
+) -> None:
+    """A transition table with fewer lines than its header gives must be an error, for a kept and for a skipped ion.
+
+    A cut compressed file decodes with no error, thus the reader gave the short table in silence.
+    """
+    transitionsfile = tmp_path / "transitiondata.txt"
+    transitionsfile.write_text("26 2 5\n1 2 1.0 2.0 1\n1 3 1.0 2.0 1\n", encoding="utf-8")
+
+    with pytest.raises(
+        Exception, match=r"transitiondata\.txt: the file ends after 2 of the 5 transitions of Z=26 ion_stage=2"
+    ):
+        read_transitiondata(transitionsfile, ionlist=ionlist)
+
+    # a complete table of the same ion is not an error
+    transitionsfile.write_text("26 2 2\n1 2 1.0 2.0 1\n1 3 1.0 2.0 1\n", encoding="utf-8")
+    transitionsdict = read_transitiondata(transitionsfile, ionlist=ionlist)
+    assert [df.height for df in transitionsdict.values()] == ([] if ionlist == {(27, 2)} else [2])
+
+    # ARTIS reads a complete file whose last line has no newline. The reader rejected such a file as cut
+    transitionsfile.write_text("26 2 2\n1 2 1.0 2.0 1\n1 3 1.0 2.0 1", encoding="utf-8")
+    transitionsdict = read_transitiondata(transitionsfile, ionlist=ionlist)
+    assert [df.height for df in transitionsdict.values()] == ([] if ionlist == {(27, 2)} else [2])
+
+    # a cut inside the last line of a kept table leaves too few numbers for the format of the table
+    if ionlist != {(27, 2)}:
+        transitionsfile.write_text("26 2 2\n1 2 1.0 2.0 1\n1 3 1.0 7.6", encoding="utf-8")
+        with pytest.raises(Exception, match=r"transitiondata\.txt:3: line ended where a forbidden flag was expected"):
+            read_transitiondata(transitionsfile, ionlist=ionlist)
+
+
+def test_read_transitiondata_reads_the_legacy_format_of_four_columns(tmp_path: Path) -> None:
+    """ARTIS takes the format of each table from its first line, and 4 numbers give "index lower upper A".
+
+    The reader took such a table as "lower upper A collstr", thus it gave incorrect levels and A values with no error.
+    ARTIS gives a transition of this format the collision strength -1 and the forbidden flag 0.
+    """
+    transitionsfile = tmp_path / "transitiondata.txt"
+    transitionsfile.write_text(
+        "26 2 3\n1 1 2 1.5e8\n2 1 3 2.5e7\n3 2 3 4.0e6\n\n26 3 1\n1 2 2.0 0.5 1\n", encoding="utf-8"
+    )
+    transitionsdict = read_transitiondata(transitionsfile)
+    pltest.assert_frame_equal(
+        transitionsdict[26, 2],
+        pl.DataFrame(
+            {
+                "lower": [0, 0, 1],
+                "upper": [1, 2, 2],
+                "A": [1.5e8, 2.5e7, 4.0e6],
+                "collstr": [-1.0] * 3,
+                "forbidden": [0] * 3,
+            },
+            schema={
+                "lower": pl.Int32,
+                "upper": pl.Int32,
+                "A": pl.Float32,
+                "collstr": pl.Float32,
+                "forbidden": pl.Int32,
+            },
+        ),
+    )
+    assert transitionsdict[26, 3].row(0) == pytest.approx((0, 1, 2.0, 0.5, 1))
+
+    # ARTIS reads no other count of numbers
+    transitionsfile.write_text("26 2 1\n1 2 1.0\n", encoding="utf-8")
+    with pytest.raises(Exception, match=r"transitiondata\.txt:2: the first line of a table has 3 numbers"):
+        read_transitiondata(transitionsfile)
+
+
+def test_read_transitiondata_errors_name_the_file_and_the_line(tmp_path: Path) -> None:
+    """A parse error names the file and the line. The test model file has 1.9 million lines."""
+    transitionsfile = tmp_path / "transitiondata.txt"
+    transitionsfile.write_text("26 2 3\n1 2 1.0 2.0 1\n1 3 1.0e-3x 2.0 1\n2 3 1.0 2.0 1\n", encoding="utf-8")
+    with pytest.raises(Exception, match=r"transitiondata\.txt:3: could not parse \"1\.0e-3x\" as an A value"):
+        read_transitiondata(transitionsfile)
+
+    transitionsfile.write_text("26 2 3\n1 2 1.0 2.0 1\n\n2 3 1.0 2.0 1\n", encoding="utf-8")
+    with pytest.raises(Exception, match=r"transitiondata\.txt:3: line ended where a lower level was expected"):
+        read_transitiondata(transitionsfile)
+
+    transitionsfile.write_text("26 x 3\n", encoding="utf-8")
+    with pytest.raises(Exception, match=r"transitiondata\.txt:1: could not parse \"x\" as an ion stage"):
+        read_transitiondata(transitionsfile)
+
+
+def test_read_transitiondata_takes_the_format_from_the_leading_numbers_and_reports_the_first_bad_line(
+    tmp_path: Path,
+) -> None:
+    """The format of a table comes from the leading numbers of its first line, and not from its count of words.
+
+    The reader parses all the lines in one query. It must report the first bad line of the file, as ARTIS does.
+    """
+    transitionsfile = tmp_path / "transitiondata.txt"
+    transitionsfile.write_text(
+        "26 2 2\n1 2 1.0 2.0 1 # a comment\n1 3 1.0 2.0 1\n\n26 3 1\n1 1 2 1.0e8 # a comment\n", encoding="utf-8"
+    )
+    transitionsdict = read_transitiondata(transitionsfile)
+    assert transitionsdict[26, 2]["upper"].to_list() == [1, 2]
+    assert transitionsdict[26, 3].row(0) == pytest.approx((0, 1, 1.0e8, -1.0, 0))
+
+    transitionsfile.write_text("26 2 2\n1 2 1.0 2.0 1\n1 3 1.0 x 1\n\n26 x 1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"transitiondata\.txt:3: could not parse \"x\" as a collision strength"):
+        read_transitiondata(transitionsfile)
+
+
+def test_level_numbers_that_start_at_zero(tmp_path: Path) -> None:
+    """ARTIS takes the number of the first level, 0 or 1, from adata.txt, and it applies it to all three files.
+
+    The readers took the numbering from 1. Thus a zero-based transition gave the lower level -1, a single target
+    level 0 of a photoionisation table started a list of targets, and adata.txt gave a bare AssertionError.
+    """
+    from artistools.atomic.core import parse_adata
+    from artistools.atomic.core import parse_phixsdata
+
+    transitionsfile = tmp_path / "transitiondata.txt"
+    transitionsfile.write_text("26 1 2\n0 1 1.0 2.0 1\n0 2 1.0 2.0 1\n", encoding="utf-8")
+    dftransitions = read_transitiondata(transitionsfile, firstlevelnumber=0)[26, 1]
+    assert dftransitions["lower"].to_list() == [0, 0]
+    assert dftransitions["upper"].to_list() == [1, 2]
+    with pytest.raises(Exception, match="ARTIS numbers the levels from 0 or from 1, not from 2"):
+        read_transitiondata(transitionsfile, firstlevelnumber=2)
+
+    phixsfile = tmp_path / "phixsdata_v2.txt"
+    phixsfile.write_text(
+        "2\n0.1\n26 2 0 1 1 7.9\n1.0\n1.0\n26 2 -1 1 0 7.9\n2\n0 0.75\n1 0.25\n2.0\n2.0\n", encoding="utf-8"
+    )
+    phixsdict = parse_phixsdata(phixsfile, firstlevelnumber=0)
+    assert phixsdict.keys() == {(26, 1, 0), (26, 1, 1)}
+    assert phixsdict[26, 1, 1][0]["level"].tolist() == [0]
+    assert phixsdict[26, 1, 0][0]["level"].tolist() == [0, 1]
+
+    adatafile = tmp_path / "adata.txt"
+    adatafile.write_text("26 1 3 7.9\n0 0.0 9.0 1 ground\n1 1.5 7.0 1 first\n2 2.5 5.0 1 second\n", encoding="utf-8")
+    with adatafile.open(encoding="utf-8") as fadata:
+        ions = list(parse_adata(fadata, {}, None, firstlevelnumber=0))
+    assert ions[0][4]["levelindex"].to_list() == [0, 1, 2]
+    with (
+        adatafile.open(encoding="utf-8") as fadata,
+        pytest.raises(ValueError, match="the first level of the ion has the number 0, but the numbering from 1"),
+    ):
+        list(parse_adata(fadata, {}, None))
+
+    adatafile.write_text("26 1 3 7.9\n1 0.0 9.0 1 ground\n2 1.5 7.0 1 first\n4 2.5 5.0 1 second\n", encoding="utf-8")
+    with (
+        adatafile.open(encoding="utf-8") as fadata,
+        pytest.raises(ValueError, match="level 3 of the ion has the number 4"),
+    ):
+        list(parse_adata(fadata, {}, None))
 
 
 def test_parse_phixsdata_multiple_targets(tmp_path: Path) -> None:

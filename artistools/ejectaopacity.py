@@ -40,6 +40,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc.general import get_bin_index_expr
 from artistools.rustext import sum_binned_line_opacities
 
 HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi
@@ -186,12 +187,9 @@ def get_opacity_lines(
             .with_columns(B_ul=C_cm_per_s**2 / 2 / h_erg_s / pl.col("nu_trans").pow(3) * pl.col("A"))
             .with_columns(B_lu=pl.col("upper_g") / pl.col("lower_g") * pl.col("B_ul"))
             .select(
-                # give cut only the interior edges. A line at an outer edge then falls into the first or
-                # the last bin, not into an out-of-range category with the index -1
-                pl
-                .col("lambda_angstroms")
-                .cut(breaks=lambda_bin_edges[1:-1])
-                .to_physical()
+                # the function gets only the interior edges. Thus a line at an outer edge goes into the first or the
+                # last bin
+                (get_bin_index_expr(pl.col("lambda_angstroms"), lambda_bin_edges[1:-1], right_closed=True) + 1)
                 .cast(pl.UInt32)
                 .alias("lambda_angstroms_binindex"),
                 "lambda_angstroms",
@@ -295,7 +293,7 @@ def get_planck_mean_opacities(dfbinnedopacities: pl.DataFrame) -> pl.DataFrame:
         .group_by("modelgridindex", "mass_g")
         .agg(planckmean_opacity=((pl.col("planckfactor") * pl.col("exopac")).sum() / pl.col("planckfactor").sum()))
         .sort("modelgridindex")
-        .collect(engine="streaming")
+        .collect()
     )
 
 

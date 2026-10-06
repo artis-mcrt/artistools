@@ -49,6 +49,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
 from artistools.misc.fileio import modelpath_cache
+from artistools.misc.general import get_bin_index_expr
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import get_packets
@@ -147,15 +148,14 @@ def get_timebin_expr(timeexpr: pl.Expr, arr_tstart: Sequence[float], arr_tend: S
         msg = "The time bins overlap, thus a packet in both bins would count in one bin only. Give separate bins"
         raise ValueError(msg)
 
-    # use one cut() on all the edges, because a when() test for each bin made one column for each bin
+    # use one bin index on all the edges. A when() test for each bin made one column for each bin
     edges = np.unique(np.concatenate([arr_binedge_start, arr_binedge_end]))
     binofinterval: dict[int, int] = {}
     for listindex, tstart, tend in zip(timeorder.tolist(), arr_binedge_start, arr_binedge_end, strict=True):
         for intervalindex in range(int(np.searchsorted(edges, tstart)), int(np.searchsorted(edges, tend))):
             binofinterval[intervalindex] = listindex
 
-    # cut() gives 0 below the first edge, thus interval k of the edges takes the category k + 1
-    intervalindex = timeexpr.cut(breaks=edges.tolist(), left_closed=True).to_physical().cast(pl.Int32) - 1
+    intervalindex = get_bin_index_expr(timeexpr, edges.tolist())
     return (
         pl
         .when(timeexpr == edges[-1])

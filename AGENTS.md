@@ -103,7 +103,7 @@ Correct the initial problem first. Add a suppression only if you cannot correct 
 | pyright | `# pyright: ignore[rule-name]` |
 | ty | `# ty:ignore[rule-name]` |
 
-The configuration gives each ruff rule by **name** and not by code (`"any-type"` and not `"ANN401"`). Use the name in a suppression. The setting `enableTypeIgnoreComments` is off for pyright, thus a `# type: ignore` comment does not apply to pyright. One line can need more than one comment. For an example, see `artistools/_polarscompat.py`.
+The configuration gives each ruff rule by **name** and not by code (`"any-type"` and not `"ANN401"`). Use the name in a suppression. The setting `enableTypeIgnoreComments` is off for pyright, thus a `# type: ignore` comment does not apply to pyright. One line can need more than one comment. For an example, see `get_next_color` in `artistools/plottools.py`.
 
 ## Imports and module layout
 

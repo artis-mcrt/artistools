@@ -39,6 +39,17 @@ def df_filter_minmax_bracketed(
     return df
 
 
+def get_bin_index_expr(value: pl.Expr, edges: Iterable[float], right_closed: bool = False) -> pl.Expr:
+    """Return the index of the bin between two edges that holds each value.
+
+    A bin holds its lower edge, or its upper edge if right_closed is true. A value below the first edge gives -1,
+    and a value above the last edge gives the count of bins. A null value and a NaN value give null.
+    """
+    binindex = value.bin_intervals(list(edges), labels=False, right_closed=right_closed).cast(pl.Int32) - 1
+    # bin_intervals puts NaN above the last edge
+    return pl.when(value.is_not_nan()).then(binindex)
+
+
 @functools.lru_cache
 def savgol_coeffs(window_length: int, polyorder: int) -> npt.NDArray[np.float64]:
     """Return the Savitzky-Golay smoothing coefficients for a centred window."""

@@ -64,7 +64,7 @@ def get_required_packets(
     else:
         lineindices = get_lineindices(modelpath, Z_list, ion_stage_list)
 
-    return nprocs_read, dfpackets.filter(pl.col("absorption_type").is_in(lineindices))
+    return nprocs_read, dfpackets.filter(pl.col("absorption_type").is_in(lineindices.implode()))
 
 
 def get_reduced_packet_set(
