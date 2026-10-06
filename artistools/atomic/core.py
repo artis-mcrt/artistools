@@ -1,5 +1,7 @@
 """Read the ARTIS atomic data files, and convert between the names of elements, ions, and nuclides."""
 
+import math
+import operator
 import re
 import string
 import time
@@ -9,6 +11,7 @@ from collections.abc import Generator
 from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
@@ -26,13 +29,16 @@ from artistools.misc import polars_source
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import modelpath_cache
+from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
 from artistools.misc.remote import on_model_host
-from artistools.rustext import read_transitiondata
+
+if t.TYPE_CHECKING:
+    from collections.abc import Callable
 
 # The version of the line list parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type.
@@ -268,6 +274,200 @@ def add_transition_columns(
         assert col in columns_after, f"Invalid column name {col}"
 
     return dftransitions
+
+
+# the fields of a line of a transition table, keyed by the count of leading numbers in the first line of the table.
+# ARTIS reads 5 numbers, or 4 numbers in the legacy format, which has a transition index and no collision strength
+TRANSITION_FIELDS: t.Final = MappingProxyType({
+    5: (
+        ("int", "a lower level"),
+        ("int", "an upper level"),
+        ("float", "an A value"),
+        ("float", "a collision strength"),
+        ("int", "a forbidden flag"),
+    ),
+    4: (("int", "a transition index"), ("int", "a lower level"), ("int", "an upper level"), ("float", "an A value")),
+})
+ION_HEADER_FIELDS: t.Final = (("int", "an atomic number"), ("int", "an ion stage"), ("count", "a transition count"))
+TRANSITION_SCHEMA: t.Final = MappingProxyType({
+    "lower": pl.Int32,
+    "upper": pl.Int32,
+    "A": pl.Float32,
+    "collstr": pl.Float32,
+    "forbidden": pl.Int32,
+})
+INTEGER_PATTERN: t.Final = re.compile(r"[+-]?\d+")
+
+
+def count_leading_numbers(line: str) -> int:
+    """Return the count of the finite numbers at the start of a line, as ARTIS counts the columns of a table."""
+    count = 0
+    for token in line.split():
+        try:
+            if not math.isfinite(float(token)):
+                break
+        except ValueError:
+            break
+        count += 1
+    return count
+
+
+def get_field_error(line: str, fields: Sequence[tuple[str, str]]) -> str | None:
+    """Return the message for the first field of a line that does not parse, or None if each field parses."""
+    tokens = line.split()
+    for index, (kind, description) in enumerate(fields):
+        if index >= len(tokens):
+            return f"line ended where {description} was expected"
+        token = tokens[index]
+        if kind == "float":
+            try:
+                float(token)
+            except ValueError:
+                return f'could not parse "{token}" as {description}'
+        elif not INTEGER_PATTERN.fullmatch(token) or (kind == "count" and token.startswith("-")):
+            return f'could not parse "{token}" as {description}'
+    return None
+
+
+def get_format_error(line: str) -> str:
+    """Return the message for the first line of a table that has neither format of ARTIS."""
+    return (
+        f"the first line of a table has {count_leading_numbers(line)} numbers, but ARTIS reads 5 numbers (lower upper"
+        " A collstr forbidden) or 4 numbers (index lower upper A)"
+    )
+
+
+def read_transitiondata(
+    filepath: Path, ionlist: Collection[tuple[int, int]] | None = None, firstlevelnumber: int = 1
+) -> dict[tuple[int, int], pl.DataFrame]:
+    """Read the transition table of each (atomic_number, ion_stage) from an ARTIS transitiondata.txt file.
+
+    The header line of an ion gives the atomic number, the ion stage, and the count of the lines of its table. Blank
+    lines and comment lines can stand between two tables. ARTIS takes the format of a table from the count of the
+    numbers in its first line, see TRANSITION_FIELDS. The level numbers of the file start at firstlevelnumber, and
+    the frames give zero-based level indices. An error names the file and the first line that does not parse. A
+    table that the file ends inside is an error, because a cut compressed file decodes with no error.
+    """
+    if firstlevelnumber not in {0, 1}:
+        msg = f"ARTIS numbers the levels from 0 or from 1, not from {firstlevelnumber}"
+        raise ValueError(msg)
+
+    def token(index: int) -> pl.Expr:
+        return pl.col("tokens").list.get(index, null_on_oob=True)
+
+    # the query gives only numbers, thus the streaming engine drops the text of each line after the casts. Row i holds
+    # line i + 1 of the file
+    with polars_source_open(filepath) as source:
+        dflines = (
+            pl
+            .scan_lines(source)
+            .select(tokens=pl.col("line").str.extract_all(r"\S+"))
+            .select(
+                iscontent=token(0).is_not_null() & token(0).str.starts_with("#").not_(),
+                tokencount=pl.col("tokens").list.len(),
+                int0=token(0).cast(pl.Int32, strict=False),
+                int1=token(1).cast(pl.Int32, strict=False),
+                int2=token(2).cast(pl.Int32, strict=False),
+                float2=token(2).cast(pl.Float32, strict=False),
+                float3=token(3).cast(pl.Float32, strict=False),
+                int4=token(4).cast(pl.Int32, strict=False),
+            )
+            .collect()
+        )
+
+    def read_lines(rows: Collection[int]) -> dict[int, str]:
+        """Return the text of each row. Only an error and an unusual first line of a table need the text."""
+        if not rows:
+            return {}
+        with polars_source_open(filepath) as source:
+            dfrows = pl.scan_lines(source, row_index_name="row").filter(pl.col("row").is_in(list(rows))).collect()
+        return dict(zip(dfrows["row"].to_list(), dfrows["line"].to_list(), strict=True))
+
+    # the row of each error, and the function that gives the message from the text of the row
+    errors: list[tuple[int, Callable[[str], str | None]]] = []
+
+    # ARTIS reads the next line that is not blank and not a comment as a header, then the lines of its table. Thus
+    # only the few headers need a loop
+    # numpy casts a UInt32 array for each search with a Python int, thus the array takes the dtype of the int
+    contentrows = dflines.with_row_index("row").filter("iscontent")["row"].cast(pl.Int64).to_numpy()
+    tables: list[tuple[int, int, int, int]] = []
+    position = 0
+    while position < len(contentrows):
+        headerrow = int(contentrows[position])
+        atomic_number, ion_stage, count = (dflines[column][headerrow] for column in ("int0", "int1", "int2"))
+        if atomic_number is None or ion_stage is None or count is None or count < 0:
+            errors.append((headerrow, partial(get_field_error, fields=ION_HEADER_FIELDS)))
+            break
+        tables.append((headerrow + 1, atomic_number, ion_stage, count))
+        position = int(np.searchsorted(contentrows, headerrow + count, side="right"))
+
+    keptions = [table for table in tables if ionlist is None or (table[1], table[2]) in ionlist]
+    parsedcolumns = {5: ("int0", "int1", "float2", "float3", "int4"), 4: ("int0", "int1", "int2", "float3")}
+
+    # a first line of 4 or 5 numbers gives the format of its table. Another first line needs its text, e.g. a line
+    # with a comment after the numbers
+    formatofrow: dict[int, int] = {}
+    for firstrow, *_, count in keptions:
+        if count > 0 and firstrow < dflines.height:
+            values = dflines.row(firstrow, named=True)
+            if values["tokencount"] in parsedcolumns and all(
+                values[column] is not None and math.isfinite(values[column])
+                for column in parsedcolumns[values["tokencount"]]
+            ):
+                formatofrow[firstrow] = values["tokencount"]
+    unusualrows = [firstrow for firstrow, *_, count in keptions if count > 0 and firstrow not in formatofrow]
+    for row, line in read_lines(unusualrows).items():
+        if (numbercount := count_leading_numbers(line)) in parsedcolumns:
+            formatofrow[row] = numbercount
+        else:
+            errors.append((row, get_format_error))
+
+    outputcolumns = {
+        5: {
+            "lower": pl.col("int0") - firstlevelnumber,
+            "upper": pl.col("int1") - firstlevelnumber,
+            "A": pl.col("float2"),
+            "collstr": pl.col("float3"),
+            "forbidden": pl.col("int4"),
+        },
+        4: {
+            "lower": pl.col("int1") - firstlevelnumber,
+            "upper": pl.col("int2") - firstlevelnumber,
+            "A": pl.col("float3"),
+            "collstr": pl.lit(-1.0, dtype=pl.Float32),
+            "forbidden": pl.lit(0, dtype=pl.Int32),
+        },
+    }
+    transitiondata: dict[tuple[int, int], pl.DataFrame] = {}
+    for firstrow, atomic_number, ion_stage, count in keptions:
+        dftable = dflines.slice(firstrow, count)
+        tableformat = formatofrow.get(firstrow)
+        if dftable.is_empty():
+            transitiondata[atomic_number, ion_stage] = pl.DataFrame(schema=dict(TRANSITION_SCHEMA))
+        elif tableformat is not None:
+            badrows = dftable.with_row_index("row").filter(
+                pl.any_horizontal(pl.col(parsedcolumns[tableformat]).is_null())
+            )["row"]
+            if badrows.is_empty():
+                transitiondata[atomic_number, ion_stage] = dftable.select(**outputcolumns[tableformat])
+            else:
+                errors.append((firstrow + badrows[0], partial(get_field_error, fields=TRANSITION_FIELDS[tableformat])))
+
+    # ARTIS reads the lines in order, thus the first line that does not parse gives the error
+    if errors:
+        row, get_message = min(errors, key=operator.itemgetter(0))
+        msg = f"{filepath}:{row + 1}: {get_message(read_lines([row])[row]) or 'the line does not parse'}"
+        raise ValueError(msg)
+
+    if tables and tables[-1][0] + tables[-1][3] > dflines.height:
+        firstrow, atomic_number, ion_stage, count = tables[-1]
+        msg = (
+            f"{filepath}: the file ends after {dflines.height - firstrow} of the {count} transitions of"
+            f" Z={atomic_number} ion_stage={ion_stage}"
+        )
+        raise ValueError(msg)
+
+    return transitiondata
 
 
 def get_transitiondata(

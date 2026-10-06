@@ -60,15 +60,3 @@ pub fn parse_field<T: FromStr>(token: &str, expected: &str) -> PolarsResult<T> {
         .parse()
         .map_err(|_| malformed(format!("could not parse {token:?} as {expected}")))
 }
-
-/// Take the next token of a line and parse it, failing if the line ends first
-pub fn next_field<'a, T: FromStr>(
-    tokens: &mut impl Iterator<Item = &'a str>,
-    expected: &str,
-) -> PolarsResult<T> {
-    let token = tokens
-        .next()
-        .ok_or_else(|| malformed(format!("line ended where {expected} was expected")))?;
-
-    parse_field(token, expected)
-}
