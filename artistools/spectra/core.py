@@ -475,25 +475,19 @@ def get_spectrum_at_time(
 
 
 @lru_cache(maxsize=4)
-def get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) -> pl.LazyFrame:
+def get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) -> pl.DataFrame:
     """Return the wavelength bin frame for the given packed bin edges.
 
     The bytes key makes the arguments hashable for the lru_cache.
     """
     lambda_bin_edges = np.frombuffer(lambda_bin_edges_bytes, dtype=np.float64, count=count)
-    return (
-        pl
-        .DataFrame({
-            "lambda_angstroms": 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:]),
-            "delta_lambda": lambda_bin_edges[1:] - lambda_bin_edges[:-1],
-        })
-        .with_row_index("lambda_binindex")
-        .with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
-        .lazy()
-    )
+    return pl.DataFrame({
+        "lambda_angstroms": 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:]),
+        "delta_lambda": lambda_bin_edges[1:] - lambda_bin_edges[:-1],
+    }).with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
 
 
-def get_binned_lambda_frame(lambda_bin_edges: npt.NDArray[np.floating]) -> pl.LazyFrame:
+def get_binned_lambda_frame(lambda_bin_edges: npt.NDArray[np.floating]) -> pl.DataFrame:
     """Return the centre, the width and the frequency of each wavelength bin.
 
     The result is in a cache, because the code bins each emission contribution and each absorption contribution
@@ -628,7 +622,6 @@ def get_from_packets(
             escape_type="TYPE_GAMMA" if gamma else "TYPE_RPKT",
         )
 
-    dfbinned_lazy = get_binned_lambda_frame(lambda_bin_edges)
     if directionbins_are_vpkt_observers:
         vpkt_config = get_vpkt_config(modelpath)
         check_time_range_inside_vpkt_window(vpkt_config, timelowdays, timehighdays)
@@ -661,50 +654,38 @@ def get_from_packets(
             sumsquares=relnoise,
         )
 
-    dirbin_fluxes: dict[int, pl.LazyFrame] = {}
+    # the sums of each direction bin are in the order of the wavelength bins, thus they go beside the bins
+    dfbins = get_binned_lambda_frame(lambda_bin_edges)
+    delta_lambda = dfbins["delta_lambda"].to_numpy()
+    if fluxfilterfunc:
+        print("Applying filter to ARTIS spectrum")
+
+    dirbin_spectra: dict[int, pl.LazyFrame] = {}
     for dirbin, sums in dirbinsums.items():
-        flux = (
+        f_lambda = (
             sums.weightsums
             / delta_time_s
             * sums.solidanglefactor
             / (4 * math.pi * constants.megaparsec_to_cm**2)
             / nprocs_read
+            / delta_lambda
         )
-        dfflux = pl.LazyFrame({
-            "lambda_binindex": np.arange(len(flux), dtype=np.int32),
-            "flux": flux,
-            "packetcount": sums.packetcounts,
-        })
+        if fluxfilterfunc:
+            f_lambda = np.asarray(fluxfilterfunc(f_lambda), dtype=np.float64)
+        noisecolumns = []
         if sums.weightsquaresums is not None:
             relativenoise = np.sqrt(sums.weightsquaresums) / np.where(sums.weightsums > 0.0, sums.weightsums, np.nan)
             # a bin with no packets has no noise estimate, thus the value is not available
-            dfflux = dfflux.with_columns(relnoise=pl.Series(relativenoise).fill_nan(None))
-        dirbin_fluxes[dirbin] = dfflux
-
-    dirbin_spectra = {
-        dirbin: (
-            dfflux
-            .join(dfbinned_lazy, on="lambda_binindex", how="left", maintain_order="left")
-            .with_columns(f_lambda=pl.col("flux") / pl.col("delta_lambda"))
-            .drop("flux")
+            noisecolumns.append(pl.Series("relnoise", relativenoise).fill_nan(None))
+        # f_nu takes the scale of the filtered f_lambda, because a filter does not commute with that scale
+        dirbin_spectra[dirbin] = (
+            dfbins
+            .with_columns(pl.Series("packetcount", sums.packetcounts), *noisecolumns, pl.Series("f_lambda", f_lambda))
+            .with_columns(f_nu=pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
+            .lazy()
         )
-        for dirbin, dfflux in dirbin_fluxes.items()
-    }
 
-    if fluxfilterfunc:
-        print("Applying filter to ARTIS spectrum")
-        dirbin_spectra = {
-            dirbin: dfspectrum.with_columns(
-                pl.col("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
-            )
-            for dirbin, dfspectrum in dirbin_spectra.items()
-        }
-
-    # f_nu takes the scale of the filtered f_lambda, because a filter does not commute with that scale
-    return {
-        dirbin: dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
-        for dirbin, dfspectrum in dirbin_spectra.items()
-    }
+    return dirbin_spectra
 
 
 def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
@@ -2132,7 +2113,7 @@ def get_flux_contributions_from_packets(
         else inverse_solidangle_fraction / (delta_time_s * 4 * math.pi * constants.megaparsec_to_cm**2 * nprocs_read)
     )
     sorted_edges = np.sort(lambda_bin_edges)
-    dfbins = get_binned_lambda_frame(sorted_edges).select("lambda_angstroms", "delta_lambda").collect()
+    dfbins = get_binned_lambda_frame(sorted_edges)
     # These are the bin centres of each group spectrum. An empty selection thus also gives the correct axis.
     array_lambda = dfbins["lambda_angstroms"].to_numpy()
     array_delta_lambda = dfbins["delta_lambda"].to_numpy()
@@ -2140,10 +2121,12 @@ def get_flux_contributions_from_packets(
     def bin_by_type(dfpkts: pl.DataFrame, typecolumn: str, nucolumn: str) -> pl.DataFrame:
         """Return the packet energy of each type and wavelength bin.
 
-        The type is a code or the label of a shell. The Rust function gives the bins of the spectrum kernel. An
-        integer type and its bin then form one Int64 key, because one key groups faster than two. For 65 million
-        packets of a 3D kilonova run, the group_by of the code and of the bin from cut() took 0.63 s with polars 1.44
-        and 0.36 s with polars 2.0. This method took 0.35 s and 0.16 s.
+        The type is an emission code, an absorption code, or the index of a shell. The Rust function gives the bins of
+        the spectrum kernel. The type and its bin then form one Int64 key, because one key groups faster than two. For
+        65 million packets of a 3D kilonova run, the group_by of the code and of the bin from cut() took 0.63 s with
+        polars 1.44 and 0.36 s with polars 2.0. This method took 0.35 s and 0.16 s. A group_by of the code and of the
+        bin from bin_intervals() took 0.37 s with polars 2.0, and a Rust sum for each label after a gather of the label
+        of each line took 0.72 s.
         """
         from artistools.rustext import get_bin_indices
 
@@ -2154,13 +2137,6 @@ def get_flux_contributions_from_packets(
         )
         binindex = get_bin_indices(dfinrange, "lambda_angstroms", sorted_edges.tolist())["binindex"]
         typedtype = dfinrange.schema[typecolumn]
-        if not typedtype.is_integer():
-            return (
-                dfinrange
-                .with_columns(binindex=binindex)
-                .group_by(typecolumn, "binindex")
-                .agg(pl.col(energy_column).sum())
-            )
         nbins = len(sorted_edges) - 1
         code = pl.col("key").floordiv(nbins)
         return (
