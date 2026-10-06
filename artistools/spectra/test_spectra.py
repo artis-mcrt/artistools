@@ -577,8 +577,9 @@ def test_spectra_sampled_emission_replaces_the_emission_type_and_the_absorption(
     """The sampled emission gives the emission type and the absorption, and the last interaction gives neither.
 
     The test model has no sampled emission. Thus the test copies the emission type of the last thermal emission and
-    the last absorption to the sampled columns. It then sets the columns of the last absorption to null. The plot must
-    then equal the plot of the last thermal emission.
+    the last absorption to the sampled columns. It then sets the emission type of the last thermal emission and the
+    columns of the last absorption to null. Thus only a plot that reads the sampled columns equals the plot of the last
+    thermal emission.
     """
     get_packets = atspectra.get_packets
 
@@ -588,6 +589,7 @@ def test_spectra_sampled_emission_replaces_the_emission_type_and_the_absorption(
             sampled_emissiontype=pl.col("trueemissiontype"),
             sampled_absorption_type=pl.col("absorption_type"),
             sampled_absorption_freq=pl.col("absorption_freq"),
+            trueemissiontype=pl.lit(None, dtype=pl.Int32),
             absorption_type=pl.lit(None, dtype=pl.Int32),
             absorption_freq=pl.lit(None, dtype=pl.Float32),
         )

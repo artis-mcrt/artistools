@@ -82,6 +82,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
+from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import model_path_from_text
@@ -1286,6 +1287,8 @@ def get_emission_contributions(
     """
     if not args.frompackets:
         assert not args.vpkt_match_emission_exclusion_to_opac
+        # the emission files of exspec hold no sampled emission, thus resolve_frompackets selects the packets for it
+        assert not args.use_sampledemissiontype
         lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, args.xunit)
 
         return get_flux_contributions(
@@ -2096,8 +2099,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Use one emission of each packet for the emission type. ARTIS samples this emission with equal"
             " probability from the emissions that set the emission type. The absorption is the last absorption"
             " before that emission. On average, each emission of a packet thus gets an equal part of the energy."
-            " ARTIS writes the necessary columns only with SAMPLE_RPKT_EMISSION (artis-mcrt/artis#661). Use -groupby"
-            " element, ion, or line. Implies --frompackets"
+            " ARTIS writes the necessary columns only with SAMPLE_RPKT_EMISSION (artis-mcrt/artis#661), and only"
+            " -groupby element, ion, or line can use them. With --showemission or --showabsorption, this option"
+            " also sets --frompackets"
         ),
     )
 
@@ -2333,7 +2337,8 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
     """Stop if a shell grouping or a velocity range needs an emission position that the packets do not hold.
 
     A virtual packet holds no emission position. A gamma packet holds the position of its decay, of its pair
-    annihilation, or of its last Compton scattering, but it has no thermal emission.
+    annihilation, or of its last Compton scattering, but it has no thermal emission. The packets hold no position of
+    the sampled emission.
     """
     if args.groupby in SHELLCOLUMNS:
         option = f"-groupby {args.groupby}"
@@ -2342,6 +2347,14 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
     else:
         return
 
+    # a virtual packet holds no emission position for any emission, thus this check comes before the checks of
+    # --use_thermalemissiontype and --use_sampledemissiontype
+    if args.plotvspecpol is not None:
+        exit_with_error(
+            f"a virtual packet holds no emission position, thus -plotvspecpol does not accept {option}",
+            "Give -plotviewingangle for a direction bin of the real packets",
+        )
+
     if args.gamma and args.use_thermalemissiontype:
         exit_with_error(
             f"a gamma packet has no thermal emission, thus {option} cannot use --use_thermalemissiontype",
@@ -2349,15 +2362,15 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
         )
 
     if args.use_sampledemissiontype:
+        # a gamma packet has no thermal emission, and an absorption always takes the last interaction
+        thermalhint = (
+            ", or give --use_thermalemissiontype for the last thermal emission"
+            if args.showemission and not args.gamma
+            else ""
+        )
         exit_with_error(
             f"the packets hold no position of the sampled emission, thus {option} cannot use --use_sampledemissiontype",
-            "Remove --use_sampledemissiontype, or give --use_thermalemissiontype for the last thermal emission",
-        )
-
-    if args.plotvspecpol is not None:
-        exit_with_error(
-            f"a virtual packet holds no emission position, thus -plotvspecpol does not accept {option}",
-            "Give -plotviewingangle for a direction bin of the real packets",
+            f"Remove --use_sampledemissiontype{thermalhint}",
         )
 
 
@@ -2419,12 +2432,13 @@ def has_gamma_spec_file(runfolder: Path) -> bool:
     return firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None
 
 
-@lru_cache(maxsize=64)
+@modelpath_cache(maxsize=64)
 def get_no_sampled_emission_reason(runfolder: Path) -> str | None:
-    """Return why the packets of the run hold no sampled emission, or None if they hold it or the run has no packets.
+    """Return why the packets of the run hold no sampled emission, or None if they hold it.
 
-    A run with no packets gets the error of the packets reader later. The spectrum viewer resolves the arguments at
-    each change. Thus the cache keeps the result until Reload Data clears it.
+    A run with no packets also gives None, and the packets reader gives its error later. The spectrum viewer resolves
+    the arguments at each change. Thus the cache keeps the result until Reload Data clears it, also after a new run of
+    ARTIS in the folder.
     """
     columnnames = get_packets_column_names(runfolder)
     return None if columnnames is None else get_no_sampled_emission_message(runfolder, columnnames)
@@ -2445,7 +2459,8 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
     # each entry names an option in the message, and gives the condition under which it needs the packets
     packetreasons = {
         "-plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
-        # the emission files of exspec hold only the last emission and the last thermal emission
+        # the emission files of exspec give only the emission type of the last interaction and of the last thermal
+        # emission
         "--use_sampledemissiontype": showcontributions and args.use_sampledemissiontype,
         "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
         "--gamma with no gamma_spec.out": args.gamma
@@ -2539,16 +2554,25 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
             "Remove --showabsorption",
         )
 
-    # ARTIS samples only the emissions of r-packets. A nuclide grouping takes the nuclide of the pellet and not an
-    # emission
-    if args.use_sampledemissiontype and (
-        args.gamma or args.plotvspecpol is not None or args.groupby in {"nuc", "nucmass"}
-    ):
+    # ARTIS samples only the emissions of the real r-packets
+    if args.use_sampledemissiontype and args.gamma:
         exit_with_error(
-            "the sampled emission gives the element, the ion, or the line of an r-packet emission. Thus"
-            " --use_sampledemissiontype needs r-packets that are not virtual, and -groupby element, ion, or line",
-            "Remove --use_sampledemissiontype. As an alternative, remove --gamma and -plotvspecpol, and give -groupby"
-            " element, ion, or line",
+            "a gamma packet has no sampled emission, thus a gamma-ray spectrum does not accept"
+            " --use_sampledemissiontype",
+            "Remove --use_sampledemissiontype",
+        )
+
+    if args.use_sampledemissiontype and args.plotvspecpol is not None:
+        exit_with_error(
+            "a virtual packet holds no sampled emission, thus -plotvspecpol does not accept --use_sampledemissiontype",
+            "Give -plotviewingangle for a direction bin of the real packets, or remove --use_sampledemissiontype",
+        )
+
+    if args.use_sampledemissiontype and args.groupby in {"nuc", "nucmass"}:
+        exit_with_error(
+            f"-groupby {args.groupby} takes the nuclide of the pellet and not an emission, thus it does not accept"
+            " --use_sampledemissiontype",
+            "Give -groupby element, ion, or line, or remove --use_sampledemissiontype",
         )
 
     # most runs have no sampled emission, thus the command stops before it reads the packets
@@ -2867,6 +2891,15 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
 
     if args.groupby is not None:
         args.showemission = True
+
+    # argparse rejects the two options together on the command line, but keyword arguments become defaults that
+    # argparse does not check
+    if args.use_thermalemissiontype and args.use_sampledemissiontype:
+        exit_with_error(
+            "--use_thermalemissiontype and --use_sampledemissiontype select two different emissions of a packet, and a"
+            " plot uses only one",
+            "Remove one of the two options",
+        )
 
     resolve_velocity_ranges(args)
     resolve_shell_args(args)

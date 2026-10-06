@@ -1791,22 +1791,26 @@ SAMPLEDCOLUMNS: t.Final[Mapping[str, str]] = MappingProxyType({
 })
 
 
-# how a user gets the sampled emission, or what to give in place of it
+# the help does not name --use_thermalemissiontype, because it also applies to an absorption plot, and an absorption
+# always takes the last interaction
 NO_SAMPLED_EMISSION_HELP: t.Final = (
     "ARTIS writes the sampled emission only if artisoptions.h of the run sets SAMPLE_RPKT_EMISSION to true"
     " (artis-mcrt/artis#661), and each preset sets it to false. Run the simulation again with that option, or"
-    " remove --use_sampledemissiontype. --use_thermalemissiontype selects the last thermal emission"
+    " remove --use_sampledemissiontype"
 )
 
 
 def get_no_sampled_emission_message(modelpath: Path | str, columnnames: Sequence[str]) -> str | None:
-    """Return why the packets with these columns hold no sampled emission, or None if they hold it."""
+    """Return why the packets with these columns hold no sampled emission, or None if they hold it.
+
+    The spectrum viewer shows only the first line of an error, thus the message names the option of ARTIS.
+    """
     missingcolumns = [column for column in SAMPLEDCOLUMNS if column not in columnnames]
     if not missingcolumns:
         return None
     return (
-        f"The packets of {modelpath} hold no sampled emission, because these columns are missing:"
-        f" {', '.join(missingcolumns)}"
+        f"The packets of {modelpath} hold no sampled emission, because they do not have the columns that ARTIS writes"
+        f" with SAMPLE_RPKT_EMISSION: {', '.join(missingcolumns)}"
     )
 
 

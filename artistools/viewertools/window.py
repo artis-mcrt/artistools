@@ -954,7 +954,6 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--showemission": "Show emission",
     "--shownoise": "Show noise",
     "--use_pellet_decay_time": "Pellet decay time",
-    "--use_thermalemissiontype": "Event",
     "--usedegrees": "Degrees",
     "-axis": "Axis",
     "-cell": "Cells",

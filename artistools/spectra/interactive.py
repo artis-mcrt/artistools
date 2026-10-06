@@ -35,7 +35,6 @@ from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import EmissionEvent
 from artistools.spectra.core import get_xunit
-from artistools.spectra.core import SHELLCOLUMNS
 from artistools.spectra.core import XUNITS
 from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
@@ -44,7 +43,6 @@ from artistools.spectra.plotspectra import draw_plot
 from artistools.spectra.plotspectra import find_reference_spectrum_file_or_none
 from artistools.spectra.plotspectra import get_default_xlimits
 from artistools.spectra.plotspectra import get_emission_event
-from artistools.spectra.plotspectra import get_no_sampled_emission_reason
 from artistools.spectra.plotspectra import main as plotspectra_main
 from artistools.spectra.plotspectra import make_plot_figure
 from artistools.spectra.plotspectra import path_is_reference_spectrum
@@ -290,34 +288,36 @@ def get_packets_reason(tokens: "Sequence[str]") -> str | None:
     return reasons[0] if reasons else None
 
 
-def get_emission_event_reason(
-    values: "ControlValues", emissionevent: EmissionEvent, nosampledemissionreason: str | None
-) -> str | None:
-    """Return why a choice of the emission event does not apply to the plot, or None if it applies.
+# each item gives the value of ControlValues.emissionevent, the text in the box, and the dest of its flag. The
+# default event has no flag, thus its dest is ""
+EMISSION_EVENT_ITEMS: t.Final[tuple[tuple[EmissionEvent, str, str], ...]] = (
+    ("last", "Last emission", ""),
+    ("thermal", "Last thermal emission", "use_thermalemissiontype"),
+    ("sampled", "Sampled emission", "use_sampledemissiontype"),
+)
 
-    nosampledemissionreason gives why the packets of a run hold no sampled emission, or it is None.
-    """
-    if emissionevent == "last":
-        return None
-    eventname = "thermal emission" if emissionevent == "thermal" else "sampled emission"
+
+def get_thermal_emission_reason(values: "ControlValues") -> str | None:
+    """Return why the choice of the last thermal emission does not change the plot, or None if it changes the plot."""
     if values.gamma:
-        return f"A gamma packet has no {eventname}"
+        return "A gamma packet has no thermal emission"
     if (groupby := values.groupby or get_default_groupby(gamma=values.gamma)) in {"nuc", "nucmass"}:
         return f"-groupby {groupby} takes the nuclide of the pellet, and not an emission"
-    if emissionevent == "thermal":
-        if not values.showemission:
-            return "An absorption always takes the last interaction, thus only an emission plot reads this choice"
-        return None
-    if groupby in SHELLCOLUMNS:
-        return f"The packets hold no position of the sampled emission, thus -groupby {groupby} cannot use it"
-    if values.directionkind == "vpkt":
-        return "A virtual packet holds no sampled emission"
-    if nosampledemissionreason is not None:
-        return (
-            f"{nosampledemissionreason}. ARTIS writes the sampled emission only if artisoptions.h of the run sets"
-            " SAMPLE_RPKT_EMISSION to true"
-        )
+    if not values.showemission:
+        return "An absorption always takes the last interaction, thus only an emission plot reads this choice"
     return None
+
+
+def drop_hidden_emission_event(values: "ControlValues") -> "ControlValues":
+    """Return the values with the default emission event if the plot shows no emission and no absorption.
+
+    Such a plot reads no emission event, and the window hides the box of the event. If the values keep the sampled
+    emission, plotspectra can reject --showemission and --showabsorption, e.g. for a run with no sampled emission.
+    The user then cannot change the event.
+    """
+    if values.showemission or values.showabsorption:
+        return values
+    return dc.replace(values, emissionevent="last")
 
 
 def get_default_groupby(*, gamma: bool) -> str:
@@ -391,8 +391,6 @@ class RunGrid(t.NamedTuple):
     timebounds: tuple[float, float]
     validtimesteps: tuple[int, ...]
     hasgammaspectrum: bool
-    # why the packets of a run hold no sampled emission, or None if the packets of each run hold it
-    nosampledemissionreason: str | None
     directionkinds: tuple[str, ...]
     # the spectra and the time grid of the load
     runkey: tuple[tuple[str, ...], str]
@@ -659,7 +657,7 @@ class SpectrumViewer:
         check_viewer_args(args)
         self.args = args
         # the results of the tests of the choices of the controls, which load_runs clears. See get_choice_rejections
-        self.rejections: dict[ControlValues, tuple[list[str | None], str | None, str | None]] = {}
+        self.rejections: dict[ControlValues, tuple[list[str | None], list[str | None], str | None, str | None]] = {}
         # the option that makes Auto read the packets files, for the values without the time. See get_auto_reason
         self.autoreasons: dict[ControlValues, str | None] = {}
 
@@ -739,6 +737,7 @@ class SpectrumViewer:
             dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
             otheroptions=otheroptions,
         )
+        values = drop_hidden_emission_event(values)
         self.values = (
             self.clamp_time(values) if values.notimeclamp else self.snap(values, *get_grid_selection(self.grid, values))
         )
@@ -813,14 +812,6 @@ class SpectrumViewer:
             timebounds=(timebounds[0], timebounds[1]),
             validtimesteps=tuple(validtimesteps),
             hasgammaspectrum=has_gamma_spectrum(runfolders),
-            nosampledemissionreason=next(
-                (
-                    reason
-                    for runfolder in runfolders
-                    if (reason := get_no_sampled_emission_reason(runfolder)) is not None
-                ),
-                None,
-            ),
             # the direction controls read the first run, e.g. for the observers of -plotvspecpol
             directionkinds=tuple(get_direction_kinds(runfolders[0])),
             runkey=(tuple(str(path) for path in spectra), timegrid),
@@ -1123,8 +1114,16 @@ def get_continuous_values(viewer: "SpectrumViewer", values: ControlValues) -> Co
     )
 
 
-def get_choice_rejections(viewer: "SpectrumViewer") -> tuple[list[str | None], str | None, str | None]:
-    """Return why plotspectra rejects each -groupby choice, --showemission, and --showabsorption.
+def get_choice_rejections(
+    viewer: "SpectrumViewer",
+) -> tuple[list[str | None], list[str | None], str | None, str | None]:
+    """Return why plotspectra rejects each choice of the emission controls.
+
+    The tuple holds the reasons for:
+    - each -groupby choice;
+    - each emission event;
+    - --showemission;
+    - --showabsorption.
 
     Each option can cause a rejection, e.g. --shownoise, thus the cache key holds all the values except these:
     - the time;
@@ -1156,9 +1155,16 @@ def get_choice_rejections(viewer: "SpectrumViewer") -> tuple[list[str | None], s
             else viewer.get_rejection(dc.replace(values, groupby=choice, showemission=True))
             for choice in viewer.groupbychoices
         ]
+        # the window shows the box of the event only for an emission or absorption plot
+        events = [
+            None
+            if emissionevent == values.emissionevent or not (values.showemission or values.showabsorption)
+            else viewer.get_rejection(dc.replace(values, emissionevent=emissionevent))
+            for emissionevent, _, _ in EMISSION_EVENT_ITEMS
+        ]
         emission = None if values.showemission else viewer.get_rejection(dc.replace(values, showemission=True))
         absorption = None if values.showabsorption else viewer.get_rejection(dc.replace(values, showabsorption=True))
-        viewer.rejections[key] = (groupbys, emission, absorption)
+        viewer.rejections[key] = (groupbys, events, emission, absorption)
     return viewer.rejections[key]
 
 
@@ -1570,26 +1576,15 @@ def open_window(
     hideothercheck = QtWidgets.QCheckBox("--hideother")
     for widget, dest in ((hidenetcheck, "hidenetspectrum"), (hideothercheck, "hideother")):
         widget.setToolTip(helptexts.get(dest, ""))
-    # the data of an item is the value of ControlValues.emissionevent
+    # show_rejections gives the tooltip of each item
     emissioneventbox = QtWidgets.QComboBox()
-    emissioneventtooltips: dict[EmissionEvent, str] = {
-        "last": "The last emission or scattering of each packet",
-        "thermal": f"--use_thermalemissiontype: {helptexts.get('use_thermalemissiontype', '')}",
-        "sampled": f"--use_sampledemissiontype: {helptexts.get('use_sampledemissiontype', '')}",
-    }
-    eventchoices: tuple[tuple[str, EmissionEvent], ...] = (
-        ("Last emission", "last"),
-        ("Last thermal emission", "thermal"),
-        ("Sampled emission", "sampled"),
-    )
-    for text, itemevent in eventchoices:
-        emissioneventbox.addItem(text, itemevent)
-        emissioneventbox.setItemData(
-            emissioneventbox.count() - 1, emissioneventtooltips[itemevent], QtCore.Qt.ItemDataRole.ToolTipRole
-        )
+    for emissionevent, text, _ in EMISSION_EVENT_ITEMS:
+        emissioneventbox.addItem(text, emissionevent)
+    # the box writes one of two flags, thus its label names no flag
     emissioneventbox.setToolTip(
-        "The emission of each packet that gives its emission series. The last emission and the last thermal emission"
-        " also give its shell"
+        "For each packet, the selected emission sets the emission series of the packet (--use_thermalemissiontype or"
+        " --use_sampledemissiontype). A shell grouping needs the position of this emission, and the packets hold no"
+        " position of the sampled emission"
     )
     emissioneventmodel = emissioneventbox.model()
     assert isinstance(emissioneventmodel, QtGui.QStandardItemModel)
@@ -1602,7 +1597,7 @@ def open_window(
         make_row_layout([QtWidgets.QLabel("-groupby"), groupbybox, countlabel, countbox, lockbutton])
     )
     emissionoptionslayout.addLayout(
-        make_row_layout([hidenetcheck, hideothercheck, QtWidgets.QLabel("--use_thermalemissiontype"), emissioneventbox])
+        make_row_layout([hidenetcheck, hideothercheck, QtWidgets.QLabel("Event:"), emissioneventbox])
     )
     emissiongrid.addWidget(emissionoptions, 1, 0, 1, -1)
 
@@ -1805,13 +1800,28 @@ def open_window(
 
     def show_rejections() -> None:
         """Disable each choice that plotspectra rejects, and give the reason in its tooltip."""
-        groupbys, emission, absorption = get_choice_rejections(viewer)
+        groupbys, events, emission, absorption = get_choice_rejections(viewer)
         model = groupbybox.model()
         if isinstance(model, QtGui.QStandardItemModel):
             for index, reason in enumerate(groupbys):
                 if (item := model.item(index)) is not None:
                     item.setEnabled(reason is None)
                     item.setToolTip(reason or "")
+        values = viewer.values
+        for index, ((emissionevent, _, dest), rejection) in enumerate(zip(EMISSION_EVENT_ITEMS, events, strict=True)):
+            # plotspectra accepts the last thermal emission when it changes nothing, thus the window tests that case
+            reason = rejection or (get_thermal_emission_reason(values) if emissionevent == "thermal" else None)
+            if (item := emissioneventmodel.item(index)) is not None:
+                # the current choice stays available, thus the user can switch back from it
+                item.setEnabled(reason is None or emissionevent == values.emissionevent)
+                item.setToolTip(
+                    reason
+                    or (
+                        f"--{dest}: {helptexts.get(dest, '')}"
+                        if dest
+                        else "The last emission or scattering of each packet"
+                    )
+                )
         for checkbox, reason, dest in (
             (emissioncheck, emission, "showemission"),
             (absorptioncheck, absorption, "showabsorption"),
@@ -1949,16 +1959,6 @@ def open_window(
             histogramcheck.setChecked(values.histogram)
             hideothercheck.setChecked(values.hideother)
             emissioneventbox.setCurrentIndex(emissioneventbox.findData(values.emissionevent))
-            # the current choice stays available, thus the user can switch back from it
-            for index in range(emissioneventbox.count()):
-                emissionevent = emissioneventbox.itemData(index)
-                eventreason = get_emission_event_reason(values, emissionevent, viewer.grid.nosampledemissionreason)
-                eventitem = emissioneventmodel.item(index)
-                if eventitem.isEnabled() != (
-                    eventavailable := eventreason is None or values.emissionevent == emissionevent
-                ):
-                    eventitem.setEnabled(eventavailable)
-                eventitem.setToolTip(emissioneventtooltips[emissionevent] if eventreason is None else eventreason)
             show_direction()
             show_series_rows(get_spectra_key(values), partial(make_spectrum_rows, values))
             set_option_rows(values.otheroptions)
@@ -2209,6 +2209,7 @@ def open_window(
             hideother=hideothercheck.isChecked(),
             emissionevent=emissioneventbox.currentData(),
         )
+        values = drop_hidden_emission_event(values)
         # the labels of a locked list belong to one -groupby, thus a new -groupby removes the lock
         if groupby != viewer.values.groupby:
             values = remove_series_lock(values)
