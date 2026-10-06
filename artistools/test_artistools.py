@@ -1748,6 +1748,55 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
     assert mockaxhline.call_count == 1
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotopacity_draws_each_cap_and_the_line_count(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """-taucaps draws an opacity for each cap, and --showlinecount adds a panel with the number of lines in each bin.
+
+    The panel counts each line that the opacities sum.
+    """
+    at.plotopacity.main(
+        argsraw=[
+            "-modelpath",
+            str(modelpath),
+            "-timestep",
+            "40",
+            "-xmin",
+            "3000",
+            "-xmax",
+            "4000",
+            "-taucaps",
+            "0.1",
+            "1",
+            "10",
+            "1",
+            "--showlinecount",
+            "-o",
+            str(tmp_path / "opac.pdf"),
+        ]
+    )
+    axes = list(dict.fromkeys(call.args[0] for call in mockplot.call_args_list))
+    assert len(axes) == 3, "the opacities, the ratios, and the number of lines need three panels"
+    labels = [call.kwargs["label"] for call in mockplot.call_args_list if call.kwargs.get("label")]
+    assert labels == [
+        "Expansion opacity",
+        *(rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {taucap}" for taucap in ("0.1", "1", "10")),
+        "Line-binned",
+    ]
+    ratioplots = [call for call in mockplot.call_args_list if call.args[0] is axes[1]]
+    assert len(ratioplots) == 4, "each line-binned opacity needs a ratio"
+
+    (linecountplot,) = [call for call in mockplot.call_args_list if call.args[0] is axes[2]]
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
+    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
+    lines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
+    )
+    # each bin draws its count at its lower edge and at its upper edge
+    assert np.nansum(linecountplot.args[2]) == 2 * lines.dflines.height
+
+
 def test_plotopacity_average_cell_takes_the_mean_composition(capsys: pytest.CaptureFixture[str]) -> None:
     """--averagecell takes one cell with the mass-weighted mean of n_ion / rho, of rho, and of T_exc, and logs T_exc.
 
@@ -1828,9 +1877,33 @@ def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
     for column, expectedsum in {
         "exopac": 1397.6901658607103,
         "linebinned": 11675.7786539805,
-        "linebinned_maxone": 1652.4668052744682,
+        "linebinned_cap1": 1652.4668052744682,
     }.items():
         assert math.isclose(dfopacities[column].sum(), expectedsum, rel_tol=1e-12), column
+
+
+def test_expansion_opacities_give_each_cap_its_own_column() -> None:
+    """The kernel gives the sum of each cap to the column of that cap. The order of the caps has no effect.
+
+    A cap of 1 gives the value of the regression test above. A larger cap gives a larger sum, and a cap above each
+    tau_sobolev gives the sum with no cap.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
+    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.ejectaopacity.get_opacity_lines(
+        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    )
+
+    taucaps = (10.0, 1e300, 0.1, 1.0)
+    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days, taucaps)
+
+    sums = {taucap: dfopacities[at.ejectaopacity.get_capped_column(taucap)].sum() for taucap in sorted(taucaps)}
+    assert math.isclose(sums[1.0], 1652.4668052744682, rel_tol=1e-12)
+    assert math.isclose(sums[1e300], dfopacities["linebinned"].sum(), rel_tol=1e-12)
+    assert list(sums.values()) == sorted(sums.values())
+    assert len(set(sums.values())) == len(sums)
 
 
 def test_expansion_opacities_of_a_null_population_are_zero() -> None:
@@ -1849,7 +1922,7 @@ def test_expansion_opacities_of_a_null_population_are_zero() -> None:
 
     def get_opacities(dfcells: pl.DataFrame) -> pl.DataFrame:
         return at.ejectaopacity.get_expansion_opacities(opacitylines, dfcells, lambda_bin_edges, time_days).select(
-            at.ejectaopacity.OPACITYCOLUMNS
+            at.ejectaopacity.get_opacity_columns(at.ejectaopacity.DEFAULT_TAUCAPS)
         )
 
     pltest.assert_frame_equal(
@@ -1861,9 +1934,9 @@ def test_expansion_opacities_of_a_null_population_are_zero() -> None:
 
 
 def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
-    """A NaN temperature gives NaN level populations, and each of the three sums must then be NaN.
+    """A NaN temperature gives NaN level populations, and each of the sums must then be NaN.
 
-    f64::min(NaN, 1) is 1, and NaN.abs() >= 1e-18 is false, thus the kernel gave a finite linebinned_maxone
+    f64::min(NaN, 1) is 1, and NaN.abs() >= 1e-18 is false, thus the kernel gave a finite capped opacity
     and a finite exopac for such a cell.
     """
     timestep = 40
@@ -1876,11 +1949,13 @@ def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
         at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
     )
 
-    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+    taucaps = (0.1, 1.0)
+    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days, taucaps)
 
-    isnan = dfopacities.select(pl.col(at.ejectaopacity.OPACITYCOLUMNS).is_nan())
+    opacitycolumns = at.ejectaopacity.get_opacity_columns(taucaps)
+    isnan = dfopacities.select(pl.col(opacitycolumns).is_nan())
     assert isnan["linebinned"].any()
-    for column in at.ejectaopacity.OPACITYCOLUMNS:
+    for column in opacitycolumns:
         assert isnan[column].equals(isnan["linebinned"]), column
 
 
@@ -2007,7 +2082,10 @@ def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys
         (
             df.filter(pl.col("lambda_angstroms_upper") > xmin, pl.col("lambda_angstroms_lower") < xmax),
             at.misc.df_filter_minmax_bracketed(
-                at.plotopacity.get_moving_averages(df, windowbins), "lambda_angstroms_bin_mid", xmin, xmax
+                at.plotopacity.get_moving_averages(df, windowbins, ["exopac", "linebinned", "linebinned_cap1"]),
+                "lambda_angstroms_bin_mid",
+                xmin,
+                xmax,
             ).collect(),
         )
         for df in (dffull, dfpart)
@@ -2049,7 +2127,9 @@ def test_expansion_opacity_keeps_a_weak_line() -> None:
         schema_overrides={"lambda_angstroms_binindex": pl.UInt32, "lower": pl.UInt32, "upper": pl.UInt32},
     )
     dfcells = pl.DataFrame({"T_exc": [5000.0], "nnion_0": [1.0]})
-    exopac = sum_binned_line_opacities(dflevels, dflines, dfcells, ["nnion_0"], 3, at.constants.K_B_ev_per_K)["exopac"]
+    exopac = sum_binned_line_opacities(dflevels, dflines, dfcells, ["nnion_0"], [], 3, at.constants.K_B_ev_per_K)[
+        "exopac"
+    ]
     assert np.allclose(exopac.to_numpy(), -np.expm1(-np.array(taus)), rtol=1e-12, atol=0.0)
 
 

@@ -253,8 +253,10 @@ def test_sum_binned_line_opacities_gives_no_opacity_for_a_temperature_of_zero_or
         schema_overrides={"lambda_angstroms_binindex": pl.UInt32, "lower": pl.UInt32, "upper": pl.UInt32},
     )
     dfcells = pl.DataFrame({"T_exc": [0.0, -1.0, 5000.0], "nnion_0": [1.0, 1.0, 1.0]})
-    dfsums = sum_binned_line_opacities(dflevels, dflines, dfcells, ["nnion_0"], 1, at.constants.K_B_ev_per_K)
-    for column in at.ejectaopacity.OPACITYCOLUMNS:
+    dfsums = sum_binned_line_opacities(
+        dflevels, dflines, dfcells, ["nnion_0"], [("linebinned_cap1", 1.0)], 1, at.constants.K_B_ev_per_K
+    )
+    for column in at.ejectaopacity.get_opacity_columns([1.0]):
         sums = dfsums[column].to_numpy()
         assert np.all(np.isfinite(sums))
         assert sums[0] == pytest.approx(0.0)
@@ -277,7 +279,7 @@ def test_expansion_opacities_give_zero_for_a_cell_with_no_temperature() -> None:
         T_exc=pl.Series([None, 0.0, dfcell["T_exc"].item()], dtype=pl.Float64),
     )
     dfbins = at.ejectaopacity.get_expansion_opacities(lines, dfcells, edges, time_days)
-    for column in at.ejectaopacity.OPACITYCOLUMNS:
+    for column in at.ejectaopacity.get_opacity_columns(at.ejectaopacity.DEFAULT_TAUCAPS):
         values = dfbins.group_by("modelgridindex", maintain_order=True).agg(pl.col(column).abs().sum())[column]
         assert values[0] == pytest.approx(0.0)
         assert values[1] == pytest.approx(0.0)

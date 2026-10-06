@@ -13,6 +13,7 @@ def sum_binned_line_opacities(
     dflines: pl.DataFrame,
     dfcells: pl.DataFrame,
     nnioncolumns: list[str],
+    taucaps: list[tuple[str, float]],
     numbins: int,
     k_b_ev_per_k: float,
 ) -> pl.DataFrame: ...
