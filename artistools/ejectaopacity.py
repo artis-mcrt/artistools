@@ -82,13 +82,25 @@ def get_capped_column(taucap: float) -> str:
     return f"linebinned_cap{taucap:g}"
 
 
+def get_capped_columns(taucaps: Sequence[float]) -> dict[str, float]:
+    """Return the cap of each capped column, in the order of the caps.
+
+    Two caps with one name, e.g. 1 and 1.0000001, give one column, because a dataframe cannot hold two columns with
+    one name. The first of the caps sets the value.
+    """
+    cappedcolumns: dict[str, float] = {}
+    for taucap in taucaps:
+        cappedcolumns.setdefault(get_capped_column(taucap), taucap)
+    return cappedcolumns
+
+
 def get_opacity_columns(taucaps: Sequence[float]) -> list[str]:
     """Return the names of the opacity columns.
 
     exopac is the expansion opacity. linebinned is the sum of tau_sobolev. Each capped column caps each tau_sobolev
     at one value of taucaps.
     """
-    return ["exopac", "linebinned", *(get_capped_column(taucap) for taucap in taucaps)]
+    return ["exopac", "linebinned", *get_capped_columns(taucaps)]
 
 
 def get_expopac_grid(modelpath: Path | str) -> tuple[float, float, float] | None:
@@ -230,7 +242,7 @@ def get_expansion_opacities(
         # population. Thus a null temperature and a null population take a zero
         dfcells.select(pl.col("T_exc", *nnioncolumns).cast(pl.Float64).fill_null(0.0)),
         nnioncolumns,
-        [(get_capped_column(taucap), taucap) for taucap in taucaps],
+        list(get_capped_columns(taucaps).items()),
         numbins,
         K_B_ev_per_K,
     )

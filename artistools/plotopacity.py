@@ -14,7 +14,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import DEFAULT_TAUCAPS
-from artistools.ejectaopacity import get_capped_column
+from artistools.ejectaopacity import get_capped_columns
 from artistools.ejectaopacity import get_cell_batches
 from artistools.ejectaopacity import get_cell_estimators
 from artistools.ejectaopacity import get_excitation_temperature_column
@@ -85,11 +85,11 @@ def get_opacity_series(taucaps: Sequence[float]) -> list[tuple[str, str, "mplt.L
         ("exopac", "Expansion opacity", "-"),
         *(
             (
-                get_capped_column(taucap),
+                column,
                 rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {taucap:g}",
                 CAPPEDLINESTYLES[index % len(CAPPEDLINESTYLES)],
             )
-            for index, taucap in enumerate(taucaps)
+            for index, (column, taucap) in enumerate(get_capped_columns(taucaps).items())
         ),
         ("linebinned", "Line-binned", "-"),
     ]
@@ -306,6 +306,10 @@ def plot_opacities(
         )
 
     if args.showlinecount:
+        print_detail(
+            "The number of lines in each bin counts each line of an ion with estimators, if ARTIS keeps the lower"
+            " level and the upper level"
+        )
         bottomaxis.plot(*get_bin_line("linecount"), linewidth=OPACITYLINE_WIDTH, color="0.3", solid_capstyle="butt")
         bottomaxis.set_ylabel("Lines\nper bin")
         # the number of lines in a bin is from zero to some thousands. A log scale hides a bin with no line
@@ -528,8 +532,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the expansion opacity and the line-binned opacities against wavelength."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    # two equal caps give the same column two times
-    args.taucaps = list(dict.fromkeys(args.taucaps))
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     time_days = get_timestep_time(args.modelpath, timestep)
@@ -557,11 +559,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         planckrange=(args.xmin, args.xmax) if args.showplanckmean else None,
         taucaps=args.taucaps,
     )
-    if args.showlinecount:
-        print_detail(
-            "The number of lines in each bin counts each line of an ion with estimators, if ARTIS keeps the lower"
-            " level and the upper level"
-        )
 
     # the frame takes one column of the page, thus the cells take a second line of the title
     title = (

@@ -1752,7 +1752,8 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
 def test_plotopacity_draws_each_cap_and_the_line_count(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """-taucaps draws an opacity for each cap, and --showlinecount adds a panel with the number of lines in each bin.
 
-    The panel counts each line that the opacities sum.
+    The panel counts each line that the opacities sum. A cap of 1.0000001 has the column name and the label of 1, and
+    the two caps gave two columns with one name, thus the kernel stopped with an error.
     """
     at.plotopacity.main(
         argsraw=[
@@ -1769,6 +1770,7 @@ def test_plotopacity_draws_each_cap_and_the_line_count(mockplot: mock.MagicMock,
             "1",
             "10",
             "1",
+            "1.0000001",
             "--showlinecount",
             "-o",
             str(tmp_path / "opac.pdf"),
