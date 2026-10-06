@@ -210,7 +210,7 @@ def aggregate_deposition_rates(
             "cellswithnorate",
         )
         .sort("timestep")
-        .collect(engine="streaming")
+        .collect()
     )
 
 

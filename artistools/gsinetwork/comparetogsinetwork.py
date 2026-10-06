@@ -233,24 +233,21 @@ def get_artis_abund_sequences(
             ],
         )
         # the in-memory engine held every column that the query reads for all the rows: 10.6 GB for a 3D model
-        # of 125 000 cells. The streaming engine held approximately 4 GB
-        dfs_of_mgi = pl.collect_all(
-            [
-                lzcellmassfracs
-                .filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
-                .group_by("timestep")
-                .agg(
-                    [
-                        ((pl.col(f"X_{strspecies}") * pl.col("mass_g")).sum() / pl.col("mass_g").sum())
-                        for strspecies in arr_species
-                    ]
-                    + [pl.col("tmid_days").mean()]
-                )
-                .sort("timestep")
-                for mgi in mgiplotlist
-            ],
-            engine="streaming",
-        )
+        # of 125 000 cells. The default streaming engine held approximately 4 GB
+        dfs_of_mgi = pl.collect_all([
+            lzcellmassfracs
+            .filter((pl.col("modelgridindex") == mgi).or_(mgi < 0))
+            .group_by("timestep")
+            .agg(
+                [
+                    ((pl.col(f"X_{strspecies}") * pl.col("mass_g")).sum() / pl.col("mass_g").sum())
+                    for strspecies in arr_species
+                ]
+                + [pl.col("tmid_days").mean()]
+            )
+            .sort("timestep")
+            for mgi in mgiplotlist
+        ])
         arr_abund_artis = dict(zip(mgiplotlist, dfs_of_mgi, strict=True))
 
     return arr_abund_artis

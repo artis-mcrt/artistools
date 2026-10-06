@@ -33,6 +33,7 @@ from artistools.misc import fileio
 from artistools.misc import modelinfo
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
+from artistools.misc.general import get_bin_index_expr
 from artistools.viewertools.core import run_command_step_with_warning
 
 
@@ -1215,6 +1216,18 @@ def test_get_file_identity(tmp_path: Path) -> None:
 
 
 # --- general.py --------------------------------------------------------------------------------
+
+
+def test_bin_index_of_nan_is_null_and_of_an_outside_value_is_outside_the_bins() -> None:
+    """Polars bin_intervals() puts NaN into the last bin, and cut() gave NaN no bin."""
+    x = pl.col("x")
+    df = pl.DataFrame({"x": [-1.0, 0.0, 0.5, 1.0, 2.0, 3.0, None, math.nan]})
+
+    leftclosed = df.select(get_bin_index_expr(x, [0.0, 1.0, 2.0])).to_series().to_list()
+    assert leftclosed == [-1, 0, 0, 1, 2, 2, None, None]
+
+    rightclosed = df.select(get_bin_index_expr(x, [0.0, 1.0, 2.0], right_closed=True)).to_series().to_list()
+    assert rightclosed == [-1, -1, 0, 0, 1, 2, None, None]
 
 
 def test_df_filter_minmax_bracketed() -> None:

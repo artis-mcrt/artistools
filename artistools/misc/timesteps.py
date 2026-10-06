@@ -121,7 +121,11 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
                 pl
                 .scan_csv(source, has_header=True, separator=" ")
                 .rename(lambda column_name: column_name.removeprefix("#"))
-                .with_columns(tend_days=pl.col("tstart_days") + pl.col("twidth_days"))
+                # the estimators give the timestep as Int32. A join on keys of two dtypes casts them, and the polars
+                # 2.0 optimiser then pushes an Int32 is_in filter onto the Int64 side, which raises
+                .with_columns(
+                    pl.col("timestep").cast(pl.Int32), tend_days=pl.col("tstart_days") + pl.col("twidth_days")
+                )
             )
 
     # older versions of Artis always used logarithmic timesteps and didn't produce a timesteps.out file

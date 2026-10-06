@@ -56,6 +56,7 @@ from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import read_complete_lines
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.general import get_bin_index_expr
 from artistools.misc.remote import on_model_host
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
@@ -1791,8 +1792,7 @@ def get_shell_index_expr(
     scale = 1.0 if unit == "ye" else km_to_cm
     edges = [v * scale for v in shelledges]
     value = pl.col(column)
-    # the first category of cut() holds the values below the first edge, thus the first shell has the index 1
-    shell = value.cut(breaks=edges, left_closed=True).to_physical().cast(pl.Int32) - 1
+    shell = get_bin_index_expr(value, edges)
 
     return (
         pl
@@ -1822,10 +1822,14 @@ def add_ye_columns(
         msg = "The model has no Ye column, thus no Ye shell can hold a packet"
         raise ValueError(msg)
 
-    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of get_modeldata gives the cell
-    dfcellye = dfmodel.select(pl.col("modelgridindex").cast(pl.Int32), "Ye").collect()
+    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of get_modeldata gives the cell. A
+    # gather by the cell index keeps the order of the packets, and it is faster than a join over all the packets
+    dfcellye = dfmodel.select("modelgridindex", "Ye").collect()
+    cellcount = dfcellye.select(pl.col("modelgridindex").max() + 1).item()
+    ye_of_cell = pl.Series("Ye", [None] * cellcount, dtype=dfcellye.schema["Ye"]).scatter(
+        dfcellye["modelgridindex"], dfcellye["Ye"]
+    )
     for column, position in positions:
-        indexcolumn = f"{position}_modelgridindex"
         if position == "trueem" and thermalfromvelocity:
             if modelmeta["dimensions"] != 1:
                 msg = "The packets hold no thermal emission position, thus the Ye shells need a 1D model"
@@ -1833,12 +1837,9 @@ def add_ye_columns(
             indexexpr = get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)
         else:
             indexexpr = get_modelgridindex_expr(position, modelmeta, dfmodel)
-        lzdfpackets = (
-            lzdfpackets
-            .with_columns(indexexpr.alias(indexcolumn))
-            .join(dfcellye.lazy().rename({"modelgridindex": indexcolumn, "Ye": column}), on=indexcolumn, how="left")
-            .drop(indexcolumn)
-        )
+        # gather() gives an error for an index outside the series. Such an index and a null index give a null Ye
+        indexexpr = pl.when(indexexpr.is_between(0, ye_of_cell.len() - 1)).then(indexexpr)
+        lzdfpackets = lzdfpackets.with_columns(pl.lit(ye_of_cell).gather(indexexpr).alias(column))
 
     return lzdfpackets
 

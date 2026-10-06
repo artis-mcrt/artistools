@@ -88,6 +88,7 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
+from artistools.misc.general import get_bin_index_expr
 from artistools.misc.remote import on_model_host
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
@@ -1373,26 +1374,18 @@ def get_xlist(
         args.colorbyion = True
         # -xbins gives the number of bins, thus the number of edges is one more than that. It gave
         # the number of edges before, thus "-xbins 30" drew 29 bins and the help said 30
-        # a range of zero width gives equal edges, and cut() gives an error for equal breaks.
-        # Thus one bin holds all the x values
+        # a range of zero width gives equal edges, and equal edges give an error. Thus one bin holds all the x values
         xbinedges = np.linspace(xmin, xmax, args.xbins + 1 if xmax > xmin else 2)
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
         xmids = (xlower + xupper) / 2
+        # only the interior edges, thus a value at an outer edge falls into the first or the last bin
+        xbinindex = get_bin_index_expr(pl.col("xvalue"), xbinedges[1:-1], right_closed=True) + 1
         estimators = (
             estimators
-            .with_columns(
-                # give cut only the interior edges. A value at an outer edge then falls into the first
-                # or the last bin, not into an out-of-range category
-                pl.col("xvalue").cut(breaks=list(xbinedges[1:-1])).to_physical().cast(pl.Int32).alias("xbinindex")
-            )
+            .with_columns(xbinindex=xbinindex)
             .filter(pl.col("xbinindex").is_between(0, len(xmids) - 1, closed="both"))
-            .join(
-                pl.LazyFrame({"xvalue_binned": xmids}).with_row_index("xbinindex"),
-                on="xbinindex",
-                how="left",
-                maintain_order="left",
-            )
+            .with_columns(xvalue_binned=pl.lit(pl.Series(xmids)).gather(pl.col("xbinindex")))
             .drop("xbinindex")
         )
     else:
