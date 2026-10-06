@@ -103,21 +103,25 @@ fn get_level_pops(
     pops
 }
 
-/// Return the three sums over the lines of each bin for a group of cells, each in the order [cell][bin]
+/// Return the sums over the lines of each bin for a group of cells, each in the order [cell][bin]
+///
+/// The sums are the expansion opacity, the line-binned opacity, and then one line-binned opacity for each value of
+/// `taucaps`, with each `tau_sobolev` capped at that value.
 fn sum_cell_group(
     levels: &Levels,
     lines: &Lines,
     t_exc: &[f64],
     nnion: &[&[f64]],
+    taucaps: &[f64],
     numbins: usize,
     k_b_ev_per_k: f64,
-) -> [Vec<f64>; 3] {
+) -> Vec<Vec<f64>> {
     let pops = get_level_pops(levels, t_exc, nnion, k_b_ev_per_k);
 
     // in the order [bin][cell], each line adds to one contiguous row of the sums
     let mut exopac = vec![[0.0; CELLSPERTASK]; numbins];
     let mut linebinned = vec![[0.0; CELLSPERTASK]; numbins];
-    let mut linebinned_maxone = vec![[0.0; CELLSPERTASK]; numbins];
+    let mut linebinned_capped = vec![vec![[0.0; CELLSPERTASK]; numbins]; taucaps.len()];
 
     for line in 0..lines.binindex.len() {
         let lowerpops = &pops[lines.lower[line] as usize];
@@ -129,15 +133,16 @@ fn sum_cell_group(
 
         let lambda = lines.lambda_angstroms[line];
         let bin = lines.binindex[line] as usize;
-        // the two linear sums have no branch, thus the compiler can vectorise this loop
-        for ((&celltau, lb), lbmax) in tau
-            .iter()
-            .zip(&mut linebinned[bin])
-            .zip(&mut linebinned_maxone[bin])
-        {
+        // the linear sums have no branch, thus the compiler can vectorise these loops
+        for (&celltau, lb) in tau.iter().zip(&mut linebinned[bin]) {
             *lb += celltau * lambda;
-            // f64::min returns 1 for a NaN optical depth. NaN must reach each of the three sums
-            *lbmax += (if celltau > 1.0 { 1.0 } else { celltau }) * lambda;
+        }
+        for (cappedsums, &taucap) in linebinned_capped.iter_mut().zip(taucaps) {
+            for (&celltau, lbcapped) in tau.iter().zip(&mut cappedsums[bin]) {
+                // the comparison is false for a NaN optical depth, thus NaN reaches the sum. f64::min gives
+                // the cap for NaN, thus the code does not use it
+                *lbcapped += (if celltau > taucap { taucap } else { celltau }) * lambda;
+            }
         }
         for (&celltau, ex) in tau.iter().zip(&mut exopac[bin]) {
             // 1 - exp(-tau) loses most of its digits for a small tau, and it is zero below 5.6e-17. exp_m1
@@ -151,11 +156,15 @@ fn sum_cell_group(
         }
     }
 
-    [exopac, linebinned, linebinned_maxone].map(|binsums| {
-        (0..t_exc.len())
-            .flat_map(|cell| binsums.iter().map(move |cellsums| cellsums[cell]))
-            .collect()
-    })
+    [exopac, linebinned]
+        .into_iter()
+        .chain(linebinned_capped)
+        .map(|binsums| {
+            (0..t_exc.len())
+                .flat_map(|cell| binsums.iter().map(move |cellsums| cellsums[cell]))
+                .collect()
+        })
+        .collect()
 }
 
 /// Return the sums of the Sobolev line opacities in each wavelength bin of each cell, times the wavelength.
@@ -166,6 +175,9 @@ fn sum_cell_group(
 /// - the time;
 /// - the density.
 ///
+/// The columns are `exopac`, `linebinned`, and then one column for each pair of a name and a cap in `taucaps`. Such
+/// a column caps each `tau_sobolev` at the cap of its pair.
+///
 /// The rows are in the order [cell][bin]. The level populations are the LTE populations at the excitation temperature
 /// `T_exc` of each cell. A cell with a `T_exc` of zero or below has no populations, thus each of its sums is zero.
 /// `lower` and `upper` give the row of each level in `dflevels`.
@@ -173,15 +185,21 @@ fn sum_cell_group(
 /// The sum runs without the global interpreter lock (GIL), thus other Python threads can run at the same time.
 #[pyfunction]
 #[expect(clippy::needless_pass_by_value)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Python calls the function with each argument by position"
+)]
 pub fn sum_binned_line_opacities(
     py: Python<'_>,
     dflevels: PyDataFrame,
     dflines: PyDataFrame,
     dfcells: PyDataFrame,
     nnioncolumns: Vec<String>,
+    taucaps: Vec<(String, f64)>,
     numbins: usize,
     k_b_ev_per_k: f64,
 ) -> PyResult<PyDataFrame> {
+    let (cappedcolumns, taucaps): (Vec<String>, Vec<f64>) = taucaps.into_iter().unzip();
     let dfsums = py
         .detach(|| {
             let (mut dflevels, mut dflines, mut dfcells) = (dflevels.0, dflines.0, dfcells.0);
@@ -219,7 +237,7 @@ pub fn sum_binned_line_opacities(
                 .map(|name| f64_column(&dfcells, name))
                 .collect::<PolarsResult<_>>()?;
 
-            let groupsums: Vec<[Vec<f64>; 3]> = (0..t_exc.len())
+            let groupsums: Vec<Vec<Vec<f64>>> = (0..t_exc.len())
                 .step_by(CELLSPERTASK)
                 .collect::<Vec<_>>()
                 .into_par_iter()
@@ -234,23 +252,28 @@ pub fn sum_binned_line_opacities(
                         &lines,
                         &t_exc[cells],
                         &groupnnion,
+                        &taucaps,
                         numbins,
                         k_b_ev_per_k,
                     )
                 })
                 .collect();
 
-            let [exopac, linebinned, linebinned_maxone] = [0, 1, 2].map(|quantity| {
-                groupsums
-                    .iter()
-                    .flat_map(|sums| sums[quantity].iter().copied())
-                    .collect::<Vec<f64>>()
-            });
-
-            df!(
-                "exopac" => exopac,
-                "linebinned" => linebinned,
-                "linebinned_maxone" => linebinned_maxone,
+            let columnnames = ["exopac".to_string(), "linebinned".to_string()]
+                .into_iter()
+                .chain(cappedcolumns);
+            DataFrame::new(
+                t_exc.len() * numbins,
+                columnnames
+                    .enumerate()
+                    .map(|(quantity, name)| {
+                        let sums: Vec<f64> = groupsums
+                            .iter()
+                            .flat_map(|sums| sums[quantity].iter().copied())
+                            .collect();
+                        Column::new(name.into(), sums)
+                    })
+                    .collect(),
             )
         })
         .map_err(PyPolarsErr::from)?;
