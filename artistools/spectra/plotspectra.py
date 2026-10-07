@@ -467,7 +467,6 @@ def plot_reference_spectrum(
                 np.asarray(specdata["x"].to_numpy(), dtype=np.float64),
                 np.asarray(specdata["y"].to_numpy(), dtype=np.float64),
                 lineplot.get_color(),
-                isreference=True,
             )
         )
 
@@ -1049,7 +1048,6 @@ def plot_artis_spectrum(
                         np.asarray(dfspectrum["x"].to_numpy(), dtype=np.float64),
                         np.asarray(dfspectrum["y"].to_numpy(), dtype=np.float64),
                         modelline.get_color(),
-                        isreference=False,
                     )
                 )
 
@@ -1734,22 +1732,16 @@ def make_emissionabsorption_plot(
 
 
 def check_residual_args(args: argparse.Namespace) -> None:
-    """Stop the command when --residuals cannot apply to the plot that args selects."""
+    """Stop the command when -residuals cannot apply to the plot that args selects."""
     if args.multispecplot or args.showemission or args.showabsorption or args.emissionabsorption or args.groupby:
         exit_with_error(
-            "--residuals applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
+            "-residuals applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
             "Give one time with -t, and no emission or absorption option",
         )
     if args.makevspecpol or args.averagevspecpolfiles or args.output_spectra or "/" in args.stokesparam:
         exit_with_error(
-            "--residuals applies only to a plot of spectra, and the other options select a different action",
-            "Remove --residuals, or remove --makevspecpol, --averagevspecpolfiles, --output_spectra, or the ratio",
-        )
-    nreferences = sum(path_is_reference_spectrum(path) for path in args.specpath)
-    if nreferences in {0, len(args.specpath)}:
-        exit_with_error(
-            "--residuals compares a model with a reference spectrum, and the paths hold only one of the two",
-            "Give both, e.g. plotspectra mymodel 2003du_20031213_3219_8822_00.txt",
+            "-residuals applies only to a plot of spectra, and the other options select a different action",
+            "Remove -residuals, or remove --makevspecpol, --averagevspecpolfiles, --output_spectra, or the ratio",
         )
     if args.normalised:
         print_warning("--normalised scales each series to its own peak, thus the residual compares the shapes alone")
@@ -1787,7 +1779,7 @@ def make_plot_figure(
     # an emission and absorption plot draws a taller frame
     aspect = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES * (1.56 if args.showabsorption else 1.0)
     residualaxis = None
-    if args.residuals:
+    if args.residuals is not None:
         fig, mainaxis, residualaxis = make_frame_figure_with_residuals(args, aspect=aspect, fig=fig)
         axesgrid = np.array([[mainaxis]], dtype=object)
     else:
@@ -2069,7 +2061,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--normalised", action="store_true", help="Normalise all spectra to their peak values")
 
-    addarg_residuals(parser, "reference spectrum")
+    addarg_residuals(parser)
 
     timegroup = parser.add_mutually_exclusive_group()
 
@@ -2839,7 +2831,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
             args.timemin = min(rangemin for rangemin, _ in finiteranges)
             args.timemax = max(rangemax for _, rangemax in finiteranges)
 
-    if args.residuals:
+    if args.residuals is not None:
         check_residual_args(args)
 
     if args.multispecplot and not args.timedayslist:

@@ -2226,7 +2226,7 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
         argsraw=[],
         modelpath=[modelpath, obsfile] if refispositional else [modelpath],
         reflightcurves=[] if refispositional else [str(obsfile)],
-        residuals=True,
+        residuals=1,
         write_data=True,
         outputfile=tmp_path / "bolresiduals.pdf",
     )
@@ -2237,6 +2237,23 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
     assert np.isclose(
         dfstats["rms_relative"].item(), dfstats["rms"].item() / (1.2 * dfmodel["luminosity_erg/s"].to_numpy().mean())
     )
+
+
+@pytest.mark.parametrize("filtername", [None, "B"])
+def test_lightcurve_residual_panel_compares_two_models(tmp_path: Path, filtername: str | None) -> None:
+    """The default baseline is the first model in a bolometric plot or a band plot."""
+    at.lightcurve.plot(
+        argsraw=["-residuals"],
+        modelpath=[modelpath, modelpath],
+        filter=[filtername] if filtername is not None else None,
+        label=["baseline", "comparison"],
+        write_data=True,
+        outputfile=tmp_path / "models.pdf",
+    )
+    dfstats = pl.read_csv(tmp_path / "models_residuals.csv")
+    assert dfstats["model"].item() == "comparison"
+    assert dfstats["reference"].item() == "baseline"
+    assert np.isclose(dfstats["rms"].item(), 0.0)
 
 
 def test_band_residual_panel_takes_one_filter(
@@ -2260,7 +2277,7 @@ def test_band_residual_panel_takes_one_filter(
             modelpath=[modelpath],
             filter=["B"],
             reflightcurves=["fakeref.dat"],
-            residuals=True,
+            residuals=1,
             write_data=True,
             outputfile=tmp_path,
         )
@@ -2278,11 +2295,11 @@ def test_band_residual_panel_takes_one_filter(
                 modelpath=[modelpath],
                 filter=["B", "V"],
                 reflightcurves=["fakeref.dat"],
-                residuals=True,
+                residuals=1,
                 outputfile=tmp_path,
             )
         # SystemExit holds the status alone, thus the message of the command is the text that it printed
-        assert "--residuals applies to a plot of one frame" in capsys.readouterr().err
+        assert "-residuals applies to a plot of one frame" in capsys.readouterr().err
 
 
 def test_reference_band_data_uses_the_given_distance_modulus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

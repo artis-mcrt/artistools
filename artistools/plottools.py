@@ -999,7 +999,6 @@ class ResidualSeries(t.NamedTuple):
     x: "npt.NDArray[np.float64]"
     y: "npt.NDArray[np.float64]"
     color: "mplt.ColorType | None"
-    isreference: bool
 
 
 def get_residuals(
@@ -1032,33 +1031,33 @@ def plot_residual_panel(
     xmin: float,
     xmax: float,
     *,
+    baselineindex: int = 0,
     ismagnitude: bool = False,
     ratio: bool = False,
 ) -> pl.DataFrame:
-    """Draw model minus reference for each model against the first reference series, and return the statistics.
+    """Draw each other series minus the baseline series, and return the statistics.
 
-    ratio=True draws model / reference, which agrees with a main frame that has a log y axis. The axis
-    then takes a log scale only when a ratio, or its inverse, is above RESIDUALRATIO_LOGSCALE. The table
-    gives the number of points and the root mean square (RMS) of model minus reference. It also gives
-    the ratio of the RMS to the mean reference value, which has no meaning for a magnitude.
+    ratio=True draws series / baseline, which agrees with a main frame that has a log y axis.
+    The axis takes a log scale only when a ratio, or its inverse, is above RESIDUALRATIO_LOGSCALE.
+    The table gives the number of points and the root mean square (RMS) of each residual.
+    It also gives the ratio of the RMS to the mean baseline value, which has no meaning for a magnitude.
     """
     import numpy as np
 
-    references = [s for s in series if s.isreference]
-    models = [s for s in series if not s.isreference]
-    if not references or not models:
+    if len(series) < 2:
+        exit_with_error("-residuals needs at least two series in the plot", "Give at least two series")
+    if not 0 <= baselineindex < len(series):
         exit_with_error(
-            "--residuals compares a model with a reference series, and the plot holds only one of the two",
-            "Give a model and a reference file",
+            f"-residuals index {baselineindex} is outside the range of {len(series)} series",
+            f"Give an index from 0 to {len(series) - 1}",
         )
-
-    reference = references[0]
-    if len(references) > 1:
-        print_warning(f"the residual panel compares each model with '{reference.label}', the first reference series")
+    reference = series[baselineindex]
 
     rows: list[dict[str, str | int | float | None]] = []
     maxratio = 1.0
-    for model in models:
+    for seriesindex, model in enumerate(series):
+        if seriesindex == baselineindex:
+            continue
         inrange, residual = get_residuals(reference, model, xmin, xmax)
         hasvalue = np.isfinite(residual)
         if not hasvalue.any():
@@ -1120,11 +1119,12 @@ def draw_residual_panel(
     *,
     ismagnitude: bool = False,
 ) -> pl.DataFrame:
-    """Draw model minus reference below the main frame, and return the statistics of each model.
+    """Draw each other series minus the baseline below the main frame, and return the statistics.
 
-    With a log y axis in the main frame, the panel shows model / reference, because a distance in that
-    frame is a ratio. Call it after the main frame has its labels and its x range, because the panel
-    takes both.
+    With a log y axis in the main frame, the panel shows series / baseline.
+    A distance in that frame is a ratio.
+    Call it after the main frame has its labels and its x range.
+    The panel takes both.
     """
     logscaley = bool(getattr(args, "logscaley", False))
     isratio = logscaley and not ismagnitude
@@ -1132,14 +1132,14 @@ def draw_residual_panel(
     residualaxis.set_xmargin(mainaxis.get_xmargin())
     xlim = mainaxis.get_xlim()
     dfresidualstats = plot_residual_panel(
-        residualaxis, series, min(xlim), max(xlim), ismagnitude=ismagnitude, ratio=isratio
+        residualaxis, series, min(xlim), max(xlim), baselineindex=args.residuals, ismagnitude=ismagnitude, ratio=isratio
     )
     set_axis_properties(residualaxis, args, setyaxis=False)
     if logscaley:
         prune_log_ticks(mainaxis.yaxis)
 
     if isratio:
-        residualaxis.set_ylabel("model / ref")
+        residualaxis.set_ylabel("series / baseline")
     else:
         mainformatter = mainaxis.yaxis.get_major_formatter()
         mainylabel = (
@@ -1147,7 +1147,7 @@ def draw_residual_panel(
         )
         # the residual has the units of the main frame, which the label of that frame gives in brackets
         strunits = f"\n{mainylabel[mainylabel.rfind('[') :]}" if "[" in mainylabel else ""
-        residualaxis.set_ylabel(rf"model $-$ ref{strunits}")
+        residualaxis.set_ylabel(rf"series $-$ baseline{strunits}")
         set_exponent_label(residualaxis)
     if ismagnitude:
         # a model that is fainter than the reference then lies below zero, as it lies below in the main frame

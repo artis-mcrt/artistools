@@ -266,11 +266,9 @@ def test_each_package_command_is_named_plot() -> None:
 
 def test_residuals_take_the_model_at_each_observed_point() -> None:
     """The residual is model minus observed, inside the x range of the panel and of the model alone."""
-    model = at.plottools.ResidualSeries(
-        "model", np.array([0.0, 10.0, 20.0]), np.array([0.0, 20.0, 40.0]), "C0", isreference=False
-    )
+    model = at.plottools.ResidualSeries("model", np.array([0.0, 10.0, 20.0]), np.array([0.0, 20.0, 40.0]), "C0")
     reference = at.plottools.ResidualSeries(
-        "obs", np.array([-5.0, 5.0, 12.0, 15.0, 25.0]), np.array([1.0, 11.0, 22.0, 33.0, 50.0]), "k", isreference=True
+        "obs", np.array([-5.0, 5.0, 12.0, 15.0, 25.0]), np.array([1.0, 11.0, 22.0, 33.0, 50.0]), "k"
     )
     inrange, residual = at.plottools.get_residuals(reference, model, xmin=0.0, xmax=14.0)
     # the points at -5 and 25 lie outside the model, and the point at 15 lies outside the panel
@@ -306,6 +304,77 @@ def test_residuals_take_the_model_at_each_observed_point() -> None:
     assert dfmagstats["rms_relative"].item() is None
 
 
+@pytest.mark.parametrize("baselineindex", [0, 1, 2])
+@pytest.mark.parametrize("ratio", [False, True])
+def test_residual_panel_uses_the_selected_baseline(baselineindex: int, ratio: bool) -> None:
+    """Each other series uses the selected baseline, its points, and its own colour."""
+    x = np.array([1.0, 2.0, 3.0])
+    y = np.array([2.0, 4.0, 8.0])
+    factors = [1.0, 2.0, 4.0]
+    series = [
+        at.plottools.ResidualSeries(f"series {index}", x, y * factor, f"C{index}")
+        for index, factor in enumerate(factors)
+    ]
+    fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(argparse.Namespace(logscaley=ratio))
+    mainaxis.set_xlim(1.0, 3.0)
+    dfstats = at.plottools.draw_residual_panel(
+        residualaxis, mainaxis, series, argparse.Namespace(residuals=baselineindex, logscaley=ratio)
+    )
+    otherindices = [index for index in range(len(series)) if index != baselineindex]
+    assert dfstats["model"].to_list() == [series[index].label for index in otherindices]
+    assert dfstats["reference"].to_list() == [series[baselineindex].label] * 2
+    for line, index in zip(residualaxis.lines, otherindices, strict=False):
+        expected = (
+            np.full_like(y, factors[index] / factors[baselineindex])
+            if ratio
+            else y * (factors[index] - factors[baselineindex])
+        )
+        assert np.allclose(line.get_ydata(), expected)
+        assert line.get_color() == series[index].color
+    expectedrms = [
+        float(np.sqrt(np.mean((y * (factors[index] - factors[baselineindex])) ** 2))) for index in otherindices
+    ]
+    assert np.allclose(dfstats["rms"].to_numpy(), expectedrms)
+    plt.close(fig)
+
+
+@pytest.mark.parametrize(("seriescount", "baselineindex"), [(0, 0), (1, 0), (2, -1), (2, 2)])
+def test_residual_panel_rejects_an_invalid_baseline(seriescount: int, baselineindex: int) -> None:
+    """The panel needs two series and an index inside their range."""
+    x = np.array([1.0, 2.0])
+    series = [at.plottools.ResidualSeries(str(index), x, x, "k") for index in range(seriescount)]
+    fig, axis = plt.subplots()
+    with pytest.raises(SystemExit):
+        at.plottools.plot_residual_panel(axis, series, 1.0, 2.0, baselineindex=baselineindex)
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("addargs", [at.spectra.plotspectra.addargs, at.lightcurve.plotlightcurve.addargs])
+@pytest.mark.parametrize(
+    ("tokens", "expected"),
+    [
+        ([], None),
+        (["-residuals"], 0),
+        (["-residuals", "0"], 0),
+        (["-residuals", "2"], 2),
+        (["--residuals"], 0),
+        (["--residuals", "1"], 1),
+    ],
+)
+def test_residual_option_takes_an_optional_index(
+    addargs: Callable[[argparse.ArgumentParser], None], tokens: list[str], expected: int | None
+) -> None:
+    """Both commands take an optional baseline index and keep the old spelling as a hidden alias."""
+    parser = argparse.ArgumentParser()
+    addargs(parser)
+    assert parser.parse_args(tokens).residuals == expected
+    assert "-residuals [INDEX]" in parser.format_help()
+    assert "--residuals" not in parser.format_help()
+    action = viewercore.get_actions_by_flag(parser)["-residuals"]
+    assert viewercore.get_default_tokens(action) == ()
+    assert viewercore.get_option_kind(action) == "text"
+
+
 @pytest.mark.parametrize(("modelfactor", "yscale"), [(2.0, "linear"), (100.0, "log"), (0.01, "log")])
 def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float, yscale: str) -> None:
     """With --logscaley the panel shows model / reference, on a log y axis only when a ratio is above 50."""
@@ -313,15 +382,15 @@ def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float
     yreference = np.array([1.0, 2.0, 4.0, 8.0])
     factors = np.array([1.0, 1.0, modelfactor, modelfactor])
     series = [
-        at.plottools.ResidualSeries("obs", x, yreference, "k", isreference=True),
-        at.plottools.ResidualSeries("model", x, yreference * factors, "C0", isreference=False),
+        at.plottools.ResidualSeries("obs", x, yreference, "k"),
+        at.plottools.ResidualSeries("model", x, yreference * factors, "C0"),
     ]
-    args = argparse.Namespace(logscaley=True)
+    args = argparse.Namespace(logscaley=True, residuals=0)
     _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
     mainaxis.plot(x, series[0].y)
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
     assert residualaxis.get_yscale() == yscale
-    assert residualaxis.get_ylabel() == "model / ref"
+    assert residualaxis.get_ylabel() == "series / baseline"
     assert np.allclose(residualaxis.lines[0].get_ydata(), factors)
 
 

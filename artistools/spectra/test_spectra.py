@@ -2032,7 +2032,7 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
         argsraw=[],
         specpath=[modelpath, obsfile],
         timestep=54,
-        residuals=True,
+        residuals=1,
         write_data=True,
         outputfile=tmp_path / "residuals.pdf",
     )
@@ -2052,7 +2052,7 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
         argsraw=[],
         specpath=[modelpath, obsfile],
         timestep=54,
-        residuals=True,
+        residuals=1,
         logscaley=True,
         outputfile=tmp_path / "ratio.pdf",
     )
@@ -2062,16 +2062,34 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
     assert np.allclose(ratio[np.isfinite(ratio)], 1.0 / 1.1)
 
 
+@pytest.mark.parametrize("referenceonly", [False, True])
+def test_spectra_residual_panel_compares_series_of_the_same_type(tmp_path: Path, referenceonly: bool) -> None:
+    """The default baseline is series 0, with two models or two reference spectra."""
+    specpath = write_fake_observed_spectrum(tmp_path) if referenceonly else modelpath
+    at.spectra.plot(
+        argsraw=["-residuals"],
+        specpath=[specpath, specpath],
+        timestep=54,
+        label=["baseline", "comparison"],
+        write_data=True,
+        outputfile=tmp_path / "same_type.pdf",
+    )
+    dfstats = pl.read_csv(tmp_path / "same_type_residuals.csv")
+    assert dfstats["model"].item() == "comparison"
+    assert dfstats["reference"].item() == "baseline"
+    assert np.isclose(dfstats["rms"].item(), 0.0)
+
+
 def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> None:
-    """--residuals needs a model and an observed spectrum, and one frame."""
+    """-residuals needs at least two series and one frame."""
     with pytest.raises(SystemExit):
-        at.spectra.plot(argsraw=[], specpath=[modelpath], timestep=54, residuals=True, outputfile=tmp_path / "a.pdf")
+        at.spectra.plot(argsraw=[], specpath=[modelpath], timestep=54, residuals=0, outputfile=tmp_path / "a.pdf")
 
     obsfile = write_fake_observed_spectrum(tmp_path)
     # --output_spectra draws no figure, thus it cannot hold a residual panel
     with pytest.raises(SystemExit):
         at.spectra.plot(
-            argsraw=[], specpath=[modelpath, obsfile], output_spectra=True, residuals=True, outputfile=tmp_path
+            argsraw=[], specpath=[modelpath, obsfile], output_spectra=True, residuals=1, outputfile=tmp_path
         )
 
     with pytest.raises(SystemExit):
@@ -2079,7 +2097,7 @@ def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> N
             argsraw=[],
             specpath=[modelpath, obsfile],
             timedayslist=["280", "300"],
-            residuals=True,
+            residuals=1,
             outputfile=tmp_path / "b.pdf",
         )
 
