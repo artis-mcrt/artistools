@@ -467,6 +467,7 @@ def plot_reference_spectrum(
                 np.asarray(specdata["x"].to_numpy(), dtype=np.float64),
                 np.asarray(specdata["y"].to_numpy(), dtype=np.float64),
                 lineplot.get_color(),
+                line=lineplot,
             )
         )
 
@@ -529,6 +530,7 @@ def plot_filter_functions(axis: mplax.Axes, xunit: str, *, residualseries: list[
                     np.asarray(xvalues, dtype=np.float64),
                     np.asarray(yvalues, dtype=np.float64),
                     filterline.get_color(),
+                    line=filterline,
                 )
             )
 
@@ -1053,6 +1055,7 @@ def plot_artis_spectrum(
                         np.asarray(dfspectrum["x"].to_numpy(), dtype=np.float64),
                         np.asarray(dfspectrum["y"].to_numpy(), dtype=np.float64),
                         modelline.get_color(),
+                        line=modelline,
                     )
                 )
 

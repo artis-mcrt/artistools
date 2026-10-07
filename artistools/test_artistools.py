@@ -264,44 +264,94 @@ def test_each_package_command_is_named_plot() -> None:
         assert package.plot.__module__.startswith(f"{package.__name__}."), package.__name__
 
 
-def test_residuals_take_the_model_at_each_observed_point() -> None:
-    """The residual is model minus observed, inside the x range of the panel and of the model alone."""
-    model = at.plottools.ResidualSeries("model", np.array([0.0, 10.0, 20.0]), np.array([0.0, 20.0, 40.0]), "C0")
-    reference = at.plottools.ResidualSeries(
-        "obs", np.array([-5.0, 5.0, 12.0, 15.0, 25.0]), np.array([1.0, 11.0, 22.0, 33.0, 50.0]), "k"
+def test_residuals_take_the_reference_at_each_model_point() -> None:
+    """Keep the model points inside the panel and reference ranges, with gaps for non-finite values."""
+    model = at.plottools.ResidualSeries(
+        "model", np.array([0.0, 5.0, 10.0, 12.0, 15.0, 20.0]), np.array([0.0, 10.0, 20.0, 24.0, 30.0, 40.0]), "C0"
     )
-    inrange, residual = at.plottools.get_residuals(reference, model, xmin=0.0, xmax=14.0)
-    # the points at -5 and 25 lie outside the model, and the point at 15 lies outside the panel
-    assert inrange.tolist() == [False, True, True, False, False]
-    assert np.allclose(residual, [10.0 - 11.0, 24.0 - 22.0])
+    reference = at.plottools.ResidualSeries(
+        "obs",
+        np.array([-5.0, 0.0, 5.0, 10.0, 15.0, 20.0, 25.0]),
+        np.array([1.0, 1.0, 11.0, 22.0, 33.0, 42.0, 50.0]),
+        "k",
+    )
+    inrange, residual, yreference = at.plottools.get_residuals(reference, model, xmin=0.0, xmax=14.0)
+    assert inrange.tolist() == [True, True, True, True, False, False]
+    assert np.allclose(yreference, [1.0, 11.0, 22.0, 26.4])
+    assert np.allclose(residual, [-1.0, -1.0, -2.0, -2.4])
 
-    # an observed NaN, e.g. a masked telluric range, stays a gap and does not count
-    masked = reference._replace(y=np.array([1.0, np.nan, 22.0, 33.0, 50.0]))
-    inrange, residual = at.plottools.get_residuals(masked, model, xmin=0.0, xmax=20.0)
-    assert inrange.tolist() == [False, True, True, True, False]
-    assert np.isnan(residual[0])
+    masked = reference._replace(y=np.array([1.0, 1.0, np.nan, 22.0, 33.0, 42.0, 50.0]))
+    inrange, residual, _ = at.plottools.get_residuals(masked, model, xmin=0.0, xmax=20.0)
+    assert inrange.all()
+    assert np.isnan(residual[1])
 
-    # a model value that is not finite leaves a gap, as in the main frame, and gives no value from its neighbours
-    gapmodel = model._replace(y=np.array([0.0, np.inf, 40.0]))
-    _, residual = at.plottools.get_residuals(reference, gapmodel, xmin=0.0, xmax=20.0)
-    assert np.isnan(residual).all()
+    gapmodel = model._replace(y=np.array([0.0, 10.0, np.inf, 24.0, 30.0, 40.0]))
+    _, residual, _ = at.plottools.get_residuals(reference, gapmodel, xmin=0.0, xmax=20.0)
+    assert np.isnan(residual[2])
+    assert np.isfinite(residual[[0, 1, 3, 4, 5]]).all()
 
-    _fig, axis = plt.subplots()
+    fig, axis = plt.subplots()
     dfstats = at.plottools.plot_residual_panel(axis, [masked, model], 0.0, 20.0)
-    assert dfstats["npoints"].item() == 2
-    assert np.isclose(dfstats["rms"].item(), math.sqrt((4.0 + 9.0) / 2.0))
-    assert np.isclose(dfstats["rms_relative"].item(), dfstats["rms"].item() / ((22.0 + 33.0) / 2.0))
-    # the panel shows model minus reference: 24 - 22 and 30 - 33
-    assert np.allclose(np.asarray(axis.lines[0].get_ydata())[1:], [2.0, -3.0])
+    expected = np.array([-1.0, -2.0, -2.4, -3.0, -2.0])
+    assert dfstats["npoints"].item() == 5
+    assert np.isclose(dfstats["rms"].item(), np.sqrt(np.mean(expected**2)))
+    assert np.isclose(dfstats["rms_relative"].item(), dfstats["rms"].item() / np.mean([1.0, 22.0, 26.4, 33.0, 42.0]))
+    assert np.allclose(np.asarray(axis.lines[0].get_ydata())[[0, 2, 3, 4, 5]], expected)
+    plt.close(fig)
 
-    # a main frame with a log y axis takes model / reference: 24 / 22 and 30 / 33
-    _fig, ratioaxis = plt.subplots()
+    fig, ratioaxis = plt.subplots()
     at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, ratio=True)
-    assert np.allclose(np.asarray(ratioaxis.lines[0].get_ydata())[1:], [24.0 / 22.0, 30.0 / 33.0])
-
-    # a ratio of the RMS to the mean reference value has no meaning for a magnitude
+    assert np.allclose(
+        np.asarray(ratioaxis.lines[0].get_ydata())[[0, 2, 3, 4, 5]],
+        [0.0, 20.0 / 22.0, 24.0 / 26.4, 30.0 / 33.0, 40.0 / 42.0],
+    )
     dfmagstats = at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, ismagnitude=True)
     assert dfmagstats["rms_relative"].item() is None
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("ratio", [False, True])
+def test_residual_panel_keeps_the_resolution_and_line_properties(ratio: bool) -> None:
+    """A sparse reference keeps each comparison point and the line properties of the main frame."""
+    x = np.linspace(-1.0, 9.0, 1001)
+    yreference = np.interp(x, [0.0, 4.0, 8.0], [2.0, 6.0, 18.0])
+    y = yreference + np.sin(x)
+    fig, (mainaxis, residualaxis) = plt.subplots(2)
+    (mainline,) = mainaxis.plot(
+        x,
+        y,
+        color="purple",
+        linestyle=(1, (2, 3)),
+        linewidth=2.5,
+        marker="s",
+        markersize=7,
+        markerfacecolor="none",
+        markeredgewidth=2,
+        alpha=0.4,
+        drawstyle="steps-mid",
+    )
+    reference = at.plottools.ResidualSeries("baseline", np.array([8.0, 0.0, 4.0]), np.array([18.0, 2.0, 6.0]), "k")
+    model = at.plottools.ResidualSeries("comparison", x, y, mainline.get_color(), line=mainline)
+    stats = at.plottools.plot_residual_panel(residualaxis, [reference, model], 1.0, 7.0, ratio=ratio)
+    inrange = (x >= 1.0) & (x <= 7.0)
+    line = residualaxis.lines[0]
+    assert np.allclose(line.get_xdata(), x[inrange])
+    assert np.allclose(line.get_ydata(), (y / yreference if ratio else y - yreference)[inrange])
+    assert stats["npoints"].item() == int(inrange.sum())
+    assert line.get_transform() == residualaxis.transData
+    assert line.get_transform() != mainline.get_transform()
+    assert np.allclose(line.get_clip_box().bounds, residualaxis.bbox.bounds)
+    assert line.get_color() == mainline.get_color()
+    assert line.get_linestyle() == mainline.get_linestyle()
+    assert np.isclose(line.get_linewidth(), mainline.get_linewidth())
+    assert line.get_marker() == mainline.get_marker()
+    assert np.isclose(line.get_markersize(), mainline.get_markersize())
+    assert line.get_markerfacecolor() == mainline.get_markerfacecolor()
+    assert np.isclose(line.get_markeredgewidth(), mainline.get_markeredgewidth())
+    assert np.isclose(line.get_alpha(), mainline.get_alpha())
+    assert line.get_drawstyle() == mainline.get_drawstyle()
+    fig.canvas.draw()
+    plt.close(fig)
 
 
 @pytest.mark.parametrize("baselineindex", [0, 1, 2])
