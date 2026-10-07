@@ -1029,7 +1029,8 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
             " --write_data also writes this number"
         ),
     )
-    group.add_argument("--residuals", dest="residuals", type=int, nargs="?", const=0, help=argparse.SUPPRESS)
+    # the old flag takes no value, because a numeric model path must stay positional
+    group.add_argument("--residuals", dest="residuals", action="store_const", const=0, help=argparse.SUPPRESS)
 
 
 def addarg_show(parser: argparse.ArgumentParser) -> None:

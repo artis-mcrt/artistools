@@ -358,7 +358,7 @@ def test_residual_panel_rejects_an_invalid_baseline(seriescount: int, baselinein
         (["-residuals", "0"], 0),
         (["-residuals", "2"], 2),
         (["--residuals"], 0),
-        (["--residuals", "1"], 1),
+        (["--residuals", "1"], 0),
     ],
 )
 def test_residual_option_takes_an_optional_index(
@@ -376,8 +376,7 @@ def test_residual_option_takes_an_optional_index(
 
 
 @pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
-@pytest.mark.parametrize("flag", ["-residuals", "--residuals"])
-@pytest.mark.parametrize("indexed", [False, True])
+@pytest.mark.parametrize(("flag", "indexed"), [("-residuals", False), ("-residuals", True), ("--residuals", False)])
 def test_residual_option_keeps_the_next_positional_path(command: str, flag: str, indexed: bool) -> None:
     """A bare residual flag keeps the next path positional, and an integer selects the baseline."""
     import artistools.__main__
@@ -387,6 +386,21 @@ def test_residual_option_keeps_the_next_positional_path(command: str, flag: str,
     assert args.residuals == (1 if indexed else 0)
     paths = args.specpath if command == "plotspectra" else args.modelpath
     assert [str(path) for path in paths] == ["model1", "model2"]
+
+
+@pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
+def test_old_residual_flag_keeps_a_numeric_model_path(
+    command: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The old flag takes no value, so a numeric model path stays positional."""
+    import artistools.__main__
+
+    (tmp_path / "1").mkdir()
+    monkeypatch.chdir(tmp_path)
+    args = artistools.__main__.build_parser().parse_args([command, "--residuals", "1"])
+    assert args.residuals == 0
+    paths = args.specpath if command == "plotspectra" else args.modelpath
+    assert [str(path) for path in paths] == ["1"]
 
 
 @pytest.mark.parametrize(("modelfactor", "yscale"), [(2.0, "linear"), (100.0, "log"), (0.01, "log")])

@@ -2280,6 +2280,42 @@ def test_residual_baseline_counts_gamma_lightcurves(tmp_path: Path, rpkt: bool, 
     assert (dfstats["npoints"] > 0).all()
 
 
+@pytest.mark.parametrize(("modelcount", "baselineindex"), [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2), (2, 3)])
+def test_residual_baseline_counts_comoving_frame_curves(tmp_path: Path, modelcount: int, baselineindex: int) -> None:
+    """Comoving frame curves count in plot order, with their plotted points and colours."""
+    with mock.patch.object(
+        at.lightcurve.plotlightcurve, "draw_residual_panel", wraps=at.lightcurve.plotlightcurve.draw_residual_panel
+    ) as mockdraw:
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d] * modelcount,
+            label=["first", "second"][:modelcount],
+            plotcmf=True,
+            residuals=baselineindex,
+            write_data=True,
+            outputfile=tmp_path / "cmf.pdf",
+        )
+    series = mockdraw.call_args.args[2]
+    mainaxis = mockdraw.call_args.args[1]
+    assert len(series) == len(mainaxis.lines) == 2 * modelcount
+    for residualseries, line in zip(series, mainaxis.lines, strict=True):
+        assert np.allclose(residualseries.x, line.get_xdata())
+        assert np.allclose(residualseries.y, line.get_ydata())
+        assert residualseries.color == line.get_color()
+    dfstats = pl.read_csv(tmp_path / "cmf_residuals.csv")
+    assert dfstats.height == len(series) - 1
+    assert dfstats["reference"].to_list() == [series[baselineindex].label] * dfstats.height
+    baseline = series[baselineindex]
+    expectedrms = []
+    xmin, xmax = mainaxis.get_xlim()
+    for index, comparison in enumerate(series):
+        if index != baselineindex:
+            inrange = (baseline.x >= max(xmin, comparison.x.min())) & (baseline.x <= min(xmax, comparison.x.max()))
+            residual = np.interp(baseline.x[inrange], comparison.x, comparison.y) - baseline.y[inrange]
+            expectedrms.append(np.sqrt(np.mean(residual**2)))
+    assert np.allclose(dfstats["rms"].to_numpy(), expectedrms)
+
+
 def test_band_residual_panel_takes_one_filter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

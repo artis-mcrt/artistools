@@ -804,7 +804,16 @@ def plot_artis_lightcurve(
                 if label_with_tags is not None and not linelabel_is_custom
                 else label_with_tags
             )
-            axis.plot(lcdata["time_days"], lcdata[cmfcolumn], label=label_cmf, **plotkwargs_cmf)
+            (cmfline,) = axis.plot(lcdata["time_days"], lcdata[cmfcolumn], label=label_cmf, **plotkwargs_cmf)
+            if residualseries is not None:
+                residualseries.append(
+                    ResidualSeries(
+                        label_cmf or f"direction bin {dirbin} (cmf)",
+                        np.asarray(lcdata["time_days"].to_numpy(), dtype=np.float64),
+                        np.asarray(lcdata[cmfcolumn].to_numpy(), dtype=np.float64),
+                        cmfline.get_color(),
+                    )
+                )
 
     return lcdataframes
 
