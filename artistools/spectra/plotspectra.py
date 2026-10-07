@@ -1165,9 +1165,7 @@ def make_spectrum_plot(
             timeavg = (args.timemin + args.timemax) / 2.0
             from artistools.codecomparison import plot_spectrum
 
-            plot_spectrum(specpath, timedays=timeavg, axis=axes[0], **plotkwargs)
-            if residualseries is not None:
-                print_warning("the residual panel does not include the code comparison series")
+            plot_spectrum(specpath, timedays=timeavg, axis=axes[0], residualseries=residualseries, **plotkwargs)
             nseriesplotted += 1
         else:
             # ARTIS model spectrum

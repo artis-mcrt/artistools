@@ -19,6 +19,7 @@ from artistools.atomic import get_ionstring
 from artistools.commands import get_path
 from artistools.constants import megaparsec_to_cm
 from artistools.misc import read_wsv
+from artistools.plottools import ResidualSeries
 
 if t.TYPE_CHECKING:
     import matplotlib.axes as mplax
@@ -224,7 +225,14 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
     return dfspectra, arr_timedays
 
 
-def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: "mplax.Axes", **plotkwargs: t.Any) -> None:
+def plot_spectrum(
+    modelpath: str | Path,
+    timedays: str | float,
+    axis: "mplax.Axes",
+    *,
+    residualseries: list[ResidualSeries] | None = None,
+    **plotkwargs: t.Any,
+) -> None:
     """Plot a code comparison workshop model's spectrum at the time closest to timedays."""
     dfspectra, arr_timedays = get_spectra(modelpath)
     timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())
@@ -237,4 +245,13 @@ def plot_spectrum(modelpath: str | Path, timedays: str | float, axis: "mplax.Axe
 
     arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (megaparsec_to_cm**2)
 
-    axis.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)
+    (specline,) = axis.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)
+    if residualseries is not None:
+        residualseries.append(
+            ResidualSeries(
+                label,
+                np.asarray(dfspectra["lambda"].to_numpy(), dtype=np.float64),
+                np.asarray(arr_flux.to_numpy(), dtype=np.float64),
+                specline.get_color(),
+            )
+        )
