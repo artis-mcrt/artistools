@@ -2316,6 +2316,62 @@ def test_residual_baseline_counts_comoving_frame_curves(tmp_path: Path, modelcou
     assert np.allclose(dfstats["rms"].to_numpy(), expectedrms)
 
 
+@pytest.mark.parametrize("rateflag", ["deposition", "emission", "analyticemission"])
+@pytest.mark.parametrize("baselineindex", [0, 1, 2])
+@pytest.mark.parametrize("lumunit", ["erg/s", "Lsun", "mag"])
+def test_residual_baseline_counts_energy_rate_curves(
+    tmp_path: Path, rateflag: str, baselineindex: int, lumunit: str
+) -> None:
+    """Energy-rate curves count before the reference curve and keep the units of the main axis."""
+    times = np.array([5.0, 6.0, 7.0])
+    rate_lsun = np.array([1e6, 2e6, 3e6])
+    depdata = pl.DataFrame({
+        "tmid_days": times,
+        "elecdep_Lsun": rate_lsun,
+        "eps_elec_Lsun": rate_lsun,
+        "eps_elec_ana_Lsun": rate_lsun,
+    })
+    reffile = tmp_path / "reference.txt"
+    reffile.write_text("#time_days luminosity_erg/s\n5 1e40\n6 2e40\n7 3e40\n", encoding="utf-8")
+    with (
+        mock.patch.object(at.lightcurve.plotlightcurve, "get_deposition", return_value=depdata.lazy()),
+        mock.patch.object(
+            at.lightcurve.plotlightcurve, "draw_residual_panel", wraps=at.lightcurve.plotlightcurve.draw_residual_panel
+        ) as mockdraw,
+    ):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d, reffile],
+            label=["model", "reference"],
+            residuals=baselineindex,
+            write_data=True,
+            outputfile=tmp_path / "rates.pdf",
+            deposition=["betaminus"] if rateflag == "deposition" else [],
+            emission=["betaminus"] if rateflag == "emission" else [],
+            analyticemission=["betaminus"] if rateflag == "analyticemission" else [],
+            Lsun=lumunit == "Lsun",
+            magnitude=lumunit == "mag",
+        )
+    series = mockdraw.call_args.args[2]
+    assert len(series) == 3
+    assert series[0].label == "model"
+    assert series[2].label == "reference"
+    assert np.allclose(series[1].x, times)
+    expectedrate = rate_lsun
+    if lumunit == "erg/s":
+        expectedrate = rate_lsun * Lsun_to_erg_per_s
+    elif lumunit == "mag":
+        expectedrate = Mbol_sun - 2.5 * np.log10(rate_lsun)
+    assert np.allclose(series[1].y, expectedrate)
+    rateline = mockdraw.call_args.args[1].lines[1]
+    assert series[1].label == rateline.get_label()
+    assert series[1].color == rateline.get_color()
+    dfstats = pl.read_csv(tmp_path / "rates_residuals.csv")
+    assert dfstats["reference"].to_list() == [series[baselineindex].label] * 2
+    assert dfstats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
+    assert (dfstats["npoints"] > 0).all()
+
+
 def test_band_residual_panel_takes_one_filter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

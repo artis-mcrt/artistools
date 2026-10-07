@@ -396,6 +396,8 @@ def plot_energy_rates(
     modelname: str,
     args: argparse.Namespace,
     linewidth: float | str | None = None,
+    *,
+    residualseries: list[ResidualSeries] | None = None,
 ) -> bool:
     """Plot the energy rates of deposition.out that args names, and return True if the function drew a curve on axis.
 
@@ -427,14 +429,20 @@ def plot_energy_rates(
                 # an older deposition.out has only the gamma columns, and a run with no fission has no fission column
                 print_warning(f"{modellogname} gives no {column} in deposition.out, thus the plot has no such curve")
                 continue
-            axis.plot(
-                depdata["tmid_days"],
-                convert_lum_lsun_to_plotunits(depdata[column].to_numpy(), lumunit),
-                linewidth=linewidth,
-                label=f"{modelname} {labelformat.format(PARTICLESYMBOLS[particle])}",
-                linestyle=linestyle,
-                color=colour,
+            yvalues = convert_lum_lsun_to_plotunits(depdata[column].to_numpy(), lumunit)
+            label = f"{modelname} {labelformat.format(PARTICLESYMBOLS[particle])}"
+            (rateline,) = axis.plot(
+                depdata["tmid_days"], yvalues, linewidth=linewidth, label=label, linestyle=linestyle, color=colour
             )
+            if residualseries is not None:
+                residualseries.append(
+                    ResidualSeries(
+                        label,
+                        np.asarray(depdata["tmid_days"].to_numpy(), dtype=np.float64),
+                        np.asarray(yvalues, dtype=np.float64),
+                        rateline.get_color(),
+                    )
+                )
             drewrate = True
 
     if args.thermalisation:
@@ -938,6 +946,7 @@ def draw_plot(
                     modelname=get_series_label(args.label, lcindex, get_model_name(modelpath)),
                     args=args,
                     linewidth=args.linewidth[lcindex] or None,
+                    residualseries=residualseries,
                 )
                 plotteddeposition = plotteddeposition or drewrate
 
