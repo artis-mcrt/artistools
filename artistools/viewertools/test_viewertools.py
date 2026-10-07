@@ -55,7 +55,7 @@ def test_viewer_changes_the_residual_baseline(kind: str) -> None:
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
-@pytest.mark.parametrize("flag", ["-residuals", "--residuals"])
+@pytest.mark.parametrize("flag", ["-residuals", "-res", "--residuals"])
 def test_viewer_keeps_paths_after_a_bare_residual_flag(kind: str, flag: str) -> None:
     """Both viewers keep the paths after a bare residual flag."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
@@ -63,7 +63,8 @@ def test_viewer_keeps_paths_after_a_bare_residual_flag(kind: str, flag: str) -> 
     viewer = make_viewer(kind, [flag, *paths, *timetokens])
     assert (viewer.values.spectra if kind == "spectra" else viewer.values.lightcurves) == paths
     assert viewer.residualaxis is not None
-    assert viewer.values.otheroptions == ((flag, ("0",) if flag == "-residuals" else ()),)
+    expectedflag = "-residuals" if flag == "-res" else flag
+    assert viewer.values.otheroptions == ((expectedflag, ("0",) if flag != "--residuals" else ()),)
 
 
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", ["--plotcmf"])])

@@ -675,6 +675,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
                 out.extend(args[index:])
                 break
             action = self._option_string_actions.get(argstring)
+            if action is None and argstring.startswith("-") and self.allow_abbrev:
+                matches = [value for flag, value in self._option_string_actions.items() if flag.startswith(argstring)]
+                if len(matches) == 1:
+                    action = matches[0]
             outstring = argstring
             if action is not None and action.nargs == "?" and action.type is int and index + 1 < len(args):
                 nexttoken = args[index + 1]

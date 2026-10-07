@@ -376,7 +376,10 @@ def test_residual_option_takes_an_optional_index(
 
 
 @pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
-@pytest.mark.parametrize(("flag", "indexed"), [("-residuals", False), ("-residuals", True), ("--residuals", False)])
+@pytest.mark.parametrize(
+    ("flag", "indexed"),
+    [("-residuals", False), ("-residuals", True), ("-res", False), ("-res", True), ("--residuals", False)],
+)
 def test_residual_option_keeps_the_next_positional_path(command: str, flag: str, indexed: bool) -> None:
     """A bare residual flag keeps the next path positional, and an integer selects the baseline."""
     import artistools.__main__
@@ -386,6 +389,18 @@ def test_residual_option_keeps_the_next_positional_path(command: str, flag: str,
     assert args.residuals == (1 if indexed else 0)
     paths = args.specpath if command == "plotspectra" else args.modelpath
     assert [str(path) for path in paths] == ["model1", "model2"]
+
+
+def test_residual_path_rewrite_keeps_an_ambiguous_prefix(capsys: pytest.CaptureFixture[str]) -> None:
+    """The path rewrite leaves an ambiguous prefix for argparse to reject."""
+    parser = at.commands.SuggestingArgumentParser()
+    at.misc.addarg_residuals(parser)
+    parser.add_argument("-reset", action="store_true")
+    parser.add_argument("paths", nargs="*")
+    assert parser.split_joined_flags(["-res", "model1", "model2"]) == ["-res", "model1", "model2"]
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-res", "model1", "model2"])
+    assert "ambiguous option: -res" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
