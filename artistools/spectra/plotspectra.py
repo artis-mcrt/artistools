@@ -502,7 +502,7 @@ def plot_reference_spectrum_for_args(
     )
 
 
-def plot_filter_functions(axis: mplax.Axes, xunit: str) -> None:
+def plot_filter_functions(axis: mplax.Axes, xunit: str, *, residualseries: list[ResidualSeries] | None = None) -> None:
     """Plot the UBVI filter transmission curves on the flux axis, at the x values of the unit xunit.
 
     The transmission goes from 0 to 1, thus the curves agree with a spectrum of --normalised.
@@ -519,13 +519,18 @@ def plot_filter_functions(axis: mplax.Axes, xunit: str) -> None:
             new_columns=["lambda_angstroms", "flux_normalised"],
         )
         # the files give the wavelength in angstroms, thus the curves take the unit of the x axis
-        axis.plot(
-            convert_angstroms_to_unit(filter_data["lambda_angstroms"].to_numpy(), xunit),
-            filter_data["flux_normalised"],
-            label=filter_name,
-            color=colours[index],
-            alpha=0.3,
-        )
+        xvalues = convert_angstroms_to_unit(filter_data["lambda_angstroms"].to_numpy(), xunit)
+        yvalues = filter_data["flux_normalised"].to_numpy()
+        (filterline,) = axis.plot(xvalues, yvalues, label=filter_name, color=colours[index], alpha=0.3)
+        if residualseries is not None:
+            residualseries.append(
+                ResidualSeries(
+                    filter_name,
+                    np.asarray(xvalues, dtype=np.float64),
+                    np.asarray(yvalues, dtype=np.float64),
+                    filterline.get_color(),
+                )
+            )
 
 
 DELTALOGX_SCALES: t.Final = ("smallestscale", "largestscale")
@@ -1240,7 +1245,7 @@ def make_spectrum_plot(
         if args.showfilterfunctions:
             if not args.normalised:
                 print_warning("the filter functions plot normalised values, thus give --normalised as well")
-            plot_filter_functions(axis, args.xunit)
+            plot_filter_functions(axis, args.xunit, residualseries=residualseries)
 
         # a flux of stokes I is not negative, and the y margin puts the bottom below zero. make_plot applies -ymin
         # and -ymax after this function returns, and -ymax alone keeps this bottom

@@ -2118,6 +2118,40 @@ def test_residual_baseline_counts_codecomparison_spectra(tmp_path: Path, baselin
     assert (stats["npoints"] > 0).all()
 
 
+@pytest.mark.parametrize("baselineindex", range(5))
+@pytest.mark.parametrize("xunit", ["angstrom", "nm"])
+def test_residual_baseline_counts_filter_curves(tmp_path: Path, baselineindex: int, xunit: str) -> None:
+    """Check each filter index and its data in both units of wavelength."""
+    with mock.patch.object(plotspectra, "draw_residual_panel", wraps=plotspectra.draw_residual_panel) as mockdraw:
+        at.spectra.plot(
+            argsraw=[],
+            specpath=[modelpath],
+            timestep=54,
+            normalised=True,
+            showfilterfunctions=True,
+            xunit=xunit,
+            residuals=baselineindex,
+            write_data=True,
+            outputfile=tmp_path / "filters.pdf",
+        )
+    series = mockdraw.call_args.args[2]
+    axis = mockdraw.call_args.args[1]
+    assert len(series) == 5
+    assert [item.label for item in series[1:]] == ["U", "B", "V", "I"]
+    for item, line in zip(series, axis.lines, strict=True):
+        assert np.allclose(item.x, np.asarray(line.get_xdata(), dtype=np.float64))
+        assert np.allclose(item.y, np.asarray(line.get_ydata(), dtype=np.float64))
+        assert item.color == line.get_color()
+    stats = pl.read_csv(tmp_path / "filters_residuals.csv")
+    assert stats["reference"].to_list() == [series[baselineindex].label] * stats.height
+    assert stats.height > 0
+    if baselineindex == 0:
+        assert stats["model"].to_list() == ["U", "B", "V", "I"]
+    else:
+        assert stats["model"][0] == series[0].label
+        assert series[baselineindex].label not in stats["model"].to_list()
+
+
 def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> None:
     """-residuals needs at least two series and one frame."""
     with pytest.raises(SystemExit):
