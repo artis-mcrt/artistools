@@ -467,7 +467,6 @@ def plot_reference_spectrum(
                 np.asarray(specdata["x"].to_numpy(), dtype=np.float64),
                 np.asarray(specdata["y"].to_numpy(), dtype=np.float64),
                 lineplot.get_color(),
-                isreference=True,
             )
         )
 
@@ -503,7 +502,7 @@ def plot_reference_spectrum_for_args(
     )
 
 
-def plot_filter_functions(axis: mplax.Axes, xunit: str) -> None:
+def plot_filter_functions(axis: mplax.Axes, xunit: str, *, residualseries: list[ResidualSeries] | None = None) -> None:
     """Plot the UBVI filter transmission curves on the flux axis, at the x values of the unit xunit.
 
     The transmission goes from 0 to 1, thus the curves agree with a spectrum of --normalised.
@@ -520,13 +519,18 @@ def plot_filter_functions(axis: mplax.Axes, xunit: str) -> None:
             new_columns=["lambda_angstroms", "flux_normalised"],
         )
         # the files give the wavelength in angstroms, thus the curves take the unit of the x axis
-        axis.plot(
-            convert_angstroms_to_unit(filter_data["lambda_angstroms"].to_numpy(), xunit),
-            filter_data["flux_normalised"],
-            label=filter_name,
-            color=colours[index],
-            alpha=0.3,
-        )
+        xvalues = convert_angstroms_to_unit(filter_data["lambda_angstroms"].to_numpy(), xunit)
+        yvalues = filter_data["flux_normalised"].to_numpy()
+        (filterline,) = axis.plot(xvalues, yvalues, label=filter_name, color=colours[index], alpha=0.3)
+        if residualseries is not None:
+            residualseries.append(
+                ResidualSeries(
+                    filter_name,
+                    np.asarray(xvalues, dtype=np.float64),
+                    np.asarray(yvalues, dtype=np.float64),
+                    filterline.get_color(),
+                )
+            )
 
 
 DELTALOGX_SCALES: t.Final = ("smallestscale", "largestscale")
@@ -1049,7 +1053,6 @@ def plot_artis_spectrum(
                         np.asarray(dfspectrum["x"].to_numpy(), dtype=np.float64),
                         np.asarray(dfspectrum["y"].to_numpy(), dtype=np.float64),
                         modelline.get_color(),
-                        isreference=False,
                     )
                 )
 
@@ -1167,9 +1170,7 @@ def make_spectrum_plot(
             timeavg = (args.timemin + args.timemax) / 2.0
             from artistools.codecomparison import plot_spectrum
 
-            plot_spectrum(specpath, timedays=timeavg, axis=axes[0], **plotkwargs)
-            if residualseries is not None:
-                print_warning("the residual panel does not include the code comparison series")
+            plot_spectrum(specpath, timedays=timeavg, axis=axes[0], residualseries=residualseries, **plotkwargs)
             nseriesplotted += 1
         else:
             # ARTIS model spectrum
@@ -1244,7 +1245,7 @@ def make_spectrum_plot(
         if args.showfilterfunctions:
             if not args.normalised:
                 print_warning("the filter functions plot normalised values, thus give --normalised as well")
-            plot_filter_functions(axis, args.xunit)
+            plot_filter_functions(axis, args.xunit, residualseries=residualseries)
 
         # a flux of stokes I is not negative, and the y margin puts the bottom below zero. make_plot applies -ymin
         # and -ymax after this function returns, and -ymax alone keeps this bottom
@@ -1734,22 +1735,16 @@ def make_emissionabsorption_plot(
 
 
 def check_residual_args(args: argparse.Namespace) -> None:
-    """Stop the command when --residuals cannot apply to the plot that args selects."""
+    """Stop the command when -residuals cannot apply to the plot that args selects."""
     if args.multispecplot or args.showemission or args.showabsorption or args.emissionabsorption or args.groupby:
         exit_with_error(
-            "--residuals applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
+            "-residuals applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
             "Give one time with -t, and no emission or absorption option",
         )
     if args.makevspecpol or args.averagevspecpolfiles or args.output_spectra or "/" in args.stokesparam:
         exit_with_error(
-            "--residuals applies only to a plot of spectra, and the other options select a different action",
-            "Remove --residuals, or remove --makevspecpol, --averagevspecpolfiles, --output_spectra, or the ratio",
-        )
-    nreferences = sum(path_is_reference_spectrum(path) for path in args.specpath)
-    if nreferences in {0, len(args.specpath)}:
-        exit_with_error(
-            "--residuals compares a model with a reference spectrum, and the paths hold only one of the two",
-            "Give both, e.g. plotspectra mymodel 2003du_20031213_3219_8822_00.txt",
+            "-residuals applies only to a plot of spectra, and the other options select a different action",
+            "Remove -residuals, or remove --makevspecpol, --averagevspecpolfiles, --output_spectra, or the ratio",
         )
     if args.normalised:
         print_warning("--normalised scales each series to its own peak, thus the residual compares the shapes alone")
@@ -1787,7 +1782,7 @@ def make_plot_figure(
     # an emission and absorption plot draws a taller frame
     aspect = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES * (1.56 if args.showabsorption else 1.0)
     residualaxis = None
-    if args.residuals:
+    if args.residuals is not None:
         fig, mainaxis, residualaxis = make_frame_figure_with_residuals(args, aspect=aspect, fig=fig)
         axesgrid = np.array([[mainaxis]], dtype=object)
     else:
@@ -2069,7 +2064,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--normalised", action="store_true", help="Normalise all spectra to their peak values")
 
-    addarg_residuals(parser, "reference spectrum")
+    addarg_residuals(parser)
 
     timegroup = parser.add_mutually_exclusive_group()
 
@@ -2839,7 +2834,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
             args.timemin = min(rangemin for rangemin, _ in finiteranges)
             args.timemax = max(rangemax for _, rangemax in finiteranges)
 
-    if args.residuals:
+    if args.residuals is not None:
         check_residual_args(args)
 
     if args.multispecplot and not args.timedayslist:

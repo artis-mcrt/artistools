@@ -371,11 +371,7 @@ def plot_bol_reflightcurve(
     if residualseries is not None:
         residualseries.append(
             ResidualSeries(
-                plotlabel,
-                np.asarray(time_days, dtype=np.float64),
-                np.asarray(yvalues, dtype=np.float64),
-                color,
-                isreference=True,
+                plotlabel, np.asarray(time_days, dtype=np.float64), np.asarray(yvalues, dtype=np.float64), color
             )
         )
 
@@ -400,6 +396,8 @@ def plot_energy_rates(
     modelname: str,
     args: argparse.Namespace,
     linewidth: float | str | None = None,
+    *,
+    residualseries: list[ResidualSeries] | None = None,
 ) -> bool:
     """Plot the energy rates of deposition.out that args names, and return True if the function drew a curve on axis.
 
@@ -431,14 +429,20 @@ def plot_energy_rates(
                 # an older deposition.out has only the gamma columns, and a run with no fission has no fission column
                 print_warning(f"{modellogname} gives no {column} in deposition.out, thus the plot has no such curve")
                 continue
-            axis.plot(
-                depdata["tmid_days"],
-                convert_lum_lsun_to_plotunits(depdata[column].to_numpy(), lumunit),
-                linewidth=linewidth,
-                label=f"{modelname} {labelformat.format(PARTICLESYMBOLS[particle])}",
-                linestyle=linestyle,
-                color=colour,
+            yvalues = convert_lum_lsun_to_plotunits(depdata[column].to_numpy(), lumunit)
+            label = f"{modelname} {labelformat.format(PARTICLESYMBOLS[particle])}"
+            (rateline,) = axis.plot(
+                depdata["tmid_days"], yvalues, linewidth=linewidth, label=label, linestyle=linestyle, color=colour
             )
+            if residualseries is not None:
+                residualseries.append(
+                    ResidualSeries(
+                        label,
+                        np.asarray(depdata["tmid_days"].to_numpy(), dtype=np.float64),
+                        np.asarray(yvalues, dtype=np.float64),
+                        rateline.get_color(),
+                    )
+                )
             drewrate = True
 
     if args.thermalisation:
@@ -782,15 +786,13 @@ def plot_artis_lightcurve(
             )
 
         (modelline,) = axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
-        # the light curve of the gamma rays or of one nuclide is not a model of the reference light curve
-        if residualseries is not None and escape_type == "TYPE_RPKT" and pellet_nucname is None:
+        if residualseries is not None:
             residualseries.append(
                 ResidualSeries(
                     label_with_tags or f"direction bin {dirbin}",
                     np.asarray(lcdata_valid["time_days"].to_numpy(), dtype=np.float64),
                     np.asarray(lcdata_valid[ycolumn].to_numpy(), dtype=np.float64),
                     modelline.get_color(),
-                    isreference=False,
                 )
             )
         if args.print_data:
@@ -810,7 +812,16 @@ def plot_artis_lightcurve(
                 if label_with_tags is not None and not linelabel_is_custom
                 else label_with_tags
             )
-            axis.plot(lcdata["time_days"], lcdata[cmfcolumn], label=label_cmf, **plotkwargs_cmf)
+            (cmfline,) = axis.plot(lcdata["time_days"], lcdata[cmfcolumn], label=label_cmf, **plotkwargs_cmf)
+            if residualseries is not None:
+                residualseries.append(
+                    ResidualSeries(
+                        label_cmf or f"direction bin {dirbin} (cmf)",
+                        np.asarray(lcdata["time_days"].to_numpy(), dtype=np.float64),
+                        np.asarray(lcdata[cmfcolumn].to_numpy(), dtype=np.float64),
+                        cmfline.get_color(),
+                    )
+                )
 
     return lcdataframes
 
@@ -820,18 +831,18 @@ def make_plot_figure(
 ) -> tuple[mplfig.Figure, mplax.Axes, mplax.Axes | None, mplax.Axes | None]:
     """Return the figure, the axis of the light curves, the thermalisation panel, and the residual panel.
 
-    The residual panel comes with --residuals, and the thermalisation panel at the bottom comes with -thermalisation.
+    The residual panel comes with -residuals, and the thermalisation panel at the bottom comes with -thermalisation.
     If the caller gives an empty figure as fig, the function adds the frames to it, e.g. the figure of the viewer.
     """
     rowheights = [
         1.0,
-        *([RESIDUALROWHEIGHT] if args.residuals else []),
+        *([RESIDUALROWHEIGHT] if args.residuals is not None else []),
         *([THERMALISATIONROWHEIGHT] if args.thermalisation else []),
     ]
     # each frame holds a size in inches, thus a grid of panels in a paper takes one room for each
     fig, axesgrid = make_frame_figure(args, rows=len(rowheights), sharex=True, rowheights=rowheights, fig=fig)
     axis, *panels = axesgrid[:, 0]
-    residualaxis = panels.pop(0) if args.residuals else None
+    residualaxis = panels.pop(0) if args.residuals is not None else None
     thermaxis = panels.pop(0) if args.thermalisation else None
     return fig, axis, thermaxis, residualaxis
 
@@ -935,6 +946,7 @@ def draw_plot(
                     modelname=get_series_label(args.label, lcindex, get_model_name(modelpath)),
                     args=args,
                     linewidth=args.linewidth[lcindex] or None,
+                    residualseries=residualseries,
                 )
                 plotteddeposition = plotteddeposition or drewrate
 
@@ -1110,7 +1122,7 @@ def make_band_lightcurves_plot(
     """Plot band magnitude light curves for every model and save the figure."""
     residualaxis = None
     residualseries: list[ResidualSeries] | None = None
-    if args.residuals:
+    if args.residuals is not None:
         args.subplots = False
         fig, ax, residualaxis = make_frame_figure_with_residuals(args)
         residualseries = []
@@ -1213,7 +1225,6 @@ def make_band_lightcurves_plot(
                             np.asarray(time, dtype=np.float64),
                             np.asarray(brightness_in_mag, dtype=np.float64),
                             modelline.get_color(),
-                            isreference=False,
                         )
                     )
 
@@ -1268,9 +1279,16 @@ def plot_hesma_lightcurve(
     label = Path(args.plot_hesma_model).stem
     for axis, band_name in zip(axes[: len(bandnames)], bandnames, strict=True):
         if band_name in hesma_model.columns:
-            axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
-    if residualseries is not None:
-        print_warning("the residual panel does not include the HESMA model")
+            (hesmaline,) = axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
+            if residualseries is not None:
+                residualseries.append(
+                    ResidualSeries(
+                        label,
+                        np.asarray(hesma_model[timecolumn].to_numpy(), dtype=np.float64),
+                        np.asarray(hesma_model[band_name].to_numpy(), dtype=np.float64),
+                        hesmaline.get_color(),
+                    )
+                )
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
@@ -1447,7 +1465,6 @@ def plot_lightcurve_from_refdata(
                     np.asarray(dfband["time"].to_numpy(), dtype=np.float64),
                     np.asarray(dfband["magnitude"].to_numpy(), dtype=np.float64),
                     color,
-                    isreference=True,
                 )
             )
     return linename
@@ -1640,10 +1657,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--write_data",
         action="store_true",
-        help="Save the band light curves of -filter and the statistics of --residuals in text files",
+        help="Save the band light curves of -filter and the statistics of -residuals in text files",
     )
 
-    addarg_residuals(parser, "reference light curve")
+    addarg_residuals(parser)
 
     parser.add_argument(
         "-plot_hesma_model",
@@ -1818,7 +1835,7 @@ def check_colour_evolution_args(args: argparse.Namespace) -> None:
 
 
 def check_residual_args(args: argparse.Namespace) -> None:
-    """Stop the command when --residuals cannot apply to the plot that args selects."""
+    """Stop the command when -residuals cannot apply to the plot that args selects."""
     otherplotoptions = (
         args.colour_evolution,
         args.colouratpeak,
@@ -1830,12 +1847,12 @@ def check_residual_args(args: argparse.Namespace) -> None:
     )
     if any(otherplotoptions):
         exit_with_error(
-            "--residuals applies only to a bolometric light curve plot and to a band light curve plot",
-            "Remove --residuals, or remove the option that selects a different plot",
+            "-residuals applies only to a bolometric light curve plot and to a band light curve plot",
+            "Remove -residuals, or remove the option that selects a different plot",
         )
     if args.filter and (len(args.filter) != 1 or args.filter[0] == "bol"):
         exit_with_error(
-            "--residuals applies to a plot of one frame, and the band reference data hold no bolometric band",
+            "-residuals applies to a plot of one frame, and the band reference data hold no bolometric band",
             "Give one filter, e.g. -filter B. For a bolometric light curve, give no -filter",
         )
 
@@ -2108,7 +2125,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         print("Enabling --frompackets because topnucs > 0")
         args.frompackets = True
 
-    if args.residuals:
+    if args.residuals is not None:
         check_residual_args(args)
 
     # the default name says what the figure holds. -o keeps the name that the user gave, thus the

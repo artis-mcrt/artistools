@@ -1,3 +1,4 @@
+import dataclasses as dc
 import importlib
 import json
 import os
@@ -35,6 +36,35 @@ def make_viewer(kind: str, tokens: list[str]) -> t.Any:
     viewer = viewerclass(tokens, fig)
     assert viewer.draw() is None
     return viewer
+
+
+@pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
+def test_viewer_changes_the_residual_baseline(kind: str) -> None:
+    """The option table gives the baseline index to the command and keeps the residual panel."""
+    timetokens = ["-t", "300"] if kind == "spectra" else []
+    viewer = make_viewer(kind, [str(modelpath), str(modelpath), *timetokens, "-residuals"])
+    assert viewer.values.otheroptions == (("-residuals", ()),)
+    assert viewer.residualaxis is not None
+    assert viewer.change(dc.replace(viewer.values, otheroptions=(("-residuals", ("1",)),))) is None
+    assert viewer.values.otheroptions == (("-residuals", ("1",)),)
+    assert viewer.residualaxis is not None
+    tokens = viewer.get_plot_tokens()
+    assert tokens[tokens.index("-residuals") + 1] == "1"
+    assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
+    assert viewer.residualaxis is None
+
+
+@pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
+@pytest.mark.parametrize("flag", ["-residuals", "-res", "--residuals"])
+def test_viewer_keeps_paths_after_a_bare_residual_flag(kind: str, flag: str) -> None:
+    """Both viewers keep the paths after a bare residual flag."""
+    timetokens = ["-t", "300"] if kind == "spectra" else []
+    paths = (str(modelpath), str(modelpath))
+    viewer = make_viewer(kind, [flag, *paths, *timetokens])
+    assert (viewer.values.spectra if kind == "spectra" else viewer.values.lightcurves) == paths
+    assert viewer.residualaxis is not None
+    expectedflag = "-residuals" if flag == "-res" else flag
+    assert viewer.values.otheroptions == ((expectedflag, ("0",) if flag != "--residuals" else ()),)
 
 
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", ["--plotcmf"])])

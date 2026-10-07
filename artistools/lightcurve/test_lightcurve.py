@@ -2226,7 +2226,7 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
         argsraw=[],
         modelpath=[modelpath, obsfile] if refispositional else [modelpath],
         reflightcurves=[] if refispositional else [str(obsfile)],
-        residuals=True,
+        residuals=1,
         write_data=True,
         outputfile=tmp_path / "bolresiduals.pdf",
     )
@@ -2237,6 +2237,180 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
     assert np.isclose(
         dfstats["rms_relative"].item(), dfstats["rms"].item() / (1.2 * dfmodel["luminosity_erg/s"].to_numpy().mean())
     )
+
+
+@pytest.mark.parametrize("filtername", [None, "B"])
+def test_lightcurve_residual_panel_compares_two_models(tmp_path: Path, filtername: str | None) -> None:
+    """The default baseline is the first model in a bolometric plot or a band plot."""
+    at.lightcurve.plot(
+        argsraw=["-residuals"],
+        modelpath=[modelpath, modelpath],
+        filter=[filtername] if filtername is not None else None,
+        label=["baseline", "comparison"],
+        write_data=True,
+        outputfile=tmp_path / "models.pdf",
+    )
+    dfstats = pl.read_csv(tmp_path / "models_residuals.csv")
+    assert dfstats["model"].item() == "comparison"
+    assert dfstats["reference"].item() == "baseline"
+    assert np.isclose(dfstats["rms"].item(), 0.0)
+
+
+@pytest.mark.parametrize(
+    ("rpkt", "baselineindex"), [(False, 0), (False, 1), (True, 0), (True, 1), (True, 2), (True, 3)]
+)
+def test_residual_baseline_counts_gamma_lightcurves(tmp_path: Path, rpkt: bool, baselineindex: int) -> None:
+    """Gamma light curves count in plot order in gamma-only plots and mixed plots."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d, modelpath_classic_3d],
+        label=["model1", "model2"],
+        gamma=True,
+        rpkt=rpkt,
+        residuals=baselineindex,
+        write_data=True,
+        outputfile=tmp_path / "gamma.pdf",
+    )
+    labels = [r"model1 $\gamma$", r"model2 $\gamma$"]
+    if rpkt:
+        labels = ["model1", labels[0], "model2", labels[1]]
+    dfstats = pl.read_csv(tmp_path / "gamma_residuals.csv")
+    assert dfstats["reference"].to_list() == [labels[baselineindex]] * (len(labels) - 1)
+    assert dfstats["model"].to_list() == [label for index, label in enumerate(labels) if index != baselineindex]
+    assert (dfstats["npoints"] > 0).all()
+
+
+@pytest.mark.parametrize(("modelcount", "baselineindex"), [(1, 0), (1, 1), (2, 0), (2, 1), (2, 2), (2, 3)])
+def test_residual_baseline_counts_comoving_frame_curves(tmp_path: Path, modelcount: int, baselineindex: int) -> None:
+    """Comoving frame curves count in plot order, with their plotted points and colours."""
+    with mock.patch.object(
+        at.lightcurve.plotlightcurve, "draw_residual_panel", wraps=at.lightcurve.plotlightcurve.draw_residual_panel
+    ) as mockdraw:
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d] * modelcount,
+            label=["first", "second"][:modelcount],
+            plotcmf=True,
+            residuals=baselineindex,
+            write_data=True,
+            outputfile=tmp_path / "cmf.pdf",
+        )
+    series = mockdraw.call_args.args[2]
+    mainaxis = mockdraw.call_args.args[1]
+    assert len(series) == len(mainaxis.lines) == 2 * modelcount
+    for residualseries, line in zip(series, mainaxis.lines, strict=True):
+        assert np.allclose(residualseries.x, line.get_xdata())
+        assert np.allclose(residualseries.y, line.get_ydata())
+        assert residualseries.color == line.get_color()
+    dfstats = pl.read_csv(tmp_path / "cmf_residuals.csv")
+    assert dfstats.height == len(series) - 1
+    assert dfstats["reference"].to_list() == [series[baselineindex].label] * dfstats.height
+    baseline = series[baselineindex]
+    expectedrms = []
+    xmin, xmax = mainaxis.get_xlim()
+    for index, comparison in enumerate(series):
+        if index != baselineindex:
+            inrange = (baseline.x >= max(xmin, comparison.x.min())) & (baseline.x <= min(xmax, comparison.x.max()))
+            residual = np.interp(baseline.x[inrange], comparison.x, comparison.y) - baseline.y[inrange]
+            expectedrms.append(np.sqrt(np.mean(residual**2)))
+    assert np.allclose(dfstats["rms"].to_numpy(), expectedrms)
+
+
+@pytest.mark.parametrize("rateflag", ["deposition", "emission", "analyticemission"])
+@pytest.mark.parametrize("baselineindex", [0, 1, 2])
+@pytest.mark.parametrize("lumunit", ["erg/s", "Lsun", "mag"])
+def test_residual_baseline_counts_energy_rate_curves(
+    tmp_path: Path, rateflag: str, baselineindex: int, lumunit: str
+) -> None:
+    """Energy-rate curves count before the reference curve and keep the units of the main axis."""
+    times = np.array([5.0, 6.0, 7.0])
+    rate_lsun = np.array([1e6, 2e6, 3e6])
+    depdata = pl.DataFrame({
+        "tmid_days": times,
+        "elecdep_Lsun": rate_lsun,
+        "eps_elec_Lsun": rate_lsun,
+        "eps_elec_ana_Lsun": rate_lsun,
+    })
+    reffile = tmp_path / "reference.txt"
+    reffile.write_text("#time_days luminosity_erg/s\n5 1e40\n6 2e40\n7 3e40\n", encoding="utf-8")
+    with (
+        mock.patch.object(at.lightcurve.plotlightcurve, "get_deposition", return_value=depdata.lazy()),
+        mock.patch.object(
+            at.lightcurve.plotlightcurve, "draw_residual_panel", wraps=at.lightcurve.plotlightcurve.draw_residual_panel
+        ) as mockdraw,
+    ):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d, reffile],
+            label=["model", "reference"],
+            residuals=baselineindex,
+            write_data=True,
+            outputfile=tmp_path / "rates.pdf",
+            deposition=["betaminus"] if rateflag == "deposition" else [],
+            emission=["betaminus"] if rateflag == "emission" else [],
+            analyticemission=["betaminus"] if rateflag == "analyticemission" else [],
+            Lsun=lumunit == "Lsun",
+            magnitude=lumunit == "mag",
+        )
+    series = mockdraw.call_args.args[2]
+    assert len(series) == 3
+    assert series[0].label == "model"
+    assert series[2].label == "reference"
+    assert np.allclose(series[1].x, times)
+    expectedrate = rate_lsun
+    if lumunit == "erg/s":
+        expectedrate = rate_lsun * Lsun_to_erg_per_s
+    elif lumunit == "mag":
+        expectedrate = Mbol_sun - 2.5 * np.log10(rate_lsun)
+    assert np.allclose(series[1].y, expectedrate)
+    rateline = mockdraw.call_args.args[1].lines[1]
+    assert series[1].label == rateline.get_label()
+    assert series[1].color == rateline.get_color()
+    dfstats = pl.read_csv(tmp_path / "rates_residuals.csv")
+    assert dfstats["reference"].to_list() == [series[baselineindex].label] * 2
+    assert dfstats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
+    assert (dfstats["npoints"] > 0).all()
+
+
+@pytest.mark.parametrize("baselineindex", [0, 1, 2])
+def test_residual_baseline_counts_hesma_curve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, baselineindex: int
+) -> None:
+    """Check each baseline index with a HESMA curve after the model and the reference curve."""
+    monkeypatch.chdir(tmp_path)
+    hesmafile = tmp_path / "hesma.dat"
+    hesmafile.write_text("# time B\n265 -13.5\n280 -13\n300 -12.5\n", encoding="utf-8")
+    refdata = pl.DataFrame({"band": ["B"] * 3, "time": [265.0, 280.0, 300.0], "magnitude": [-13.0, -12.5, -12.0]})
+    with (
+        mock.patch.object(
+            at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "reference"})
+        ),
+        mock.patch.object(
+            at.lightcurve.plotlightcurve, "draw_residual_panel", wraps=at.lightcurve.plotlightcurve.draw_residual_panel
+        ) as mockdraw,
+    ):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath],
+            filter=["B"],
+            reflightcurves=["reference.dat"],
+            plot_hesma_model=hesmafile,
+            residuals=baselineindex,
+            write_data=True,
+            outputfile=tmp_path,
+        )
+    series = mockdraw.call_args.args[2]
+    axis = mockdraw.call_args.args[1]
+    assert len(series) == 3
+    assert series[2].label == "hesma"
+    assert np.allclose(series[2].x, [265.0, 280.0, 300.0])
+    assert np.allclose(series[2].y, [-13.5, -13.0, -12.5])
+    assert series[2].color == axis.lines[-1].get_color()
+    stats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
+    assert stats["reference"].to_list() == [series[baselineindex].label] * 2
+    assert stats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
+    assert (stats["npoints"] > 0).all()
+    assert stats["rms_relative"].null_count() == 2
 
 
 def test_band_residual_panel_takes_one_filter(
@@ -2260,7 +2434,7 @@ def test_band_residual_panel_takes_one_filter(
             modelpath=[modelpath],
             filter=["B"],
             reflightcurves=["fakeref.dat"],
-            residuals=True,
+            residuals=1,
             write_data=True,
             outputfile=tmp_path,
         )
@@ -2278,11 +2452,11 @@ def test_band_residual_panel_takes_one_filter(
                 modelpath=[modelpath],
                 filter=["B", "V"],
                 reflightcurves=["fakeref.dat"],
-                residuals=True,
+                residuals=1,
                 outputfile=tmp_path,
             )
         # SystemExit holds the status alone, thus the message of the command is the text that it printed
-        assert "--residuals applies to a plot of one frame" in capsys.readouterr().err
+        assert "-residuals applies to a plot of one frame" in capsys.readouterr().err
 
 
 def test_reference_band_data_uses_the_given_distance_modulus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

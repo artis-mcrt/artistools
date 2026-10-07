@@ -2032,7 +2032,7 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
         argsraw=[],
         specpath=[modelpath, obsfile],
         timestep=54,
-        residuals=True,
+        residuals=1,
         write_data=True,
         outputfile=tmp_path / "residuals.pdf",
     )
@@ -2052,7 +2052,7 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
         argsraw=[],
         specpath=[modelpath, obsfile],
         timestep=54,
-        residuals=True,
+        residuals=1,
         logscaley=True,
         outputfile=tmp_path / "ratio.pdf",
     )
@@ -2062,16 +2062,106 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
     assert np.allclose(ratio[np.isfinite(ratio)], 1.0 / 1.1)
 
 
+@pytest.mark.parametrize("referenceonly", [False, True])
+def test_spectra_residual_panel_compares_series_of_the_same_type(tmp_path: Path, referenceonly: bool) -> None:
+    """The default baseline is series 0, with two models or two reference spectra."""
+    specpath = write_fake_observed_spectrum(tmp_path) if referenceonly else modelpath
+    at.spectra.plot(
+        argsraw=["-residuals"],
+        specpath=[specpath, specpath],
+        timestep=54,
+        label=["baseline", "comparison"],
+        write_data=True,
+        outputfile=tmp_path / "same_type.pdf",
+    )
+    dfstats = pl.read_csv(tmp_path / "same_type_residuals.csv")
+    assert dfstats["model"].item() == "comparison"
+    assert dfstats["reference"].item() == "baseline"
+    assert np.isclose(dfstats["rms"].item(), 0.0)
+
+
+@pytest.mark.parametrize("baselineindex", [0, 1, 2])
+def test_residual_baseline_counts_codecomparison_spectra(tmp_path: Path, baselineindex: int) -> None:
+    """Check each baseline index with a code comparison spectrum between two other spectra."""
+    from artistools import codecomparison
+
+    wavelengths = np.array([3000.0, 4000.0, 5000.0, 6000.0, 7000.0, 9000.0])
+    data = pl.DataFrame({"lambda": wavelengths, "300.0": np.arange(1.0, 7.0) * 1e40})
+    obsfile = write_fake_observed_spectrum(tmp_path)
+    with (
+        mock.patch.object(codecomparison, "get_spectra", return_value=(data, np.array([300.0]))),
+        mock.patch.object(plotspectra, "draw_residual_panel", wraps=plotspectra.draw_residual_panel) as mockdraw,
+    ):
+        at.spectra.plot(
+            argsraw=[],
+            specpath=[modelpath, "codecomparison/DDC10/testcode", obsfile],
+            timemin=290,
+            timemax=310,
+            distmpc=1.0,
+            color=["red", "blue", "green"],
+            residuals=baselineindex,
+            write_data=True,
+            outputfile=tmp_path / "codecomparison.pdf",
+        )
+    series = mockdraw.call_args.args[2]
+    axis = mockdraw.call_args.args[1]
+    assert len(series) == 3
+    assert series[1].label == "codecomparison/DDC10/testcode 300.0d"
+    assert np.allclose(series[1].x, wavelengths)
+    for item, line in zip(series, axis.lines, strict=True):
+        assert np.allclose(item.x, np.asarray(line.get_xdata(), dtype=np.float64))
+        assert np.allclose(item.y, np.asarray(line.get_ydata(), dtype=np.float64), atol=0.0)
+        assert item.color == line.get_color()
+    stats = pl.read_csv(tmp_path / "codecomparison_residuals.csv")
+    assert stats["reference"].to_list() == [series[baselineindex].label] * 2
+    assert stats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
+    assert (stats["npoints"] > 0).all()
+
+
+@pytest.mark.parametrize("baselineindex", range(5))
+@pytest.mark.parametrize("xunit", ["angstrom", "nm"])
+def test_residual_baseline_counts_filter_curves(tmp_path: Path, baselineindex: int, xunit: str) -> None:
+    """Check each filter index and its data in both units of wavelength."""
+    with mock.patch.object(plotspectra, "draw_residual_panel", wraps=plotspectra.draw_residual_panel) as mockdraw:
+        at.spectra.plot(
+            argsraw=[],
+            specpath=[modelpath],
+            timestep=54,
+            normalised=True,
+            showfilterfunctions=True,
+            xunit=xunit,
+            residuals=baselineindex,
+            write_data=True,
+            outputfile=tmp_path / "filters.pdf",
+        )
+    series = mockdraw.call_args.args[2]
+    axis = mockdraw.call_args.args[1]
+    assert len(series) == 5
+    assert [item.label for item in series[1:]] == ["U", "B", "V", "I"]
+    for item, line in zip(series, axis.lines, strict=True):
+        assert np.allclose(item.x, np.asarray(line.get_xdata(), dtype=np.float64))
+        assert np.allclose(item.y, np.asarray(line.get_ydata(), dtype=np.float64))
+        assert item.color == line.get_color()
+    stats = pl.read_csv(tmp_path / "filters_residuals.csv")
+    assert stats["reference"].to_list() == [series[baselineindex].label] * stats.height
+    assert stats.height > 0
+    if baselineindex == 0:
+        assert stats["model"].to_list() == ["U", "B", "V", "I"]
+    else:
+        assert stats["model"][0] == series[0].label
+        assert series[baselineindex].label not in stats["model"].to_list()
+
+
 def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> None:
-    """--residuals needs a model and an observed spectrum, and one frame."""
+    """-residuals needs at least two series and one frame."""
     with pytest.raises(SystemExit):
-        at.spectra.plot(argsraw=[], specpath=[modelpath], timestep=54, residuals=True, outputfile=tmp_path / "a.pdf")
+        at.spectra.plot(argsraw=[], specpath=[modelpath], timestep=54, residuals=0, outputfile=tmp_path / "a.pdf")
 
     obsfile = write_fake_observed_spectrum(tmp_path)
     # --output_spectra draws no figure, thus it cannot hold a residual panel
     with pytest.raises(SystemExit):
         at.spectra.plot(
-            argsraw=[], specpath=[modelpath, obsfile], output_spectra=True, residuals=True, outputfile=tmp_path
+            argsraw=[], specpath=[modelpath, obsfile], output_spectra=True, residuals=1, outputfile=tmp_path
         )
 
     with pytest.raises(SystemExit):
@@ -2079,7 +2169,7 @@ def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> N
             argsraw=[],
             specpath=[modelpath, obsfile],
             timedayslist=["280", "300"],
-            residuals=True,
+            residuals=1,
             outputfile=tmp_path / "b.pdf",
         )
 

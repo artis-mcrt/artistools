@@ -1012,17 +1012,25 @@ def require_action(args: argparse.Namespace) -> None:
         exit_with_error("no action was given", "Run with --help to see the available actions")
 
 
-def addarg_residuals(parser: argparse.ArgumentParser, referencename: str) -> None:
-    """Add --residuals, which draws model minus reference in a panel below the main frame."""
-    arggroup(parser, "appearance").add_argument(
-        "--residuals",
-        action="store_true",
+def addarg_residuals(parser: argparse.ArgumentParser) -> None:
+    """Add -residuals, which draws each other series minus the baseline in a panel below the main frame."""
+    group = arggroup(parser, "appearance")
+    group.add_argument(
+        "-residuals",
+        type=int,
+        nargs="?",
+        const=0,
+        default=None,
+        metavar="INDEX",
         help=(
-            f"Add a panel of model minus reference for each model, against the first {referencename}. With"
-            " --logscaley, the panel shows model / reference. The command prints the root mean square (RMS) of"
-            " model minus reference. The plot must have one frame. --write_data also writes this number"
+            "Add a panel of each other series minus the baseline series. INDEX selects the baseline in plot order,"
+            " with the first series at index 0. Without INDEX, use series 0. With --logscaley, show series / baseline."
+            " Print the root mean square (RMS) of each residual. The plot must have one frame."
+            " --write_data also writes this number"
         ),
     )
+    # the old flag takes no value, because a numeric model path must stay positional
+    group.add_argument("--residuals", dest="residuals", action="store_const", const=0, help=argparse.SUPPRESS)
 
 
 def addarg_show(parser: argparse.ArgumentParser) -> None:
