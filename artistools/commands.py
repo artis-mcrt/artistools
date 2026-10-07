@@ -662,6 +662,28 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
             out.extend(self.split_one_joined_flag(argstring))
 
+        return self.keep_optional_integer_paths(out)
+
+    def keep_optional_integer_paths(self, args: "Sequence[str]") -> list[str]:
+        """Keep a positional path after an option that takes an optional integer.
+
+        argparse takes the path as the integer and then rejects it. An explicit constant keeps the path positional.
+        """
+        out: list[str] = []
+        for index, argstring in enumerate(args):
+            if argstring == "--":
+                out.extend(args[index:])
+                break
+            action = self._option_string_actions.get(argstring)
+            outstring = argstring
+            if action is not None and action.nargs == "?" and action.type is int and index + 1 < len(args):
+                nexttoken = args[index + 1]
+                if not nexttoken.startswith("-"):
+                    try:
+                        int(nexttoken)
+                    except ValueError:
+                        outstring = f"{argstring}={action.const}"
+            out.append(outstring)
         return out
 
     def split_one_joined_flag(self, argstring: str) -> list[str]:

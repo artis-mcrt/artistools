@@ -375,6 +375,20 @@ def test_residual_option_takes_an_optional_index(
     assert viewercore.get_option_kind(action) == "text"
 
 
+@pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
+@pytest.mark.parametrize("flag", ["-residuals", "--residuals"])
+@pytest.mark.parametrize("indexed", [False, True])
+def test_residual_option_keeps_the_next_positional_path(command: str, flag: str, indexed: bool) -> None:
+    """A bare residual flag keeps the next path positional, and an integer selects the baseline."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    args = parser.parse_args([command, flag, *(["1"] if indexed else []), "model1", "model2", "--quiet"])
+    assert args.residuals == (1 if indexed else 0)
+    paths = args.specpath if command == "plotspectra" else args.modelpath
+    assert [str(path) for path in paths] == ["model1", "model2"]
+
+
 @pytest.mark.parametrize(("modelfactor", "yscale"), [(2.0, "linear"), (100.0, "log"), (0.01, "log")])
 def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float, yscale: str) -> None:
     """With --logscaley the panel shows model / reference, on a log y axis only when a ratio is above 50."""

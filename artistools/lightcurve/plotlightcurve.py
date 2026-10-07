@@ -778,8 +778,7 @@ def plot_artis_lightcurve(
             )
 
         (modelline,) = axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
-        # the light curve of the gamma rays or of one nuclide is not a model of the reference light curve
-        if residualseries is not None and escape_type == "TYPE_RPKT" and pellet_nucname is None:
+        if residualseries is not None:
             residualseries.append(
                 ResidualSeries(
                     label_with_tags or f"direction bin {dirbin}",

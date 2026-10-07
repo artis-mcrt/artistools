@@ -2256,6 +2256,30 @@ def test_lightcurve_residual_panel_compares_two_models(tmp_path: Path, filternam
     assert np.isclose(dfstats["rms"].item(), 0.0)
 
 
+@pytest.mark.parametrize(
+    ("rpkt", "baselineindex"), [(False, 0), (False, 1), (True, 0), (True, 1), (True, 2), (True, 3)]
+)
+def test_residual_baseline_counts_gamma_lightcurves(tmp_path: Path, rpkt: bool, baselineindex: int) -> None:
+    """Gamma light curves count in plot order in gamma-only plots and mixed plots."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d, modelpath_classic_3d],
+        label=["model1", "model2"],
+        gamma=True,
+        rpkt=rpkt,
+        residuals=baselineindex,
+        write_data=True,
+        outputfile=tmp_path / "gamma.pdf",
+    )
+    labels = [r"model1 $\gamma$", r"model2 $\gamma$"]
+    if rpkt:
+        labels = ["model1", labels[0], "model2", labels[1]]
+    dfstats = pl.read_csv(tmp_path / "gamma_residuals.csv")
+    assert dfstats["reference"].to_list() == [labels[baselineindex]] * (len(labels) - 1)
+    assert dfstats["model"].to_list() == [label for index, label in enumerate(labels) if index != baselineindex]
+    assert (dfstats["npoints"] > 0).all()
+
+
 def test_band_residual_panel_takes_one_filter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
