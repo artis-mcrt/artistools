@@ -2372,6 +2372,47 @@ def test_residual_baseline_counts_energy_rate_curves(
     assert (dfstats["npoints"] > 0).all()
 
 
+@pytest.mark.parametrize("baselineindex", [0, 1, 2])
+def test_residual_baseline_counts_hesma_curve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, baselineindex: int
+) -> None:
+    """Check each baseline index with a HESMA curve after the model and the reference curve."""
+    monkeypatch.chdir(tmp_path)
+    hesmafile = tmp_path / "hesma.dat"
+    hesmafile.write_text("# time B\n265 -13.5\n280 -13\n300 -12.5\n", encoding="utf-8")
+    refdata = pl.DataFrame({"band": ["B"] * 3, "time": [265.0, 280.0, 300.0], "magnitude": [-13.0, -12.5, -12.0]})
+    with (
+        mock.patch.object(
+            at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "reference"})
+        ),
+        mock.patch.object(
+            at.lightcurve.plotlightcurve, "draw_residual_panel", wraps=at.lightcurve.plotlightcurve.draw_residual_panel
+        ) as mockdraw,
+    ):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath],
+            filter=["B"],
+            reflightcurves=["reference.dat"],
+            plot_hesma_model=hesmafile,
+            residuals=baselineindex,
+            write_data=True,
+            outputfile=tmp_path,
+        )
+    series = mockdraw.call_args.args[2]
+    axis = mockdraw.call_args.args[1]
+    assert len(series) == 3
+    assert series[2].label == "hesma"
+    assert np.allclose(series[2].x, [265.0, 280.0, 300.0])
+    assert np.allclose(series[2].y, [-13.5, -13.0, -12.5])
+    assert series[2].color == axis.lines[-1].get_color()
+    stats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
+    assert stats["reference"].to_list() == [series[baselineindex].label] * 2
+    assert stats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
+    assert (stats["npoints"] > 0).all()
+    assert stats["rms_relative"].null_count() == 2
+
+
 def test_band_residual_panel_takes_one_filter(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

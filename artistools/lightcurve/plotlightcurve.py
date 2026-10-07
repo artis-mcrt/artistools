@@ -1279,9 +1279,16 @@ def plot_hesma_lightcurve(
     label = Path(args.plot_hesma_model).stem
     for axis, band_name in zip(axes[: len(bandnames)], bandnames, strict=True):
         if band_name in hesma_model.columns:
-            axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
-    if residualseries is not None:
-        print_warning("the residual panel does not include the HESMA model")
+            (hesmaline,) = axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
+            if residualseries is not None:
+                residualseries.append(
+                    ResidualSeries(
+                        label,
+                        np.asarray(hesma_model[timecolumn].to_numpy(), dtype=np.float64),
+                        np.asarray(hesma_model[band_name].to_numpy(), dtype=np.float64),
+                        hesmaline.get_color(),
+                    )
+                )
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
