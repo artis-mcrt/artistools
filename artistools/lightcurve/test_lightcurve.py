@@ -2204,6 +2204,32 @@ def test_find_lightcurve_file_refuses_a_direction_resolved_gamma_request() -> No
     assert at.lightcurve.find_lightcurve_file(modelpath_classic_3d, gamma=True).name.startswith("gamma_light_curve.out")
 
 
+@pytest.mark.parametrize("ratio", [False, True])
+def test_bolometric_residual_accepts_a_baseline_with_one_observation(tmp_path: Path, ratio: bool) -> None:
+    """A baseline file with one observation keeps the comparison point at the same time."""
+    baselinefile = tmp_path / "baseline.txt"
+    baselinefile.write_text("#time_days luminosity_erg/s\n2 4\n", encoding="utf-8")
+    comparisonfile = tmp_path / "comparison.txt"
+    comparisonfile.write_text("#time_days luminosity_erg/s\n1 3\n2 6\n3 8\n", encoding="utf-8")
+    with mock.patch.object(
+        at.lightcurve.plotlightcurve, "draw_residual_panel", wraps=at.lightcurve.plotlightcurve.draw_residual_panel
+    ) as mockdraw:
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[baselinefile, comparisonfile],
+            residuals=0,
+            logscaley=ratio,
+            write_data=True,
+            outputfile=tmp_path / "residual.pdf",
+        )
+    stats = pl.read_csv(tmp_path / "residual_residuals.csv")
+    assert stats["npoints"].item() == 1
+    assert np.isclose(stats["rms"].item(), 2.0)
+    line = mockdraw.call_args.args[0].lines[0]
+    assert np.allclose(line.get_xdata(), [2.0])
+    assert np.allclose(line.get_ydata(), [1.5 if ratio else 2.0])
+
+
 @pytest.mark.parametrize("refispositional", [False, True])
 def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refispositional: bool) -> None:
     """Calculate the residual statistics from every model point against the interpolated reference."""

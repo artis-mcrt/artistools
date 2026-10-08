@@ -310,6 +310,37 @@ def test_residuals_take_the_reference_at_each_model_point() -> None:
     plt.close(fig)
 
 
+@pytest.mark.parametrize("referencex", [[], [np.nan, np.inf, -np.inf], [2.0], [np.nan, 2.0, np.inf]])
+@pytest.mark.parametrize("ratio", [False, True])
+def test_residual_panel_accepts_exact_matches_to_a_single_baseline_point(referencex: list[float], ratio: bool) -> None:
+    """Keep exact matches to one finite baseline point and exclude other x values."""
+    x = np.array([1.0, np.nextafter(2.0, 0.0), 2.0, 2.0, np.nextafter(2.0, 3.0), 3.0, np.nan])
+    model = at.plottools.ResidualSeries("model", x, np.array([1.0, 3.0, 6.0, 8.0, 7.0, 9.0, 10.0]), "C0")
+    reference = at.plottools.ResidualSeries(
+        "baseline", np.asarray(referencex, dtype=np.float64), np.full(len(referencex), 4.0), "k"
+    )
+    inrange, residual, yreference = at.plottools.get_residuals(reference, model, xmin=1.0, xmax=3.0)
+    fig, axis = plt.subplots()
+    stats = at.plottools.plot_residual_panel(axis, [reference, model], 1.0, 3.0, ratio=ratio)
+    if np.isfinite(reference.x).any():
+        assert inrange.tolist() == [False, False, True, True, False, False, False]
+        assert np.allclose(residual, [2.0, 4.0])
+        assert np.allclose(yreference, [4.0, 4.0])
+        assert stats["npoints"].item() == 2
+        assert np.isclose(stats["rms"].item(), np.sqrt(10.0))
+        assert np.isclose(stats["rms_relative"].item(), np.sqrt(10.0) / 4.0)
+        assert np.allclose(axis.lines[0].get_xdata(), [2.0, 2.0])
+        assert np.allclose(axis.lines[0].get_ydata(), [1.5, 2.0] if ratio else [2.0, 4.0])
+        outside, outside_residual, _ = at.plottools.get_residuals(reference, model, xmin=2.1, xmax=3.0)
+        assert not outside.any()
+        assert outside_residual.size == 0
+    else:
+        assert not inrange.any()
+        assert residual.size == yreference.size == 0
+        assert stats.is_empty()
+    plt.close(fig)
+
+
 @pytest.mark.parametrize("ratio", [False, True])
 def test_residual_panel_keeps_the_resolution_and_line_properties(ratio: bool) -> None:
     """A sparse reference keeps each comparison point and the line properties of the main frame."""

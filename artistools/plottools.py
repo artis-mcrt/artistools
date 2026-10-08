@@ -1014,6 +1014,7 @@ def get_residuals(
 
     Interpolate the reference linearly at each model point. A point counts inside the panel and the reference range.
     A reference value of NaN keeps a gap in the residual panel.
+    A reference with one point accepts only model points at the same x value.
     """
     import numpy as np
 
@@ -1024,7 +1025,7 @@ def get_residuals(
     if not (np.diff(referencex) >= 0.0).all():
         order = np.argsort(referencex)
         referencex, referencey = referencex[order], referencey[order]
-    if referencex.size < 2:
+    if referencex.size == 0:
         return np.zeros(model.x.size, dtype=bool), np.array([]), np.array([])
 
     inrange = np.isfinite(model.x) & (model.x >= max(xmin, referencex[0])) & (model.x <= min(xmax, referencex[-1]))
