@@ -16,6 +16,8 @@ import matplotlib.axis as mplaxis
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
+import matplotlib.lines as mpllines
+import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import polars as pl
@@ -999,30 +1001,83 @@ class ResidualSeries(t.NamedTuple):
     x: "npt.NDArray[np.float64]"
     y: "npt.NDArray[np.float64]"
     color: "mplt.ColorType | None"
+    line: mpllines.Line2D | None = None
+    yerr: "npt.NDArray[np.float64] | None" = None
+    errorbar_kwargs: dict[str, t.Any] | None = None
+    unbounded: "npt.NDArray[np.bool_] | None" = None
 
 
 def get_residuals(
     reference: ResidualSeries, model: ResidualSeries, xmin: float, xmax: float
-) -> "tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64]]":
-    """Return the reference points that count, and the model value minus the reference value there.
+) -> "tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64], npt.NDArray[np.float64]]":
+    """Return the model points that count, their residuals, and the reference values.
 
-    The model takes a linear interpolation to the reference x values. A point counts only inside the
-    x range of the panel and inside the x range that the model covers. A reference value of NaN gives
-    a residual of NaN, thus a masked range stays a gap in the panel.
+    Interpolate the reference linearly at each model point. A point counts inside the panel and the reference range.
+    A reference value of NaN keeps a gap in the residual panel.
+    A reference with one point accepts only model points at the same x value.
     """
     import numpy as np
 
-    # a model value that is not finite stays in as NaN, thus the interpolation keeps the gap that the main frame shows
-    hasx = np.isfinite(model.x)
-    modelx, modely = model.x[hasx], np.where(np.isfinite(model.y[hasx]), model.y[hasx], np.nan)
-    if not (np.diff(modelx) >= 0.0).all():
-        order = np.argsort(modelx)
-        modelx, modely = modelx[order], modely[order]
-    if modelx.size < 2:
-        return np.zeros(reference.x.size, dtype=bool), np.array([])
+    # Keep non-finite reference values as gaps instead of interpolating across them.
+    hasx = np.isfinite(reference.x)
+    referencex = reference.x[hasx]
+    referencey = np.where(np.isfinite(reference.y[hasx]), reference.y[hasx], np.nan)
+    if not (np.diff(referencex) >= 0.0).all():
+        order = np.argsort(referencex)
+        referencex, referencey = referencex[order], referencey[order]
+    if referencex.size == 0:
+        return np.zeros(model.x.size, dtype=bool), np.array([]), np.array([])
 
-    inrange = np.isfinite(reference.x) & (reference.x >= max(xmin, modelx[0])) & (reference.x <= min(xmax, modelx[-1]))
-    return inrange, np.interp(reference.x[inrange], modelx, modely) - reference.y[inrange]
+    inrange = np.isfinite(model.x) & (model.x >= max(xmin, referencex[0])) & (model.x <= min(xmax, referencex[-1]))
+    modely = np.where(np.isfinite(model.y[inrange]), model.y[inrange], np.nan)
+    yreference = np.interp(model.x[inrange], referencex, referencey)
+    return inrange, modely - yreference, yreference
+
+
+def draw_residual_series(
+    axis: mplax.Axes,
+    model: ResidualSeries,
+    inrange: "npt.NDArray[np.bool_]",
+    yvalues: "npt.NDArray[np.float64]",
+    yreference: "npt.NDArray[np.float64]",
+    *,
+    ratio: bool,
+) -> None:
+    """Draw the residual points with the line properties and error bars of the main frame."""
+    import numpy as np
+
+    xvalues = model.x[inrange]
+    (line,) = axis.plot(xvalues, yvalues, color=model.color, linewidth=0.8)
+    if model.line is not None:
+        line.update_from(model.line)
+        # The main frame has a different transform from the residual panel.
+        line.set_transform(axis.transData)
+        line.set_clip_path(axis.patch)
+        line.set_clip_box(axis.bbox)
+
+    if model.yerr is not None:
+        yerr = model.yerr[:, inrange]
+        if ratio:
+            denominator = np.abs(yreference)
+            yerr = np.divide(yerr, denominator, out=np.full_like(yerr, np.nan), where=denominator != 0.0)
+            # Division by a negative reference value exchanges the lower and upper errors.
+            yerr = np.where(yreference < 0.0, yerr[::-1], yerr)
+        errorbar_kwargs = model.errorbar_kwargs or {"color": model.color}
+        axis.errorbar(xvalues, yvalues, yerr=yerr, fmt="none", **errorbar_kwargs)
+        if model.unbounded is not None and (unbounded := model.unbounded[inrange]).any():
+            limitbars = axis.errorbar(
+                xvalues[unbounded],
+                yvalues[unbounded],
+                yerr=np.zeros(int(unbounded.sum())),
+                lolims=True,
+                fmt="none",
+                color=model.color,
+                alpha=line.get_alpha(),
+            )
+            # The magnitude axis takes its inverse direction after the residual panel is complete.
+            caretdown = t.cast("t.Literal[11]", mplmarkers.CARETDOWNBASE)
+            for capline in limitbars.lines[1]:
+                capline.set_marker(caretdown)
 
 
 def plot_residual_panel(
@@ -1058,13 +1113,12 @@ def plot_residual_panel(
     for seriesindex, model in enumerate(series):
         if seriesindex == baselineindex:
             continue
-        inrange, residual = get_residuals(reference, model, xmin, xmax)
+        inrange, residual, yreference = get_residuals(reference, model, xmin, xmax)
         hasvalue = np.isfinite(residual)
         if not hasvalue.any():
             print_warning(f"the residual panel has no point for '{plain_label(model.label)}'")
             continue
 
-        xreference, yreference = reference.x[inrange], reference.y[inrange]
         npoints = int(hasvalue.sum())
         rms = float(np.sqrt(np.mean(residual[hasvalue] ** 2)))
         yreference_mean = float(np.mean(np.abs(yreference[hasvalue])))
@@ -1077,8 +1131,6 @@ def plot_residual_panel(
             "rms_relative": rms_relative,
         })
 
-        # a reference spectrum has many points and takes a line, and a light curve has few and takes markers
-        markerkwargs: dict[str, t.Any] = {} if residual.size > 200 else {"marker": "o", "markersize": 3}
         yvalues = residual
         if ratio:
             # a reference value of zero gives a gap
@@ -1086,7 +1138,7 @@ def plot_residual_panel(
             positive = yvalues[np.isfinite(yvalues) & (yvalues > 0.0)]
             if positive.size > 0:
                 maxratio = max(maxratio, float(positive.max()), 1.0 / float(positive.min()))
-        axis.plot(xreference, yvalues, color=model.color, linewidth=0.8, **markerkwargs)
+        draw_residual_series(axis, model, inrange, yvalues, yreference, ratio=ratio)
 
         strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
         print_detail(

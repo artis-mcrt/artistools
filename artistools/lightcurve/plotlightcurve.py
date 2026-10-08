@@ -320,6 +320,9 @@ def plot_bol_reflightcurve(
     time_days = dflightcurve["time_days"].to_numpy()
     yvalues = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
 
+    residual_yerr = None
+    errorbar_kwargs = None
+    unbounded = None
     if {"luminosity_errminus_erg/s", "luminosity_errplus_erg/s"}.issubset(dflightcurve.columns):
         yerr, unbounded = get_reflightcurve_yerr(
             lum_erg_per_s,
@@ -340,6 +343,9 @@ def plot_bol_reflightcurve(
             alpha=alpha,
             capthick=linewidth,
         )
+        refline = errorbars.lines[0]
+        residual_yerr = np.asarray(yerr, dtype=np.float64)
+        errorbar_kwargs = {"color": color, "capsize": 3, "elinewidth": linewidth, "capthick": linewidth, "alpha": alpha}
         refartists = errorbars.get_children()
         if unbounded.any():
             # matplotlib draws only one side of a bar it is told is a limit, so the open faint side is a
@@ -361,7 +367,10 @@ def plot_bol_reflightcurve(
                 capline.set_marker(caretdown)
             refartists += limitbars.get_children()
     else:
-        refartists = [axis.scatter(time_days, yvalues, label=plotlabel, color=color, alpha=alpha)]
+        (refline,) = axis.plot(
+            time_days, yvalues, marker="o", linestyle="None", label=plotlabel, color=color, alpha=alpha
+        )
+        refartists = [refline]
 
     # a marker and a line have different default zorders. With an equal zorder, matplotlib draws
     # the series in the order of the command line
@@ -371,7 +380,14 @@ def plot_bol_reflightcurve(
     if residualseries is not None:
         residualseries.append(
             ResidualSeries(
-                plotlabel, np.asarray(time_days, dtype=np.float64), np.asarray(yvalues, dtype=np.float64), color
+                plotlabel,
+                np.asarray(time_days, dtype=np.float64),
+                np.asarray(yvalues, dtype=np.float64),
+                color,
+                line=refline,
+                yerr=residual_yerr,
+                errorbar_kwargs=errorbar_kwargs,
+                unbounded=unbounded,
             )
         )
 
@@ -441,6 +457,7 @@ def plot_energy_rates(
                         np.asarray(depdata["tmid_days"].to_numpy(), dtype=np.float64),
                         np.asarray(yvalues, dtype=np.float64),
                         rateline.get_color(),
+                        line=rateline,
                     )
                 )
             drewrate = True
@@ -793,6 +810,7 @@ def plot_artis_lightcurve(
                     np.asarray(lcdata_valid["time_days"].to_numpy(), dtype=np.float64),
                     np.asarray(lcdata_valid[ycolumn].to_numpy(), dtype=np.float64),
                     modelline.get_color(),
+                    line=modelline,
                 )
             )
         if args.print_data:
@@ -820,6 +838,7 @@ def plot_artis_lightcurve(
                         np.asarray(lcdata["time_days"].to_numpy(), dtype=np.float64),
                         np.asarray(lcdata[cmfcolumn].to_numpy(), dtype=np.float64),
                         cmfline.get_color(),
+                        line=cmfline,
                     )
                 )
 
@@ -1225,6 +1244,7 @@ def make_band_lightcurves_plot(
                             np.asarray(time, dtype=np.float64),
                             np.asarray(brightness_in_mag, dtype=np.float64),
                             modelline.get_color(),
+                            line=modelline,
                         )
                     )
 
@@ -1287,6 +1307,7 @@ def plot_hesma_lightcurve(
                         np.asarray(hesma_model[timecolumn].to_numpy(), dtype=np.float64),
                         np.asarray(hesma_model[band_name].to_numpy(), dtype=np.float64),
                         hesmaline.get_color(),
+                        line=hesmaline,
                     )
                 )
 
@@ -1448,7 +1469,7 @@ def plot_lightcurve_from_refdata(
             continue
         dfband = get_dereddened_band_data(lightcurve_data, metadata, filter_name_raw, filterdir)
 
-        axis.plot(
+        (refline,) = axis.plot(
             dfband["time"],
             dfband["magnitude"],
             marker=marker,
@@ -1458,13 +1479,13 @@ def plot_lightcurve_from_refdata(
             color=color,
         )
         if residualseries is not None:
-            # the band data give no error, thus the panel shows the residual in magnitudes
             residualseries.append(
                 ResidualSeries(
                     linename or str(lightcurvefilename),
                     np.asarray(dfband["time"].to_numpy(), dtype=np.float64),
                     np.asarray(dfband["magnitude"].to_numpy(), dtype=np.float64),
-                    color,
+                    refline.get_color(),
+                    line=refline,
                 )
             )
     return linename

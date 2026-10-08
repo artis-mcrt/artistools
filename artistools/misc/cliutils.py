@@ -1025,6 +1025,7 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
         help=(
             "Add a panel of each other series minus the baseline series. INDEX selects the baseline in plot order,"
             " with the first series at index 0. Without INDEX, use series 0. With --logscaley, show series / baseline."
+            " Keep each series at full resolution and interpolate the baseline linearly."
             " Print the root mean square (RMS) of each residual. The plot must have one frame."
             " --write_data also writes this number"
         ),
