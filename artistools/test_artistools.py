@@ -34,6 +34,7 @@ import polars as pl
 import polars.testing as pltest
 import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.container import ErrorbarContainer
 
 import artistools as at
 from artistools.misc.remote import model_path_from_text
@@ -300,7 +301,7 @@ def test_residuals_take_the_reference_at_each_model_point() -> None:
     plt.close(fig)
 
     fig, ratioaxis = plt.subplots()
-    at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, ratio=True)
+    at.plottools.plot_residual_panel(ratioaxis, [masked, model], 0.0, 20.0, residualtype="relative")
     assert np.allclose(
         np.asarray(ratioaxis.lines[0].get_ydata())[[0, 2, 3, 4, 5]],
         [0.0, 20.0 / 22.0, 24.0 / 26.4, 30.0 / 33.0, 40.0 / 42.0],
@@ -321,7 +322,9 @@ def test_residual_panel_accepts_exact_matches_to_a_single_baseline_point(referen
     )
     inrange, residual, yreference = at.plottools.get_residuals(reference, model, xmin=1.0, xmax=3.0)
     fig, axis = plt.subplots()
-    stats = at.plottools.plot_residual_panel(axis, [reference, model], 1.0, 3.0, ratio=ratio)
+    stats = at.plottools.plot_residual_panel(
+        axis, [reference, model], 1.0, 3.0, residualtype="relative" if ratio else "absolute"
+    )
     if np.isfinite(reference.x).any():
         assert inrange.tolist() == [False, False, True, True, False, False, False]
         assert np.allclose(residual, [2.0, 4.0])
@@ -363,7 +366,9 @@ def test_residual_panel_keeps_the_resolution_and_line_properties(ratio: bool) ->
     )
     reference = at.plottools.ResidualSeries("baseline", np.array([8.0, 0.0, 4.0]), np.array([18.0, 2.0, 6.0]), "k")
     model = at.plottools.ResidualSeries("comparison", x, y, mainline.get_color(), line=mainline)
-    stats = at.plottools.plot_residual_panel(residualaxis, [reference, model], 1.0, 7.0, ratio=ratio)
+    stats = at.plottools.plot_residual_panel(
+        residualaxis, [reference, model], 1.0, 7.0, residualtype="relative" if ratio else "absolute"
+    )
     inrange = (x >= 1.0) & (x <= 7.0)
     line = residualaxis.lines[0]
     assert np.allclose(line.get_xdata(), x[inrange])
@@ -405,7 +410,12 @@ def test_residual_panel_uses_the_selected_baseline(
         residualaxis,
         mainaxis,
         series,
-        argparse.Namespace(residualbaselineseries=baselineindex, residuals=selectedindices, logscaley=ratio),
+        argparse.Namespace(
+            residualbaselineseries=baselineindex,
+            residuals=selectedindices,
+            logscaley=ratio,
+            residualtype="relative" if ratio else "absolute",
+        ),
     )
     otherindices = [
         index
@@ -551,9 +561,11 @@ def test_old_residual_flag_keeps_a_numeric_model_path(
     assert [str(path) for path in paths] == ["1"]
 
 
-@pytest.mark.parametrize(("modelfactor", "yscale"), [(2.0, "linear"), (100.0, "log"), (0.01, "log")])
-def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float, yscale: str) -> None:
-    """With --logscaley the panel shows model / reference, on a log y axis only when a ratio is above 50."""
+@pytest.mark.parametrize("modelfactor", [2.0, 100.0, 0.01])
+@pytest.mark.parametrize("logscaley", [False, True])
+@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
+def test_residual_type_sets_the_calculation_and_scale(modelfactor: float, logscaley: bool, residualtype: str) -> None:
+    """The residual type sets the values and the y scale independently of the main frame."""
     x = np.array([1.0, 2.0, 3.0, 4.0])
     yreference = np.array([1.0, 2.0, 4.0, 8.0])
     factors = np.array([1.0, 1.0, modelfactor, modelfactor])
@@ -561,13 +573,69 @@ def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float
         at.plottools.ResidualSeries("obs", x, yreference, "k"),
         at.plottools.ResidualSeries("model", x, yreference * factors, "C0"),
     ]
-    args = argparse.Namespace(logscaley=True, residualbaselineseries=0, residuals=None)
-    _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
+    args = argparse.Namespace(logscaley=logscaley, residualbaselineseries=0, residuals=None, residualtype=residualtype)
+    fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
     mainaxis.plot(x, series[0].y)
-    at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
-    assert residualaxis.get_yscale() == yscale
-    assert residualaxis.get_ylabel() == "series / baseline"
-    assert np.allclose(residualaxis.lines[0].get_ydata(), factors)
+    mainaxis.set_yscale("log" if logscaley else "linear")
+    mainaxis.set_ylabel("Flux [erg]")
+    stats = at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
+    expected = yreference * (factors - 1.0) if residualtype == "absolute" else factors
+    assert residualaxis.get_yscale() == ("log" if residualtype == "relativelog" else "linear")
+    assert residualaxis.get_ylabel() == (
+        "series $-$ baseline\n[erg]" if residualtype == "absolute" else "series / baseline"
+    )
+    assert np.allclose(residualaxis.lines[0].get_ydata(), expected)
+    assert np.allclose(residualaxis.lines[-1].get_ydata(), 0.0 if residualtype == "absolute" else 1.0)
+    assert np.isclose(stats["rms"].item(), np.sqrt(np.mean((series[1].y - yreference) ** 2)))
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
+def test_residual_type_keeps_gaps_for_undefined_values(residualtype: str) -> None:
+    """Zero baselines give gaps in ratios, and a logarithmic axis also excludes non-positive ratios."""
+    x = np.arange(5, dtype=np.float64)
+    baseline = at.plottools.ResidualSeries("baseline", x, np.array([1.0, -2.0, 0.0, 2.0, np.nan]), "k")
+    model = at.plottools.ResidualSeries("model", x, np.array([2.0, 4.0, 3.0, 0.0, 2.0]), "C0")
+    expected = {
+        "absolute": [1.0, 6.0, 3.0, -2.0, np.nan],
+        "relative": [2.0, -2.0, np.nan, 0.0, np.nan],
+        "relativelog": [2.0, np.nan, np.nan, np.nan, np.nan],
+    }
+    fig, axis = plt.subplots()
+    stats = at.plottools.plot_residual_panel(axis, [baseline, model], 0.0, 4.0, residualtype=residualtype)
+    assert np.allclose(axis.lines[0].get_ydata(), expected[residualtype], equal_nan=True)
+    assert stats["npoints"].item() == 4
+    assert np.isclose(stats["rms"].item(), np.sqrt(np.mean(np.array([1.0, 6.0, 3.0, -2.0]) ** 2)))
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
+def test_residual_type_scales_asymmetric_error_bars(residualtype: str) -> None:
+    """Ratio error bars use the baseline magnitude and exchange their sides for a negative baseline."""
+    x = np.array([1.0, 2.0])
+    baseline = at.plottools.ResidualSeries("baseline", x, np.array([2.0, -4.0]), "k")
+    model = at.plottools.ResidualSeries(
+        "model", x, np.array([4.0, -8.0]), "C0", yerr=np.array([[0.4, 0.8], [0.8, 1.6]])
+    )
+    fig, axis = plt.subplots()
+    at.plottools.plot_residual_panel(axis, [baseline, model], 1.0, 2.0, residualtype=residualtype)
+    bars = axis.containers[0]
+    assert isinstance(bars, ErrorbarContainer)
+    segments = bars.lines[2][0].get_segments()
+    expected = [[1.6, 2.8], [-4.8, -2.4]] if residualtype == "absolute" else [[1.8, 2.4], [1.6, 2.2]]
+    assert np.allclose([segment[:, 1] for segment in segments], expected)
+    plt.close(fig)
+
+
+def test_residual_panel_rejects_an_unknown_type() -> None:
+    """The panel rejects a residual type that it cannot calculate."""
+    x = np.array([1.0, 2.0])
+    series = [at.plottools.ResidualSeries(str(index), x, x, "k") for index in range(2)]
+    fig, axis = plt.subplots()
+    with pytest.raises(SystemExit):
+        at.plottools.plot_residual_panel(axis, series, 1.0, 2.0, residualtype="unknown")
+    assert not axis.lines
+    plt.close(fig)
 
 
 def test_frame_figure_takes_a_shorter_row() -> None:

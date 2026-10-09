@@ -1045,9 +1045,19 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
             "Add a panel of the selected series minus the baseline series."
             " Give indices in plot order, with the first series at index 0."
             " By default, include all series except the baseline."
-            " With --logscaley, show series / baseline."
             " Print the root mean square (RMS) of each residual."
             " --write_data also writes this number"
+        ),
+    )
+    group.add_argument(
+        "-residualtype",
+        choices=["absolute", "relative", "relativelog"],
+        default="absolute",
+        help=(
+            "Select the residual type: absolute shows series minus baseline."
+            " Relative shows series / baseline on a linear y axis."
+            " Relativelog shows the same ratio on a logarithmic y axis."
+            " The default is absolute. The statistics use series minus baseline for every type"
         ),
     )
 

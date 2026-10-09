@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.figure as mplfig
+import numpy as np
 import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
@@ -88,6 +89,31 @@ def test_viewer_selects_the_residual_series(kind: str) -> None:
     assert len(viewer.residualaxis.lines) == 3
     assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
     assert viewer.residualaxis is None
+
+
+@pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
+@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
+def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
+    """Both viewers use the residual type from the option table."""
+    timetokens = ["-t", "300"] if kind == "spectra" else []
+    viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual"])
+    options = (("-residual", ()), ("-residualtype", (residualtype,)))
+    assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
+    assert viewer.residualaxis is not None
+    assert viewer.residualaxis.get_yscale() == ("log" if residualtype == "relativelog" else "linear")
+    line = viewer.residualaxis.lines[0]
+    values = np.asarray(line.get_ydata())
+    finite = np.isfinite(values)
+    assert finite.any()
+    assert np.allclose(values[finite], 0.0 if residualtype == "absolute" else 1.0)
+    parser = viewercore.make_parser(
+        at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
+    )
+    args = parser.parse_args(viewer.get_plot_tokens())
+    assert args.residualtype == residualtype
+    action = viewercore.get_actions_by_flag(parser)["-residualtype"]
+    assert viewercore.get_option_kind(action) == "choice"
+    assert viewercore.get_default_tokens(action) == ("absolute",)
 
 
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", ["--plotcmf"])])

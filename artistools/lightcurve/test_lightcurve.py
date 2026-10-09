@@ -2219,6 +2219,7 @@ def test_bolometric_residual_accepts_a_baseline_with_one_observation(tmp_path: P
             modelpath=[baselinefile, comparisonfile],
             residualbaselineseries=0,
             logscaley=ratio,
+            residualtype="relative" if ratio else "absolute",
             write_data=True,
             outputfile=tmp_path / "residual.pdf",
         )
@@ -2298,7 +2299,12 @@ def test_bolometric_residual_keeps_the_points_and_error_bars(
     )
     isratio = ratio and lumunit != "mag"
     stats = at.plottools.plot_residual_panel(
-        residualaxis, [baseline, *series], 1.5, 3.5, ratio=isratio, ismagnitude=lumunit == "mag"
+        residualaxis,
+        [baseline, *series],
+        1.5,
+        3.5,
+        residualtype="relative" if isratio else "absolute",
+        ismagnitude=lumunit == "mag",
     )
     observed = series[0]
     yreference = np.interp(observed.x[1:], baseline.x, baseline.y)
