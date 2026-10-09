@@ -87,7 +87,7 @@ def get_opacity_series(taucaps: Sequence[float]) -> list[tuple[str, str, "mplt.L
         *(
             (
                 column,
-                rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {format_taucap(taucap)}",
+                rf"Line-binned, $\tau_\mathrm{{l, max}}$ = {format_taucap(taucap)}",
                 CAPPEDLINESTYLES[index % len(CAPPEDLINESTYLES)],
             )
             for index, (column, taucap) in enumerate(get_capped_columns(taucaps).items())

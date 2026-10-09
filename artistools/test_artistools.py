@@ -2050,7 +2050,7 @@ def test_plotopacity_draws_each_cap_and_the_line_count(mockplot: mock.MagicMock,
     labels = [call.kwargs["label"] for call in mockplot.call_args_list if call.kwargs.get("label")]
     assert labels == [
         "Expansion opacity",
-        *(rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {taucap}" for taucap in ("0.1", "1", "10", "1.0000001")),
+        *(rf"Line-binned, $\tau_\mathrm{{l,max}}$ = {taucap}" for taucap in ("0.1", "1", "10", "1.0000001")),
         "Line-binned",
     ]
     ratioplots = [call for call in mockplot.call_args_list if call.args[0] is axes[1]]
