@@ -40,9 +40,6 @@ LOGSCALE_MAXMEDIAN: t.Final[float] = 0.015
 # still shows the data. This fraction of the values is the most that a log axis may hide.
 LOGSCALE_MAXHIDDEN: t.Final[float] = 0.1
 
-# the residual panel of a ratio takes a log y axis when model / reference or its inverse is above this factor
-RESIDUALRATIO_LOGSCALE: t.Final[float] = 50.0
-
 
 def get_drawn_values(ax: "AxesTree") -> "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]":
     """Return the y value of each point of every line that the axes holds, and the part of the x axis of each point.
@@ -1087,31 +1084,47 @@ def plot_residual_panel(
     xmax: float,
     *,
     baselineindex: int = 0,
+    selectedindices: Sequence[int] | None = None,
     ismagnitude: bool = False,
-    ratio: bool = False,
+    residualtype: str = "absolute",
 ) -> pl.DataFrame:
-    """Draw each other series minus the baseline series, and return the statistics.
+    """Draw the selected residual type and return the statistics.
 
-    ratio=True draws series / baseline, which agrees with a main frame that has a log y axis.
-    The axis takes a log scale only when a ratio, or its inverse, is above RESIDUALRATIO_LOGSCALE.
+    An empty selection or None includes all series except the baseline.
+    The relative and relativelog types draw series / baseline on a linear or logarithmic y axis.
+    Magnitude panels always draw differences because magnitude ratios depend on the zero point.
+    Statistics use series minus baseline for every type.
     The table gives the number of points and the root mean square (RMS) of each residual.
     It also gives the ratio of the RMS to the mean baseline value, which has no meaning for a magnitude.
     """
     import numpy as np
 
+    if residualtype not in {"absolute", "relative", "relativelog"}:
+        exit_with_error(
+            f"Unknown residual type: {residualtype}", "Give absolute, relative, or relativelog with -residualtype"
+        )
+    if ismagnitude:
+        residualtype = "absolute"
+    ratio = residualtype != "absolute"
     if len(series) < 2:
-        exit_with_error("-residuals needs at least two series in the plot", "Give at least two series")
+        exit_with_error("-residual needs at least two series in the plot", "Give at least two series")
     if not 0 <= baselineindex < len(series):
         exit_with_error(
-            f"-residuals index {baselineindex} is outside the range of {len(series)} series",
+            f"-residualbaselineseries index {baselineindex} is outside the range of {len(series)} series",
             f"Give an index from 0 to {len(series) - 1}",
         )
+    if selectedindices is not None:
+        for index in selectedindices:
+            if not 0 <= index < len(series):
+                exit_with_error(
+                    f"-residual index {index} is outside the range of {len(series)} series",
+                    f"Give an index from 0 to {len(series) - 1}",
+                )
     reference = series[baselineindex]
 
     rows: list[dict[str, str | int | float | None]] = []
-    maxratio = 1.0
     for seriesindex, model in enumerate(series):
-        if seriesindex == baselineindex:
+        if seriesindex == baselineindex or (selectedindices and seriesindex not in selectedindices):
             continue
         inrange, residual, yreference = get_residuals(reference, model, xmin, xmax)
         hasvalue = np.isfinite(residual)
@@ -1133,11 +1146,13 @@ def plot_residual_panel(
 
         yvalues = residual
         if ratio:
-            # a reference value of zero gives a gap
-            yvalues = 1.0 + np.divide(residual, yreference, out=np.full_like(residual, np.nan), where=yreference != 0.0)
-            positive = yvalues[np.isfinite(yvalues) & (yvalues > 0.0)]
-            if positive.size > 0:
-                maxratio = max(maxratio, float(positive.max()), 1.0 / float(positive.min()))
+            # A baseline value of zero gives a gap.
+            yvalues = np.divide(
+                model.y[inrange], yreference, out=np.full_like(residual, np.nan), where=yreference != 0.0
+            )
+            yvalues = np.where(np.isfinite(yvalues), yvalues, np.nan)
+            if residualtype == "relativelog":
+                yvalues = np.where(yvalues > 0.0, yvalues, np.nan)
         draw_residual_series(axis, model, inrange, yvalues, yreference, ratio=ratio)
 
         strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
@@ -1147,9 +1162,8 @@ def plot_residual_panel(
         )
 
     axis.axhline(1.0 if ratio else 0.0, color="black", linewidth=0.8, zorder=0)
-    # a linear axis shows a moderate ratio best, and only a ratio above this factor needs a log axis
-    if maxratio > RESIDUALRATIO_LOGSCALE:
-        axis.set_yscale("log")
+    axis.set_yscale("log" if residualtype == "relativelog" else "linear")
+    if residualtype == "relativelog":
         prune_log_ticks(axis.yaxis)
     return pl.DataFrame(
         rows,
@@ -1171,20 +1185,26 @@ def draw_residual_panel(
     *,
     ismagnitude: bool = False,
 ) -> pl.DataFrame:
-    """Draw each other series minus the baseline below the main frame, and return the statistics.
+    """Draw the selected residual type below the main frame and return the statistics.
 
-    With a log y axis in the main frame, the panel shows series / baseline.
-    A distance in that frame is a ratio.
+    The residual type sets the calculation and the y scale of the panel.
     Call it after the main frame has its labels and its x range.
     The panel takes both.
     """
     logscaley = bool(getattr(args, "logscaley", False))
-    isratio = logscaley and not ismagnitude
+    isratio = not ismagnitude and args.residualtype != "absolute"
     # the shared x axis otherwise takes a new range with the default margin of the residual axis
     residualaxis.set_xmargin(mainaxis.get_xmargin())
     xlim = mainaxis.get_xlim()
     dfresidualstats = plot_residual_panel(
-        residualaxis, series, min(xlim), max(xlim), baselineindex=args.residuals, ismagnitude=ismagnitude, ratio=isratio
+        residualaxis,
+        series,
+        min(xlim),
+        max(xlim),
+        baselineindex=args.residualbaselineseries,
+        selectedindices=args.residuals,
+        ismagnitude=ismagnitude,
+        residualtype=args.residualtype,
     )
     set_axis_properties(residualaxis, args, setyaxis=False)
     if logscaley:
@@ -1201,7 +1221,12 @@ def draw_residual_panel(
         strunits = f"\n{mainylabel[mainylabel.rfind('[') :]}" if "[" in mainylabel else ""
         residualaxis.set_ylabel(rf"series $-$ baseline{strunits}")
         set_exponent_label(residualaxis)
-    if ismagnitude:
+    residualymax = log_axis_limit(
+        getattr(args, "residualymax", None), logscale=residualaxis.get_yscale() == "log", argname="-residualymax"
+    )
+    if residualymax is not None:
+        residualaxis.set_ylim(top=residualymax)
+    if ismagnitude and not isratio:
         # a model that is fainter than the reference then lies below zero, as it lies below in the main frame
         invert_magnitude_yaxis(residualaxis)
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.figure as mplfig
+import numpy as np
 import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
@@ -42,20 +43,20 @@ def make_viewer(kind: str, tokens: list[str]) -> t.Any:
 def test_viewer_changes_the_residual_baseline(kind: str) -> None:
     """The option table gives the baseline index to the command and keeps the residual panel."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
-    viewer = make_viewer(kind, [str(modelpath), str(modelpath), *timetokens, "-residuals"])
-    assert viewer.values.otheroptions == (("-residuals", ()),)
+    viewer = make_viewer(kind, [str(modelpath), str(modelpath), *timetokens, "-residualbaselineseries"])
+    assert viewer.values.otheroptions == (("-residualbaselineseries", ()),)
     assert viewer.residualaxis is not None
-    assert viewer.change(dc.replace(viewer.values, otheroptions=(("-residuals", ("1",)),))) is None
-    assert viewer.values.otheroptions == (("-residuals", ("1",)),)
+    assert viewer.change(dc.replace(viewer.values, otheroptions=(("-residualbaselineseries", ("1",)),))) is None
+    assert viewer.values.otheroptions == (("-residualbaselineseries", ("1",)),)
     assert viewer.residualaxis is not None
     tokens = viewer.get_plot_tokens()
-    assert tokens[tokens.index("-residuals") + 1] == "1"
+    assert tokens[tokens.index("-residualbaselineseries") + 1] == "1"
     assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
     assert viewer.residualaxis is None
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
-@pytest.mark.parametrize("flag", ["-residuals", "-res", "--residuals"])
+@pytest.mark.parametrize("flag", ["-residualbaselineseries", "-residuals", "-residual", "--residuals"])
 def test_viewer_keeps_paths_after_a_bare_residual_flag(kind: str, flag: str) -> None:
     """Both viewers keep the paths after a bare residual flag."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
@@ -63,8 +64,81 @@ def test_viewer_keeps_paths_after_a_bare_residual_flag(kind: str, flag: str) -> 
     viewer = make_viewer(kind, [flag, *paths, *timetokens])
     assert (viewer.values.spectra if kind == "spectra" else viewer.values.lightcurves) == paths
     assert viewer.residualaxis is not None
-    expectedflag = "-residuals" if flag == "-res" else flag
-    assert viewer.values.otheroptions == ((expectedflag, ("0",) if flag != "--residuals" else ()),)
+    values = ("0",) if flag in {"-residualbaselineseries", "-residuals"} else ()
+    assert viewer.values.otheroptions == ((flag, values),)
+
+
+@pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
+def test_viewer_selects_the_residual_series(kind: str) -> None:
+    """Both viewers use the residual indices and the baseline index from the option table."""
+    timetokens = ["-t", "300"] if kind == "spectra" else []
+    viewer = make_viewer(kind, [str(modelpath)] * 3 + timetokens + ["-residual"])
+    assert viewer.residualaxis is not None
+    assert len(viewer.residualaxis.lines) == 3
+    options = (("-residual", ("0",)), ("-residualbaselineseries", ("2",)))
+    assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
+    assert viewer.residualaxis is not None
+    assert len(viewer.residualaxis.lines) == 2
+    parser = viewercore.make_parser(
+        at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
+    )
+    args = parser.parse_args(viewer.get_plot_tokens())
+    assert args.residuals == [0]
+    assert args.residualbaselineseries == 2
+    assert viewer.change(dc.replace(viewer.values, otheroptions=(("-residual", ()),))) is None
+    assert len(viewer.residualaxis.lines) == 3
+    assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
+    assert viewer.residualaxis is None
+
+
+@pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
+@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
+def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
+    """Both viewers use the residual type from the option table."""
+    timetokens = ["-t", "300"] if kind == "spectra" else []
+    viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual"])
+    assert viewer.residualaxis is not None
+    assert viewer.residualaxis.get_yscale() == "linear"
+    assert viewer.residualaxis.get_ylabel() == "series / baseline"
+    initialvalues = np.asarray(viewer.residualaxis.lines[0].get_ydata())
+    assert np.isfinite(initialvalues).any()
+    assert np.allclose(initialvalues[np.isfinite(initialvalues)], 1.0)
+    options = (("-residual", ()), ("-residualtype", (residualtype,)))
+    assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
+    assert viewer.residualaxis is not None
+    assert viewer.residualaxis.get_yscale() == ("log" if residualtype == "relativelog" else "linear")
+    line = viewer.residualaxis.lines[0]
+    values = np.asarray(line.get_ydata())
+    finite = np.isfinite(values)
+    assert finite.any()
+    assert np.allclose(values[finite], 0.0 if residualtype == "absolute" else 1.0)
+    parser = viewercore.make_parser(
+        at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
+    )
+    args = parser.parse_args(viewer.get_plot_tokens())
+    assert args.residualtype == residualtype
+    action = viewercore.get_actions_by_flag(parser)["-residualtype"]
+    assert viewercore.get_option_kind(action) == "choice"
+    assert viewercore.get_default_tokens(action) == ("relative",)
+
+
+@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
+@pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
+def test_viewer_sets_the_residual_y_maximum(kind: str, residualtype: str) -> None:
+    """Both viewers pass the residual maximum through the option table and the command."""
+    timetokens = ["-t", "300"] if kind == "spectra" else []
+    viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual", "-residualtype", residualtype])
+    options = (("-residual", ()), ("-residualtype", (residualtype,)), ("-residualymax", ("2.5",)))
+    assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
+    assert viewer.residualaxis is not None
+    assert np.isclose(viewer.residualaxis.get_ylim()[1], 2.5)
+    parser = viewercore.make_parser(
+        at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
+    )
+    assert np.isclose(parser.parse_args(viewer.get_plot_tokens()).residualymax, 2.5)
+    action = viewercore.get_actions_by_flag(parser)["-residualymax"]
+    assert viewercore.get_option_kind(action) == "text"
+    assert viewercore.get_default_tokens(action) is None
 
 
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", ["--plotcmf"])])

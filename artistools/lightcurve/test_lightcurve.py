@@ -2217,8 +2217,9 @@ def test_bolometric_residual_accepts_a_baseline_with_one_observation(tmp_path: P
         at.lightcurve.plot(
             argsraw=[],
             modelpath=[baselinefile, comparisonfile],
-            residuals=0,
+            residualbaselineseries=0,
             logscaley=ratio,
+            residualtype="relative" if ratio else "absolute",
             write_data=True,
             outputfile=tmp_path / "residual.pdf",
         )
@@ -2252,7 +2253,7 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
         argsraw=[],
         modelpath=[modelpath, obsfile] if refispositional else [modelpath],
         reflightcurves=[] if refispositional else [str(obsfile)],
-        residuals=1,
+        residualbaselineseries=1,
         write_data=True,
         outputfile=tmp_path / "bolresiduals.pdf",
     )
@@ -2298,7 +2299,12 @@ def test_bolometric_residual_keeps_the_points_and_error_bars(
     )
     isratio = ratio and lumunit != "mag"
     stats = at.plottools.plot_residual_panel(
-        residualaxis, [baseline, *series], 1.5, 3.5, ratio=isratio, ismagnitude=lumunit == "mag"
+        residualaxis,
+        [baseline, *series],
+        1.5,
+        3.5,
+        residualtype="relative" if isratio else "absolute",
+        ismagnitude=lumunit == "mag",
     )
     observed = series[0]
     yreference = np.interp(observed.x[1:], baseline.x, baseline.y)
@@ -2388,6 +2394,25 @@ def test_lightcurve_residual_panel_compares_two_models(tmp_path: Path, filternam
     assert np.isclose(dfstats["rms"].item(), 0.0)
 
 
+@pytest.mark.parametrize("filtername", [None, "B"])
+def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path, filtername: str | None) -> None:
+    """Keep the baseline keyword separate from the selected series in bolometric and band plots."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath] * 3,
+        filter=[filtername] if filtername is not None else None,
+        label=["excluded", "baseline", "comparison"],
+        residualbaselineseries=1,
+        residuals=[2],
+        write_data=True,
+        outputfile=tmp_path / "selected.pdf",
+    )
+    stats = pl.read_csv(tmp_path / "selected_residuals.csv")
+    assert stats["model"].to_list() == ["comparison"]
+    assert stats["reference"].to_list() == ["baseline"]
+    assert np.isclose(stats["rms"].item(), 0.0)
+
+
 @pytest.mark.parametrize(
     ("rpkt", "baselineindex"), [(False, 0), (False, 1), (True, 0), (True, 1), (True, 2), (True, 3)]
 )
@@ -2399,7 +2424,7 @@ def test_residual_baseline_counts_gamma_lightcurves(tmp_path: Path, rpkt: bool, 
         label=["model1", "model2"],
         gamma=True,
         rpkt=rpkt,
-        residuals=baselineindex,
+        residualbaselineseries=baselineindex,
         write_data=True,
         outputfile=tmp_path / "gamma.pdf",
     )
@@ -2423,7 +2448,7 @@ def test_residual_baseline_counts_comoving_frame_curves(tmp_path: Path, modelcou
             modelpath=[modelpath_classic_3d] * modelcount,
             label=["first", "second"][:modelcount],
             plotcmf=True,
-            residuals=baselineindex,
+            residualbaselineseries=baselineindex,
             write_data=True,
             outputfile=tmp_path / "cmf.pdf",
         )
@@ -2475,7 +2500,7 @@ def test_residual_baseline_counts_energy_rate_curves(
             argsraw=[],
             modelpath=[modelpath_classic_3d, reffile],
             label=["model", "reference"],
-            residuals=baselineindex,
+            residualbaselineseries=baselineindex,
             write_data=True,
             outputfile=tmp_path / "rates.pdf",
             deposition=["betaminus"] if rateflag == "deposition" else [],
@@ -2527,7 +2552,7 @@ def test_residual_baseline_counts_hesma_curve(
             filter=["B"],
             reflightcurves=["reference.dat"],
             plot_hesma_model=hesmafile,
-            residuals=baselineindex,
+            residualbaselineseries=baselineindex,
             write_data=True,
             outputfile=tmp_path,
         )
@@ -2545,8 +2570,9 @@ def test_residual_baseline_counts_hesma_curve(
     assert stats["rms_relative"].null_count() == 2
 
 
+@pytest.mark.parametrize("residualtype", [None, "absolute", "relative", "relativelog"])
 def test_band_residual_panel_takes_one_filter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], residualtype: str | None
 ) -> None:
     """A band plot with one filter gives the RMS residual in magnitudes, and more than one filter stops the command."""
     # --write_data also writes the band data to the working folder
@@ -2562,11 +2588,11 @@ def test_band_residual_panel_takes_one_filter(
         ) as mocksave,
     ):
         at.lightcurve.plot(
-            argsraw=[],
+            argsraw=["-residualtype", residualtype] if residualtype else [],
             modelpath=[modelpath],
             filter=["B"],
             reflightcurves=["fakeref.dat"],
-            residuals=1,
+            residualbaselineseries=1,
             write_data=True,
             outputfile=tmp_path,
         )
@@ -2584,11 +2610,11 @@ def test_band_residual_panel_takes_one_filter(
                 modelpath=[modelpath],
                 filter=["B", "V"],
                 reflightcurves=["fakeref.dat"],
-                residuals=1,
+                residualbaselineseries=1,
                 outputfile=tmp_path,
             )
         # SystemExit holds the status alone, thus the message of the command is the text that it printed
-        assert "-residuals applies to a plot of one frame" in capsys.readouterr().err
+        assert "-residual applies to a plot of one frame" in capsys.readouterr().err
 
 
 def test_reference_band_data_uses_the_given_distance_modulus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

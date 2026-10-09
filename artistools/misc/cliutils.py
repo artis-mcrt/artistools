@@ -1013,25 +1013,70 @@ def require_action(args: argparse.Namespace) -> None:
 
 
 def addarg_residuals(parser: argparse.ArgumentParser) -> None:
-    """Add -residuals, which draws each other series minus the baseline in a panel below the main frame."""
+    """Add the options for the residual panel and its baseline series."""
+    if isinstance(parser, SuggestingArgumentParser):
+        parser.wantsintermixed = True
     group = arggroup(parser, "appearance")
+    baselinehelp = (
+        "Select the baseline series for the residual panel in plot order, with the first series at index 0."
+        " Without INDEX, use series 0. The plot must have one frame"
+    )
+    for flag, helptext in [
+        ("-residualbaselineseries", baselinehelp),
+        ("-residuals", argparse.SUPPRESS),
+        ("-res", argparse.SUPPRESS),
+    ]:
+        group.add_argument(
+            flag,
+            dest="residualbaselineseries",
+            type=int,
+            nargs="?",
+            const=0,
+            default=None,
+            metavar="INDEX",
+            help=helptext,
+        )
+    # The old flag takes no value, because a numeric model path must stay positional.
     group.add_argument(
-        "-residuals",
+        "--residuals", dest="residualbaselineseries", action="store_const", const=0, help=argparse.SUPPRESS
+    )
+    group.add_argument(
+        "-residual",
+        dest="residuals",
         type=int,
-        nargs="?",
-        const=0,
+        nargs="*",
         default=None,
         metavar="INDEX",
         help=(
-            "Add a panel of each other series minus the baseline series. INDEX selects the baseline in plot order,"
-            " with the first series at index 0. Without INDEX, use series 0. With --logscaley, show series / baseline."
-            " Keep each series at full resolution and interpolate the baseline linearly."
-            " Print the root mean square (RMS) of each residual. The plot must have one frame."
+            "Add a residual panel for the selected series."
+            " By default, show series / baseline for flux and series minus baseline for magnitudes."
+            " Give indices in plot order, with the first series at index 0."
+            " By default, include all series except the baseline."
+            " Print the root mean square (RMS) of each residual."
             " --write_data also writes this number"
         ),
     )
-    # the old flag takes no value, because a numeric model path must stay positional
-    group.add_argument("--residuals", dest="residuals", action="store_const", const=0, help=argparse.SUPPRESS)
+    group.add_argument(
+        "-residualtype",
+        choices=["absolute", "relative", "relativelog"],
+        default="relative",
+        help=(
+            "Select the residual type: absolute shows series minus baseline."
+            " Relative shows series / baseline on a linear y axis."
+            " Relativelog shows the same ratio on a logarithmic y axis."
+            " The default is relative. Magnitude panels always show series minus baseline on a linear y axis."
+            " The statistics use series minus baseline for every type"
+        ),
+    )
+    group.add_argument(
+        "-residualymax",
+        type=float,
+        default=None,
+        help=(
+            "Set the maximum y value of the residual panel."
+            " By default, use the data range. The magnitude axis shows this value at the bottom"
+        ),
+    )
 
 
 def addarg_show(parser: argparse.ArgumentParser) -> None:
@@ -1452,6 +1497,8 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
     A name that this command does not take raises. addarg_unsupported declares an old name, so that a
     user of the command line gets a message. Such a name is no argument of this command, thus a keyword
     of that name also raises.
+
+    A keyword that names a destination takes priority over an option alias.
     """
     kwargs = kwargs.copy()  # keys are renamed to argument dests below, so don't mutate the caller's dict
     realactions = [
@@ -1459,13 +1506,11 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         for action in parser._actions  # ruff:ignore[private-member-access]
         if not isinstance(action, UnsupportedArgument)
     ]
+    destinations = {arg.dest for arg in realactions}
     # set_defaults expects the dest of an argument. A keyword can also name an option string of the argument
     for arg in realactions:
-        names = list(
-            dict.fromkeys(
-                name for name in (arg.dest, *(flag.lstrip("-") for flag in arg.option_strings)) if name in kwargs
-            )
-        )
+        aliases = [flag.lstrip("-") for flag in arg.option_strings if flag.lstrip("-") not in destinations]
+        names = list(dict.fromkeys(name for name in (arg.dest, *aliases) if name in kwargs))
         if len(names) > 1:
             msg = f"The keywords {', '.join(names)} name one argument, thus give only one of them"
             raise ValueError(msg)
