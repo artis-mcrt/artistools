@@ -458,9 +458,12 @@ def test_residual_panel_rejects_an_invalid_baseline(seriescount: int, baselinein
         ([], None),
         (["-residualbaselineseries"], 0),
         (["-residualbaselineseries", "2"], 2),
+        (["-residualbaselineseries=2"], 2),
         (["-residuals"], 0),
         (["-residuals", "0"], 0),
         (["-residuals", "2"], 2),
+        (["-res"], 0),
+        (["-res", "2"], 2),
         (["--residuals"], 0),
         (["--residuals", "1"], 0),
     ],
@@ -475,6 +478,7 @@ def test_residual_option_takes_an_optional_index(
     assert "-residualbaselineseries [INDEX]" in parser.format_help()
     assert "-residuals [INDEX]" not in parser.format_help()
     assert "--residuals" not in parser.format_help()
+    assert "-res [INDEX]" not in parser.format_help()
     action = viewercore.get_actions_by_flag(parser)["-residualbaselineseries"]
     assert viewercore.get_default_tokens(action) == ()
     assert viewercore.get_option_kind(action) == "text"
@@ -488,6 +492,8 @@ def test_residual_option_takes_an_optional_index(
         ("-residualbaselineseries", True),
         ("-residuals", False),
         ("-residuals", True),
+        ("-res", False),
+        ("-res", True),
         ("--residuals", False),
     ],
 )
@@ -522,6 +528,34 @@ def test_residual_selection_keeps_the_next_positional_paths(command: str, indice
     assert viewercore.get_default_tokens(action) == ()
 
 
+@pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
+@pytest.mark.parametrize("selection", [["-residual"], ["-residual", "1"], ["-residual=1"]])
+@pytest.mark.parametrize("earlieroptions", [[], ["-t", "300"]])
+@pytest.mark.parametrize("pathkind", ["folder", "file"])
+def test_residual_selection_joins_paths_before_options(
+    command: str, selection: list[str], earlieroptions: list[str], pathkind: str, tmp_path: Path
+) -> None:
+    """Residual paths join the first positional group, with a separator or a joined selection."""
+    import artistools.__main__
+
+    paths = [tmp_path / "model0", tmp_path / "model1"]
+    for path in paths:
+        if pathkind == "folder":
+            path.mkdir()
+            (path / "input.txt").touch()
+            (path / "model.txt").touch()
+        else:
+            path.touch()
+    tokens = [command, str(paths[0]), *earlieroptions, *selection, str(paths[1])]
+    tokens = at.misc.separate_trailing_folders(tokens)
+    if pathkind == "folder" and selection == ["-residual", "1"]:
+        assert "--" in tokens
+    args = artistools.__main__.build_parser().parse_args(tokens)
+    assert args.residuals == ([] if selection == ["-residual"] else [1])
+    assert args.residualtype == "relative"
+    assert list(map(str, args.specpath if command == "plotspectra" else args.modelpath)) == list(map(str, paths))
+
+
 @pytest.mark.parametrize("index", [-1, 2])
 def test_residual_panel_rejects_an_invalid_selection(index: int) -> None:
     """The panel rejects a selected index outside the range of the series."""
@@ -540,10 +574,10 @@ def test_residual_path_rewrite_keeps_an_ambiguous_prefix(capsys: pytest.CaptureF
     at.misc.addarg_residuals(parser)
     parser.add_argument("-reset", action="store_true")
     parser.add_argument("paths", nargs="*")
-    assert parser.split_joined_flags(["-res", "model1", "model2"]) == ["-res", "model1", "model2"]
+    assert parser.split_joined_flags(["-resi", "model1", "model2"]) == ["-resi", "model1", "model2"]
     with pytest.raises(SystemExit):
-        parser.parse_args(["-res", "model1", "model2"])
-    assert "ambiguous option: -res" in capsys.readouterr().err
+        parser.parse_args(["-resi", "model1", "model2"])
+    assert "ambiguous option: -resi" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
@@ -587,6 +621,33 @@ def test_residual_type_sets_the_calculation_and_scale(modelfactor: float, logsca
     assert np.allclose(residualaxis.lines[0].get_ydata(), expected)
     assert np.allclose(residualaxis.lines[-1].get_ydata(), 0.0 if residualtype == "absolute" else 1.0)
     assert np.isclose(stats["rms"].item(), np.sqrt(np.mean((series[1].y - yreference) ** 2)))
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
+@pytest.mark.parametrize("zeropoint", [0.0, 30.0])
+def test_magnitude_residuals_keep_differences(residualtype: str, zeropoint: float) -> None:
+    """Magnitude residuals keep their differences, scale, and error bars when the zero point changes."""
+    x = np.array([1.0, 2.0])
+    ybaseline = np.array([-10.0, -8.0]) + zeropoint
+    yerr = np.array([[0.3, 0.4], [0.5, 0.6]])
+    series = [
+        at.plottools.ResidualSeries("baseline", x, ybaseline, "k"),
+        at.plottools.ResidualSeries("model", x, ybaseline + 2.0, "r", yerr=yerr),
+    ]
+    args = argparse.Namespace(logscaley=False, residualbaselineseries=0, residuals=None, residualtype=residualtype)
+    fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
+    mainaxis.set_xlim(1.0, 2.0)
+    mainaxis.set_ylabel("Magnitude [mag]")
+    with mock.patch.object(residualaxis, "errorbar", wraps=residualaxis.errorbar) as mockerrorbar:
+        stats = at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args, ismagnitude=True)
+    assert np.allclose(residualaxis.lines[0].get_ydata(), 2.0)
+    assert np.allclose(residualaxis.lines[-1].get_ydata(), 0.0)
+    assert np.allclose(mockerrorbar.call_args.kwargs["yerr"], yerr)
+    assert residualaxis.get_yscale() == "linear"
+    assert residualaxis.yaxis_inverted()
+    assert residualaxis.get_ylabel() == "series $-$ baseline\n[mag]"
+    assert np.isclose(stats["rms"].item(), 2.0)
     plt.close(fig)
 
 

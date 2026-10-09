@@ -2570,8 +2570,9 @@ def test_residual_baseline_counts_hesma_curve(
     assert stats["rms_relative"].null_count() == 2
 
 
+@pytest.mark.parametrize("residualtype", [None, "absolute", "relative", "relativelog"])
 def test_band_residual_panel_takes_one_filter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], residualtype: str | None
 ) -> None:
     """A band plot with one filter gives the RMS residual in magnitudes, and more than one filter stops the command."""
     # --write_data also writes the band data to the working folder
@@ -2587,12 +2588,11 @@ def test_band_residual_panel_takes_one_filter(
         ) as mocksave,
     ):
         at.lightcurve.plot(
-            argsraw=[],
+            argsraw=["-residualtype", residualtype] if residualtype else [],
             modelpath=[modelpath],
             filter=["B"],
             reflightcurves=["fakeref.dat"],
             residualbaselineseries=1,
-            residualtype="absolute",
             write_data=True,
             outputfile=tmp_path,
         )

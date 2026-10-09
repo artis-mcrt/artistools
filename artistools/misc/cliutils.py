@@ -1019,7 +1019,11 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
         "Select the baseline series for the residual panel in plot order, with the first series at index 0."
         " Without INDEX, use series 0. The plot must have one frame"
     )
-    for flag, helptext in [("-residualbaselineseries", baselinehelp), ("-residuals", argparse.SUPPRESS)]:
+    for flag, helptext in [
+        ("-residualbaselineseries", baselinehelp),
+        ("-residuals", argparse.SUPPRESS),
+        ("-res", argparse.SUPPRESS),
+    ]:
         group.add_argument(
             flag,
             dest="residualbaselineseries",
@@ -1042,7 +1046,8 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="INDEX",
         help=(
-            "Add a panel of the selected series minus the baseline series."
+            "Add a residual panel for the selected series."
+            " By default, show series / baseline for flux and series minus baseline for magnitudes."
             " Give indices in plot order, with the first series at index 0."
             " By default, include all series except the baseline."
             " Print the root mean square (RMS) of each residual."
@@ -1057,7 +1062,8 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
             "Select the residual type: absolute shows series minus baseline."
             " Relative shows series / baseline on a linear y axis."
             " Relativelog shows the same ratio on a logarithmic y axis."
-            " The default is relative. The statistics use series minus baseline for every type"
+            " The default is relative. Magnitude panels always show series minus baseline on a linear y axis."
+            " The statistics use series minus baseline for every type"
         ),
     )
 

@@ -1092,6 +1092,7 @@ def plot_residual_panel(
 
     An empty selection or None includes all series except the baseline.
     The relative and relativelog types draw series / baseline on a linear or logarithmic y axis.
+    Magnitude panels always draw differences because magnitude ratios depend on the zero point.
     Statistics use series minus baseline for every type.
     The table gives the number of points and the root mean square (RMS) of each residual.
     It also gives the ratio of the RMS to the mean baseline value, which has no meaning for a magnitude.
@@ -1102,6 +1103,8 @@ def plot_residual_panel(
         exit_with_error(
             f"Unknown residual type: {residualtype}", "Give absolute, relative, or relativelog with -residualtype"
         )
+    if ismagnitude:
+        residualtype = "absolute"
     ratio = residualtype != "absolute"
     if len(series) < 2:
         exit_with_error("-residual needs at least two series in the plot", "Give at least two series")
@@ -1189,7 +1192,7 @@ def draw_residual_panel(
     The panel takes both.
     """
     logscaley = bool(getattr(args, "logscaley", False))
-    isratio = args.residualtype != "absolute"
+    isratio = not ismagnitude and args.residualtype != "absolute"
     # the shared x axis otherwise takes a new range with the default margin of the residual axis
     residualaxis.set_xmargin(mainaxis.get_xmargin())
     xlim = mainaxis.get_xlim()

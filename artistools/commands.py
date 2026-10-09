@@ -668,37 +668,52 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         """Keep positional paths after options that take optional integers.
 
         argparse takes the path as the integer and then rejects it. An explicit constant keeps the path positional.
-        For a list of integers, move the paths before the option.
+        For a list of integers, move the paths into the first positional group.
         """
         out: list[str] = []
+        paths: list[str] = []
         index = 0
         while index < len(args):
             argstring = args[index]
             if argstring == "--":
                 out.extend(args[index:])
                 break
-            action = self._option_string_actions.get(argstring)
-            if action is None and argstring.startswith("-") and self.allow_abbrev:
-                matches = [value for flag, value in self._option_string_actions.items() if flag.startswith(argstring)]
+            flagname, equals, _ = argstring.partition("=")
+            action = self._option_string_actions.get(flagname)
+            if action is None and flagname.startswith("-") and self.allow_abbrev:
+                matches = [value for flag, value in self._option_string_actions.items() if flag.startswith(flagname)]
                 if len(matches) == 1:
                     action = matches[0]
             if action is not None and action.nargs == "*" and action.type is int:
                 valueend = index + 1
-                while valueend < len(args):
+                while not equals and valueend < len(args):
                     try:
                         int(args[valueend])
                     except ValueError:
                         break
                     valueend += 1
-                pathend = valueend
+                hasseparator = valueend < len(args) and args[valueend] == "--"
+                pathstart = valueend + int(hasseparator)
+                pathend = pathstart
                 while pathend < len(args) and not args[pathend].startswith("-"):
                     pathend += 1
-                out.extend(args[valueend:pathend])
+                paths.extend(args[pathstart:pathend])
                 out.extend(args[index:valueend])
+                if hasseparator:
+                    if pathend < len(args):
+                        out.append("--")
+                    out.extend(args[pathend:])
+                    break
                 index = pathend
                 continue
             outstring = argstring
-            if action is not None and action.nargs == "?" and action.type is int and index + 1 < len(args):
+            if (
+                action is not None
+                and action.nargs == "?"
+                and action.type is int
+                and not equals
+                and index + 1 < len(args)
+            ):
                 nexttoken = args[index + 1]
                 if not nexttoken.startswith("-"):
                     try:
@@ -707,7 +722,8 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
                         outstring = f"{argstring}={action.const}"
             out.append(outstring)
             index += 1
-        return out
+        firstoption = next((index for index, token in enumerate(out) if token.startswith("-")), len(out))
+        return [*out[:firstoption], *paths, *out[firstoption:]]
 
     def split_one_joined_flag(self, argstring: str) -> list[str]:
         """Give the flag and the value of one argument that joins them, or stop at a flag of no command.
