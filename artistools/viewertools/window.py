@@ -964,6 +964,7 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "-residual": "Residual series",
     "-residualbaselineseries": "Residual baseline series",
     "-residualtype": "Residual type",
+    "-residualymax": "Residual y maximum",
     "-subplotsperrow": "Subplots per row",
     "-topnucs": "Top nuclides",
     "-x": "x variable",

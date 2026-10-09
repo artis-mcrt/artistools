@@ -1066,6 +1066,15 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
             " The statistics use series minus baseline for every type"
         ),
     )
+    group.add_argument(
+        "-residualymax",
+        type=float,
+        default=None,
+        help=(
+            "Set the maximum y value of the residual panel."
+            " By default, use the data range. The magnitude axis shows this value at the bottom"
+        ),
+    )
 
 
 def addarg_show(parser: argparse.ArgumentParser) -> None:

@@ -625,6 +625,40 @@ def test_residual_type_sets_the_calculation_and_scale(modelfactor: float, logsca
 
 
 @pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
+@pytest.mark.parametrize("ismagnitude", [False, True])
+def test_residual_y_maximum_keeps_the_main_range(residualtype: str, ismagnitude: bool) -> None:
+    """The residual maximum sets the numerical limit and keeps the main range and the magnitude direction."""
+    x = np.array([1.0, 2.0])
+    series = [at.plottools.ResidualSeries(str(i), x, x + i, "k") for i in range(2)]
+    args = argparse.Namespace(
+        logscaley=False, residualbaselineseries=0, residuals=None, residualtype=residualtype, residualymax=3.5
+    )
+    fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
+    mainaxis.set_xlim(1.0, 2.0)
+    mainaxis.set_ylim(0.0, 10.0)
+    at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args, ismagnitude=ismagnitude)
+    assert np.isclose(max(residualaxis.get_ylim()), 3.5)
+    assert residualaxis.yaxis_inverted() == ismagnitude
+    assert np.allclose(mainaxis.get_ylim(), [0.0, 10.0])
+    plt.close(fig)
+
+
+def test_residual_log_axis_ignores_a_non_positive_maximum(capsys: pytest.CaptureFixture[str]) -> None:
+    """A log residual axis gives a warning and keeps its data range for a non-positive maximum."""
+    x = np.array([1.0, 2.0])
+    series = [at.plottools.ResidualSeries(str(i), x, x + i, "k") for i in range(2)]
+    args = argparse.Namespace(
+        logscaley=False, residualbaselineseries=0, residuals=None, residualtype="relativelog", residualymax=0.0
+    )
+    fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
+    mainaxis.set_xlim(1.0, 2.0)
+    at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
+    assert min(residualaxis.get_ylim()) > 0.0
+    assert "ignoring -residualymax 0.0" in capsys.readouterr().err
+    plt.close(fig)
+
+
+@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
 @pytest.mark.parametrize("zeropoint", [0.0, 30.0])
 def test_magnitude_residuals_keep_differences(residualtype: str, zeropoint: float) -> None:
     """Magnitude residuals keep their differences, scale, and error bars when the zero point changes."""

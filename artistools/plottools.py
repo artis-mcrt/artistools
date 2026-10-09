@@ -1221,6 +1221,11 @@ def draw_residual_panel(
         strunits = f"\n{mainylabel[mainylabel.rfind('[') :]}" if "[" in mainylabel else ""
         residualaxis.set_ylabel(rf"series $-$ baseline{strunits}")
         set_exponent_label(residualaxis)
+    residualymax = log_axis_limit(
+        getattr(args, "residualymax", None), logscale=residualaxis.get_yscale() == "log", argname="-residualymax"
+    )
+    if residualymax is not None:
+        residualaxis.set_ylim(top=residualymax)
     if ismagnitude and not isratio:
         # a model that is fainter than the reference then lies below zero, as it lies below in the main frame
         invert_magnitude_yaxis(residualaxis)

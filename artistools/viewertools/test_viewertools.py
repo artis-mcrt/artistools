@@ -122,6 +122,25 @@ def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
     assert viewercore.get_default_tokens(action) == ("relative",)
 
 
+@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
+@pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
+def test_viewer_sets_the_residual_y_maximum(kind: str, residualtype: str) -> None:
+    """Both viewers pass the residual maximum through the option table and the command."""
+    timetokens = ["-t", "300"] if kind == "spectra" else []
+    viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual", "-residualtype", residualtype])
+    options = (("-residual", ()), ("-residualtype", (residualtype,)), ("-residualymax", ("2.5",)))
+    assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
+    assert viewer.residualaxis is not None
+    assert np.isclose(viewer.residualaxis.get_ylim()[1], 2.5)
+    parser = viewercore.make_parser(
+        at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
+    )
+    assert np.isclose(parser.parse_args(viewer.get_plot_tokens()).residualymax, 2.5)
+    action = viewercore.get_actions_by_flag(parser)["-residualymax"]
+    assert viewercore.get_option_kind(action) == "text"
+    assert viewercore.get_default_tokens(action) is None
+
+
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", ["--plotcmf"])])
 def test_viewer_takes_back_a_folder_of_a_list_option(
     kind: str, timetokens: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
