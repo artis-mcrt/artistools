@@ -1087,11 +1087,13 @@ def plot_residual_panel(
     xmax: float,
     *,
     baselineindex: int = 0,
+    selectedindices: Sequence[int] | None = None,
     ismagnitude: bool = False,
     ratio: bool = False,
 ) -> pl.DataFrame:
-    """Draw each other series minus the baseline series, and return the statistics.
+    """Draw the selected series minus the baseline series, and return the statistics.
 
+    An empty selection or None includes all series except the baseline.
     ratio=True draws series / baseline, which agrees with a main frame that has a log y axis.
     The axis takes a log scale only when a ratio, or its inverse, is above RESIDUALRATIO_LOGSCALE.
     The table gives the number of points and the root mean square (RMS) of each residual.
@@ -1100,18 +1102,25 @@ def plot_residual_panel(
     import numpy as np
 
     if len(series) < 2:
-        exit_with_error("-residuals needs at least two series in the plot", "Give at least two series")
+        exit_with_error("-residual needs at least two series in the plot", "Give at least two series")
     if not 0 <= baselineindex < len(series):
         exit_with_error(
-            f"-residuals index {baselineindex} is outside the range of {len(series)} series",
+            f"-residualbaselineseries index {baselineindex} is outside the range of {len(series)} series",
             f"Give an index from 0 to {len(series) - 1}",
         )
+    if selectedindices is not None:
+        for index in selectedindices:
+            if not 0 <= index < len(series):
+                exit_with_error(
+                    f"-residual index {index} is outside the range of {len(series)} series",
+                    f"Give an index from 0 to {len(series) - 1}",
+                )
     reference = series[baselineindex]
 
     rows: list[dict[str, str | int | float | None]] = []
     maxratio = 1.0
     for seriesindex, model in enumerate(series):
-        if seriesindex == baselineindex:
+        if seriesindex == baselineindex or (selectedindices and seriesindex not in selectedindices):
             continue
         inrange, residual, yreference = get_residuals(reference, model, xmin, xmax)
         hasvalue = np.isfinite(residual)
@@ -1171,7 +1180,7 @@ def draw_residual_panel(
     *,
     ismagnitude: bool = False,
 ) -> pl.DataFrame:
-    """Draw each other series minus the baseline below the main frame, and return the statistics.
+    """Draw the selected series minus the baseline below the main frame, and return the statistics.
 
     With a log y axis in the main frame, the panel shows series / baseline.
     A distance in that frame is a ratio.
@@ -1184,7 +1193,14 @@ def draw_residual_panel(
     residualaxis.set_xmargin(mainaxis.get_xmargin())
     xlim = mainaxis.get_xlim()
     dfresidualstats = plot_residual_panel(
-        residualaxis, series, min(xlim), max(xlim), baselineindex=args.residuals, ismagnitude=ismagnitude, ratio=isratio
+        residualaxis,
+        series,
+        min(xlim),
+        max(xlim),
+        baselineindex=args.residualbaselineseries,
+        selectedindices=args.residual,
+        ismagnitude=ismagnitude,
+        ratio=isratio,
     )
     set_axis_properties(residualaxis, args, setyaxis=False)
     if logscaley:

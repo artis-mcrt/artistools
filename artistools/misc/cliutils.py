@@ -1013,25 +1013,42 @@ def require_action(args: argparse.Namespace) -> None:
 
 
 def addarg_residuals(parser: argparse.ArgumentParser) -> None:
-    """Add -residuals, which draws each other series minus the baseline in a panel below the main frame."""
+    """Add the options for the residual panel and its baseline series."""
     group = arggroup(parser, "appearance")
+    baselinehelp = (
+        "Select the baseline series for the residual panel in plot order, with the first series at index 0."
+        " Without INDEX, use series 0. The plot must have one frame"
+    )
+    for flag, helptext in [("-residualbaselineseries", baselinehelp), ("-residuals", argparse.SUPPRESS)]:
+        group.add_argument(
+            flag,
+            dest="residualbaselineseries",
+            type=int,
+            nargs="?",
+            const=0,
+            default=None,
+            metavar="INDEX",
+            help=helptext,
+        )
+    # The old flag takes no value, because a numeric model path must stay positional.
     group.add_argument(
-        "-residuals",
+        "--residuals", dest="residualbaselineseries", action="store_const", const=0, help=argparse.SUPPRESS
+    )
+    group.add_argument(
+        "-residual",
         type=int,
-        nargs="?",
-        const=0,
+        nargs="*",
         default=None,
         metavar="INDEX",
         help=(
-            "Add a panel of each other series minus the baseline series. INDEX selects the baseline in plot order,"
-            " with the first series at index 0. Without INDEX, use series 0. With --logscaley, show series / baseline."
-            " Keep each series at full resolution and interpolate the baseline linearly."
-            " Print the root mean square (RMS) of each residual. The plot must have one frame."
+            "Add a panel of the selected series minus the baseline series."
+            " Give indices in plot order, with the first series at index 0."
+            " By default, include all series except the baseline."
+            " With --logscaley, show series / baseline."
+            " Print the root mean square (RMS) of each residual."
             " --write_data also writes this number"
         ),
     )
-    # the old flag takes no value, because a numeric model path must stay positional
-    group.add_argument("--residuals", dest="residuals", action="store_const", const=0, help=argparse.SUPPRESS)
 
 
 def addarg_show(parser: argparse.ArgumentParser) -> None:

@@ -1738,16 +1738,16 @@ def make_emissionabsorption_plot(
 
 
 def check_residual_args(args: argparse.Namespace) -> None:
-    """Stop the command when -residuals cannot apply to the plot that args selects."""
+    """Stop the command when -residual cannot apply to the plot that args selects."""
     if args.multispecplot or args.showemission or args.showabsorption or args.emissionabsorption or args.groupby:
         exit_with_error(
-            "-residuals applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
+            "-residual applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
             "Give one time with -t, and no emission or absorption option",
         )
     if args.makevspecpol or args.averagevspecpolfiles or args.output_spectra or "/" in args.stokesparam:
         exit_with_error(
-            "-residuals applies only to a plot of spectra, and the other options select a different action",
-            "Remove -residuals, or remove --makevspecpol, --averagevspecpolfiles, --output_spectra, or the ratio",
+            "-residual applies only to a plot of spectra, and the other options select a different action",
+            "Remove -residual, or remove --makevspecpol, --averagevspecpolfiles, --output_spectra, or the ratio",
         )
     if args.normalised:
         print_warning("--normalised scales each series to its own peak, thus the residual compares the shapes alone")
@@ -1785,7 +1785,7 @@ def make_plot_figure(
     # an emission and absorption plot draws a taller frame
     aspect = FRAMEHEIGHT_INCHES / FRAMEWIDTH_INCHES * (1.56 if args.showabsorption else 1.0)
     residualaxis = None
-    if args.residuals is not None:
+    if args.residualbaselineseries is not None:
         fig, mainaxis, residualaxis = make_frame_figure_with_residuals(args, aspect=aspect, fig=fig)
         axesgrid = np.array([[mainaxis]], dtype=object)
     else:
@@ -2837,7 +2837,9 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
             args.timemin = min(rangemin for rangemin, _ in finiteranges)
             args.timemax = max(rangemax for _, rangemax in finiteranges)
 
-    if args.residuals is not None:
+    if args.residual is not None and args.residualbaselineseries is None:
+        args.residualbaselineseries = 0
+    if args.residualbaselineseries is not None:
         check_residual_args(args)
 
     if args.multispecplot and not args.timedayslist:

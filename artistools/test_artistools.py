@@ -386,8 +386,11 @@ def test_residual_panel_keeps_the_resolution_and_line_properties(ratio: bool) ->
 
 
 @pytest.mark.parametrize("baselineindex", [0, 1, 2])
+@pytest.mark.parametrize("selectedindices", [None, [], [0, 2], [2, 2], [1], [2, 0]])
 @pytest.mark.parametrize("ratio", [False, True])
-def test_residual_panel_uses_the_selected_baseline(baselineindex: int, ratio: bool) -> None:
+def test_residual_panel_uses_the_selected_baseline(
+    baselineindex: int, selectedindices: list[int] | None, ratio: bool
+) -> None:
     """Each other series uses the selected baseline, its points, and its own colour."""
     x = np.array([1.0, 2.0, 3.0])
     y = np.array([2.0, 4.0, 8.0])
@@ -399,12 +402,20 @@ def test_residual_panel_uses_the_selected_baseline(baselineindex: int, ratio: bo
     fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(argparse.Namespace(logscaley=ratio))
     mainaxis.set_xlim(1.0, 3.0)
     dfstats = at.plottools.draw_residual_panel(
-        residualaxis, mainaxis, series, argparse.Namespace(residuals=baselineindex, logscaley=ratio)
+        residualaxis,
+        mainaxis,
+        series,
+        argparse.Namespace(residualbaselineseries=baselineindex, residual=selectedindices, logscaley=ratio),
     )
-    otherindices = [index for index in range(len(series)) if index != baselineindex]
+    otherindices = [
+        index
+        for index in range(len(series))
+        if index != baselineindex and (not selectedindices or index in selectedindices)
+    ]
     assert dfstats["model"].to_list() == [series[index].label for index in otherindices]
-    assert dfstats["reference"].to_list() == [series[baselineindex].label] * 2
-    for line, index in zip(residualaxis.lines, otherindices, strict=False):
+    assert dfstats["reference"].to_list() == [series[baselineindex].label] * len(otherindices)
+    assert len(residualaxis.lines) == len(otherindices) + 1
+    for line, index in zip(residualaxis.lines[:-1], otherindices, strict=True):
         expected = (
             np.full_like(y, factors[index] / factors[baselineindex])
             if ratio
@@ -435,6 +446,8 @@ def test_residual_panel_rejects_an_invalid_baseline(seriescount: int, baselinein
     ("tokens", "expected"),
     [
         ([], None),
+        (["-residualbaselineseries"], 0),
+        (["-residualbaselineseries", "2"], 2),
         (["-residuals"], 0),
         (["-residuals", "0"], 0),
         (["-residuals", "2"], 2),
@@ -448,10 +461,11 @@ def test_residual_option_takes_an_optional_index(
     """Both commands take an optional baseline index and keep the old spelling as a hidden alias."""
     parser = argparse.ArgumentParser()
     addargs(parser)
-    assert parser.parse_args(tokens).residuals == expected
-    assert "-residuals [INDEX]" in parser.format_help()
+    assert parser.parse_args(tokens).residualbaselineseries == expected
+    assert "-residualbaselineseries [INDEX]" in parser.format_help()
+    assert "-residuals [INDEX]" not in parser.format_help()
     assert "--residuals" not in parser.format_help()
-    action = viewercore.get_actions_by_flag(parser)["-residuals"]
+    action = viewercore.get_actions_by_flag(parser)["-residualbaselineseries"]
     assert viewercore.get_default_tokens(action) == ()
     assert viewercore.get_option_kind(action) == "text"
 
@@ -459,7 +473,13 @@ def test_residual_option_takes_an_optional_index(
 @pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
 @pytest.mark.parametrize(
     ("flag", "indexed"),
-    [("-residuals", False), ("-residuals", True), ("-res", False), ("-res", True), ("--residuals", False)],
+    [
+        ("-residualbaselineseries", False),
+        ("-residualbaselineseries", True),
+        ("-residuals", False),
+        ("-residuals", True),
+        ("--residuals", False),
+    ],
 )
 def test_residual_option_keeps_the_next_positional_path(command: str, flag: str, indexed: bool) -> None:
     """A bare residual flag keeps the next path positional, and an integer selects the baseline."""
@@ -467,9 +487,41 @@ def test_residual_option_keeps_the_next_positional_path(command: str, flag: str,
 
     parser = artistools.__main__.build_parser()
     args = parser.parse_args([command, flag, *(["1"] if indexed else []), "model1", "model2", "--quiet"])
-    assert args.residuals == (1 if indexed else 0)
+    assert args.residualbaselineseries == (1 if indexed else 0)
     paths = args.specpath if command == "plotspectra" else args.modelpath
     assert [str(path) for path in paths] == ["model1", "model2"]
+
+
+@pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
+@pytest.mark.parametrize("indices", [[], [1], [2, 0]])
+def test_residual_selection_keeps_the_next_positional_paths(command: str, indices: list[int]) -> None:
+    """The residual option takes only indices and keeps the paths in their original order."""
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    args = parser.parse_args([command, "model0", "-residual", *map(str, indices), "model1", "model2", "--quiet"])
+    assert args.residual == indices
+    assert args.residualbaselineseries is None
+    paths = args.specpath if command == "plotspectra" else args.modelpath
+    assert [str(path) for path in paths] == ["model0", "model1", "model2"]
+    subparser = argparse.ArgumentParser()
+    addargs = at.spectra.plotspectra.addargs if command == "plotspectra" else at.lightcurve.plotlightcurve.addargs
+    addargs(subparser)
+    action = viewercore.get_actions_by_flag(subparser)["-residual"]
+    assert viewercore.get_option_kind(action) == "list"
+    assert viewercore.get_default_tokens(action) == ()
+
+
+@pytest.mark.parametrize("index", [-1, 2])
+def test_residual_panel_rejects_an_invalid_selection(index: int) -> None:
+    """The panel rejects a selected index outside the range of the series."""
+    x = np.array([1.0, 2.0])
+    series = [at.plottools.ResidualSeries(str(i), x, x, "k") for i in range(2)]
+    fig, axis = plt.subplots()
+    with pytest.raises(SystemExit):
+        at.plottools.plot_residual_panel(axis, series, 1.0, 2.0, selectedindices=[index])
+    assert not axis.lines
+    plt.close(fig)
 
 
 def test_residual_path_rewrite_keeps_an_ambiguous_prefix(capsys: pytest.CaptureFixture[str]) -> None:
@@ -494,7 +546,7 @@ def test_old_residual_flag_keeps_a_numeric_model_path(
     (tmp_path / "1").mkdir()
     monkeypatch.chdir(tmp_path)
     args = artistools.__main__.build_parser().parse_args([command, "--residuals", "1"])
-    assert args.residuals == 0
+    assert args.residualbaselineseries == 0
     paths = args.specpath if command == "plotspectra" else args.modelpath
     assert [str(path) for path in paths] == ["1"]
 
@@ -509,7 +561,7 @@ def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float
         at.plottools.ResidualSeries("obs", x, yreference, "k"),
         at.plottools.ResidualSeries("model", x, yreference * factors, "C0"),
     ]
-    args = argparse.Namespace(logscaley=True, residuals=0)
+    args = argparse.Namespace(logscaley=True, residualbaselineseries=0, residual=None)
     _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
     mainaxis.plot(x, series[0].y)
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)

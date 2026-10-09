@@ -662,15 +662,18 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
             out.extend(self.split_one_joined_flag(argstring))
 
-        return self.keep_optional_integer_paths(out)
+        return self.keep_integer_option_paths(out)
 
-    def keep_optional_integer_paths(self, args: "Sequence[str]") -> list[str]:
-        """Keep a positional path after an option that takes an optional integer.
+    def keep_integer_option_paths(self, args: "Sequence[str]") -> list[str]:
+        """Keep positional paths after options that take optional integers.
 
         argparse takes the path as the integer and then rejects it. An explicit constant keeps the path positional.
+        For a list of integers, move the paths before the option.
         """
         out: list[str] = []
-        for index, argstring in enumerate(args):
+        index = 0
+        while index < len(args):
+            argstring = args[index]
             if argstring == "--":
                 out.extend(args[index:])
                 break
@@ -679,6 +682,21 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
                 matches = [value for flag, value in self._option_string_actions.items() if flag.startswith(argstring)]
                 if len(matches) == 1:
                     action = matches[0]
+            if action is not None and action.nargs == "*" and action.type is int:
+                valueend = index + 1
+                while valueend < len(args):
+                    try:
+                        int(args[valueend])
+                    except ValueError:
+                        break
+                    valueend += 1
+                pathend = valueend
+                while pathend < len(args) and not args[pathend].startswith("-"):
+                    pathend += 1
+                out.extend(args[valueend:pathend])
+                out.extend(args[index:valueend])
+                index = pathend
+                continue
             outstring = argstring
             if action is not None and action.nargs == "?" and action.type is int and index + 1 < len(args):
                 nexttoken = args[index + 1]
@@ -688,6 +706,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
                     except ValueError:
                         outstring = f"{argstring}={action.const}"
             out.append(outstring)
+            index += 1
         return out
 
     def split_one_joined_flag(self, argstring: str) -> list[str]:

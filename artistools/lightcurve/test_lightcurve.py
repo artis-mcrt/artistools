@@ -2217,7 +2217,7 @@ def test_bolometric_residual_accepts_a_baseline_with_one_observation(tmp_path: P
         at.lightcurve.plot(
             argsraw=[],
             modelpath=[baselinefile, comparisonfile],
-            residuals=0,
+            residualbaselineseries=0,
             logscaley=ratio,
             write_data=True,
             outputfile=tmp_path / "residual.pdf",
@@ -2252,7 +2252,7 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
         argsraw=[],
         modelpath=[modelpath, obsfile] if refispositional else [modelpath],
         reflightcurves=[] if refispositional else [str(obsfile)],
-        residuals=1,
+        residualbaselineseries=1,
         write_data=True,
         outputfile=tmp_path / "bolresiduals.pdf",
     )
@@ -2399,7 +2399,7 @@ def test_residual_baseline_counts_gamma_lightcurves(tmp_path: Path, rpkt: bool, 
         label=["model1", "model2"],
         gamma=True,
         rpkt=rpkt,
-        residuals=baselineindex,
+        residualbaselineseries=baselineindex,
         write_data=True,
         outputfile=tmp_path / "gamma.pdf",
     )
@@ -2423,7 +2423,7 @@ def test_residual_baseline_counts_comoving_frame_curves(tmp_path: Path, modelcou
             modelpath=[modelpath_classic_3d] * modelcount,
             label=["first", "second"][:modelcount],
             plotcmf=True,
-            residuals=baselineindex,
+            residualbaselineseries=baselineindex,
             write_data=True,
             outputfile=tmp_path / "cmf.pdf",
         )
@@ -2475,7 +2475,7 @@ def test_residual_baseline_counts_energy_rate_curves(
             argsraw=[],
             modelpath=[modelpath_classic_3d, reffile],
             label=["model", "reference"],
-            residuals=baselineindex,
+            residualbaselineseries=baselineindex,
             write_data=True,
             outputfile=tmp_path / "rates.pdf",
             deposition=["betaminus"] if rateflag == "deposition" else [],
@@ -2527,7 +2527,7 @@ def test_residual_baseline_counts_hesma_curve(
             filter=["B"],
             reflightcurves=["reference.dat"],
             plot_hesma_model=hesmafile,
-            residuals=baselineindex,
+            residualbaselineseries=baselineindex,
             write_data=True,
             outputfile=tmp_path,
         )
@@ -2566,7 +2566,7 @@ def test_band_residual_panel_takes_one_filter(
             modelpath=[modelpath],
             filter=["B"],
             reflightcurves=["fakeref.dat"],
-            residuals=1,
+            residualbaselineseries=1,
             write_data=True,
             outputfile=tmp_path,
         )
@@ -2584,11 +2584,11 @@ def test_band_residual_panel_takes_one_filter(
                 modelpath=[modelpath],
                 filter=["B", "V"],
                 reflightcurves=["fakeref.dat"],
-                residuals=1,
+                residualbaselineseries=1,
                 outputfile=tmp_path,
             )
         # SystemExit holds the status alone, thus the message of the command is the text that it printed
-        assert "-residuals applies to a plot of one frame" in capsys.readouterr().err
+        assert "-residual applies to a plot of one frame" in capsys.readouterr().err
 
 
 def test_reference_band_data_uses_the_given_distance_modulus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
