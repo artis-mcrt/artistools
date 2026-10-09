@@ -2026,13 +2026,14 @@ def write_fake_observed_spectrum(folder: Path) -> Path:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.MagicMock, tmp_path: Path) -> None:
-    """An observed flux of 1.1 times the model gives a residual below zero, and a ratio of 1 / 1.1 with -residualtype relative."""
+    """An observed flux of 1.1 times the model gives a negative absolute residual and a ratio of 1 / 1.1."""
     obsfile = write_fake_observed_spectrum(tmp_path)
     at.spectra.plot(
         argsraw=[],
         specpath=[modelpath, obsfile],
         timestep=54,
         residualbaselineseries=1,
+        residualtype="absolute",
         write_data=True,
         outputfile=tmp_path / "residuals.pdf",
     )

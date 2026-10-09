@@ -2592,6 +2592,7 @@ def test_band_residual_panel_takes_one_filter(
             filter=["B"],
             reflightcurves=["fakeref.dat"],
             residualbaselineseries=1,
+            residualtype="absolute",
             write_data=True,
             outputfile=tmp_path,
         )

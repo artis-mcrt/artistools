@@ -97,6 +97,12 @@ def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
     """Both viewers use the residual type from the option table."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
     viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual"])
+    assert viewer.residualaxis is not None
+    assert viewer.residualaxis.get_yscale() == "linear"
+    assert viewer.residualaxis.get_ylabel() == "series / baseline"
+    initialvalues = np.asarray(viewer.residualaxis.lines[0].get_ydata())
+    assert np.isfinite(initialvalues).any()
+    assert np.allclose(initialvalues[np.isfinite(initialvalues)], 1.0)
     options = (("-residual", ()), ("-residualtype", (residualtype,)))
     assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
     assert viewer.residualaxis is not None
@@ -113,7 +119,7 @@ def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
     assert args.residualtype == residualtype
     action = viewercore.get_actions_by_flag(parser)["-residualtype"]
     assert viewercore.get_option_kind(action) == "choice"
-    assert viewercore.get_default_tokens(action) == ("absolute",)
+    assert viewercore.get_default_tokens(action) == ("relative",)
 
 
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", ["--plotcmf"])])

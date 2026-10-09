@@ -1052,12 +1052,12 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
     group.add_argument(
         "-residualtype",
         choices=["absolute", "relative", "relativelog"],
-        default="absolute",
+        default="relative",
         help=(
             "Select the residual type: absolute shows series minus baseline."
             " Relative shows series / baseline on a linear y axis."
             " Relativelog shows the same ratio on a logarithmic y axis."
-            " The default is absolute. The statistics use series minus baseline for every type"
+            " The default is relative. The statistics use series minus baseline for every type"
         ),
     )
 
