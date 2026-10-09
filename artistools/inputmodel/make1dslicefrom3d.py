@@ -16,6 +16,7 @@ from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.misc import addarg_legend
 from artistools.misc import exit_with_error
+from artistools.misc import firstexisting_or_none
 from artistools.misc import parse_cli_args
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -44,10 +45,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if not Path(args.outputfolder).exists():
         Path(args.outputfolder).mkdir(parents=True)
-    elif Path(args.outputfolder, "model.txt").exists():
-        exit_with_error(f"{args.outputfolder} already holds a model.txt")
-    elif Path(args.outputfolder, "abundances.txt").exists():
-        exit_with_error(f"{args.outputfolder} already holds an abundances.txt")
+    elif existingfile := firstexisting_or_none(
+        ["model.txt", "abundances.txt"], folder=args.outputfolder, search_subfolders=False
+    ):
+        exit_with_error(f"{args.outputfolder} already holds {existingfile.name}")
 
     dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)
 

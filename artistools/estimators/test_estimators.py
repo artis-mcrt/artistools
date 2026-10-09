@@ -636,12 +636,12 @@ def test_estimparse_missing_file() -> None:
 
 def write_zstd_frames(filepath: Path, texts: Sequence[str]) -> None:
     """Write each text as one zstd frame, one frame after the other, as ARTIS writes the estimator file of all ranks."""
-    from artistools.misc.fileio import get_decompress_open
+    from artistools.misc.fileio import get_compression_open
 
     frames: list[bytes] = []
     for index, text in enumerate(texts):
         framepath = filepath.with_name(f"{filepath.name}.frame{index}")
-        with get_decompress_open(".zst")(framepath, "wt", encoding="utf-8") as framefile:
+        with get_compression_open(".zst")(framepath, "wt", encoding="utf-8") as framefile:
             framefile.write(text)
         frames.append(framepath.read_bytes())
         framepath.unlink()
@@ -865,7 +865,7 @@ def test_a_compression_of_the_text_keeps_the_cache(tmp_path: Path) -> None:
     The size of the text made the cache stale, thus a run that a user compressed to archive it converted again.
     """
     from artistools.estimators.core import get_estimator_batch_states
-    from artistools.misc.fileio import get_decompress_open
+    from artistools.misc.fileio import get_compression_open
 
     copy_model_inputs(tmp_path, "estimators_0000.out")
     rankfile = tmp_path / "estimators_0000.out"
@@ -882,7 +882,7 @@ def test_a_compression_of_the_text_keeps_the_cache(tmp_path: Path) -> None:
     assert state.stalereason is not None
     assert "bytes after the conversion" in state.stalereason
 
-    with get_decompress_open(".zst")(tmp_path / "estimators_0000.out.zst", "wt") as zstfile:
+    with get_compression_open(".zst")(tmp_path / "estimators_0000.out.zst", "wt") as zstfile:
         zstfile.write(text)
     os.utime(tmp_path / "estimators_0000.out.zst", (2000.0, 2000.0))
     rankfile.unlink()
@@ -2421,11 +2421,11 @@ def test_classic_estimator_files_follow_zopen_precedence(tmp_path: Path) -> None
     import gzip
 
     from artistools.estimators.estimators_classic import get_classic_estimator_files
-    from artistools.misc.fileio import get_decompress_open
+    from artistools.misc.fileio import get_compression_open
 
     with gzip.open(tmp_path / "estimators_0000.out.gz", "wt") as gzfile:
         gzfile.write("stale\n")
-    with get_decompress_open(".zst")(tmp_path / "estimators_0000.out.zst", "wt") as zstfile:
+    with get_compression_open(".zst")(tmp_path / "estimators_0000.out.zst", "wt") as zstfile:
         zstfile.write("live\n")
     (tmp_path / "estimators_0000.out.bak").write_text("junk\n")
 

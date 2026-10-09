@@ -357,7 +357,6 @@ def makemodelfromgriddata(
         save_gridparticlecontributions(dfgridcontributions, Path(outputpath, "gridcontributions.txt"))
 
     if dfelabundances is not None:
-        print(f"Writing to {Path(outputpath) / 'abundances.txt'}...")
         save_initelemabundances(
             dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"]
         )
@@ -367,7 +366,6 @@ def makemodelfromgriddata(
     if "tracercount" in dfmodel:
         dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
-    print(f"Writing to {Path(outputpath) / 'model.txt'}...")
     save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
 
 

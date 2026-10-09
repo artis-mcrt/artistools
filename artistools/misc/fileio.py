@@ -129,7 +129,7 @@ def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
     return None
 
 
-def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
+def get_compression_open(ext: str) -> Callable[..., t.IO[t.Any]]:
     """Return the open() function of the compression module that handles the given file extension."""
     if sys.version_info >= (3, 14):
         # only available in Python 3.14+
@@ -144,6 +144,24 @@ def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
         import zstandard as zstd
 
     return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]
+
+
+def get_zstd_output_path(filepath: Path | str) -> Path:
+    """Return the path of the zstd file for an ARTIS input file, e.g. model.txt.zst for model.txt.
+
+    ARTIS reads a zstd input file directly. A path that has a compression extension stays the same.
+    """
+    filepath = Path(filepath)
+    return filepath if filepath.suffix in COMPRESSED_EXTENSIONS else with_compressed_extension(filepath, ".zst")
+
+
+def open_compressed_output(filepath: Path) -> t.IO[str]:
+    """Open a text file to write, with the compression that its extension gives, e.g. zstd for .zst.
+
+    polars writes to the file descriptor of a file object, thus the compressor does not get that data. Write the
+    string that write_csv returns when it gets no file.
+    """
+    return get_compression_open(filepath.suffix)(filepath, mode="wt", encoding="utf-8")
 
 
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None) -> t.IO[str]:
@@ -161,10 +179,10 @@ def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, e
             # let open() raise the FileNotFoundError naming the file the caller actually asked for
             return filepath.open(mode=mode, encoding=encoding, errors=errors)
         ext, foundpath = found
-        return get_decompress_open(ext)(foundpath, mode=mode, encoding=encoding, errors=errors)
+        return get_compression_open(ext)(foundpath, mode=mode, encoding=encoding, errors=errors)
 
     if filepath.suffix in COMPRESSED_EXTENSIONS:
-        return get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding, errors=errors)
+        return get_compression_open(filepath.suffix)(filepath, mode=mode, encoding=encoding, errors=errors)
 
     return filepath.open(mode=mode, encoding=encoding, errors=errors)
 
@@ -181,7 +199,7 @@ def polars_source(filename: Path | str, mode: str = "r") -> t.IO[bytes] | Path:
         return filepath
 
     # the default mode "r" opens a binary stream in all three backends, which is what polars reads
-    return get_decompress_open(filepath.suffix)(filepath, mode=mode)
+    return get_compression_open(filepath.suffix)(filepath, mode=mode)
 
 
 @contextlib.contextmanager
@@ -285,7 +303,7 @@ def normalised_lines(
 def read_decompressed_bytes(filepath: Path) -> bytes:
     """Return the bytes of a file. The function decompresses a .zst, .gz, or .xz file."""
     if filepath.suffix in COMPRESSED_EXTENSIONS:
-        with get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+        with get_compression_open(filepath.suffix)(filepath, mode="rb") as fin:
             data: bytes = fin.read()
         return data
 

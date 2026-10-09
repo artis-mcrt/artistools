@@ -35,6 +35,8 @@ from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import polars_source
 from artistools.misc import read_wsv
+from artistools.misc.fileio import get_zstd_output_path
+from artistools.misc.fileio import open_compressed_output
 
 
 def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
@@ -444,13 +446,15 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
 
 
 def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Path | str) -> None:
-    """Write gridcontributions.txt, renaming any existing file to a .bak suffix first."""
+    """Write gridcontributions.txt.zst. First add .bak to the name of each copy that exists."""
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
+    gridcontribpath = get_zstd_output_path(gridcontribpath)
     backup_existing_file(gridcontribpath)
 
-    dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7)
+    with open_compressed_output(gridcontribpath) as fcontribs:
+        fcontribs.write(dfcontribs.write_csv(separator=" ", float_scientific=True, float_precision=7))
 
 
 def get_dfnucabundances(
@@ -646,7 +650,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputfile))
 
-    with Path(args.outputfile, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
+    with open_compressed_output(get_zstd_output_path(Path(args.outputfile, "gridcontributions.txt"))) as fcontribs:
         fcontribs.write("particleid cellindex frac_of_cellmass\n")
         fcontribs.writelines(f"{particleid} {inputcellid} 1.0\n" for inputcellid in dfmodel["inputcellid"])
 

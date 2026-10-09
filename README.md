@@ -133,7 +133,7 @@ A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame 
 | `at.packets.get_packets` | Return the number of ranks and a LazyFrame of the packets of a run. |
 | `at.nltepops.read_nltepops` | Read the NLTE populations of a timestep and of one or more cells. |
 | `at.atomic.get_levels` | Return the energy levels of each ion, with the transitions as an option. |
-| `at.inputmodel.save_modeldata` | Write `model.txt` from a dataframe of the cells. |
+| `at.inputmodel.save_modeldata` | Write `model.txt.zst` from a dataframe of the cells. |
 | `at.plottools.set_mpl_style` | Apply the matplotlib style of artistools. |
 
 ### The command of a package

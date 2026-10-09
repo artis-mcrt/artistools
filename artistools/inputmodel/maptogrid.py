@@ -16,6 +16,8 @@ from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
 from artistools.misc import addarg_output
 from artistools.misc import parse_cli_args
+from artistools.misc.fileio import get_zstd_output_path
+from artistools.misc.fileio import open_compressed_output
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
 itab = itable + 5
@@ -75,7 +77,7 @@ def maptogrid(
     modifysmoothinglength: str = "option4",
     samplelowercorner: bool = False,
 ) -> None:
-    """Map an SPH ejecta snapshot onto an ncoordgrid^3 Cartesian grid and write grid.dat and gridcontributions.txt.
+    """Map an SPH ejecta snapshot onto an ncoordgrid^3 Cartesian grid and write grid.dat and gridcontributions.txt.zst.
 
     samplelowercorner evaluates the kernel at the lower corner of each cell, as artistools did before. Use it only
     to make a grid.dat again that an older version of artistools wrote.
@@ -327,7 +329,8 @@ def maptogrid(
         contrib_k = np.concatenate(contrib_cellk)
         contrib_gridindex = (contrib_k * ncoordgrid + contrib_j) * ncoordgrid + contrib_i + 1
         contrib_frac_of_cellmass = np.concatenate(contrib_rho) / grho[contrib_i, contrib_j, contrib_k]
-        with Path(outputfolderpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
+        gridcontribpath = get_zstd_output_path(Path(outputfolderpath, "gridcontributions.txt"))
+        with open_compressed_output(gridcontribpath) as fcontribs:
             fcontribs.write("particleid cellindex frac_of_cellmass\n")
             fcontribs.writelines(
                 f"{pid} {gridindex} {frac}\n"
@@ -338,7 +341,7 @@ def maptogrid(
                     strict=True,
                 )
             )
-        logprint(f"saved {outputfolderpath / 'gridcontributions.txt'}")
+        logprint(f"saved {gridcontribpath}")
 
     # check some stuff on the grid
 

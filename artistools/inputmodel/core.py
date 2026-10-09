@@ -33,8 +33,12 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import find_compressed
+from artistools.misc.fileio import get_zstd_output_path
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.fileio import open_compressed_output
+from artistools.misc.fileio import with_compressed_extension
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.modelinfo import parse_npts_line
 from artistools.misc.remote import check_local_path
@@ -711,9 +715,10 @@ def get_modeldata(
     if inputpath.is_dir():
         modelpath = inputpath
         textfilepath = firstexisting("model.txt", folder=inputpath, tryzipped=True)
-    elif inputpath.is_file():  # passed in a filename instead of the modelpath
-        textfilepath = inputpath
-        modelpath = Path(inputpath).parent
+    elif inputpath.is_file() or find_compressed(inputpath) is not None:
+        # a file name, e.g. model_1d.txt, also names its compressed copy, e.g. model_1d.txt.zst
+        textfilepath = firstexisting(inputpath.name, folder=inputpath.parent, tryzipped=True)
+        modelpath = inputpath.parent
     elif path_is_codecomparison(inputpath):
         modelpath = inputpath
         textfilepath = Path(get_model_text_folder(inputpath), "model.txt")
@@ -989,22 +994,32 @@ def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[str]) -> None:
     is 6e-8. Five figures lost more precision than the reader does, which showed up as a mass that
     changed by 2e-5 when a model was written and read again.
     """
-    df.write_csv(
-        fileobj,
-        include_header=False,
-        separator=" ",
-        line_terminator="\n",
-        float_scientific=True,
-        float_precision=7,
-        null_value="0.0",
-    )
+    # polars writes to the file descriptor of a file object, thus the compressor gets no data. Thus write a string.
+    # A slice of rows keeps the string small for a large model.
+    for dfslice in df.iter_slices(n_rows=16384):
+        fileobj.write(
+            dfslice.write_csv(
+                include_header=False,
+                separator=" ",
+                line_terminator="\n",
+                float_scientific=True,
+                float_precision=7,
+                null_value="0.0",
+            )
+        )
 
 
 def backup_existing_file(filepath: Path) -> None:
-    """Rename an existing file to a .bak file, so that the new file does not overwrite it."""
-    if filepath.exists():
-        oldfile = filepath.rename(filepath.with_suffix(".bak"))
-        print(f"{filepath} already exists. Renaming existing file to {oldfile}")
+    """Add .bak to the name of each copy of filepath that exists, plain or compressed, before a new file replaces it.
+
+    If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old plain copy must not stay beside a
+    new compressed file.
+    """
+    plainpath = filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
+    for oldpath in (plainpath, *(with_compressed_extension(plainpath, ext) for ext in COMPRESSED_EXTENSIONS)):
+        if oldpath.exists():
+            backuppath = oldpath.rename(oldpath.with_name(f"{oldpath.name}.bak"))
+            print(f"{oldpath} already exists. Its new name is {backuppath}.")
 
 
 def save_modeldata(
@@ -1016,7 +1031,8 @@ def save_modeldata(
 ) -> None:
     """Write model.txt, a snapshot of the density and the composition, from the cell properties and the metadata.
 
-    The metadata gives values such as the time after the explosion.
+    The metadata gives values such as the time after the explosion. The file gets zstd compression, and a file name
+    with no compression extension gets .zst, e.g. model.txt.zst. ARTIS reads such a file directly.
 
     1D
     -------
@@ -1134,13 +1150,13 @@ def save_modeldata(
             (f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"),
         ]
 
-    modelfilepath = resolve_outputfile(outpath, "model.txt")
+    modelfilepath = get_zstd_output_path(resolve_outputfile(outpath, "model.txt"))
 
     backup_existing_file(modelfilepath)
     # a write that stops early must not leave the cache of the old file beside a part of the new file
     remove_parquet_cache(modelfilepath)
 
-    with modelfilepath.open("w", encoding="utf-8") as fmodel:
+    with open_compressed_output(modelfilepath) as fmodel:
         if headercommentlines:
             fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
 
@@ -1200,7 +1216,6 @@ def save_modeldata(
                 for col in dfmodel.columns
                 if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
             )
-            fmodel.flush()
             write_artis_csv(dfmodel, fmodel)
 
     remove_parquet_cache(modelfilepath)
@@ -1286,7 +1301,9 @@ def save_initelemabundances(
     outpath: Path | str | None = None,
     headercommentlines: Sequence[str] | None = None,
 ) -> None:
-    """Save a DataFrame (same format as get_initelemabundances) to abundances.txt.
+    """Save a DataFrame in the format of get_initelemabundances to abundances.txt.zst.
+
+    A file name with no compression extension gets .zst, as in save_modeldata.
 
     columns must be:
         - inputcellid: integer index to match model.txt (starting from 1)
@@ -1294,7 +1311,7 @@ def save_initelemabundances(
     """
     timestart = time.perf_counter()
 
-    abundancefilename = resolve_outputfile(outpath, "abundances.txt")
+    abundancefilename = get_zstd_output_path(resolve_outputfile(outpath, "abundances.txt"))
 
     dfelabundances = (
         dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
@@ -1316,19 +1333,18 @@ def save_initelemabundances(
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 
     backup_existing_file(abundancefilename)
-    remove_parquet_cache(Path(abundancefilename))
+    remove_parquet_cache(abundancefilename)
 
-    with Path(abundancefilename).open("w", encoding="utf-8") as fabund:
+    with open_compressed_output(abundancefilename) as fabund:
         if headercommentlines:
             fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
         # sn3d and get_initelemabundances skip each comment line, and both read the columns by position
         fabund.write(get_created_comment())
         fabund.write(f"# {UNITS_COMMENT_PREFIX} each X_ column is the mass fraction of an element\n")
         fabund.write(f"#{' '.join(dfelabundances.columns)}\n")
-        fabund.flush()
         write_artis_csv(dfelabundances, fabund)
 
-    remove_parquet_cache(Path(abundancefilename))
+    remove_parquet_cache(abundancefilename)
     print(f"wrote {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
