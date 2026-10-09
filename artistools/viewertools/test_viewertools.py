@@ -82,7 +82,7 @@ def test_viewer_selects_the_residual_series(kind: str) -> None:
         at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
     )
     args = parser.parse_args(viewer.get_plot_tokens())
-    assert args.residual == [0]
+    assert args.residuals == [0]
     assert args.residualbaselineseries == 2
     assert viewer.change(dc.replace(viewer.values, otheroptions=(("-residual", ()),))) is None
     assert len(viewer.residualaxis.lines) == 3

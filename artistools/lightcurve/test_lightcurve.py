@@ -2388,6 +2388,25 @@ def test_lightcurve_residual_panel_compares_two_models(tmp_path: Path, filternam
     assert np.isclose(dfstats["rms"].item(), 0.0)
 
 
+@pytest.mark.parametrize("filtername", [None, "B"])
+def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path, filtername: str | None) -> None:
+    """Keep the baseline keyword separate from the selected series in bolometric and band plots."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath] * 3,
+        filter=[filtername] if filtername is not None else None,
+        label=["excluded", "baseline", "comparison"],
+        residualbaselineseries=1,
+        residuals=[2],
+        write_data=True,
+        outputfile=tmp_path / "selected.pdf",
+    )
+    stats = pl.read_csv(tmp_path / "selected_residuals.csv")
+    assert stats["model"].to_list() == ["comparison"]
+    assert stats["reference"].to_list() == ["baseline"]
+    assert np.isclose(stats["rms"].item(), 0.0)
+
+
 @pytest.mark.parametrize(
     ("rpkt", "baselineindex"), [(False, 0), (False, 1), (True, 0), (True, 1), (True, 2), (True, 3)]
 )

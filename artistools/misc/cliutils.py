@@ -1036,6 +1036,7 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
     )
     group.add_argument(
         "-residual",
+        dest="residuals",
         type=int,
         nargs="*",
         default=None,
@@ -1469,6 +1470,8 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
     A name that this command does not take raises. addarg_unsupported declares an old name, so that a
     user of the command line gets a message. Such a name is no argument of this command, thus a keyword
     of that name also raises.
+
+    A keyword that names a destination takes priority over an option alias.
     """
     kwargs = kwargs.copy()  # keys are renamed to argument dests below, so don't mutate the caller's dict
     realactions = [
@@ -1476,13 +1479,11 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         for action in parser._actions  # ruff:ignore[private-member-access]
         if not isinstance(action, UnsupportedArgument)
     ]
+    destinations = {arg.dest for arg in realactions}
     # set_defaults expects the dest of an argument. A keyword can also name an option string of the argument
     for arg in realactions:
-        names = list(
-            dict.fromkeys(
-                name for name in (arg.dest, *(flag.lstrip("-") for flag in arg.option_strings)) if name in kwargs
-            )
-        )
+        aliases = [flag.lstrip("-") for flag in arg.option_strings if flag.lstrip("-") not in destinations]
+        names = list(dict.fromkeys(name for name in (arg.dest, *aliases) if name in kwargs))
         if len(names) > 1:
             msg = f"The keywords {', '.join(names)} name one argument, thus give only one of them"
             raise ValueError(msg)

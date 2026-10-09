@@ -2080,6 +2080,24 @@ def test_spectra_residual_panel_compares_series_of_the_same_type(tmp_path: Path,
     assert np.isclose(dfstats["rms"].item(), 0.0)
 
 
+def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path) -> None:
+    """Keep the baseline keyword separate from the selected series."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath] * 3,
+        timestep=54,
+        label=["excluded", "baseline", "comparison"],
+        residualbaselineseries=1,
+        residuals=[2],
+        write_data=True,
+        outputfile=tmp_path / "selected.pdf",
+    )
+    stats = pl.read_csv(tmp_path / "selected_residuals.csv")
+    assert stats["model"].to_list() == ["comparison"]
+    assert stats["reference"].to_list() == ["baseline"]
+    assert np.isclose(stats["rms"].item(), 0.0)
+
+
 @pytest.mark.parametrize("baselineindex", [0, 1, 2])
 def test_residual_baseline_counts_codecomparison_spectra(tmp_path: Path, baselineindex: int) -> None:
     """Check each baseline index with a code comparison spectrum between two other spectra."""

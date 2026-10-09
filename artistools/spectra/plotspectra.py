@@ -2837,7 +2837,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
             args.timemin = min(rangemin for rangemin, _ in finiteranges)
             args.timemax = max(rangemax for _, rangemax in finiteranges)
 
-    if args.residual is not None and args.residualbaselineseries is None:
+    if args.residuals is not None and args.residualbaselineseries is None:
         args.residualbaselineseries = 0
     if args.residualbaselineseries is not None:
         check_residual_args(args)

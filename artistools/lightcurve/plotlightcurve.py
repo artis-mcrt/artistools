@@ -2146,7 +2146,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         print("Enabling --frompackets because topnucs > 0")
         args.frompackets = True
 
-    if args.residual is not None and args.residualbaselineseries is None:
+    if args.residuals is not None and args.residualbaselineseries is None:
         args.residualbaselineseries = 0
     if args.residualbaselineseries is not None:
         check_residual_args(args)

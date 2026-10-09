@@ -405,7 +405,7 @@ def test_residual_panel_uses_the_selected_baseline(
         residualaxis,
         mainaxis,
         series,
-        argparse.Namespace(residualbaselineseries=baselineindex, residual=selectedindices, logscaley=ratio),
+        argparse.Namespace(residualbaselineseries=baselineindex, residuals=selectedindices, logscaley=ratio),
     )
     otherindices = [
         index
@@ -500,7 +500,7 @@ def test_residual_selection_keeps_the_next_positional_paths(command: str, indice
 
     parser = artistools.__main__.build_parser()
     args = parser.parse_args([command, "model0", "-residual", *map(str, indices), "model1", "model2", "--quiet"])
-    assert args.residual == indices
+    assert args.residuals == indices
     assert args.residualbaselineseries is None
     paths = args.specpath if command == "plotspectra" else args.modelpath
     assert [str(path) for path in paths] == ["model0", "model1", "model2"]
@@ -561,7 +561,7 @@ def test_ratio_panel_takes_a_log_axis_for_a_large_ratio_alone(modelfactor: float
         at.plottools.ResidualSeries("obs", x, yreference, "k"),
         at.plottools.ResidualSeries("model", x, yreference * factors, "C0"),
     ]
-    args = argparse.Namespace(logscaley=True, residualbaselineseries=0, residual=None)
+    args = argparse.Namespace(logscaley=True, residualbaselineseries=0, residuals=None)
     _fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
     mainaxis.plot(x, series[0].y)
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)

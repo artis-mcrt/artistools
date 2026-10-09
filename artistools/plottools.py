@@ -1198,7 +1198,7 @@ def draw_residual_panel(
         min(xlim),
         max(xlim),
         baselineindex=args.residualbaselineseries,
-        selectedindices=args.residual,
+        selectedindices=args.residuals,
         ismagnitude=ismagnitude,
         ratio=isratio,
     )
