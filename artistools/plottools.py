@@ -1282,6 +1282,71 @@ def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:
     return titlebox.y1
 
 
+# the background and the foreground of a figure with --darkmode
+DARKMODE_COLOURS: t.Final = ("black", "white")
+
+# the formats that keep the transparent background of a figure with --darkmode. A raster file, e.g. a PNG image of a
+# gif, has a black background, because many image viewers show a transparent area as white
+TRANSPARENT_DARKMODE_FORMATS: t.Final = frozenset({"pdf", "svg"})
+
+
+def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> None:
+    """Give a figure the colours of Dark Mode.
+
+    The frames, the ticks, and the text take the foreground colour. A black or dark grey item takes the foreground
+    colour, because it does not show on the dark background:
+
+    - a line;
+    - a text;
+    - the edge of a patch or a collection;
+    - the face of a collection of one colour.
+
+    The other colours stay, e.g. the colours of the series and of an image. A dark colour of a series, e.g. the dark
+    red of sulphur, is not grey, thus it stays.
+    """
+    from matplotlib.collections import Collection
+    from matplotlib.patches import Patch
+    from matplotlib.text import Text
+
+    def is_dark_grey(colour: "mplt.ColorType") -> bool:
+        red, green, blue, alpha = mplcolors.to_rgba(colour)
+        isgrey = max(red, green, blue) - min(red, green, blue) < 0.1
+        return alpha > 0.0 and isgrey and 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.25
+
+    def is_one_dark_grey(colours: "mplt.ColorType | Sequence[mplt.ColorType]") -> bool:
+        rgbas = mplcolors.to_rgba_array(colours)
+        return len(rgbas) == 1 and is_dark_grey(tuple(rgbas[0]))
+
+    fig.patch.set_facecolor(background)
+    for axis in fig.axes:
+        axis.set_facecolor(background)
+        for spine in axis.spines.values():
+            spine.set_edgecolor(foreground)
+        axis.tick_params(which="both", colors=foreground)
+        if (legend := axis.get_legend()) is not None:
+            legend.get_frame().set_facecolor(background)
+            legend.get_frame().set_edgecolor(foreground)
+    for text in fig.findobj(Text):
+        if isinstance(text, Text) and is_dark_grey(text.get_color()):
+            text.set_color(foreground)
+    for line in fig.findobj(mpllines.Line2D):
+        if isinstance(line, mpllines.Line2D) and is_dark_grey(line.get_color()):
+            line.set_color(foreground)
+    # a background patch takes no foreground colour, thus only the edge of a patch changes
+    for patch in fig.findobj(Patch):
+        if isinstance(patch, Patch) and is_dark_grey(patch.get_edgecolor()):
+            patch.set_edgecolor(foreground)
+    # a collection of one colour is e.g. the lines of the error bars. A colour map gives many colours, thus its
+    # collection stays
+    for collection in fig.findobj(Collection):
+        if not isinstance(collection, Collection):
+            continue
+        if is_one_dark_grey(collection.get_edgecolor()):
+            collection.set_edgecolor(foreground)
+        if is_one_dark_grey(collection.get_facecolor()):
+            collection.set_facecolor(foreground)
+
+
 def make_room_for_title(fig: mplfig.Figure) -> None:
     """Make the figure taller if a title goes past its top edge.
 
@@ -1331,9 +1396,30 @@ def save_figure(
 
     A suffix of outpath that matplotlib can write sets the format, thus a format argument applies only to a path
     with no such suffix. A file named rf.png then holds PNG data, also when the caller gives format="pdf".
+
+    With --darkmode, the figure has white text and frames. A PDF file or an SVG file has a transparent background,
+    and a file in a different format has a black background.
     """
+    from pathlib import Path
+
     show = args is not None and getattr(args, "show", False)
     openfile = args is not None and not isframe and getattr(args, "open", False)
+
+    suffix = Path(outpath).suffix.removeprefix(".").lower()
+    if suffix in fig.canvas.get_supported_filetypes():
+        savefig_kwargs.pop("format", None)
+        fileformat = suffix
+    else:
+        fileformat = str(savefig_kwargs.get("format", plt.rcParams["savefig.format"])).lower()
+
+    if args is not None and getattr(args, "darkmode", False):
+        apply_dark_colours(fig, *DARKMODE_COLOURS)
+        savefig_kwargs.setdefault("transparent", fileformat in TRANSPARENT_DARKMODE_FORMATS)
+        if fileformat in TRANSPARENT_DARKMODE_FORMATS:
+            # a black legend box on a transparent figure hides the background of the slide
+            for axis in fig.axes:
+                if (legend := axis.get_legend()) is not None:
+                    legend.get_frame().set_facecolor("none")
 
     if show:
         # a window shows the figure with no crop, thus a title needs room inside the figure
@@ -1344,11 +1430,6 @@ def save_figure(
     # keeps its width. The pad keeps a stroke on the boundary whole.
     savefig_kwargs.setdefault("bbox_inches", "tight")
     savefig_kwargs.setdefault("pad_inches", 0.02)
-
-    from pathlib import Path
-
-    if Path(outpath).suffix.removeprefix(".").lower() in fig.canvas.get_supported_filetypes():
-        savefig_kwargs.pop("format", None)
 
     fig.savefig(outpath, **savefig_kwargs)
     if not isframe:

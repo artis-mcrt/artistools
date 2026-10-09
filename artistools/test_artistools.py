@@ -1170,6 +1170,30 @@ def test_save_figure_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
         assert (tmp_path / filename).read_bytes().startswith(magic)
 
 
+def test_save_figure_darkmode_gives_a_black_png_and_a_transparent_pdf(tmp_path: Path) -> None:
+    """--darkmode gives white text, a black PNG background, and a transparent PDF background.
+
+    A transparent PNG frame of a gif shows as white in many image viewers, thus only a vector file is transparent.
+    """
+    import matplotlib.colors as mcolors
+    import matplotlib.image as mplimage
+
+    args = argparse.Namespace(darkmode=True)
+    for filename in ("x.png", "x.pdf"):
+        fig = plt.figure()
+        axis = fig.add_subplot()
+        axis.plot([0, 1], [0, 1], color="black")
+        axis.set_xlabel("velocity")
+        with mock.patch.object(mplfig.Figure, "savefig", side_effect=mplfig.Figure.savefig, autospec=True) as spy:
+            at.plottools.save_figure(fig, tmp_path / filename, args=args)
+        assert mcolors.same_color(axis.xaxis.label.get_color(), "white")
+        assert mcolors.same_color(axis.lines[0].get_color(), "white")
+        assert spy.call_args.kwargs["transparent"] == (filename == "x.pdf")
+
+    corner = mplimage.imread(tmp_path / "x.png")[0, 0]
+    assert np.allclose(corner, [0.0, 0.0, 0.0, 1.0], rtol=0.0, atol=0.01)
+
+
 @pytest.mark.benchmark
 def test_plotspherical(tmp_path: Path) -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
@@ -4919,7 +4943,7 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     axis.set_xlabel("velocity")
     legend = axis.legend()
 
-    viewermenus.apply_dark_colours(fig, "#1e1e1e", "#dddddd")
+    at.plottools.apply_dark_colours(fig, "#1e1e1e", "#dddddd")
 
     assert mcolors.same_color(blackline.get_color(), "#dddddd")
     assert mcolors.same_color(blueline.get_color(), "tab:blue")

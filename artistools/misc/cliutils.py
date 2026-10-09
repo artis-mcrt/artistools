@@ -1080,10 +1080,22 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
 
 
 def addarg_show(parser: argparse.ArgumentParser) -> None:
-    """Add --show, which opens the figure in a window before the save, and --open, which opens the file after it."""
+    """Add --show, --open, and --darkmode, which control how the command shows and saves the figure.
+
+    --show opens the figure in a window before the save, and --open opens the file after it. --darkmode gives the
+    figure white text and frames for a dark background.
+    """
     group = arggroup(parser, "output")
     group.add_argument("--show", action="store_true", help="Show the plot in a window before saving it")
     group.add_argument("--open", action="store_true", help="Open the saved file with its default application")
+    group.add_argument(
+        "--darkmode",
+        action="store_true",
+        help=(
+            "Use white text, frames, and ticks for a dark background."
+            " A PDF or SVG file has a transparent background, and a file in a different format has a black background"
+        ),
+    )
 
 
 def addarg_quiet(parser: argparse.ArgumentParser) -> None:

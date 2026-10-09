@@ -45,7 +45,6 @@ if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
     import matplotlib.figure as mplfig
-    import matplotlib.typing as mplt
     from PySide6 import QtWidgets
 
     from artistools.commands import SuggestingArgumentParser
@@ -410,40 +409,6 @@ def get_dark_plot_colours() -> tuple[str, str] | None:
     return background.name(), palette.color(QtGui.QPalette.ColorRole.WindowText).name()
 
 
-def apply_dark_colours(fig: "mplfig.Figure", background: str, foreground: str) -> None:
-    """Give a figure of the window the colours of Dark Mode.
-
-    The frames, the ticks, and the text take the colours of the window. A black or dark grey line or text takes the
-    colour of the text, because a dark line or text does not show on the dark background. The other colours stay,
-    e.g. the colours of the series and of an image. A dark colour of a series, e.g. the dark red of sulphur, is not
-    grey, thus it stays. The command saves a figure with its usual colours, because only the window calls this.
-    """
-    import matplotlib.colors as mcolors
-    from matplotlib.lines import Line2D
-    from matplotlib.text import Text
-
-    def is_dark_grey(colour: "mplt.ColorType") -> bool:
-        red, green, blue, alpha = mcolors.to_rgba(colour)
-        isgrey = max(red, green, blue) - min(red, green, blue) < 0.1
-        return alpha > 0.0 and isgrey and 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.25
-
-    fig.patch.set_facecolor(background)
-    for axis in fig.axes:
-        axis.set_facecolor(background)
-        for spine in axis.spines.values():
-            spine.set_edgecolor(foreground)
-        axis.tick_params(which="both", colors=foreground)
-        if (legend := axis.get_legend()) is not None:
-            legend.get_frame().set_facecolor(background)
-            legend.get_frame().set_edgecolor(foreground)
-    for text in fig.findobj(Text):
-        if isinstance(text, Text) and is_dark_grey(text.get_color()):
-            text.set_color(foreground)
-    for line in fig.findobj(Line2D):
-        if isinstance(line, Line2D) and is_dark_grey(line.get_color()):
-            line.set_color(foreground)
-
-
 def copy_figure_of_command(
     queue: "DrawQueue[t.Any]",
     statusbar: StatusBar,
@@ -555,6 +520,7 @@ def follow_colour_scheme(
     from PySide6 import QtGui
 
     def draw_with_new_colours() -> None:
+        refresh_palette_style_sheets(window)
         viewer.darkcolours = get_dark_plot_colours()
         queue.redraw()
 
@@ -566,6 +532,20 @@ def follow_colour_scheme(
     stylehints.colorSchemeChanged.connect(on_colour_scheme)
     # the signal of the application stays after the window closes, thus the window removes its handler
     window.destroyed.connect(lambda: stylehints.colorSchemeChanged.disconnect(on_colour_scheme))
+
+
+def refresh_palette_style_sheets(window: "QtWidgets.QWidget") -> None:
+    """Apply again each style sheet of the window that gives a colour of the palette, e.g. palette(base).
+
+    Qt reads a colour of the palette in a style sheet one time only. Without this, a chip of plotestimators keeps the
+    white background of a light window in Dark Mode.
+    """
+    from PySide6 import QtWidgets
+
+    for widget in [window, *window.findChildren(QtWidgets.QWidget)]:
+        if "palette(" in (stylesheet := widget.styleSheet()):
+            widget.setStyleSheet("")
+            widget.setStyleSheet(stylesheet)
 
 
 def show_figure_in_canvas(oldfig: "mplfig.Figure", newfig: "mplfig.Figure") -> tuple[float, float]:

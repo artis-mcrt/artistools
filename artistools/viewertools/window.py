@@ -13,6 +13,8 @@ import numpy as np
 
 from artistools.misc import print_error
 from artistools.misc.remote import on_model_host
+from artistools.plottools import apply_dark_colours
+from artistools.plottools import DARKMODE_COLOURS
 from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
 from artistools.viewertools.application import add_recent_model
@@ -35,7 +37,6 @@ from artistools.viewertools.core import SIDEBAR_WIDTH
 from artistools.viewertools.core import UNDO_LIMIT
 from artistools.viewertools.core import UNDO_MERGE_SECONDS
 from artistools.viewertools.menus import add_figure_section
-from artistools.viewertools.menus import apply_dark_colours
 from artistools.viewertools.menus import FigureSection
 from artistools.viewertools.menus import follow_colour_scheme
 from artistools.viewertools.menus import get_dark_plot_colours
@@ -392,7 +393,10 @@ def render_command[PlotT](
         for axis in fig.axes:
             fix_title_position(axis)
         make_room_for_title(fig)
-        if (darkcolours := viewer.darkcolours) is not None:
+        # --darkmode gives the colours of the saved file, thus it has priority over the appearance of the window
+        if "--darkmode" in viewer.get_plot_tokens():
+            apply_dark_colours(fig, *DARKMODE_COLOURS)
+        elif (darkcolours := viewer.darkcolours) is not None:
             apply_dark_colours(fig, *darkcolours)
         # the worker makes the ticks and the text layout, thus the first draw in the window is faster. On the test
         # model, the window draw of a spectrum took 33 ms in place of 44 ms, and of estimators 73 ms in place of 120 ms
