@@ -531,11 +531,17 @@ def test_residual_selection_keeps_the_next_positional_paths(command: str, indice
 @pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
 @pytest.mark.parametrize("selection", [["-residual"], ["-residual", "1"], ["-residual=1"]])
 @pytest.mark.parametrize("earlieroptions", [[], ["-t", "300"]])
+@pytest.mark.parametrize("optionsafterselection", [False, True])
 @pytest.mark.parametrize("pathkind", ["folder", "file"])
 def test_residual_selection_joins_paths_before_options(
-    command: str, selection: list[str], earlieroptions: list[str], pathkind: str, tmp_path: Path
+    command: str,
+    selection: list[str],
+    earlieroptions: list[str],
+    optionsafterselection: bool,
+    pathkind: str,
+    tmp_path: Path,
 ) -> None:
-    """Residual paths join the first positional group, with a separator or a joined selection."""
+    """Residual paths keep their order across options, separators, and joined selections."""
     import artistools.__main__
 
     paths = [tmp_path / "model0", tmp_path / "model1"]
@@ -546,7 +552,8 @@ def test_residual_selection_joins_paths_before_options(
             (path / "model.txt").touch()
         else:
             path.touch()
-    tokens = [command, str(paths[0]), *earlieroptions, *selection, str(paths[1])]
+    options = [*selection, *earlieroptions] if optionsafterselection else [*earlieroptions, *selection]
+    tokens = [command, str(paths[0]), *options, str(paths[1])]
     tokens = at.misc.separate_trailing_folders(tokens)
     if pathkind == "folder" and selection == ["-residual", "1"]:
         assert "--" in tokens

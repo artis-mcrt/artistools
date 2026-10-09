@@ -592,9 +592,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     neither version suggests an argument. CI runs both, thus this gives the same message on each.
     """
 
-    # addarg_positional_items sets this flag on the one parser that reads a positional argument after a
-    # flag. A parser that does not set it keeps the argparse order, in which an option has priority
-    # over a positional argument.
+    # Commands that accept positional arguments between options set this flag.
     wantsintermixed: bool = False
 
     @t.override
@@ -795,9 +793,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
         argparse fills a positional argument from one unbroken group of arguments. A flag between two
         positional arguments hides the second group, thus "plotestimators Te -t 300 mymodel" failed.
-        parse_known_intermixed_args reads both groups. It also applies every positional argument after
-        every option. This order is the opposite of the order that KeepGivenPaths needs, thus each
-        parser must set wantsintermixed.
+        parse_known_intermixed_args reads both groups. Commands that accept this order set wantsintermixed.
         """
         import sys
 

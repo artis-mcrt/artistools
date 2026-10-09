@@ -1014,6 +1014,8 @@ def require_action(args: argparse.Namespace) -> None:
 
 def addarg_residuals(parser: argparse.ArgumentParser) -> None:
     """Add the options for the residual panel and its baseline series."""
+    if isinstance(parser, SuggestingArgumentParser):
+        parser.wantsintermixed = True
     group = arggroup(parser, "appearance")
     baselinehelp = (
         "Select the baseline series for the residual panel in plot order, with the first series at index 0."
