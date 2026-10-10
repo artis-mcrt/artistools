@@ -1887,11 +1887,19 @@ SUBPLOT_STYLE_SHEET: t.Final = (
     "QFrame#subplotcard { border: 1px solid palette(mid); border-radius: 6px; }"
     " #chip { border: 1px solid palette(mid); border-radius: 10px; background: palette(base); }"
     " #chip:focus { border: 2px solid palette(highlight); }"
+    " QToolButton#swatch { border: none; padding: 2px 3px; border-radius: 4px; background: transparent; }"
+    " QToolButton#swatch:hover { background: rgba(128, 128, 128, 60); }"
+    " QToolButton#yaxis { border: none; padding: 1px 0px; background: transparent; }"
     " QToolButton#suggestion { border: 1px dashed palette(mid); border-radius: 10px; padding: 1px 8px; }"
     " QToolButton#suggestion:hover { border-style: solid; }"
     " QFrame#dropline { background: palette(highlight); border: none; }"
     " QWidget#dragheader:focus { border: 2px solid palette(highlight); border-radius: 4px; }"
 )
+
+
+# the width in pixels of the image of the line of a chip. A shorter line than in the list of the series keeps the name
+# of the series the main part of the chip
+CHIP_SWATCH_WIDTH: t.Final = 22
 
 
 def make_chip(
@@ -1914,10 +1922,13 @@ def make_chip(
     chip = make_drag_header(*dragcallbacks) if dragcallbacks is not None else QtWidgets.QFrame()
     chip.setObjectName("chip")
     layout = QtWidgets.QHBoxLayout(chip)
-    layout.setContentsMargins(2 if swatchbutton is not None else 8, 1, 2, 1)
+    # the padding of the line button and the margin give the same space at the start of a chip as the ✕ at its end
+    layout.setContentsMargins(4 if swatchbutton is not None else 8, 1, 2, 1)
     layout.setSpacing(0)
     if swatchbutton is not None:
         layout.addWidget(swatchbutton)
+        # the line ends at the edge of its image, thus the name needs a gap to read as a separate item
+        layout.addSpacing(4)
     label = QtWidgets.QLabel(f"{text} •" if hasstyle else text)
     label.setToolTip(tooltip)
     removebutton = make_glyph_button("✕", f"Remove {text} from the subplot", f"Remove {text}")
@@ -2477,7 +2488,7 @@ def open_window(
         body = QtWidgets.QWidget()
         cardlayout = QtWidgets.QVBoxLayout(body)
         cardlayout.setContentsMargins(0, 0, 0, 0)
-        cardlayout.setSpacing(4)
+        cardlayout.setSpacing(6)
         framelayout.addWidget(body)
         # a collapsed card shows only its header. A widget with no parent shows as a window, which closes an open popup.
         # Thus the body goes into the card before setVisible
@@ -2505,8 +2516,8 @@ def open_window(
                 swatchbutton = QtWidgets.QToolButton()
                 swatchbutton.setObjectName("swatch")
                 swatchbutton.setAutoRaise(True)
-                # make_line_swatch gives an image of this size, and a series with no line keeps the space
-                swatchbutton.setIconSize(QtCore.QSize(36, 14))
+                # a series with no line keeps the space of the image of its line
+                swatchbutton.setIconSize(QtCore.QSize(CHIP_SWATCH_WIDTH, 14))
                 swatchbutton.setToolTip(f"The line of {name} in the plot. Click to change the line properties")
                 swatchbutton.setAccessibleName(f"Set the line properties of {name}")
                 swatchbutton.clicked.connect(partial(on_click_chip, row, position))
@@ -2860,7 +2871,11 @@ def open_window(
             for name, button in card.swatchbuttons.items():
                 swatch = viewer.swatches.get((row, name))
                 button.setIcon(
-                    QtGui.QIcon(make_line_swatch(swatch.colour, swatch.alpha, swatch.linewidth, swatch.dashpattern))
+                    QtGui.QIcon(
+                        make_line_swatch(
+                            swatch.colour, swatch.alpha, swatch.linewidth, swatch.dashpattern, CHIP_SWATCH_WIDTH
+                        )
+                    )
                     if swatch is not None
                     else QtGui.QIcon()
                 )

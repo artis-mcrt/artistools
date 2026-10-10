@@ -66,15 +66,18 @@ def get_dash_pattern(linestyle: str | None, dashes: str | None) -> list[float] |
 
 
 def make_line_swatch(
-    colour: str, alpha: float, linewidth: float, dashpattern: "Sequence[float] | None"
+    colour: str, alpha: float, linewidth: float, dashpattern: "Sequence[float] | None", width: int = 36
 ) -> "QtGui.QPixmap":
-    """Return a short image of a line with the colour, the opacity, the width, and the dash pattern of a series."""
+    """Return a short image of a line with the colour, the opacity, the width, and the dash pattern of a series.
+
+    width is the width of the image in pixels, e.g. a smaller width for a chip beside the name of its series.
+    """
     import matplotlib.colors as mplcolors
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    width, height = 36, 14
+    height = 14
     ratio = QtWidgets.QApplication.primaryScreen().devicePixelRatio() if QtWidgets.QApplication.primaryScreen() else 1.0
     pixmap = QtGui.QPixmap(round(width * ratio), round(height * ratio))
     pixmap.setDevicePixelRatio(ratio)
