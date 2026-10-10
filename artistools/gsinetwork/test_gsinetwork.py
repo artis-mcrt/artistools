@@ -277,7 +277,7 @@ def test_artis_abundance_of_an_element_takes_every_isotope(tmp_path: Path) -> No
     A decay daughter that model.txt does not hold has no init_X column, and its term stopped the plot. The sum
     also left out the other stable isotopes, which ARTIS gives as <El>_otherstable.
     """
-    from artistools.constants import MH_g
+    from artistools.constants import amu_g
     from artistools.gsinetwork import comparetogsinetwork
 
     dfestimators = make_estimators_of_strontium(tmp_path)
@@ -286,13 +286,39 @@ def test_artis_abundance_of_an_element_takes_every_isotope(tmp_path: Path) -> No
             tmp_path, pl.DataFrame({"timestep": [0]}), [0], ["Sr", "Sr88"], {"Sr89": 1.5}
         )
 
-    expected_sr88 = 1.0e12 * 88 * MH_g / 1.0e-10
-    expected_sr89 = 3.0e11 * 89 * MH_g / 1.0e-10 + 0.1 * (1.5 - 1.0)
-    expected_otherstable = 2.0e12 * 87.62 * MH_g / 1.0e-10
+    expected_sr88 = 1.0e12 * 88 * amu_g / 1.0e-10
+    expected_sr89 = 3.0e11 * 89 * amu_g / 1.0e-10 + 0.1 * (1.5 - 1.0)
+    expected_otherstable = 2.0e12 * 87.62 * amu_g / 1.0e-10
     assert math.isclose(abund_of_mgi[0]["X_Sr88"].item(), expected_sr88, rel_tol=1e-9)
     assert math.isclose(
         abund_of_mgi[0]["X_Sr"].item(), expected_sr88 + expected_sr89 + expected_otherstable, rel_tol=1e-9
     )
+
+
+def test_artis_abundance_converts_nniso_with_the_atomic_mass_unit(tmp_path: Path) -> None:
+    """A cell that holds only Sr88 gives a mass fraction of 1.
+
+    After artis-mcrt/artis#670, ARTIS converts a mass number to grams with the atomic mass unit. The mass of the
+    hydrogen atom gave a mass fraction that was 0.78% too large.
+    """
+    from artistools.constants import amu_g
+    from artistools.gsinetwork import comparetogsinetwork
+
+    rho = 1.0e-10
+    dfestimators = pl.LazyFrame({
+        "modelgridindex": [0],
+        "timestep": [0],
+        "tmid_days": [1.0],
+        "mass_g": [1.0e30],
+        "rho": [rho],
+        "nniso_Sr88": [rho / (88 * amu_g)],
+    })
+    with mock.patch.object(comparetogsinetwork, "scan_estimators", return_value=dfestimators):
+        abund_of_mgi = comparetogsinetwork.get_artis_abund_sequences(
+            tmp_path, pl.DataFrame({"timestep": [0]}), [0], ["Sr88"], {}
+        )
+
+    assert math.isclose(abund_of_mgi[0]["X_Sr88"].item(), 1.0, rel_tol=1e-9)
 
 
 def test_artis_abundance_of_a_run_with_no_compositiondata(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -301,7 +327,7 @@ def test_artis_abundance_of_a_run_with_no_compositiondata(tmp_path: Path, capsys
     The abundances read compositiondata.txt for every species, thus a missing file gave no ARTIS curve at all.
     output_0-0.txt gives no masses of the elements, thus it is no replacement for the file.
     """
-    from artistools.constants import MH_g
+    from artistools.constants import amu_g
     from artistools.gsinetwork import comparetogsinetwork
 
     dfestimators = make_estimators_of_strontium(tmp_path)
@@ -315,8 +341,8 @@ def test_artis_abundance_of_a_run_with_no_compositiondata(tmp_path: Path, capsys
             tmp_path, pl.DataFrame({"timestep": [0]}), [0], ["Sr", "Sr88"], {"Sr89": 1.5}
         )
 
-    expected_sr88 = 1.0e12 * 88 * MH_g / 1.0e-10
-    expected_sr89 = 3.0e11 * 89 * MH_g / 1.0e-10 + 0.1 * (1.5 - 1.0)
+    expected_sr88 = 1.0e12 * 88 * amu_g / 1.0e-10
+    expected_sr89 = 3.0e11 * 89 * amu_g / 1.0e-10 + 0.1 * (1.5 - 1.0)
     assert math.isclose(abund_of_mgi[0]["X_Sr88"].item(), expected_sr88, rel_tol=1e-9)
     assert math.isclose(abund_of_mgi[0]["X_Sr"].item(), expected_sr88 + expected_sr89, rel_tol=1e-9)
     assert "leaves out the stable isotopes" in capsys.readouterr().err
