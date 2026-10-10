@@ -15,8 +15,8 @@ from artistools.inputmodel.core import LOGRHO_FROM_RHO
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.misc import addarg_legend
-from artistools.misc import exit_with_error
-from artistools.misc import firstexisting_or_none
+from artistools.misc import addarg_overwrite
+from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -37,18 +37,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot")
+    addarg_overwrite(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice."""
     args = parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
-    if not Path(args.outputfolder).exists():
-        Path(args.outputfolder).mkdir(parents=True)
-    elif existingfile := firstexisting_or_none(
-        ["model.txt", "abundances.txt"], folder=args.outputfolder, search_subfolders=False
-    ):
-        exit_with_error(f"{args.outputfolder} already holds {existingfile.name}")
+    confirm_overwrite(
+        [Path(args.outputfolder, filename) for filename in ("model.txt", "abundances.txt")], overwrite=args.overwrite
+    )
+    Path(args.outputfolder).mkdir(parents=True, exist_ok=True)
 
     dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)
 

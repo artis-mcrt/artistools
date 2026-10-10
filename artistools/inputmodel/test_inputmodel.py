@@ -333,7 +333,7 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path, trajectory_copy: Path)
     )
 
     at.inputmodel.maptogrid.main(
-        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"]
+        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, overwrite=True, **config["maptogridargs"]
     )
 
     verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
@@ -342,8 +342,6 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path, trajectory_copy: Path)
     for dimensions in (3, 2, 1, 0):
         outpath_kn = tmp_path / f"kilonova_{dimensions:d}d"
         outpath_kn.mkdir(exist_ok=True, parents=True)
-
-        shutil.copyfile(gridfolderpath / "gridcontributions.txt.zst", outpath_kn / "gridcontributions.txt.zst")
 
         at.inputmodel.modelfromhydro.main(
             argsraw=[],
@@ -395,7 +393,12 @@ def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path:
         testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
     )
     at.inputmodel.maptogrid.main(
-        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=16, sample_cell_lower_corner=True
+        argsraw=[],
+        inputpath=gridfolderpath,
+        outputpath=gridfolderpath,
+        ncoordgrid=16,
+        sample_cell_lower_corner=True,
+        overwrite=True,
     )
     verify_file_checksums(
         {
@@ -408,7 +411,6 @@ def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path:
 
     outpath = tmp_path / "kilonova_3d"
     outpath.mkdir()
-    shutil.copyfile(gridfolderpath / "gridcontributions.txt.zst", outpath / "gridcontributions.txt.zst")
     at.inputmodel.modelfromhydro.main(
         argsraw=[],
         gridfolderpath=gridfolderpath,
@@ -3080,7 +3082,7 @@ def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> N
     assert (tmp_path / "model_a.2.txt.parquet.tmp").stat().st_size > 0
 
 
-def test_save_modeldata_moves_an_old_plain_file_away(tmp_path: Path) -> None:
+def test_save_modeldata_deletes_an_old_plain_file(tmp_path: Path) -> None:
     """If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old plain file must not stay."""
     for logrho in (-10.0, -12.0):
         dfmodel = pl.DataFrame({
@@ -3102,13 +3104,44 @@ def test_save_modeldata_moves_an_old_plain_file_away(tmp_path: Path) -> None:
                 (tmp_path / f"{filename}.zst").unlink()
 
     assert sorted(path.name for path in tmp_path.iterdir() if ".parquet" not in path.name) == [
-        "abundances.txt.bak",
         "abundances.txt.zst",
-        "model.txt.bak",
         "model.txt.zst",
     ]
     lzdfmodel, _ = at.inputmodel.get_modeldata(tmp_path, get_elemabundances=True)
     assert lzdfmodel.select("logrho").collect().item() == pytest.approx(-12.0)
+
+
+def test_command_asks_before_it_overwrites_a_compressed_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A plain output name also finds its compressed copy, and the command stops before any work if nobody agrees."""
+    (tmp_path / "abundances.txt.zst").write_bytes(b"")
+    outputfiles = [tmp_path / "model.txt", tmp_path / "abundances.txt"]
+
+    # stdin of pytest is not a terminal, thus nobody can answer
+    with pytest.raises(SystemExit):
+        at.misc.confirm_overwrite(outputfiles, overwrite=False)
+    assert f"{tmp_path / 'abundances.txt.zst'} exists" in capsys.readouterr().err
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    for reply, agrees in (("y", True), ("n", False), ("", False)):
+        with mock.patch("builtins.input", return_value=reply):
+            if agrees:
+                at.misc.confirm_overwrite(outputfiles, overwrite=False)
+            else:
+                with pytest.raises(SystemExit):
+                    at.misc.confirm_overwrite(outputfiles, overwrite=False)
+
+    at.misc.confirm_overwrite(outputfiles, overwrite=True)
+
+    from artistools.inputmodel import shen2018
+
+    with mock.patch("artistools.inputmodel.shen2018.read_wsv", side_effect=AssertionError("the work started")):
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            shen2018.main(argsraw=["-o", str(tmp_path)])
+        assert "Give --overwrite to overwrite them" in capsys.readouterr().err
 
 
 def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_path: Path) -> None:
@@ -3894,7 +3927,9 @@ def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(
     shutil.copytree(
         testdatapath / "kilonova", gridfolderpath, ignore=shutil.ignore_patterns("trajectories"), dirs_exist_ok=True
     )
-    at.inputmodel.maptogrid.main(argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=4)
+    at.inputmodel.maptogrid.main(
+        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=4, overwrite=True
+    )
     gridlines = (gridfolderpath / "grid.dat").read_text(encoding="utf-8").splitlines()
     gridlines = [*gridlines[:3], f"{gridlines[3]} Q", *(f"{line} 1e10" for line in gridlines[4:])]
     (gridfolderpath / "grid.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")

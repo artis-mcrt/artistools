@@ -1,6 +1,7 @@
 """Shared helpers for command-line argument parsing and list/path argument normalisation."""
 
 import argparse
+import contextlib
 import dataclasses as dc
 import itertools
 import operator
@@ -16,6 +17,8 @@ from types import MappingProxyType
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import with_compressed_extension
 from artistools.misc.remote import model_path_from_text
 
 if t.TYPE_CHECKING:
@@ -1049,6 +1052,45 @@ def addarg_quiet(parser: argparse.ArgumentParser) -> None:
     arggroup(parser, "output").add_argument(
         "--quiet", "-q", action="store_true", help="Hide the progress messages. Warnings and errors still appear"
     )
+
+
+def addarg_overwrite(parser: argparse.ArgumentParser) -> None:
+    """Add the --overwrite argument, which has the name and the meaning of the tar option."""
+    arggroup(parser, "output").add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite the output files that exist, with no prompt. Without it, the command asks first",
+    )
+
+
+def confirm_overwrite(outputfiles: Iterable[Path], overwrite: bool) -> None:
+    """Warn about the output files that exist, and stop the command if the user does not agree to overwrite them.
+
+    Each name also stands for its compressed copies, e.g. model.txt for model.txt.zst. A command calls this function
+    before the work starts, thus a refusal costs no time. Nobody can answer when stdin is not a terminal, thus the
+    command then stops if it has no --overwrite.
+    """
+    existingfiles = [
+        path
+        for outputfile in outputfiles
+        for path in (outputfile, *(with_compressed_extension(outputfile, ext) for ext in COMPRESSED_EXTENSIONS))
+        if path.is_file()
+    ]
+    if not existingfiles:
+        return
+
+    for path in existingfiles:
+        print_warning(f"{path} exists")
+    if overwrite:
+        return
+
+    reply = ""
+    if sys.stdin.isatty():
+        # the end of the input, e.g. from Ctrl-D, is the answer "no"
+        with contextlib.suppress(EOFError):
+            reply = input("Overwrite the files? (y/n) ")
+    if reply.strip().lower() not in {"y", "yes"}:
+        exit_with_error("The command stopped, and it did not overwrite the files", "Give --overwrite to overwrite them")
 
 
 def addarg_verbose(parser: argparse.ArgumentParser) -> None:

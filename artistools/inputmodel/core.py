@@ -1005,17 +1005,21 @@ def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[bytes]) -> None:
     )
 
 
-def backup_existing_file(filepath: Path) -> None:
-    """Add .bak to the name of each copy of filepath that exists, plain or compressed, before a new file replaces it.
+# the files of an ARTIS input model that a command writes. confirm_overwrite also finds the compressed copies
+MODEL_FILE_NAMES = ("model.txt", "abundances.txt", "gridcontributions.txt")
+
+
+def remove_other_copies(filepath: Path) -> None:
+    """Delete each plain or compressed copy of filepath other than filepath itself.
 
     If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old plain copy must not stay beside a
     new compressed file.
     """
     plainpath = filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
     for oldpath in (plainpath, *(with_compressed_extension(plainpath, ext) for ext in COMPRESSED_EXTENSIONS)):
-        if oldpath.exists():
-            backuppath = oldpath.rename(oldpath.with_name(f"{oldpath.name}.bak"))
-            print(f"{oldpath} already exists. Its new name is {backuppath}.")
+        if oldpath != filepath and oldpath.is_file():
+            oldpath.unlink()
+            print(f"Deleted {oldpath}, because {filepath.name} replaces it")
 
 
 def save_modeldata(
@@ -1148,7 +1152,7 @@ def save_modeldata(
 
     modelfilepath = with_compressed_extension(resolve_outputfile(outpath, "model.txt"), ".zst")
 
-    backup_existing_file(modelfilepath)
+    remove_other_copies(modelfilepath)
     # a write that stops early must not leave the cache of the old file beside a part of the new file
     remove_parquet_cache(modelfilepath)
 
@@ -1329,7 +1333,7 @@ def save_initelemabundances(
 
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 
-    backup_existing_file(abundancefilename)
+    remove_other_copies(abundancefilename)
     remove_parquet_cache(abundancefilename)
 
     with abundancefilename.open("wb") as fabund:

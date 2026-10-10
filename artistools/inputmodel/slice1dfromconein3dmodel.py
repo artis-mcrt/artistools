@@ -21,6 +21,8 @@ from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import savetologfile
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_overwrite
+from artistools.misc import confirm_overwrite
 from artistools.misc import get_model_logname
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
@@ -310,6 +312,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_output(parser, kind="folder", default=Path())
+    addarg_overwrite(parser)
 
     parser.add_argument("-rhoscale", "-v", default=None, type=float, help="Density scale factor")
 
@@ -317,6 +320,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make 1D model from cone in 3D model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    confirm_overwrite(
+        [Path(args.outputfile, filename) for filename in ("model_1d.txt", "abundances_1d.txt")],
+        overwrite=args.overwrite,
+    )
 
     args.modelpath = normalize_path_list(args.modelpath)
 

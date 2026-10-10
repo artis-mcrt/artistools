@@ -25,10 +25,13 @@ from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.inputmodel.core import backup_existing_file
+from artistools.inputmodel.core import MODEL_FILE_NAMES
+from artistools.inputmodel.core import remove_other_copies
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.misc import addarg_output
+from artistools.misc import addarg_overwrite
+from artistools.misc import confirm_overwrite
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import parallel_map
@@ -445,12 +448,12 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
 
 
 def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Path | str) -> None:
-    """Write gridcontributions.txt.zst. First add .bak to the name of each copy that exists."""
+    """Write gridcontributions.txt.zst, and delete each other copy of that file."""
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
     gridcontribpath = with_compressed_extension(gridcontribpath, ".zst")
-    backup_existing_file(gridcontribpath)
+    remove_other_copies(gridcontribpath)
 
     dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7, compression="zstd")
 
@@ -586,11 +589,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-particleid", type=int, default=133371, help="Particle id of the trajectory")
     addarg_output(parser, kind="folder", default=Path())
+    addarg_overwrite(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create ARTIS model from single trajectory abundances."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    confirm_overwrite([Path(args.outputfile, filename) for filename in MODEL_FILE_NAMES], overwrite=args.overwrite)
 
     traj_root = Path(args.trajectoryroot)
     particleid = args.particleid
@@ -649,7 +654,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputfile))
 
     gridcontribpath = Path(args.outputfile, "gridcontributions.txt.zst")
-    backup_existing_file(gridcontribpath)
+    remove_other_copies(gridcontribpath)
     dfmodel.select(
         pl.lit(particleid).alias("particleid"), pl.col("inputcellid").alias("cellindex"), frac_of_cellmass=pl.lit(1.0)
     ).write_csv(gridcontribpath, separator=" ", compression="zstd")

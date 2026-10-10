@@ -12,10 +12,12 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-from artistools.inputmodel.core import backup_existing_file
+from artistools.inputmodel.core import remove_other_copies
 from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
 from artistools.misc import addarg_output
+from artistools.misc import addarg_overwrite
+from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
@@ -329,7 +331,7 @@ def maptogrid(
         contrib_gridindex = (contrib_k * ncoordgrid + contrib_j) * ncoordgrid + contrib_i + 1
         contrib_frac_of_cellmass = np.concatenate(contrib_rho) / grho[contrib_i, contrib_j, contrib_k]
         gridcontribpath = Path(outputfolderpath, "gridcontributions.txt.zst")
-        backup_existing_file(gridcontribpath)
+        remove_other_copies(gridcontribpath)
         pl.DataFrame({
             "particleid": particleid[np.concatenate(contrib_particle)],
             "cellindex": contrib_gridindex,
@@ -447,6 +449,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_output(parser, kind="folder", default=Path())
+    addarg_overwrite(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -454,6 +457,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
+    confirm_overwrite(
+        [Path(args.outputfile, filename) for filename in ("grid.dat", "gridcontributions.txt")],
+        overwrite=args.overwrite,
+    )
 
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,
