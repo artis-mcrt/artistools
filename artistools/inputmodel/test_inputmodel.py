@@ -444,8 +444,9 @@ def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path:
 def test_makeartismodelfrom_fortrangriddat(tmp_path: Path) -> None:
     gridfolderpath = testdatapath / "kilonova"
     outpath_kn = tmp_path / "kilonova_fromfortrangriddat"
+    # CodSpeed runs the body of a benchmark more than once in the same tmp_path, thus the command overwrites its files
     at.inputmodel.modelfromhydro.main(
-        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, timedays=0.1
+        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, timedays=0.1, force=True
     )
 
     # grid.dat gives 8 cells, and the command expands the grid to the time of the snapshot
