@@ -23,6 +23,7 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_output
@@ -43,6 +44,7 @@ ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
+    addarg_darkmode(parser)
     parser.add_argument(
         "-trajectoryroot", "-trajroot", required=True, type=Path, help="Path to nuclear network trajectory folder"
     )
@@ -568,4 +570,4 @@ def plot_decay_powers(
         ax.set_xscale("log")
     axes[-1].set_xlabel("Time [days]")
 
-    save_figure(fig, outfilepath)
+    save_figure(fig, outfilepath, args=args)

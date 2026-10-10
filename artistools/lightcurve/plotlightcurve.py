@@ -46,6 +46,7 @@ from artistools.lightcurve.viewingangleanalysis import parse_directionbin_args
 from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_declinerate_init
 from artistools.lightcurve.viewingangleanalysis import plot_viewanglebrightness_at_fixed_time
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
@@ -1737,6 +1738,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_dpi(parser)
 
     addarg_show(parser)
+    addarg_darkmode(parser)
     parser.add_argument(
         "--interactive",
         action="store_true",

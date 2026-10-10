@@ -1023,7 +1023,7 @@ class SpectrumViewer:
         def keep(plot: RenderedSpectrum) -> None:
             self.axes, self.residualaxis, self.dfalldata, self.drawndeltalogx, self.deltalogxnote = plot
 
-        return render_command(self, draw, keep, quiet=quiet)
+        return render_command(self, values, draw, keep, quiet=quiet)
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
         """Return the -figwidthscale that gives the figure the shape of the plot area."""

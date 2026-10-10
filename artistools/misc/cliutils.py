@@ -1086,6 +1086,21 @@ def addarg_show(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--open", action="store_true", help="Open the saved file with its default application")
 
 
+def addarg_darkmode(parser: argparse.ArgumentParser) -> None:
+    """Add --darkmode, which gives a plot white text, frames, and ticks for a dark background.
+
+    Each command that writes a plot adds it, and save_figure applies it.
+    """
+    arggroup(parser, "output").add_argument(
+        "--darkmode",
+        action="store_true",
+        help=(
+            "Use white text, frames, and ticks for a dark background."
+            " A PDF or SVG file has a transparent background, and a file in a different format has a black background"
+        ),
+    )
+
+
 def addarg_quiet(parser: argparse.ArgumentParser) -> None:
     """Add the --quiet argument that hides the progress messages.
 

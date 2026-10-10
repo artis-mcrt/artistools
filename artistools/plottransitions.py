@@ -25,6 +25,7 @@ from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -330,6 +331,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Path/filename for the plot file. The suffix sets the format, e.g. .pdf or .png",
     )
     addarg_show(parser)
+    addarg_darkmode(parser)
 
 
 @dc.dataclass(frozen=True, slots=True)

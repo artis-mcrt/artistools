@@ -350,3 +350,45 @@ def test_viewer_window_keeps_the_typed_bin_width_and_the_keys_of_a_field(tmp_pat
     assert "-deltax 12.34567" in results["noisecommand"]
     assert " -t 300 " in results["keycommand"]
     assert results["untipped"] == []
+
+
+# the code that changes the palette of a chip on the offscreen platform of Qt, and prints the new colour of the chip
+PALETTE_CHECK_CODE: t.Final = """
+from PySide6 import QtGui, QtWidgets
+from artistools.viewertools.menus import refresh_palette_style_sheets
+
+app = QtWidgets.QApplication([])
+window = QtWidgets.QWidget()
+window.setStyleSheet("QFrame#chip { background: palette(base); }")
+chip = QtWidgets.QFrame(window)
+chip.setObjectName("chip")
+chip.setFixedSize(20, 20)
+window.show()
+app.processEvents()
+palette = QtGui.QPalette(app.palette())
+palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor("#202020"))
+app.setPalette(palette)
+app.processEvents()
+refresh_palette_style_sheets(window)
+app.processEvents()
+print(chip.grab().toImage().pixelColor(10, 10).name())
+"""
+
+
+def test_chip_takes_the_base_colour_of_a_new_palette() -> None:
+    """A chip of plotestimators kept the white background of a light window after a change to Dark Mode.
+
+    Qt reads palette(base) in a style sheet one time only, thus the window must apply the style sheet again.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    environment = os.environ | {"QT_QPA_PLATFORM": "offscreen"}
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", PALETTE_CHECK_CODE],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr[-3000:]
+    assert result.stdout.strip().splitlines()[-1] == "#202020"

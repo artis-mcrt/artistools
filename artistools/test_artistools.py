@@ -1170,6 +1170,69 @@ def test_save_figure_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
         assert (tmp_path / filename).read_bytes().startswith(magic)
 
 
+def test_every_command_that_saves_a_plot_has_darkmode() -> None:
+    """--darkmode applies to each plot file, thus each command that saves a plot must accept it.
+
+    Only the commands with --show had --darkmode, thus e.g. plotlogfiles wrote a light PDF file. A command can save
+    the plot in a module that it imports, e.g. makeartismodel with --downscaleplot, thus the check follows the imports.
+    """
+    import inspect
+    import re
+
+    # matplotlib, plotly, and pyvista each have a function that writes a plot file
+    savesplot = re.compile(r"save_figure\(|savefig\(|save_or_show\(|write_image\(|write_html\(|screenshot=")
+    packagefolder = Path(at.__file__).parent
+    # plottools defines save_figure, and each module that draws a plot imports it
+    writermodules = {
+        "artistools." + ".".join(path.relative_to(packagefolder).with_suffix("").parts)
+        for path in packagefolder.rglob("*.py")
+        if path.name not in {"plottools.py", "__init__.py"}
+        and not path.name.startswith("test_")
+        and savesplot.search(path.read_text(encoding="utf-8"))
+    }
+
+    def walktree(tree: at.commands.CommandTree) -> list[at.commands.CommandSpec]:
+        return [spec for node in tree.values() for spec in (walktree(node) if isinstance(node, dict) else [node])]
+
+    plotmodules = 0
+    for spec in walktree(at.commands.subcommandtree):
+        module = importlib.import_module(f"artistools.{spec.module}")
+        importedmodules = set(re.findall(r"^from (artistools[\w.]*) import", inspect.getsource(module), re.MULTILINE))
+        if module.__name__ not in writermodules and not importedmodules & writermodules:
+            continue
+        plotmodules += 1
+        parser = argparse.ArgumentParser()
+        module.addargs(parser)
+        actions = parser._actions  # ruff:ignore[private-member-access]
+        flags = {flag for action in actions for flag in action.option_strings}
+        assert "--darkmode" in flags, f"{spec.module} saves a plot but has no --darkmode"
+    assert plotmodules >= 22
+
+
+def test_save_figure_darkmode_gives_a_black_png_and_a_transparent_pdf(tmp_path: Path) -> None:
+    """--darkmode gives white text, a black PNG background, and a transparent PDF background.
+
+    A transparent PNG frame of a gif shows as white in many image viewers, thus only a vector file is transparent.
+    """
+    import matplotlib.colors as mcolors
+    import matplotlib.image as mplimage
+
+    args = argparse.Namespace(darkmode=True)
+    for filename in ("x.png", "x.pdf"):
+        fig = plt.figure()
+        axis = fig.add_subplot()
+        axis.plot([0, 1], [0, 1], color="black")
+        axis.set_xlabel("velocity")
+        with mock.patch.object(mplfig.Figure, "savefig", side_effect=mplfig.Figure.savefig, autospec=True) as spy:
+            at.plottools.save_figure(fig, tmp_path / filename, args=args)
+        assert mcolors.same_color(axis.xaxis.label.get_color(), "white")
+        assert mcolors.same_color(axis.lines[0].get_color(), "white")
+        assert spy.call_args.kwargs["transparent"] == (filename == "x.pdf")
+
+    corner = mplimage.imread(tmp_path / "x.png")[0, 0]
+    assert np.allclose(corner, [0.0, 0.0, 0.0, 1.0], rtol=0.0, atol=0.01)
+
+
 @pytest.mark.benchmark
 def test_plotspherical(tmp_path: Path) -> None:
     at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
@@ -4916,16 +4979,28 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     blueline = axis.plot([0, 1], [1, 0], color="tab:blue", label="reference")[0]
     # the colour of sulphur is dark, and it made the series grey
     sulphurline = axis.plot([0, 1], [0.5, 0.5], color="#7d0200", label="S")[0]
+    # a black bar did not show on the dark background, because only the edge of a patch changed
+    blackbar = axis.bar([0.5], [0.2], color="black")[0]
+    # plotnltepops gives a hollow marker a black edge, and the marker did not show
+    hollowmarkers = axis.plot([0.2], [0.8], "s", color="tab:blue", markeredgecolor="black", markerfacecolor="none")[0]
+    # plotopacity draws the Planck mean in a grey of 0.3, and it stayed dark
+    greyline = axis.plot([0, 1], [0.3, 0.3], color="0.3")[0]
+    midgreyline = axis.plot([0, 1], [0.6, 0.6], color="0.5")[0]
     axis.set_xlabel("velocity")
     legend = axis.legend()
 
-    viewermenus.apply_dark_colours(fig, "#1e1e1e", "#dddddd")
+    at.plottools.apply_dark_colours(fig, "#1e1e1e", "#dddddd")
 
     assert mcolors.same_color(blackline.get_color(), "#dddddd")
     assert mcolors.same_color(blueline.get_color(), "tab:blue")
     assert mcolors.same_color(sulphurline.get_color(), "#7d0200")
     assert mcolors.same_color(axis.xaxis.label.get_color(), "#dddddd")
     assert mcolors.same_color(axis.get_facecolor(), "#1e1e1e")
+    assert mcolors.same_color(blackbar.get_facecolor(), "#dddddd")
+    assert mcolors.same_color(hollowmarkers.get_markeredgecolor(), "#dddddd")
+    assert mcolors.same_color(hollowmarkers.get_color(), "tab:blue")
+    assert min(mcolors.to_rgb(greyline.get_color())) > 0.6
+    assert mcolors.same_color(midgreyline.get_color(), "0.5")
     # the frame of the legend keeps its transparency
     assert mcolors.to_hex(legend.get_frame().get_facecolor()) == "#1e1e1e"
     assert all(mcolors.same_color(text.get_color(), "#dddddd") for text in legend.get_texts())

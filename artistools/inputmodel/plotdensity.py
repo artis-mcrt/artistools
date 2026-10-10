@@ -16,6 +16,7 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
@@ -63,6 +64,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_figscale(parser, helptext="Scale factor for plot area. 1.0 fills one column of a page")
     addarg_show(parser)
+    addarg_darkmode(parser)
 
 
 PROFILE_COLUMNS = ("modelgridindex", "vel_r_min", "vel_r_mid", "vel_r_max", "vel_r_max_kmps", "mass_g", "Ye")

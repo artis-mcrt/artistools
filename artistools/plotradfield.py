@@ -22,6 +22,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -415,6 +416,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_notitle(parser)
     addarg_legend(parser)
     addarg_show(parser)
+    addarg_darkmode(parser)
     addarg_verbose(parser)
 
     parser.add_argument("--nobandaverage", action="store_true", help="Suppress the band-average line")
