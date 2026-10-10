@@ -1054,21 +1054,27 @@ def addarg_quiet(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def addarg_overwrite(parser: argparse.ArgumentParser) -> None:
-    """Add the --overwrite argument, which has the name and the meaning of the tar option."""
+def addarg_force(parser: argparse.ArgumentParser) -> None:
+    """Add the -f and --force arguments, which permit a destructive action with no prompt, as rm -f does.
+
+    --overwrite is a second spelling, which has the name of the tar option.
+    """
     arggroup(parser, "output").add_argument(
+        "-f",
+        "--force",
         "--overwrite",
+        dest="force",
         action="store_true",
-        help="Overwrite the output files that exist, with no prompt. Without it, the command asks first",
+        help="Do destructive actions with no prompt, e.g. overwrite the output files that exist",
     )
 
 
-def confirm_overwrite(outputfiles: Iterable[Path], overwrite: bool) -> None:
+def confirm_overwrite(outputfiles: Iterable[Path], force: bool) -> None:
     """Warn about the output files that exist, and stop the command if the user does not agree to overwrite them.
 
     Each name also stands for its compressed copies, e.g. model.txt for model.txt.zst. A command calls this function
     before the work starts, thus a refusal costs no time. Nobody can answer when stdin is not a terminal, thus the
-    command then stops if it has no --overwrite.
+    command then stops if it has no --force.
     """
     existingfiles = [
         path
@@ -1081,7 +1087,7 @@ def confirm_overwrite(outputfiles: Iterable[Path], overwrite: bool) -> None:
 
     for path in existingfiles:
         print_warning(f"{path} exists")
-    if overwrite:
+    if force:
         return
 
     reply = ""
@@ -1090,7 +1096,9 @@ def confirm_overwrite(outputfiles: Iterable[Path], overwrite: bool) -> None:
         with contextlib.suppress(EOFError):
             reply = input("Overwrite the files? (y/n) ")
     if reply.strip().lower() not in {"y", "yes"}:
-        exit_with_error("The command stopped, and it did not overwrite the files", "Give --overwrite to overwrite them")
+        exit_with_error(
+            "The command stopped, and it did not overwrite the files", "Give -f or --force to overwrite them"
+        )
 
 
 def addarg_verbose(parser: argparse.ArgumentParser) -> None:

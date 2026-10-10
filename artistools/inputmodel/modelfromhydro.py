@@ -26,8 +26,8 @@ from artistools.inputmodel.opacityinputfile import write_Ye_file
 from artistools.inputmodel.rprocess_from_trajectory import add_abundancecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
-from artistools.misc import addarg_overwrite
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_unsupported
 from artistools.misc import confirm_overwrite
@@ -409,7 +409,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Multiply ejecta velocities by some factor (adjusting density to conserve mass) before writing the model file",
     )
     addarg_output(parser, kind="folder", default=None, helptext="Path for output model files")
-    addarg_overwrite(parser)
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -422,7 +422,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)
-    confirm_overwrite([outputpath / filename for filename in MODEL_FILE_NAMES], overwrite=args.overwrite)
+    confirm_overwrite([outputpath / filename for filename in MODEL_FILE_NAMES], force=args.force)
 
     outputpath.mkdir(parents=True, exist_ok=True)
 

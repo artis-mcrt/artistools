@@ -21,9 +21,9 @@ from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
-from artistools.misc import addarg_overwrite
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import normalize_path_list
@@ -76,7 +76,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_output(parser, kind="folder", helptext="Folder for output")
-    addarg_overwrite(parser)
+    addarg_force(parser)
 
 
 def get_griddata_outputfolder(outputfile: Path | None, modelpaths: Sequence[Path], modelpath_given: bool) -> Path:
@@ -145,7 +145,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             *([griddataoutputfolder] if args.makemodelfromgriddata else []),
         ]
     confirm_overwrite(
-        [folder / filename for folder in outputfolders for filename in MODEL_FILE_NAMES], overwrite=args.overwrite
+        [folder / filename for folder in outputfolders for filename in MODEL_FILE_NAMES], force=args.force
     )
 
     if args.downscale3dgrid:

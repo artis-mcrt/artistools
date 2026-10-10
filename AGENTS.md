@@ -168,9 +168,9 @@ Use the shared functions to build a parser and to find a path. Import them from 
 A command that takes only paths as positional arguments reads them first, e.g. `artistools plotlightcurves mymodel`. A command that also names its items reads the ARTIS folder as the **last** positional argument, e.g. `artistools plotestimators Te TR mymodel`. Only the last argument can name a folder. A folder in an earlier place gives an error. Keep this order for each new command.
 
 Use the conventions of common Linux tools for CLI behaviour. A user then knows the behaviour already. For example, a command
-that writes a file that exists asks `(y/n)` before the work starts, as `gzip` does. The flag `--overwrite` has the name
-and the meaning of the `tar` option. Use `addarg_overwrite` and `confirm_overwrite` from `artistools.misc` for this
-behaviour. Do not keep an old file as a `.bak` copy.
+that writes a file that exists asks `(y/n)` before the work starts, as `gzip` does. The flag `-f` or `--force` permits a
+destructive action with no prompt, as `rm -f` does. Use `addarg_force` and `confirm_overwrite` from `artistools.misc` for
+this behaviour. Do not keep an old file as a `.bak` copy.
 
 ## Viewers of `--interactive`
 

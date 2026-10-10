@@ -333,7 +333,7 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path, trajectory_copy: Path)
     )
 
     at.inputmodel.maptogrid.main(
-        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, overwrite=True, **config["maptogridargs"]
+        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, force=True, **config["maptogridargs"]
     )
 
     verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
@@ -398,7 +398,7 @@ def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path:
         outputpath=gridfolderpath,
         ncoordgrid=16,
         sample_cell_lower_corner=True,
-        overwrite=True,
+        force=True,
     )
     verify_file_checksums(
         {
@@ -3120,19 +3120,19 @@ def test_command_asks_before_it_overwrites_a_compressed_copy(
 
     # stdin of pytest is not a terminal, thus nobody can answer
     with pytest.raises(SystemExit):
-        at.misc.confirm_overwrite(outputfiles, overwrite=False)
+        at.misc.confirm_overwrite(outputfiles, force=False)
     assert f"{tmp_path / 'abundances.txt.zst'} exists" in capsys.readouterr().err
 
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     for reply, agrees in (("y", True), ("n", False), ("", False)):
         with mock.patch("builtins.input", return_value=reply):
             if agrees:
-                at.misc.confirm_overwrite(outputfiles, overwrite=False)
+                at.misc.confirm_overwrite(outputfiles, force=False)
             else:
                 with pytest.raises(SystemExit):
-                    at.misc.confirm_overwrite(outputfiles, overwrite=False)
+                    at.misc.confirm_overwrite(outputfiles, force=False)
 
-    at.misc.confirm_overwrite(outputfiles, overwrite=True)
+    at.misc.confirm_overwrite(outputfiles, force=True)
 
     from artistools.inputmodel import shen2018
 
@@ -3141,7 +3141,7 @@ def test_command_asks_before_it_overwrites_a_compressed_copy(
         capsys.readouterr()
         with pytest.raises(SystemExit):
             shen2018.main(argsraw=["-o", str(tmp_path)])
-        assert "Give --overwrite to overwrite them" in capsys.readouterr().err
+        assert "Give -f or --force to overwrite them" in capsys.readouterr().err
 
 
 def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_path: Path) -> None:
@@ -3928,7 +3928,7 @@ def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(
         testdatapath / "kilonova", gridfolderpath, ignore=shutil.ignore_patterns("trajectories"), dirs_exist_ok=True
     )
     at.inputmodel.maptogrid.main(
-        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=4, overwrite=True
+        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=4, force=True
     )
     gridlines = (gridfolderpath / "grid.dat").read_text(encoding="utf-8").splitlines()
     gridlines = [*gridlines[:3], f"{gridlines[3]} Q", *(f"{line} 1e10" for line in gridlines[4:])]

@@ -29,8 +29,8 @@ from artistools.inputmodel.core import remap_gridcontributions
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
-from artistools.misc import addarg_overwrite
 from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -1171,7 +1171,7 @@ def float_or_str(x: str) -> float | str:
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_output(parser, kind="folder", default=None, helptext="Folder for the output ARTIS model files")
-    addarg_overwrite(parser)
+    addarg_force(parser)
 
     parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
 
@@ -1301,7 +1301,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelname += "_2d"
         args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
         print(args.outputfile)
-    confirm_overwrite([Path(args.outputfile, filename) for filename in MODEL_FILE_NAMES], overwrite=args.overwrite)
+    confirm_overwrite([Path(args.outputfile, filename) for filename in MODEL_FILE_NAMES], force=args.force)
     Path(args.outputfile).mkdir(parents=True, exist_ok=True)
 
     # model_dim = 1 not covered in this script

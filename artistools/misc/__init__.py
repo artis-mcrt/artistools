@@ -5,6 +5,7 @@ from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
 from artistools.misc.cliutils import addarg_dpi as addarg_dpi
 from artistools.misc.cliutils import addarg_figscale as addarg_figscale
 from artistools.misc.cliutils import addarg_filter as addarg_filter
+from artistools.misc.cliutils import addarg_force as addarg_force
 from artistools.misc.cliutils import addarg_labelfontsize as addarg_labelfontsize
 from artistools.misc.cliutils import addarg_legend as addarg_legend
 from artistools.misc.cliutils import addarg_maxpacketfiles as addarg_maxpacketfiles
@@ -12,7 +13,6 @@ from artistools.misc.cliutils import addarg_modelgridindex as addarg_modelgridin
 from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath
 from artistools.misc.cliutils import addarg_notitle as addarg_notitle
 from artistools.misc.cliutils import addarg_output as addarg_output
-from artistools.misc.cliutils import addarg_overwrite as addarg_overwrite
 from artistools.misc.cliutils import addarg_pathoption as addarg_pathoption
 from artistools.misc.cliutils import addarg_positional_items as addarg_positional_items
 from artistools.misc.cliutils import addarg_quiet as addarg_quiet

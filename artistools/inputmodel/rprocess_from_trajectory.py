@@ -29,8 +29,8 @@ from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import remove_other_copies
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
-from artistools.misc import addarg_overwrite
 from artistools.misc import confirm_overwrite
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
@@ -589,13 +589,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-particleid", type=int, default=133371, help="Particle id of the trajectory")
     addarg_output(parser, kind="folder", default=Path())
-    addarg_overwrite(parser)
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create ARTIS model from single trajectory abundances."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    confirm_overwrite([Path(args.outputfile, filename) for filename in MODEL_FILE_NAMES], overwrite=args.overwrite)
+    confirm_overwrite([Path(args.outputfile, filename) for filename in MODEL_FILE_NAMES], force=args.force)
 
     traj_root = Path(args.trajectoryroot)
     particleid = args.particleid

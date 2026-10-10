@@ -15,8 +15,8 @@ import polars as pl
 from artistools.inputmodel.core import remove_other_copies
 from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
-from artistools.misc import addarg_overwrite
 from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 
@@ -449,7 +449,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_output(parser, kind="folder", default=Path())
-    addarg_overwrite(parser)
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -458,8 +458,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
     confirm_overwrite(
-        [Path(args.outputfile, filename) for filename in ("grid.dat", "gridcontributions.txt")],
-        overwrite=args.overwrite,
+        [Path(args.outputfile, filename) for filename in ("grid.dat", "gridcontributions.txt")], force=args.force
     )
 
     maptogrid(

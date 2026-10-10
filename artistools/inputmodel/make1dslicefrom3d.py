@@ -14,8 +14,8 @@ from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import LOGRHO_FROM_RHO
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.misc import addarg_force
 from artistools.misc import addarg_legend
-from artistools.misc import addarg_overwrite
 from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 from artistools.plottools import make_frame_figure
@@ -37,7 +37,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot")
-    addarg_overwrite(parser)
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -45,7 +45,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     confirm_overwrite(
-        [Path(args.outputfolder, filename) for filename in ("model.txt", "abundances.txt")], overwrite=args.overwrite
+        [Path(args.outputfolder, filename) for filename in ("model.txt", "abundances.txt")], force=args.force
     )
     Path(args.outputfolder).mkdir(parents=True, exist_ok=True)
 
