@@ -32,10 +32,17 @@ jobs:
                 target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-26.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-26.04-arm}, {os_arch: macosx_arm64,
                           runs-on: macos-26}]
                 freethreading: [t, '']
+                # the free-threaded build needs Python 3.15 or later, because Python 3.14t has no stable
+                # application binary interface (ABI)
+                include:
+                    - freethreading: t
+                      cibwbuild: cp315t
+                    - freethreading: ''
+                      cibwbuild: cp3??
             fail-fast: false
         runs-on: ${{ matrix.target.runs-on }}
         env:
-            CIBW_BUILD: cp3??${{ matrix.freethreading }}-${{ matrix.target.os_arch }}
+            CIBW_BUILD: ${{ matrix.cibwbuild }}-${{ matrix.target.os_arch }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
@@ -53,10 +60,9 @@ jobs:
             # test-skip in pyproject.toml excludes the free-threaded wheels from the cibuildwheel
             # test, because that test installs the dependencies, and polars has no free-threaded
             # wheel. This step checks those wheels on the host. It installs each wheel without its
-            # dependencies, which is all that check_wheel.py needs, into a venv that has the
-            # free-threaded interpreter from the abi tag of the wheel. A wheel of the free-threaded
-            # stable ABI (abi3t, from Python 3.15) has the Python version in its python tag, and it
-            # serves both builds of that version, thus the step checks it on both
+            # dependencies, which is all that check_wheel.py needs. A wheel of the free-threaded
+            # stable ABI (abi3t) has the Python version in its python tag, and it serves both builds
+            # of that version, thus the step checks it on both
             - name: Check the free-threaded wheels
               if: matrix.freethreading == 't'
               run: |
@@ -64,16 +70,16 @@ jobs:
                       pytag=$(basename "${wheel}" | cut -d- -f3)
                       abitag=$(basename "${wheel}" | cut -d- -f4)
                       case "${abitag}" in
-                          *abi3t*)
-                              pyvers="$(echo "${pytag}" | sed -E 's/^cp3([0-9]+)$/3.\1t 3.\1/')"
-                              ;;
+                          *abi3t*) ;;
                           *)
-                              pyvers=$(echo "${abitag}" | sed -E 's/^cp3([0-9]+)t$/3.\1t/')
+                              echo "Expected a wheel of the free-threaded stable ABI (abi3t), but found ${wheel}"
+                              exit 1
                               ;;
                       esac
-                      for pyver in ${pyvers}; do
-                          venv="${RUNNER_TEMP}/checkvenv-${abitag}-${pyver}"
-                          uv venv --python "${pyver}" "${venv}"
+                      pyver=$(echo "${pytag}" | sed -E 's/^cp3([0-9]+)$/3.\1/')
+                      for python in "${pyver}t" "${pyver}"; do
+                          venv="${RUNNER_TEMP}/checkvenv-$(basename "${wheel}" .whl)-${python}"
+                          uv venv --python "${python}" "${venv}"
                           uv pip install --python "${venv}/bin/python" --no-deps "${wheel}"
                           "${venv}/bin/python" check_wheel.py
                       done

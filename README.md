@@ -11,7 +11,7 @@
 Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
 
 ## Installation
-Requires Python >= 3.13
+Requires Python >= 3.13. A free-threaded Python requires version 3.15 or later, e.g. Python 3.15t.
 
 The artistools command can be invoked with `uvx artistools` (after installing [uv](https://docs.astral.sh/uv/getting-started/installation/)), installed globally with `uv tool install artistools`, or installed into your environment with `pip install artistools`.
 
