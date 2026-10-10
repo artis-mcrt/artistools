@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,6 +19,7 @@ import numpy.typing as npt
 import polars as pl
 import polars.testing as pltest
 import pytest
+from matplotlib.backend_bases import MouseEvent
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
@@ -3954,6 +3956,172 @@ def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
     assert command.endswith("-timestep 10-12 -xbins 8 -plot populations 'Fe II' 'Fe III' 'Ni II' -plot nne")
 
     assert_same_lines(viewer.fig, get_command_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
+
+
+def test_series_style_reads_commas_in_its_values() -> None:
+    """A part of a series style with no known key continues the value before it, e.g. a dash pattern or a label."""
+    assert plotestimators.read_series_style("Te@dashes=5,2,linewidth=2,label=T, electrons") == (
+        "Te",
+        {"dashes": "5,2", "linewidth": "2", "label": "T, electrons"},
+    )
+    assert plotestimators.read_series_style("Fe II") == ("Fe II", {})
+    # matplotlib refuses a negative dash and a pattern with no length above 0 only at the time of the plot
+    for item in (
+        "Te@colour=red",
+        "Te@color=notacolour",
+        "Te@dashes=5",
+        "Te@dashes=-1,2",
+        "Te@dashes=0,0",
+        "Te@linewidth=inf",
+        "Te@linealpha=2",
+    ):
+        with pytest.raises(ValueError, match="Te"):
+            plotestimators.read_series_style(item)
+    for scale in ("-1", "0", "nan", "inf"):
+        with pytest.raises(SystemExit):
+            at.misc.parse_cli_args(plotestimators.addargs, None, None, ["Te", f"-linewidthscale={scale}"])
+
+
+def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
+    """The style of a plot item changes its own series alone, and -linewidthscale multiplies each width.
+
+    A label from the user needs a legend, also in a subplot of one variable, which shows its name on the y axis.
+    """
+    tokens = [
+        "Te@color=#00ff00,linewidth=3,label=Electrons",
+        str(modelpath_classic_3d),
+        "-timestep",
+        "10",
+        "-linewidthscale",
+        "2",
+        "-plot",
+        "populations",
+        "Fe II",
+        "Fe III@color=#d55e00,linestyle=dotted",
+    ]
+    fig = get_command_figure(tokens, tmp_path / "estimators.pdf")
+    linesbyname = [{line.get_gid(): line for line in axis.get_lines()} for axis in fig.axes]
+    templine = linesbyname[0]["Te"]
+    assert templine.get_color() == "#00ff00"
+    assert templine.get_linewidth() == pytest.approx(6.0)
+    legend = fig.axes[0].get_legend()
+    assert legend is not None
+    assert [text.get_text() for text in legend.get_texts()] == ["Electrons"]
+
+    defaultion, styledion = linesbyname[1]["Fe II"], linesbyname[1]["Fe III"]
+    assert styledion.get_color() == "#d55e00"
+    assert styledion.get_linestyle() == ":"
+    assert defaultion.get_color() != "#d55e00"
+    # plotestimators draws Fe II with a width of 1.5 points
+    assert defaultion.get_linewidth() == pytest.approx(3.0)
+
+
+def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path) -> None:
+    """A subplot of more than one element keeps the colours of the elements with --colorbyion.
+
+    --colorbyion takes the colour of an ion from its stage, thus Fe II and Co II had the same colour.
+    """
+    tokens = [str(modelpath_classic_3d), "-timestep", "10", "--colorbyion", "-xbins", "5"]
+    plotlists = (["-plot", "populations", "Fe II", "Fe III", "Co II"], ["-plot", "populations", "Fe II", "Fe III"])
+    severalelements, oneelement = (
+        {
+            line.get_gid(): line.get_color()
+            for line in get_command_figure([*tokens, *plotlist], tmp_path / f"{index}.pdf").axes[0].get_lines()
+        }
+        for index, plotlist in enumerate(plotlists)
+    )
+    assert severalelements["Fe II"] == severalelements["Fe III"] != severalelements["Co II"]
+    assert oneelement["Fe II"] != oneelement["Fe III"]
+
+
+def test_interactive_swatches_give_the_colours_of_the_lines() -> None:
+    """A chip shows the colour of the line of its series, and the popup shows the colour with no style of its own.
+
+    --markers draws the points after the line with a lighter colour. A series with a colour does not move the axes
+    cycle, thus TR after the red Te takes the first colour of the cycle.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--markers", "--interactive"])
+    assert (
+        viewer.change(dc.replace(viewer.values, subplots=(("Te", "TR@linewidth=3"), ("Te", "TR@color=#d55e00"))))
+        is None
+    )
+    # the line of TR comes first, and its points come after it
+    trline, trpoints = (
+        line for line in interactive.get_plot_frames(viewer.fig)[0].get_lines() if line.get_gid() == "TR"
+    )
+    assert viewer.swatches[0, "TR"].colour == mplcolors.to_hex(trline.get_color()) == mplcolors.to_hex("C0")
+    assert mplcolors.to_hex(trpoints.get_color()) != mplcolors.to_hex("C0")
+    assert viewer.swatches[1, "TR"].colour == "#d55e00"
+    assert viewer.swatches[1, "TR"].defaultcolour == mplcolors.to_hex("C0")
+
+
+def test_move_series_item_keeps_the_type_and_the_directives() -> None:
+    """A dragged chip goes in front of the chip at the drop place, and the item keeps its style.
+
+    The chips of a subplot do not show its type and its directives, thus the index of a chip is not the position of its
+    item. In the same subplot, the chips on the screen still show the moved chip, and a later index moves to the front.
+    """
+    columns = ("Te", "TR", "nne", "nnion_Fe_II", "nnion_Fe_III", "nnion_Co_II", "nnelement_Fe", "nnelement_Co")
+    subplots = (("Te", "TR@color=C3", "yscale=log"), ("populations", "Fe II", "Fe III", "ymin=1e-5"))
+    assert interactive.move_series_item(subplots, (0, 1), 0, 0, columns) == (
+        ("TR@color=C3", "Te", "yscale=log"),
+        subplots[1],
+    )
+    # the place after the last chip of the same subplot
+    assert interactive.move_series_item(subplots, (0, 0), 0, 2, columns) == (
+        ("TR@color=C3", "Te", "yscale=log"),
+        subplots[1],
+    )
+    assert interactive.move_series_item(subplots, (1, 1), 1, 2, columns) == (
+        subplots[0],
+        ("populations", "Fe III", "Fe II", "ymin=1e-5"),
+    )
+    # a subplot with no chip takes the item after its type and in front of its directives
+    emptied = (("Te",), ("populations", "ymin=1e-5"))
+    assert interactive.move_series_item((("Te",), ("populations", "Fe II", "ymin=1e-5")), (1, 1), 0, 0, columns) == (
+        ("Fe II", "Te"),
+        emptied[1],
+    )
+    assert interactive.move_series_item(((("Te", "TR"), ("TR",))), (0, 1), 1, 0, columns) is None
+
+
+def test_has_several_elements_reads_the_ions_of_a_subplot() -> None:
+    """Only an ion subplot with more than one element keeps the element colours with --colorbyion."""
+    columns = ("Te", "nnion_Fe_II", "nnion_Co_II", "nnelement_Fe", "gamma_NT_Fe_II", "gamma_NT_Co_II")
+    assert interactive.has_several_elements(("populations", "Fe II", "Co II"), columns)
+    assert interactive.has_several_elements(("Fe II", "Co II@color=C3"), columns)
+    assert interactive.has_several_elements(("gamma_NT", "Fe II", "Co II"), columns)
+    assert not interactive.has_several_elements(("populations", "Fe II", "Fe"), columns)
+    # the average ionisation draws one series for each element and does not read --colorbyion
+    assert not interactive.has_several_elements(("averageionisation", "Fe", "Co"), columns)
+
+
+def test_interactive_style_change_reuses_the_data() -> None:
+    """A change of a series style or of -linewidthscale draws the data of the last plot again, and reads no data.
+
+    A change of the time reads the data again. A click on a legend entry finds its series, also after a new style.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+    assert viewer.change(dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe III"),))) is None
+    styled = dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe III@color=#d55e00,label=Iron 2+"),))
+    with mock.patch.object(plotestimators, "get_figures_data", wraps=plotestimators.get_figures_data) as getdata:
+        assert viewer.change(styled) is None
+        widevalues = interactive.replace_option_rows(viewer, viewer.values, (("-linewidthscale", ("2",)),))
+        assert viewer.change(widevalues) is None
+        assert getdata.call_count == 0
+        assert viewer.change(viewer.select_timesteps(viewer.values, 11, 1)) is None
+        assert getdata.call_count == 1
+
+    assert viewer.swatches[0, "Fe III"].colour == "#d55e00"
+    axis = interactive.get_plot_frames(viewer.fig)[0]
+    viewer.fig.canvas.draw()
+    legend = axis.get_legend()
+    assert legend is not None
+    for text in legend.get_texts():
+        centre = text.get_window_extent().get_points().mean(axis=0)
+        event = MouseEvent("button_press_event", viewer.fig.canvas, *centre)
+        expected = "Fe III" if text.get_text() == "Iron 2+" else "Fe II"
+        assert interactive.get_series_at(axis, event, legendonly=True) == expected
 
 
 def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:

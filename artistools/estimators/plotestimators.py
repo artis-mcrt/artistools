@@ -89,6 +89,12 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
+from artistools.misc.cliutils import color_arg
+from artistools.misc.cliutils import dashes_arg
+from artistools.misc.cliutils import LINESTYLE_ALIASES
+from artistools.misc.cliutils import LINESTYLE_NAMES
+from artistools.misc.cliutils import positive_float_arg
+from artistools.misc.cliutils import SERIES_STYLE_KEYS
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.remote import on_model_host
 from artistools.nltepops import read_nltepops
@@ -254,6 +260,9 @@ class SeriesPlan(t.NamedTuple):
     label: str | None
     dfseries: pl.LazyFrame
     plotkwargs: dict[str, t.Any]
+    # the name of the series in its plot item, e.g. "Fe II" or "Te". A series style uses this name to find the series.
+    # The default keeps the data of a host that runs an older release, which gives no name
+    seriesname: str = ""
 
 
 class SeriesData(t.NamedTuple):
@@ -267,6 +276,7 @@ class SeriesData(t.NamedTuple):
     plotkwargs: dict[str, t.Any]
     dflinepoints: pl.DataFrame | None
     dfpoints: pl.DataFrame | None
+    seriesname: str = ""
 
 
 class SubplotSettings(t.TypedDict, total=False):
@@ -389,7 +399,7 @@ def get_series_data(
     dflinepoints_of_plan: Sequence[pl.DataFrame | None] = frames[:linecount] or [None] * len(plans)
     dfpoints_of_plan: Sequence[pl.DataFrame | None] = frames[linecount:] or [None] * len(plans)
     return [
-        SeriesData(plan.label, plan.plotkwargs, dflinepoints, dfpoints)
+        SeriesData(plan.label, plan.plotkwargs, dflinepoints, dfpoints, plan.seriesname)
         for plan, dflinepoints, dfpoints in zip(plans, dflinepoints_of_plan, dfpoints_of_plan, strict=True)
     ]
 
@@ -400,9 +410,13 @@ def draw_subplot(
     settings: SubplotSettings,
     args: argparse.Namespace,
     startfromzero: bool,
-    xbinwidth: float | None = None,
+    xbinwidth: float | None,
+    styles: Mapping[str, Mapping[str, str]],
 ) -> None:
-    """Apply the settings of the subplot to the axes, draw its series in order, and add the limits and the legend."""
+    """Apply the settings of the subplot to the axes, draw its series in order, and add the limits and the legend.
+
+    styles gives the style of each series name, which the plot items give, e.g. "Fe II@color=C3".
+    """
     # set the scale and the limits before the data, so that the axis autoscales in the correct space
     if "yscale" in settings:
         ax.set_yscale(settings["yscale"])
@@ -413,16 +427,22 @@ def draw_subplot(
     if settings.get("exponentlabel"):
         set_exponent_label(ax)
 
+    # a subplot of one variable shows its name on the y axis and has no legend, but a label from the user needs a
+    # legend. Make a new dict, because the window uses the same data again for the next style
+    if any("label" in styles.get(seriesdata.seriesname, {}) for seriesdata in series):
+        settings = {**settings, "showlegend": True}
+
     for seriesdata in series:
+        label, plotkwargs = get_styled_series(seriesdata, styles.get(seriesdata.seriesname, {}), args.linewidthscale)
         draw_series(
             seriesdata.dflinepoints,
             seriesdata.dfpoints,
             ax=ax,
-            label=seriesdata.label,
+            label=label,
             args=args,
             startfromzero=startfromzero,
             xbinwidth=xbinwidth,
-            **seriesdata.plotkwargs,
+            **plotkwargs,
         )
 
     if settings.get("cliplogbottom") and ax.get_yscale() == "log":
@@ -487,7 +507,7 @@ def plot_init_abundances(
         speciesplotkwargs: dict[str, t.Any] = {"linewidth": 1.5, "linestyle": linestyle} | plotkwargs
         speciesplotkwargs["color"] = get_elemcolor(atomic_number=atomic_number)
 
-        plans.append(SeriesPlan(label=linelabel, dfseries=series, plotkwargs=speciesplotkwargs))
+        plans.append(SeriesPlan(label=linelabel, dfseries=series, plotkwargs=speciesplotkwargs, seriesname=speciesstr))
 
     return plans
 
@@ -538,7 +558,11 @@ def plot_average_ionisation(
             celltsweight=pl.col(f"nnelement_{elsymb}") * pl.col("deltavol_deltat"), yvalue=expr_charge_per_nuc
         ).filter(pl.col(f"nnelement_{elsymb}") > 0.0)
 
-        plans.append(SeriesPlan(label=paramvalue, dfseries=dfplotdata, plotkwargs={"color": color} | plotkwargs))
+        plans.append(
+            SeriesPlan(
+                label=paramvalue, dfseries=dfplotdata, plotkwargs={"color": color} | plotkwargs, seriesname=paramvalue
+            )
+        )
 
     # the limit must cover every element, thus set it after the loop over the elements
     settings["ylim"] = (0.0, maxioncharge + 0.1)
@@ -607,6 +631,7 @@ def plot_average_excitation(
                 label=paramvalue,
                 dfseries=dfplotdata,
                 plotkwargs={"color": get_elemcolor(atomic_number=atomic_number)} | plotkwargs,
+                seriesname=paramvalue,
             )
         )
 
@@ -731,7 +756,7 @@ def plot_levelpop(
                 celltsweight=pl.lit(1.0),
             )
         )
-        plans.append(SeriesPlan(label=label, dfseries=dfseries, plotkwargs=plotkwargs.copy()))
+        plans.append(SeriesPlan(label=label, dfseries=dfseries, plotkwargs=plotkwargs.copy(), seriesname=paramvalue))
 
     return plans
 
@@ -819,6 +844,165 @@ def get_directive_name(seriestype: str) -> str | None:
         )
 
     return given.lower() if given.lower() in DIRECTIVES else None
+
+
+# A series name can have its style after this mark, e.g. "Fe II@color=C3,linewidth=2". The mark needs no quotes
+# in a shell, and zsh reads square brackets as a file pattern
+SERIES_STYLE_MARK: t.Final = "@"
+
+# the line styles that a series style accepts, by each name and short form, e.g. "--" gives "dashed"
+SERIES_LINESTYLES: t.Final = MappingProxyType({name: name for name in LINESTYLE_NAMES} | LINESTYLE_ALIASES)
+
+
+def get_series_style_problem(key: str, value: str) -> str | None:
+    """Return the reason that a value of a series style is not valid, or None for a valid value.
+
+    The colour, the dash pattern, and the width take the argparse types of the options of the other commands, e.g.
+    color_arg of -color. An opacity of 0 is valid, because matplotlib then draws a clear line.
+    """
+    if key == "linestyle":
+        return (
+            None
+            if value in SERIES_LINESTYLES
+            else f"is not a line style. The line styles are {', '.join(SERIES_LINESTYLES)}"
+        )
+    if key == "linealpha":
+        alpha = float(value) if is_float(value) else math.nan
+        return None if 0.0 <= alpha <= 1.0 else "is not an opacity from 0 (clear) to 1 (opaque)"
+    convert = {"color": color_arg, "dashes": dashes_arg, "linewidth": positive_float_arg}.get(key)
+    try:
+        if convert is not None:
+            convert(value)
+    except argparse.ArgumentTypeError as exc:
+        return f"is not valid: {exc}"
+    return None
+
+
+def is_float(text: str) -> bool:
+    """Return True if float() reads the text."""
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
+
+
+def read_series_style(item: str) -> tuple[str, dict[str, str]]:
+    """Return the name of a plot item and the style after its @, e.g. ("Fe II", {"color": "C3"}) for "Fe II@color=C3".
+
+    The parts of the style have a comma between them. A part with no known key continues the value before it, thus a
+    dash pattern can hold commas, e.g. "Te@dashes=5,2,linewidth=2". The label takes all the text after "label=", thus
+    a label can hold a comma and an "=", e.g. "Te@color=C3,label=T, electrons". An item with no @ gives an empty style.
+    A style that is not valid gives ValueError, and the message of the error names the problem.
+    """
+    name, mark, styletext = item.partition(SERIES_STYLE_MARK)
+    style: dict[str, str] = {}
+    if not mark:
+        return item, style
+    key: str | None = None
+    parts = styletext.split(",")
+    for index, part in enumerate(parts):
+        partkey, equals, value = part.partition("=")
+        if equals and partkey.strip() in SERIES_STYLE_KEYS:
+            key = partkey.strip()
+            if key == "label":
+                style[key] = ",".join([value, *parts[index + 1 :]])
+                break
+            style[key] = value
+        elif key is not None:
+            style[key] += f",{part}"
+        else:
+            msg = (
+                f"'{part}' in the plot item '{item}' is not a series style. Give key=value after the"
+                f" {SERIES_STYLE_MARK}, e.g. '{name}{SERIES_STYLE_MARK}color=C3'. The keys are"
+                f" {', '.join(SERIES_STYLE_KEYS)}"
+            )
+            raise ValueError(msg)
+    for key, value in style.items():
+        if key != "label" and (problem := get_series_style_problem(key, value)) is not None:
+            msg = f"the {key} '{value}' of the plot item '{item}' {problem}"
+            raise ValueError(msg)
+    return name, style
+
+
+def split_series_style(item: str) -> tuple[str, dict[str, str]]:
+    """Return the name and the style of a plot item, or stop the command if the style is not valid."""
+    try:
+        return read_series_style(item)
+    except ValueError as exc:
+        exit_with_error(str(exc))
+
+
+def join_series_style(name: str, style: Mapping[str, str | None]) -> str:
+    """Return the plot item of a series name with a style, e.g. "Fe II@color=C3". A value of None gives no key."""
+    parts = [f"{key}={value}" for key in SERIES_STYLE_KEYS if (value := style.get(key)) is not None]
+    return f"{name}{SERIES_STYLE_MARK}{','.join(parts)}" if parts else name
+
+
+def split_plotitem_styles(plotitems: t.Any) -> tuple[list[t.Any], dict[str, dict[str, str]]]:
+    """Return the plot items of a subplot without their series styles, and the style of each series name.
+
+    A name that is an alias changes to its variable, e.g. n_e to nne, because the series of the plot use the variable.
+    The items can be a plain list of words, or the nested form of main, e.g. [["populations", ["Fe II@color=C3"]]].
+    """
+    styles: dict[str, dict[str, str]] = {}
+
+    def strip_style(item: t.Any) -> t.Any:
+        if not isinstance(item, str):
+            return item
+        name, style = split_series_style(item)
+        if style:
+            styles[VARIABLE_ALIASES.get(name, name)] = style
+        return name
+
+    if isinstance(plotitems, str):
+        plotitems = [plotitems]
+    stripped = [
+        [item[0], [strip_style(name) for name in item[1]]]
+        if isinstance(item, (list, tuple)) and len(item) == 2 and isinstance(item[1], (list, tuple))
+        else strip_style(item)
+        for item in plotitems
+    ]
+    return stripped, styles
+
+
+def get_styles_of_subplots(args: argparse.Namespace, count: int) -> list[dict[str, dict[str, str]]]:
+    """Return the style of each series name for each of count subplots, see split_plotitem_styles.
+
+    The default plot list gives no style, thus a subplot with no plot item of the user has an empty style.
+    """
+    styles = [split_plotitem_styles(plotitems)[1] for plotitems in (args.plotlist or [])[:count]]
+    return [*styles, *({} for _ in range(count - len(styles)))]
+
+
+def get_styled_series(
+    series: "SeriesData", style: Mapping[str, str], linewidthscale: float
+) -> tuple[str | None, dict[str, t.Any]]:
+    """Return the label and the plot keywords of a series with the style of its plot item and -linewidthscale.
+
+    A line style of the item replaces the dash pattern of the plot, e.g. of an ion, and a dash pattern of the item
+    replaces the line style.
+    """
+    import matplotlib as mpl
+
+    plotkwargs = series.plotkwargs.copy()
+    if "color" in style:
+        plotkwargs["color"] = style["color"]
+    if "linestyle" in style:
+        plotkwargs.pop("dashes", None)
+        plotkwargs["linestyle"] = SERIES_LINESTYLES[style["linestyle"]]
+    if "dashes" in style:
+        plotkwargs.pop("linestyle", None)
+        plotkwargs["dashes"] = dashes_arg(style["dashes"])
+    if "linewidth" in style:
+        plotkwargs["linewidth"] = float(style["linewidth"])
+    if "linealpha" in style:
+        plotkwargs["alpha"] = float(style["linealpha"])
+    if linewidthscale != 1.0:
+        plotkwargs["linewidth"] = plotkwargs.get("linewidth", mpl.rcParams["lines.linewidth"]) * linewidthscale
+    # the window finds the series of a line from its gid, e.g. for a click on the line or on its legend entry
+    plotkwargs["gid"] = series.seriesname
+    return style.get("label", series.label), plotkwargs
 
 
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
@@ -952,9 +1136,8 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
 
     A list of ions such as ["Sr I", "Sr II"] is rewritten as a populations plot [["populations", ["Sr I", "Sr II"]]].
     """
-    if isinstance(plotitems, str):
-        plotitems = [plotitems]
-    assert isinstance(plotitems, list)
+    # the client draws the series styles, see draw_line_figure, thus the data needs the names alone
+    plotitems, _ = split_plotitem_styles(plotitems)
 
     # the underscore of a directive is optional, thus "-p rho yscale=log" and "_yscale=log" are the same.
     # One shape here lets plot_subplot find an unknown directive whichever spelling the user gave
@@ -1027,6 +1210,11 @@ def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -
     return f"{seriestype}_{ionstr}", ionstr
 
 
+def get_ionentry_sortkey(entry: tuple[tuple[int, str | int], str]) -> tuple[int, int, int, str]:
+    """Return the sort key of a pair of an ion tuple and its name in a plot item, see get_iontuple_sortkey."""
+    return get_iontuple_sortkey(entry[0])
+
+
 def get_iontuple_sortkey(iontuple: tuple[int, str | int]) -> tuple[int, int, int, str]:
     """Return a sort key that puts an element first, then its ion stages, then its isotopes.
 
@@ -1089,8 +1277,10 @@ def plot_multi_ion_series(
     The poptype parameter sets the normalisation of a population series. Each subplot carries its own
     value, thus one figure can show an absolute density in one subplot and an ion fraction in another.
     """
-    iontuplelist = [get_iontuple(ionstr) for ionstr in ionlist]
-    iontuplelist.sort(key=get_iontuple_sortkey)
+    # the series of an ion keeps the name of its plot item, e.g. "Fe 2" or "Fe II", because a series style uses it. Two
+    # spellings of one ion give two series, as two plot items do
+    ionentries = sorted(((get_iontuple(ionstr), ionstr) for ionstr in ionlist), key=get_ionentry_sortkey)
+    iontuplelist = [iontuple for iontuple, _ in ionentries]
     print(f"Subplot with ions: {iontuplelist}")
 
     missingions: set[tuple[int, str | int]] = set()
@@ -1116,7 +1306,8 @@ def plot_multi_ion_series(
     if missingions:
         print_warning(f"Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
-    iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in missingions]
+    ionentries = [entry for entry in ionentries if entry[0] not in missingions]
+    iontuplelist = [iontuple for iontuple, _ in ionentries]
 
     # An ion of the model can still have no column of this series. The top ion of an element has no
     # gamma_NT and no bound-free cooling. Drop such an ion here, so that the plot gives the others.
@@ -1127,7 +1318,8 @@ def plot_multi_ion_series(
     if nocolumnions:
         print_warning(f"Can't plot {seriestype} for {nocolumnions} because the estimators hold no such column")
 
-    iontuplelist = [iontuple for iontuple in iontuplelist if iontuple not in nocolumnions]
+    ionentries = [entry for entry in ionentries if entry[0] not in nocolumnions]
+    iontuplelist = [iontuple for iontuple, _ in ionentries]
 
     lazyframes = []
     for atomic_number, ion_stage in iontuplelist:
@@ -1165,6 +1357,9 @@ def plot_multi_ion_series(
             )
         )
 
+    # the colour of an ion comes from its stage, thus Fe II and Co II take the same colour. A subplot of more than one
+    # element thus keeps the colours of the elements, and the ions of an element differ by the dash
+    colorbyion = args.colorbyion and len({atomic_number for atomic_number, _ in iontuplelist}) == 1
     plans = []
     for seriesindex, ((atomic_number, ion_stage), dfseries) in enumerate(zip(iontuplelist, lazyframes, strict=True)):
         plotlabel = str(
@@ -1184,7 +1379,7 @@ def plot_multi_ion_series(
 
         color = get_elemcolor(atomic_number=atomic_number)
         styleindex = variantindex
-        if args.colorbyion:
+        if colorbyion:
             # the colour separates the ions, thus every series keeps the first style
             styleindex = 0
             if ion_stage != "ALL":
@@ -1201,7 +1396,10 @@ def plot_multi_ion_series(
 
         plans.append(
             SeriesPlan(
-                label=plotlabel, dfseries=dfseries, plotkwargs={"linewidth": linewidth, "color": color} | plotkwargs
+                label=plotlabel,
+                dfseries=dfseries,
+                plotkwargs={"linewidth": linewidth, "color": color} | plotkwargs,
+                seriesname=ionentries[seriesindex][1],
             )
         )
 
@@ -1260,7 +1458,7 @@ def plot_series(
     plotkwargs.setdefault("linewidth", 1.5)
 
     print(f"  plotting {variablename}")
-    return [SeriesPlan(label=linelabel, dfseries=series, plotkwargs=plotkwargs)]
+    return [SeriesPlan(label=linelabel, dfseries=series, plotkwargs=plotkwargs, seriesname=variablename)]
 
 
 def get_xlist(
@@ -1741,8 +1939,10 @@ def draw_line_figure(
     # get_xlist divides the range of the x axis into the bins
     xlow, xhigh = figuredata.xlimits
     xbinwidth = (xhigh - xlow) / args.xbins if args.xbins and xlow is not None and xhigh is not None else None
-    for ax, (series, settings) in zip(axes, figuredata.subplots, strict=True):
-        draw_subplot(ax, series, settings, args, startfromzero, xbinwidth)
+    # the data has no series styles, thus a change of style in the window needs no new data
+    stylesofsubplots = get_styles_of_subplots(args, len(figuredata.subplots))
+    for ax, (series, settings), styles in zip(axes, figuredata.subplots, stylesofsubplots, strict=True):
+        draw_subplot(ax, series, settings, args, startfromzero, xbinwidth, styles)
         # a stacked subplot puts its lowest label beside the highest label of the subplot below
         prune_log_ticks(ax.yaxis)
 
@@ -2322,6 +2522,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
 
+    parser.add_argument(
+        "-linewidthscale",
+        type=positive_float_arg,
+        default=1.0,
+        help="Multiply the width of each line by this factor, e.g. 2 for a presentation. The factor also multiplies a"
+        " linewidth of a series style",
+    )
+
     parser.add_argument("--markers", action="store_true", help="Plot markers instead of shaded area")
 
     addarg_filter(parser)
@@ -2370,7 +2578,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             f"a space. The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
             "-plot Te TR yscale=lin -plot rho yscale=log ymin=1e-17 -plot 'Fe II' 'Fe III' ionpoptype=elpop. "
             "The directive ionpoptype= sets the normalisation of an ion population series to one of "
-            f"{', '.join(POPTYPE_YLABELS)}. The subplots share one horizontal axis, thus -xmin and -xmax set "
+            f"{', '.join(POPTYPE_YLABELS)}. Give the style of a series after {SERIES_STYLE_MARK} with the keys "
+            f"{', '.join(SERIES_STYLE_KEYS)}, e.g. 'Fe II{SERIES_STYLE_MARK}color=C3,linestyle=dashed'. The label "
+            "comes last, and it can hold a comma. The subplots share one horizontal axis, thus -xmin and -xmax set "
             "that axis for the whole figure"
         ),
     )
@@ -2411,7 +2621,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--colorbyion",
         action="store_true",
         help=(
-            "Give each ion a colour of its own, and not the colour of its element. A plot with x bins always does this"
+            "Give each ion a colour of its own, and not the colour of its element. A plot with x bins always does"
+            " this. A subplot of more than one element keeps the colours of the elements"
         ),
     )
 
@@ -3008,13 +3219,17 @@ def get_plot_columns(modelpath: Path, args: argparse.Namespace, timesteps_includ
     return add_plot_columns(args, estimators, modelmeta)[1]
 
 
+# the data of each figure of the arguments, and the arguments that the data code changed
+type FiguresData = tuple[list[LineFigureData | ImageFigureData], dict[str, t.Any]]
+
+
 @on_model_host
 def get_figures_data(
     modelpath: Path,
     args: argparse.Namespace,
     timesteps_included: list[int],
     batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
-) -> "tuple[list[LineFigureData | ImageFigureData], dict[str, t.Any]]":
+) -> FiguresData:
     """Return the data of each figure of the arguments, and the arguments that the data code changed.
 
     The host of a remote model runs this function, thus it reads the estimators there and only the data to draw
@@ -3085,18 +3300,27 @@ def get_figures_data(
 
 
 def draw_plot(
-    args: argparse.Namespace, fig: "mplfig.Figure", batchcaches: "Sequence[EstimatorBatchCache] | None" = None
-) -> None:
+    args: argparse.Namespace,
+    fig: "mplfig.Figure",
+    batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
+    figuresdata: FiguresData | None = None,
+) -> FiguresData:
     """Draw the plot of one frame of the arguments on an empty figure, e.g. for a window that stays open.
 
     The plot reads the estimators as the command does, thus the window draws the plot of the command. batchcaches
     gives the current parquet caches of the run, and a window keeps them between its plots. The arguments must select
     one plot. A list of the variables, a gif, and a set of frames each give a different action.
+
+    The function returns the data of the plot, which get_figures_data gives. A window can give that data back as
+    figuresdata, e.g. after a change of a series style. The function then reads no data.
     """
     modelpath, timesteps_included = resolve_plot_args(args)
-    figures, changedargs = get_figures_data(modelpath, args, timesteps_included, batchcaches)
+    if figuresdata is None:
+        figuresdata = get_figures_data(modelpath, args, timesteps_included, batchcaches)
+    figures, changedargs = figuresdata
     vars(args).update(changedargs)
     draw_figure_data(figures[0], args, fig)
+    return figuresdata
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

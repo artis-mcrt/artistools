@@ -34,6 +34,7 @@ from artistools.viewertools.widgets import get_menu_items
 from artistools.viewertools.widgets import get_menu_shortcut_texts
 from artistools.viewertools.widgets import make_fps_box
 from artistools.viewertools.widgets import make_segmented_control
+from artistools.viewertools.widgets import make_symbol_icon
 from artistools.viewertools.widgets import show_status_message
 from artistools.viewertools.widgets import show_status_note
 from artistools.viewertools.widgets import StatusBar
@@ -515,7 +516,8 @@ def follow_colour_scheme(
     """Draw the plot again with the colours of each new appearance, e.g. Dark Mode, or of a change in Settings.
 
     Qt gives the new palette after the signal, thus the plot waits until Qt has no other events. The Settings window
-    reaches each window through its property "settingshandler".
+    reaches each window through its property "settingshandler". A new accent colour changes only the palette, thus
+    the style sheets and the symbols then take the new colours, but the plot stays.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -529,6 +531,9 @@ def follow_colour_scheme(
         QtCore.QTimer.singleShot(0, window, draw_with_new_colours)
 
     stylehints = QtGui.QGuiApplication.styleHints()
+    window.setProperty(
+        "palettehandler", partial(QtCore.QTimer.singleShot, 0, window, partial(refresh_palette_style_sheets, window))
+    )
     window.setProperty("settingshandler", on_colour_scheme)
     stylehints.colorSchemeChanged.connect(on_colour_scheme)
     # the signal of the application stays after the window closes, thus the window removes its handler
@@ -539,12 +544,18 @@ def refresh_palette_style_sheets(window: "QtWidgets.QWidget") -> None:
     """Apply again each style sheet of the window that gives a colour of the palette, e.g. palette(base).
 
     Qt reads a colour of the palette in a style sheet one time only. Without this, a chip of plotestimators keeps the
-    white background of a light window in Dark Mode.
+    white background of a light window in Dark Mode. A widget with the property "stylesheetfactory" gets a new style
+    sheet from that function, e.g. with the accent colour of the new appearance. A button with the property "symbol"
+    gets its symbol in the new colour of the text.
     """
     from PySide6 import QtWidgets
 
     for widget in [window, *window.findChildren(QtWidgets.QWidget)]:
-        if "palette(" in (stylesheet := widget.styleSheet()):
+        if isinstance(widget, QtWidgets.QAbstractButton) and isinstance(symbol := widget.property("symbol"), str):
+            widget.setIcon(make_symbol_icon(symbol))
+        if callable(factory := widget.property("stylesheetfactory")):
+            widget.setStyleSheet(str(factory()))
+        elif "palette(" in (stylesheet := widget.styleSheet()):
             widget.setStyleSheet("")
             widget.setStyleSheet(stylesheet)
 

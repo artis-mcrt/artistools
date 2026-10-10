@@ -1357,6 +1357,9 @@ def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pyte
     # a label of a list option can have the form host:path, thus only a remote path that is clearly a folder counts
     assert remote.names_a_remote_folder("vae26:~/model")
     assert not remote.names_a_remote_folder("second:label")
+    # a series style of plotestimators holds "=" before its colon, and a host holds no "="
+    for styleditem in ("TR@color=tab:red", "Te@linestyle=:", "Te@label=T:e", "Te@color=xkcd:sky/blue"):
+        assert not remote.is_remote_path(styleditem)
     # a band plot of two hosts gives each call the Namespace with both models. Only the argument of the model counts
     commandargs = argparse.Namespace(modelpath=[Path("hosta:~/x"), Path("hostb:~/y")], stream=sys.stdout)
     host, (serverargs, _) = remote.to_server_arguments(((Path("hosta:~/x"), commandargs), {}))
@@ -1528,7 +1531,11 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
     from artistools.__main__ import main
 
     modelpath = at.get_path("testartismodel").resolve()
-    remotepath = Path(f"testhost:{modelpath}")
+    # the dispatcher reads a remote folder with a space as a label, see names_a_remote_folder. A checkout can have a
+    # space in its path, e.g. in iCloud Drive, thus the remote path goes through a link in tmp_path
+    modellink = tmp_path / "testmodel"
+    modellink.symlink_to(modelpath)
+    remotepath = Path(f"testhost:{modellink}")
     filterfunc = at.misc.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
 
     remote.forget_server("testhost")

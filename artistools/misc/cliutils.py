@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import dataclasses as dc
 import itertools
+import math
 import operator
 import re
 import sys
@@ -765,6 +766,33 @@ def positive_int_arg(text: str) -> int:
     return value
 
 
+# the line styles of matplotlib that a series style and the line properties popup name
+LINESTYLE_NAMES: t.Final = ("solid", "dashed", "dotted", "dashdot")
+
+# the short names of the line styles of matplotlib, which a command can also give
+LINESTYLE_ALIASES: t.Final = MappingProxyType({"-": "solid", "--": "dashed", ":": "dotted", "-.": "dashdot"})
+
+# the keys of the style of one series, which also name the options of addarg_seriesstyle, e.g. -color. A series style of
+# plotestimators gives the label last, because the label takes the rest of the text, e.g. a comma
+SERIES_STYLE_KEYS: t.Final = ("color", "linestyle", "dashes", "linewidth", "linealpha", "label")
+
+
+def positive_float_arg(text: str) -> float:
+    """Return the number of the text, and reject a value that is not finite and above 0 when argparse reads it.
+
+    A factor such as -linewidthscale -1 passed argparse, and matplotlib then failed after the command read all the data.
+    """
+    try:
+        value = float(text)
+    except ValueError as exc:
+        msg = f"invalid float value: {text!r}"
+        raise argparse.ArgumentTypeError(msg) from exc
+    if not math.isfinite(value) or value <= 0.0:
+        msg = f"{text} is not a finite number above 0"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
 def series_value_arg[T](convert: Callable[[str], T]) -> Callable[[str], T | None]:
     """Return an argparse type that reads SERIES_DEFAULT as None, and each other value with convert."""
 
@@ -836,6 +864,11 @@ def dashes_arg(value: str) -> tuple[float, ...]:
 
     if not lengths or len(lengths) % 2 != 0:
         msg = f"The dash pattern {value} must hold the length of a dash and the length of a gap, e.g. 5,2"
+        raise argparse.ArgumentTypeError(msg)
+
+    # matplotlib refuses a negative length and a pattern with no length above 0 at the time of the plot
+    if not all(math.isfinite(length) and length >= 0.0 for length in lengths) or not any(lengths):
+        msg = f"The dash pattern {value} must hold finite lengths of 0 or more, and at least one length above 0"
         raise argparse.ArgumentTypeError(msg)
 
     return lengths

@@ -258,7 +258,7 @@ def test_session_window_takes_no_option_of_the_settings(monkeypatch: pytest.Monk
 
 
 def test_series_label_that_the_command_cannot_give() -> None:
-    """The dialog of the line properties must refuse a label that the command reads as a flag or as the default.
+    """The popup of the line properties must refuse a label that the command reads as a flag or as the default.
 
     The command rejected "-ve" with a message about an ambiguous option, and it gave "default" the automatic label.
     """
@@ -352,33 +352,45 @@ def test_viewer_window_keeps_the_typed_bin_width_and_the_keys_of_a_field(tmp_pat
     assert results["untipped"] == []
 
 
-# the code that changes the palette of a chip on the offscreen platform of Qt, and prints the new colour of the chip
+# the code that changes the palette of the application on the offscreen platform of Qt. It prints the new colour of a
+# chip and of the symbol of a button
 PALETTE_CHECK_CODE: t.Final = """
-from PySide6 import QtGui, QtWidgets
+from functools import partial
+from PySide6 import QtCore, QtGui, QtWidgets
+from artistools.viewertools.application import make_window
 from artistools.viewertools.menus import refresh_palette_style_sheets
+from artistools.viewertools.widgets import make_glyph_button
 
 app = QtWidgets.QApplication([])
-window = QtWidgets.QWidget()
-window.setStyleSheet("QFrame#chip { background: palette(base); }")
-chip = QtWidgets.QFrame(window)
+window = make_window("palettecheck")
+window.setProperty("palettehandler", partial(refresh_palette_style_sheets, window))
+panel = QtWidgets.QWidget()
+panel.setStyleSheet("QFrame#chip { background: palette(base); }")
+chip = QtWidgets.QFrame(panel)
 chip.setObjectName("chip")
 chip.setFixedSize(20, 20)
+button = make_glyph_button("xmark", "Remove", "Remove")
+button.setParent(panel)
+button.move(30, 0)
+window.setCentralWidget(panel)
 window.show()
 app.processEvents()
 palette = QtGui.QPalette(app.palette())
 palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor("#202020"))
+palette.setColor(QtGui.QPalette.ColorRole.ButtonText, QtGui.QColor("#ff0000"))
 app.setPalette(palette)
 app.processEvents()
-refresh_palette_style_sheets(window)
-app.processEvents()
-print(chip.grab().toImage().pixelColor(10, 10).name())
+symbol = button.icon().pixmap(QtCore.QSize(10, 10)).toImage()
+pixels = [symbol.pixelColor(x, y) for x in range(symbol.width()) for y in range(symbol.height())]
+print(chip.grab().toImage().pixelColor(10, 10).name(), max(pixels, key=QtGui.QColor.alpha).name())
 """
 
 
-def test_chip_takes_the_base_colour_of_a_new_palette() -> None:
-    """A chip of plotestimators kept the white background of a light window after a change to Dark Mode.
+def test_window_takes_the_colours_of_a_new_palette() -> None:
+    """A chip and a symbol of plotestimators kept the colours of a light window after a change to Dark Mode.
 
-    Qt reads palette(base) in a style sheet one time only, thus the window must apply the style sheet again.
+    Qt reads palette(base) in a style sheet one time only, and a symbol is an image in one colour. Thus the window must
+    apply them again. Qt gives the change of the application palette to event() and not to changeEvent().
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     environment = os.environ | {"QT_QPA_PLATFORM": "offscreen"}
@@ -391,4 +403,4 @@ def test_chip_takes_the_base_colour_of_a_new_palette() -> None:
         timeout=120,
     )
     assert result.returncode == 0, result.stderr[-3000:]
-    assert result.stdout.strip().splitlines()[-1] == "#202020"
+    assert result.stdout.strip().splitlines()[-1] == "#202020 #ff0000"

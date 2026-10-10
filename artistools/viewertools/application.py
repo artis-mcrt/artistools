@@ -433,7 +433,8 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
         """A window that writes its geometry and the state of its splitter to the settings when it closes.
 
         The window also takes the folders and the files that the user drops on it. It gives their paths to the
-        function in its property "drophandler", which set_drop_handler sets.
+        function in its property "drophandler", which set_drop_handler sets. A new palette of the application, e.g.
+        a new accent colour, calls the function in its property "palettehandler".
         """
 
         def __init__(self, applicationname: str) -> None:
@@ -454,6 +455,15 @@ def make_window(applicationname: str) -> "QtWidgets.QMainWindow":
             if (paths := get_dropped_paths(event.mimeData())) and callable(handler):
                 event.acceptProposedAction()
                 handler(paths)
+
+        @t.override
+        def event(self, event: QtCore.QEvent) -> bool:
+            # Qt gives this event to event() and not to changeEvent()
+            if event.type() == QtCore.QEvent.Type.ApplicationPaletteChange and callable(
+                handler := self.property("palettehandler")
+            ):
+                handler()
+            return super().event(event)
 
         @t.override
         def closeEvent(self, event: QtGui.QCloseEvent) -> None:

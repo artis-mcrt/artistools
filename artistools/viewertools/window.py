@@ -260,7 +260,7 @@ def add_command_sections(
     window, panellayout = viewerwindow.window, viewerwindow.panellayout
     defaultdpi: int = parser.get_default("dpi")
     figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
-    _, optiongrid = add_section(panellayout, "Other options")
+    _, optiongrid = add_section(panellayout, "Other options", closed=True)
     hiddendests, rows, on_rows = table
     optiontable, set_option_rows = make_option_table(window, parser, hiddendests, rows, on_rows)
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
@@ -777,26 +777,41 @@ def connect_plot_mouse(
     on_select_y: "Callable[[int, float, float], None] | None" = None,
     on_menu: "Callable[[int, t.Any], None] | None" = None,
     show_tag: "Callable[[t.Any, str], None] | None" = None,
+    on_click: "Callable[[int, t.Any], None] | None" = None,
+    get_click_hint: "Callable[[int, t.Any], str | None] | None" = None,
 ) -> "Callable[[], None]":
     """Give the plot a readout under the pointer, a drag across a frame that selects an x range, and a double-click.
 
-    on_select receives the two x values of a drag, and on_reset receives a double-click on a frame. on_select_y
-    receives the index of the frame and the two y values of a drag with the Shift key inside one frame. on_menu
-    receives the index of the frame and the matplotlib event of a click with the right button. show_tag receives the
-    matplotlib event and the readout, which is empty when the pointer leaves the frames. matplotlib keeps the
-    connections in the figure. Call the returned function after the canvas receives a new figure.
+    The callbacks receive these values:
+
+    - on_select: the two x values of a drag;
+    - on_reset: a double-click on a frame;
+    - on_select_y: the index of the frame and the two y values of a drag with the Shift key inside one frame;
+    - on_menu: the index of the frame and the matplotlib event of a click with the right button;
+    - on_click: the index of the frame and the matplotlib event of a left click with no pointer movement, e.g. on a
+      legend;
+    - show_tag: the matplotlib event and the readout, which is empty when the pointer leaves the frames;
+    - get_click_hint: the index of the frame and the matplotlib event of a movement. It returns the text of the readout
+      over an object that takes a click, e.g. a legend entry, or None. The pointer is then a hand.
+
+    matplotlib keeps the connections in the figure. Call the returned function after the canvas receives a new figure.
     """
     # the data value and the pixel of the start of a drag, the span that shows it, and its frame
     dragstart: tuple[float, float] | None = None
     dragspan: t.Any = None
     dragframeindex = 0
     dragvertical = False
+    # the frame and the pixel of the press of the left button, which give a click if the pointer does not move
+    clickstart: tuple[int, float, float] | None = None
+    # the pointer is a hand over an object that takes a click
+    showshand = False
 
     def get_frame_index(event: t.Any) -> int | None:
         return next((index for index, axis in enumerate(get_frames()) if event.inaxes is axis), None)
 
     def on_press(event: t.Any) -> None:
-        nonlocal dragstart, dragspan, dragframeindex, dragvertical
+        nonlocal dragstart, dragspan, dragframeindex, dragvertical, clickstart
+        clickstart = None
         frameindex = get_frame_index(event)
         if frameindex is None or event.xdata is None:
             return
@@ -809,6 +824,7 @@ def connect_plot_mouse(
         if event.dblclick:
             on_reset()
             return
+        clickstart = (frameindex, event.x, event.y)
         dragframeindex = frameindex
         # the canvas has no keyboard focus, thus matplotlib gives no key, and the modifiers hold the Shift key
         dragvertical = "shift" in event.modifiers and on_select_y is not None
@@ -820,8 +836,21 @@ def connect_plot_mouse(
             dragspan = event.inaxes.axvspan(event.xdata, event.xdata, color="0.5", alpha=0.3)
 
     def on_motion(event: t.Any) -> None:
+        nonlocal showshand
+        from matplotlib.backend_tools import Cursors
+
         frameindex = get_frame_index(event)
         readout = get_readout(event, event.inaxes) if frameindex is not None and event.xdata is not None else ""
+        hint = (
+            get_click_hint(frameindex, event)
+            if get_click_hint is not None and frameindex is not None and dragstart is None
+            else None
+        )
+        if hint is not None:
+            readout = hint
+        if (hint is not None) != showshand:
+            showshand = hint is not None
+            canvas.set_cursor(Cursors.HAND if showshand else Cursors.POINTER)
         readoutlabel.setText(readout)
         if show_tag is not None:
             show_tag(event, readout)
@@ -839,6 +868,20 @@ def connect_plot_mouse(
         canvas.draw_idle()
 
     def on_release(event: t.Any) -> None:
+        nonlocal clickstart
+        click, clickstart = clickstart, None
+        finish_drag(event)
+        # a movement of a few pixels is a click and not a selection
+        if (
+            on_click is not None
+            and click is not None
+            and get_frame_index(event) == click[0]
+            and abs(event.x - click[1]) <= 5
+            and abs(event.y - click[2]) <= 5
+        ):
+            on_click(click[0], event)
+
+    def finish_drag(event: t.Any) -> None:
         nonlocal dragstart, dragspan
         if dragstart is None or dragspan is None:
             return
@@ -970,6 +1013,7 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "-figscale": "Figure scale",
     "-groupby": "Group by",
     "-labelfontsize": "Label size",
+    "-linewidthscale": "Line width scale",
     "-maxseriescount": "Max series",
     "-residual": "Residual series",
     "-residualbaselineseries": "Residual baseline series",

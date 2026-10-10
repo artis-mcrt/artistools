@@ -11,6 +11,8 @@ import sys
 # threads that resolve that proxy at once raise "'module' object does not support item assignment"
 import numpy as np  # ruff:ignore[unused-import]
 
+from artistools import lazyimports as lazyimports
+
 if sys.version_info >= (3, 15):
     import importlib
 
@@ -21,7 +23,14 @@ if "polars._dependencies" in sys.modules:
     # the caller imported polars first, thus polars can hold the proxy. One access resolves it in this thread
     _ = sys.modules["polars._dependencies"].numpy.ndarray
 
-if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
+# PySide6 breaks a pending lazy import, see artistools/lazyimports.py. Thus a process that loaded the Qt bindings
+# first keeps eager imports. Otherwise, QtImportGuard resolves each lazy import before the Qt bindings load
+if (
+    sys.version_info >= (3, 15)
+    and hasattr(sys, "set_lazy_imports_filter")
+    and hasattr(sys, "set_lazy_imports")
+    and not lazyimports.qt_is_loaded()
+):
     sys.set_lazy_imports_filter(
         # some matplotlib modules read a name that another import of matplotlib gives as a side effect, e.g. a
         # docstring part or fontTools.ttLib. Thus these imports stay eager. Code with no __name__ gives None
@@ -36,6 +45,10 @@ if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and h
         )
     )
     sys.set_lazy_imports("all")
+    sys.meta_path.insert(0, lazyimports.QtImportGuard())
+else:
+    # an explicit lazy import of the standard library, e.g. in concurrent.futures, also breaks after PySide6 loads
+    lazyimports.make_imports_eager()
 
 from artistools import atomic as atomic
 from artistools import codecomparison as codecomparison

@@ -35,11 +35,13 @@ def make_remotepath_pattern(*, windows: bool) -> re.Pattern[str]:
     "user@[2001:db8::1]:/lustre/mymodel". On Windows, a host of one letter in front of a path separator is a drive,
     e.g. "C:\Users\me\mymodel". On a different system, it is an ssh host alias, e.g. "a:/lustre/mymodel".
 
-    An ssh host, a user name, and an ssh host alias hold no space. Thus a label such as "Model B: Fe/Ni" is no
-    remote path.
+    An ssh host, a user name, and an ssh host alias hold no space and no "=". Thus a label such as "Model B: Fe/Ni" is
+    no remote path, and a series style of plotestimators such as "Te@color=tab:red" is no remote path.
     """
     drivelookahead = r"(?![A-Za-z]:[\\/])" if windows else ""
-    return re.compile(rf"^{drivelookahead}(?P<host>(?:[^/:@\[\s]*@)?\[[^\]/\s]*\]|[^/:\[\s]+):(?P<path>.*)$", re.DOTALL)
+    return re.compile(
+        rf"^{drivelookahead}(?P<host>(?:[^/:@=\[\s]*@)?\[[^\]/\s]*\]|[^/:=\[\s]+):(?P<path>.*)$", re.DOTALL
+    )
 
 
 REMOTEPATH_PATTERN = make_remotepath_pattern(windows=os.name == "nt")
