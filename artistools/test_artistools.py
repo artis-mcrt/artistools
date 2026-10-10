@@ -1170,6 +1170,30 @@ def test_save_figure_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
         assert (tmp_path / filename).read_bytes().startswith(magic)
 
 
+def test_every_command_that_saves_a_plot_has_darkmode() -> None:
+    """--darkmode applies to each plot file, thus each command that saves a plot must accept it.
+
+    Only the commands with --show had --darkmode, thus e.g. plotlogfiles wrote a light PDF file.
+    """
+    import inspect
+    import re
+
+    def walktree(tree: at.commands.CommandTree) -> list[at.commands.CommandSpec]:
+        return [spec for node in tree.values() for spec in (walktree(node) if isinstance(node, dict) else [node])]
+
+    plotmodules = 0
+    for spec in walktree(at.commands.subcommandtree):
+        module = importlib.import_module(f"artistools.{spec.module}")
+        if not re.search(r"save_figure\(|savefig\(|save_or_show\(", inspect.getsource(module)):
+            continue
+        plotmodules += 1
+        parser = argparse.ArgumentParser()
+        module.addargs(parser)
+        flags = {flag for action in parser._actions for flag in action.option_strings}  # ruff:ignore[private-member-access]
+        assert "--darkmode" in flags, f"{spec.module} saves a plot but has no --darkmode"
+    assert plotmodules >= 20
+
+
 def test_save_figure_darkmode_gives_a_black_png_and_a_transparent_pdf(tmp_path: Path) -> None:
     """--darkmode gives white text, a black PNG background, and a transparent PDF background.
 

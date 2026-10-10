@@ -9,6 +9,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -22,6 +23,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import zopen
+from artistools.plottools import apply_darkmode
 from artistools.plottools import make_frame_figure
 from artistools.plottools import set_legend
 
@@ -125,8 +127,9 @@ def make_plot(
             axis.set_ylabel("Time [s]")
             axis.set_title(f"{modelname} timestep {timestep}" if modelname else f"timestep {timestep}")
             set_legend(axis, args)
-            # save_figure holds this rule for a figure of its own, and this pdf writes its own pages
-            pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02)
+            # save_figure holds these rules for a figure of its own, and this pdf writes its own pages
+            transparent = getattr(args, "darkmode", False) and apply_darkmode(fig, "pdf")
+            pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02, transparent=transparent)
             plt.close(fig)
 
     print_saved(outputfile)
@@ -135,6 +138,7 @@ def make_plot(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
+    addarg_darkmode(parser)
     addarg_modelpath(
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )

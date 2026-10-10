@@ -28,6 +28,7 @@ from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_t
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
@@ -353,7 +354,7 @@ def plot_qdot(
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
     axis.set_ymargin(0.02)
-    save_figure(fig, pdfoutpath, format="pdf")
+    save_figure(fig, pdfoutpath, format="pdf", args=args)
 
 
 def plot_cell_abund_evolution(
@@ -438,7 +439,7 @@ def plot_cell_abund_evolution(
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
     axes[0].set_title(f"{get_model_name(modelpath)} {strcell}")
-    save_figure(fig, pdfoutpath, format="pdf")
+    save_figure(fig, pdfoutpath, format="pdf", args=args)
 
 
 def get_particledata(
@@ -729,6 +730,7 @@ def plot_qdot_abund_modelcells(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
+    addarg_darkmode(parser)
     addarg_modelpath(parser, default=Path(), helptext="Path for ARTIS files")
 
     parser.add_argument(

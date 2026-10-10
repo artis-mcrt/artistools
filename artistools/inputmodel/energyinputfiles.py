@@ -16,6 +16,7 @@ from artistools.constants import day_to_s
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_action
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -232,6 +233,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="file", helptext="Path for the plot, or omit to show it interactively")
 
     addarg_figscale(parser)
+    addarg_darkmode(parser)
     parser.add_argument("-trajthermofile", type=Path, help="Trajectory energy_thermo.dat (fromtrajectory)")
 
 
@@ -252,7 +254,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axis.set_xscale("log")
         axis.set_yscale("log")
         # -o promises that a path with no file extension names a folder, and an empty -o shows the plot
-        save_or_show(fig, resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf") if args.outputfile else None)
+        save_or_show(
+            fig, resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf") if args.outputfile else None, args
+        )
 
     elif args.action == "describe":
         etot, energydistribution = get_etot_fromfile(modelpath)

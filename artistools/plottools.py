@@ -1347,6 +1347,18 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
             collection.set_facecolor(foreground)
 
 
+def apply_darkmode(fig: mplfig.Figure, fileformat: str) -> bool:
+    """Give the figure the colours of --darkmode, and return True if a file of this format has no background."""
+    apply_dark_colours(fig, *DARKMODE_COLOURS)
+    transparent = fileformat in TRANSPARENT_DARKMODE_FORMATS
+    if transparent:
+        # a black legend box on a transparent figure hides the background of the slide
+        for axis in fig.axes:
+            if (legend := axis.get_legend()) is not None:
+                legend.get_frame().set_facecolor("none")
+    return transparent
+
+
 def make_room_for_title(fig: mplfig.Figure) -> None:
     """Make the figure taller if a title goes past its top edge.
 
@@ -1413,13 +1425,7 @@ def save_figure(
         fileformat = str(savefig_kwargs.get("format", plt.rcParams["savefig.format"])).lower()
 
     if args is not None and getattr(args, "darkmode", False):
-        apply_dark_colours(fig, *DARKMODE_COLOURS)
-        savefig_kwargs.setdefault("transparent", fileformat in TRANSPARENT_DARKMODE_FORMATS)
-        if fileformat in TRANSPARENT_DARKMODE_FORMATS:
-            # a black legend box on a transparent figure hides the background of the slide
-            for axis in fig.axes:
-                if (legend := axis.get_legend()) is not None:
-                    legend.get_frame().set_facecolor("none")
+        savefig_kwargs.setdefault("transparent", apply_darkmode(fig, fileformat))
 
     if show:
         # a window shows the figure with no crop, thus a title needs room inside the figure
@@ -1442,11 +1448,13 @@ def save_figure(
         open_file(outpath)
 
 
-def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None") -> None:
+def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None", args: argparse.Namespace) -> None:
     """Save the figure when an output file was given, otherwise show it. Close the figure either way."""
     if outputfile:
-        save_figure(fig, outputfile)
+        save_figure(fig, outputfile, args=args)
     else:
+        if getattr(args, "darkmode", False):
+            apply_dark_colours(fig, *DARKMODE_COLOURS)
         plt.show()
         plt.close(fig)
 
