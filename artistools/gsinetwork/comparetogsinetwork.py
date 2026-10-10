@@ -15,8 +15,8 @@ import polars as pl
 
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_composition_data
+from artistools.constants import amu_g
 from artistools.constants import day_to_s
-from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
@@ -198,7 +198,7 @@ def get_artis_abund_sequences(
             # ARTIS adds a decay daughter that model.txt does not hold, and such an isotope has no init_X column
             # and no correction
             isotopemassfrac_exprs = [
-                pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * MH_g / pl.col("rho")
+                pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * amu_g / pl.col("rho")
                 + (
                     pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)
                     if f"init_X_{striso}" in estimatorcolumns
@@ -215,7 +215,7 @@ def get_artis_abund_sequences(
                     )
                 else:
                     meannucmass_amu = meannucmass_amu_of_z[get_atomic_number(strspecies)]
-                    isotopemassfrac_exprs.append(pl.col(otherstablecol) * meannucmass_amu * MH_g / pl.col("rho"))
+                    isotopemassfrac_exprs.append(pl.col(otherstablecol) * meannucmass_amu * amu_g / pl.col("rho"))
             if isnuclide:
                 cellmassfrac_exprs.append(isotopemassfrac_exprs[0])
             elif isotopemassfrac_exprs:

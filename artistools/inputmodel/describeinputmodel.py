@@ -13,10 +13,10 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.atomic import get_atomic_number
+from artistools.constants import amu_g
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.constants import MH_g
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_modeldata
@@ -41,8 +41,8 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
         if atomic_number == 0:
             continue
         mass_number = float(species.removeprefix(elsymb))
-        exprs_protons.append(atomic_number / (mass_number * MH_g) * pl.col(column) * pl.col("mass_g"))
-        exprs_nucleons.append(1 / MH_g * pl.col(column) * pl.col("mass_g"))
+        exprs_protons.append(atomic_number / (mass_number * amu_g) * pl.col(column) * pl.col("mass_g"))
+        exprs_nucleons.append(1 / amu_g * pl.col(column) * pl.col("mass_g"))
 
     globalelectronfrac = (
         dfmodel
