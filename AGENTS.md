@@ -135,6 +135,14 @@ Use polars (`import polars as pl`) for all dataframe code. The package has no pa
 - A method returns a new dataframe. There is no in-place operation, thus you must use the value that the method returns.
 - In a test, compare two dataframes with `pltest.assert_frame_equal`.
 
+## Physics and units
+
+A test on a small model can pass with an incorrect unit or physical factor. Thus a review must examine each formula.
+
+- Use cgs units. Put a different unit at the end of the name, e.g. `time_days` and `lambda_angstroms`.
+- Import each constant and conversion factor from `artistools/constants.py`. Do not write the number as a literal.
+- Log each physical assumption that a command applies, and its source.
+
 ## Command-line entry points
 
 A module that supplies a subcommand has this structure:
