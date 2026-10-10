@@ -1528,7 +1528,11 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
     from artistools.__main__ import main
 
     modelpath = at.get_path("testartismodel").resolve()
-    remotepath = Path(f"testhost:{modelpath}")
+    # the dispatcher reads a remote folder with a space as a label, see names_a_remote_folder. A checkout can have a
+    # space in its path, e.g. in iCloud Drive, thus the remote path goes through a link in tmp_path
+    modellink = tmp_path / "testmodel"
+    modellink.symlink_to(modelpath)
+    remotepath = Path(f"testhost:{modellink}")
     filterfunc = at.misc.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
 
     remote.forget_server("testhost")

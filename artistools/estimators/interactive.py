@@ -273,12 +273,18 @@ class RenderedPlot(t.NamedTuple):
 
 
 class SeriesSwatch(t.NamedTuple):
-    """The line of one series in the plot, which a chip of its subplot shows as a short image."""
+    """The line of one series in the plot, which a chip of its subplot shows as a short image.
+
+    The dialog of the line properties shows the default colour and the default width, which the series has with no
+    style of its own.
+    """
 
     colour: str
     alpha: float
     linewidth: float
     dashpattern: tuple[float, ...] | None
+    defaultcolour: str
+    defaultlinewidth: float
 
 
 def get_series_swatches(
@@ -286,7 +292,7 @@ def get_series_swatches(
 ) -> dict[tuple[int, str], SeriesSwatch]:
     """Return the line of each series by the index of its subplot and its name, as the plot draws it.
 
-    A series with no colour of its own takes the next colour of the axes, thus the colour comes from the line.
+    A series with no colour in the data takes the next colour of the axes cycle, thus the colour comes from the line.
     """
     import matplotlib as mpl
     import matplotlib.colors as mplcolors
@@ -298,24 +304,23 @@ def get_series_swatches(
     swatches: dict[tuple[int, str], SeriesSwatch] = {}
     for index, (series, _) in enumerate(figuredata.subplots):
         styles = stylesofsubplots[index] if index < len(stylesofsubplots) else {}
-        linecolours = {
-            line.get_gid(): line.get_color() for line in (frames[index].get_lines() if index < len(frames) else [])
-        }
-        for seriesdata in series:
-            _, plotkwargs = get_styled_series(seriesdata, styles.get(seriesdata.seriesname, {}), args.linewidthscale)
-            colour = linecolours.get(seriesdata.seriesname) or plotkwargs.get("color") or "black"
-            dashes = plotkwargs.get("dashes")
+        linecolours = {line.get_gid(): line.get_color() for line in frames[index].get_lines()}
+        for seriesindex, seriesdata in enumerate(series):
+            style: dict[str, str] = styles.get(seriesdata.seriesname, {})
+            _, plotkwargs = get_styled_series(seriesdata, style, args.linewidthscale)
+            # the points of -xbins 0 take a lighter colour than the series, thus the drawn colour is the last choice
+            drawncolour = linecolours.get(seriesdata.seriesname, "black")
+            datacolour = seriesdata.plotkwargs.get("color")
+            # a series with a colour of its own hides the colour of the cycle, which is then the position in the cycle
+            defaultcolour = datacolour or (f"C{seriesindex % 10}" if "color" in style else drawncolour)
+            dashes = plotkwargs.get("dashes") or get_dash_pattern(plotkwargs.get("linestyle"), None)
             swatches[index, seriesdata.seriesname] = SeriesSwatch(
-                colour=mplcolors.to_hex(colour),
-                alpha=float(plotkwargs.get("alpha") or 1.0),
-                linewidth=float(plotkwargs.get("linewidth") or mpl.rcParams["lines.linewidth"]),
-                dashpattern=tuple(dashes)
-                if dashes
-                else (
-                    tuple(pattern)
-                    if (pattern := get_dash_pattern(plotkwargs.get("linestyle"), None)) is not None
-                    else None
-                ),
+                colour=mplcolors.to_hex(plotkwargs.get("color") or drawncolour),
+                alpha=float(plotkwargs.get("alpha", 1.0)),
+                linewidth=float(plotkwargs.get("linewidth", mpl.rcParams["lines.linewidth"])),
+                dashpattern=tuple(dashes) if dashes else None,
+                defaultcolour=mplcolors.to_hex(defaultcolour),
+                defaultlinewidth=float(seriesdata.plotkwargs.get("linewidth", mpl.rcParams["lines.linewidth"])),
             )
     return swatches
 
@@ -2705,7 +2710,11 @@ def open_window(
         for row, card in enumerate(cards):
             for name, button in card.swatchbuttons.items():
                 swatch = viewer.swatches.get((row, name))
-                button.setIcon(QtGui.QIcon(make_line_swatch(*swatch)) if swatch is not None else QtGui.QIcon())
+                button.setIcon(
+                    QtGui.QIcon(make_line_swatch(swatch.colour, swatch.alpha, swatch.linewidth, swatch.dashpattern))
+                    if swatch is not None
+                    else QtGui.QIcon()
+                )
 
     def edit_item_style(row: int, position: int) -> None:
         """Ask for the line properties of one series of a subplot, and show each change in the plot immediately."""
@@ -2719,7 +2728,8 @@ def open_window(
         item = subplot[position]
         name = get_series_name(item)
         style = get_item_style(item)
-        defaultcolour, defaultlinewidth = get_default_line(row, name)
+        # a series that the plot does not show, e.g. an ion that the model does not hold, has no line
+        swatch = viewer.swatches.get((row, name))
 
         def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
             # a change applies to the current values, because Play can move the time while the dialog is open. A
@@ -2736,32 +2746,10 @@ def open_window(
             window,
             name,
             {f"-{key}": value for key, value in style.items()},
-            defaultcolour,
-            defaultlinewidth or float(mpl.rcParams["lines.linewidth"]),
+            swatch.defaultcolour if swatch is not None else "black",
+            swatch.defaultlinewidth if swatch is not None else float(mpl.rcParams["lines.linewidth"]),
             show_changes,
         )
-
-    def get_default_line(row: int, name: str) -> tuple[str, float | None]:
-        """Return the colour and the width of the line of a series with no style of its own, as the last plot gives.
-
-        A series with no colour in the data takes the colour of the axes cycle, thus its line in the plot gives it.
-        """
-        import matplotlib.colors as mplcolors
-
-        lastdata = viewer.lastdata
-        figuredata = lastdata[1][0][0] if lastdata is not None else None
-        swatch = viewer.swatches.get((row, name))
-        style = get_item_style(
-            next((item for item in viewer.values.subplots[row] if get_series_name(item) == name), "")
-        )
-        if isinstance(figuredata, LineFigureData) and row < len(figuredata.subplots):
-            for seriesindex, seriesdata in enumerate(figuredata.subplots[row][0]):
-                if seriesdata.seriesname == name:
-                    colour = seriesdata.plotkwargs.get("color") or (
-                        swatch.colour if swatch is not None and "color" not in style else f"C{seriesindex % 10}"
-                    )
-                    return mplcolors.to_hex(colour), seriesdata.plotkwargs.get("linewidth")
-        return (swatch.colour if swatch is not None else "black"), None
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""

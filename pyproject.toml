@@ -379,4 +379,22 @@ ignore_names = [
     "elevation",
     "locator",
     "formatter",
+    # methods that Qt, argparse, or pickle call on a subclass
+    "textFromValue",
+    "expandingDirections",
+    "hasHeightForWidth",
+    "dragEnterEvent",
+    "dropEvent",
+    "paintEvent",
+    "_check_value",
+    "find_class",
+    # keys of the TypedDict SubplotSettings, which the code reads with a string
+    "ylim",
+    "exponentlabel",
+    "cliplogbottom",
+    # names that only a quoted annotation uses. Python 3.13 evaluates an annotation with no quotes at import time
+    "FigureCanvasBase",
+    "mpllegendhandler",
+    # the value that a mock returns, which a test sets
+    "return_value",
 ]
