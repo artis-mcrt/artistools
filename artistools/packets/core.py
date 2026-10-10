@@ -1,7 +1,7 @@
 """Read ARTIS packets and virtual packets files, caching them as parquet, and bin them by viewing direction."""
 
 import contextlib
-import datetime
+import datetime as dt
 import math
 import os
 import time
@@ -707,7 +707,7 @@ def get_packets_rankbatch_parquetfile(
             pldf_batch,
             parquetfilepath,
             metadata={
-                "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
+                "creationtimeutc": str(dt.datetime.now(dt.UTC)),
                 "cacheversion": str(CACHEVERSION),
                 "textsource_mtime": str(textsource_mtime),
             },

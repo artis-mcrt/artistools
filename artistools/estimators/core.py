@@ -4,7 +4,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 """
 
 import dataclasses as dc
-import datetime
+import datetime as dt
 import string
 import textwrap
 import time
@@ -870,7 +870,7 @@ def get_estimators_parquetfile(
             pldf_batch,
             parquetfilepath,
             metadata={
-                "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
+                "creationtimeutc": str(dt.datetime.now(dt.UTC)),
                 "cacheversion": str(CACHEVERSION),
                 "textsource_mtime": str(state.textsource_mtime),
                 **rankmetadata,

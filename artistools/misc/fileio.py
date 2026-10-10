@@ -1,7 +1,7 @@
 """File helpers: compressed text files, file searching, metadata, and atomic parquet writes."""
 
 import contextlib
-import datetime
+import datetime as dt
 import errno
 import functools
 import inspect
@@ -1103,7 +1103,7 @@ def format_mtime(mtime: float | str | None) -> str:
     if mtime is None:
         return "absent"
     try:
-        localtime = datetime.datetime.fromtimestamp(float(mtime)).astimezone()
+        localtime = dt.datetime.fromtimestamp(float(mtime)).astimezone()
     except (ValueError, OSError, OverflowError):
         return str(mtime)
     return f"{localtime.isoformat(sep=' ', timespec='seconds')} ({mtime})"
