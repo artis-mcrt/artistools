@@ -178,6 +178,17 @@ def get_popup_class() -> "type[QtWidgets.QDialog]":
         def __init__(self, parent: QtWidgets.QWidget) -> None:
             super().__init__(parent, QtCore.Qt.WindowType.Popup)
             self.cancelled = False
+            # a popup window of macOS has no background of its own, thus the controls showed over the window below it
+            self.setObjectName("linepropertiespopup")
+            self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
+            # the swatches and the line styles are flat, as the glyph buttons of the window are, and a grid of framed
+            # buttons was hard to read
+            self.setStyleSheet(
+                "#linepropertiespopup { background: palette(window); border: 1px solid palette(mid); }"
+                " #linepropertiespopup QToolButton { border: none; border-radius: 4px; padding: 2px; }"
+                " #linepropertiespopup QToolButton:hover { background: rgba(128, 128, 128, 60); }"
+                " #linepropertiespopup QToolButton:checked { background: rgba(128, 128, 128, 110); }"
+            )
 
         @t.override
         def keyPressEvent(self, event: QtGui.QKeyEvent, /) -> None:
@@ -324,6 +335,8 @@ def edit_series_properties(
     form.addRow(errorlabel)
 
     resetbutton = QtWidgets.QPushButton("Reset")
+    # the Return key keeps the changes, thus Reset is not the default button of the popup
+    resetbutton.setAutoDefault(False)
     resetbutton.setToolTip("Give each property the default of the command")
     hintlabel = QtWidgets.QLabel("Escape reverts the changes")
     hintlabel.setForegroundRole(QtGui.QPalette.ColorRole.PlaceholderText)
@@ -489,8 +502,13 @@ def edit_series_properties(
             min(max(position.y(), area.top()), area.bottom() - dialog.height()),
         )
     dialog.move(position)
+    # exec() starts a modal session, which on macOS blocks a click on the window. A click outside the popup then did not
+    # close it. A popup that is not modal closes on such a click, and the local event loop waits for it
+    loop = QtCore.QEventLoop()
+    dialog.finished.connect(loop.quit)
+    dialog.show()
     labeledit.setFocus()
-    dialog.exec()
+    loop.exec()
     previewtimer.stop()
     # the parent keeps its children until it closes, thus the popup goes when the event loop runs again
     dialog.deleteLater()
