@@ -32,11 +32,17 @@ jobs:
                 target: [{os_arch: manylinux_x86_64, runs-on: ubuntu-26.04}, {os_arch: manylinux_aarch64, runs-on: ubuntu-26.04-arm}, {os_arch: macosx_arm64,
                           runs-on: macos-26}]
                 freethreading: [t, '']
+                # the free-threaded build needs Python 3.15 or later, because Python 3.14t has no stable
+                # application binary interface (ABI)
+                include:
+                    - freethreading: t
+                      cibwbuild: cp315t
+                    - freethreading: ''
+                      cibwbuild: cp3??
             fail-fast: false
         runs-on: ${{ matrix.target.runs-on }}
         env:
-            # the free-threaded build needs Python 3.15 or later, because Python 3.14t has no stable ABI
-            CIBW_BUILD: ${{ matrix.freethreading == 't' && 'cp315t' || 'cp3??' }}-${{ matrix.target.os_arch }}
+            CIBW_BUILD: ${{ matrix.cibwbuild }}-${{ matrix.target.os_arch }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
@@ -62,9 +68,17 @@ jobs:
               run: |
                   for wheel in wheelhouse/*.whl; do
                       pytag=$(basename "${wheel}" | cut -d- -f3)
+                      abitag=$(basename "${wheel}" | cut -d- -f4)
+                      case "${abitag}" in
+                          *abi3t*) ;;
+                          *)
+                              echo "Expected a wheel of the free-threaded stable ABI (abi3t), but found ${wheel}"
+                              exit 1
+                              ;;
+                      esac
                       pyver=$(echo "${pytag}" | sed -E 's/^cp3([0-9]+)$/3.\1/')
                       for python in "${pyver}t" "${pyver}"; do
-                          venv="${RUNNER_TEMP}/checkvenv-${python}"
+                          venv="${RUNNER_TEMP}/checkvenv-$(basename "${wheel}" .whl)-${python}"
                           uv venv --python "${python}" "${venv}"
                           uv pip install --python "${venv}/bin/python" --no-deps "${wheel}"
                           "${venv}/bin/python" check_wheel.py
