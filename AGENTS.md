@@ -137,21 +137,11 @@ Use polars (`import polars as pl`) for all dataframe code. The package has no pa
 
 ## Physics and units
 
-A test on a small model can pass with an incorrect unit or an incorrect physical factor. Thus a code review must examine each formula and each unit conversion.
+A test on a small model can pass with an incorrect unit or physical factor. Thus a review must examine each formula.
 
-- Use cgs units. If a value has a different unit, put the unit at the end of its name, e.g. `time_days`, `vel_r_max_kmps`, and `lambda_angstroms`.
-- Import each physical constant and each conversion factor from `artistools/constants.py`, e.g. `day_to_s` and `km_to_cm`. Do not write the number as a literal. Add a new constant to that module, with its unit in a comment.
-- Use `amu_g` and not `MH_g` to change between the `nniso_` number densities and the mass fractions. ARTIS uses the atomic mass unit for the mass of a nuclide. A run before artis-mcrt/artis#670 used the mass of the hydrogen atom.
-- `f_lambda` is the flux density per Å at a distance of 1 Mpc. To calculate `f_nu`, multiply `f_lambda` by λ²/c, with λ in Å and c as `c_ang_per_s`.
-- To calculate a flux from packets, divide the sum of the packet energies by these values:
-  - the time interval in seconds;
-  - the width of the bin, e.g. the wavelength bin in Å;
-  - the number of packet files that the code read;
-  - (1 Mpc)², with `megaparsec_to_cm`.
-- For a real packet, also divide the energy by 4π and by the solid-angle fraction of its direction bin. Do not do this for a virtual packet. A virtual packet has one direction.
-- The fields `trueem_*` give the last thermal emission of an r-packet. A gamma packet records its emission in `em_pos` and `em_time` only. Do not put a radioactive decay into a `trueem_*` field. A decay is not a thermal emission.
-- In the estimators, a `deposition_*`, `heating_*`, or `cooling_*` value that ARTIS does not write is zero. A cell with a zero rate stays in the denominator of a mean. A null value of `Te`, `TR`, or `nne` shows that ARTIS did not report the value.
-- Log each physical assumption and each method that a command applies. Log the source of each one, e.g. the temperature of the level populations in local thermodynamic equilibrium. If a physical choice has more than one correct answer, add a CLI option for it. Log the value that the command uses.
+- Use cgs units. Put a different unit at the end of the name, e.g. `time_days` and `lambda_angstroms`.
+- Import each constant and conversion factor from `artistools/constants.py`. Do not write the number as a literal.
+- Log each physical assumption that a command applies, and its source.
 
 ## Command-line entry points
 
