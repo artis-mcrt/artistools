@@ -468,6 +468,27 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
+def get_current_allranks_outputfile(folderpath: Path, filenameformat: str) -> Path | None:
+    """Return the file of all ranks of a run folder, e.g. nlte_allranks.out.zst, or None when it is absent or stale.
+
+    With the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes the text of all ranks into this file. The script
+    scripts/combine_allrank_out_files.py of ARTIS makes the same file from the files of the ranks. The script can
+    combine the files of a job that still runs, thus a newer file of a rank shows that the file of all ranks is stale.
+    The estimators apply the same rule.
+    """
+    allranksfile = firstexisting_or_none(
+        re.sub(r"\{mpirank[^}]*\}", "allranks", filenameformat),
+        folder=folderpath,
+        tryzipped=True,
+        search_subfolders=False,
+    )
+    if allranksfile is None:
+        return None
+    allranks_mtime = allranksfile.stat().st_mtime
+    rankfiles = folderpath.glob(re.sub(r"\{mpirank[^}]*\}", "[0-9]*", filenameformat) + "*")
+    return None if any(rankfile.stat().st_mtime > allranks_mtime for rankfile in rankfiles) else allranksfile
+
+
 def read_rank_outputfiles(
     modelpath: Path | str,
     filenameformat: str,
@@ -478,6 +499,7 @@ def read_rank_outputfiles(
 
     When a timestep, a model grid cell, or a sequence of cells is given, only the run folders and ranks
     that could contain them are read, and the rows are filtered to that selection (negative values mean no filter).
+    A run folder with a current file of all ranks, e.g. radfield_allranks.out, gives the rows from that file.
     """
     # the format holds a field for the rank, thus a message names the family rather than one file
     filefamily = re.sub(r"\{mpirank[^}]*\}", "*", filenameformat)
@@ -494,6 +516,9 @@ def read_rank_outputfiles(
     filepathsofeachfolder: list[list[Path]] = []
     emptyranks = []
     for folderpath in runfolders:
+        if (allranksfile := get_current_allranks_outputfile(folderpath, filenameformat)) is not None:
+            filepathsofeachfolder.append([allranksfile])
+            continue
         folderfilepaths: list[Path] = []
         for mpirank in get_mpiranklist(modelpath, modelgridindex=modelgridindex):
             # the loop above reads each run folder. A search below one of them would read the
@@ -526,11 +551,20 @@ def read_rank_outputfiles(
         msg = f"No {filefamily} files found in {modelpath}"
         raise FileNotFoundError(msg)
 
+    # a file of all ranks holds every cell, thus the filters act on each run folder before the next read. They also act
+    # on the key columns of the deduplication below, and make it smaller
+    selection: list[pl.Expr] = []
+    matchcells = [modelgridindex] if isinstance(modelgridindex, int) else modelgridindex
+    if matchcells and all(mgi >= 0 for mgi in matchcells):
+        selection.append(pl.col("modelgridindex").is_in(matchcells))
+    if timestep is not None and timestep >= 0:
+        selection.append(pl.col("timestep") == timestep)
+
     dfofeachfolder: list[pl.DataFrame] = []
     for folderindex, folderfilepaths in enumerate(filepathsofeachfolder):
         dfsoffolder = [dfrank for dfrank in map(read_rank_file, folderfilepaths) if dfrank is not None]
         if dfsoffolder:
-            dfofeachfolder.append(
+            dffolder = (
                 pl
                 .concat(dfsoffolder, how="vertical_relaxed")
                 .rename({"ionstage": "ion_stage"}, strict=False)
@@ -540,18 +574,12 @@ def read_rank_outputfiles(
                     pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
                 )
             )
+            dfofeachfolder.append(dffolder.filter(*selection) if selection else dffolder)
     if not dfofeachfolder:
         msg = f"Each {filefamily} file of {modelpath} is empty"
         raise ValueError(msg)
 
     dfout = pl.concat(dfofeachfolder, how="vertical_relaxed")
-
-    # the filters act on the key columns of the deduplication below, thus they come first and make it smaller
-    matchcells = [modelgridindex] if isinstance(modelgridindex, int) else modelgridindex
-    if matchcells and all(mgi >= 0 for mgi in matchcells):
-        dfout = dfout.filter(pl.col("modelgridindex").is_in(matchcells))
-    if timestep is not None and timestep >= 0:
-        dfout = dfout.filter(pl.col("timestep") == timestep)
 
     # the first timestep of a restarted run repeats the last timestep of the folder before it.
     # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
@@ -560,7 +588,9 @@ def read_rank_outputfiles(
     if len(dfofeachfolder) > 1:
         dfout = dfout.filter(pl.col("folderindex") == pl.col("folderindex").min().over(["timestep", "modelgridindex"]))
 
-    return dfout.drop("folderindex")
+    # the files of the ranks give the rows of each rank in turn, and a file of all ranks gives each timestep in turn.
+    # The sort gives one order for both, and it keeps the order of the rows of a cell, e.g. the bins
+    return dfout.drop("folderindex").sort(["timestep", "modelgridindex"], maintain_order=True)
 
 
 def read_rank_file(filepath: Path) -> pl.DataFrame | None:

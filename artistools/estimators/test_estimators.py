@@ -1627,6 +1627,11 @@ def test_averageexcitation_plotitem_needs_nlte_files(tmp_path: Path) -> None:
         "the run has no NLTE population files (nlte_*.out)"
     )
 
+    # with the option WRITE_COMBINED_ALLRANK_OUT_FILES, a job folder holds the NLTE populations of all ranks in one file
+    (tmp_path / "job_from_ts0000").mkdir()
+    (tmp_path / "job_from_ts0000" / "nlte_allranks.out.zst").touch()
+    assert get_default_plotitem_skip_reason(plotitem, estimatorcolumns, tmp_path) is None
+
 
 def test_get_elemcolor_is_stable_and_unbounded() -> None:
     """Every element must have a colour, fixed by the element and not by how many plots came before it.

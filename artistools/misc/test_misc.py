@@ -2215,6 +2215,38 @@ def test_read_rank_outputfiles_drops_the_repeated_timestep_of_a_restart(tmp_path
     assert dfout.filter(timestep=1, modelgridindex=4)["nnlevel"].item() == 8.0
 
 
+def test_read_rank_outputfiles_reads_the_current_file_of_all_ranks(tmp_path: Path) -> None:
+    """A run folder with a file of all ranks, e.g. nlte_allranks.out, gives its rows, unless a file of a rank is newer.
+
+    With the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes no file of a rank. The script of ARTIS can combine
+    the files of a job that still runs, and sn3d then adds timesteps to the files of the ranks.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {".": [(0, cell, cell + 0.5) for cell in range(5)]})
+    rankfile = tmp_path / "nlte_0000.out"
+    allranksfile = tmp_path / "nlte_allranks.out"
+    allranksfile.write_text(
+        "timestep modelgridindex nnlevel\n" + "".join(f"0 {cell} {cell + 10.5}\n" for cell in range(5)),
+        encoding="utf-8",
+    )
+
+    os.utime(rankfile, (1000.0, 1000.0))
+    os.utime(allranksfile, (2000.0, 2000.0))
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=3)
+    assert dfout["nnlevel"].to_list() == [13.5], (
+        "a file of all ranks that is not older than the files of the ranks wins"
+    )
+
+    os.utime(rankfile, (3000.0, 3000.0))
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=3)
+    assert dfout["nnlevel"].to_list() == [3.5], "a newer file of a rank shows that the file of all ranks is stale"
+
+    rankfile.unlink()
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0)
+    assert dfout["nnlevel"].to_list() == [cell + 10.5 for cell in range(5)], "the file of all ranks gives every cell"
+
+
 def test_addarg_modelpath_positional_also_takes_the_option() -> None:
     """A command whose path is positional must also accept -modelpath.
 
