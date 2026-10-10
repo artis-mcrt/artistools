@@ -1297,7 +1297,7 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
     the foreground colour. A black or dark grey item takes the foreground colour, because it does not show on the dark
     background:
 
-    - a line;
+    - a line, or the edge or the face of its markers;
     - a text;
     - the edge or the face of a patch;
     - the edge or the face of a collection of one colour.
@@ -1333,9 +1333,18 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
 
     # one walk of the tree of artists, because a figure with many subplots holds many artists
     for artist in fig.findobj():
-        if isinstance(artist, (Text, mpllines.Line2D)):
+        if isinstance(artist, Text):
             if is_dark_grey(artist.get_color()):
                 artist.set_color(foreground)
+        elif isinstance(artist, mpllines.Line2D):
+            # a marker can have an edge or a face of its own colour, e.g. the black edge of a hollow marker
+            markercolours = (artist.get_markeredgecolor(), artist.get_markerfacecolor())
+            if is_dark_grey(artist.get_color()):
+                artist.set_color(foreground)
+            if is_dark_grey(markercolours[0]):
+                artist.set_markeredgecolor(foreground)
+            if is_dark_grey(markercolours[1]):
+                artist.set_markerfacecolor(foreground)
         elif isinstance(artist, Patch):
             if is_dark_grey(artist.get_edgecolor()):
                 artist.set_edgecolor(foreground)

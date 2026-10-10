@@ -128,8 +128,9 @@ def make_plot(
             axis.set_title(f"{modelname} timestep {timestep}" if modelname else f"timestep {timestep}")
             set_legend(axis, args)
             # save_figure holds these rules for a figure of its own, and this pdf writes its own pages
-            transparent = getattr(args, "darkmode", False) and apply_darkmode(fig, "pdf")
-            pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02, transparent=transparent)
+            # without --darkmode, the transparency of the matplotlib configuration applies
+            darkkwargs = {"transparent": apply_darkmode(fig, "pdf")} if getattr(args, "darkmode", False) else {}
+            pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02, **darkkwargs)
             plt.close(fig)
 
     print_saved(outputfile)
