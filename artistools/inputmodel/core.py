@@ -34,11 +34,10 @@ from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import find_compressed
-from artistools.misc.fileio import get_zstd_output_path
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import MTIME_TOLERANCE_S
-from artistools.misc.fileio import open_compressed_output
 from artistools.misc.fileio import with_compressed_extension
+from artistools.misc.fileio import write_zstd_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.modelinfo import parse_npts_line
 from artistools.misc.remote import check_local_path
@@ -52,7 +51,7 @@ UNITS_COMMENT_END = "Each X_ column is a mass fraction"
 
 def get_created_comment() -> str:
     """Return the comment line that gives the creation time of an input file in UTC."""
-    return f"# {CREATED_COMMENT_PREFIX} {datetime.datetime.now(tz=datetime.UTC).strftime(CREATED_TIME_FORMAT)}\n"
+    return f"# {CREATED_COMMENT_PREFIX} {datetime.datetime.now(tz=datetime.UTC).strftime(CREATED_TIME_FORMAT)}"
 
 
 def is_writer_comment(commentline: str) -> bool:
@@ -987,26 +986,23 @@ def customcolsortkey(col: str) -> tuple[float, int]:
     return get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
 
 
-def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[str]) -> None:
-    """Write the dataframe in the ARTIS text file format: space separated and no header.
+def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[bytes]) -> None:
+    """Append the dataframe as one zstd frame in the ARTIS text file format: space separated and no header.
 
     Eight significant figures round-trip the Float32 that the reader produces, whose relative spacing
     is 6e-8. Five figures lost more precision than the reader does, which showed up as a mass that
     changed by 2e-5 when a model was written and read again.
     """
-    # polars writes to the file descriptor of a file object, thus the compressor gets no data. Thus write a string.
-    # A slice of rows keeps the string small for a large model.
-    for dfslice in df.iter_slices(n_rows=16384):
-        fileobj.write(
-            dfslice.write_csv(
-                include_header=False,
-                separator=" ",
-                line_terminator="\n",
-                float_scientific=True,
-                float_precision=7,
-                null_value="0.0",
-            )
-        )
+    df.write_csv(
+        fileobj,
+        include_header=False,
+        separator=" ",
+        line_terminator="\n",
+        float_scientific=True,
+        float_precision=7,
+        null_value="0.0",
+        compression="zstd",
+    )
 
 
 def backup_existing_file(filepath: Path) -> None:
@@ -1032,7 +1028,7 @@ def save_modeldata(
     """Write model.txt, a snapshot of the density and the composition, from the cell properties and the metadata.
 
     The metadata gives values such as the time after the explosion. The file gets zstd compression, and a file name
-    with no compression extension gets .zst, e.g. model.txt.zst. ARTIS reads such a file directly.
+    that does not end in .zst gets .zst, e.g. model.txt.zst. ARTIS reads such a file directly.
 
     1D
     -------
@@ -1150,25 +1146,23 @@ def save_modeldata(
             (f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"),
         ]
 
-    modelfilepath = get_zstd_output_path(resolve_outputfile(outpath, "model.txt"))
+    modelfilepath = with_compressed_extension(resolve_outputfile(outpath, "model.txt"), ".zst")
 
     backup_existing_file(modelfilepath)
     # a write that stops early must not leave the cache of the old file beside a part of the new file
     remove_parquet_cache(modelfilepath)
 
-    with open_compressed_output(modelfilepath) as fmodel:
-        if headercommentlines:
-            fmodel.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
-
+    with modelfilepath.open("wb") as fmodel:
         # sn3d reads the first comment line after the header values as the column names, thus each
-        # other comment line comes before those values
-        fmodel.write(get_created_comment())
-        fmodel.write(f"# {UNITS_COMMENT_PREFIX} {strunits}. {UNITS_COMMENT_END}\n")
-
-        # sn3d reads the numbers at the start of a header line, thus an inline comment can follow them
-        fmodel.writelines(f"{strvalue:<24} # {comment}\n" for strvalue, comment in headerlines)
-
-        fmodel.write(f"#{' '.join([*standardcols, *customcols])}\n")
+        # other comment line comes before those values. sn3d reads the numbers at the start of a header
+        # line, thus an inline comment can follow them
+        headertextlines = [
+            *[f"# {line}" for line in headercommentlines or []],
+            get_created_comment(),
+            f"# {UNITS_COMMENT_PREFIX} {strunits}. {UNITS_COMMENT_END}",
+            *[f"{strvalue:<24} # {comment}" for strvalue, comment in headerlines],
+            f"#{' '.join([*standardcols, *customcols])}",
+        ]
 
         abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
 
@@ -1176,18 +1170,18 @@ def save_modeldata(
         ismassfraccol = [col.startswith("X_") for col in abundandcustomcols]
         strzeroabund = " ".join(["0" if isint else "0.0" for isint in isintcol])
         if modelmeta["dimensions"] == 1:
+            celllines = []
             for inputcellid, vel_r_max_kmps, logrho, *abundandcustomcolvals in dfmodel.select([
                 "inputcellid",
                 "vel_r_max_kmps",
                 "logrho",
                 *abundandcustomcols,
             ]).iter_rows():
-                fmodel.write(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} ")
                 # write eight significant figures, because write_artis_csv gives the same precision to
                 # the other dimensions. A null or NaN becomes zero, as write_artis_csv writes a null. A negative
                 # custom value keeps its sign, but a negative mass fraction, e.g. from the noise of an
                 # interpolation, becomes zero, because ARTIS needs a valid composition
-                fmodel.write(
+                strabundandcustom = (
                     " ".join([
                         (
                             (f"{colvalue:d}" if isint else f"{colvalue:.7e}")
@@ -1203,7 +1197,9 @@ def save_modeldata(
                     if logrho > -99.0
                     else strzeroabund
                 )
-                fmodel.write("\n")
+                celllines.append(f"{inputcellid:d} {vel_r_max_kmps:9.2f} {logrho:10.8f} {strabundandcustom}")
+
+            write_zstd_lines(fmodel, [*headertextlines, *celllines])
 
         else:
             # startcols are the standard ones, but excluding any abundances
@@ -1216,6 +1212,7 @@ def save_modeldata(
                 for col in dfmodel.columns
                 if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
             )
+            write_zstd_lines(fmodel, headertextlines)
             write_artis_csv(dfmodel, fmodel)
 
     remove_parquet_cache(modelfilepath)
@@ -1303,7 +1300,7 @@ def save_initelemabundances(
 ) -> None:
     """Save a DataFrame in the format of get_initelemabundances to abundances.txt.zst.
 
-    A file name with no compression extension gets .zst, as in save_modeldata.
+    A file name that does not end in .zst gets .zst, as in save_modeldata.
 
     columns must be:
         - inputcellid: integer index to match model.txt (starting from 1)
@@ -1311,7 +1308,7 @@ def save_initelemabundances(
     """
     timestart = time.perf_counter()
 
-    abundancefilename = get_zstd_output_path(resolve_outputfile(outpath, "abundances.txt"))
+    abundancefilename = with_compressed_extension(resolve_outputfile(outpath, "abundances.txt"), ".zst")
 
     dfelabundances = (
         dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
@@ -1335,13 +1332,17 @@ def save_initelemabundances(
     backup_existing_file(abundancefilename)
     remove_parquet_cache(abundancefilename)
 
-    with open_compressed_output(abundancefilename) as fabund:
-        if headercommentlines:
-            fabund.write("\n".join([f"# {line}" for line in headercommentlines]) + "\n")
+    with abundancefilename.open("wb") as fabund:
         # sn3d and get_initelemabundances skip each comment line, and both read the columns by position
-        fabund.write(get_created_comment())
-        fabund.write(f"# {UNITS_COMMENT_PREFIX} each X_ column is the mass fraction of an element\n")
-        fabund.write(f"#{' '.join(dfelabundances.columns)}\n")
+        write_zstd_lines(
+            fabund,
+            [
+                *[f"# {line}" for line in headercommentlines or []],
+                get_created_comment(),
+                f"# {UNITS_COMMENT_PREFIX} each X_ column is the mass fraction of an element",
+                f"#{' '.join(dfelabundances.columns)}",
+            ],
+        )
         write_artis_csv(dfelabundances, fabund)
 
     remove_parquet_cache(abundancefilename)

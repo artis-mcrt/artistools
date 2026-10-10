@@ -12,12 +12,11 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
+from artistools.inputmodel.core import backup_existing_file
 from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
 from artistools.misc import addarg_output
 from artistools.misc import parse_cli_args
-from artistools.misc.fileio import get_zstd_output_path
-from artistools.misc.fileio import open_compressed_output
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
 itab = itable + 5
@@ -329,18 +328,13 @@ def maptogrid(
         contrib_k = np.concatenate(contrib_cellk)
         contrib_gridindex = (contrib_k * ncoordgrid + contrib_j) * ncoordgrid + contrib_i + 1
         contrib_frac_of_cellmass = np.concatenate(contrib_rho) / grho[contrib_i, contrib_j, contrib_k]
-        gridcontribpath = get_zstd_output_path(Path(outputfolderpath, "gridcontributions.txt"))
-        with open_compressed_output(gridcontribpath) as fcontribs:
-            fcontribs.write("particleid cellindex frac_of_cellmass\n")
-            fcontribs.writelines(
-                f"{pid} {gridindex} {frac}\n"
-                for pid, gridindex, frac in zip(
-                    particleid[np.concatenate(contrib_particle)].tolist(),
-                    contrib_gridindex.tolist(),
-                    contrib_frac_of_cellmass.tolist(),
-                    strict=True,
-                )
-            )
+        gridcontribpath = Path(outputfolderpath, "gridcontributions.txt.zst")
+        backup_existing_file(gridcontribpath)
+        pl.DataFrame({
+            "particleid": particleid[np.concatenate(contrib_particle)],
+            "cellindex": contrib_gridindex,
+            "frac_of_cellmass": contrib_frac_of_cellmass,
+        }).write_csv(gridcontribpath, separator=" ", compression="zstd")
         logprint(f"saved {gridcontribpath}")
 
     # check some stuff on the grid

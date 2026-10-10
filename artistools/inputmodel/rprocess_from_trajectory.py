@@ -35,8 +35,7 @@ from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import polars_source
 from artistools.misc import read_wsv
-from artistools.misc.fileio import get_zstd_output_path
-from artistools.misc.fileio import open_compressed_output
+from artistools.misc.fileio import with_compressed_extension
 
 
 def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
@@ -450,11 +449,10 @@ def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Pa
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
-    gridcontribpath = get_zstd_output_path(gridcontribpath)
+    gridcontribpath = with_compressed_extension(gridcontribpath, ".zst")
     backup_existing_file(gridcontribpath)
 
-    with open_compressed_output(gridcontribpath) as fcontribs:
-        fcontribs.write(dfcontribs.write_csv(separator=" ", float_scientific=True, float_precision=7))
+    dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7, compression="zstd")
 
 
 def get_dfnucabundances(
@@ -650,9 +648,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputfile))
 
-    with open_compressed_output(get_zstd_output_path(Path(args.outputfile, "gridcontributions.txt"))) as fcontribs:
-        fcontribs.write("particleid cellindex frac_of_cellmass\n")
-        fcontribs.writelines(f"{particleid} {inputcellid} 1.0\n" for inputcellid in dfmodel["inputcellid"])
+    gridcontribpath = Path(args.outputfile, "gridcontributions.txt.zst")
+    backup_existing_file(gridcontribpath)
+    dfmodel.select(
+        pl.lit(particleid).alias("particleid"), pl.col("inputcellid").alias("cellindex"), frac_of_cellmass=pl.lit(1.0)
+    ).write_csv(gridcontribpath, separator=" ", compression="zstd")
 
 
 def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_init_seconds: float) -> pl.DataFrame:
