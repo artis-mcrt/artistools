@@ -543,6 +543,10 @@ def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.fl
 
 
 # function added by Luke and Gerrit
+# the files that map_to_artis writes for a consistency check of the interpolation with the dynamical ejecta
+DYN_CHECK_FILE_NAMES = ("dyn_abunds.txt", "dyn_model_notrescaled.txt", "dyn_model_rescaled.txt")
+
+
 def map_to_artis(
     model_dim: int,
     grid_dims: npt.NDArray[np.integer],
@@ -1301,7 +1305,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelname += "_2d"
         args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
         print(args.outputfile)
-    confirm_overwrite([Path(args.outputfile, filename) for filename in MODEL_FILE_NAMES], force=args.force)
+    # with -replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check
+    writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
+    confirm_overwrite(
+        [
+            Path(args.outputfile, filename)
+            for filename in (*MODEL_FILE_NAMES, *(DYN_CHECK_FILE_NAMES if writesdynfiles else ()))
+        ],
+        force=args.force,
+    )
     Path(args.outputfile).mkdir(parents=True, exist_ok=True)
 
     # model_dim = 1 not covered in this script

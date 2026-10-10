@@ -4105,10 +4105,13 @@ def write_e2e_model(datpath: Path, isopath: Path) -> None:
     np.save(isopath, np.array([[2, 2], [26, 30]]))
 
 
-def test_from_e2e_model_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_from_e2e_model_main(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """The command writes a 2D model and a 3D model, and --interpolate writes its check files to the -o folder.
 
     The interpolation with the dynamical ejecta wrote dyn_abunds.txt and dyn_model_*.txt to the working folder.
+    The overwrite check before the work covered only the model files, thus it did not protect the check files.
     """
     datpath = tmp_path / "e2emodel.npz"
     write_e2e_model(datpath, tmp_path / "iso_table.npy")
@@ -4140,6 +4143,23 @@ def test_from_e2e_model_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     for filename in ("dyn_abunds.txt.zst", "dyn_model_notrescaled.txt.zst", "dyn_model_rescaled.txt.zst"):
         assert (tmp_path / "interpolated" / filename).is_file(), filename
     assert not list(workingfolder.iterdir())
+
+    for filename in at.inputmodel.core.MODEL_FILE_NAMES:
+        (tmp_path / "interpolated" / f"{filename}.zst").unlink(missing_ok=True)
+    capsys.readouterr()
+    with pytest.raises(SystemExit):
+        at.inputmodel.from_e2e_model.main(
+            argsraw=[
+                *gridargs3d,
+                "-replacedyn",
+                str(tmp_path / "dyn3d"),
+                "--interpolate",
+                "-o",
+                str(tmp_path / "interpolated"),
+            ]
+        )
+    assert f"{tmp_path / 'interpolated' / 'dyn_abunds.txt.zst'} exists" in capsys.readouterr().err
+    assert not (tmp_path / "interpolated" / "model.txt.zst").exists()
 
 
 def test_describeinputmodel_keeps_its_description_with_quiet(capsys: pytest.CaptureFixture[str]) -> None:
