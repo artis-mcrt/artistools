@@ -38,11 +38,11 @@ jobs:
               with:
                   plugin_marketplaces: https://github.com/anthropics/claude-code.git
                   plugins: code-review@claude-code-plugins
-                  prompt: /code-review:code-review --comment ${{ github.event.pull_request.html_url }}
                   # the first review of a pull request uses the maximum effort. A review after a new push
-                  # (synchronize) uses the default effort of the model. --allowedTools gives the same tools
-                  # as the allowed-tools list of the plugin command
+                  # (synchronize) uses the default effort.
+                  prompt: /code-review:code-review ${{ github.event.action != 'synchronize' && 'max' || '' }} --comment ${{ github.event.pull_request.html_url
+                      }}
+                  # --allowedTools gives the same tools as the allowed-tools list of the plugin command
                   claude_args: |
-                      --model claude-opus-5-5
-                      ${{ github.event.action != 'synchronize' && '--effort max' || '' }}
+                      --model claude-opus-5
                       --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
