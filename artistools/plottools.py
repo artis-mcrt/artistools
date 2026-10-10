@@ -1354,12 +1354,12 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
                 artist.set_color(newcolour)
         elif isinstance(artist, mpllines.Line2D):
             # a marker can have an edge or a face of its own colour, e.g. the black edge of a hollow marker
-            markercolours = (artist.get_markeredgecolor(), artist.get_markerfacecolor())
+            markeredgecolour, markerfacecolour = artist.get_markeredgecolor(), artist.get_markerfacecolor()
             if (newcolour := get_light_grey(artist.get_color())) is not None:
                 artist.set_color(newcolour)
-            if (newcolour := get_light_grey(markercolours[0])) is not None:
+            if (newcolour := get_light_grey(markeredgecolour)) is not None:
                 artist.set_markeredgecolor(newcolour)
-            if (newcolour := get_light_grey(markercolours[1])) is not None:
+            if (newcolour := get_light_grey(markerfacecolour)) is not None:
                 artist.set_markerfacecolor(newcolour)
         elif isinstance(artist, Patch):
             if (newcolour := get_light_grey(artist.get_edgecolor())) is not None:

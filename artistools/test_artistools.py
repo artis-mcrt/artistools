@@ -1179,7 +1179,8 @@ def test_every_command_that_saves_a_plot_has_darkmode() -> None:
     import inspect
     import re
 
-    savesplot = re.compile(r"save_figure\(|savefig\(|save_or_show\(")
+    # matplotlib, plotly, and pyvista each have a function that writes a plot file
+    savesplot = re.compile(r"save_figure\(|savefig\(|save_or_show\(|write_image\(|write_html\(|screenshot=")
     packagefolder = Path(at.__file__).parent
     # plottools defines save_figure, and each module that draws a plot imports it
     writermodules = {
@@ -1202,9 +1203,10 @@ def test_every_command_that_saves_a_plot_has_darkmode() -> None:
         plotmodules += 1
         parser = argparse.ArgumentParser()
         module.addargs(parser)
-        flags = {flag for action in parser._actions for flag in action.option_strings}  # ruff:ignore[private-member-access]
+        actions = parser._actions  # ruff:ignore[private-member-access]
+        flags = {flag for action in actions for flag in action.option_strings}
         assert "--darkmode" in flags, f"{spec.module} saves a plot but has no --darkmode"
-    assert plotmodules >= 21
+    assert plotmodules >= 22
 
 
 def test_save_figure_darkmode_gives_a_black_png_and_a_transparent_pdf(tmp_path: Path) -> None:

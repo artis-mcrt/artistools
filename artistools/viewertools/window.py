@@ -375,9 +375,9 @@ def render_command[PlotT, ValuesT](
 ) -> "Callable[[], str | None]":
     """Draw a plot of the values on a new figure, and return the function that shows it in the canvas of the viewer.
 
-    draw parses the command of the values and draws the plot on the empty figure that it receives. It returns the frames and the
-    data that the window reads, or the reason that it rejects the values. keep gives these to the viewer. Each plot of
-    each viewer gets the same last steps: the titles, the colours of Dark Mode, and the layout of the text.
+    draw parses the command of the values and draws the plot on the empty figure that it receives. It returns the
+    frames and the data that the window reads, or the reason that it rejects the values. keep gives these to the viewer.
+    Each plot of each viewer gets the same last steps: the titles, the colours of Dark Mode, and the layout of the text.
 
     A worker thread can run this function, because it changes nothing that the window reads. The function that it
     returns must run in the thread of the window. That function returns the reason for the status line if the command
