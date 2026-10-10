@@ -542,11 +542,11 @@ def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.fl
     return reflected
 
 
-# function added by Luke and Gerrit
 # the files that map_to_artis writes for a consistency check of the interpolation with the dynamical ejecta
 DYN_CHECK_FILE_NAMES = ("dyn_abunds.txt", "dyn_model_notrescaled.txt", "dyn_model_rescaled.txt")
 
 
+# function added by Luke and Gerrit
 def map_to_artis(
     model_dim: int,
     grid_dims: npt.NDArray[np.integer],
@@ -1288,16 +1288,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--perturb3Dmodel", dest="perturb3Dmodel", type=float_or_str, nargs="+", help=argparse.SUPPRESS)
 
 
-def get_output_files(args: argparse.Namespace) -> list[Path]:
-    """Return the files that the command writes to the -o folder.
+def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
+    """Return the names of the files that the command writes to the -o folder.
 
     With -replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
     """
     writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
-    return [
-        Path(args.outputfile, filename)
-        for filename in (*MODEL_FILE_NAMES, *(DYN_CHECK_FILE_NAMES if writesdynfiles else ()))
-    ]
+    return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -1317,7 +1314,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelname += "_2d"
         args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
         print(args.outputfile)
-    confirm_overwrite(get_output_files(args), force=args.force)
+    confirm_overwrite([args.outputfile], get_output_file_names(args), force=args.force)
     Path(args.outputfile).mkdir(parents=True, exist_ok=True)
 
     # model_dim = 1 not covered in this script

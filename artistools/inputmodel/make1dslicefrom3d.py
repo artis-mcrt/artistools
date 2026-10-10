@@ -46,9 +46,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice."""
     args = parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
-    confirm_overwrite(
-        [Path(args.outputfolder, filename) for filename in ("model.txt", "abundances.txt")], force=args.force
-    )
+    confirm_overwrite([args.outputfolder], ("model.txt", "abundances.txt"), force=args.force)
     Path(args.outputfolder).mkdir(parents=True, exist_ok=True)
 
     dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)

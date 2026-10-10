@@ -1124,14 +1124,20 @@ def addarg_force(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def confirm_overwrite(outputfiles: Iterable[Path], force: bool) -> None:
+def confirm_overwrite(folders: Iterable[Path | str], filenames: Sequence[str], force: bool) -> None:
     """Warn about the output files that exist, and stop the command if the user does not agree to overwrite them.
 
-    Each name also stands for its compressed copies, e.g. model.txt for model.txt.zst. A command calls this function
-    before the work starts, thus a refusal costs no time. Nobody can answer when stdin is not a terminal, thus the
-    command then stops if it has no --force.
+    The output files are the file names in each of the folders. Each name also stands for its compressed copies,
+    e.g. model.txt for model.txt.zst. A command calls this function before the work starts, thus a refusal costs no
+    time. Nobody can answer when stdin is not a terminal, thus the command then stops if it has no --force.
     """
-    existingfiles = [path for outputfile in outputfiles for path in get_file_copies(outputfile) if path.is_file()]
+    existingfiles = [
+        path
+        for folder in folders
+        for filename in filenames
+        for path in get_file_copies(Path(folder, filename))
+        if path.is_file()
+    ]
     if not existingfiles:
         return
 

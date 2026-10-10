@@ -320,9 +320,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make 1D model from cone in 3D model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    confirm_overwrite(
-        [Path(args.outputfile, filename) for filename in ("model_1d.txt", "abundances_1d.txt")], force=args.force
-    )
+    confirm_overwrite([args.outputfile], ("model_1d.txt", "abundances_1d.txt"), force=args.force)
 
     args.modelpath = normalize_path_list(args.modelpath)
 

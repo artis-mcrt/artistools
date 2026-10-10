@@ -422,7 +422,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)
-    confirm_overwrite([outputpath / filename for filename in MODEL_FILE_NAMES], force=args.force)
+    confirm_overwrite([outputpath], MODEL_FILE_NAMES, force=args.force)
 
     outputpath.mkdir(parents=True, exist_ok=True)
 

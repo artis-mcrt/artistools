@@ -46,9 +46,7 @@ def get_nuclide_atomic_number(species: str) -> int:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Convert Shen et al. 2018 models to ARTIS format."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    confirm_overwrite(
-        [Path(args.outputfile, filename) for filename in ("model.txt", "abundances.txt")], force=args.force
-    )
+    confirm_overwrite([args.outputfile], ("model.txt", "abundances.txt"), force=args.force)
 
     datain = read_wsv(args.inputpath).drop_nulls()
 

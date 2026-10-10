@@ -282,6 +282,15 @@ def test_downscale_3dmodel(tmp_path: Path) -> None:
         )
 
 
+def decompress_to_plain(zstdpath: Path) -> Path:
+    """Replace a zstd file with its plain copy, e.g. model.txt for model.txt.zst, and return the plain path."""
+    plainpath = zstdpath.with_suffix("")
+    with at.zopen(zstdpath, encoding="utf-8") as fzst:
+        plainpath.write_text(fzst.read(), encoding="utf-8")
+    zstdpath.unlink()
+    return plainpath
+
+
 def verify_file_checksums(
     checksums_expected: dict[t.Any, t.Any], digest: str = "sha256", folder: Path | str = "."
 ) -> None:
@@ -1930,9 +1939,7 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel, modelmeta=modelmeta)
     at.inputmodel.save_initelemabundances(outpath=outpath, dfelabundances=dfelemabundances)
     # the reader writes no cache for a file below 2 MiB, thus the test reads a plain copy of the zstd file
-    with at.zopen(outpath / "model.txt.zst", encoding="utf-8") as fmodel:
-        (outpath / "model.txt").write_text(fmodel.read(), encoding="utf-8")
-    (outpath / "model.txt.zst").unlink()
+    decompress_to_plain(outpath / "model.txt.zst")
 
     # the first load reads the text file, and it writes a cache, because the file is larger than 2 MiB.
     # The second load reads that cache
@@ -2868,12 +2875,10 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
         "Ye": [0.3, 0.4],
     })
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
-    zstmodelfile = tmp_path / "model.txt.zst"
-    with at.zopen(zstmodelfile, encoding="utf-8") as fmodel:
-        modeltext = fmodel.read()
-    zstmodelfile.unlink()
+    modelfile = decompress_to_plain(tmp_path / "model.txt.zst")
+    modeltext = modelfile.read_text(encoding="utf-8")
     assert " Ye\n" in modeltext
-    (tmp_path / "model.txt").write_text(modeltext.replace(" Ye\n", " cellYe\n"), encoding="utf-8")
+    modelfile.write_text(modeltext.replace(" Ye\n", " cellYe\n"), encoding="utf-8")
 
     lzdfmodel, _modelmeta = at.inputmodel.get_modeldata(tmp_path)
 
@@ -3099,9 +3104,7 @@ def test_save_modeldata_deletes_an_old_plain_file(tmp_path: Path) -> None:
         at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
         if logrho == -10.0:
             for filename in ("model.txt", "abundances.txt"):
-                with at.zopen(tmp_path / f"{filename}.zst", encoding="utf-8") as fzst:
-                    (tmp_path / filename).write_text(fzst.read(), encoding="utf-8")
-                (tmp_path / f"{filename}.zst").unlink()
+                decompress_to_plain(tmp_path / f"{filename}.zst")
 
     assert sorted(path.name for path in tmp_path.iterdir() if ".parquet" not in path.name) == [
         "abundances.txt.zst",
@@ -3126,23 +3129,23 @@ def test_command_asks_before_it_overwrites_a_compressed_copy(
 ) -> None:
     """A plain output name also finds its compressed copy, and the command stops before any work if nobody agrees."""
     (tmp_path / "abundances.txt.zst").write_bytes(b"")
-    outputfiles = [tmp_path / "model.txt", tmp_path / "abundances.txt"]
+    filenames = ("model.txt", "abundances.txt")
 
     # stdin of pytest is not a terminal, thus nobody can answer
     with pytest.raises(SystemExit):
-        at.misc.confirm_overwrite(outputfiles, force=False)
+        at.misc.confirm_overwrite([tmp_path], filenames, force=False)
     assert f"{tmp_path / 'abundances.txt.zst'} exists" in capsys.readouterr().err
 
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     for reply, agrees in (("y", True), ("n", False), ("", False)):
         with mock.patch("builtins.input", return_value=reply):
             if agrees:
-                at.misc.confirm_overwrite(outputfiles, force=False)
+                at.misc.confirm_overwrite([tmp_path], filenames, force=False)
             else:
                 with pytest.raises(SystemExit):
-                    at.misc.confirm_overwrite(outputfiles, force=False)
+                    at.misc.confirm_overwrite([tmp_path], filenames, force=False)
 
-    at.misc.confirm_overwrite(outputfiles, force=True)
+    at.misc.confirm_overwrite([tmp_path], filenames, force=True)
 
     from artistools.inputmodel import shen2018
 

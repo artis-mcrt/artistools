@@ -113,7 +113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     outputpath = Path(args.outputfile)
-    confirm_overwrite([outputpath / filename for filename in ("model.txt", "abundances.txt")], force=args.force)
+    confirm_overwrite([outputpath], ("model.txt", "abundances.txt"), force=args.force)
     outputpath.mkdir(parents=True, exist_ok=True)
 
     a: dict[str, t.Any] = rd_sn_hydro_data(args.snapshot, reverse=True)

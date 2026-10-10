@@ -107,21 +107,22 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
     )
 
 
-def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) -> list[Path]:
-    """Return the folders that get model.txt, abundances.txt, and gridcontributions.txt from the actions of args.
-
-    The folder of --makemodelfromgriddata comes last.
-    """
+def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) -> dict[str, list[Path]]:
+    """Return the folders that get model.txt, abundances.txt, and gridcontributions.txt, for each action of args."""
     if args.downscale3dgrid:
-        return [get_downscale_outputfolder(args.modelpath[0], args.outputgridsize, args.outputfile)]
+        return {
+            "downscale3dgrid": [get_downscale_outputfolder(args.modelpath[0], args.outputgridsize, args.outputfile)]
+        }
 
-    outputfolders = (
-        [get_dimreduce_outputfolder(args.outputfile, modelpath, args.dimensionreduce) for modelpath in args.modelpath]
-        if args.dimensionreduce is not None
-        else []
-    )
+    outputfolders: dict[str, list[Path]] = {}
+    if args.dimensionreduce is not None:
+        outputfolders["dimensionreduce"] = [
+            get_dimreduce_outputfolder(args.outputfile, modelpath, args.dimensionreduce) for modelpath in args.modelpath
+        ]
     if args.makemodelfromgriddata:
-        outputfolders.append(get_griddata_outputfolder(args.outputfile, args.modelpath, modelpath_given))
+        outputfolders["makemodelfromgriddata"] = [
+            get_griddata_outputfolder(args.outputfile, args.modelpath, modelpath_given)
+        ]
     return outputfolders
 
 
@@ -146,7 +147,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     outputfolders = get_model_output_folders(args, modelpath_given)
     confirm_overwrite(
-        [folder / filename for folder in outputfolders for filename in MODEL_FILE_NAMES], force=args.force
+        [folder for folders in outputfolders.values() for folder in folders], MODEL_FILE_NAMES, force=args.force
     )
 
     if args.downscale3dgrid:
@@ -154,7 +155,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelpath=Path(args.modelpath[0]),
             outputgridsize=args.outputgridsize,
             plot=args.downscaleplot,
-            outputfolder=outputfolders[0],
+            outputfolder=outputfolders["downscale3dgrid"][0],
             args=args,
         )
         return
@@ -162,7 +163,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.dimensionreduce is not None:
         ndim_out = args.dimensionreduce
         assert ndim_out in {0, 1, 2}
-        for modelpath in args.modelpath:
+        for modelpath, outdir in zip(args.modelpath, outputfolders["dimensionreduce"], strict=True):
             dfmodel, modelmeta = get_modeldata(modelpath)
             ndim_in = modelmeta["dimensions"]
             if ndim_in <= ndim_out:
@@ -179,7 +180,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 dfgridcontributions=dfgridcontributions,
                 modelmeta=modelmeta,
             )
-            outdir = get_dimreduce_outputfolder(args.outputfile, modelpath, ndim_out)
             outdir.mkdir(exist_ok=True, parents=True)
             modelmeta_out["headercommentlines"] = [
                 *modelmeta.get("headercommentlines", []),
@@ -196,7 +196,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(args)
         makemodelfromgriddata(
             gridfolderpath=args.pathtogriddata,
-            outputpath=outputfolders[-1],
+            outputpath=outputfolders["makemodelfromgriddata"][0],
             fillcentralhole=args.fillcentralhole,
             getcellopacityfromYe=args.getcellopacityfromYe,
         )

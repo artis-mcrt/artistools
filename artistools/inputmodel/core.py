@@ -24,6 +24,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import firstexisting
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_identity
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
@@ -32,8 +33,6 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
-from artistools.misc.fileio import COMPRESSED_EXTENSIONS
-from artistools.misc.fileio import find_compressed
 from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import get_plain_path
 from artistools.misc.fileio import modelpath_cache
@@ -492,12 +491,7 @@ def read_parquet_cache(
 def get_parquet_cache_path(textfilepath: Path) -> Path:
     """Return the path of the parquet cache of a text file that get_text_source_cached reads."""
     # model_a.1.txt and model_a.2.txt must not share a cache, thus remove only a compression suffix
-    textname = (
-        textfilepath.name.removesuffix(textfilepath.suffix)
-        if textfilepath.suffix in COMPRESSED_EXTENSIONS
-        else textfilepath.name
-    )
-    return textfilepath.with_name(f"{textname}.parquet.tmp")
+    return textfilepath.with_name(f"{get_plain_path(textfilepath).name}.parquet.tmp")
 
 
 def remove_parquet_cache(textfilepath: Path) -> None:
@@ -716,9 +710,11 @@ def get_modeldata(
     if inputpath.is_dir():
         modelpath = inputpath
         textfilepath = firstexisting("model.txt", folder=inputpath, tryzipped=True)
-    elif inputpath.is_file() or find_compressed(inputpath) is not None:
+    elif (
         # a file name, e.g. model_1d.txt, also names its compressed copy, e.g. model_1d.txt.zst
-        textfilepath = firstexisting(inputpath.name, folder=inputpath.parent, tryzipped=True)
+        namedfile := firstexisting_or_none(inputpath.name, folder=inputpath.parent, search_subfolders=False)
+    ) is not None:
+        textfilepath = namedfile
         modelpath = inputpath.parent
     elif path_is_codecomparison(inputpath):
         modelpath = inputpath
@@ -1011,16 +1007,20 @@ def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[bytes]) -> None:
 MODEL_FILE_NAMES = ("model.txt", "abundances.txt", "gridcontributions.txt")
 
 
-def remove_other_copies(filepath: Path) -> None:
-    """Delete each plain or compressed copy of filepath other than filepath itself.
+def prepare_zstd_output(filepath: Path) -> Path:
+    """Return the path of the zstd file for filepath, e.g. model.txt.zst, and delete each old copy and the cache.
 
     If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old plain copy must not stay beside a
-    new compressed file.
+    new compressed file. A write that stops early must not leave the cache of the old file beside a part of the new
+    file.
     """
-    for oldpath in get_file_copies(filepath):
-        if oldpath != filepath and oldpath.is_file():
+    zstdpath = with_compressed_extension(get_plain_path(filepath), ".zst")
+    for oldpath in get_file_copies(zstdpath):
+        if oldpath != zstdpath and oldpath.is_file():
             oldpath.unlink()
-            print(f"Deleted {oldpath}, because {filepath.name} replaces it")
+            print(f"Deleted {oldpath}, because {zstdpath.name} replaces it")
+    remove_parquet_cache(zstdpath)
+    return zstdpath
 
 
 def save_modeldata(
@@ -1151,11 +1151,7 @@ def save_modeldata(
             (f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"),
         ]
 
-    modelfilepath = with_compressed_extension(get_plain_path(resolve_outputfile(outpath, "model.txt")), ".zst")
-
-    remove_other_copies(modelfilepath)
-    # a write that stops early must not leave the cache of the old file beside a part of the new file
-    remove_parquet_cache(modelfilepath)
+    modelfilepath = prepare_zstd_output(resolve_outputfile(outpath, "model.txt"))
 
     with modelfilepath.open("wb") as fmodel:
         # sn3d reads the first comment line after the header values as the column names, thus each
@@ -1313,7 +1309,7 @@ def save_initelemabundances(
     """
     timestart = time.perf_counter()
 
-    abundancefilename = with_compressed_extension(get_plain_path(resolve_outputfile(outpath, "abundances.txt")), ".zst")
+    abundancefilename = prepare_zstd_output(resolve_outputfile(outpath, "abundances.txt"))
 
     dfelabundances = (
         dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
@@ -1333,9 +1329,6 @@ def save_initelemabundances(
             dfelabundances = dfelabundances.with_columns(pl.lit(0.0).alias(colname))
 
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
-
-    remove_other_copies(abundancefilename)
-    remove_parquet_cache(abundancefilename)
 
     with abundancefilename.open("wb") as fabund:
         # sn3d and get_initelemabundances skip each comment line, and both read the columns by position

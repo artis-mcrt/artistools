@@ -12,9 +12,9 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-from artistools.inputmodel.core import remove_other_copies
 from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
+from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_force
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
@@ -330,13 +330,16 @@ def maptogrid(
         contrib_k = np.concatenate(contrib_cellk)
         contrib_gridindex = (contrib_k * ncoordgrid + contrib_j) * ncoordgrid + contrib_i + 1
         contrib_frac_of_cellmass = np.concatenate(contrib_rho) / grho[contrib_i, contrib_j, contrib_k]
-        gridcontribpath = Path(outputfolderpath, "gridcontributions.txt.zst")
-        remove_other_copies(gridcontribpath)
-        pl.DataFrame({
-            "particleid": particleid[np.concatenate(contrib_particle)],
-            "cellindex": contrib_gridindex,
-            "frac_of_cellmass": contrib_frac_of_cellmass,
-        }).write_csv(gridcontribpath, separator=" ", compression="zstd")
+        # full precision, because the reader keeps frac_of_cellmass as Float64
+        gridcontribpath = save_gridparticlecontributions(
+            pl.DataFrame({
+                "particleid": particleid[np.concatenate(contrib_particle)],
+                "cellindex": contrib_gridindex,
+                "frac_of_cellmass": contrib_frac_of_cellmass,
+            }),
+            Path(outputfolderpath, "gridcontributions.txt"),
+            float_precision=None,
+        )
         logprint(f"saved {gridcontribpath}")
 
     # check some stuff on the grid
@@ -457,9 +460,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
-    confirm_overwrite(
-        [Path(args.outputfile, filename) for filename in ("grid.dat", "gridcontributions.txt")], force=args.force
-    )
+    confirm_overwrite([args.outputfile], ("grid.dat", "gridcontributions.txt"), force=args.force)
 
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,
