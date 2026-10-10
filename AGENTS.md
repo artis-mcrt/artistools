@@ -141,7 +141,7 @@ A test on a small model can pass with an incorrect unit or an incorrect physical
 
 - Use cgs units. If a value has a different unit, put the unit at the end of its name, e.g. `time_days`, `vel_r_max_kmps`, and `lambda_angstroms`.
 - Import each physical constant and each conversion factor from `artistools/constants.py`, e.g. `day_to_s` and `km_to_cm`. Do not write the number as a literal. Add a new constant to that module, with its unit in a comment.
-- Use `MH_g` and not `amu_g` to change between the `nniso_` number densities and the mass fractions. ARTIS uses `MH_g` to define `nniso_`.
+- Use `amu_g` and not `MH_g` to change between the `nniso_` number densities and the mass fractions. ARTIS uses the atomic mass unit for the mass of a nuclide. A run before artis-mcrt/artis#670 used the mass of the hydrogen atom.
 - `f_lambda` is the flux density per Å at a distance of 1 Mpc. To calculate `f_nu`, multiply `f_lambda` by λ²/c, with λ in Å and c as `c_ang_per_s`.
 - To calculate a flux from packets, divide the sum of the packet energies by these values:
   - the time interval in seconds;
