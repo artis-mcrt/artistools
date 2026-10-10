@@ -895,8 +895,8 @@ def plot_artis_spectrum(
             modelname = get_model_name(modelpath)
             linelabel = modelname if len(modelname) < 70 else f"...{modelname[-67:]}"
 
+            # each subplot of --multispecplot shows one epoch, and --showtime writes that epoch on the subplot
             if not args.hidemodeltime and not args.multispecplot:
-                # TODO: fix this for multispecplot - use args.showtime for now
                 linelabel += f" +{timeavg:.1f}d"
             if not args.hidemodeltimerange and not args.multispecplot and timedelta >= 0.1:
                 linelabel += rf" ($\pm$ {timedelta:.1f}d)"
@@ -1892,14 +1892,12 @@ def draw_plot(
     if residualaxis is not None and residualseries is not None:
         dfresidualstats = draw_residual_panel(residualaxis, axes[-1], residualseries, args)
 
-    if args.reverselegendorder:  # TODO: consider ax.legend(reverse=True)
-        plotobjects, plotobjectlabels = plotobjects[::-1], plotobjectlabels[::-1]
-
     leg = set_legend(
         axes[-1],
         args,
         handles=plotobjects,
         labels=plotobjectlabels,
+        reverse=args.reverselegendorder,
         loc="upper right",
         frameon=False,
         handlelength=1 if args.showemission or args.showabsorption else 2,

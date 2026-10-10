@@ -299,7 +299,10 @@ def makemodelfromgriddata(
         origmass_msun = float(dfmodel["mass_g"].sum()) / MSUN
         dfmodel = dfmodel.with_columns(cs.by_name("rho", "mass_g", require_all=False) * scalemass)
         newmass_msun = float(dfmodel["mass_g"].sum()) / MSUN
-        operationmsg = f"densities are scaled by factor of {scalemass} to increase total mass from {origmass_msun:.2e} to {newmass_msun:.2e} Msun"
+        operationmsg = (
+            f"densities are scaled by factor of {scalemass} to increase total mass"
+            f" from {origmass_msun:.2e} to {newmass_msun:.2e} Msun"
+        )
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)
 
@@ -313,7 +316,10 @@ def makemodelfromgriddata(
         for key in modelmeta:
             if key == "vmax_cmps" or key.startswith("wid_init_"):
                 modelmeta[key] *= scalevelocity
-        operationmsg = f"velocities are scaled by a factor of {scalevelocity} (with density scaled by 1/f^3 to conserve mass). vmax/c changed from {vmax_cmps_old / CLIGHT:.2f} to {modelmeta['vmax_cmps'] / CLIGHT:.2f}"
+        operationmsg = (
+            f"velocities are scaled by a factor of {scalevelocity} (with density scaled by 1/f^3 to conserve mass)."
+            f" vmax/c changed from {vmax_cmps_old / CLIGHT:.2f} to {modelmeta['vmax_cmps'] / CLIGHT:.2f}"
+        )
         print(operationmsg)
         modelmeta["headercommentlines"].append(operationmsg)
 
@@ -388,7 +394,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-d",
         default=3,
         type=int,
-        help="Number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D, 2 for 2D cylindrical, 3 for 3D Cartesian",
+        help=(
+            "Number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D,"
+            " 2 for 2D cylindrical, 3 for 3D Cartesian"
+        ),
     )
     # -t means -timedays on every command, thus the time of the snapshot takes that name
     addarg_timedays(parser, kind="float", helptext="Time in days for the output model snapshot")
@@ -406,7 +415,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-scalevelocity",
         type=float,
         default=1.0,
-        help="Multiply ejecta velocities by some factor (adjusting density to conserve mass) before writing the model file",
+        help=(
+            "Multiply ejecta velocities by some factor (adjusting density to conserve mass)"
+            " before writing the model file"
+        ),
     )
     addarg_output(parser, kind="folder", default=None, helptext="Path for output model files")
     addarg_force(parser)

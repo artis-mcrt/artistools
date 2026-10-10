@@ -204,7 +204,8 @@ def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> n
             max_mev_on_h = 4.0
             nu_max_r = max_mev_on_h * MEV_to_erg / constants.h_erg_s
             print(
-                f"No gamma_spec.out found. Using default gamma bins: mnubins {mnubins} nu_min_r {min_mev_on_h:.2f} MeV/H nu_max_r {max_mev_on_h:.2f} MeV/H"
+                f"No gamma_spec.out found. Using default gamma bins: mnubins {mnubins}"
+                f" nu_min_r {min_mev_on_h:.2f} MeV/H nu_max_r {max_mev_on_h:.2f} MeV/H"
             )
         else:
             # NU_MAX_R is 5e16 Hz in the kilonova artisoptions.h files of ARTIS and 5e15 Hz in the others. The
@@ -212,7 +213,8 @@ def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> n
             nu_min_r = 1e13
             nu_max_r = 5e16
             print(
-                f"No spec.out found. Using default rpkt bins: mnubins {mnubins} nu_min_r {nu_min_r:.2e} nu_max_r {nu_max_r:.2e}"
+                f"No spec.out found. Using default rpkt bins: mnubins {mnubins}"
+                f" nu_min_r {nu_min_r:.2e} nu_max_r {nu_max_r:.2e}"
             )
     else:
         mnubins = dfspec.height
@@ -2017,7 +2019,9 @@ def get_flux_contributions_from_packets(
 
     if groupby == "line":
         print(
-            "Grouping by line. Line labels are wavelengths in air between 2,000-20,000 Å, and vacuum wavelengths outside this range. This matches the NIST default options and many astrophysics papers."
+            "Grouping by line. Line labels are wavelengths in air between 2,000-20,000 Å,"
+            " and vacuum wavelengths outside this range."
+            " This matches the NIST default options and many astrophysics papers."
         )
 
     if gamma:
@@ -2603,7 +2607,8 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
             )
         )
         print(
-            f"Correcting for reddening using CCM89 law with A_V = {metadata['a_v']} and R_V = {metadata.get('r_v', 3.1)}"
+            f"Correcting for reddening using CCM89 law with A_V = {metadata['a_v']}"
+            f" and R_V = {metadata.get('r_v', 3.1)}"
         )
 
     if "z" in metadata:

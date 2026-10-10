@@ -458,7 +458,8 @@ def get_particledata(
         if verbose:
             print(
                 "Reading network calculation heating.dat,"
-                f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc_z_n else ''} for particle {particleid}..."
+                f" energy_thermo.dat{', and nz-plane abundances' if arr_strnuc_z_n else ''}"
+                f" for particle {particleid}..."
             )
 
         particledata = pl.DataFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})

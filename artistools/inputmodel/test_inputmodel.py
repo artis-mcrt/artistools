@@ -314,7 +314,8 @@ def verify_file_checksums(
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
         assert checksums_actual[fullpath] == checksum_expected, (
-            f"{folder}/{filename} checksum mismatch. Expecting {checksum_expected} but calculated {checksums_actual[fullpath]}"
+            f"{folder}/{filename} checksum mismatch. Expecting {checksum_expected}"
+            f" but calculated {checksums_actual[fullpath]}"
         )
 
 
@@ -443,8 +444,9 @@ def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path:
 def test_makeartismodelfrom_fortrangriddat(tmp_path: Path) -> None:
     gridfolderpath = testdatapath / "kilonova"
     outpath_kn = tmp_path / "kilonova_fromfortrangriddat"
+    # CodSpeed runs the body of a benchmark more than once in the same tmp_path, thus the command overwrites its files
     at.inputmodel.modelfromhydro.main(
-        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, timedays=0.1
+        argsraw=[], gridfolderpath=gridfolderpath, outputpath=outpath_kn, dimensions=3, timedays=0.1, force=True
     )
 
     # grid.dat gives 8 cells, and the command expands the grid to the time of the snapshot
@@ -546,7 +548,7 @@ def test_makemodel_energyfiles(tmp_path: Path) -> None:
 
 
 def test_makemodel_dimensionreduce_writes_the_gridcontributions(tmp_path: Path) -> None:
-    """-dimensionreduce writes the particle contributions of the reduced grid, as makeartismodelfromparticlegridmap does.
+    """-dimensionreduce writes the particle contributions of the reduced grid as makeartismodelfromparticlegridmap does.
 
     The command discarded the remapped contributions, thus the reduced model folder held no gridcontributions.txt.
     """
@@ -1961,7 +1963,9 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         pltest.assert_frame_equal(
             dfelemabundances,
             dfelemabundances_loaded.select(
-                dfelemabundances.columns  # ignore the extra elements that got added to give contiguous coverage of atomic numbers from min to max
+                # the file holds each atomic number from 1 to at least 30, thus the loaded dataframe has more
+                # columns than dfelemabundances
+                dfelemabundances.columns
             ).collect(),
             check_column_order=False,
             check_dtypes=False,

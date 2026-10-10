@@ -161,7 +161,8 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
                     iontuples = []
                     ion_startnumber = None
                     for ionstr in row[1:]:
-                        # the header of some codes gives the symbol in lower case, e.g. "co2". The title case gives "Co2"
+                        # the header of some codes gives the symbol in lower case, e.g. "co2".
+                        # The title case gives "Co2"
                         iontuple = get_ion_tuple(ionstr.strip().title())
                         assert isinstance(iontuple, tuple), f"the ion {ionstr} of the header has no stage"
                         atomic_number, ion_number = iontuple

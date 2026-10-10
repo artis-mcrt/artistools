@@ -160,7 +160,10 @@ def get_first_level_number(modelpath: Path | str) -> int:
 
     firstlevelnumber = int(firstlevelline.split()[0])
     if firstlevelnumber not in {0, 1}:
-        msg = f"{adatafilename}: the first level has the number {firstlevelnumber}, but ARTIS numbers the levels from 0 or 1"
+        msg = (
+            f"{adatafilename}: the first level has the number {firstlevelnumber},"
+            " but ARTIS numbers the levels from 0 or 1"
+        )
         raise ValueError(msg)
 
     return firstlevelnumber

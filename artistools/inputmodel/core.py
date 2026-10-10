@@ -1,6 +1,6 @@
 """Read, write, and derive columns for ARTIS model.txt and abundance input files."""
 
-import datetime
+import datetime as dt
 import errno
 import gc
 import json
@@ -52,7 +52,7 @@ UNITS_COMMENT_END = "Each X_ column is a mass fraction"
 
 def get_created_comment() -> str:
     """Return the comment line that gives the creation time of an input file in UTC."""
-    return f"# {CREATED_COMMENT_PREFIX} {datetime.datetime.now(tz=datetime.UTC).strftime(CREATED_TIME_FORMAT)}"
+    return f"# {CREATED_COMMENT_PREFIX} {dt.datetime.now(tz=dt.UTC).strftime(CREATED_TIME_FORMAT)}"
 
 
 def is_writer_comment(commentline: str) -> bool:
@@ -167,7 +167,8 @@ def read_modelfile_text(
 
                 if not printwarningsonly:
                     print(
-                        f"  detected 3D model file with {ncoordgridx} x {ncoordgridy} x {ncoordgridz} = {npts_model} cells"
+                        f"  detected 3D model file with {ncoordgridx} x {ncoordgridy} x {ncoordgridz}"
+                        f" = {npts_model} cells"
                     )
 
             line = fmodel.readline()
@@ -574,7 +575,7 @@ def get_text_source_cached(
             parquetfilepath,
             replaces=outdatedparquet,
             metadata={
-                "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
+                "creationtimeutc": str(dt.datetime.now(dt.UTC)),
                 "cacheversion": str(CACHEVERSION),
                 "textsource_mtime": str(textsource_mtime),
             }

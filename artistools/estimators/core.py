@@ -4,7 +4,7 @@ Examples are temperatures, populations, and heating/cooling rates.
 """
 
 import dataclasses as dc
-import datetime
+import datetime as dt
 import string
 import textwrap
 import time
@@ -870,7 +870,7 @@ def get_estimators_parquetfile(
             pldf_batch,
             parquetfilepath,
             metadata={
-                "creationtimeutc": str(datetime.datetime.now(datetime.UTC)),
+                "creationtimeutc": str(dt.datetime.now(dt.UTC)),
                 "cacheversion": str(CACHEVERSION),
                 "textsource_mtime": str(state.textsource_mtime),
                 **rankmetadata,
@@ -1521,7 +1521,8 @@ def scan_artis_estimators(
                 Path(x).relative_to(modelpath).as_posix() for x in dict.fromkeys(runfolder_of_file)
             )
             print(
-                f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
+                f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB)"
+                f" from {str_runfolders}..."
             )
         # a window keeps the scans for its many plots. A command reads each file one time
         scans = [

@@ -107,7 +107,8 @@ def test_polars_holds_the_real_numpy(firstimport: str, pythonflags: tuple[str, .
     also stays in the modules of polars that imported it, thus the test reads one of them too.
     """
     code = (
-        f"{firstimport}import artistools; artistools.__name__; import numpy, polars._dependencies, polars.series.series; "
+        f"{firstimport}import artistools; artistools.__name__; "
+        "import numpy, polars._dependencies, polars.series.series; "
         "print(type(polars._dependencies.numpy).__name__, polars.series.series.np.ndarray is numpy.ndarray)"
     )
     result = run_fresh_python(code, *pythonflags)
@@ -2665,8 +2666,8 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
     dfcells = at.plotopacity.select_velocity_range(dfestimators, args.vmin, args.vmax)
     assert set(dfcells["modelgridindex"]) == expectedcells
     assert (
-        f"{len(expectedcells)} of {dfestimators.height} cells with estimators are in the velocity range with vmin = 0.1c and vmax = 0.2c"
-        in (capsys.readouterr().out)
+        f"{len(expectedcells)} of {dfestimators.height} cells with estimators are in the velocity range"
+        " with vmin = 0.1c and vmax = 0.2c" in (capsys.readouterr().out)
     )
 
     args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])

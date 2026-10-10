@@ -371,7 +371,8 @@ def select_velocity_range(
     )
     boundstext = get_velocity_bounds_text(vmin, vmax)
     print_detail(
-        f"{dfselected.height} of {dfestimators.height} cells with estimators are in the velocity range with {boundstext}"
+        f"{dfselected.height} of {dfestimators.height} cells with estimators are in the velocity range"
+        f" with {boundstext}"
     )
     if dfselected.is_empty():
         msg = f"No cell with estimators is in the velocity range with {boundstext}"

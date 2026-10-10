@@ -357,7 +357,8 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
             if mass_g == 0.0 or np.isclose(mass_g, elem_mass, rtol=1e-4):
                 # iso sum is zero or matches the element mass, so don't show it
                 continue
-            strcomment += f"({mass_g / elem_mass * 100 if elem_mass > 0 else math.nan:6.2f}% of {elsymb} element mass from abundances.txt)"
+            percentofelement = mass_g / elem_mass * 100 if elem_mass > 0 else math.nan
+            strcomment += f"({percentofelement:6.2f}% of {elsymb} element mass from abundances.txt)"
 
             if mass_g > elem_mass * (1.0 + 1e-5):
                 strcomment += " ERROR! isotope sum is greater than element abundance"

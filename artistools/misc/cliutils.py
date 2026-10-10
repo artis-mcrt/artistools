@@ -555,17 +555,18 @@ def addarg_output(
     A command that names its own frames takes no defaultname, because resolve_frameset_paths gives each
     frame a name of its own.
     """
-    rule = (
-        "A path with no file extension names a folder, which the command creates"
-        if kind == "file"
-        else "The command creates this folder"
-    )
+    if kind == "file":
+        defaulthelptext = "Path/filename for the output file"
+        rule = "A path with no file extension names a folder, which the command creates"
+    else:
+        defaulthelptext = "Path for the output files"
+        rule = "The command creates this folder"
     # -o is a Path on every command, thus no command reads a text where another reads a Path
     kwargs: dict[str, t.Any] = {
         "dest": "outputfile",
         "default": default,
         "type": Path,
-        "help": f"{helptext or ('Path/filename for the output file' if kind == 'file' else 'Path for the output files')}. {rule}",
+        "help": f"{helptext or defaulthelptext}. {rule}",
     }
 
     arggroup(parser, "output").add_argument("-outputfile", "-outputpath", "-o", **kwargs)

@@ -178,7 +178,8 @@ def maptogrid(
 
     # set up grid
     logprint(
-        f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax of the SPH particles"
+        f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax"
+        " of the SPH particles"
     )
     # x0 is a fraction of the largest radius of the SPH particles
     x0 = -setgrid_fractionrmax * rmax

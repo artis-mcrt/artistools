@@ -16,6 +16,7 @@ from artistools.constants import km_to_cm
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import LOGRHO_FROM_RHO
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import savetologfile
@@ -157,7 +158,8 @@ def get_cone_shells(
         elementcols = [col for col in speciescols if col != "X_Fegroup" and not col[-1].isdigit()]
         sum_composition_check = sum(composition[species] for species in elementcols)
         logprint(
-            f"Shell {i + 1:<3}     3D cells averaged: {shell['cellcount']:<6} composition sum before norm: {sum_composition_check}"
+            f"Shell {i + 1:<3}     3D cells averaged: {shell['cellcount']:<6}"
+            f" composition sum before norm: {sum_composition_check}"
         )
         composition = {species: massfrac / sum_composition_check for species, massfrac in composition.items()}
 
@@ -234,10 +236,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
         logprint("Scaling density by a factor of:", args.rhoscale)
         slice1d = slice1d.with_columns(pl.col("rho") * args.rhoscale)
 
-    # TODO: fix this, -100 probably breaks things if it's not one of the outer cells that gets chopped
-    slice1d = slice1d.with_columns(
-        pl.when(pl.col("rho") != 0).then(pl.col("rho").log10()).otherwise(-100).alias("rho")
-    ).rename({"rho": "logrho"})
+    slice1d = slice1d.with_columns(logrho=LOGRHO_FROM_RHO).drop("rho")
 
     if not args.positive_axis and not args.makefromcone:
         # Invert rows and *velocity by -1 to make velocities positive for slice on negative axis
@@ -297,14 +296,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-nshells",
         type=int,
         default=100,
-        help="Number of shells used when making 1D model from cone. Note the final number of shells may be lower as empty outer shells are removed from the output 1D model files",
+        help=(
+            "Number of shells used when making 1D model from cone. Note the final number of shells may be lower"
+            " as empty outer shells are removed from the output 1D model files"
+        ),
     )
 
     parser.add_argument(
         "-coneshellspacingexponent",
         type=float,
         default=1.5,
-        help="Vary the exponent used when selecting the radius dependence of the shell spacing when making 1D model from cone. By default the shells are spaced evenly in radius^(1.5)",
+        help=(
+            "Vary the exponent used when selecting the radius dependence of the shell spacing"
+            " when making 1D model from cone. By default the shells are spaced evenly in radius^(1.5)"
+        ),
     )
 
     parser.add_argument(
