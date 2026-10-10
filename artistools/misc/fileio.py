@@ -119,15 +119,15 @@ def with_compressed_extension(filename: Path | str, ext: str) -> Path:
     return Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
 
 
-def get_plain_path(filepath: Path) -> Path:
+def without_compressed_extension(filepath: Path) -> Path:
     """Return the path without its compression extension, e.g. model.txt for model.txt.zst."""
     return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
 
 
 def get_file_copies(filepath: Path) -> list[Path]:
-    """Return the paths of the plain copy and of each compressed copy of a file, e.g. model.txt and model.txt.zst."""
-    plainpath = get_plain_path(filepath)
-    return [plainpath, *(with_compressed_extension(plainpath, ext) for ext in COMPRESSED_EXTENSIONS)]
+    """Return the paths of the uncompressed copy and of each compressed copy of a file, e.g. model.txt.zst."""
+    uncompressedpath = without_compressed_extension(filepath)
+    return [uncompressedpath, *(with_compressed_extension(uncompressedpath, ext) for ext in COMPRESSED_EXTENSIONS)]
 
 
 def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
@@ -879,8 +879,8 @@ def get_file_metadata_cached(filepath: Path, givenpath: str) -> dict[str, t.Any]
 
     import yaml
 
-    filepath = get_plain_path(filepath)
-    givenpath = str(get_plain_path(Path(givenpath)))
+    filepath = without_compressed_extension(filepath)
+    givenpath = str(without_compressed_extension(Path(givenpath)))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")

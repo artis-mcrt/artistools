@@ -282,13 +282,13 @@ def test_downscale_3dmodel(tmp_path: Path) -> None:
         )
 
 
-def decompress_to_plain(zstdpath: Path) -> Path:
-    """Replace a zstd file with its plain copy, e.g. model.txt for model.txt.zst, and return the plain path."""
-    plainpath = zstdpath.with_suffix("")
+def decompress_file(zstdpath: Path) -> Path:
+    """Replace a zstd file with its uncompressed copy, e.g. model.txt for model.txt.zst, and return its path."""
+    uncompressedpath = zstdpath.with_suffix("")
     with at.zopen(zstdpath, encoding="utf-8") as fzst:
-        plainpath.write_text(fzst.read(), encoding="utf-8")
+        uncompressedpath.write_text(fzst.read(), encoding="utf-8")
     zstdpath.unlink()
-    return plainpath
+    return uncompressedpath
 
 
 def verify_file_checksums(
@@ -1938,8 +1938,8 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     outpath = tmp_path
     at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel, modelmeta=modelmeta)
     at.inputmodel.save_initelemabundances(outpath=outpath, dfelabundances=dfelemabundances)
-    # the reader writes no cache for a file below 2 MiB, thus the test reads a plain copy of the zstd file
-    decompress_to_plain(outpath / "model.txt.zst")
+    # the reader writes no cache for a file below 2 MiB, thus the test reads an uncompressed copy of the zstd file
+    decompress_file(outpath / "model.txt.zst")
 
     # the first load reads the text file, and it writes a cache, because the file is larger than 2 MiB.
     # The second load reads that cache
@@ -2875,7 +2875,7 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
         "Ye": [0.3, 0.4],
     })
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
-    modelfile = decompress_to_plain(tmp_path / "model.txt.zst")
+    modelfile = decompress_file(tmp_path / "model.txt.zst")
     modeltext = modelfile.read_text(encoding="utf-8")
     assert " Ye\n" in modeltext
     modelfile.write_text(modeltext.replace(" Ye\n", " cellYe\n"), encoding="utf-8")
@@ -3087,8 +3087,8 @@ def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> N
     assert (tmp_path / "model_a.2.txt.parquet.tmp").stat().st_size > 0
 
 
-def test_save_modeldata_deletes_an_old_plain_file(tmp_path: Path) -> None:
-    """If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old plain file must not stay."""
+def test_save_modeldata_deletes_an_old_uncompressed_file(tmp_path: Path) -> None:
+    """If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old uncompressed file must go."""
     for logrho in (-10.0, -12.0):
         dfmodel = pl.DataFrame({
             "inputcellid": [1],
@@ -3104,7 +3104,7 @@ def test_save_modeldata_deletes_an_old_plain_file(tmp_path: Path) -> None:
         at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
         if logrho == -10.0:
             for filename in ("model.txt", "abundances.txt"):
-                decompress_to_plain(tmp_path / f"{filename}.zst")
+                decompress_file(tmp_path / f"{filename}.zst")
 
     assert sorted(path.name for path in tmp_path.iterdir() if ".parquet" not in path.name) == [
         "abundances.txt.zst",
@@ -3127,7 +3127,7 @@ def test_save_modeldata_deletes_an_old_plain_file(tmp_path: Path) -> None:
 def test_command_asks_before_it_overwrites_a_compressed_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A plain output name also finds its compressed copy, and the command stops before any work if nobody agrees."""
+    """An output name also finds its compressed copy, and the command stops before the work if nobody agrees."""
     (tmp_path / "abundances.txt.zst").write_bytes(b"")
     filenames = ("model.txt", "abundances.txt")
 

@@ -34,10 +34,10 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import get_file_copies
-from artistools.misc.fileio import get_plain_path
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.fileio import with_compressed_extension
+from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_zstd_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.modelinfo import parse_npts_line
@@ -491,7 +491,7 @@ def read_parquet_cache(
 def get_parquet_cache_path(textfilepath: Path) -> Path:
     """Return the path of the parquet cache of a text file that get_text_source_cached reads."""
     # model_a.1.txt and model_a.2.txt must not share a cache, thus remove only a compression suffix
-    return textfilepath.with_name(f"{get_plain_path(textfilepath).name}.parquet.tmp")
+    return textfilepath.with_name(f"{without_compressed_extension(textfilepath).name}.parquet.tmp")
 
 
 def remove_parquet_cache(textfilepath: Path) -> None:
@@ -1010,11 +1010,11 @@ MODEL_FILE_NAMES = ("model.txt", "abundances.txt", "gridcontributions.txt")
 def prepare_zstd_output(filepath: Path) -> Path:
     """Return the path of the zstd file for filepath, e.g. model.txt.zst, and delete each old copy and the cache.
 
-    If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old plain copy must not stay beside a
-    new compressed file. A write that stops early must not leave the cache of the old file beside a part of the new
-    file.
+    If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old uncompressed copy must not stay
+    beside a new compressed file. A write that stops early must not leave the cache of the old file beside a part of
+    the new file.
     """
-    zstdpath = with_compressed_extension(get_plain_path(filepath), ".zst")
+    zstdpath = with_compressed_extension(without_compressed_extension(filepath), ".zst")
     for oldpath in get_file_copies(zstdpath):
         if oldpath != zstdpath and oldpath.is_file():
             oldpath.unlink()
