@@ -31,34 +31,12 @@ jobs:
                   fetch-depth: 1
                   persist-credentials: false
 
-            # a marketplace URL gives the default branch of the plugin on each run. Thus the job reads
-            # the plugin from a fixed commit
-            - name: Checkout the code-review plugin
-              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-              with:
-                  repository: anthropics/claude-code
-                  ref: 2301018b1f61073c501a8e7a4813ef48c239163b # main on 2026-10-09
-                  path: .claude-code-pinned
-                  sparse-checkout: |
-                      .claude-plugin
-                      plugins/code-review
-                  persist-credentials: false
-
-            # Claude Code reserves the name claude-code-plugins for a marketplace on GitHub. Thus the
-            # local marketplace gets a different name, and it lists only the code-review plugin
-            - name: Rename the local marketplace
-              working-directory: .claude-code-pinned/.claude-plugin
-              run: |
-                  jq '{name: "claude-code-pinned", owner, plugins: [.plugins[] | select(.name == "code-review")]}' \
-                      marketplace.json > marketplace.json.new
-                  mv marketplace.json.new marketplace.json
-
             - name: Review the pull request with Claude
               uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
               with:
                   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-                  plugin_marketplaces: ${{ github.workspace }}/.claude-code-pinned
-                  plugins: code-review@claude-code-pinned
+                  plugin_marketplaces: https://github.com/anthropics/claude-code.git
+                  plugins: code-review@claude-code-plugins
                   prompt: /code-review:code-review --comment ${{ github.event.pull_request.html_url }}
                   # the same tools as the allowed-tools list of the plugin command
                   claude_args: |
