@@ -4981,6 +4981,9 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     blackbar = axis.bar([0.5], [0.2], color="black")[0]
     # plotnltepops gives a hollow marker a black edge, and the marker did not show
     hollowmarkers = axis.plot([0.2], [0.8], "s", color="tab:blue", markeredgecolor="black", markerfacecolor="none")[0]
+    # plotopacity draws the Planck mean in a grey of 0.3, and it stayed dark
+    greyline = axis.plot([0, 1], [0.3, 0.3], color="0.3")[0]
+    midgreyline = axis.plot([0, 1], [0.6, 0.6], color="0.5")[0]
     axis.set_xlabel("velocity")
     legend = axis.legend()
 
@@ -4994,6 +4997,8 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     assert mcolors.same_color(blackbar.get_facecolor(), "#dddddd")
     assert mcolors.same_color(hollowmarkers.get_markeredgecolor(), "#dddddd")
     assert mcolors.same_color(hollowmarkers.get_color(), "tab:blue")
+    assert min(mcolors.to_rgb(greyline.get_color())) > 0.6
+    assert mcolors.same_color(midgreyline.get_color(), "0.5")
     # the frame of the legend keeps its transparency
     assert mcolors.to_hex(legend.get_frame().get_facecolor()) == "#1e1e1e"
     assert all(mcolors.same_color(text.get_color(), "#dddddd") for text in legend.get_texts())

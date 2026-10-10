@@ -264,8 +264,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     """Render an isosurface of the 3D model with pyvista, coloured by the first of args.plotvars."""
     pv = import_optional("pyvista")
 
-    # set white background
-    pv.set_plot_theme("document")
+    # the dark theme of pyvista has a black background and white text, as --darkmode gives a matplotlib plot
+    pv.set_plot_theme("dark" if args.darkmode else "document")
 
     # choose what surface will be coloured by
     plotvar = "rho" if "rho" in args.plotvars else "Ye" if "Ye" in args.plotvars else args.plotvars[0]

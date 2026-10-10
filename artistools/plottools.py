@@ -1285,6 +1285,10 @@ def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:
 # the background and the foreground of a figure with --darkmode
 DARKMODE_COLOURS: t.Final = ("black", "white")
 
+# a grey darker than this luminance is hard to see on a dark background, thus Dark Mode makes it light, e.g. the grey
+# of 0.3 of the Planck mean of plotopacity
+DARK_GREY_LIMIT: t.Final = 0.5
+
 # the formats that keep the transparent background of a figure with --darkmode. A raster file, e.g. a PNG image of a
 # gif, has a black background, because many image viewers show a transparent area as white
 TRANSPARENT_DARKMODE_FORMATS: t.Final = frozenset({"pdf", "svg", "svgz"})
@@ -1294,8 +1298,8 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
     """Give a figure the colours of Dark Mode.
 
     The backgrounds of the figure, the axes, and the legends take the background colour. The frames and the ticks take
-    the foreground colour. A black or dark grey item takes the foreground colour, because it does not show on the dark
-    background:
+    the foreground colour. A black item takes the foreground colour, and a dark grey item takes a light grey, because
+    neither shows on the dark background:
 
     - a line, or the edge or the face of its markers;
     - a text;
@@ -1309,14 +1313,26 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
     from matplotlib.patches import Patch
     from matplotlib.text import Text
 
-    def is_dark_grey(colour: "mplt.ColorType") -> bool:
-        red, green, blue, alpha = mplcolors.to_rgba(colour)
-        isgrey = max(red, green, blue) - min(red, green, blue) < 0.1
-        return alpha > 0.0 and isgrey and 0.2126 * red + 0.7152 * green + 0.0722 * blue < 0.25
+    foregroundrgb = mplcolors.to_rgb(foreground)
 
-    def is_one_dark_grey(colours: "mplt.ColorType | Sequence[mplt.ColorType]") -> bool:
+    def get_light_grey(colour: "mplt.ColorType") -> tuple[float, float, float, float] | None:
+        """Return the colour in place of a dark grey, or None for a different colour."""
+        red, green, blue, alpha = mplcolors.to_rgba(colour)
+        luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        if alpha == 0.0 or max(red, green, blue) - min(red, green, blue) >= 0.1 or luminance >= DARK_GREY_LIMIT:
+            return None
+        # black takes the foreground colour and a lighter grey goes nearer to the mid grey, thus two greys stay apart
+        fraction = luminance / DARK_GREY_LIMIT
+        lightred, lightgreen, lightblue = (
+            part * (1.0 - fraction) + DARK_GREY_LIMIT * fraction for part in foregroundrgb
+        )
+        return lightred, lightgreen, lightblue, alpha
+
+    def get_one_light_grey(
+        colours: "mplt.ColorType | Sequence[mplt.ColorType]",
+    ) -> tuple[float, float, float, float] | None:
         rgbas = mplcolors.to_rgba_array(colours)
-        return len(rgbas) == 1 and is_dark_grey(tuple(rgbas[0]))
+        return get_light_grey(tuple(rgbas[0])) if len(rgbas) == 1 else None
 
     backgrounds: list[mplartist.Artist] = [fig.patch]
     for axis in fig.axes:
@@ -1334,29 +1350,29 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
     # one walk of the tree of artists, because a figure with many subplots holds many artists
     for artist in fig.findobj():
         if isinstance(artist, Text):
-            if is_dark_grey(artist.get_color()):
-                artist.set_color(foreground)
+            if (newcolour := get_light_grey(artist.get_color())) is not None:
+                artist.set_color(newcolour)
         elif isinstance(artist, mpllines.Line2D):
             # a marker can have an edge or a face of its own colour, e.g. the black edge of a hollow marker
             markercolours = (artist.get_markeredgecolor(), artist.get_markerfacecolor())
-            if is_dark_grey(artist.get_color()):
-                artist.set_color(foreground)
-            if is_dark_grey(markercolours[0]):
-                artist.set_markeredgecolor(foreground)
-            if is_dark_grey(markercolours[1]):
-                artist.set_markerfacecolor(foreground)
+            if (newcolour := get_light_grey(artist.get_color())) is not None:
+                artist.set_color(newcolour)
+            if (newcolour := get_light_grey(markercolours[0])) is not None:
+                artist.set_markeredgecolor(newcolour)
+            if (newcolour := get_light_grey(markercolours[1])) is not None:
+                artist.set_markerfacecolor(newcolour)
         elif isinstance(artist, Patch):
-            if is_dark_grey(artist.get_edgecolor()):
-                artist.set_edgecolor(foreground)
-            if id(artist) not in backgroundids and is_dark_grey(artist.get_facecolor()):
-                artist.set_facecolor(foreground)
+            if (newcolour := get_light_grey(artist.get_edgecolor())) is not None:
+                artist.set_edgecolor(newcolour)
+            if id(artist) not in backgroundids and (newcolour := get_light_grey(artist.get_facecolor())) is not None:
+                artist.set_facecolor(newcolour)
         # a collection of one colour is e.g. the lines of the error bars. A colour map gives many colours, thus its
         # collection stays
         elif isinstance(artist, Collection):
-            if is_one_dark_grey(artist.get_edgecolor()):
-                artist.set_edgecolor(foreground)
-            if is_one_dark_grey(artist.get_facecolor()):
-                artist.set_facecolor(foreground)
+            if (newcolour := get_one_light_grey(artist.get_edgecolor())) is not None:
+                artist.set_edgecolor(newcolour)
+            if (newcolour := get_one_light_grey(artist.get_facecolor())) is not None:
+                artist.set_facecolor(newcolour)
 
 
 def apply_darkmode(fig: mplfig.Figure, fileformat: str) -> bool:
