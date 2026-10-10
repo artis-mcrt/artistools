@@ -1055,15 +1055,10 @@ def addarg_quiet(parser: argparse.ArgumentParser) -> None:
 
 
 def addarg_force(parser: argparse.ArgumentParser) -> None:
-    """Add the -f and --force arguments, which permit a destructive action with no prompt, as rm -f does.
-
-    --overwrite is a second spelling, which has the name of the tar option.
-    """
+    """Add the -f and --force arguments, which permit a destructive action with no prompt, as rm -f does."""
     arggroup(parser, "output").add_argument(
         "-f",
         "--force",
-        "--overwrite",
-        dest="force",
         action="store_true",
         help="Do destructive actions with no prompt, e.g. overwrite the output files that exist",
     )
