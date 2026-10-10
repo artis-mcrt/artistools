@@ -2126,8 +2126,12 @@ def test_nonempty_cellcounts_reads_the_rank_assignments(tmp_path: Path) -> None:
     assert get_nonempty_cellcounts(at.get_path("testdata") / "testmodel") is None
 
 
-def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
-    """A cell that holds no matter must say so, and not name a file that it never had."""
+@pytest.mark.parametrize("has_allranks_file", [False, True])
+def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path, has_allranks_file: bool) -> None:
+    """A cell that holds no matter must say so, and not name a file that it never had.
+
+    A file of all ranks has no row for such a cell, and the reader then gave an empty frame without a message.
+    """
     from artistools.misc.modelinfo import read_rank_outputfiles
 
     (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n")
@@ -2135,6 +2139,8 @@ def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
     # ARTIS ends each cell of an estimator file with an empty line, and a reader takes a cell without it as cut
     (tmp_path / "estimators_0000.out").write_text("timestep 0 modelgridindex 0\n\n")
     (tmp_path / "model.txt").write_text("1\n1.0\n0 0.0 0.0 0.0 0.0\n")
+    if has_allranks_file:
+        (tmp_path / "nlte_allranks.out").write_text("timestep modelgridindex nnlevel\n")
 
     with pytest.raises(ValueError, match="Cell 0 holds no matter"):
         read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=0)
@@ -2213,6 +2219,46 @@ def test_read_rank_outputfiles_drops_the_repeated_timestep_of_a_restart(tmp_path
 
     # the earlier folder holds no row for cell 4, thus the row of the later folder stays
     assert dfout.filter(timestep=1, modelgridindex=4)["nnlevel"].item() == 8.0
+
+
+def test_read_rank_outputfiles_reads_the_current_file_of_all_ranks(tmp_path: Path) -> None:
+    """A run folder with a file of all ranks, e.g. nlte_allranks.out, gives its rows, unless a file of a rank is newer.
+
+    With the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes no file of a rank. The script of ARTIS can combine
+    the files of a job that still runs, and sn3d then adds timesteps to the files of the ranks.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {".": [(0, cell, cell + 0.5) for cell in range(5)]})
+    rankfile = tmp_path / "nlte_0000.out"
+    allranksfile = tmp_path / "nlte_allranks.out"
+    allranksfile.write_text(
+        "timestep modelgridindex nnlevel\n" + "".join(f"0 {cell} {cell + 10.5}\n" for cell in range(5)),
+        encoding="utf-8",
+    )
+
+    os.utime(rankfile, (1000.0, 1000.0))
+    os.utime(allranksfile, (2000.0, 2000.0))
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=3)
+    assert dfout["nnlevel"].to_list() == [13.5], (
+        "a file of all ranks that is not older than the files of the ranks wins"
+    )
+
+    os.utime(rankfile, (3000.0, 3000.0))
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=3)
+    assert dfout["nnlevel"].to_list() == [3.5], "a newer file of a rank shows that the file of all ranks is stale"
+
+    # the reader takes the plain file of a rank before a compressed copy, thus a newer stale copy does not count
+    os.utime(rankfile, (1000.0, 1000.0))
+    (tmp_path / "nlte_0000.out.zst").write_bytes(b"")
+    os.utime(tmp_path / "nlte_0000.out.zst", (3000.0, 3000.0))
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=3)
+    assert dfout["nnlevel"].to_list() == [13.5], "only the file of a rank that the reader takes can be newer"
+
+    rankfile.unlink()
+    (tmp_path / "nlte_0000.out.zst").unlink()
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0)
+    assert dfout["nnlevel"].to_list() == [cell + 10.5 for cell in range(5)], "the file of all ranks gives every cell"
 
 
 def test_addarg_modelpath_positional_also_takes_the_option() -> None:

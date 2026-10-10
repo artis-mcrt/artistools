@@ -694,7 +694,7 @@ def has_nlte_populations(modelpath: Path) -> bool:
 
     The search also reads the run folders of the model, e.g. 12345.slurm.
     """
-    return firstexisting_or_none("nlte_0000.out", folder=modelpath, tryzipped=True) is not None
+    return firstexisting_or_none(["nlte_0000.out", "nlte_allranks.out"], folder=modelpath, tryzipped=True) is not None
 
 
 def get_level_names(modelpath: Path, timestep: int, cell: int) -> list[str]:
