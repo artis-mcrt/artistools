@@ -1,4 +1,4 @@
-"""Make the list of the series and the dialog of the line properties of a series."""
+"""Make the list of the series and the popup of the line properties of a series."""
 
 import argparse
 import contextlib
@@ -35,7 +35,7 @@ if t.TYPE_CHECKING:
     from PySide6 import QtWidgets
 
 
-# the line styles of the dialog of the line properties: the value of -linestyle and the text of the box
+# the line styles of the popup of the line properties: the value of -linestyle and the text of the button
 LINESTYLE_CHOICES: t.Final = (("solid", "Solid"), ("dashed", "Dashed"), ("dotted", "Dotted"), ("dashdot", "Dash-dot"))
 
 # the short names of the line styles of matplotlib, which a command can also give
@@ -107,10 +107,10 @@ def make_series_swatch(colour: str, style: "Mapping[str, str | None]") -> "QtGui
     )
 
 
-# the pause after a change of the dialog of the line properties before the plot shows it
+# the pause after a change of the popup of the line properties before the plot shows it
 PREVIEW_MILLISECONDS: t.Final = 250
 
-# the options of the dialog of the line properties, which each give one value for each series
+# the options of the popup of the line properties, which each give one value for each series
 SERIES_PROPERTY_FLAGS: t.Final = ("-label", "-color", "-linestyle", "-dashes", "-linewidth", "-linealpha")
 
 
@@ -128,8 +128,8 @@ def get_label_error(label: str) -> str | None:
     return None
 
 
-# the colours of the swatches of the line properties: the default colour cycle of matplotlib, then a palette that
-# readers with a deficiency of colour vision can tell apart
+# the colours of the swatches. The first row is the default colour cycle of matplotlib. The second row is a palette
+# that a reader with a deficiency of colour vision can identify
 SWATCH_COLOURS: t.Final = (
     ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f"),
     ("#000000", "#e69f00", "#56b4e9", "#009e73", "#f0e442", "#0072b2", "#d55e00", "#cc79a7"),
@@ -322,7 +322,7 @@ def edit_series_properties(
 
     resetbutton = QtWidgets.QPushButton("Reset")
     resetbutton.setToolTip("Give each property the default of the command")
-    hintlabel = QtWidgets.QLabel("Esc reverts the changes")
+    hintlabel = QtWidgets.QLabel("Escape reverts the changes")
     hintlabel.setForegroundRole(QtGui.QPalette.ColorRole.PlaceholderText)
     bottomrow = QtWidgets.QHBoxLayout()
     bottomrow.addWidget(hintlabel, 1)
@@ -387,7 +387,7 @@ def edit_series_properties(
             colouredit.clear()
             choose_colour(text)
         else:
-            errorlabel.setText(f"'{text}' is not a colour of matplotlib, e.g. tab:red or #1f77b4")
+            errorlabel.setText(f"'{text}' is not a colour of matplotlib. Type a colour such as tab:red or #1f77b4")
             errorlabel.show()
 
     def on_restore_defaults() -> None:

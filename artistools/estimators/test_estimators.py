@@ -4035,7 +4035,7 @@ def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path
 
 
 def test_interactive_swatches_give_the_colours_of_the_lines() -> None:
-    """A chip shows the colour of the line of its series, and the dialog shows the colour with no style of its own.
+    """A chip shows the colour of the line of its series, and the popup shows the colour with no style of its own.
 
     --markers draws the points after the line with a lighter colour. A series with a colour does not move the axes
     cycle, thus TR after the red Te takes the first colour of the cycle.
@@ -4058,7 +4058,7 @@ def test_interactive_swatches_give_the_colours_of_the_lines() -> None:
 def test_move_series_item_keeps_the_type_and_the_directives() -> None:
     """A dragged chip goes in front of the chip at the drop place, and the item keeps its style.
 
-    The chips of a subplot leave out its type and its directives, thus the index of a chip is not the position of its
+    The chips of a subplot do not show its type and its directives, thus the index of a chip is not the position of its
     item. In the same subplot, the chips on the screen still show the moved chip, and a later index moves to the front.
     """
     columns = ("Te", "TR", "nne", "nnion_Fe_II", "nnion_Fe_III", "nnion_Co_II", "nnelement_Fe", "nnelement_Co")

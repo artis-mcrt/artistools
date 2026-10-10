@@ -1156,15 +1156,15 @@ def open_window(
         if path not in values.lightcurves:
             return
         isreference = [path_is_reference_lightcurve(other) for other in values.lightcurves]
-        # the colour of the dialog for "Default" is the colour that the light curve has with no -color of its own
+        # the colour of the popup for "Default" is the colour that the light curve has with no -color of its own
         defaultrows = set_series_rows(values.otheroptions, values.lightcurves, path, {"-color": None})
         defaultcolour = get_path_colours(values.lightcurves, isreference, defaultrows)[path]
 
         style = get_series_style(values.otheroptions, values.lightcurves, path)
 
         def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
-            # a change applies to the current values, because the window can change them while the dialog is open,
-            # e.g. the fit of the width. No change gives the series its style from before the dialog
+            # a change applies to the current values, because the window can change them while the popup is open,
+            # e.g. the fit of the width. A value of None for changes gives the series its style from before the popup
             current = viewer.values
             rows = set_series_rows(
                 current.otheroptions, current.lightcurves, path, style if changes is None else changes

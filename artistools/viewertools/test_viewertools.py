@@ -258,7 +258,7 @@ def test_session_window_takes_no_option_of_the_settings(monkeypatch: pytest.Monk
 
 
 def test_series_label_that_the_command_cannot_give() -> None:
-    """The dialog of the line properties must refuse a label that the command reads as a flag or as the default.
+    """The popup of the line properties must refuse a label that the command reads as a flag or as the default.
 
     The command rejected "-ve" with a message about an ambiguous option, and it gave "default" the automatic label.
     """

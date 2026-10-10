@@ -276,7 +276,7 @@ class RenderedPlot(t.NamedTuple):
 class SeriesSwatch(t.NamedTuple):
     """The line of one series in the plot, which a chip of its subplot shows as a short image.
 
-    The dialog of the line properties shows the default colour and the default width, which the series has with no
+    The popup of the line properties shows the default colour and the default width, which the series has with no
     style of its own.
     """
 
@@ -1721,9 +1721,9 @@ def move_series_item(
 ) -> tuple[tuple[str, ...], ...] | None:
     """Return the subplots with a series item moved in front of a chip of a subplot, or None for a repeated name.
 
-    source gives the row of the subplot and the position of the item in it. chipindex counts the chips of the target
-    subplot on the screen, see get_chip_items, and the count of the chips puts the item after the last chip. The type
-    and the directives of the target subplot stay at their places. The item keeps its style.
+    source gives the row of the subplot and the position of the item in it. chipindex is the index of a chip of the
+    target subplot on the screen, see get_chip_items. An index equal to the number of chips puts the item after the
+    last chip. The type and the directives of the target subplot stay at their places. The item keeps its style.
     """
     row, position = source
     item = subplots[row][position]
@@ -1992,7 +1992,10 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Alt-Up</b>, <b>Alt-Down</b> on the header of a subplot", "Move the subplot up or down (Option on a Mac)"),
     ("<b>Click</b> a legend entry or a chip", "Change the line of the series, e.g. its colour"),
     ("<b>Drag</b> a chip", "Move the series to a different place or to a different subplot"),
-    ("<b>Alt-Up</b>, <b>Alt-Down</b> on a chip", "Move the series one place to the front or the back"),
+    (
+        "<b>Alt-Up</b>, <b>Alt-Down</b> on a chip",
+        "Move the series one place to the front or the back (Option on a Mac)",
+    ),
 )
 
 
@@ -2466,7 +2469,7 @@ def open_window(
             action.setEnabled(enabled)
             action.triggered.connect(partial(move_subplot, row, target))
             header.addAction(action)
-        resetaction = QtGui.QAction("Reset Line Styles", header)
+        resetaction = QtGui.QAction("Reset Line Properties", header)
         resetaction.setEnabled(remove_item_styles(subplot) != tuple(subplot))
         resetaction.triggered.connect(partial(on_reset_styles, row))
         header.addAction(resetaction)
@@ -2476,8 +2479,8 @@ def open_window(
         cardlayout.setContentsMargins(0, 0, 0, 0)
         cardlayout.setSpacing(4)
         framelayout.addWidget(body)
-        # a collapsed card shows only its header. A widget with no parent shows as a window of its own, which closes
-        # an open popup, e.g. of the line properties, thus the body goes into the card first
+        # a collapsed card shows only its header. A widget with no parent shows as a window, which closes an open popup.
+        # Thus the body goes into the card before setVisible
         body.setVisible(not iscollapsed)
 
         chipsbox = QtWidgets.QWidget()
@@ -2494,7 +2497,7 @@ def open_window(
             tooltip += (
                 ". Drag the chip to move the series."
                 if isimage
-                else ". Click to change the line, or drag the chip to move the series."
+                else ". Click to change the line. Drag the chip to move the series."
             )
             # a colour image has no lines, thus its chips have no line style
             swatchbutton = None
@@ -2528,8 +2531,8 @@ def open_window(
         colournote.setWordWrap(True)
         colournote.setForegroundRole(QtGui.QPalette.ColorRole.PlaceholderText)
         colournote.setText(
-            "Each ion takes the colour of its element, because the subplot holds more than one element. The ion stages"
-            " differ by the dash."
+            "Each ion takes the colour of its element, because the subplot holds more than one element. Each ion stage"
+            " has a different dash pattern."
         )
         colournote.setToolTip(helptexts.get("colorbyion", ""))
         colournote.hide()
@@ -2645,7 +2648,7 @@ def open_window(
         yaxisbutton.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         isyaxisopen = row in openyrows
         yaxisbutton.setArrowType(QtCore.Qt.ArrowType.DownArrow if isyaxisopen else QtCore.Qt.ArrowType.RightArrow)
-        yaxisbutton.setToolTip(f"Show or hide the scale and the range of the {'colour scale' if isimage else 'y axis'}")
+        yaxisbutton.setToolTip(f"Show or hide the scale and the range of the {'values' if isimage else 'y axis'}")
         yaxisbutton.clicked.connect(partial(on_yaxis_toggle, row))
         yaxisbox = QtWidgets.QWidget()
         yaxisbox.setLayout(
@@ -2746,9 +2749,9 @@ def open_window(
         ymin, ymax = get_directive_value(subplot, "ymin"), get_directive_value(subplot, "ymax")
         set_edit_text(card.yminedit, ymin or "")
         set_edit_text(card.ymaxedit, ymax or "")
-        quantityname = "Value" if get_geometry_mode(viewer.values) in IMAGE_MODES else "y"
+        axisname = "Values" if get_geometry_mode(viewer.values) in IMAGE_MODES else "y axis"
         yrange = "auto range" if ymin is None and ymax is None else f"{ymin or 'auto'} to {ymax or 'auto'}"
-        card.yaxisbutton.setText(f"{quantityname} axis: {get_yscale_choice(subplot)} scale, {yrange}")
+        card.yaxisbutton.setText(f"{axisname}: {get_yscale_choice(subplot)} scale, {yrange}")
         card.colournote.setVisible(viewer.plotcolorbyion and has_several_elements(subplot, viewer.run.estimatorcolumns))
 
     def show_new_subplot_suggestions(subplottypes: "Sequence[str]", *, columnschanged: bool) -> None:
@@ -2878,8 +2881,8 @@ def open_window(
         swatch = viewer.swatches.get((row, name))
 
         def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
-            # a change applies to the current values, because Play can move the time while the dialog is open. A
-            # value of None for changes gives the series its style from before the dialog
+            # a change applies to the current values, because Play can move the time while the popup is open. A
+            # value of None for changes gives the series its style from before the popup
             current = viewer.values.subplots
             if row >= len(current) or position >= len(current[row]) or get_series_name(current[row][position]) != name:
                 return
@@ -3370,9 +3373,10 @@ def open_window(
         edit_item_style(row, position, chip.mapToGlobal(chip.rect().bottomLeft()) if chip is not None else None)
 
     def get_chip_drop_target(position: QtCore.QPoint) -> tuple[int, int] | None:
-        """Return the row of the card and the index of the chip in front of a position on the screen, or None.
+        """Return the row of the card and the index of the chip after a position on the screen, or None.
 
-        The count of the chips of the card is the place after the last chip. A position outside the cards gives None.
+        An index equal to the number of chips gives the place after the last chip. A position outside the cards gives
+        None.
         """
         for row, card in enumerate(cards):
             if not card.chipsbox.isVisible() or not card.frame.rect().contains(card.frame.mapFromGlobal(position)):
