@@ -21,6 +21,7 @@ from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -43,6 +44,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--downscaleplot", action="store_true", help="Write a density-slice diagnostic plot when downscaling"
     )
+    addarg_darkmode(parser)
 
     parser.add_argument("-outputgridsize", default=50, type=int, help="Size of small model grid for downscale script")
 
@@ -153,6 +155,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             outputgridsize=args.outputgridsize,
             plot=args.downscaleplot,
             outputfolder=outputfolders[0],
+            args=args,
         )
         return
 

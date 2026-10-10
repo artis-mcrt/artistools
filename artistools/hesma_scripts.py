@@ -12,6 +12,7 @@ import polars.selectors as cs
 from artistools.constants import c_ang_per_s
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -201,12 +202,13 @@ def plot_hesma_peakmag_dm15_dm40(
     axis.set_ylabel("Peak magnitude")
     set_legend(axis, args)
 
-    save_or_show(fig, outputfile)
+    save_or_show(fig, outputfile, args)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
+    addarg_darkmode(parser)
     addarg_action(
         parser,
         choices=[
@@ -295,7 +297,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for hesmafile in require(args.hesmafile, "-hesmafile", args.action):
             plot_hesma_spectrum(timedays, [axis], hesmafile)
         set_legend(axis, args)
-        save_or_show(fig, args.plotfile)
+        save_or_show(fig, args.plotfile, args)
 
     else:
         fig, axesgrid = make_frame_figure()
@@ -306,4 +308,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             require(args.timedays, "-timedays", args.action),
             args,
         )
-        save_or_show(fig, args.plotfile)
+        save_or_show(fig, args.plotfile, args)

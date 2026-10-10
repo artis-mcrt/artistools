@@ -1310,6 +1310,33 @@ def test_set_args_from_dict() -> None:
         at.misc.set_args_from_dict(parser, {"nonexistent": 1})
 
 
+@pytest.mark.parametrize("reverseorder", [False, True])
+def test_keyword_destination_has_priority_over_an_option_alias(reverseorder: bool) -> None:
+    """Keep a keyword at its destination when another option uses its name as an alias."""
+    parser = argparse.ArgumentParser()
+    arguments = [("-old", "baseline"), ("-selected", "old")]
+    for flag, dest in reversed(arguments) if reverseorder else arguments:
+        parser.add_argument(flag, dest=dest, type=int)
+    at.misc.set_args_from_dict(parser, {"baseline": 1, "old": 2})
+    args = parser.parse_args([])
+    assert args.baseline == 1
+    assert args.old == 2
+
+
+@pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
+@pytest.mark.parametrize("keyword", ["residuals", "residual"])
+@pytest.mark.parametrize("selection", [None, [], 2, [0, 2], ["0", "2"]])
+def test_residual_keywords_keep_the_baseline_separate(
+    kind: str, keyword: str, selection: int | list[int] | list[str] | None
+) -> None:
+    """Both commands accept a baseline keyword and a separate selection of residual series."""
+    addargs = at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
+    args = parse_cli_args(addargs, None, None, [], {"residualbaselineseries": 1, keyword: selection})
+    expected = [2] if isinstance(selection, int) else None if selection is None else list(map(int, selection))
+    assert args.residualbaselineseries == 1
+    assert args.residuals == expected
+
+
 def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A colon before the first slash makes a remote path, whether a local file of that name exists or not.
 

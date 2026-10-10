@@ -30,6 +30,7 @@ from artistools.ejectaopacity import get_selected_timestep
 from artistools.ejectaopacity import print_planck_mean_method
 from artistools.inputmodel import get_cell_selection
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -87,7 +88,7 @@ def get_opacity_series(taucaps: Sequence[float]) -> list[tuple[str, str, "mplt.L
         *(
             (
                 column,
-                rf"Line-binned, $\tau_\mathrm{{S}}$ capped at {format_taucap(taucap)}",
+                rf"Line-binned, $\tau_\mathrm{{l,max}}$ = {format_taucap(taucap)}",
                 CAPPEDLINESTYLES[index % len(CAPPEDLINESTYLES)],
             )
             for index, (column, taucap) in enumerate(get_capped_columns(taucaps).items())
@@ -527,6 +528,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_legend(parser)
     addarg_figscale(parser, helptext="Scale factor for plot area. 1.0 fills one column of a page")
     addarg_show(parser)
+    addarg_darkmode(parser)
     addarg_output(parser, kind="file", defaultname="plotopacity.pdf", helptext="Path/filename for PDF file")
 
 

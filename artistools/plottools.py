@@ -16,6 +16,8 @@ import matplotlib.axis as mplaxis
 import matplotlib.cm as mplcm
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
+import matplotlib.lines as mpllines
+import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
 import polars as pl
@@ -37,9 +39,6 @@ LOGSCALE_MAXMEDIAN: t.Final[float] = 0.015
 # a log axis hides a value of zero or below. A few such values are the end of a decay, thus the axis
 # still shows the data. This fraction of the values is the most that a log axis may hide.
 LOGSCALE_MAXHIDDEN: t.Final[float] = 0.1
-
-# the residual panel of a ratio takes a log y axis when model / reference or its inverse is above this factor
-RESIDUALRATIO_LOGSCALE: t.Final[float] = 50.0
 
 
 def get_drawn_values(ax: "AxesTree") -> "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]":
@@ -999,30 +998,83 @@ class ResidualSeries(t.NamedTuple):
     x: "npt.NDArray[np.float64]"
     y: "npt.NDArray[np.float64]"
     color: "mplt.ColorType | None"
+    line: mpllines.Line2D | None = None
+    yerr: "npt.NDArray[np.float64] | None" = None
+    errorbar_kwargs: dict[str, t.Any] | None = None
+    unbounded: "npt.NDArray[np.bool_] | None" = None
 
 
 def get_residuals(
     reference: ResidualSeries, model: ResidualSeries, xmin: float, xmax: float
-) -> "tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64]]":
-    """Return the reference points that count, and the model value minus the reference value there.
+) -> "tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64], npt.NDArray[np.float64]]":
+    """Return the model points that count, their residuals, and the reference values.
 
-    The model takes a linear interpolation to the reference x values. A point counts only inside the
-    x range of the panel and inside the x range that the model covers. A reference value of NaN gives
-    a residual of NaN, thus a masked range stays a gap in the panel.
+    Interpolate the reference linearly at each model point. A point counts inside the panel and the reference range.
+    A reference value of NaN keeps a gap in the residual panel.
+    A reference with one point accepts only model points at the same x value.
     """
     import numpy as np
 
-    # a model value that is not finite stays in as NaN, thus the interpolation keeps the gap that the main frame shows
-    hasx = np.isfinite(model.x)
-    modelx, modely = model.x[hasx], np.where(np.isfinite(model.y[hasx]), model.y[hasx], np.nan)
-    if not (np.diff(modelx) >= 0.0).all():
-        order = np.argsort(modelx)
-        modelx, modely = modelx[order], modely[order]
-    if modelx.size < 2:
-        return np.zeros(reference.x.size, dtype=bool), np.array([])
+    # Keep non-finite reference values as gaps instead of interpolating across them.
+    hasx = np.isfinite(reference.x)
+    referencex = reference.x[hasx]
+    referencey = np.where(np.isfinite(reference.y[hasx]), reference.y[hasx], np.nan)
+    if not (np.diff(referencex) >= 0.0).all():
+        order = np.argsort(referencex)
+        referencex, referencey = referencex[order], referencey[order]
+    if referencex.size == 0:
+        return np.zeros(model.x.size, dtype=bool), np.array([]), np.array([])
 
-    inrange = np.isfinite(reference.x) & (reference.x >= max(xmin, modelx[0])) & (reference.x <= min(xmax, modelx[-1]))
-    return inrange, np.interp(reference.x[inrange], modelx, modely) - reference.y[inrange]
+    inrange = np.isfinite(model.x) & (model.x >= max(xmin, referencex[0])) & (model.x <= min(xmax, referencex[-1]))
+    modely = np.where(np.isfinite(model.y[inrange]), model.y[inrange], np.nan)
+    yreference = np.interp(model.x[inrange], referencex, referencey)
+    return inrange, modely - yreference, yreference
+
+
+def draw_residual_series(
+    axis: mplax.Axes,
+    model: ResidualSeries,
+    inrange: "npt.NDArray[np.bool_]",
+    yvalues: "npt.NDArray[np.float64]",
+    yreference: "npt.NDArray[np.float64]",
+    *,
+    ratio: bool,
+) -> None:
+    """Draw the residual points with the line properties and error bars of the main frame."""
+    import numpy as np
+
+    xvalues = model.x[inrange]
+    (line,) = axis.plot(xvalues, yvalues, color=model.color, linewidth=0.8)
+    if model.line is not None:
+        line.update_from(model.line)
+        # The main frame has a different transform from the residual panel.
+        line.set_transform(axis.transData)
+        line.set_clip_path(axis.patch)
+        line.set_clip_box(axis.bbox)
+
+    if model.yerr is not None:
+        yerr = model.yerr[:, inrange]
+        if ratio:
+            denominator = np.abs(yreference)
+            yerr = np.divide(yerr, denominator, out=np.full_like(yerr, np.nan), where=denominator != 0.0)
+            # Division by a negative reference value exchanges the lower and upper errors.
+            yerr = np.where(yreference < 0.0, yerr[::-1], yerr)
+        errorbar_kwargs = model.errorbar_kwargs or {"color": model.color}
+        axis.errorbar(xvalues, yvalues, yerr=yerr, fmt="none", **errorbar_kwargs)
+        if model.unbounded is not None and (unbounded := model.unbounded[inrange]).any():
+            limitbars = axis.errorbar(
+                xvalues[unbounded],
+                yvalues[unbounded],
+                yerr=np.zeros(int(unbounded.sum())),
+                lolims=True,
+                fmt="none",
+                color=model.color,
+                alpha=line.get_alpha(),
+            )
+            # The magnitude axis takes its inverse direction after the residual panel is complete.
+            caretdown = t.cast("t.Literal[11]", mplmarkers.CARETDOWNBASE)
+            for capline in limitbars.lines[1]:
+                capline.set_marker(caretdown)
 
 
 def plot_residual_panel(
@@ -1032,39 +1084,54 @@ def plot_residual_panel(
     xmax: float,
     *,
     baselineindex: int = 0,
+    selectedindices: Sequence[int] | None = None,
     ismagnitude: bool = False,
-    ratio: bool = False,
+    residualtype: str = "absolute",
 ) -> pl.DataFrame:
-    """Draw each other series minus the baseline series, and return the statistics.
+    """Draw the selected residual type and return the statistics.
 
-    ratio=True draws series / baseline, which agrees with a main frame that has a log y axis.
-    The axis takes a log scale only when a ratio, or its inverse, is above RESIDUALRATIO_LOGSCALE.
+    An empty selection or None includes all series except the baseline.
+    The relative and relativelog types draw series / baseline on a linear or logarithmic y axis.
+    Magnitude panels always draw differences because magnitude ratios depend on the zero point.
+    Statistics use series minus baseline for every type.
     The table gives the number of points and the root mean square (RMS) of each residual.
     It also gives the ratio of the RMS to the mean baseline value, which has no meaning for a magnitude.
     """
     import numpy as np
 
+    if residualtype not in {"absolute", "relative", "relativelog"}:
+        exit_with_error(
+            f"Unknown residual type: {residualtype}", "Give absolute, relative, or relativelog with -residualtype"
+        )
+    if ismagnitude:
+        residualtype = "absolute"
+    ratio = residualtype != "absolute"
     if len(series) < 2:
-        exit_with_error("-residuals needs at least two series in the plot", "Give at least two series")
+        exit_with_error("-residual needs at least two series in the plot", "Give at least two series")
     if not 0 <= baselineindex < len(series):
         exit_with_error(
-            f"-residuals index {baselineindex} is outside the range of {len(series)} series",
+            f"-residualbaselineseries index {baselineindex} is outside the range of {len(series)} series",
             f"Give an index from 0 to {len(series) - 1}",
         )
+    if selectedindices is not None:
+        for index in selectedindices:
+            if not 0 <= index < len(series):
+                exit_with_error(
+                    f"-residual index {index} is outside the range of {len(series)} series",
+                    f"Give an index from 0 to {len(series) - 1}",
+                )
     reference = series[baselineindex]
 
     rows: list[dict[str, str | int | float | None]] = []
-    maxratio = 1.0
     for seriesindex, model in enumerate(series):
-        if seriesindex == baselineindex:
+        if seriesindex == baselineindex or (selectedindices and seriesindex not in selectedindices):
             continue
-        inrange, residual = get_residuals(reference, model, xmin, xmax)
+        inrange, residual, yreference = get_residuals(reference, model, xmin, xmax)
         hasvalue = np.isfinite(residual)
         if not hasvalue.any():
             print_warning(f"the residual panel has no point for '{plain_label(model.label)}'")
             continue
 
-        xreference, yreference = reference.x[inrange], reference.y[inrange]
         npoints = int(hasvalue.sum())
         rms = float(np.sqrt(np.mean(residual[hasvalue] ** 2)))
         yreference_mean = float(np.mean(np.abs(yreference[hasvalue])))
@@ -1077,16 +1144,16 @@ def plot_residual_panel(
             "rms_relative": rms_relative,
         })
 
-        # a reference spectrum has many points and takes a line, and a light curve has few and takes markers
-        markerkwargs: dict[str, t.Any] = {} if residual.size > 200 else {"marker": "o", "markersize": 3}
         yvalues = residual
         if ratio:
-            # a reference value of zero gives a gap
-            yvalues = 1.0 + np.divide(residual, yreference, out=np.full_like(residual, np.nan), where=yreference != 0.0)
-            positive = yvalues[np.isfinite(yvalues) & (yvalues > 0.0)]
-            if positive.size > 0:
-                maxratio = max(maxratio, float(positive.max()), 1.0 / float(positive.min()))
-        axis.plot(xreference, yvalues, color=model.color, linewidth=0.8, **markerkwargs)
+            # A baseline value of zero gives a gap.
+            yvalues = np.divide(
+                model.y[inrange], yreference, out=np.full_like(residual, np.nan), where=yreference != 0.0
+            )
+            yvalues = np.where(np.isfinite(yvalues), yvalues, np.nan)
+            if residualtype == "relativelog":
+                yvalues = np.where(yvalues > 0.0, yvalues, np.nan)
+        draw_residual_series(axis, model, inrange, yvalues, yreference, ratio=ratio)
 
         strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
         print_detail(
@@ -1095,9 +1162,8 @@ def plot_residual_panel(
         )
 
     axis.axhline(1.0 if ratio else 0.0, color="black", linewidth=0.8, zorder=0)
-    # a linear axis shows a moderate ratio best, and only a ratio above this factor needs a log axis
-    if maxratio > RESIDUALRATIO_LOGSCALE:
-        axis.set_yscale("log")
+    axis.set_yscale("log" if residualtype == "relativelog" else "linear")
+    if residualtype == "relativelog":
         prune_log_ticks(axis.yaxis)
     return pl.DataFrame(
         rows,
@@ -1119,20 +1185,26 @@ def draw_residual_panel(
     *,
     ismagnitude: bool = False,
 ) -> pl.DataFrame:
-    """Draw each other series minus the baseline below the main frame, and return the statistics.
+    """Draw the selected residual type below the main frame and return the statistics.
 
-    With a log y axis in the main frame, the panel shows series / baseline.
-    A distance in that frame is a ratio.
+    The residual type sets the calculation and the y scale of the panel.
     Call it after the main frame has its labels and its x range.
     The panel takes both.
     """
     logscaley = bool(getattr(args, "logscaley", False))
-    isratio = logscaley and not ismagnitude
+    isratio = not ismagnitude and args.residualtype != "absolute"
     # the shared x axis otherwise takes a new range with the default margin of the residual axis
     residualaxis.set_xmargin(mainaxis.get_xmargin())
     xlim = mainaxis.get_xlim()
     dfresidualstats = plot_residual_panel(
-        residualaxis, series, min(xlim), max(xlim), baselineindex=args.residuals, ismagnitude=ismagnitude, ratio=isratio
+        residualaxis,
+        series,
+        min(xlim),
+        max(xlim),
+        baselineindex=args.residualbaselineseries,
+        selectedindices=args.residuals,
+        ismagnitude=ismagnitude,
+        residualtype=args.residualtype,
     )
     set_axis_properties(residualaxis, args, setyaxis=False)
     if logscaley:
@@ -1149,7 +1221,12 @@ def draw_residual_panel(
         strunits = f"\n{mainylabel[mainylabel.rfind('[') :]}" if "[" in mainylabel else ""
         residualaxis.set_ylabel(rf"series $-$ baseline{strunits}")
         set_exponent_label(residualaxis)
-    if ismagnitude:
+    residualymax = log_axis_limit(
+        getattr(args, "residualymax", None), logscale=residualaxis.get_yscale() == "log", argname="-residualymax"
+    )
+    if residualymax is not None:
+        residualaxis.set_ylim(top=residualymax)
+    if ismagnitude and not isratio:
         # a model that is fainter than the reference then lies below zero, as it lies below in the main frame
         invert_magnitude_yaxis(residualaxis)
 
@@ -1205,6 +1282,111 @@ def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:
     return titlebox.y1
 
 
+# the background and the foreground of a figure with --darkmode
+DARKMODE_COLOURS: t.Final = ("black", "white")
+
+# a grey darker than this luminance is hard to see on a dark background, thus Dark Mode makes it light, e.g. the grey
+# of 0.3 of the Planck mean of plotopacity
+DARK_GREY_LIMIT: t.Final = 0.5
+
+# the formats that keep the transparent background of a figure with --darkmode. A raster file, e.g. a PNG image of a
+# gif, has a black background, because many image viewers show a transparent area as white
+TRANSPARENT_DARKMODE_FORMATS: t.Final = frozenset({"pdf", "svg", "svgz"})
+
+
+def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> None:
+    """Give a figure the colours of Dark Mode.
+
+    The backgrounds of the figure, the axes, and the legends take the background colour. The frames and the ticks take
+    the foreground colour. A black item takes the foreground colour, and a dark grey item takes a light grey, because
+    neither shows on the dark background:
+
+    - a line, or the edge or the face of its markers;
+    - a text;
+    - the edge or the face of a patch;
+    - the edge or the face of a collection of one colour.
+
+    The other colours stay, e.g. the colours of the series and of an image. A dark colour of a series, e.g. the dark
+    red of sulphur, is not grey, thus it stays.
+    """
+    from matplotlib.collections import Collection
+    from matplotlib.patches import Patch
+    from matplotlib.text import Text
+
+    foregroundrgb = mplcolors.to_rgb(foreground)
+
+    def get_light_grey(colour: "mplt.ColorType") -> tuple[float, float, float, float] | None:
+        """Return the colour in place of a dark grey, or None for a different colour."""
+        red, green, blue, alpha = mplcolors.to_rgba(colour)
+        luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+        if alpha == 0.0 or max(red, green, blue) - min(red, green, blue) >= 0.1 or luminance >= DARK_GREY_LIMIT:
+            return None
+        # black takes the foreground colour and a lighter grey goes nearer to the mid grey, thus two greys stay apart
+        fraction = luminance / DARK_GREY_LIMIT
+        lightred, lightgreen, lightblue = (
+            part * (1.0 - fraction) + DARK_GREY_LIMIT * fraction for part in foregroundrgb
+        )
+        return lightred, lightgreen, lightblue, alpha
+
+    def get_one_light_grey(
+        colours: "mplt.ColorType | Sequence[mplt.ColorType]",
+    ) -> tuple[float, float, float, float] | None:
+        rgbas = mplcolors.to_rgba_array(colours)
+        return get_light_grey(tuple(rgbas[0])) if len(rgbas) == 1 else None
+
+    backgrounds: list[mplartist.Artist] = [fig.patch]
+    for axis in fig.axes:
+        backgrounds.append(axis.patch)
+        for spine in axis.spines.values():
+            spine.set_edgecolor(foreground)
+        axis.tick_params(which="both", colors=foreground)
+        if (legend := axis.get_legend()) is not None:
+            backgrounds.append(legend.get_frame())
+    backgroundids = {id(artist) for artist in backgrounds}
+    for artist in backgrounds:
+        if isinstance(artist, Patch):
+            artist.set_facecolor(background)
+
+    # one walk of the tree of artists, because a figure with many subplots holds many artists
+    for artist in fig.findobj():
+        if isinstance(artist, Text):
+            if (newcolour := get_light_grey(artist.get_color())) is not None:
+                artist.set_color(newcolour)
+        elif isinstance(artist, mpllines.Line2D):
+            # a marker can have an edge or a face of its own colour, e.g. the black edge of a hollow marker
+            markeredgecolour, markerfacecolour = artist.get_markeredgecolor(), artist.get_markerfacecolor()
+            if (newcolour := get_light_grey(artist.get_color())) is not None:
+                artist.set_color(newcolour)
+            if (newcolour := get_light_grey(markeredgecolour)) is not None:
+                artist.set_markeredgecolor(newcolour)
+            if (newcolour := get_light_grey(markerfacecolour)) is not None:
+                artist.set_markerfacecolor(newcolour)
+        elif isinstance(artist, Patch):
+            if (newcolour := get_light_grey(artist.get_edgecolor())) is not None:
+                artist.set_edgecolor(newcolour)
+            if id(artist) not in backgroundids and (newcolour := get_light_grey(artist.get_facecolor())) is not None:
+                artist.set_facecolor(newcolour)
+        # a collection of one colour is e.g. the lines of the error bars. A colour map gives many colours, thus its
+        # collection stays
+        elif isinstance(artist, Collection):
+            if (newcolour := get_one_light_grey(artist.get_edgecolor())) is not None:
+                artist.set_edgecolor(newcolour)
+            if (newcolour := get_one_light_grey(artist.get_facecolor())) is not None:
+                artist.set_facecolor(newcolour)
+
+
+def apply_darkmode(fig: mplfig.Figure, fileformat: str) -> bool:
+    """Give the figure the colours of --darkmode, and return True if a file of this format has no background."""
+    apply_dark_colours(fig, *DARKMODE_COLOURS)
+    transparent = fileformat in TRANSPARENT_DARKMODE_FORMATS
+    if transparent:
+        # a black legend box on a transparent figure hides the background of the slide
+        for axis in fig.axes:
+            if (legend := axis.get_legend()) is not None:
+                legend.get_frame().set_facecolor("none")
+    return transparent
+
+
 def make_room_for_title(fig: mplfig.Figure) -> None:
     """Make the figure taller if a title goes past its top edge.
 
@@ -1254,9 +1436,24 @@ def save_figure(
 
     A suffix of outpath that matplotlib can write sets the format, thus a format argument applies only to a path
     with no such suffix. A file named rf.png then holds PNG data, also when the caller gives format="pdf".
+
+    With --darkmode, the figure has white text and frames. A PDF file or an SVG file has a transparent background,
+    and a file in a different format has a black background.
     """
+    from pathlib import Path
+
     show = args is not None and getattr(args, "show", False)
     openfile = args is not None and not isframe and getattr(args, "open", False)
+
+    suffix = Path(outpath).suffix.removeprefix(".").lower()
+    if suffix in fig.canvas.get_supported_filetypes():
+        savefig_kwargs.pop("format", None)
+        fileformat = suffix
+    else:
+        fileformat = str(savefig_kwargs.get("format", plt.rcParams["savefig.format"])).lower()
+
+    if args is not None and getattr(args, "darkmode", False):
+        savefig_kwargs.setdefault("transparent", apply_darkmode(fig, fileformat))
 
     if show:
         # a window shows the figure with no crop, thus a title needs room inside the figure
@@ -1267,11 +1464,6 @@ def save_figure(
     # keeps its width. The pad keeps a stroke on the boundary whole.
     savefig_kwargs.setdefault("bbox_inches", "tight")
     savefig_kwargs.setdefault("pad_inches", 0.02)
-
-    from pathlib import Path
-
-    if Path(outpath).suffix.removeprefix(".").lower() in fig.canvas.get_supported_filetypes():
-        savefig_kwargs.pop("format", None)
 
     fig.savefig(outpath, **savefig_kwargs)
     if not isframe:
@@ -1284,11 +1476,13 @@ def save_figure(
         open_file(outpath)
 
 
-def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None") -> None:
+def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None", args: argparse.Namespace) -> None:
     """Save the figure when an output file was given, otherwise show it. Close the figure either way."""
     if outputfile:
-        save_figure(fig, outputfile)
+        save_figure(fig, outputfile, args=args)
     else:
+        if getattr(args, "darkmode", False):
+            apply_dark_colours(fig, *DARKMODE_COLOURS)
         plt.show()
         plt.close(fig)
 

@@ -1,5 +1,6 @@
 """Resample a 3D ARTIS model onto a coarser Cartesian grid."""
 
+import argparse
 import functools
 import typing as t
 from collections.abc import Sequence
@@ -61,11 +62,15 @@ def get_downscale_outputfolder(modelpath: Path | str, outputgridsize: int, outpu
 
 
 def make_downscaled_3d_grid(
-    modelpath: str | Path, outputgridsize: int = 50, plot: bool = False, outputfolder: Path | str | None = None
+    modelpath: str | Path,
+    outputgridsize: int = 50,
+    plot: bool = False,
+    outputfolder: Path | str | None = None,
+    args: argparse.Namespace | None = None,
 ) -> Path:
     """Get a 3D model with smallgrid^3 cells from a 3D model with grid^3 cells.
 
-    Should be same as downscale_3d_grid.pro.
+    Should be same as downscale_3d_grid.pro. args gives the options of the diagnostic plot, e.g. --darkmode.
     """
     modelpath = Path(modelpath)
 
@@ -176,6 +181,6 @@ def make_downscaled_3d_grid(
         fig.tight_layout()
 
         diagnosticpath = outputfolder / "downscaled_density_diagnostic.png"
-        save_figure(fig, diagnosticpath, dpi=300)
+        save_figure(fig, diagnosticpath, dpi=300, args=args)
 
     return outputfolder

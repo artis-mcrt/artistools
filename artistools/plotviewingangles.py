@@ -10,6 +10,7 @@ import polars as pl
 
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_output
 from artistools.misc import get_costheta_bins
 from artistools.misc import get_phi_bins
@@ -18,6 +19,7 @@ from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
 from artistools.misc import resolve_outputfile
+from artistools.plottools import TRANSPARENT_DARKMODE_FORMATS
 
 
 def get_theta_phi(anglebin: int) -> tuple[float, float]:
@@ -69,6 +71,7 @@ def viewing_angles_visualisation(
     linewidth: float = 2.5,
     linelength: float = 1.0,
     show_plot: bool = False,
+    darkmode: bool = False,
 ) -> tuple[float, float]:
     """Draw a 3D visualisation of an ARTIS model, with an animation of the direction bins.
 
@@ -95,6 +98,8 @@ def viewing_angles_visualisation(
         The length of the direction bin lines, in units of the size of the box.
     show_plot : bool
         True shows the plot after the function saves it.
+    darkmode : bool
+        True gives the plot white text on a black background, or on a transparent background in a PDF or SVG file.
 
     Returns
     -------
@@ -155,6 +160,10 @@ def viewing_angles_visualisation(
         scene_xaxis_showticklabels=False, scene_yaxis_showticklabels=False, scene_zaxis_showticklabels=False
     )
 
+    if darkmode:
+        istransparent = outfile is not None and Path(outfile).suffix.removeprefix(".") in TRANSPARENT_DARKMODE_FORMATS
+        fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)" if istransparent else "black")
+
     if outfile:
         if outfile.endswith("html"):
             fig.write_html(outfile, auto_play=False)
@@ -188,6 +197,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="The length of the direction bin lines, in units of the size of the box",
     )
     parser.add_argument("--show_plot", action="store_true", help="Show the plot after the command saves it")
+    addarg_darkmode(parser)
 
     # deprecated double-dash spellings kept as hidden aliases
     parser.add_argument("--outfile", dest="outputfile", type=Path, help=argparse.SUPPRESS)
@@ -214,4 +224,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         linewidth=args.linewidth,
         linelength=args.linelength,
         show_plot=args.show_plot,
+        darkmode=args.darkmode,
     )

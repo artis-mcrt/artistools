@@ -554,7 +554,7 @@ def get_option_kind(action: argparse.Action) -> str:
 def get_default_tokens(action: argparse.Action) -> tuple[str, ...] | None:
     """Return the values of a new row of the table, or None if the option needs a value that has no default."""
     kind = get_option_kind(action)
-    if kind == "flag" or action.nargs == "?":
+    if kind == "flag" or action.nargs in {"?", "*"}:
         return ()
     if kind == "choice":
         choices = [str(choice) for choice in action.choices or ()]

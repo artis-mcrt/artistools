@@ -49,6 +49,7 @@ from artistools.inputmodel import get_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
@@ -2394,6 +2395,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-scalefigwidth", dest="figwidthscale", type=float, help=argparse.SUPPRESS)
 
     addarg_show(parser)
+    addarg_darkmode(parser)
     parser.add_argument(
         "--interactive",
         action="store_true",

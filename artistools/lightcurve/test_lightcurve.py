@@ -2204,9 +2204,36 @@ def test_find_lightcurve_file_refuses_a_direction_resolved_gamma_request() -> No
     assert at.lightcurve.find_lightcurve_file(modelpath_classic_3d, gamma=True).name.startswith("gamma_light_curve.out")
 
 
+@pytest.mark.parametrize("ratio", [False, True])
+def test_bolometric_residual_accepts_a_baseline_with_one_observation(tmp_path: Path, ratio: bool) -> None:
+    """A baseline file with one observation keeps the comparison point at the same time."""
+    baselinefile = tmp_path / "baseline.txt"
+    baselinefile.write_text("#time_days luminosity_erg/s\n2 4\n", encoding="utf-8")
+    comparisonfile = tmp_path / "comparison.txt"
+    comparisonfile.write_text("#time_days luminosity_erg/s\n1 3\n2 6\n3 8\n", encoding="utf-8")
+    with mock.patch.object(
+        at.lightcurve.plotlightcurve, "draw_residual_panel", wraps=at.lightcurve.plotlightcurve.draw_residual_panel
+    ) as mockdraw:
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[baselinefile, comparisonfile],
+            residualbaselineseries=0,
+            logscaley=ratio,
+            residualtype="relative" if ratio else "absolute",
+            write_data=True,
+            outputfile=tmp_path / "residual.pdf",
+        )
+    stats = pl.read_csv(tmp_path / "residual_residuals.csv")
+    assert stats["npoints"].item() == 1
+    assert np.isclose(stats["rms"].item(), 2.0)
+    line = mockdraw.call_args.args[0].lines[0]
+    assert np.allclose(line.get_xdata(), [2.0])
+    assert np.allclose(line.get_ydata(), [1.5 if ratio else 2.0])
+
+
 @pytest.mark.parametrize("refispositional", [False, True])
 def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refispositional: bool) -> None:
-    """A reference luminosity of 1.2 times the model gives a relative RMS residual of 0.2 / 1.2."""
+    """Calculate the residual statistics from every model point against the interpolated reference."""
     dfmodel = (
         at.lightcurve
         .scan_lightcurve(at.lightcurve.find_lightcurve_file(modelpath))[-1]
@@ -2226,17 +2253,128 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
         argsraw=[],
         modelpath=[modelpath, obsfile] if refispositional else [modelpath],
         reflightcurves=[] if refispositional else [str(obsfile)],
-        residuals=1,
+        residualbaselineseries=1,
         write_data=True,
         outputfile=tmp_path / "bolresiduals.pdf",
     )
     dfstats = pl.read_csv(tmp_path / "bolresiduals_residuals.csv")
     assert dfstats["reference"].item() == "fake bolometric"
-    assert dfstats["npoints"].item() == dfmodel.height
-    assert np.isclose(dfstats["rms_relative"].item(), 0.2 / 1.2, rtol=0.05)
-    assert np.isclose(
-        dfstats["rms_relative"].item(), dfstats["rms"].item() / (1.2 * dfmodel["luminosity_erg/s"].to_numpy().mean())
+    fullmodel = (
+        at.lightcurve
+        .scan_lightcurve(at.lightcurve.find_lightcurve_file(modelpath))[-1]
+        .filter(pl.col("time_days").is_between(dfmodel["time_days"].min(), dfmodel["time_days"].max()))
+        .collect()
     )
+    yreference = np.interp(fullmodel["time_days"], dfmodel["time_days"], 1.2 * dfmodel["luminosity_erg/s"].to_numpy())
+    assert dfstats["npoints"].item() == fullmodel.height
+    expected_rms = np.sqrt(np.mean((fullmodel["luminosity_erg/s"].to_numpy() - yreference) ** 2))
+    assert np.isclose(dfstats["rms"].item(), expected_rms)
+    assert np.isclose(dfstats["rms_relative"].item(), dfstats["rms"].item() / yreference.mean())
+
+
+@pytest.mark.parametrize("lumunit", ["erg/s", "Lsun", "mag"])
+@pytest.mark.parametrize("with_errors", [False, True])
+@pytest.mark.parametrize("ratio", [False, True])
+def test_bolometric_residual_keeps_the_points_and_error_bars(
+    tmp_path: Path, lumunit: at.lightcurve.plotlightcurve.LumUnit, with_errors: bool, ratio: bool
+) -> None:
+    """Observed points keep their markers, asymmetric errors, and magnitude limit arrows in the residual panel."""
+    reffile = tmp_path / "observed.txt"
+    if with_errors:
+        reffile.write_text(
+            "#time_days luminosity_erg/s luminosity_errminus_erg/s luminosity_errplus_erg/s\n"
+            "1 1e42 1e41 2e41\n2 2e42 3e41 4e41\n3 3e42 4e42 6e41\n",
+            encoding="utf-8",
+        )
+    else:
+        reffile.write_text("#time_days luminosity_erg/s\n1 1e42\n2 2e42\n3 3e42\n", encoding="utf-8")
+    fig, (mainaxis, residualaxis) = plt.subplots(2)
+    series: list[at.plottools.ResidualSeries] = []
+    at.lightcurve.plotlightcurve.plot_bol_reflightcurve(
+        mainaxis, reffile, lumunit, color="purple", linewidth=2.5, alpha=0.4, residualseries=series
+    )
+    baseline_y = at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(np.array([0.5e42, 4e42]), lumunit)
+    baseline = at.plottools.ResidualSeries(
+        "baseline", np.array([0.0, 4.0]), np.asarray(baseline_y, dtype=np.float64), "k"
+    )
+    isratio = ratio and lumunit != "mag"
+    stats = at.plottools.plot_residual_panel(
+        residualaxis,
+        [baseline, *series],
+        1.5,
+        3.5,
+        residualtype="relative" if isratio else "absolute",
+        ismagnitude=lumunit == "mag",
+    )
+    observed = series[0]
+    yreference = np.interp(observed.x[1:], baseline.x, baseline.y)
+    expected = observed.y[1:] / yreference if isratio else observed.y[1:] - yreference
+    line = residualaxis.lines[0]
+    assert stats["npoints"].item() == 2
+    assert np.allclose(line.get_xdata(), [2.0, 3.0])
+    assert np.allclose(line.get_ydata(), expected)
+    assert observed.line is not None
+    assert line.get_marker() == observed.line.get_marker()
+    assert line.get_linestyle() == observed.line.get_linestyle() == "None"
+    assert np.isclose(line.get_markersize(), observed.line.get_markersize())
+    assert line.get_color() == observed.line.get_color()
+    assert np.isclose(line.get_alpha() or 0.0, observed.line.get_alpha() or 0.0)
+    if with_errors:
+        assert observed.yerr is not None
+        expected_yerr = observed.yerr[:, 1:].copy()
+        if isratio:
+            expected_yerr /= yreference
+        bars = residualaxis.containers[0]
+        assert isinstance(bars, ErrorbarContainer)
+        segments = bars.lines[2][0].get_segments()
+        assert np.allclose(
+            segments,
+            [
+                [[x, y - lower], [x, y + upper]]
+                for x, y, lower, upper in zip(observed.x[1:], expected, expected_yerr[0], expected_yerr[1], strict=True)
+            ],
+        )
+        assert np.allclose(bars.lines[2][0].get_linewidth(), [2.5])
+        assert np.isclose(bars.lines[2][0].get_alpha() or 0.0, 0.4)
+        original_bars = mainaxis.containers[0]
+        assert isinstance(original_bars, ErrorbarContainer)
+        assert np.isclose(bars.lines[1][0].get_markersize(), original_bars.lines[1][0].get_markersize())
+        if lumunit == "mag":
+            arrows = residualaxis.containers[1]
+            assert isinstance(arrows, ErrorbarContainer)
+            assert arrows.lines[1][0].get_marker() == mplmarkers.CARETDOWNBASE
+            assert np.allclose(arrows.lines[1][0].get_xdata(), [3.0])
+            assert np.allclose(arrows.lines[1][0].get_ydata(), expected[-1:])
+    else:
+        assert len(residualaxis.containers) == 0
+    if lumunit == "mag":
+        at.plottools.invert_magnitude_yaxis(residualaxis)
+    fig.canvas.draw()
+    plt.close(fig)
+
+
+def test_band_residual_keeps_the_observed_marker() -> None:
+    """Observed band points keep their selected marker and size with no line between the points."""
+    refdata = pl.DataFrame({"band": ["B"] * 3, "time": [1.0, 2.0, 3.0], "magnitude": [-13.0, -12.5, -12.0]})
+    fig, (mainaxis, residualaxis) = plt.subplots(2)
+    series: list[at.plottools.ResidualSeries] = []
+    with mock.patch.object(
+        at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "observed"})
+    ):
+        at.lightcurve.plotlightcurve.plot_lightcurve_from_refdata(
+            ["B"], "observed.txt", "red", "D", mainaxis, linewidth=9, residualseries=series
+        )
+    baseline = at.plottools.ResidualSeries("baseline", np.array([0.0, 4.0]), np.array([-14.0, -12.0]), "k")
+    stats = at.plottools.plot_residual_panel(residualaxis, [baseline, *series], 0.0, 4.0, ismagnitude=True)
+    line = residualaxis.lines[0]
+    assert stats["npoints"].item() == 3
+    assert np.allclose(line.get_xdata(), [1.0, 2.0, 3.0])
+    assert np.allclose(line.get_ydata(), [0.5, 0.5, 0.5])
+    assert line.get_marker() == "D"
+    assert line.get_linestyle() == "None"
+    assert np.isclose(line.get_markersize(), 9.0)
+    assert line.get_color() == "red"
+    plt.close(fig)
 
 
 @pytest.mark.parametrize("filtername", [None, "B"])
@@ -2256,6 +2394,25 @@ def test_lightcurve_residual_panel_compares_two_models(tmp_path: Path, filternam
     assert np.isclose(dfstats["rms"].item(), 0.0)
 
 
+@pytest.mark.parametrize("filtername", [None, "B"])
+def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path, filtername: str | None) -> None:
+    """Keep the baseline keyword separate from the selected series in bolometric and band plots."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath] * 3,
+        filter=[filtername] if filtername is not None else None,
+        label=["excluded", "baseline", "comparison"],
+        residualbaselineseries=1,
+        residuals=[2],
+        write_data=True,
+        outputfile=tmp_path / "selected.pdf",
+    )
+    stats = pl.read_csv(tmp_path / "selected_residuals.csv")
+    assert stats["model"].to_list() == ["comparison"]
+    assert stats["reference"].to_list() == ["baseline"]
+    assert np.isclose(stats["rms"].item(), 0.0)
+
+
 @pytest.mark.parametrize(
     ("rpkt", "baselineindex"), [(False, 0), (False, 1), (True, 0), (True, 1), (True, 2), (True, 3)]
 )
@@ -2267,7 +2424,7 @@ def test_residual_baseline_counts_gamma_lightcurves(tmp_path: Path, rpkt: bool, 
         label=["model1", "model2"],
         gamma=True,
         rpkt=rpkt,
-        residuals=baselineindex,
+        residualbaselineseries=baselineindex,
         write_data=True,
         outputfile=tmp_path / "gamma.pdf",
     )
@@ -2291,7 +2448,7 @@ def test_residual_baseline_counts_comoving_frame_curves(tmp_path: Path, modelcou
             modelpath=[modelpath_classic_3d] * modelcount,
             label=["first", "second"][:modelcount],
             plotcmf=True,
-            residuals=baselineindex,
+            residualbaselineseries=baselineindex,
             write_data=True,
             outputfile=tmp_path / "cmf.pdf",
         )
@@ -2310,8 +2467,8 @@ def test_residual_baseline_counts_comoving_frame_curves(tmp_path: Path, modelcou
     xmin, xmax = mainaxis.get_xlim()
     for index, comparison in enumerate(series):
         if index != baselineindex:
-            inrange = (baseline.x >= max(xmin, comparison.x.min())) & (baseline.x <= min(xmax, comparison.x.max()))
-            residual = np.interp(baseline.x[inrange], comparison.x, comparison.y) - baseline.y[inrange]
+            inrange = (comparison.x >= max(xmin, baseline.x.min())) & (comparison.x <= min(xmax, baseline.x.max()))
+            residual = comparison.y[inrange] - np.interp(comparison.x[inrange], baseline.x, baseline.y)
             expectedrms.append(np.sqrt(np.mean(residual**2)))
     assert np.allclose(dfstats["rms"].to_numpy(), expectedrms)
 
@@ -2343,7 +2500,7 @@ def test_residual_baseline_counts_energy_rate_curves(
             argsraw=[],
             modelpath=[modelpath_classic_3d, reffile],
             label=["model", "reference"],
-            residuals=baselineindex,
+            residualbaselineseries=baselineindex,
             write_data=True,
             outputfile=tmp_path / "rates.pdf",
             deposition=["betaminus"] if rateflag == "deposition" else [],
@@ -2395,7 +2552,7 @@ def test_residual_baseline_counts_hesma_curve(
             filter=["B"],
             reflightcurves=["reference.dat"],
             plot_hesma_model=hesmafile,
-            residuals=baselineindex,
+            residualbaselineseries=baselineindex,
             write_data=True,
             outputfile=tmp_path,
         )
@@ -2413,8 +2570,9 @@ def test_residual_baseline_counts_hesma_curve(
     assert stats["rms_relative"].null_count() == 2
 
 
+@pytest.mark.parametrize("residualtype", [None, "absolute", "relative", "relativelog"])
 def test_band_residual_panel_takes_one_filter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], residualtype: str | None
 ) -> None:
     """A band plot with one filter gives the RMS residual in magnitudes, and more than one filter stops the command."""
     # --write_data also writes the band data to the working folder
@@ -2430,18 +2588,18 @@ def test_band_residual_panel_takes_one_filter(
         ) as mocksave,
     ):
         at.lightcurve.plot(
-            argsraw=[],
+            argsraw=["-residualtype", residualtype] if residualtype else [],
             modelpath=[modelpath],
             filter=["B"],
             reflightcurves=["fakeref.dat"],
-            residuals=1,
+            residualbaselineseries=1,
             write_data=True,
             outputfile=tmp_path,
         )
         # a fainter model lies below the reference in the main frame, thus it must also lie below zero in the panel
         assert all(axis.yaxis_inverted() for axis in mocksave.call_args.args[0].axes)
         dfstats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
-        assert dfstats["npoints"].item() == 3
+        assert dfstats["npoints"].item() > 3
         assert dfstats["rms"].item() > 0.0
         # a ratio to a mean magnitude has no meaning
         assert dfstats["rms_relative"].null_count() == 1
@@ -2452,11 +2610,11 @@ def test_band_residual_panel_takes_one_filter(
                 modelpath=[modelpath],
                 filter=["B", "V"],
                 reflightcurves=["fakeref.dat"],
-                residuals=1,
+                residualbaselineseries=1,
                 outputfile=tmp_path,
             )
         # SystemExit holds the status alone, thus the message of the command is the text that it printed
-        assert "-residuals applies to a plot of one frame" in capsys.readouterr().err
+        assert "-residual applies to a plot of one frame" in capsys.readouterr().err
 
 
 def test_reference_band_data_uses_the_given_distance_modulus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

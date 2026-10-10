@@ -20,6 +20,7 @@ from artistools.constants import day_to_s
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import get_modeldata
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
@@ -263,8 +264,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     """Render an isosurface of the 3D model with pyvista, coloured by the first of args.plotvars."""
     pv = import_optional("pyvista")
 
-    # set white background
-    pv.set_plot_theme("document")
+    # the dark theme of pyvista has a black background and white text, as --darkmode gives a matplotlib plot
+    pv.set_plot_theme("dark" if args.darkmode else "document")
 
     # choose what surface will be coloured by
     plotvar = "rho" if "rho" in args.plotvars else "Ye" if "Ye" in args.plotvars else args.plotvars[0]
@@ -371,6 +372,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Slice axis for 2D plots. Hint: for negative use e.g. -axis=-z",
     )
     addarg_show(parser)
+    addarg_darkmode(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

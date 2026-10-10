@@ -613,7 +613,7 @@ class LightCurveViewer:
         def keep(plot: RenderedLightCurve) -> None:
             self.axis, self.thermaxis, self.residualaxis = plot
 
-        return render_command(self, draw, keep, quiet=quiet)
+        return render_command(self, values, draw, keep, quiet=quiet)
 
     def get_frames(self) -> "list[mplax.Axes]":
         """Return the frames of the plot on the screen, from the top to the bottom."""
