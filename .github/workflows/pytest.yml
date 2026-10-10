@@ -96,7 +96,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                python-version: ['3.13', '3.14', 3.14t, '3.15', 3.15t]
+                python-version: ['3.13', '3.14', '3.15', 3.15t]
                 # one entry installs the optional packages, thus the pyvista and the plotly paths run.
                 # Every entry would take minutes more for the same coverage
                 include:
