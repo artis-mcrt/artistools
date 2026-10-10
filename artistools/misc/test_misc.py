@@ -1357,6 +1357,9 @@ def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pyte
     # a label of a list option can have the form host:path, thus only a remote path that is clearly a folder counts
     assert remote.names_a_remote_folder("vae26:~/model")
     assert not remote.names_a_remote_folder("second:label")
+    # a series style of plotestimators holds "=" before its colon, and a host holds no "="
+    for styleditem in ("TR@color=tab:red", "Te@linestyle=:", "Te@label=T:e", "Te@color=xkcd:sky/blue"):
+        assert not remote.is_remote_path(styleditem)
     # a band plot of two hosts gives each call the Namespace with both models. Only the argument of the model counts
     commandargs = argparse.Namespace(modelpath=[Path("hosta:~/x"), Path("hostb:~/y")], stream=sys.stdout)
     host, (serverargs, _) = remote.to_server_arguments(((Path("hosta:~/x"), commandargs), {}))

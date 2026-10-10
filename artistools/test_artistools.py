@@ -5726,3 +5726,52 @@ def test_viewer_python_code_gives_the_changed_arguments() -> None:
     assert "notitle=True" in code
     rejected = viewerwidgets.get_python_code(parser, ["-xmin", "abc"], "plotlightcurves", "at.lightcurve.plot")
     assert rejected == "# plotlightcurves rejects the command"
+
+
+# the code of each order of import, which checks the names that broke after PySide6 loaded
+LAZY_IMPORT_CHECK_CODE: t.Final = """
+import importlib.util
+import sys
+import types
+
+qtfirst = sys.argv[1] == "qtfirst"
+hasqt = importlib.util.find_spec("PySide6") is not None
+# a call of import_module is eager, and an import statement at module level can be lazy
+if qtfirst and hasqt:
+    importlib.import_module("PySide6.QtCore")
+import artistools
+if not qtfirst:
+    if hasqt:
+        importlib.import_module("PySide6.QtCore")
+    else:
+        # the guard runs at the first import of the Qt bindings, and the test calls it in place of that import
+        next(finder for finder in sys.meta_path if type(finder).__name__ == "QtImportGuard").find_spec("PySide6")
+pending = [
+    f"{module.__name__}.{name}"
+    for module in list(sys.modules.values())
+    if module.__name__.startswith("artistools")
+    for name, value in list(vars(module).items())
+    if isinstance(value, getattr(types, "LazyImportType", ()))
+]
+assert not pending, pending
+from artistools.misc import print_error
+assert callable(print_error)
+if hasqt:
+    import kiwisolver
+    assert isinstance(kiwisolver.__version__, str)
+"""
+
+
+@pytest.mark.skipif(not hasattr(sys, "set_lazy_imports"), reason="only Python 3.15 and later have lazy imports")
+@pytest.mark.parametrize("order", ["qtfirst", "artistoolsfirst"])
+def test_lazy_imports_survive_the_qt_bindings(order: str) -> None:
+    """No lazy import of artistools stays pending when PySide6 loads, in either order of import.
+
+    After PySide6 loads, the attribute of a module gave a pending lazy import as it was, e.g. print_error of artistools
+    and the version of kiwisolver. A window then stopped with "'lazy_import' object is not callable". The test runs in a
+    new interpreter, because the order of the imports decides the result.
+    """
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", LAZY_IMPORT_CHECK_CODE, order], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr

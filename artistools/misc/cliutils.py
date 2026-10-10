@@ -766,6 +766,17 @@ def positive_int_arg(text: str) -> int:
     return value
 
 
+# the line styles of matplotlib that a series style and the line properties popup name
+LINESTYLE_NAMES: t.Final = ("solid", "dashed", "dotted", "dashdot")
+
+# the short names of the line styles of matplotlib, which a command can also give
+LINESTYLE_ALIASES: t.Final = MappingProxyType({"-": "solid", "--": "dashed", ":": "dotted", "-.": "dashdot"})
+
+# the keys of the style of one series, which also name the options of addarg_seriesstyle, e.g. -color. A series style of
+# plotestimators gives the label last, because the label takes the rest of the text, e.g. a comma
+SERIES_STYLE_KEYS: t.Final = ("color", "linestyle", "dashes", "linewidth", "linealpha", "label")
+
+
 def positive_float_arg(text: str) -> float:
     """Return the number of the text, and reject a value that is not finite and above 0 when argparse reads it.
 

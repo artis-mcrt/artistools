@@ -39,6 +39,7 @@ from artistools.estimators.plotestimators import get_layer_index
 from artistools.estimators.plotestimators import get_model_default_plotlist
 from artistools.estimators.plotestimators import get_panel_axes_label
 from artistools.estimators.plotestimators import get_styled_series
+from artistools.estimators.plotestimators import get_styles_of_subplots
 from artistools.estimators.plotestimators import get_subplot_grid
 from artistools.estimators.plotestimators import get_ylabel
 from artistools.estimators.plotestimators import is_ionseriestype
@@ -53,7 +54,6 @@ from artistools.estimators.plotestimators import require_artis_folder
 from artistools.estimators.plotestimators import resolve_positional_args
 from artistools.estimators.plotestimators import resolve_snapshot_arguments
 from artistools.estimators.plotestimators import SERIES_STYLE_MARK
-from artistools.estimators.plotestimators import split_plotitem_styles
 from artistools.estimators.plotestimators import time_is_given
 from artistools.estimators.plotestimators import TIME_XVARIABLES
 from artistools.estimators.plotestimators import VARIABLE_ALIASES
@@ -151,7 +151,7 @@ if t.TYPE_CHECKING:
 
     import matplotlib.axes as mplax
     import numpy.typing as npt
-    from PySide6 import QtCore
+    from PySide6 import QtGui
     from PySide6 import QtWidgets
 
     from artistools.estimators.core import EstimatorBatchCache
@@ -303,16 +303,15 @@ def get_series_swatches(
 
     from artistools.viewertools.series import get_dash_pattern
 
-    stylesofsubplots = [split_plotitem_styles(plotitems)[1] for plotitems in args.plotlist or []]
     frames = get_plot_frames(fig)
     swatches: dict[tuple[int, str], SeriesSwatch] = {}
-    for index, (series, _) in enumerate(figuredata.subplots):
-        styles = stylesofsubplots[index] if index < len(stylesofsubplots) else {}
+    stylesofsubplots = get_styles_of_subplots(args, len(figuredata.subplots))
+    for index, ((series, _), styles) in enumerate(zip(figuredata.subplots, stylesofsubplots, strict=True)):
         # --markers draws the points of a series after its line, with a lighter colour. The first line of a series
-        # gives its colour, and -xbins 0 draws the points alone
-        linecolours: dict[t.Any, str] = {}
+        # gives its colour, and -xbins 0 draws the points alone, with a colour of three numbers
+        linecolours: dict[str | None, str] = {}
         for line in frames[index].get_lines():
-            linecolours.setdefault(line.get_gid(), str(line.get_color()))
+            linecolours.setdefault(line.get_gid(), mplcolors.to_hex(line.get_color()))
         # a series with no colour takes the next colour of the axes cycle, and a series with a colour does not move it
         cycleposition = 0
         for seriesdata in series:
@@ -334,11 +333,31 @@ def get_series_swatches(
     return swatches
 
 
+# the arguments that only the functions that draw a figure read, e.g. draw_line_figure and draw_image_figure
+DRAW_DESTS: t.Final = frozenset({
+    "darkmode",
+    "dpi",
+    "figscale",
+    "figwidthscale",
+    "format",
+    "hidexlabel",
+    "labelfontsize",
+    "legendcols",
+    "legendframe",
+    "linewidthscale",
+    "nolegend",
+    "notitle",
+    "outputfile",
+    "show",
+    "subplotsperrow",
+})
+
+
 def get_data_key(args: argparse.Namespace) -> str:
-    """Return a key of the arguments that select the data of a plot, without the series styles and -linewidthscale.
+    """Return a key of the arguments that select the data of a plot, without the series styles and DRAW_DESTS.
 
     The data has no style, thus two commands with the same key read the same data. The window then draws the new style
-    with the data of the last plot.
+    with the data of the last plot, and a new width of the window, e.g. -figwidthscale, also reads no data.
     """
 
     # the positional items also hold the folder, which can contain the mark, e.g. user@host:path. The window has one
@@ -346,10 +365,9 @@ def get_data_key(args: argparse.Namespace) -> str:
     def get_names(items: "Sequence[t.Any]") -> list[t.Any]:
         return [get_series_name(item) if isinstance(item, str) else item for item in items]
 
-    keyargs = vars(args) | {
+    keyargs = {key: value for key, value in vars(args).items() if key not in DRAW_DESTS} | {
         "plotitems": get_names(args.plotitems or []),
         "plotlist": [get_names(plotitems) for plotitems in args.plotlist or []],
-        "linewidthscale": None,
     }
     return repr(sorted(keyargs.items()))
 
@@ -1257,9 +1275,16 @@ def replace_directives(subplot: "Sequence[str]", directives: "Mapping[str, str |
 def resolve_aliases(items: "Iterable[str]") -> tuple[str, ...]:
     """Return the items of a subplot with the name of each variable that has an alias, e.g. nne for n_e.
 
-    plotestimators reads the alias as the variable, and the controls of the window follow the variable.
+    plotestimators reads the alias as the variable, and the controls of the window follow the variable. The style of an
+    item stays, e.g. n_e@color=C3 gives nne@color=C3.
     """
-    return tuple(VARIABLE_ALIASES.get(item, item) for item in items)
+    return tuple(resolve_item_alias(item) for item in items)
+
+
+def resolve_item_alias(item: str) -> str:
+    """Return an item with the variable in place of an alias, and with its style, e.g. nne@color=C3 for n_e@color=C3."""
+    name = get_series_name(item)
+    return VARIABLE_ALIASES.get(name, name) + item.removeprefix(name)
 
 
 # the variables that suit a new subplot, in the order of the suggestions
@@ -1502,8 +1527,10 @@ def get_new_subplot_suggestions(
             firstelement = get_iontuple(choices[0])[0]
             names = [name for name in choices if get_iontuple(name)[0] == firstelement and name != choices[0]]
             series.append((seriestype, *(names or choices)[:2]))
+    # a style of a series, e.g. rho@color=C3, does not make a different subplot
+    unstyled = {remove_item_styles(subplot) for subplot in subplots}
     suggestions = [
-        *(subplot for subplot in defaultsubplots if subplot not in subplots),
+        *(subplot for subplot in defaultsubplots if subplot not in unstyled),
         *variables[:2],
         *series,
         *variables[2:],
@@ -1847,20 +1874,16 @@ def get_card_key(
 
     A directive, e.g. ymin=, changes only the text of a control of the card, thus the card stays. The focus then stays
     in the control, e.g. in the field of the y maximum after an edit of the y minimum. A chip removes the
-    item at its position, thus the key holds the position of each name. A colour image gives the card the controls of
-    a colour scale, thus the key also holds isimage.
+    item at its position, thus the key holds the position of each name. A style of a series, e.g. @color=C3, also
+    changes only the controls, thus the key holds the names without the styles. A colour image gives the card the
+    controls of a colour scale, thus the key also holds isimage.
     """
-    names = tuple((position, item) for position, item in enumerate(subplots[row]) if get_item_directive(item) is None)
+    names = tuple(
+        (position, get_series_name(item))
+        for position, item in enumerate(subplots[row])
+        if get_item_directive(item) is None
+    )
     return (row, row == len(subplots) - 1, names, estimatorcolumns, isimage)
-
-
-class ChipCallbacks(t.NamedTuple):
-    """The functions of a chip that the user can drag, see make_drag_header."""
-
-    on_drag: "Callable[[QtCore.QPoint], None]"
-    on_drop: "Callable[[QtCore.QPoint], None]"
-    on_move: "Callable[[int], None]"
-    on_click: "Callable[[QtCore.QPoint], None] | None"
 
 
 class SubplotCard(t.NamedTuple):
@@ -1882,6 +1905,8 @@ class SubplotCard(t.NamedTuple):
     yaxisbox: "QtWidgets.QWidget"
     # a note for a subplot of ions with more than one element, which keeps the element colours with --colorbyion
     colournote: "QtWidgets.QLabel"
+    # the item of the menu of the header that removes the styles, which a subplot with no style disables
+    resetaction: "QtGui.QAction"
 
 
 def get_subplot_style_sheet() -> str:
@@ -1918,23 +1943,21 @@ CHIP_SWATCH_WIDTH: t.Final = 22
 
 
 def make_chip(
+    chip: "QtWidgets.QWidget",
     text: str,
     tooltip: str,
     on_remove: "Callable[[], None]",
-    swatchbutton: "QtWidgets.QToolButton | None" = None,
-    *,
-    hasstyle: bool = False,
-    dragcallbacks: "ChipCallbacks | None" = None,
-) -> "QtWidgets.QWidget":
-    """Return a chip that shows one item of a subplot, with a button that removes the item.
+    swatchbutton: "QtWidgets.QToolButton | None",
+) -> None:
+    """Fill a chip that shows one item of a subplot, with a button that removes the item.
 
-    swatchbutton shows the line of the series at the start of the chip. If hasstyle is True, a dot after the text shows
-    that the series has a style of its own. With dragcallbacks, the user can drag the chip, move it with Alt-Up and
-    Alt-Down, and click it, see make_drag_header. get_subplot_style_sheet gives the chip its tint.
+    chip comes from make_drag_header, thus the user can drag it, move it with Alt-Up and Alt-Down, and click it.
+    swatchbutton shows the line of the series at the start of the chip, and a colour image gives None.
+    show_card_directives puts a dot after the text of a series that has a style of its own. get_subplot_style_sheet
+    gives the chip its tint.
     """
     from PySide6 import QtWidgets
 
-    chip = make_drag_header(*dragcallbacks) if dragcallbacks is not None else QtWidgets.QFrame()
     chip.setObjectName("chip")
     layout = QtWidgets.QHBoxLayout(chip)
     # the padding of the line button and the margin give the same space at the start of a chip as the ✕ at its end
@@ -1944,13 +1967,24 @@ def make_chip(
         layout.addWidget(swatchbutton)
         # the line ends at the edge of its image, thus the name needs a gap to read as a separate item
         layout.addSpacing(4)
-    label = QtWidgets.QLabel(f"{text} •" if hasstyle else text)
+    label = QtWidgets.QLabel(text)
+    label.setObjectName("chiplabel")
     label.setToolTip(tooltip)
-    removebutton = make_glyph_button("✕", f"Remove {text} from the subplot", f"Remove {text}")
+    removebutton = make_glyph_button("xmark", f"Remove {text} from the subplot", f"Remove {text}")
     removebutton.clicked.connect(on_remove)
     layout.addWidget(label)
     layout.addWidget(removebutton)
-    return chip
+
+
+def set_drag_fade(widget: "QtWidgets.QWidget", *, faded: bool) -> None:
+    """Fade a widget that the user drags, e.g. a card or a chip, or show it as before."""
+    from PySide6 import QtWidgets
+
+    if (fade := widget.graphicsEffect()) is None:
+        fade = QtWidgets.QGraphicsOpacityEffect(widget)
+        fade.setOpacity(0.5)
+        widget.setGraphicsEffect(fade)
+    fade.setEnabled(faded)
 
 
 def get_series_at(axis: "mplax.Axes", event: t.Any, *, legendonly: bool) -> str | None:
@@ -1962,7 +1996,8 @@ def get_series_at(axis: "mplax.Axes", event: t.Any, *, legendonly: bool) -> str 
     from artistools.plottools import get_legend_entries_in_draw_order
 
     legend = axis.get_legend()
-    if legend is not None and legend.get_visible():
+    # test the box of the legend first, because a mouse movement tests each entry only inside the legend
+    if legend is not None and legend.get_visible() and legend.contains(event)[0]:
         handles, _ = get_legend_entries_in_draw_order(axis)
         for handle, legendhandle, text in zip(handles, legend.legend_handles, legend.get_texts(), strict=False):
             hit = text.contains(event)[0] or (legendhandle is not None and legendhandle.contains(event)[0])
@@ -2240,7 +2275,7 @@ def open_window(
     insertedit = QtWidgets.QLineEdit()
     insertedit.setPlaceholderText("Insert a subplot, e.g. nne, or populations Fe II")
     insertedit.setToolTip("Type a variable, a type of series and its names, or an ion. Press Return to insert it.")
-    insertcancel = make_glyph_button("✕", "Close the field (Escape)", "Close")
+    insertcancel = make_glyph_button("xmark", "Close the field (Escape)", "Close")
     insertlayout.addWidget(insertedit, 1)
     insertlayout.addWidget(insertcancel)
     insertbox.hide()
@@ -2478,11 +2513,11 @@ def open_window(
         headerlayout.addWidget(QtWidgets.QLabel(f"<b>{row + 1}</b>"))
         headerlayout.addWidget(typebox)
         headerlayout.addWidget(quantity, 1)
-        for text, tooltip, callback in (
-            ("+", "Insert a new subplot below this subplot", partial(open_insert_field, row + 1)),
-            ("✕", "Delete the subplot", partial(on_delete_subplot, row)),
+        for symbol, tooltip, callback in (
+            ("plus", "Insert a new subplot below this subplot", partial(open_insert_field, row + 1)),
+            ("xmark", "Delete the subplot", partial(on_delete_subplot, row)),
         ):
-            button = make_glyph_button(text, tooltip, tooltip)
+            button = make_glyph_button(symbol, tooltip, tooltip)
             button.clicked.connect(callback)
             headerlayout.addWidget(button)
         headerlayout.addWidget(make_grip("Drag the header to move the subplot"))
@@ -2497,7 +2532,6 @@ def open_window(
             action.triggered.connect(partial(move_subplot, row, target))
             header.addAction(action)
         resetaction = QtGui.QAction("Reset Line Properties", header)
-        resetaction.setEnabled(remove_item_styles(subplot) != tuple(subplot))
         resetaction.triggered.connect(partial(on_reset_styles, row))
         header.addAction(resetaction)
         framelayout.addWidget(header)
@@ -2538,19 +2572,13 @@ def open_window(
                 swatchbutton.setAccessibleName(f"Set the line properties of {name}")
                 swatchbutton.clicked.connect(partial(on_click_chip, row, position))
                 swatchbuttons[name] = swatchbutton
-            chip = make_chip(
-                name,
-                tooltip,
-                partial(on_remove_item, row, position),
-                swatchbutton,
-                hasstyle=bool(get_item_style(item)),
-                dragcallbacks=ChipCallbacks(
-                    partial(on_drag_chip, row, position),
-                    partial(on_drop_chip, row, position),
-                    partial(on_move_chip, row, position),
-                    None if isimage else partial(on_click_chip, row, position),
-                ),
+            chip = make_drag_header(
+                partial(on_drag_chip, row, position),
+                partial(on_drop_chip, row, position),
+                partial(on_move_chip, row, position),
+                None if isimage else partial(on_click_chip, row, position),
             )
+            make_chip(chip, name, tooltip, partial(on_remove_item, row, position), swatchbutton)
             chipslayout.addWidget(chip)
             chips.append((position, chip))
         cardlayout.addWidget(chipsbox)
@@ -2592,7 +2620,7 @@ def open_window(
             " ymin=1e-16 also goes here."
         )
         addedit.returnPressed.connect(partial(on_add_item, row, addedit))
-        listbutton = make_glyph_button("▾", "Show each name that the subplot can take", "Show All Names")
+        listbutton = make_glyph_button("chevron.down", "Show each name that the subplot can take", "Show All Names")
         if currenttype == VARIABLES_TYPE:
             listbutton.clicked.connect(partial(show_variable_menu, row, listbutton))
         else:
@@ -2706,6 +2734,7 @@ def open_window(
             yaxisbutton=yaxisbutton,
             yaxisbox=yaxisbox,
             colournote=colournote,
+            resetaction=resetaction,
         )
 
     # the names of the NLTE levels of the run, which get_levelnames reads when a card first needs them
@@ -2780,6 +2809,12 @@ def open_window(
         yrange = "auto range" if ymin is None and ymax is None else f"{ymin or 'auto'} to {ymax or 'auto'}"
         card.yaxisbutton.setText(f"{axisname}: {get_yscale_choice(subplot)} scale, {yrange}")
         card.colournote.setVisible(viewer.plotcolorbyion and has_several_elements(subplot, viewer.run.estimatorcolumns))
+        # a dot after the name of a chip shows that its series has a style of its own
+        for position, chip in card.chips:
+            if position < len(subplot) and (label := chip.findChild(QtWidgets.QLabel, "chiplabel")) is not None:
+                name = get_series_name(subplot[position])
+                label.setText(f"{name} •" if get_item_style(subplot[position]) else name)
+        card.resetaction.setEnabled(remove_item_styles(subplot) != tuple(subplot))
 
     def show_new_subplot_suggestions(subplottypes: "Sequence[str]", *, columnschanged: bool) -> None:
         """Show the suggestions of a new subplot.
@@ -2886,6 +2921,10 @@ def open_window(
         for row, card in enumerate(cards):
             for name, button in card.swatchbuttons.items():
                 swatch = viewer.swatches.get((row, name))
+                # a new icon lays out the chips again, thus a line that did not change keeps its icon
+                if button.property("swatch") == swatch:
+                    continue
+                button.setProperty("swatch", swatch)
                 button.setIcon(
                     QtGui.QIcon(
                         make_line_swatch(
@@ -2930,6 +2969,9 @@ def open_window(
             swatch.defaultlinewidth if swatch is not None else float(mpl.rcParams["lines.linewidth"]),
             show_changes,
             anchor=anchor,
+            linewidthscale=float((get_row_values(viewer.values.otheroptions, "-linewidthscale") or ("1",))[0]),
+            # the label is a part of one plot item, thus a label that starts with "-" is no flag
+            labelinlist=False,
         )
 
     def show_values() -> None:
@@ -3310,9 +3352,7 @@ def open_window(
 
     def add_item(row: int, item: str) -> None:
         subplot = viewer.values.subplots[row]
-        # the style after the name stays, e.g. n_e@color=C3 gives nne@color=C3
-        name = get_series_name(item)
-        item = VARIABLE_ALIASES.get(name, name) + item.removeprefix(name)
+        item = resolve_item_alias(item)
         directive = get_item_directive(item)
         if directive is not None:
             value = item.partition("=")[2].strip()
@@ -3421,13 +3461,8 @@ def open_window(
         return None
 
     def set_chip_fade(row: int, position: int, *, faded: bool) -> None:
-        if (chip := get_chip_widget(row, position)) is None:
-            return
-        if (fade := chip.graphicsEffect()) is None:
-            fade = QtWidgets.QGraphicsOpacityEffect(chip)
-            fade.setOpacity(0.5)
-            chip.setGraphicsEffect(fade)
-        fade.setEnabled(faded)
+        if (chip := get_chip_widget(row, position)) is not None:
+            set_drag_fade(chip, faded=faded)
 
     def on_drag_chip(row: int, position: int, pointer: QtCore.QPoint) -> None:
         """Show a vertical line at the place where the dragged chip goes."""
@@ -3457,24 +3492,34 @@ def open_window(
             move_chip(row, position, *target)
 
     def move_chip(row: int, position: int, targetrow: int, chipindex: int) -> None:
-        subplots = viewer.values.subplots
-        moved = move_series_item(subplots, (row, position), targetrow, chipindex, viewer.run.estimatorcolumns)
+        subplots, columns = viewer.values.subplots, viewer.run.estimatorcolumns
+        # a name takes the meaning of the type of its subplot, e.g. Te in a populations subplot is tellurium
+        if get_subplot_seriestype(subplots[row], columns) != get_subplot_seriestype(subplots[targetrow], columns):
+            show_error("A series can move only to a subplot of the same type")
+            return
+        moved = move_series_item(subplots, (row, position), targetrow, chipindex, columns)
         if moved is None:
             show_error(f"The subplot already shows {get_series_name(subplots[row][position])}")
         elif moved != subplots:
             apply_subplots(moved)
 
     def on_move_chip(row: int, position: int, step: int) -> None:
-        """Move the series of a chip one place to the front or the back of its subplot, for Alt-Up and Alt-Down."""
-        chippositions = [
-            chipposition for chipposition, _ in get_chip_items(viewer.values.subplots[row], viewer.run.estimatorcolumns)
-        ]
-        if position not in chippositions:
+        """Swap the series of a chip and of the adjacent chip, for Alt-Up and Alt-Down.
+
+        The viewer makes the card again. The moved chip then takes the focus, thus the next key moves the same series.
+        """
+        subplot = viewer.values.subplots[row]
+        chippositions = [chipposition for chipposition, _ in get_chip_items(subplot, viewer.run.estimatorcolumns)]
+        if position not in chippositions or not 0 <= (index := chippositions.index(position) + step) < len(
+            chippositions
+        ):
             return
-        # the target is the index of the chip that the series goes in front of, which counts the moved chip
-        chipindex = chippositions.index(position) + (2 if step > 0 else -1)
-        if 0 <= chipindex <= len(chippositions):
-            move_chip(row, position, row, chipindex)
+        other = chippositions[index]
+        items = list(subplot)
+        items[position], items[other] = items[other], items[position]
+        set_subplot(row, tuple(items))
+        if (chip := get_chip_widget(row, other)) is not None:
+            chip.setFocus()
 
     def on_add_series_key() -> None:
         """Give the keyboard to the field that adds a series to the card with the focus, or else to the last card."""
@@ -3513,16 +3558,11 @@ def open_window(
         dropline.show()
         dropline.raise_()
         # a disabled header gets no mouse events, thus the dragged card fades but stays enabled
-        if (fade := cards[row].frame.graphicsEffect()) is None:
-            fade = QtWidgets.QGraphicsOpacityEffect(cards[row].frame)
-            fade.setOpacity(0.5)
-            cards[row].frame.setGraphicsEffect(fade)
-        fade.setEnabled(True)
+        set_drag_fade(cards[row].frame, faded=True)
 
     def on_drop_subplot(row: int, position: QtCore.QPoint) -> None:
         dropline.hide()
-        if (fade := cards[row].frame.graphicsEffect()) is not None:
-            fade.setEnabled(False)
+        set_drag_fade(cards[row].frame, faded=False)
         index = get_drop_index(position)
         move_subplot(row, index if index <= row else index - 1)
 
@@ -3692,7 +3732,7 @@ def open_window(
             (
                 position
                 for position, item in get_chip_items(subplot, viewer.run.estimatorcolumns)
-                if VARIABLE_ALIASES.get(get_series_name(item), get_series_name(item)) == seriesname
+                if get_series_name(item) == seriesname
             ),
             None,
         )

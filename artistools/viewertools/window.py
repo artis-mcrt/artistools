@@ -260,7 +260,7 @@ def add_command_sections(
     window, panellayout = viewerwindow.window, viewerwindow.panellayout
     defaultdpi: int = parser.get_default("dpi")
     figuresection = add_figure_section(window, panellayout, viewer.values.dpi or defaultdpi)
-    _, optiongrid = add_section(panellayout, "Other options")
+    _, optiongrid = add_section(panellayout, "Other options", closed=True)
     hiddendests, rows, on_rows = table
     optiontable, set_option_rows = make_option_table(window, parser, hiddendests, rows, on_rows)
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)

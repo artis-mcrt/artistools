@@ -352,33 +352,45 @@ def test_viewer_window_keeps_the_typed_bin_width_and_the_keys_of_a_field(tmp_pat
     assert results["untipped"] == []
 
 
-# the code that changes the palette of a chip on the offscreen platform of Qt, and prints the new colour of the chip
+# the code that changes the palette of the application on the offscreen platform of Qt. It prints the new colour of a
+# chip and of the symbol of a button
 PALETTE_CHECK_CODE: t.Final = """
-from PySide6 import QtGui, QtWidgets
+from functools import partial
+from PySide6 import QtCore, QtGui, QtWidgets
+from artistools.viewertools.application import make_window
 from artistools.viewertools.menus import refresh_palette_style_sheets
+from artistools.viewertools.widgets import make_glyph_button
 
 app = QtWidgets.QApplication([])
-window = QtWidgets.QWidget()
-window.setStyleSheet("QFrame#chip { background: palette(base); }")
-chip = QtWidgets.QFrame(window)
+window = make_window("palettecheck")
+window.setProperty("palettehandler", partial(refresh_palette_style_sheets, window))
+panel = QtWidgets.QWidget()
+panel.setStyleSheet("QFrame#chip { background: palette(base); }")
+chip = QtWidgets.QFrame(panel)
 chip.setObjectName("chip")
 chip.setFixedSize(20, 20)
+button = make_glyph_button("xmark", "Remove", "Remove")
+button.setParent(panel)
+button.move(30, 0)
+window.setCentralWidget(panel)
 window.show()
 app.processEvents()
 palette = QtGui.QPalette(app.palette())
 palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor("#202020"))
+palette.setColor(QtGui.QPalette.ColorRole.ButtonText, QtGui.QColor("#ff0000"))
 app.setPalette(palette)
 app.processEvents()
-refresh_palette_style_sheets(window)
-app.processEvents()
-print(chip.grab().toImage().pixelColor(10, 10).name())
+symbol = button.icon().pixmap(QtCore.QSize(10, 10)).toImage()
+pixels = [symbol.pixelColor(x, y) for x in range(symbol.width()) for y in range(symbol.height())]
+print(chip.grab().toImage().pixelColor(10, 10).name(), max(pixels, key=QtGui.QColor.alpha).name())
 """
 
 
-def test_chip_takes_the_base_colour_of_a_new_palette() -> None:
-    """A chip of plotestimators kept the white background of a light window after a change to Dark Mode.
+def test_window_takes_the_colours_of_a_new_palette() -> None:
+    """A chip and a symbol of plotestimators kept the colours of a light window after a change to Dark Mode.
 
-    Qt reads palette(base) in a style sheet one time only, thus the window must apply the style sheet again.
+    Qt reads palette(base) in a style sheet one time only, and a symbol is an image in one colour. Thus the window must
+    apply them again. Qt gives the change of the application palette to event() and not to changeEvent().
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     environment = os.environ | {"QT_QPA_PLATFORM": "offscreen"}
@@ -391,35 +403,4 @@ def test_chip_takes_the_base_colour_of_a_new_palette() -> None:
         timeout=120,
     )
     assert result.returncode == 0, result.stderr[-3000:]
-    assert result.stdout.strip().splitlines()[-1] == "#202020"
-
-
-@pytest.mark.skipif(not hasattr(sys, "set_lazy_imports"), reason="only Python 3.15 and later have lazy imports")
-def test_resolve_lazy_imports_before_qt_loads() -> None:
-    """No lazy import may remain when PySide6 loads, and a later import is eager.
-
-    After PySide6 loads, the attribute of a module gave a lazy import as it was, e.g. print_error of artistools and the
-    version of kiwisolver. The window then stopped with "'lazy_import' object is not callable". The test runs in a new
-    interpreter, because the function changes the lazy imports of the whole process.
-    """
-    code = (
-        "import sys, types\n"
-        "import artistools\n"
-        "from artistools.viewertools.application import resolve_lazy_imports\n"
-        "resolve_lazy_imports()\n"
-        "pending = [f'{module.__name__}.{name}' for module in list(sys.modules.values())\n"
-        "    if module.__name__.startswith('artistools')\n"
-        "    for name, value in list(vars(module).items()) if isinstance(value, types.LazyImportType)]\n"
-        "assert not pending, pending\n"
-        "import importlib.util\n"
-        "if importlib.util.find_spec('PySide6') is not None:\n"
-        "    from PySide6 import QtCore\n"
-        "    import kiwisolver\n"
-        "    from artistools.misc import print_error\n"
-        "    assert isinstance(kiwisolver.__version__, str)\n"
-        "    assert callable(print_error)\n"
-    )
-    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
-        [sys.executable, "-c", code], capture_output=True, text=True, check=False
-    )
-    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "#202020 #ff0000"
