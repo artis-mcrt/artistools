@@ -2126,8 +2126,12 @@ def test_nonempty_cellcounts_reads_the_rank_assignments(tmp_path: Path) -> None:
     assert get_nonempty_cellcounts(at.get_path("testdata") / "testmodel") is None
 
 
-def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
-    """A cell that holds no matter must say so, and not name a file that it never had."""
+@pytest.mark.parametrize("has_allranks_file", [False, True])
+def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path, has_allranks_file: bool) -> None:
+    """A cell that holds no matter must say so, and not name a file that it never had.
+
+    A file of all ranks has no row for such a cell, and the reader then gave an empty frame without a message.
+    """
     from artistools.misc.modelinfo import read_rank_outputfiles
 
     (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n")
@@ -2135,6 +2139,8 @@ def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
     # ARTIS ends each cell of an estimator file with an empty line, and a reader takes a cell without it as cut
     (tmp_path / "estimators_0000.out").write_text("timestep 0 modelgridindex 0\n\n")
     (tmp_path / "model.txt").write_text("1\n1.0\n0 0.0 0.0 0.0 0.0\n")
+    if has_allranks_file:
+        (tmp_path / "nlte_allranks.out").write_text("timestep modelgridindex nnlevel\n")
 
     with pytest.raises(ValueError, match="Cell 0 holds no matter"):
         read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=0)
@@ -2242,7 +2248,15 @@ def test_read_rank_outputfiles_reads_the_current_file_of_all_ranks(tmp_path: Pat
     dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=3)
     assert dfout["nnlevel"].to_list() == [3.5], "a newer file of a rank shows that the file of all ranks is stale"
 
+    # the reader takes the plain file of a rank before a compressed copy, thus a newer stale copy does not count
+    os.utime(rankfile, (1000.0, 1000.0))
+    (tmp_path / "nlte_0000.out.zst").write_bytes(b"")
+    os.utime(tmp_path / "nlte_0000.out.zst", (3000.0, 3000.0))
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=3)
+    assert dfout["nnlevel"].to_list() == [13.5], "only the file of a rank that the reader takes can be newer"
+
     rankfile.unlink()
+    (tmp_path / "nlte_0000.out.zst").unlink()
     dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0)
     assert dfout["nnlevel"].to_list() == [cell + 10.5 for cell in range(5)], "the file of all ranks gives every cell"
 

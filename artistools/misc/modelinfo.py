@@ -476,17 +476,27 @@ def get_current_allranks_outputfile(folderpath: Path, filenameformat: str) -> Pa
     combine the files of a job that still runs, thus a newer file of a rank shows that the file of all ranks is stale.
     The estimators apply the same rule.
     """
+    prefix, suffix = re.split(r"\{mpirank[^}]*\}", filenameformat)
     allranksfile = firstexisting_or_none(
-        re.sub(r"\{mpirank[^}]*\}", "allranks", filenameformat),
-        folder=folderpath,
-        tryzipped=True,
-        search_subfolders=False,
+        f"{prefix}allranks{suffix}", folder=folderpath, tryzipped=True, search_subfolders=False
     )
     if allranksfile is None:
         return None
     allranks_mtime = allranksfile.stat().st_mtime
-    rankfiles = folderpath.glob(re.sub(r"\{mpirank[^}]*\}", "[0-9]*", filenameformat) + "*")
-    return None if any(rankfile.stat().st_mtime > allranks_mtime for rankfile in rankfiles) else allranksfile
+    rankstems = {
+        name[: name.index(suffix) + len(suffix)]
+        for name in (path.name for path in folderpath.glob(f"{prefix}*{suffix}*"))
+        if suffix in name and name[len(prefix) : name.index(suffix)].isdigit()
+    }
+    # the reader takes one file of each rank, e.g. a plain file before a stale .zst copy, thus only that file counts
+    rankfiles = (
+        firstexisting_or_none(stem, folder=folderpath, tryzipped=True, search_subfolders=False) for stem in rankstems
+    )
+    return (
+        None
+        if any(rankfile is not None and rankfile.stat().st_mtime > allranks_mtime for rankfile in rankfiles)
+        else allranksfile
+    )
 
 
 def read_rank_outputfiles(
@@ -504,6 +514,16 @@ def read_rank_outputfiles(
     # the format holds a field for the rank, thus a message names the family rather than one file
     filefamily = re.sub(r"\{mpirank[^}]*\}", "*", filenameformat)
     nonemptycounts = get_nonempty_cellcounts(modelpath)
+    # a rank whose cells all hold no matter writes no file, and a file of all ranks has no row for its cells. Thus the
+    # count of the rank shows that a cell holds no matter, before any read
+    if isinstance(modelgridindex, int) and modelgridindex >= 0 and nonemptycounts is not None:
+        mpirank = get_mpirankofcell(modelgridindex, modelpath=modelpath)
+        if nonemptycounts.get(mpirank) == 0:
+            msg = (
+                f"Cell {modelgridindex} holds no matter, thus it has no {filefamily} data. ARTIS "
+                f"assigned no 3D cell to it, and rank {mpirank} wrote no file for it"
+            )
+            raise ValueError(msg)
     runfolders = get_runfolders(modelpath, timestep=timestep)
     if not runfolders and timestep is not None and timestep >= 0 and (allfolders := get_runfolders(modelpath)):
         heldtimesteps = sorted({ts for folder in allfolders for ts in get_runfolder_timesteps(folder)})
@@ -514,7 +534,6 @@ def read_rank_outputfiles(
         raise ValueError(msg)
 
     filepathsofeachfolder: list[list[Path]] = []
-    emptyranks = []
     for folderpath in runfolders:
         if (allranksfile := get_current_allranks_outputfile(folderpath, filenameformat)) is not None:
             filepathsofeachfolder.append([allranksfile])
@@ -528,9 +547,7 @@ def read_rank_outputfiles(
             )
             if filepath is not None:
                 folderfilepaths.append(filepath)
-            elif nonemptycounts is not None and nonemptycounts.get(mpirank) == 0:
-                emptyranks.append(mpirank)
-            else:
+            elif nonemptycounts is None or nonemptycounts.get(mpirank) != 0:
                 # the rank handles a cell that holds matter, thus the file is missing. firstexisting
                 # names every compressed form that it looked for
                 firstexisting(
@@ -541,13 +558,6 @@ def read_rank_outputfiles(
             filepathsofeachfolder.append(folderfilepaths)
 
     if not filepathsofeachfolder:
-        if emptyranks and isinstance(modelgridindex, int) and modelgridindex >= 0:
-            msg = (
-                f"Cell {modelgridindex} holds no matter, thus it has no {filefamily} data. ARTIS "
-                f"assigned no 3D cell to it, and rank {emptyranks[0]} wrote no file for it"
-            )
-            raise ValueError(msg)
-
         msg = f"No {filefamily} files found in {modelpath}"
         raise FileNotFoundError(msg)
 
