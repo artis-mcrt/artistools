@@ -14,6 +14,7 @@ from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import LOGRHO_FROM_RHO
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
@@ -25,6 +26,7 @@ from artistools.plottools import set_legend
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
+    addarg_darkmode(parser)
     parser.add_argument("-inputfolder", action="store", default=".", help="Path to folder with 3D files")
 
     parser.add_argument(
@@ -140,4 +142,4 @@ def make_plot(xlist: list[float], ylists: list[list[float]], pdfoutputfile: str,
         axis.plot(xlist, ylist, linewidth=1.5, label=ylabel)
     axis.set_yscale("log", nonpositive="clip")
     set_legend(axis, args)
-    save_figure(fig, pdfoutputfile, format="pdf")
+    save_figure(fig, pdfoutputfile, format="pdf", args=args)

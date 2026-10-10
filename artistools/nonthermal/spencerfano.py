@@ -23,6 +23,7 @@ from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
@@ -124,7 +125,7 @@ def make_ntstats_plot(ntstatfile: str | Path, args: argparse.Namespace) -> None:
     set_legend(ax, args)
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
-    save_figure(fig, outputfilename, format="pdf")
+    save_figure(fig, outputfilename, format="pdf", args=args)
 
 
 def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -> dict[tuple[int, int], float]:
@@ -174,6 +175,7 @@ def x_e_of_sweep_step(x_e_start: float, atomic_number: int, step: int, stepcount
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
+    addarg_darkmode(parser)
     addarg_modelpath(parser, default=Path())
 
     addarg_timedays(parser, kind="str")

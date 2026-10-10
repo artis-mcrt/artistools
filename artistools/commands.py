@@ -592,9 +592,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     neither version suggests an argument. CI runs both, thus this gives the same message on each.
     """
 
-    # addarg_positional_items sets this flag on the one parser that reads a positional argument after a
-    # flag. A parser that does not set it keeps the argparse order, in which an option has priority
-    # over a positional argument.
+    # Commands that accept positional arguments between options set this flag.
     wantsintermixed: bool = False
 
     @t.override
@@ -662,25 +660,58 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
             out.extend(self.split_one_joined_flag(argstring))
 
-        return self.keep_optional_integer_paths(out)
+        return self.keep_integer_option_paths(out)
 
-    def keep_optional_integer_paths(self, args: "Sequence[str]") -> list[str]:
-        """Keep a positional path after an option that takes an optional integer.
+    def keep_integer_option_paths(self, args: "Sequence[str]") -> list[str]:
+        """Keep positional paths after options that take optional integers.
 
         argparse takes the path as the integer and then rejects it. An explicit constant keeps the path positional.
+        For a list of integers, move the paths into the first positional group.
         """
         out: list[str] = []
-        for index, argstring in enumerate(args):
+        paths: list[str] = []
+        index = 0
+        while index < len(args):
+            argstring = args[index]
             if argstring == "--":
                 out.extend(args[index:])
                 break
-            action = self._option_string_actions.get(argstring)
-            if action is None and argstring.startswith("-") and self.allow_abbrev:
-                matches = [value for flag, value in self._option_string_actions.items() if flag.startswith(argstring)]
+            flagname, equals, _ = argstring.partition("=")
+            action = self._option_string_actions.get(flagname)
+            if action is None and flagname.startswith("-") and self.allow_abbrev:
+                matches = [value for flag, value in self._option_string_actions.items() if flag.startswith(flagname)]
                 if len(matches) == 1:
                     action = matches[0]
+            if action is not None and action.nargs == "*" and action.type is int:
+                valueend = index + 1
+                while not equals and valueend < len(args):
+                    try:
+                        int(args[valueend])
+                    except ValueError:
+                        break
+                    valueend += 1
+                hasseparator = valueend < len(args) and args[valueend] == "--"
+                pathstart = valueend + int(hasseparator)
+                pathend = pathstart
+                while pathend < len(args) and not args[pathend].startswith("-"):
+                    pathend += 1
+                paths.extend(args[pathstart:pathend])
+                out.extend(args[index:valueend])
+                if hasseparator:
+                    if pathend < len(args):
+                        out.append("--")
+                    out.extend(args[pathend:])
+                    break
+                index = pathend
+                continue
             outstring = argstring
-            if action is not None and action.nargs == "?" and action.type is int and index + 1 < len(args):
+            if (
+                action is not None
+                and action.nargs == "?"
+                and action.type is int
+                and not equals
+                and index + 1 < len(args)
+            ):
                 nexttoken = args[index + 1]
                 if not nexttoken.startswith("-"):
                     try:
@@ -688,7 +719,9 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
                     except ValueError:
                         outstring = f"{argstring}={action.const}"
             out.append(outstring)
-        return out
+            index += 1
+        firstoption = next((index for index, token in enumerate(out) if token.startswith("-")), len(out))
+        return [*out[:firstoption], *paths, *out[firstoption:]]
 
     def split_one_joined_flag(self, argstring: str) -> list[str]:
         """Give the flag and the value of one argument that joins them, or stop at a flag of no command.
@@ -760,9 +793,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
         argparse fills a positional argument from one unbroken group of arguments. A flag between two
         positional arguments hides the second group, thus "plotestimators Te -t 300 mymodel" failed.
-        parse_known_intermixed_args reads both groups. It also applies every positional argument after
-        every option. This order is the opposite of the order that KeepGivenPaths needs, thus each
-        parser must set wantsintermixed.
+        parse_known_intermixed_args reads both groups. Commands that accept this order set wantsintermixed.
         """
         import sys
 

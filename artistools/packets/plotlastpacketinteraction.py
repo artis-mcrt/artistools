@@ -15,6 +15,7 @@ from artistools.atomic import get_lineindices
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
@@ -110,6 +111,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     wavelen: float | None = None,
     binwidth: float | None = None,
     outputfile: Path | None = None,
+    args: argparse.Namespace | None = None,
 ) -> None:
     """Plot a 2D histogram of packet emission position against ejecta velocity, and save the figure.
 
@@ -222,12 +224,13 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
 
     outfilename = resolve_outputfile(outputfile, start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf")
-    save_figure(fig, outfilename, dpi=300)
+    save_figure(fig, outfilename, dpi=300, args=args)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, required=True, helptext="Path to ARTIS simulation")
+    addarg_darkmode(parser)
 
     addarg_timedays(
         parser,
@@ -300,4 +303,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         wavelen=args.wavelen,
         binwidth=args.binwidth,
         outputfile=args.outputfile,
+        args=args,
     )

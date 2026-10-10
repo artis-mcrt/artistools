@@ -14,6 +14,7 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_cell_selection
 from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import get_selection_labels
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
@@ -180,6 +181,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_show(parser)
+    addarg_darkmode(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

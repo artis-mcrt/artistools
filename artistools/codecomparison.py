@@ -253,5 +253,6 @@ def plot_spectrum(
                 np.asarray(dfspectra["lambda"].to_numpy(), dtype=np.float64),
                 np.asarray(arr_flux.to_numpy(), dtype=np.float64),
                 specline.get_color(),
+                line=specline,
             )
         )

@@ -18,6 +18,7 @@ from artistools.atomic import get_lineindices
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.estimators import scan_estimators
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
@@ -446,6 +447,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_notitle(parser)
     addarg_show(parser)
+    addarg_darkmode(parser)
     addarg_verbose(parser)
     addarg_dpi(parser, default=300)
 

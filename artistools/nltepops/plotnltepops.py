@@ -29,6 +29,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_labelfontsize
 from artistools.misc import addarg_legend
@@ -1044,6 +1045,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_legend(parser)
     addarg_show(parser)
+    addarg_darkmode(parser)
     addarg_verbose(parser)
 
     addarg_labelfontsize(parser)
