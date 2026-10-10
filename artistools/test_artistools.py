@@ -4964,6 +4964,8 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     blueline = axis.plot([0, 1], [1, 0], color="tab:blue", label="reference")[0]
     # the colour of sulphur is dark, and it made the series grey
     sulphurline = axis.plot([0, 1], [0.5, 0.5], color="#7d0200", label="S")[0]
+    # a black bar did not show on the dark background, because only the edge of a patch changed
+    blackbar = axis.bar([0.5], [0.2], color="black")[0]
     axis.set_xlabel("velocity")
     legend = axis.legend()
 
@@ -4974,6 +4976,7 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
     assert mcolors.same_color(sulphurline.get_color(), "#7d0200")
     assert mcolors.same_color(axis.xaxis.label.get_color(), "#dddddd")
     assert mcolors.same_color(axis.get_facecolor(), "#1e1e1e")
+    assert mcolors.same_color(blackbar.get_facecolor(), "#dddddd")
     # the frame of the legend keeps its transparency
     assert mcolors.to_hex(legend.get_frame().get_facecolor()) == "#1e1e1e"
     assert all(mcolors.same_color(text.get_color(), "#dddddd") for text in legend.get_texts())

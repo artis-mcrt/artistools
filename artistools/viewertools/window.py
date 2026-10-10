@@ -26,6 +26,7 @@ from artistools.viewertools.application import is_live
 from artistools.viewertools.application import make_central_splitter
 from artistools.viewertools.application import make_window
 from artistools.viewertools.application import mark_field_error
+from artistools.viewertools.core import find_option_action
 from artistools.viewertools.core import FIT_MILLISECONDS
 from artistools.viewertools.core import FIT_TOLERANCE
 from artistools.viewertools.core import fix_title_position
@@ -344,6 +345,8 @@ class PlotViewer[ValuesT](t.Protocol):
     """A viewer with the values of its controls, the last warning of its plot, and the colours of Dark Mode."""
 
     values: ValuesT
+    # the parser of the command of the viewer
+    parser: "SuggestingArgumentParser"
     # the figure of the canvas, and its size in inches, which render_command sets for each plot
     fig: "mplfig.Figure"
     figsize: tuple[float, float]
@@ -362,16 +365,17 @@ class PlotViewer[ValuesT](t.Protocol):
         """Return the -figwidthscale that gives the figure the shape of a plot area of this width and height."""
 
 
-def render_command[PlotT](
-    viewer: "PlotViewer[t.Any]",
+def render_command[PlotT, ValuesT](
+    viewer: "PlotViewer[ValuesT]",
+    values: ValuesT,
     draw: "Callable[[mplfig.Figure], PlotT | str]",
     keep: "Callable[[PlotT], None]",
     *,
     quiet: bool,
 ) -> "Callable[[], str | None]":
-    """Draw a plot on a new figure, and return the function that shows it in the canvas of the viewer.
+    """Draw a plot of the values on a new figure, and return the function that shows it in the canvas of the viewer.
 
-    draw parses the command and draws the plot on the empty figure that it receives. It returns the frames and the
+    draw parses the command of the values and draws the plot on the empty figure that it receives. It returns the frames and the
     data that the window reads, or the reason that it rejects the values. keep gives these to the viewer. Each plot of
     each viewer gets the same last steps: the titles, the colours of Dark Mode, and the layout of the text.
 
@@ -393,8 +397,10 @@ def render_command[PlotT](
         for axis in fig.axes:
             fix_title_position(axis)
         make_room_for_title(fig)
-        # --darkmode gives the colours of the saved file, thus it has priority over the appearance of the window
-        if "--darkmode" in viewer.get_plot_tokens():
+        # --darkmode gives the colours of the saved file, thus it has priority over the appearance of the window.
+        # argparse accepts a unique start of the flag, e.g. --dark
+        tokenactions = [find_option_action(viewer.parser, token)[0] for token in viewer.get_plot_tokens(values)]
+        if any(action is not None and action.dest == "darkmode" for action in tokenactions):
             apply_dark_colours(fig, *DARKMODE_COLOURS)
         elif (darkcolours := viewer.darkcolours) is not None:
             apply_dark_colours(fig, *darkcolours)

@@ -1053,7 +1053,7 @@ class EstimatorViewer:
         def keep(plot: RenderedPlot) -> None:
             self.isimage, self.xlimitscale, self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot
 
-        return render_command(self, draw, keep, quiet=quiet)
+        return render_command(self, values, draw, keep, quiet=quiet)
 
     def change(self, values: ControlValues) -> str | None:
         """Draw the plot of the new values, and keep the old values and the old plot if plotestimators rejects them."""

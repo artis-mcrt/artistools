@@ -419,8 +419,9 @@ def copy_figure_of_command(
 ) -> None:
     """Put the figure of the command on the clipboard, in the format and the resolution of choice.
 
-    The command draws the figure, as for a saved file. Thus the image has the usual colours and no empty margin, also
-    when the window shows the plot in Dark Mode. The worker thread runs the command, thus the window accepts input.
+    The command draws the figure, as for a saved file. Thus the image has no empty margin, and it has the colours of
+    the command: the colours of --darkmode or the usual colours, also when the window shows the plot in Dark Mode. The
+    worker thread runs the command, thus the window accepts input.
     """
     suffix, dpi = choice
     tokens = [*remove_options(parser, plottokens, {"dpi"}), "-dpi", str(dpi)]

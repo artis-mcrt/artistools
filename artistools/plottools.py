@@ -1287,19 +1287,20 @@ DARKMODE_COLOURS: t.Final = ("black", "white")
 
 # the formats that keep the transparent background of a figure with --darkmode. A raster file, e.g. a PNG image of a
 # gif, has a black background, because many image viewers show a transparent area as white
-TRANSPARENT_DARKMODE_FORMATS: t.Final = frozenset({"pdf", "svg"})
+TRANSPARENT_DARKMODE_FORMATS: t.Final = frozenset({"pdf", "svg", "svgz"})
 
 
 def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> None:
     """Give a figure the colours of Dark Mode.
 
-    The frames, the ticks, and the text take the foreground colour. A black or dark grey item takes the foreground
-    colour, because it does not show on the dark background:
+    The backgrounds of the figure, the axes, and the legends take the background colour. The frames and the ticks take
+    the foreground colour. A black or dark grey item takes the foreground colour, because it does not show on the dark
+    background:
 
     - a line;
     - a text;
-    - the edge of a patch or a collection;
-    - the face of a collection of one colour.
+    - the edge or the face of a patch;
+    - the edge or the face of a collection of one colour.
 
     The other colours stay, e.g. the colours of the series and of an image. A dark colour of a series, e.g. the dark
     red of sulphur, is not grey, thus it stays.
@@ -1317,34 +1318,36 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
         rgbas = mplcolors.to_rgba_array(colours)
         return len(rgbas) == 1 and is_dark_grey(tuple(rgbas[0]))
 
-    fig.patch.set_facecolor(background)
+    backgrounds: list[mplartist.Artist] = [fig.patch]
     for axis in fig.axes:
-        axis.set_facecolor(background)
+        backgrounds.append(axis.patch)
         for spine in axis.spines.values():
             spine.set_edgecolor(foreground)
         axis.tick_params(which="both", colors=foreground)
         if (legend := axis.get_legend()) is not None:
-            legend.get_frame().set_facecolor(background)
-            legend.get_frame().set_edgecolor(foreground)
-    for text in fig.findobj(Text):
-        if isinstance(text, Text) and is_dark_grey(text.get_color()):
-            text.set_color(foreground)
-    for line in fig.findobj(mpllines.Line2D):
-        if isinstance(line, mpllines.Line2D) and is_dark_grey(line.get_color()):
-            line.set_color(foreground)
-    # a background patch takes no foreground colour, thus only the edge of a patch changes
-    for patch in fig.findobj(Patch):
-        if isinstance(patch, Patch) and is_dark_grey(patch.get_edgecolor()):
-            patch.set_edgecolor(foreground)
-    # a collection of one colour is e.g. the lines of the error bars. A colour map gives many colours, thus its
-    # collection stays
-    for collection in fig.findobj(Collection):
-        if not isinstance(collection, Collection):
-            continue
-        if is_one_dark_grey(collection.get_edgecolor()):
-            collection.set_edgecolor(foreground)
-        if is_one_dark_grey(collection.get_facecolor()):
-            collection.set_facecolor(foreground)
+            backgrounds.append(legend.get_frame())
+    backgroundids = {id(artist) for artist in backgrounds}
+    for artist in backgrounds:
+        if isinstance(artist, Patch):
+            artist.set_facecolor(background)
+
+    # one walk of the tree of artists, because a figure with many subplots holds many artists
+    for artist in fig.findobj():
+        if isinstance(artist, (Text, mpllines.Line2D)):
+            if is_dark_grey(artist.get_color()):
+                artist.set_color(foreground)
+        elif isinstance(artist, Patch):
+            if is_dark_grey(artist.get_edgecolor()):
+                artist.set_edgecolor(foreground)
+            if id(artist) not in backgroundids and is_dark_grey(artist.get_facecolor()):
+                artist.set_facecolor(foreground)
+        # a collection of one colour is e.g. the lines of the error bars. A colour map gives many colours, thus its
+        # collection stays
+        elif isinstance(artist, Collection):
+            if is_one_dark_grey(artist.get_edgecolor()):
+                artist.set_edgecolor(foreground)
+            if is_one_dark_grey(artist.get_facecolor()):
+                artist.set_facecolor(foreground)
 
 
 def apply_darkmode(fig: mplfig.Figure, fileformat: str) -> bool:
