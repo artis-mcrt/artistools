@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
@@ -3964,9 +3965,21 @@ def test_series_style_reads_commas_in_its_values() -> None:
         {"dashes": "5,2", "linewidth": "2", "label": "T, electrons"},
     )
     assert plotestimators.read_series_style("Fe II") == ("Fe II", {})
-    for item in ("Te@colour=red", "Te@color=notacolour", "Te@dashes=5", "Te@linealpha=2"):
+    # matplotlib refuses a negative dash and a pattern with no length above 0 only at the time of the plot
+    for item in (
+        "Te@colour=red",
+        "Te@color=notacolour",
+        "Te@dashes=5",
+        "Te@dashes=-1,2",
+        "Te@dashes=0,0",
+        "Te@linewidth=inf",
+        "Te@linealpha=2",
+    ):
         with pytest.raises(ValueError, match="Te"):
             plotestimators.read_series_style(item)
+    for scale in ("-1", "0", "nan", "inf"):
+        with pytest.raises(SystemExit):
+            at.misc.parse_cli_args(plotestimators.addargs, None, None, ["Te", f"-linewidthscale={scale}"])
 
 
 def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
@@ -4019,6 +4032,27 @@ def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path
     )
     assert severalelements["Fe II"] == severalelements["Fe III"] != severalelements["Co II"]
     assert oneelement["Fe II"] != oneelement["Fe III"]
+
+
+def test_interactive_swatches_give_the_colours_of_the_lines() -> None:
+    """A chip shows the colour of the line of its series, and the dialog shows the colour with no style of its own.
+
+    --markers draws the points after the line with a lighter colour. A series with a colour does not move the axes
+    cycle, thus TR after the red Te takes the first colour of the cycle.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--markers", "--interactive"])
+    assert (
+        viewer.change(dc.replace(viewer.values, subplots=(("Te", "TR@linewidth=3"), ("Te", "TR@color=#d55e00"))))
+        is None
+    )
+    # the line of TR comes first, and its points come after it
+    trline, trpoints = (
+        line for line in interactive.get_plot_frames(viewer.fig)[0].get_lines() if line.get_gid() == "TR"
+    )
+    assert viewer.swatches[0, "TR"].colour == mplcolors.to_hex(trline.get_color()) == mplcolors.to_hex("C0")
+    assert mplcolors.to_hex(trpoints.get_color()) != mplcolors.to_hex("C0")
+    assert viewer.swatches[1, "TR"].colour == "#d55e00"
+    assert viewer.swatches[1, "TR"].defaultcolour == mplcolors.to_hex("C0")
 
 
 def test_interactive_style_change_reuses_the_data() -> None:

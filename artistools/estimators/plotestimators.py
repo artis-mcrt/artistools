@@ -89,6 +89,7 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import suggest_names
+from artistools.misc.cliutils import positive_float_arg
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.remote import on_model_host
 from artistools.nltepops import read_nltepops
@@ -875,12 +876,11 @@ def get_series_style_problem(key: str, value: str) -> str | None:
             return f"is not a dash pattern: {exc}"
     if key in {"linewidth", "linealpha"}:
         try:
-            number = float(value)
-        except ValueError:
-            number = math.nan
-        upper = 1.0 if key == "linealpha" else math.inf
-        if not 0.0 < number <= upper:
-            return "is not a number above 0" + (" with a maximum of 1" if key == "linealpha" else "")
+            number = positive_float_arg(value)
+        except argparse.ArgumentTypeError:
+            return "is not a finite number above 0"
+        if key == "linealpha" and number > 1.0:
+            return "is above 1, which is the maximum opacity"
     return None
 
 
@@ -2502,7 +2502,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-linewidthscale",
-        type=float,
+        type=positive_float_arg,
         default=1.0,
         help="Multiply the width of each line by this factor, e.g. 2 for a presentation. The factor also multiplies a"
         " linewidth of a series style",

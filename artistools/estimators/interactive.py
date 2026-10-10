@@ -304,15 +304,20 @@ def get_series_swatches(
     swatches: dict[tuple[int, str], SeriesSwatch] = {}
     for index, (series, _) in enumerate(figuredata.subplots):
         styles = stylesofsubplots[index] if index < len(stylesofsubplots) else {}
-        linecolours = {line.get_gid(): line.get_color() for line in frames[index].get_lines()}
-        for seriesindex, seriesdata in enumerate(series):
+        # --markers draws the points of a series after its line, with a lighter colour. The first line of a series
+        # gives its colour, and -xbins 0 draws the points alone
+        linecolours: dict[t.Any, str] = {}
+        for line in frames[index].get_lines():
+            linecolours.setdefault(line.get_gid(), str(line.get_color()))
+        # a series with no colour takes the next colour of the axes cycle, and a series with a colour does not move it
+        cycleposition = 0
+        for seriesdata in series:
             style: dict[str, str] = styles.get(seriesdata.seriesname, {})
             _, plotkwargs = get_styled_series(seriesdata, style, args.linewidthscale)
-            # the points of -xbins 0 take a lighter colour than the series, thus the drawn colour is the last choice
             drawncolour = linecolours.get(seriesdata.seriesname, "black")
-            datacolour = seriesdata.plotkwargs.get("color")
-            # a series with a colour of its own hides the colour of the cycle, which is then the position in the cycle
-            defaultcolour = datacolour or (f"C{seriesindex % 10}" if "color" in style else drawncolour)
+            defaultcolour = seriesdata.plotkwargs.get("color") or f"C{cycleposition}"
+            if "color" not in plotkwargs:
+                cycleposition += 1
             dashes = plotkwargs.get("dashes") or get_dash_pattern(plotkwargs.get("linestyle"), None)
             swatches[index, seriesdata.seriesname] = SeriesSwatch(
                 colour=mplcolors.to_hex(plotkwargs.get("color") or drawncolour),
