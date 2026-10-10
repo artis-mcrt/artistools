@@ -25,10 +25,13 @@ from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.inputmodel.core import backup_existing_file
+from artistools.inputmodel.core import MODEL_FILE_NAMES
+from artistools.inputmodel.core import prepare_zstd_output
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import parallel_map
@@ -443,14 +446,26 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
     return dfcontribs
 
 
-def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Path | str) -> None:
-    """Write gridcontributions.txt, renaming any existing file to a .bak suffix first."""
+def save_gridparticlecontributions(
+    dfcontribs: pl.DataFrame, gridcontribpath: Path | str, float_precision: int | None = 7
+) -> Path:
+    """Write gridcontributions.txt.zst, delete each other copy of that file, and return its path.
+
+    float_precision=None writes the shortest text that gives each float again, e.g. 1.0.
+    """
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
-    backup_existing_file(gridcontribpath)
+    gridcontribpath = prepare_zstd_output(gridcontribpath)
 
-    dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7)
+    dfcontribs.write_csv(
+        gridcontribpath,
+        separator=" ",
+        float_scientific=True if float_precision is not None else None,
+        float_precision=float_precision,
+        compression="zstd",
+    )
+    return gridcontribpath
 
 
 def get_dfnucabundances(
@@ -584,11 +599,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-particleid", type=int, default=133371, help="Particle id of the trajectory")
     addarg_output(parser, kind="folder", default=Path())
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Create ARTIS model from single trajectory abundances."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    confirm_overwrite([args.outputfile], MODEL_FILE_NAMES, force=args.force)
 
     traj_root = Path(args.trajectoryroot)
     particleid = args.particleid
@@ -646,9 +663,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     save_modeldata(dfmodel=dfmodel, t_model_init_days=t_model_init_days, outpath=Path(args.outputfile))
 
-    with Path(args.outputfile, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
-        fcontribs.write("particleid cellindex frac_of_cellmass\n")
-        fcontribs.writelines(f"{particleid} {inputcellid} 1.0\n" for inputcellid in dfmodel["inputcellid"])
+    save_gridparticlecontributions(
+        dfmodel.select(
+            pl.lit(particleid).alias("particleid"),
+            pl.col("inputcellid").alias("cellindex"),
+            frac_of_cellmass=pl.lit(1.0),
+        ),
+        Path(args.outputfile, "gridcontributions.txt"),
+        float_precision=None,
+    )
 
 
 def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_init_seconds: float) -> pl.DataFrame:

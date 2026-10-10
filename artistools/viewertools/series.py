@@ -11,7 +11,7 @@ from types import MappingProxyType
 
 from artistools.misc.cliutils import dashes_arg
 from artistools.misc.cliutils import SERIES_DEFAULT
-from artistools.misc.fileio import COMPRESSED_EXTENSIONS
+from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import split_remote_path
 from artistools.viewertools.application import add_recent_model
@@ -626,7 +626,7 @@ def get_reference_names(folder: Path) -> list[str]:
     gives no name, because the command has no data to read.
     """
     names = {
-        path.name.removesuffix(path.suffix) if path.suffix in COMPRESSED_EXTENSIONS else path.name
+        without_compressed_extension(path).name
         for path in folder.iterdir()
         if path.is_file() and not path.name.startswith(".") and not path.name.endswith(".meta.yml")
     }

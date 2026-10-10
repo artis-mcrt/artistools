@@ -14,7 +14,10 @@ import polars as pl
 
 from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
+from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
@@ -75,7 +78,7 @@ def maptogrid(
     modifysmoothinglength: str = "option4",
     samplelowercorner: bool = False,
 ) -> None:
-    """Map an SPH ejecta snapshot onto an ncoordgrid^3 Cartesian grid and write grid.dat and gridcontributions.txt.
+    """Map an SPH ejecta snapshot onto an ncoordgrid^3 Cartesian grid and write grid.dat and gridcontributions.txt.zst.
 
     samplelowercorner evaluates the kernel at the lower corner of each cell, as artistools did before. Use it only
     to make a grid.dat again that an older version of artistools wrote.
@@ -327,18 +330,17 @@ def maptogrid(
         contrib_k = np.concatenate(contrib_cellk)
         contrib_gridindex = (contrib_k * ncoordgrid + contrib_j) * ncoordgrid + contrib_i + 1
         contrib_frac_of_cellmass = np.concatenate(contrib_rho) / grho[contrib_i, contrib_j, contrib_k]
-        with Path(outputfolderpath, "gridcontributions.txt").open("w", encoding="utf-8") as fcontribs:
-            fcontribs.write("particleid cellindex frac_of_cellmass\n")
-            fcontribs.writelines(
-                f"{pid} {gridindex} {frac}\n"
-                for pid, gridindex, frac in zip(
-                    particleid[np.concatenate(contrib_particle)].tolist(),
-                    contrib_gridindex.tolist(),
-                    contrib_frac_of_cellmass.tolist(),
-                    strict=True,
-                )
-            )
-        logprint(f"saved {outputfolderpath / 'gridcontributions.txt'}")
+        # full precision, because the reader keeps frac_of_cellmass as Float64
+        gridcontribpath = save_gridparticlecontributions(
+            pl.DataFrame({
+                "particleid": particleid[np.concatenate(contrib_particle)],
+                "cellindex": contrib_gridindex,
+                "frac_of_cellmass": contrib_frac_of_cellmass,
+            }),
+            Path(outputfolderpath, "gridcontributions.txt"),
+            float_precision=None,
+        )
+        logprint(f"saved {gridcontribpath}")
 
     # check some stuff on the grid
 
@@ -450,6 +452,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_output(parser, kind="folder", default=Path())
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -457,6 +460,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
+    confirm_overwrite([args.outputfile], ("grid.dat", "gridcontributions.txt"), force=args.force)
 
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,

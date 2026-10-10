@@ -282,20 +282,30 @@ def test_downscale_3dmodel(tmp_path: Path) -> None:
         )
 
 
+def decompress_file(zstdpath: Path) -> Path:
+    """Replace a zstd file with its uncompressed copy, e.g. model.txt for model.txt.zst, and return its path."""
+    uncompressedpath = zstdpath.with_suffix("")
+    with at.zopen(zstdpath, encoding="utf-8") as fzst:
+        uncompressedpath.write_text(fzst.read(), encoding="utf-8")
+    zstdpath.unlink()
+    return uncompressedpath
+
+
 def verify_file_checksums(
     checksums_expected: dict[t.Any, t.Any], digest: str = "sha256", folder: Path | str = "."
 ) -> None:
     checksums_actual: dict[Path, str] = {}
 
-    createdprefix = f"# {CREATED_COMMENT_PREFIX}".encode()
+    createdprefix = f"# {CREATED_COMMENT_PREFIX}"
     for filename, checksum_expected in checksums_expected.items():
         fullpath = Path(folder) / filename
         m = hashlib.new(digest)
-        with Path(fullpath).open("rb") as f:
+        # the checksum uses the decompressed text, because two zstd libraries can make different bytes from one text
+        with at.zopen(fullpath, encoding="utf-8") as f:
             for line in f:
                 # the creation time is different in each run
                 if not line.startswith(createdprefix):
-                    m.update(line)
+                    m.update(line.encode())
 
         checksums_actual[fullpath] = m.hexdigest()
         strpassfail = "pass" if checksums_actual[fullpath] == checksum_expected else "FAILED"
@@ -316,14 +326,14 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path, trajectory_copy: Path)
         "maptogrid_sums": {
             "ejectapartanalysis.dat": "e8694a679515c54c2b4867122122263a375d9ffa144a77310873ea053bb5a8b4",
             "grid.dat": "2e4ff3708d8e0703fb50513386ead4b5549116895d29bf927a37de6a84a7760c",
-            "gridcontributions.txt": "dbe2427f88f5f8a8490b3a6523a24ef30cdb1def0b0bd5a1e5b8e69e8b227891",
+            "gridcontributions.txt.zst": "dbe2427f88f5f8a8490b3a6523a24ef30cdb1def0b0bd5a1e5b8e69e8b227891",
         },
         # the model and abundance files carry eight significant figures, and the vmax header nine, so
         # that a model round-trips through the Float32 of the reader.
         "makeartismodel_sums": {
-            "gridcontributions.txt": "b3de0a54d97c45421d204d6b24e0bfd6400a00a9810df9c520f52a52d235c734",
-            "abundances.txt": "e931d575bfbe2b442fad45a09d5f2acf68306f36e93966c3ac797200f52cf7bb",
-            "model.txt": "4e6884143fbfcfe7e99731ca93a1e92b4270836c0db2d1012ce49dc0872b0bcf",
+            "gridcontributions.txt.zst": "b3de0a54d97c45421d204d6b24e0bfd6400a00a9810df9c520f52a52d235c734",
+            "abundances.txt.zst": "e931d575bfbe2b442fad45a09d5f2acf68306f36e93966c3ac797200f52cf7bb",
+            "model.txt.zst": "4e6884143fbfcfe7e99731ca93a1e92b4270836c0db2d1012ce49dc0872b0bcf",
         },
     }
 
@@ -332,7 +342,7 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path, trajectory_copy: Path)
     )
 
     at.inputmodel.maptogrid.main(
-        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, **config["maptogridargs"]
+        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, force=True, **config["maptogridargs"]
     )
 
     verify_file_checksums(config["maptogrid_sums"], digest="sha256", folder=gridfolderpath)
@@ -341,8 +351,6 @@ def test_makeartismodelfrom_sph_particles(tmp_path: Path, trajectory_copy: Path)
     for dimensions in (3, 2, 1, 0):
         outpath_kn = tmp_path / f"kilonova_{dimensions:d}d"
         outpath_kn.mkdir(exist_ok=True, parents=True)
-
-        shutil.copyfile(gridfolderpath / "gridcontributions.txt", outpath_kn / "gridcontributions.txt")
 
         at.inputmodel.modelfromhydro.main(
             argsraw=[],
@@ -394,12 +402,17 @@ def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path:
         testdatapath / "kilonova", gridfolderpath, dirs_exist_ok=True, ignore=shutil.ignore_patterns("trajectories")
     )
     at.inputmodel.maptogrid.main(
-        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=16, sample_cell_lower_corner=True
+        argsraw=[],
+        inputpath=gridfolderpath,
+        outputpath=gridfolderpath,
+        ncoordgrid=16,
+        sample_cell_lower_corner=True,
+        force=True,
     )
     verify_file_checksums(
         {
             "grid.dat": "d7dbe63efe3544f5d6f77acc202e110e197b02dcfa953d8f2bf84b24d9b8e76d",
-            "gridcontributions.txt": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
+            "gridcontributions.txt.zst": "63e6331666c4928bdc6b7d0f59165e96d6555736243ea8998a779519052a425f",
         },
         digest="sha256",
         folder=gridfolderpath,
@@ -407,7 +420,6 @@ def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path:
 
     outpath = tmp_path / "kilonova_3d"
     outpath.mkdir()
-    shutil.copyfile(gridfolderpath / "gridcontributions.txt", outpath / "gridcontributions.txt")
     at.inputmodel.modelfromhydro.main(
         argsraw=[],
         gridfolderpath=gridfolderpath,
@@ -418,9 +430,9 @@ def test_lower_corner_sample_makes_the_model_of_an_older_version_again(tmp_path:
     )
     verify_file_checksums(
         {
-            "gridcontributions.txt": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
-            "abundances.txt": "fb8b4f7c81e6b223ec9506d625cfc78cb778ad2056b8143078d7bfeb9451c1d2",
-            "model.txt": "e92e6f54d3e494df42c56213a9778a4594c65f370d6f1109975f4f6470627a12",
+            "gridcontributions.txt.zst": "f7ddda0c8789a642ad2399e2ae67acc15e2fac519bbddfcdaa65b93d32e3edeb",
+            "abundances.txt.zst": "fb8b4f7c81e6b223ec9506d625cfc78cb778ad2056b8143078d7bfeb9451c1d2",
+            "model.txt.zst": "e92e6f54d3e494df42c56213a9778a4594c65f370d6f1109975f4f6470627a12",
         },
         digest="sha256",
         folder=outpath,
@@ -469,7 +481,7 @@ def test_make1dmodelfromcone(tmp_path: Path) -> None:
     assert modelmeta["dimensions"] == 1
     assert 1 <= modelmeta["npts_model"] <= 4
     assert dfmodel.select(pl.col("logrho").max()).collect().item() > -90.0
-    assert (tmp_path / "abundances_1d.txt").is_file()
+    assert (tmp_path / "abundances_1d.txt.zst").is_file()
 
 
 def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1926,6 +1938,8 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     outpath = tmp_path
     at.inputmodel.save_modeldata(outpath=outpath, dfmodel=dfmodel, modelmeta=modelmeta)
     at.inputmodel.save_initelemabundances(outpath=outpath, dfelabundances=dfelemabundances)
+    # the reader writes no cache for a file below 2 MiB, thus the test reads an uncompressed copy of the zstd file
+    decompress_file(outpath / "model.txt.zst")
 
     # the first load reads the text file, and it writes a cache, because the file is larger than 2 MiB.
     # The second load reads that cache
@@ -2105,7 +2119,8 @@ def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> 
 
     morespacesfolder = tmp_path / "morespaces"
     morespacesfolder.mkdir()
-    lines = (onespacefolder / "abundances.txt").read_text(encoding="utf-8").splitlines()
+    with at.zopen(onespacefolder / "abundances.txt.zst", encoding="utf-8") as fabund:
+        lines = fabund.read().splitlines()
     (morespacesfolder / "abundances.txt").write_text(
         "\n".join(line if line.startswith("#") else "   " + line.replace(" ", "   ") for line in lines) + "\n",
         encoding="utf-8",
@@ -2860,7 +2875,7 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
         "Ye": [0.3, 0.4],
     })
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
-    modelfile = tmp_path / "model.txt"
+    modelfile = decompress_file(tmp_path / "model.txt.zst")
     modeltext = modelfile.read_text(encoding="utf-8")
     assert " Ye\n" in modeltext
     modelfile.write_text(modeltext.replace(" Ye\n", " cellYe\n"), encoding="utf-8")
@@ -2960,7 +2975,7 @@ def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcem
         outpath = tmp_path / label
         outpath.mkdir()
         at.inputmodel.save_modeldata(dfmodel.collect(), outpath=outpath, modelmeta=modelmeta.copy())
-        dfmodel_written[label] = at.inputmodel.core.read_modelfile_text(outpath / "model.txt")[0].collect()
+        dfmodel_written[label] = at.inputmodel.core.read_modelfile_text(outpath / "model.txt.zst")[0].collect()
 
     pltest.assert_frame_equal(dfmodel_written["filecolumns"], dfmodel_written["allderived"])
 
@@ -2992,7 +3007,7 @@ def test_save_modeldata_writes_the_extra_columns(
         dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, **extracolsarg
     )
 
-    lzdfmodel_written, _ = at.inputmodel.core.read_modelfile_text(tmp_path / "model.txt")
+    lzdfmodel_written, _ = at.inputmodel.core.read_modelfile_text(tmp_path / "model.txt.zst")
     standardcols = at.inputmodel.core.get_standard_columns(1)
     assert lzdfmodel_written.collect_schema().names() == [*standardcols, "X_Sr89", *expectedcustomcols]
 
@@ -3059,7 +3074,7 @@ def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> N
             "X_Cr48": [0.0, 0.0],
         })
         at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
-        (tmp_path / "model.txt").rename(tmp_path / f"model_a.{variant}.txt")
+        (tmp_path / "model.txt.zst").rename(tmp_path / f"model_a.{variant}.txt.zst")
         # a cache file that exists makes the reader write a new cache, whatever the size of the model
         (tmp_path / f"model_a.{variant}.txt.parquet.tmp").touch()
 
@@ -3070,6 +3085,76 @@ def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> N
     assert lzdfmodel2.select("logrho").collect().to_series().to_list() == pytest.approx([-12.0, -12.0])
     assert (tmp_path / "model_a.1.txt.parquet.tmp").stat().st_size > 0
     assert (tmp_path / "model_a.2.txt.parquet.tmp").stat().st_size > 0
+
+
+def test_save_modeldata_deletes_an_old_uncompressed_file(tmp_path: Path) -> None:
+    """If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old uncompressed file must go."""
+    for logrho in (-10.0, -12.0):
+        dfmodel = pl.DataFrame({
+            "inputcellid": [1],
+            "vel_r_max_kmps": [1000.0],
+            "logrho": [logrho],
+            "X_Fegroup": [1.0],
+            "X_Ni56": [0.5],
+            "X_Co56": [0.0],
+            "X_Fe52": [0.0],
+            "X_Cr48": [0.0],
+        })
+        at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
+        at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
+        if logrho == -10.0:
+            for filename in ("model.txt", "abundances.txt"):
+                decompress_file(tmp_path / f"{filename}.zst")
+
+    assert sorted(path.name for path in tmp_path.iterdir() if ".parquet" not in path.name) == [
+        "abundances.txt.zst",
+        "model.txt.zst",
+    ]
+    lzdfmodel, _ = at.inputmodel.get_modeldata(tmp_path, get_elemabundances=True)
+    assert lzdfmodel.select("logrho").collect().item() == pytest.approx(-12.0)
+
+    # a name with a different compression extension gave model.txt.gz.zst, and the writer deleted model.txt.gz
+    (tmp_path / "model.txt.gz").write_bytes(b"")
+    at.inputmodel.save_modeldata(
+        dfmodel, outpath=tmp_path / "model.txt.gz", modelmeta={"dimensions": 1, "t_model_init_days": 1.0}
+    )
+    assert sorted(path.name for path in tmp_path.iterdir() if ".parquet" not in path.name) == [
+        "abundances.txt.zst",
+        "model.txt.zst",
+    ]
+
+
+def test_command_asks_before_it_overwrites_a_compressed_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An output name also finds its compressed copy, and the command stops before the work if nobody agrees."""
+    (tmp_path / "abundances.txt.zst").write_bytes(b"")
+    filenames = ("model.txt", "abundances.txt")
+
+    # stdin of pytest is not a terminal, thus nobody can answer
+    with pytest.raises(SystemExit):
+        at.misc.confirm_overwrite([tmp_path], filenames, force=False)
+    assert f"{tmp_path / 'abundances.txt.zst'} exists" in capsys.readouterr().err
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    for reply, agrees in (("y", True), ("n", False), ("", False)):
+        with mock.patch("builtins.input", return_value=reply):
+            if agrees:
+                at.misc.confirm_overwrite([tmp_path], filenames, force=False)
+            else:
+                with pytest.raises(SystemExit):
+                    at.misc.confirm_overwrite([tmp_path], filenames, force=False)
+
+    at.misc.confirm_overwrite([tmp_path], filenames, force=True)
+
+    from artistools.inputmodel import shen2018
+
+    with mock.patch("artistools.inputmodel.shen2018.read_wsv", side_effect=AssertionError("the work started")):
+        monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+        capsys.readouterr()
+        with pytest.raises(SystemExit):
+            shen2018.main(argsraw=["-o", str(tmp_path)])
+        assert "Give -f or --force to overwrite them" in capsys.readouterr().err
 
 
 def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_path: Path) -> None:
@@ -3855,7 +3940,9 @@ def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(
     shutil.copytree(
         testdatapath / "kilonova", gridfolderpath, ignore=shutil.ignore_patterns("trajectories"), dirs_exist_ok=True
     )
-    at.inputmodel.maptogrid.main(argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=4)
+    at.inputmodel.maptogrid.main(
+        argsraw=[], inputpath=gridfolderpath, outputpath=gridfolderpath, ncoordgrid=4, force=True
+    )
     gridlines = (gridfolderpath / "grid.dat").read_text(encoding="utf-8").splitlines()
     gridlines = [*gridlines[:3], f"{gridlines[3]} Q", *(f"{line} 1e10" for line in gridlines[4:])]
     (gridfolderpath / "grid.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")
@@ -4003,7 +4090,8 @@ def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.
     assert dfmodel["X_Ni56"].to_list() == pytest.approx([0.5], rel=1e-4)
     assert dfmodel["X_Ni"].to_list() == pytest.approx([0.5], rel=1e-4)
     assert dfmodel["X_He"].to_list() == pytest.approx([0.5], rel=1e-4)
-    assert (tmp_path / "out" / "gridcontributions.txt").read_text(encoding="utf-8").splitlines()[1] == "42 1 1.0"
+    with at.zopen(tmp_path / "out" / "gridcontributions.txt.zst", encoding="utf-8") as fcontribs:
+        assert fcontribs.read().splitlines()[1] == "42 1 1.0"
 
 
 def write_e2e_model(datpath: Path, isopath: Path) -> None:
@@ -4030,10 +4118,13 @@ def write_e2e_model(datpath: Path, isopath: Path) -> None:
     np.save(isopath, np.array([[2, 2], [26, 30]]))
 
 
-def test_from_e2e_model_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_from_e2e_model_main(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """The command writes a 2D model and a 3D model, and --interpolate writes its check files to the -o folder.
 
     The interpolation with the dynamical ejecta wrote dyn_abunds.txt and dyn_model_*.txt to the working folder.
+    The overwrite check before the work covered only the model files, thus it did not protect the check files.
     """
     datpath = tmp_path / "e2emodel.npz"
     write_e2e_model(datpath, tmp_path / "iso_table.npy")
@@ -4062,9 +4153,26 @@ def test_from_e2e_model_main(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
 
     _, modelmeta3d = at.inputmodel.get_modeldata(tmp_path / "interpolated", printwarningsonly=True)
     assert modelmeta3d["npts_model"] == 64
-    for filename in ("dyn_abunds.txt", "dyn_model_notrescaled.txt", "dyn_model_rescaled.txt"):
+    for filename in ("dyn_abunds.txt.zst", "dyn_model_notrescaled.txt.zst", "dyn_model_rescaled.txt.zst"):
         assert (tmp_path / "interpolated" / filename).is_file(), filename
     assert not list(workingfolder.iterdir())
+
+    for filename in at.inputmodel.core.MODEL_FILE_NAMES:
+        (tmp_path / "interpolated" / f"{filename}.zst").unlink(missing_ok=True)
+    capsys.readouterr()
+    with pytest.raises(SystemExit):
+        at.inputmodel.from_e2e_model.main(
+            argsraw=[
+                *gridargs3d,
+                "-replacedyn",
+                str(tmp_path / "dyn3d"),
+                "--interpolate",
+                "-o",
+                str(tmp_path / "interpolated"),
+            ]
+        )
+    assert f"{tmp_path / 'interpolated' / 'dyn_abunds.txt.zst'} exists" in capsys.readouterr().err
+    assert not (tmp_path / "interpolated" / "model.txt.zst").exists()
 
 
 def test_describeinputmodel_keeps_its_description_with_quiet(capsys: pytest.CaptureFixture[str]) -> None:

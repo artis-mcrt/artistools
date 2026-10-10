@@ -1,6 +1,7 @@
 """Shared helpers for command-line argument parsing and list/path argument normalisation."""
 
 import argparse
+import contextlib
 import dataclasses as dc
 import itertools
 import operator
@@ -16,6 +17,7 @@ from types import MappingProxyType
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
+from artistools.misc.fileio import get_file_copies
 from artistools.misc.remote import model_path_from_text
 
 if t.TYPE_CHECKING:
@@ -1110,6 +1112,49 @@ def addarg_quiet(parser: argparse.ArgumentParser) -> None:
     arggroup(parser, "output").add_argument(
         "--quiet", "-q", action="store_true", help="Hide the progress messages. Warnings and errors still appear"
     )
+
+
+def addarg_force(parser: argparse.ArgumentParser) -> None:
+    """Add the -f and --force arguments, which permit a destructive action with no prompt, as rm -f does."""
+    arggroup(parser, "output").add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        help="Do destructive actions with no prompt, e.g. overwrite the output files that exist",
+    )
+
+
+def confirm_overwrite(folders: Iterable[Path | str], filenames: Sequence[str], force: bool) -> None:
+    """Warn about the output files that exist, and stop the command if the user does not agree to overwrite them.
+
+    The output files are the file names in each of the folders. Each name also stands for its compressed copies,
+    e.g. model.txt for model.txt.zst. A command calls this function before the work starts, thus a refusal costs no
+    time. Nobody can answer when stdin is not a terminal, thus the command then stops if it has no --force.
+    """
+    existingfiles = [
+        path
+        for folder in folders
+        for filename in filenames
+        for path in get_file_copies(Path(folder, filename))
+        if path.is_file()
+    ]
+    if not existingfiles:
+        return
+
+    for path in existingfiles:
+        print_warning(f"{path} exists")
+    if force:
+        return
+
+    reply = ""
+    if sys.stdin.isatty():
+        # the end of the input, e.g. from Ctrl-D, is the answer "no"
+        with contextlib.suppress(EOFError):
+            reply = input("Overwrite the files? (y/n) ")
+    if reply.strip().lower() not in {"y", "yes"}:
+        exit_with_error(
+            "The command stopped, and it did not overwrite the files", "Give -f or --force to overwrite them"
+        )
 
 
 def addarg_verbose(parser: argparse.ArgumentParser) -> None:

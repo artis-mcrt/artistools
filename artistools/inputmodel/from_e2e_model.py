@@ -24,11 +24,14 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import get_initelemabundances
 from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import remap_gridcontributions
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 
@@ -537,6 +540,10 @@ def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.fl
     reflected = np.concatenate([sign * np.flip(arr[:, :], axis=1), arr[:, :]], axis=1)
     assert isinstance(reflected, np.ndarray)
     return reflected
+
+
+# the files that map_to_artis writes for a consistency check of the interpolation with the dynamical ejecta
+DYN_CHECK_FILE_NAMES = ("dyn_abunds.txt", "dyn_model_notrescaled.txt", "dyn_model_rescaled.txt")
 
 
 # function added by Luke and Gerrit
@@ -1168,6 +1175,7 @@ def float_or_str(x: str) -> float | str:
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_output(parser, kind="folder", default=None, helptext="Folder for the output ARTIS model files")
+    addarg_force(parser)
 
     parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
 
@@ -1280,6 +1288,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--perturb3Dmodel", dest="perturb3Dmodel", type=float_or_str, nargs="+", help=argparse.SUPPRESS)
 
 
+def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
+    """Return the names of the files that the command writes to the -o folder.
+
+    With -replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
+    """
+    writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
+    return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Prepare data for an ARTIS kilonova calculation from end-to-end hydro models."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -1296,10 +1313,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         else:
             modelname += "_2d"
         args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
-        args.outputfile.mkdir(parents=True, exist_ok=True)
         print(args.outputfile)
+    confirm_overwrite([args.outputfile], get_output_file_names(args), force=args.force)
+    Path(args.outputfile).mkdir(parents=True, exist_ok=True)
 
-        # model_dim = 1 not covered in this script
+    # model_dim = 1 not covered in this script
     model_dim = 3 if args.mapto3D else 2
 
     if model_dim == 2:

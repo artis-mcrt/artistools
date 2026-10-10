@@ -119,6 +119,17 @@ def with_compressed_extension(filename: Path | str, ext: str) -> Path:
     return Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
 
 
+def without_compressed_extension(filepath: Path) -> Path:
+    """Return the path without its compression extension, e.g. model.txt for model.txt.zst."""
+    return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
+
+
+def get_file_copies(filepath: Path) -> list[Path]:
+    """Return the paths of the uncompressed copy and of each compressed copy of a file, e.g. model.txt.zst."""
+    uncompressedpath = without_compressed_extension(filepath)
+    return [uncompressedpath, *(with_compressed_extension(uncompressedpath, ext) for ext in COMPRESSED_EXTENSIONS)]
+
+
 def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
     """Return the extension and the path of filename.zst, .gz, or .xz, or None if no compressed file exists."""
     for ext in COMPRESSED_EXTENSIONS:
@@ -144,6 +155,16 @@ def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
         import zstandard as zstd
 
     return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]
+
+
+def write_zstd_lines(fileobj: t.IO[bytes], lines: Sequence[str]) -> None:
+    """Append the lines to an open binary file as one zstd frame.
+
+    Each write_csv call with compression="zstd" adds one frame. ARTIS and zopen read a file of several frames.
+    """
+    pl.DataFrame({"line": lines}, schema={"line": pl.String}).write_csv(
+        fileobj, include_header=False, quote_style="never", compression="zstd"
+    )
 
 
 def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None) -> t.IO[str]:
@@ -858,9 +879,8 @@ def get_file_metadata_cached(filepath: Path, givenpath: str) -> dict[str, t.Any]
 
     import yaml
 
-    if filepath.suffix in COMPRESSED_EXTENSIONS:
-        filepath = filepath.with_suffix("")
-        givenpath = str(Path(givenpath).with_suffix(""))
+    filepath = without_compressed_extension(filepath)
+    givenpath = str(without_compressed_extension(Path(givenpath)))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")

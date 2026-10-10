@@ -56,6 +56,11 @@ def downscaled_columns(
     ]
 
 
+def get_downscale_outputfolder(modelpath: Path | str, outputgridsize: int, outputfolder: Path | str | None) -> Path:
+    """Return the output folder of a downscaled model, which is a subfolder of the model if the caller gives none."""
+    return Path(modelpath, f"downscale_{outputgridsize}^3") if outputfolder is None else Path(outputfolder)
+
+
 def make_downscaled_3d_grid(
     modelpath: str | Path,
     outputgridsize: int = 50,
@@ -83,7 +88,7 @@ def make_downscaled_3d_grid(
     assert grid % smallgrid == 0
     merge = grid // smallgrid
 
-    outputfolder = Path(modelpath, f"downscale_{outputgridsize}^3") if outputfolder is None else Path(outputfolder)
+    outputfolder = get_downscale_outputfolder(modelpath, outputgridsize, outputfolder)
     outputfolder.mkdir(exist_ok=True)
     smallmodelfile = outputfolder / "model.txt"
     smallabundancefile = outputfolder / "abundances.txt"

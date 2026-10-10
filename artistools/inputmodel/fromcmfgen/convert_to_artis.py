@@ -18,7 +18,9 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.fromcmfgen.rd_cmfgen import rd_sn_hydro_data
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 
 # CMFGEN abbreviates species rather than using element symbols, so get_atomic_number cannot read these
@@ -56,6 +58,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-snapshot", default="SN_HYDRO_DATA_1.300d", help="CMFGEN SN_HYDRO_DATA snapshot file")
     addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write model.txt/abundances.txt to")
+    addarg_force(parser)
 
 
 def get_cmfgen_atomic_numbers(specnames: Sequence[str]) -> list[int]:
@@ -110,6 +113,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     outputpath = Path(args.outputfile)
+    confirm_overwrite([outputpath], ("model.txt", "abundances.txt"), force=args.force)
     outputpath.mkdir(parents=True, exist_ok=True)
 
     a: dict[str, t.Any] = rd_sn_hydro_data(args.snapshot, reverse=True)

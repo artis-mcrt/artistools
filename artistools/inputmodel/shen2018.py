@@ -14,7 +14,9 @@ from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 from artistools.misc import read_wsv
 
@@ -23,6 +25,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-inputpath", "-i", default="1.00_5050.dat", help="Path of input file")
     addarg_output(parser, kind="folder", default=Path())
+    addarg_force(parser)
 
 
 def get_nuclide_atomic_number(species: str) -> int:
@@ -43,6 +46,7 @@ def get_nuclide_atomic_number(species: str) -> int:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Convert Shen et al. 2018 models to ARTIS format."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    confirm_overwrite([args.outputfile], ("model.txt", "abundances.txt"), force=args.force)
 
     datain = read_wsv(args.inputpath).drop_nulls()
 

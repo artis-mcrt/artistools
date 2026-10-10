@@ -16,6 +16,7 @@ from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
@@ -25,9 +26,11 @@ from artistools.inputmodel.opacityinputfile import write_Ye_file
 from artistools.inputmodel.rprocess_from_trajectory import add_abundancecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+from artistools.misc import addarg_force
 from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_unsupported
+from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -357,7 +360,6 @@ def makemodelfromgriddata(
         save_gridparticlecontributions(dfgridcontributions, Path(outputpath, "gridcontributions.txt"))
 
     if dfelabundances is not None:
-        print(f"Writing to {Path(outputpath) / 'abundances.txt'}...")
         save_initelemabundances(
             dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"]
         )
@@ -367,7 +369,6 @@ def makemodelfromgriddata(
     if "tracercount" in dfmodel:
         dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
-    print(f"Writing to {Path(outputpath) / 'model.txt'}...")
     save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
 
 
@@ -408,6 +409,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Multiply ejecta velocities by some factor (adjusting density to conserve mass) before writing the model file",
     )
     addarg_output(parser, kind="folder", default=None, helptext="Path for output model files")
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -420,6 +422,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)
+    confirm_overwrite([outputpath], MODEL_FILE_NAMES, force=args.force)
 
     outputpath.mkdir(parents=True, exist_ok=True)
 
