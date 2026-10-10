@@ -216,7 +216,9 @@ def get_popup_class() -> "type[QtWidgets.QDialog]":
             border = self.palette().color(QtGui.QPalette.ColorRole.Mid)
             border.setAlpha(140)
             painter.setPen(QtGui.QPen(border, 1.0))
-            painter.setBrush(self.palette().color(QtGui.QPalette.ColorRole.Window))
+            # a popover of Dark Mode is lighter than the window under it, thus it stands apart from the window
+            fill = self.palette().color(QtGui.QPalette.ColorRole.Window)
+            painter.setBrush(fill.lighter(130) if fill.lightness() < 128 else fill)
             painter.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 10.0, 10.0)
             painter.end()
 

@@ -539,12 +539,15 @@ def refresh_palette_style_sheets(window: "QtWidgets.QWidget") -> None:
     """Apply again each style sheet of the window that gives a colour of the palette, e.g. palette(base).
 
     Qt reads a colour of the palette in a style sheet one time only. Without this, a chip of plotestimators keeps the
-    white background of a light window in Dark Mode.
+    white background of a light window in Dark Mode. A widget with the property "stylesheetfactory" gets a new style
+    sheet from that function, e.g. with the accent colour of the new appearance.
     """
     from PySide6 import QtWidgets
 
     for widget in [window, *window.findChildren(QtWidgets.QWidget)]:
-        if "palette(" in (stylesheet := widget.styleSheet()):
+        if callable(factory := widget.property("stylesheetfactory")):
+            widget.setStyleSheet(str(factory()))
+        elif "palette(" in (stylesheet := widget.styleSheet()):
             widget.setStyleSheet("")
             widget.setStyleSheet(stylesheet)
 

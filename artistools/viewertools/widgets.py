@@ -139,7 +139,7 @@ def get_section_header_class() -> "Callable[[str], QtWidgets.QToolButton]":
             if self.hovered:
                 font.setBold(False)
                 painter.setFont(font)
-                painter.setPen(get_accent_colour())
+                painter.setPen(get_accent_colour(fortext=True))
                 hint = str(self.property("hinttext") or "")
                 painter.drawText(textrect, alignment | int(QtCore.Qt.AlignmentFlag.AlignRight), hint)
             painter.end()
@@ -174,16 +174,20 @@ def set_disclosure_symbol(button: "QtWidgets.QToolButton", *, isopen: bool) -> N
     button.setIconSize(QtCore.QSize(SYMBOL_SIZE, SYMBOL_SIZE))
 
 
-def get_accent_colour() -> "QtGui.QColor":
+def get_accent_colour(*, fortext: bool = False) -> "QtGui.QColor":
     """Return the accent colour of the system, which System Settings sets on macOS.
 
     The highlight colour of an inactive window is a pale grey on macOS, thus the accent role of the active group gives
-    the colour of a link, a token, or a selected button.
+    the colour of a link, a token, or a selected button. With fortext, a dark window takes a lighter accent, as the
+    links of the apps of macOS in Dark Mode do. The accent of the palette had too little contrast on dark grey.
     """
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    return QtWidgets.QApplication.palette().color(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Accent)
+    palette = QtWidgets.QApplication.palette()
+    accent = palette.color(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Accent)
+    isdark = palette.color(QtGui.QPalette.ColorRole.Window).lightness() < 128
+    return accent.lighter(150) if fortext and isdark else accent
 
 
 # the symbols that make_glyph_button draws in place of a character, by the character

@@ -1894,6 +1894,8 @@ def get_subplot_style_sheet() -> str:
     """
     accent = get_accent_colour()
     rgb = f"{accent.red()}, {accent.green()}, {accent.blue()}"
+    textaccent = get_accent_colour(fortext=True)
+    textrgb = f"{textaccent.red()}, {textaccent.green()}, {textaccent.blue()}"
     # the alpha of the tint suits the light and the dark appearance
     return (
         "QFrame#subplotcard { border: none; border-radius: 8px; background: rgba(128, 128, 128, 28); }"
@@ -1902,7 +1904,7 @@ def get_subplot_style_sheet() -> str:
         " QToolButton#swatch { border: none; padding: 2px 3px; border-radius: 4px; background: transparent; }"
         " QToolButton#swatch:hover { background: rgba(128, 128, 128, 60); }"
         " QToolButton#yaxis { border: none; padding: 1px 0px; background: transparent; }"
-        f" QToolButton#suggestion {{ border: none; border-radius: 10px; padding: 1px 6px; color: rgb({rgb});"
+        f" QToolButton#suggestion {{ border: none; border-radius: 10px; padding: 1px 6px; color: rgb({textrgb});"
         " background: transparent; }"
         f" QToolButton#suggestion:hover {{ background: rgba({rgb}, 46); }}"
         f" QFrame#dropline {{ background: rgb({rgb}); border: none; }}"
@@ -2220,6 +2222,8 @@ def open_window(
     subplotsbox = QtWidgets.QWidget()
     subplotstylesheet = get_subplot_style_sheet()
     subplotsbox.setStyleSheet(subplotstylesheet)
+    # a new appearance gives a new accent colour, see refresh_palette_style_sheets
+    subplotsbox.setProperty("stylesheetfactory", get_subplot_style_sheet)
     subplotslayout = QtWidgets.QVBoxLayout(subplotsbox)
     subplotslayout.setContentsMargins(0, 0, 0, 0)
     subplotslayout.setSpacing(6)
@@ -2267,6 +2271,7 @@ def open_window(
     newsubplotrow.addWidget(defaultbutton)
     newsuggestionsbox = QtWidgets.QWidget()
     newsuggestionsbox.setStyleSheet(subplotstylesheet)
+    newsuggestionsbox.setProperty("stylesheetfactory", get_subplot_style_sheet)
     newsuggestionslayout = make_flow_layout()
     newsuggestionsbox.setLayout(newsuggestionslayout)
     subplotgrid.addWidget(subplotsbox, 0, 0, 1, -1)
