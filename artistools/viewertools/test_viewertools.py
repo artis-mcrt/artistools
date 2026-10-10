@@ -392,3 +392,34 @@ def test_chip_takes_the_base_colour_of_a_new_palette() -> None:
     )
     assert result.returncode == 0, result.stderr[-3000:]
     assert result.stdout.strip().splitlines()[-1] == "#202020"
+
+
+@pytest.mark.skipif(not hasattr(sys, "set_lazy_imports"), reason="only Python 3.15 and later have lazy imports")
+def test_resolve_lazy_imports_before_qt_loads() -> None:
+    """No lazy import may remain when PySide6 loads, and a later import is eager.
+
+    After PySide6 loads, the attribute of a module gave a lazy import as it was, e.g. print_error of artistools and the
+    version of kiwisolver. The window then stopped with "'lazy_import' object is not callable". The test runs in a new
+    interpreter, because the function changes the lazy imports of the whole process.
+    """
+    code = (
+        "import sys, types\n"
+        "import artistools\n"
+        "from artistools.viewertools.application import resolve_lazy_imports\n"
+        "resolve_lazy_imports()\n"
+        "pending = [f'{module.__name__}.{name}' for module in list(sys.modules.values())\n"
+        "    if module.__name__.startswith('artistools')\n"
+        "    for name, value in list(vars(module).items()) if isinstance(value, types.LazyImportType)]\n"
+        "assert not pending, pending\n"
+        "import importlib.util\n"
+        "if importlib.util.find_spec('PySide6') is not None:\n"
+        "    from PySide6 import QtCore\n"
+        "    import kiwisolver\n"
+        "    from artistools.misc import print_error\n"
+        "    assert isinstance(kiwisolver.__version__, str)\n"
+        "    assert callable(print_error)\n"
+    )
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr

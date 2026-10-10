@@ -202,6 +202,30 @@ def needs_missing_display(environment: "Mapping[str, str]") -> bool:
     return all(not platform or platform.startswith(DISPLAY_PLATFORMS) for platform in platforms)
 
 
+def resolve_lazy_imports() -> None:
+    """Resolve each lazy import of the loaded modules, and make each later import eager.
+
+    artistools makes each import lazy on Python 3.15. After PySide6 loads, the attribute of a module gave a lazy import
+    as it was, e.g. the version of kiwisolver that matplotlib reads, and print_error of artistools. A call of such an
+    object fails. Thus no lazy import remains when PySide6 loads. The window imports little after that.
+    """
+    import types
+
+    lazyimporttype = getattr(types, "LazyImportType", None)
+    if lazyimporttype is None or not hasattr(sys, "set_lazy_imports"):
+        return
+    sys.set_lazy_imports("normal")
+    for module in list(sys.modules.values()):
+        namespace = getattr(module, "__dict__", None)
+        if not isinstance(namespace, dict):
+            continue
+        for name, value in list(namespace.items()):
+            # an import that fails, e.g. of an optional package, stays lazy, and its first use gives the error
+            if isinstance(value, lazyimporttype):
+                with contextlib.suppress(Exception):
+                    namespace[name] = getattr(module, name)
+
+
 def start_application(
     applicationname: str, iconcurve: "npt.NDArray[np.float64]", documenttypes: "Sequence[str]" = ("public.folder",)
 ) -> "QtWidgets.QApplication":
@@ -216,6 +240,7 @@ def start_application(
     if sys.platform == "darwin":
         relaunch_in_macos_bundle(applicationname, documenttypes)
 
+    resolve_lazy_imports()
     import_optional("PySide6.QtWidgets")
     import matplotlib.pyplot as plt
     from PySide6 import QtCore

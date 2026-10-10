@@ -24,10 +24,13 @@ if "polars._dependencies" in sys.modules:
 if sys.version_info >= (3, 15) and hasattr(sys, "set_lazy_imports_filter") and hasattr(sys, "set_lazy_imports"):
     sys.set_lazy_imports_filter(
         # some matplotlib modules read a name that another import of matplotlib gives as a side effect, e.g. a
-        # docstring part or fontTools.ttLib. Thus these imports stay eager. Code with no __name__ gives None
+        # docstring part or fontTools.ttLib. Thus these imports stay eager. Code with no __name__ gives None.
+        # shiboken runs its own import hook, and a lazy import in its support code, e.g. of sys, imported itself again.
+        # Python then stopped with "libshiboken: could not init enum", thus each import of the Qt bindings is eager
         lambda importing, imported, _fromlist: (
             not (
-                imported.startswith(("numpy", "polars"))
+                imported.startswith(("numpy", "polars", "PySide6", "shiboken6", "shibokensupport"))
+                or (importing or "").startswith(("PySide6", "shiboken6", "shibokensupport"))
                 or (
                     (importing or "").startswith(("matplotlib", "mpl_toolkits"))
                     and imported.startswith(("matplotlib", "mpl_toolkits", "fontTools"))
