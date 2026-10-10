@@ -4055,6 +4055,47 @@ def test_interactive_swatches_give_the_colours_of_the_lines() -> None:
     assert viewer.swatches[1, "TR"].defaultcolour == mplcolors.to_hex("C0")
 
 
+def test_move_series_item_keeps_the_type_and_the_directives() -> None:
+    """A dragged chip goes in front of the chip at the drop place, and the item keeps its style.
+
+    The chips of a subplot leave out its type and its directives, thus the index of a chip is not the position of its
+    item. In the same subplot, the chips on the screen still show the moved chip, and a later index moves to the front.
+    """
+    columns = ("Te", "TR", "nne", "nnion_Fe_II", "nnion_Fe_III", "nnion_Co_II", "nnelement_Fe", "nnelement_Co")
+    subplots = (("Te", "TR@color=C3", "yscale=log"), ("populations", "Fe II", "Fe III", "ymin=1e-5"))
+    assert interactive.move_series_item(subplots, (0, 1), 0, 0, columns) == (
+        ("TR@color=C3", "Te", "yscale=log"),
+        subplots[1],
+    )
+    # the place after the last chip of the same subplot
+    assert interactive.move_series_item(subplots, (0, 0), 0, 2, columns) == (
+        ("TR@color=C3", "Te", "yscale=log"),
+        subplots[1],
+    )
+    assert interactive.move_series_item(subplots, (1, 1), 1, 2, columns) == (
+        subplots[0],
+        ("populations", "Fe III", "Fe II", "ymin=1e-5"),
+    )
+    # a subplot with no chip takes the item after its type and in front of its directives
+    emptied = (("Te",), ("populations", "ymin=1e-5"))
+    assert interactive.move_series_item((("Te",), ("populations", "Fe II", "ymin=1e-5")), (1, 1), 0, 0, columns) == (
+        ("Fe II", "Te"),
+        emptied[1],
+    )
+    assert interactive.move_series_item(((("Te", "TR"), ("TR",))), (0, 1), 1, 0, columns) is None
+
+
+def test_has_several_elements_reads_the_ions_of_a_subplot() -> None:
+    """Only an ion subplot with more than one element keeps the element colours with --colorbyion."""
+    columns = ("Te", "nnion_Fe_II", "nnion_Co_II", "nnelement_Fe", "gamma_NT_Fe_II", "gamma_NT_Co_II")
+    assert interactive.has_several_elements(("populations", "Fe II", "Co II"), columns)
+    assert interactive.has_several_elements(("Fe II", "Co II@color=C3"), columns)
+    assert interactive.has_several_elements(("gamma_NT", "Fe II", "Co II"), columns)
+    assert not interactive.has_several_elements(("populations", "Fe II", "Fe"), columns)
+    # the average ionisation draws one series for each element and does not read --colorbyion
+    assert not interactive.has_several_elements(("averageionisation", "Fe", "Co"), columns)
+
+
 def test_interactive_style_change_reuses_the_data() -> None:
     """A change of a series style or of -linewidthscale draws the data of the last plot again, and reads no data.
 

@@ -44,12 +44,13 @@ CLOSED_SECTIONS: t.Final = frozenset({"Other options", "Command", "Python"})
 
 
 def add_section(
-    panellayout: "QtWidgets.QVBoxLayout", title: str, key: str | None = None
+    panellayout: "QtWidgets.QVBoxLayout", title: str, key: str | None = None, *, closed: bool = False
 ) -> "tuple[QtWidgets.QToolButton, QtWidgets.QGridLayout]":
     """Add a section with a heading and a grid for its controls to the panel of the window.
 
     A click on the heading closes or opens the section, as a disclosure triangle does in the inspector of Keynote. The
-    settings keep the state of each section by its key, which is the title if the caller gives no key.
+    settings keep the state of each section by its key, which is the title if the caller gives no key. A section
+    starts closed if closed is True or if CLOSED_SECTIONS holds its title, until the user opens it.
     """
     from PySide6 import QtCore
     from PySide6 import QtWidgets
@@ -79,7 +80,7 @@ def add_section(
     grid.setHorizontalSpacing(ROW_SPACING)
     grid.setColumnStretch(1, 1)
     settingkey = f"{QtWidgets.QApplication.applicationDisplayName()}/sections/{key or title}"
-    isopen = get_bool_setting(settingkey, default=title not in CLOSED_SECTIONS)
+    isopen = get_bool_setting(settingkey, default=not closed and title not in CLOSED_SECTIONS)
 
     def set_open(checked: bool) -> None:
         header.setArrowType(QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow)
@@ -404,10 +405,12 @@ def make_drag_header(
     on_drag: "Callable[[QtCore.QPoint], None]",
     on_drop: "Callable[[QtCore.QPoint], None]",
     on_move: "Callable[[int], None]",
+    on_click: "Callable[[QtCore.QPoint], None] | None" = None,
 ) -> "QtWidgets.QWidget":
     """Return a header that the user can drag, e.g. to move a card to a new place in a list.
 
     During a drag, on_drag receives each position of the pointer on the screen. on_drop receives the last position.
+    on_click receives the position of a click with no drag.
     A child control, e.g. a button, keeps its clicks, thus a drag starts only on the background or on a label. The
     header also takes the keyboard focus, and Alt-Up (Option-Up on macOS) or Alt-Down gives -1 or 1 to on_move. A
     user of the keyboard can then move the card too. The object name "dragheader" selects the header in a style sheet.
@@ -422,6 +425,7 @@ def make_drag_header(
     header.setProperty("on_drag", on_drag)
     header.setProperty("on_drop", on_drop)
     header.setProperty("on_move", on_move)
+    header.setProperty("on_click", on_click)
     return header
 
 
@@ -555,6 +559,8 @@ def get_drag_header_class() -> "type[QtWidgets.QWidget]":
             # on_drop can make the card again, thus the header resets its state first
             if wasdragging:
                 self.send("on_drop", event.globalPosition().toPoint())
+            elif event.button() == QtCore.Qt.MouseButton.LeftButton and callable(self.property("on_click")):
+                self.send("on_click", event.globalPosition().toPoint())
             else:
                 super().mouseReleaseEvent(event)
 
@@ -1552,6 +1558,7 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
         ("Edit", "Copy Figure", QtGui.QKeySequence(standardkey.Copy)),
         ("Edit", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
         ("Edit", "Copy Python", QtGui.QKeySequence("Ctrl+Alt+C")),
+        ("Edit", "Add Series", QtGui.QKeySequence("Ctrl+Shift+A")),
         # macOS moves this item to the menu of the application
         ("Edit", "Settings…", QtGui.QKeySequence("Ctrl+,")),
         ("View", "Play", QtGui.QKeySequence("Space")),

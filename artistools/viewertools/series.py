@@ -30,6 +30,7 @@ if t.TYPE_CHECKING:
     from collections.abc import Mapping
     from collections.abc import Sequence
 
+    from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
@@ -127,6 +128,63 @@ def get_label_error(label: str) -> str | None:
     return None
 
 
+# the colours of the swatches of the line properties: the default colour cycle of matplotlib, then a palette that
+# readers with a deficiency of colour vision can tell apart
+SWATCH_COLOURS: t.Final = (
+    ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f"),
+    ("#000000", "#e69f00", "#56b4e9", "#009e73", "#f0e442", "#0072b2", "#d55e00", "#cc79a7"),
+)
+
+
+def make_colour_icon(colour: str, *, selected: bool) -> "QtGui.QIcon":
+    """Return the icon of a colour swatch: a square of the colour, with a ring if the line has the colour."""
+    import matplotlib.colors as mplcolors
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+
+    size = 18
+    pixmap = QtGui.QPixmap(size, size)
+    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+    painter.setPen(QtGui.QPen(QtGui.QColor(128, 128, 128, 160), 1.0))
+    painter.setBrush(QtGui.QColor(mplcolors.to_hex(colour)))
+    painter.drawRoundedRect(QtCore.QRectF(3.5, 3.5, size - 7, size - 7), 2.0, 2.0)
+    if selected:
+        painter.setPen(QtGui.QPen(QtGui.QPalette().color(QtGui.QPalette.ColorRole.Highlight), 2.0))
+        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(QtCore.QRectF(1.0, 1.0, size - 2, size - 2), 3.0, 3.0)
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+@cache
+def get_popup_class() -> "type[QtWidgets.QDialog]":
+    """Return the class of the popup of the line properties, which records the Escape key.
+
+    A click outside a popup and the Escape key both close it, and only Escape reverts the changes. A shortcut of the
+    popup did not receive the key. PySide keeps memory for each class, thus the viewers make the class one time.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class LinePropertiesPopup(QtWidgets.QDialog):
+        """A popup that sets cancelled when the user presses Escape."""
+
+        def __init__(self, parent: QtWidgets.QWidget) -> None:
+            super().__init__(parent, QtCore.Qt.WindowType.Popup)
+            self.cancelled = False
+
+        @t.override
+        def keyPressEvent(self, event: QtGui.QKeyEvent, /) -> None:
+            if event.key() == QtCore.Qt.Key.Key_Escape:
+                self.cancelled = True
+            super().keyPressEvent(event)
+
+    return LinePropertiesPopup
+
+
 def edit_series_properties(
     parent: "QtWidgets.QWidget",
     name: str,
@@ -135,26 +193,31 @@ def edit_series_properties(
     defaultlinewidth: float,
     show_changes: "Callable[[Mapping[str, str | None] | None, bool], None]",
     flags: "Collection[str]" = SERIES_PROPERTY_FLAGS,
+    anchor: "QtCore.QPoint | None" = None,
 ) -> None:
-    """Ask for the label and the line style of one series, and show each change in the plot at once.
+    """Show a popup with the label and the line style of one series, and show each change in the plot immediately.
 
     style gives the current value of each option, or None for the default of the command. A field with the default
     gives None, thus the command then gives the series no value. An empty label gives the automatic label of the
-    command. The dialog shows only the fields of flags, e.g. a series of markers has no line style.
+    command. The popup shows only the fields of flags, e.g. a series of markers has no line style. anchor is the
+    position of the top left corner of the popup on the screen, and the default is the position of the pointer.
 
     show_changes receives the value of each option of flags, and whether the change is a new step of Undo. The first
-    change is one step, thus Undo reverts all of the dialog. Cancel gives None, and the viewer then shows the values
-    from before the dialog.
+    change is one step, thus Undo reverts all of the popup. A click outside the popup or the Return key keeps the
+    changes. The Escape key gives None, and the viewer then shows the values from before the popup.
     """
     import matplotlib.colors as mplcolors
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    dialog = QtWidgets.QDialog(parent)
-    dialog.setWindowTitle(f"Line Properties of {name}")
+    dialog = get_popup_class()(parent)
+    dialog.setAccessibleName(f"Line Properties of {name}")
     form = QtWidgets.QFormLayout(dialog)
     chosencolour: list[str | None] = [style.get("-color")]
+
+    title = QtWidgets.QLabel(f"<b>{name}</b>")
+    form.addRow(title)
 
     labeledit = QtWidgets.QLineEdit(style.get("-label") or "")
     labeledit.setPlaceholderText("automatic")
@@ -162,23 +225,61 @@ def edit_series_properties(
     labeledit.setMinimumWidth(240)
     form.addRow("Label:", labeledit)
 
-    colourbutton = QtWidgets.QPushButton()
-    colourbutton.setToolTip("Select the colour of the line (-color)")
-    defaultcolourbutton = QtWidgets.QPushButton("Default")
+    # a swatch gives a colour with one click. The field takes any colour of matplotlib, e.g. tab:red or #1f77b4
+    colourbox = QtWidgets.QWidget()
+    colourgrid = QtWidgets.QGridLayout(colourbox)
+    colourgrid.setContentsMargins(0, 0, 0, 0)
+    colourgrid.setSpacing(0)
+    swatchbuttons: dict[str, QtWidgets.QToolButton] = {}
+    for rowindex, colours in enumerate(SWATCH_COLOURS):
+        for column, colour in enumerate(colours):
+            button = QtWidgets.QToolButton()
+            button.setAutoRaise(True)
+            button.setToolTip(colour)
+            button.setAccessibleName(f"Colour {colour}")
+            colourgrid.addWidget(button, rowindex, column)
+            swatchbuttons[colour] = button
+    defaultcolourbutton = QtWidgets.QToolButton()
+    defaultcolourbutton.setText("Default")
+    defaultcolourbutton.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
     defaultcolourbutton.setToolTip("Give the line the colour of the command")
+    colouredit = QtWidgets.QLineEdit()
+    colouredit.setPlaceholderText("other, e.g. tab:red")
+    colouredit.setToolTip("Any colour of matplotlib, e.g. tab:red, C3, or #1f77b4 (-color). Press Return to use it")
     colourrow = QtWidgets.QHBoxLayout()
-    colourrow.addWidget(colourbutton, 1)
     colourrow.addWidget(defaultcolourbutton)
-    form.addRow("Colour:", colourrow)
+    colourrow.addWidget(colouredit, 1)
+    colourcolumn = QtWidgets.QVBoxLayout()
+    colourcolumn.addWidget(colourbox)
+    colourcolumn.addLayout(colourrow)
+    form.addRow("Colour:", colourcolumn)
 
-    linestylebox = QtWidgets.QComboBox()
-    linestylebox.addItem("Default", None)
-    for value, text in LINESTYLE_CHOICES:
-        linestylebox.addItem(text, value)
+    # each button shows its line, thus the user sees the style before the click
+    linestylegroup = QtWidgets.QButtonGroup(dialog)
+    linestylerow = QtWidgets.QHBoxLayout()
+    linestylerow.setSpacing(2)
     linestyle = style.get("-linestyle")
-    linestylebox.setCurrentIndex(max(linestylebox.findData(LINESTYLE_ALIASES.get(linestyle or "", linestyle)), 0))
-    linestylebox.setToolTip("The line style (-linestyle). A dash pattern replaces it")
-    form.addRow("Line style:", linestylebox)
+    currentlinestyle = LINESTYLE_ALIASES.get(linestyle or "", linestyle)
+    linestylebuttons: dict[str | None, QtWidgets.QToolButton] = {}
+    for value, text in ((None, "Default"), *LINESTYLE_CHOICES):
+        button = QtWidgets.QToolButton()
+        button.setCheckable(True)
+        button.setAutoRaise(True)
+        button.setToolTip(f"{text} line (-linestyle). A dash pattern replaces it")
+        button.setAccessibleName(f"{text} Line")
+        if value is None:
+            button.setText(text)
+        else:
+            button.setIcon(QtGui.QIcon(make_line_swatch("gray", 1.0, 2.0, get_dash_pattern(value, None))))
+            button.setIconSize(QtCore.QSize(36, 14))
+        button.setChecked(
+            value == currentlinestyle or (value is None and currentlinestyle not in dict(LINESTYLE_CHOICES))
+        )
+        linestylegroup.addButton(button)
+        linestylerow.addWidget(button)
+        linestylebuttons[value] = button
+    linestylerow.addStretch(1)
+    form.addRow("Line style:", linestylerow)
 
     dashesedit = QtWidgets.QLineEdit(style.get("-dashes") or "")
     dashesedit.setPlaceholderText("none, e.g. 5,2")
@@ -202,11 +303,15 @@ def edit_series_properties(
         return box
 
     widthbox = make_default_spinbox(10.0, 0.25, style.get("-linewidth"), "The width of the line in points (-linewidth)")
-    form.addRow("Width:", widthbox)
     alphabox = make_default_spinbox(
         1.0, 0.05, style.get("-linealpha"), "The opacity of the line, from 0 (clear) to 1 (opaque) (-linealpha)"
     )
-    form.addRow("Opacity:", alphabox)
+    widthrow = QtWidgets.QHBoxLayout()
+    widthrow.addWidget(widthbox)
+    widthrow.addWidget(QtWidgets.QLabel("Opacity:"))
+    widthrow.addWidget(alphabox)
+    widthrow.addStretch(1)
+    form.addRow("Width:", widthrow)
 
     previewlabel = QtWidgets.QLabel()
     form.addRow("Preview:", previewlabel)
@@ -215,12 +320,14 @@ def edit_series_properties(
     errorlabel.hide()
     form.addRow(errorlabel)
 
-    buttons = QtWidgets.QDialogButtonBox(
-        QtWidgets.QDialogButtonBox.StandardButton.Ok
-        | QtWidgets.QDialogButtonBox.StandardButton.Cancel
-        | QtWidgets.QDialogButtonBox.StandardButton.RestoreDefaults
-    )
-    form.addRow(buttons)
+    resetbutton = QtWidgets.QPushButton("Reset")
+    resetbutton.setToolTip("Give each property the default of the command")
+    hintlabel = QtWidgets.QLabel("Esc reverts the changes")
+    hintlabel.setForegroundRole(QtGui.QPalette.ColorRole.PlaceholderText)
+    bottomrow = QtWidgets.QHBoxLayout()
+    bottomrow.addWidget(hintlabel, 1)
+    bottomrow.addWidget(resetbutton)
+    form.addRow(bottomrow)
 
     def get_dashes() -> str | None:
         """Return the dash pattern of the field, or None for an empty field. Raise ValueError for a bad pattern."""
@@ -242,11 +349,16 @@ def edit_series_properties(
             raise ValueError(error)
         return label or None
 
+    def get_linestyle() -> str | None:
+        return next((value for value, button in linestylebuttons.items() if button.isChecked()), None)
+
     def show_preview() -> None:
         previewtimer.start()
         colour = chosencolour[0] or defaultcolour
-        colourbutton.setIcon(QtGui.QIcon(make_line_swatch(colour, 1.0, 5.0, None)))
-        colourbutton.setText(colour if chosencolour[0] else f"Default ({colour})")
+        selected = mplcolors.to_hex(colour) if chosencolour[0] is not None else None
+        for swatchcolour, button in swatchbuttons.items():
+            button.setIcon(make_colour_icon(swatchcolour, selected=swatchcolour == selected))
+        defaultcolourbutton.setIcon(make_colour_icon(defaultcolour, selected=chosencolour[0] is None))
         dashes = None
         try:
             get_label()
@@ -261,29 +373,27 @@ def edit_series_properties(
                 colour,
                 alphabox.value() or 1.0,
                 widthbox.value() or defaultlinewidth,
-                get_dash_pattern(linestylebox.currentData(), dashes) if "-linestyle" in flags else None,
+                get_dash_pattern(get_linestyle(), dashes) if "-linestyle" in flags else None,
             )
         )
 
-    def on_colour() -> None:
-        # Qt reads no colour name of matplotlib, e.g. "C1" or "tab:orange", thus the dialog takes the hexadecimal form
-        try:
-            startcolour = mplcolors.to_hex(chosencolour[0] or defaultcolour)
-        except ValueError:
-            startcolour = mplcolors.to_hex(defaultcolour)
-        colour = QtWidgets.QColorDialog.getColor(QtGui.QColor(startcolour), dialog, "Line colour")
-        if colour.isValid():
-            chosencolour[0] = colour.name()
-            show_preview()
-
-    def on_default_colour() -> None:
-        chosencolour[0] = None
+    def choose_colour(colour: str | None) -> None:
+        chosencolour[0] = colour
         show_preview()
+
+    def on_colour_edit() -> None:
+        text = colouredit.text().strip()
+        if mplcolors.is_color_like(text):
+            colouredit.clear()
+            choose_colour(text)
+        else:
+            errorlabel.setText(f"'{text}' is not a colour of matplotlib, e.g. tab:red or #1f77b4")
+            errorlabel.show()
 
     def on_restore_defaults() -> None:
         labeledit.clear()
         chosencolour[0] = None
-        linestylebox.setCurrentIndex(0)
+        linestylebuttons[None].setChecked(True)
         dashesedit.clear()
         widthbox.setValue(0.0)
         alphabox.setValue(0.0)
@@ -299,7 +409,7 @@ def edit_series_properties(
         values = {
             "-label": label,
             "-color": chosencolour[0],
-            "-linestyle": linestylebox.currentData(),
+            "-linestyle": get_linestyle(),
             "-dashes": dashes,
             "-linewidth": format(widthbox.value(), "g") if widthbox.value() else None,
             "-linealpha": format(alphabox.value(), "g") if alphabox.value() else None,
@@ -310,7 +420,7 @@ def edit_series_properties(
         """Return the value of each option of flags, or None for a bad label or dash pattern.
 
         A field cannot show each value of the command, e.g. a width above the range of its box, an empty label that
-        hides the series, or a line style that the box does not list. Thus an option keeps its value of the command
+        hides the series, or a line style that the popup does not list. Thus an option keeps its value of the command
         until the user changes its field.
         """
         if (widgetvalues := get_widget_values()) is None:
@@ -320,7 +430,7 @@ def edit_series_properties(
             for flag, value in widgetvalues.items()
         }
 
-    # the values that the plot shows, and whether a change of the dialog made the step of Undo
+    # the values that the plot shows, and whether a change of the popup made the step of Undo
     shownchanges: list[dict[str, str | None] | None] = [None]
     madestep = [False]
 
@@ -337,51 +447,54 @@ def edit_series_properties(
     previewtimer.setInterval(PREVIEW_MILLISECONDS)
     previewtimer.timeout.connect(show_plot_changes)
 
-    def on_accept() -> None:
-        # a bad label or dash pattern keeps the dialog open, and the red text gives the reason
-        if get_changes() is None:
-            try:
-                get_label()
-            except ValueError:
-                labeledit.setFocus()
-            else:
-                dashesedit.setFocus()
-            return
-        dialog.accept()
-
-    colourbutton.clicked.connect(on_colour)
-    defaultcolourbutton.clicked.connect(on_default_colour)
-    linestylebox.currentIndexChanged.connect(show_preview)
+    for colour, button in swatchbuttons.items():
+        button.clicked.connect(partial(choose_colour, colour))
+    defaultcolourbutton.clicked.connect(partial(choose_colour, None))
+    colouredit.returnPressed.connect(on_colour_edit)
+    linestylegroup.buttonClicked.connect(show_preview)
     dashesedit.textChanged.connect(show_preview)
     widthbox.valueChanged.connect(show_preview)
     alphabox.valueChanged.connect(show_preview)
-    buttons.accepted.connect(on_accept)
-    buttons.rejected.connect(dialog.reject)
-    if (restorebutton := buttons.button(QtWidgets.QDialogButtonBox.StandardButton.RestoreDefaults)) is not None:
-        restorebutton.clicked.connect(on_restore_defaults)
+    resetbutton.clicked.connect(on_restore_defaults)
+    labeledit.textChanged.connect(show_preview)
+    for key in (QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter):
+        # the colour field takes its own Return, which applies the typed colour
+        shortcut = QtGui.QShortcut(QtGui.QKeySequence(key), dialog)
+        shortcut.activated.connect(lambda: None if colouredit.hasFocus() else dialog.accept())
     for flag, field in (
         ("-label", labeledit),
-        ("-color", colourrow),
-        ("-linestyle", linestylebox),
+        ("-color", colourcolumn),
+        ("-linestyle", linestylerow),
         ("-dashes", dashesedit),
-        ("-linewidth", widthbox),
-        ("-linealpha", alphabox),
+        ("-linewidth", widthrow),
     ):
         form.setRowVisible(field, flag in flags)
-    labeledit.textChanged.connect(show_preview)
+    alphabox.setVisible("-linealpha" in flags)
     show_preview()
     previewtimer.stop()
     openwidgetvalues = get_widget_values() or {}
     shownchanges[0] = get_changes()
 
-    accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+    dialog.adjustSize()
+    position = anchor if anchor is not None else QtGui.QCursor.pos()
+    screen = QtWidgets.QApplication.screenAt(position) or QtWidgets.QApplication.primaryScreen()
+    if screen is not None:
+        # the popup stays inside the screen, e.g. for a chip at the bottom of the panel
+        area = screen.availableGeometry()
+        position = QtCore.QPoint(
+            min(max(position.x(), area.left()), area.right() - dialog.width()),
+            min(max(position.y(), area.top()), area.bottom() - dialog.height()),
+        )
+    dialog.move(position)
+    labeledit.setFocus()
+    dialog.exec()
     previewtimer.stop()
-    # the parent keeps its children until it closes, thus the dialog goes when the event loop runs again
+    # the parent keeps its children until it closes, thus the popup goes when the event loop runs again
     dialog.deleteLater()
-    if accepted:
+    if not getattr(dialog, "cancelled", False):
         show_plot_changes()
     elif madestep[0]:
-        # the return to the values before the dialog reverts the step of the first change, thus it makes no step
+        # the return to the values before the popup reverts the step of the first change, thus it makes no step
         newstep = False
         show_changes(None, newstep)
 

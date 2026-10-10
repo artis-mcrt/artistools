@@ -778,6 +778,7 @@ def connect_plot_mouse(
     on_menu: "Callable[[int, t.Any], None] | None" = None,
     show_tag: "Callable[[t.Any, str], None] | None" = None,
     on_click: "Callable[[int, t.Any], None] | None" = None,
+    get_click_hint: "Callable[[int, t.Any], str | None] | None" = None,
 ) -> "Callable[[], None]":
     """Give the plot a readout under the pointer, a drag across a frame that selects an x range, and a double-click.
 
@@ -789,7 +790,9 @@ def connect_plot_mouse(
     - on_menu: the index of the frame and the matplotlib event of a click with the right button;
     - on_click: the index of the frame and the matplotlib event of a left click with no pointer movement, e.g. on a
       legend;
-    - show_tag: the matplotlib event and the readout, which is empty when the pointer leaves the frames.
+    - show_tag: the matplotlib event and the readout, which is empty when the pointer leaves the frames;
+    - get_click_hint: the index of the frame and the matplotlib event of a movement. It returns the text of the readout
+      over an object that takes a click, e.g. a legend entry, or None. The pointer is then a hand.
 
     matplotlib keeps the connections in the figure. Call the returned function after the canvas receives a new figure.
     """
@@ -800,6 +803,8 @@ def connect_plot_mouse(
     dragvertical = False
     # the frame and the pixel of the press of the left button, which give a click if the pointer does not move
     clickstart: tuple[int, float, float] | None = None
+    # the pointer is a hand over an object that takes a click
+    showshand = False
 
     def get_frame_index(event: t.Any) -> int | None:
         return next((index for index, axis in enumerate(get_frames()) if event.inaxes is axis), None)
@@ -831,8 +836,21 @@ def connect_plot_mouse(
             dragspan = event.inaxes.axvspan(event.xdata, event.xdata, color="0.5", alpha=0.3)
 
     def on_motion(event: t.Any) -> None:
+        nonlocal showshand
+        from matplotlib.backend_tools import Cursors
+
         frameindex = get_frame_index(event)
         readout = get_readout(event, event.inaxes) if frameindex is not None and event.xdata is not None else ""
+        hint = (
+            get_click_hint(frameindex, event)
+            if get_click_hint is not None and frameindex is not None and dragstart is None
+            else None
+        )
+        if hint is not None:
+            readout = hint
+        if (hint is not None) != showshand:
+            showshand = hint is not None
+            canvas.set_cursor(Cursors.HAND if showshand else Cursors.POINTER)
         readoutlabel.setText(readout)
         if show_tag is not None:
             show_tag(event, readout)
