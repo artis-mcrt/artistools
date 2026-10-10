@@ -3,6 +3,7 @@ import contextlib
 import dataclasses as dc
 import hashlib
 import importlib
+import importlib.util
 import inspect
 import io
 import itertools
@@ -5737,7 +5738,7 @@ import types
 qtfirst = sys.argv[1] == "qtfirst"
 hasqt = importlib.util.find_spec("PySide6") is not None
 # a call of import_module is eager, and an import statement at module level can be lazy
-if qtfirst and hasqt:
+if qtfirst:
     importlib.import_module("PySide6.QtCore")
 import artistools
 if not qtfirst:
@@ -5771,6 +5772,8 @@ def test_lazy_imports_survive_the_qt_bindings(order: str) -> None:
     and the version of kiwisolver. A window then stopped with "'lazy_import' object is not callable". The test runs in a
     new interpreter, because the order of the imports decides the result.
     """
+    if order == "qtfirst" and importlib.util.find_spec("PySide6") is None:
+        pytest.skip("the import of PySide6 before artistools needs PySide6")
     result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
         [sys.executable, "-c", LAZY_IMPORT_CHECK_CODE, order], capture_output=True, text=True, check=False
     )
