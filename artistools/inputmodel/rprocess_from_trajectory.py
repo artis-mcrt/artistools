@@ -38,6 +38,7 @@ from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import polars_source
 from artistools.misc import read_wsv
+from artistools.misc.fileio import get_plain_path
 from artistools.misc.fileio import with_compressed_extension
 
 
@@ -452,7 +453,7 @@ def save_gridparticlecontributions(dfcontribs: pl.DataFrame, gridcontribpath: Pa
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
-    gridcontribpath = with_compressed_extension(gridcontribpath, ".zst")
+    gridcontribpath = with_compressed_extension(get_plain_path(gridcontribpath), ".zst")
     remove_other_copies(gridcontribpath)
 
     dfcontribs.write_csv(gridcontribpath, separator=" ", float_scientific=True, float_precision=7, compression="zstd")

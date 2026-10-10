@@ -105,6 +105,24 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
     )
 
 
+def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) -> list[Path]:
+    """Return the folders that get model.txt, abundances.txt, and gridcontributions.txt from the actions of args.
+
+    The folder of --makemodelfromgriddata comes last.
+    """
+    if args.downscale3dgrid:
+        return [get_downscale_outputfolder(args.modelpath[0], args.outputgridsize, args.outputfile)]
+
+    outputfolders = (
+        [get_dimreduce_outputfolder(args.outputfile, modelpath, args.dimensionreduce) for modelpath in args.modelpath]
+        if args.dimensionreduce is not None
+        else []
+    )
+    if args.makemodelfromgriddata:
+        outputfolders.append(get_griddata_outputfolder(args.outputfile, args.modelpath, modelpath_given))
+    return outputfolders
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Tools to create an ARTIS input model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -124,26 +142,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             "Give --downscale3dgrid, -dimensionreduce, --makemodelfromgriddata, or --makeenergyinputfiles",
         )
 
-    downscaleoutputfolder = get_downscale_outputfolder(args.modelpath[0], args.outputgridsize, args.outputfile)
-    griddataoutputfolder = (
-        get_griddata_outputfolder(args.outputfile, args.modelpath, modelpath_given)
-        if args.makemodelfromgriddata and not args.downscale3dgrid
-        else Path()
-    )
-    if args.downscale3dgrid:
-        outputfolders = [downscaleoutputfolder]
-    else:
-        outputfolders = [
-            *(
-                [
-                    get_dimreduce_outputfolder(args.outputfile, modelpath, args.dimensionreduce)
-                    for modelpath in args.modelpath
-                ]
-                if args.dimensionreduce is not None
-                else []
-            ),
-            *([griddataoutputfolder] if args.makemodelfromgriddata else []),
-        ]
+    outputfolders = get_model_output_folders(args, modelpath_given)
     confirm_overwrite(
         [folder / filename for folder in outputfolders for filename in MODEL_FILE_NAMES], force=args.force
     )
@@ -153,7 +152,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelpath=Path(args.modelpath[0]),
             outputgridsize=args.outputgridsize,
             plot=args.downscaleplot,
-            outputfolder=downscaleoutputfolder,
+            outputfolder=outputfolders[0],
         )
         return
 
@@ -194,7 +193,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(args)
         makemodelfromgriddata(
             gridfolderpath=args.pathtogriddata,
-            outputpath=griddataoutputfolder,
+            outputpath=outputfolders[-1],
             fillcentralhole=args.fillcentralhole,
             getcellopacityfromYe=args.getcellopacityfromYe,
         )

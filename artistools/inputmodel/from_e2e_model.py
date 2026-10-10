@@ -1288,6 +1288,18 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--perturb3Dmodel", dest="perturb3Dmodel", type=float_or_str, nargs="+", help=argparse.SUPPRESS)
 
 
+def get_output_files(args: argparse.Namespace) -> list[Path]:
+    """Return the files that the command writes to the -o folder.
+
+    With -replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
+    """
+    writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
+    return [
+        Path(args.outputfile, filename)
+        for filename in (*MODEL_FILE_NAMES, *(DYN_CHECK_FILE_NAMES if writesdynfiles else ()))
+    ]
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Prepare data for an ARTIS kilonova calculation from end-to-end hydro models."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -1305,15 +1317,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelname += "_2d"
         args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
         print(args.outputfile)
-    # with -replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check
-    writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
-    confirm_overwrite(
-        [
-            Path(args.outputfile, filename)
-            for filename in (*MODEL_FILE_NAMES, *(DYN_CHECK_FILE_NAMES if writesdynfiles else ()))
-        ],
-        force=args.force,
-    )
+    confirm_overwrite(get_output_files(args), force=args.force)
     Path(args.outputfile).mkdir(parents=True, exist_ok=True)
 
     # model_dim = 1 not covered in this script

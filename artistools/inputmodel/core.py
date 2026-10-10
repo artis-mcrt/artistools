@@ -34,6 +34,8 @@ from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import find_compressed
+from artistools.misc.fileio import get_file_copies
+from artistools.misc.fileio import get_plain_path
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.fileio import with_compressed_extension
@@ -1015,8 +1017,7 @@ def remove_other_copies(filepath: Path) -> None:
     If model.txt and model.txt.zst both exist, a reader uses model.txt. Thus an old plain copy must not stay beside a
     new compressed file.
     """
-    plainpath = filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
-    for oldpath in (plainpath, *(with_compressed_extension(plainpath, ext) for ext in COMPRESSED_EXTENSIONS)):
+    for oldpath in get_file_copies(filepath):
         if oldpath != filepath and oldpath.is_file():
             oldpath.unlink()
             print(f"Deleted {oldpath}, because {filepath.name} replaces it")
@@ -1031,8 +1032,8 @@ def save_modeldata(
 ) -> None:
     """Write model.txt, a snapshot of the density and the composition, from the cell properties and the metadata.
 
-    The metadata gives values such as the time after the explosion. The file gets zstd compression, and a file name
-    that does not end in .zst gets .zst, e.g. model.txt.zst. ARTIS reads such a file directly.
+    The metadata gives values such as the time after the explosion. The file gets zstd compression, and the extension
+    .zst, e.g. model.txt.zst for model.txt or for model.txt.gz. ARTIS reads such a file directly.
 
     1D
     -------
@@ -1150,7 +1151,7 @@ def save_modeldata(
             (f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"),
         ]
 
-    modelfilepath = with_compressed_extension(resolve_outputfile(outpath, "model.txt"), ".zst")
+    modelfilepath = with_compressed_extension(get_plain_path(resolve_outputfile(outpath, "model.txt")), ".zst")
 
     remove_other_copies(modelfilepath)
     # a write that stops early must not leave the cache of the old file beside a part of the new file
@@ -1304,7 +1305,7 @@ def save_initelemabundances(
 ) -> None:
     """Save a DataFrame in the format of get_initelemabundances to abundances.txt.zst.
 
-    A file name that does not end in .zst gets .zst, as in save_modeldata.
+    The file name gets the extension .zst, as in save_modeldata.
 
     columns must be:
         - inputcellid: integer index to match model.txt (starting from 1)
@@ -1312,7 +1313,7 @@ def save_initelemabundances(
     """
     timestart = time.perf_counter()
 
-    abundancefilename = with_compressed_extension(resolve_outputfile(outpath, "abundances.txt"), ".zst")
+    abundancefilename = with_compressed_extension(get_plain_path(resolve_outputfile(outpath, "abundances.txt")), ".zst")
 
     dfelabundances = (
         dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()

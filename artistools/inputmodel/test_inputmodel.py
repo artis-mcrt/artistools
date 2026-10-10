@@ -3110,6 +3110,16 @@ def test_save_modeldata_deletes_an_old_plain_file(tmp_path: Path) -> None:
     lzdfmodel, _ = at.inputmodel.get_modeldata(tmp_path, get_elemabundances=True)
     assert lzdfmodel.select("logrho").collect().item() == pytest.approx(-12.0)
 
+    # a name with a different compression extension gave model.txt.gz.zst, and the writer deleted model.txt.gz
+    (tmp_path / "model.txt.gz").write_bytes(b"")
+    at.inputmodel.save_modeldata(
+        dfmodel, outpath=tmp_path / "model.txt.gz", modelmeta={"dimensions": 1, "t_model_init_days": 1.0}
+    )
+    assert sorted(path.name for path in tmp_path.iterdir() if ".parquet" not in path.name) == [
+        "abundances.txt.zst",
+        "model.txt.zst",
+    ]
+
 
 def test_command_asks_before_it_overwrites_a_compressed_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]

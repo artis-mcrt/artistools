@@ -119,6 +119,17 @@ def with_compressed_extension(filename: Path | str, ext: str) -> Path:
     return Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
 
 
+def get_plain_path(filepath: Path) -> Path:
+    """Return the path without its compression extension, e.g. model.txt for model.txt.zst."""
+    return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
+
+
+def get_file_copies(filepath: Path) -> list[Path]:
+    """Return the paths of the plain copy and of each compressed copy of a file, e.g. model.txt and model.txt.zst."""
+    plainpath = get_plain_path(filepath)
+    return [plainpath, *(with_compressed_extension(plainpath, ext) for ext in COMPRESSED_EXTENSIONS)]
+
+
 def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
     """Return the extension and the path of filename.zst, .gz, or .xz, or None if no compressed file exists."""
     for ext in COMPRESSED_EXTENSIONS:

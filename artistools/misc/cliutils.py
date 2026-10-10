@@ -17,8 +17,7 @@ from types import MappingProxyType
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
-from artistools.misc.fileio import COMPRESSED_EXTENSIONS
-from artistools.misc.fileio import with_compressed_extension
+from artistools.misc.fileio import get_file_copies
 from artistools.misc.remote import model_path_from_text
 
 if t.TYPE_CHECKING:
@@ -1071,12 +1070,7 @@ def confirm_overwrite(outputfiles: Iterable[Path], force: bool) -> None:
     before the work starts, thus a refusal costs no time. Nobody can answer when stdin is not a terminal, thus the
     command then stops if it has no --force.
     """
-    existingfiles = [
-        path
-        for outputfile in outputfiles
-        for path in (outputfile, *(with_compressed_extension(outputfile, ext) for ext in COMPRESSED_EXTENSIONS))
-        if path.is_file()
-    ]
+    existingfiles = [path for outputfile in outputfiles for path in get_file_copies(outputfile) if path.is_file()]
     if not existingfiles:
         return
 
