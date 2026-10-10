@@ -167,6 +167,11 @@ Use the shared functions to build a parser and to find a path. Import them from 
 
 A command that takes only paths as positional arguments reads them first, e.g. `artistools plotlightcurves mymodel`. A command that also names its items reads the ARTIS folder as the **last** positional argument, e.g. `artistools plotestimators Te TR mymodel`. Only the last argument can name a folder. A folder in an earlier place gives an error. Keep this order for each new command.
 
+Use the conventions of common Linux tools for CLI behaviour. A user then knows the behaviour already. For example, a command
+that writes a file that exists asks `(y/n)` before the work starts, as `gzip` does. The flag `--overwrite` has the name
+and the meaning of the `tar` option. Use `addarg_overwrite` and `confirm_overwrite` from `artistools.misc` for this
+behaviour. Do not keep an old file as a `.bak` copy.
+
 ## Viewers of `--interactive`
 
 The commands plotspectra, plotlightcurves, and plotestimators each have a viewer in `artistools/<area>/interactive.py`. A viewer makes the command from its controls, then it parses the command and draws it with the code of the command. Thus the plot always agrees with the command that the window shows.
