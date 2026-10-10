@@ -902,15 +902,11 @@ def use_small_controls(panel: "QtWidgets.QWidget") -> None:
     The panel makes cards and chips after it starts, thus a filter of the application sets the size of each widget of
     the panel when Qt prepares or shows the widget. The small size applies only on macOS.
     """
-    if sys.platform != "darwin":
-        return
     from PySide6 import QtWidgets
 
     application = QtWidgets.QApplication.instance()
-    if application is None:
-        return
-    smallfilter = get_small_size_filter_class()(panel)
-    application.installEventFilter(smallfilter)
+    if application is not None and sys.platform == "darwin":
+        application.installEventFilter(get_small_size_filter_class()(panel))
 
 
 @cache
