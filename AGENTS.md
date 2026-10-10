@@ -89,6 +89,7 @@ Do not report that a check passed if you did not run it. Tell the user which che
   ```
 - The maximum line length is 120 characters. `ruff format` does not reflow a comment, thus you must keep a comment inside the limit.
 - Prefer readable code to a comment. Give each symbol a name that says what it holds, e.g. `isfirstoccurrence`, and delete the comment that the name replaces.
+- Give each name one clear meaning. A reader must know what the name holds or does without the code. Do not use a vague word that can have more than one meaning. For example, `get_plain_path` can give a path with no compression extension or a path to a text file. Write `without_compressed_extension`, which is the opposite of `with_compressed_extension` in the same module. Use the words of the names near it.
 - A comment must give the reason for the code. Do not repeat what the code does. Write one or two lines. A comment of three lines or more must earn each one, e.g. a measurement that justifies a number. Give the numbers alone and not the full account of the experiment.
 - Write a docstring of one line for a simple function. For a more complex function, write a summary of one line, then an empty line, then a longer description. Write the summary as an instruction: "Return the sum" and not "Returns the sum". Use the `"""` quotes and not `'''`.
 
