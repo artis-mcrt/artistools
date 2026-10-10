@@ -879,9 +879,8 @@ def get_file_metadata_cached(filepath: Path, givenpath: str) -> dict[str, t.Any]
 
     import yaml
 
-    if filepath.suffix in COMPRESSED_EXTENSIONS:
-        filepath = filepath.with_suffix("")
-        givenpath = str(Path(givenpath).with_suffix(""))
+    filepath = get_plain_path(filepath)
+    givenpath = str(get_plain_path(Path(givenpath)))
 
     # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
     individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
