@@ -109,6 +109,7 @@ from artistools.viewertools.sections import WAIT_FOR_PLOT_MESSAGE
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import fit_canvas
+from artistools.viewertools.widgets import get_accent_colour
 from artistools.viewertools.widgets import get_changed_arguments
 from artistools.viewertools.widgets import get_first_sentence
 from artistools.viewertools.widgets import get_python_call
@@ -116,12 +117,14 @@ from artistools.viewertools.widgets import make_completer
 from artistools.viewertools.widgets import make_drag_header
 from artistools.viewertools.widgets import make_flow_layout
 from artistools.viewertools.widgets import make_glyph_button
+from artistools.viewertools.widgets import make_grip
 from artistools.viewertools.widgets import make_note_label
 from artistools.viewertools.widgets import make_range_slider
 from artistools.viewertools.widgets import make_row_layout
 from artistools.viewertools.widgets import make_slider
 from artistools.viewertools.widgets import parse_command_tokens
 from artistools.viewertools.widgets import set_command_text
+from artistools.viewertools.widgets import set_disclosure_symbol
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
 from artistools.viewertools.widgets import set_search_completion
@@ -1881,20 +1884,30 @@ class SubplotCard(t.NamedTuple):
     colournote: "QtWidgets.QLabel"
 
 
-# the style of the cards, the chips, and the suggestions. A style sheet for each widget took about 10 ms each time
-# that the window showed the cards. One style sheet for all the cards takes less time
-SUBPLOT_STYLE_SHEET: t.Final = (
-    "QFrame#subplotcard { border: 1px solid palette(mid); border-radius: 6px; }"
-    " #chip { border: 1px solid palette(mid); border-radius: 10px; background: palette(base); }"
-    " #chip:focus { border: 2px solid palette(highlight); }"
-    " QToolButton#swatch { border: none; padding: 2px 3px; border-radius: 4px; background: transparent; }"
-    " QToolButton#swatch:hover { background: rgba(128, 128, 128, 60); }"
-    " QToolButton#yaxis { border: none; padding: 1px 0px; background: transparent; }"
-    " QToolButton#suggestion { border: 1px dashed palette(mid); border-radius: 10px; padding: 1px 8px; }"
-    " QToolButton#suggestion:hover { border-style: solid; }"
-    " QFrame#dropline { background: palette(highlight); border: none; }"
-    " QWidget#dragheader:focus { border: 2px solid palette(highlight); border-radius: 4px; }"
-)
+def get_subplot_style_sheet() -> str:
+    """Return the style of the cards, the chips, and the suggestions, in the accent colour of the system.
+
+    A card is a grouped box with a light fill and no border, as in the settings of macOS. A chip is a token of the
+    address field of Mail: a pill with a light tint of the accent colour. A suggestion is plain text in the accent
+    colour. A style sheet for each widget took about 10 ms each time that the window showed the cards. One style sheet
+    for all the cards takes less time.
+    """
+    accent = get_accent_colour()
+    rgb = f"{accent.red()}, {accent.green()}, {accent.blue()}"
+    # the alpha of the tint suits the light and the dark appearance
+    return (
+        "QFrame#subplotcard { border: none; border-radius: 8px; background: rgba(128, 128, 128, 28); }"
+        f" #chip {{ border: none; border-radius: 10px; background: rgba({rgb}, 46); }}"
+        f" #chip:focus {{ border: 2px solid rgb({rgb}); }}"
+        " QToolButton#swatch { border: none; padding: 2px 3px; border-radius: 4px; background: transparent; }"
+        " QToolButton#swatch:hover { background: rgba(128, 128, 128, 60); }"
+        " QToolButton#yaxis { border: none; padding: 1px 0px; background: transparent; }"
+        f" QToolButton#suggestion {{ border: none; border-radius: 10px; padding: 1px 6px; color: rgb({rgb});"
+        " background: transparent; }"
+        f" QToolButton#suggestion:hover {{ background: rgba({rgb}, 46); }}"
+        f" QFrame#dropline {{ background: rgb({rgb}); border: none; }}"
+        f" QWidget#dragheader:focus {{ border: 2px solid rgb({rgb}); border-radius: 4px; }}"
+    )
 
 
 # the width in pixels of the image of the line of a chip. A shorter line than in the list of the series keeps the name
@@ -1915,7 +1928,7 @@ def make_chip(
 
     swatchbutton shows the line of the series at the start of the chip. If hasstyle is True, a dot after the text shows
     that the series has a style of its own. With dragcallbacks, the user can drag the chip, move it with Alt-Up and
-    Alt-Down, and click it, see make_drag_header. SUBPLOT_STYLE_SHEET gives the chip its border.
+    Alt-Down, and click it, see make_drag_header. get_subplot_style_sheet gives the chip its tint.
     """
     from PySide6 import QtWidgets
 
@@ -2205,7 +2218,8 @@ def open_window(
     _, subplotgrid = add_section(panellayout, "Subplots")
     # show_subplots makes the card of a subplot again when the names of the subplot change
     subplotsbox = QtWidgets.QWidget()
-    subplotsbox.setStyleSheet(SUBPLOT_STYLE_SHEET)
+    subplotstylesheet = get_subplot_style_sheet()
+    subplotsbox.setStyleSheet(subplotstylesheet)
     subplotslayout = QtWidgets.QVBoxLayout(subplotsbox)
     subplotslayout.setContentsMargins(0, 0, 0, 0)
     subplotslayout.setSpacing(6)
@@ -2252,7 +2266,7 @@ def open_window(
     newsubplotrow.addWidget(addsubplotbutton)
     newsubplotrow.addWidget(defaultbutton)
     newsuggestionsbox = QtWidgets.QWidget()
-    newsuggestionsbox.setStyleSheet(SUBPLOT_STYLE_SHEET)
+    newsuggestionsbox.setStyleSheet(subplotstylesheet)
     newsuggestionslayout = make_flow_layout()
     newsuggestionsbox.setLayout(newsuggestionslayout)
     subplotgrid.addWidget(subplotsbox, 0, 0, 1, -1)
@@ -2444,7 +2458,7 @@ def open_window(
         quantity.setMinimumWidth(1)
         typebox.setMinimumWidth(100)
         disclosure = QtWidgets.QToolButton()
-        disclosure.setArrowType(QtCore.Qt.ArrowType.RightArrow if iscollapsed else QtCore.Qt.ArrowType.DownArrow)
+        set_disclosure_symbol(disclosure, isopen=not iscollapsed)
         disclosure.setStyleSheet("QToolButton { border: none; }")
         disclosure.setToolTip("Show the controls of the subplot" if iscollapsed else "Hide the controls of the subplot")
         disclosure.setAccessibleName("Expand" if iscollapsed else "Collapse")
@@ -2466,10 +2480,7 @@ def open_window(
             button = make_glyph_button(text, tooltip, tooltip)
             button.clicked.connect(callback)
             headerlayout.addWidget(button)
-        grip = QtWidgets.QLabel("≡")
-        grip.setEnabled(False)
-        grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
-        headerlayout.addWidget(grip)
+        headerlayout.addWidget(make_grip("Drag the header to move the subplot"))
         # the keyboard and VoiceOver reach the moves through the menu of the header
         header.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
         for text, target, enabled in (
@@ -2658,7 +2669,7 @@ def open_window(
         yaxisbutton.setAutoRaise(True)
         yaxisbutton.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         isyaxisopen = row in openyrows
-        yaxisbutton.setArrowType(QtCore.Qt.ArrowType.DownArrow if isyaxisopen else QtCore.Qt.ArrowType.RightArrow)
+        set_disclosure_symbol(yaxisbutton, isopen=isyaxisopen)
         yaxisbutton.setToolTip(f"Show or hide the scale and the range of the {'values' if isimage else 'y axis'}")
         yaxisbutton.clicked.connect(partial(on_yaxis_toggle, row))
         yaxisbox = QtWidgets.QWidget()
@@ -3371,7 +3382,7 @@ def open_window(
         if row < len(cards):
             card = cards[row]
             isopen = row in openyrows
-            card.yaxisbutton.setArrowType(QtCore.Qt.ArrowType.DownArrow if isopen else QtCore.Qt.ArrowType.RightArrow)
+            set_disclosure_symbol(card.yaxisbutton, isopen=isopen)
             card.yaxisbox.setVisible(isopen)
 
     def on_reset_styles(row: int) -> None:

@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import getpass
+import sys
 import typing as t
 from functools import cache
 from functools import partial
@@ -18,10 +19,12 @@ from artistools.viewertools.application import add_recent_model
 from artistools.viewertools.application import get_recent_models
 from artistools.viewertools.application import set_drop_handler
 from artistools.viewertools.widgets import copy_text
+from artistools.viewertools.widgets import get_accent_colour
 from artistools.viewertools.widgets import get_message_colours
 from artistools.viewertools.widgets import make_completer
 from artistools.viewertools.widgets import make_elided_label
 from artistools.viewertools.widgets import make_glyph_button
+from artistools.viewertools.widgets import make_grip
 from artistools.viewertools.widgets import make_reorder_list
 
 if t.TYPE_CHECKING:
@@ -154,7 +157,7 @@ def make_colour_icon(colour: str, *, selected: bool) -> "QtGui.QIcon":
     painter.setBrush(QtGui.QColor(mplcolors.to_hex(colour)))
     painter.drawRoundedRect(QtCore.QRectF(3.5, 3.5, size - 7, size - 7), 2.0, 2.0)
     if selected:
-        painter.setPen(QtGui.QPen(QtGui.QPalette().color(QtGui.QPalette.ColorRole.Highlight), 2.0))
+        painter.setPen(QtGui.QPen(get_accent_colour(), 2.0))
         painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(QtCore.QRectF(1.0, 1.0, size - 2, size - 2), 3.0, 3.0)
     painter.end()
@@ -178,17 +181,44 @@ def get_popup_class() -> "type[QtWidgets.QDialog]":
         def __init__(self, parent: QtWidgets.QWidget) -> None:
             super().__init__(parent, QtCore.Qt.WindowType.Popup)
             self.cancelled = False
-            # a popup window of macOS has no background of its own, thus the controls showed over the window below it
             self.setObjectName("linepropertiespopup")
-            self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
-            # the swatches and the line styles are flat, as the glyph buttons of the window are, and a grid of framed
-            # buttons was hard to read
-            self.setStyleSheet(
-                "#linepropertiespopup { background: palette(window); border: 1px solid palette(mid); }"
-                " #linepropertiespopup QToolButton { border: none; border-radius: 4px; padding: 2px; }"
-                " #linepropertiespopup QToolButton:hover { background: rgba(128, 128, 128, 60); }"
-                " #linepropertiespopup QToolButton:checked { background: rgba(128, 128, 128, 110); }"
+            # a popover of macOS has round corners and a soft shadow, and macOS draws the shadow from the shape that
+            # paintEvent gives. Another platform can show black corners for a transparent window, thus it takes a box
+            self.rounded = sys.platform == "darwin"
+            accent = get_accent_colour()
+            rgb = f"{accent.red()}, {accent.green()}, {accent.blue()}"
+            boxstyle = (
+                ""
+                if self.rounded
+                else "#linepropertiespopup { background: palette(window); border: 1px solid palette(mid); }"
             )
+            if self.rounded:
+                self.setWindowFlag(QtCore.Qt.WindowType.FramelessWindowHint)
+                self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+            else:
+                # a popup window has no background of its own, thus the controls showed over the window below it
+                self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
+            # the swatches and the line styles are flat, as the glyph buttons of the window are, and the selected line
+            # style takes a tint of the accent colour of the system
+            self.setStyleSheet(
+                boxstyle + " #linepropertiespopup QToolButton { border: none; border-radius: 4px; padding: 2px; }"
+                " #linepropertiespopup QToolButton:hover { background: rgba(128, 128, 128, 60); }"
+                f" #linepropertiespopup QToolButton:checked {{ background: rgba({rgb}, 70); }}"
+            )
+
+        @t.override
+        def paintEvent(self, event: QtGui.QPaintEvent, /) -> None:
+            if not self.rounded:
+                super().paintEvent(event)
+                return
+            painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            border = self.palette().color(QtGui.QPalette.ColorRole.Mid)
+            border.setAlpha(140)
+            painter.setPen(QtGui.QPen(border, 1.0))
+            painter.setBrush(self.palette().color(QtGui.QPalette.ColorRole.Window))
+            painter.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 10.0, 10.0)
+            painter.end()
 
         @t.override
         def keyPressEvent(self, event: QtGui.QKeyEvent, /) -> None:
@@ -228,6 +258,8 @@ def edit_series_properties(
     dialog = get_popup_class()(parent)
     dialog.setAccessibleName(f"Line Properties of {name}")
     form = QtWidgets.QFormLayout(dialog)
+    # the round corners of the popover need a wider margin than a box
+    form.setContentsMargins(16, 14, 16, 14)
     chosencolour: list[str | None] = [style.get("-color")]
 
     title = QtWidgets.QLabel(f"<b>{name}</b>")
@@ -941,10 +973,7 @@ def add_series_list(
             button.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, action))
             rowlayout.addWidget(button)
             make_hover_widget(button)
-        grip = QtWidgets.QLabel("≡")
-        grip.setEnabled(False)
-        grip.setToolTip("Drag the row to move the series")
-        grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+        grip = make_grip("Drag the row to move the series")
         rowlayout.addWidget(grip)
         make_hover_widget(grip)
         # the context menu gives each action, thus the keyboard and VoiceOver can also reach them
