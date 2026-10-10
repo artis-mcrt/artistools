@@ -1183,7 +1183,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-iso",
         default=None,
         type=Path,
-        help="Path to the nuclide information npy file. If not provided, will be assumed to be [npz_path]/iso_table.npy",
+        help=(
+            "Path to the nuclide information npy file. If not provided, will be assumed to be [npz_path]/iso_table.npy"
+        ),
     )
 
     parser.add_argument(
@@ -1235,7 +1237,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-interpolrescale",
         type=float,
         default=None,
-        help="Scale so that dynamical ejecta mass matches 2D dynamical ejecta again. Float is the 2D dynamical ejecta mass",
+        help=(
+            "Scale so that dynamical ejecta mass matches 2D dynamical ejecta again."
+            " Float is the 2D dynamical ejecta mass"
+        ),
     )
 
     parser.add_argument(
@@ -1248,7 +1253,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--globaldynscale",
         action="store_true",
-        help="Scale the mass of all (!) dynamical ejecta such that the resulting total ejecta mass matches the value specified",
+        help=(
+            "Scale the mass of all (!) dynamical ejecta such that the resulting total ejecta mass"
+            " matches the value specified"
+        ),
     )
 
     parser.add_argument(
@@ -1256,7 +1264,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=float,
         nargs=2,
         default=None,
-        help="Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max which replaced previous 2D data such that the resulting total ejecta mass matches the value specified",
+        help=(
+            "Scale the mass of those dynamical ejecta within velocities (in units of c) v_min and v_max"
+            " which replaced previous 2D data such that the resulting total ejecta mass matches the value specified"
+        ),
     )
 
     parser.add_argument(
@@ -1421,7 +1432,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if args.perturb3Dmodel:
             if args.replacedyn:
                 print_warning(
-                    "Apply a perturbation only to an axisymmetric 3D model, or the global isotopic mass fractions change."
+                    "Apply a perturbation only to an axisymmetric 3D model,"
+                    " or the global isotopic mass fractions change."
                 )
             dfmodel = apply_density_perturbations(dfmodel, float(args.vmax_on_c), tuple(args.perturb3Dmodel))
 

@@ -282,11 +282,9 @@ ignore = [
     "docstring-missing-returns",
     "docstring-missing-yields",
     "docstring-missing-exception",
-    "line-too-long",
     "commented-out-code",
     "boolean-type-hint-positional-argument",
     "boolean-default-value-positional-argument",
-    "line-contains-todo",
     "invalid-function-name",
     "invalid-argument-name",
     "non-lowercase-variable-in-function",
@@ -302,8 +300,6 @@ ignore = [
     "float-equality-comparison",
     "assert",
     "print",
-    "missing-todo-author",
-    "missing-todo-link",
 ]
 unfixable = [
     "commented-out-code", # (will just delete it!)

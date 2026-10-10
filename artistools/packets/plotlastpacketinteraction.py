@@ -178,7 +178,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ).collect()
     energy_sum = float(dfpackets_selected["e_rf"].sum())
     print(
-        f"Directional 4pi-equivalent bol. luminosity of {energy_sum / nprocs_read / Delta_t_secs * inverse_solidangle_fraction}"
+        "Directional 4pi-equivalent bol. luminosity of"
+        f" {energy_sum / nprocs_read / Delta_t_secs * inverse_solidangle_fraction}"
     )
 
     # Step 2) create the heatmap. Normalise packet energy to modelgrid cell volume at packet emission time (lab frame)

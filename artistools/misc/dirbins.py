@@ -157,7 +157,8 @@ def get_dirbin_definitions(
 def print_theta_phi_definitions() -> None:
     """Print the spherical polar convention that the theta and phi direction bins follow."""
     print(
-        "Spherical polar: x = r sinθ cosϕ, y = r sinθ sinϕ, z = r cosθ -> θ=0 is +Z and θ=π is -Z. At Z=0, ϕ=0 is +X and ϕ=π/2 is +Y"
+        "Spherical polar: x = r sinθ cosϕ, y = r sinθ sinϕ, z = r cosθ -> θ=0 is +Z and θ=π is -Z."
+        " At Z=0, ϕ=0 is +X and ϕ=π/2 is +Y"
     )
 
 

@@ -388,9 +388,10 @@ def plot_reference_populations(
 
 
 def get_keptlevelcount_of_element(modelpath: Path) -> dict[int, int | None]:
-    """Return the count of levels that ARTIS keeps for each element, or no element if the model has no compositiondata.txt.
+    """Return the count of levels that ARTIS keeps for each element.
 
-    The superlevel holds no level above the kept levels.
+    The dict holds no element if the model has no compositiondata.txt. The superlevel holds no level above the kept
+    levels.
     """
     try:
         return get_kept_level_counts(modelpath)
@@ -561,9 +562,10 @@ def make_ionsubplot(
 
 
 def get_levelnames_of_ion(modelpath: Path | str, ions: Sequence[tuple[int, int]]) -> dict[tuple[int, int], list[str]]:
-    """Return the names of the levels of each ion, and stop with a message for an ion that the atomic data does not hold.
+    """Return the names of the levels of each ion.
 
-    The plot shows the names of the levels alone, thus it reads no transitions.
+    The function stops with a message for an ion that the atomic data does not hold. The plot shows the names of the
+    levels alone, thus it reads no transitions.
     """
     adata = get_levels(modelpath, ionlist=ions)
     levelnames_of_ion: dict[tuple[int, int], list[str]] = {

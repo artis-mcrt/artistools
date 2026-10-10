@@ -1521,7 +1521,8 @@ def scan_artis_estimators(
                 Path(x).relative_to(modelpath).as_posix() for x in dict.fromkeys(runfolder_of_file)
             )
             print(
-                f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB) from {str_runfolders}..."
+                f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB)"
+                f" from {str_runfolders}..."
             )
         # a window keeps the scans for its many plots. A command reads each file one time
         scans = [

@@ -167,7 +167,8 @@ def read_modelfile_text(
 
                 if not printwarningsonly:
                     print(
-                        f"  detected 3D model file with {ncoordgridx} x {ncoordgridy} x {ncoordgridz} = {npts_model} cells"
+                        f"  detected 3D model file with {ncoordgridx} x {ncoordgridy} x {ncoordgridz}"
+                        f" = {npts_model} cells"
                     )
 
             line = fmodel.readline()
