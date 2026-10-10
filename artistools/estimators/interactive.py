@@ -38,16 +38,22 @@ from artistools.estimators.plotestimators import get_iontuple_sortkey
 from artistools.estimators.plotestimators import get_layer_index
 from artistools.estimators.plotestimators import get_model_default_plotlist
 from artistools.estimators.plotestimators import get_panel_axes_label
+from artistools.estimators.plotestimators import get_styled_series
 from artistools.estimators.plotestimators import get_subplot_grid
 from artistools.estimators.plotestimators import get_ylabel
 from artistools.estimators.plotestimators import is_ionseriestype
 from artistools.estimators.plotestimators import is_seriestype
 from artistools.estimators.plotestimators import is_valid_ion
+from artistools.estimators.plotestimators import join_series_style
+from artistools.estimators.plotestimators import LineFigureData
 from artistools.estimators.plotestimators import main as plotestimators_main
 from artistools.estimators.plotestimators import POPTYPE_YLABELS
+from artistools.estimators.plotestimators import read_series_style
 from artistools.estimators.plotestimators import require_artis_folder
 from artistools.estimators.plotestimators import resolve_positional_args
 from artistools.estimators.plotestimators import resolve_snapshot_arguments
+from artistools.estimators.plotestimators import SERIES_STYLE_MARK
+from artistools.estimators.plotestimators import split_plotitem_styles
 from artistools.estimators.plotestimators import time_is_given
 from artistools.estimators.plotestimators import TIME_XVARIABLES
 from artistools.estimators.plotestimators import VARIABLE_ALIASES
@@ -145,6 +151,7 @@ if t.TYPE_CHECKING:
     from PySide6 import QtWidgets
 
     from artistools.estimators.core import EstimatorBatchCache
+    from artistools.estimators.plotestimators import FiguresData
 
 # the controls of the window give these arguments, thus the command drops the values that the user typed
 CONTROLLED_DESTS: t.Final = frozenset({
@@ -262,6 +269,75 @@ class RenderedPlot(t.NamedTuple):
     xbins: int | None
     markers: bool
     colorbyion: bool
+    swatches: "Mapping[tuple[int, str], SeriesSwatch]"
+
+
+class SeriesSwatch(t.NamedTuple):
+    """The line of one series in the plot, which a chip of its subplot shows as a short image."""
+
+    colour: str
+    alpha: float
+    linewidth: float
+    dashpattern: tuple[float, ...] | None
+
+
+def get_series_swatches(
+    figuredata: LineFigureData, args: argparse.Namespace, fig: mplfig.Figure
+) -> dict[tuple[int, str], SeriesSwatch]:
+    """Return the line of each series by the index of its subplot and its name, as the plot draws it.
+
+    A series with no colour of its own takes the next colour of the axes, thus the colour comes from the line.
+    """
+    import matplotlib as mpl
+    import matplotlib.colors as mplcolors
+
+    from artistools.viewertools.series import get_dash_pattern
+
+    stylesofsubplots = [split_plotitem_styles(plotitems)[1] for plotitems in args.plotlist or []]
+    frames = get_plot_frames(fig)
+    swatches: dict[tuple[int, str], SeriesSwatch] = {}
+    for index, (series, _) in enumerate(figuredata.subplots):
+        styles = stylesofsubplots[index] if index < len(stylesofsubplots) else {}
+        linecolours = {
+            line.get_gid(): line.get_color() for line in (frames[index].get_lines() if index < len(frames) else [])
+        }
+        for seriesdata in series:
+            _, plotkwargs = get_styled_series(seriesdata, styles.get(seriesdata.seriesname, {}), args.linewidthscale)
+            colour = linecolours.get(seriesdata.seriesname) or plotkwargs.get("color") or "black"
+            dashes = plotkwargs.get("dashes")
+            swatches[index, seriesdata.seriesname] = SeriesSwatch(
+                colour=mplcolors.to_hex(colour),
+                alpha=float(plotkwargs.get("alpha") or 1.0),
+                linewidth=float(plotkwargs.get("linewidth") or mpl.rcParams["lines.linewidth"]),
+                dashpattern=tuple(dashes)
+                if dashes
+                else (
+                    tuple(pattern)
+                    if (pattern := get_dash_pattern(plotkwargs.get("linestyle"), None)) is not None
+                    else None
+                ),
+            )
+    return swatches
+
+
+def get_data_key(args: argparse.Namespace) -> str:
+    """Return a key of the arguments that select the data of a plot, without the series styles and -linewidthscale.
+
+    The data has no style, thus two commands with the same key read the same data. The window then draws the new style
+    with the data of the last plot.
+    """
+
+    # the positional items also hold the folder, which can contain the mark, e.g. user@host:path. The window has one
+    # folder, thus the cut at the mark cannot make the keys of two different data sets equal
+    def get_names(items: "Sequence[t.Any]") -> list[t.Any]:
+        return [get_series_name(item) if isinstance(item, str) else item for item in items]
+
+    keyargs = vars(args) | {
+        "plotitems": get_names(args.plotitems or []),
+        "plotlist": [get_names(plotitems) for plotitems in args.plotlist or []],
+        "linewidthscale": None,
+    }
+    return repr(sorted(keyargs.items()))
 
 
 def check_viewer_args(args: argparse.Namespace) -> None:
@@ -417,6 +493,8 @@ def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
     """
     oldvalidtimesteps = viewer.run.validtimesteps
     viewer.run = run
+    # the run can hold new data, thus the next plot reads it
+    viewer.lastdata = None
     values = viewer.values
     wholerun = (values.first, values.last) == (oldvalidtimesteps[0], oldvalidtimesteps[-1])
     if is_evolution(values) and wholerun:
@@ -865,6 +943,10 @@ class EstimatorViewer:
         self.warning = ""
         # the colours of the window in Dark Mode, which the window sets and the worker thread reads
         self.darkcolours: tuple[str, str] | None = None
+        # the line of each series in the last plot, by the index of its subplot and its name
+        self.swatches: Mapping[tuple[int, str], SeriesSwatch] = {}
+        # the data of the last plot and its key, see get_data_key. The worker thread sets and reads it
+        self.lastdata: tuple[str, FiguresData] | None = None
 
     def get_default_xvariable(self, otheroptions: OptionRows, *, timegiven: bool) -> str:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
@@ -1041,17 +1123,26 @@ class EstimatorViewer:
             plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
             check_viewer_args(plotargs)
             givenx = plotargs.x
-            draw_plot(plotargs, fig, self.run.batchcaches)
+            # draw_plot changes the arguments, thus the key comes first
+            datakey = get_data_key(plotargs)
+            lastdata = self.lastdata
+            figuresdata = lastdata[1] if lastdata is not None and lastdata[0] == datakey else None
+            figuresdata = draw_plot(plotargs, fig, self.run.batchcaches, figuresdata)
+            self.lastdata = (datakey, figuresdata)
+            figuredata = figuresdata[0][0]
             return RenderedPlot(
                 isimage=plotargs.dimensionreduce == 2,
                 xlimitscale=C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0,
                 xbins=plotargs.xbins,
                 markers=bool(plotargs.markers),
                 colorbyion=bool(plotargs.colorbyion),
+                swatches=get_series_swatches(figuredata, plotargs, fig)
+                if isinstance(figuredata, LineFigureData)
+                else {},
             )
 
         def keep(plot: RenderedPlot) -> None:
-            self.isimage, self.xlimitscale, self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot
+            self.isimage, self.xlimitscale, self.plotxbins, self.plotmarkers, self.plotcolorbyion, self.swatches = plot
 
         return render_command(self, values, draw, keep, quiet=quiet)
 
@@ -1125,11 +1216,12 @@ def get_python_plotitems(subplot: "Sequence[str]", estimatorcolumns: "Collection
     A type of series groups its names, e.g. [["populations", ["Fe II", "Fe III"]]], and a directive follows the
     names, e.g. ["_ymin", 1e-16].
     """
-    names = get_subplot_names(subplot)
+    # main reads the style of a series in its name, e.g. "Fe II@color=C3", as the command does
+    items = get_series_items(subplot)
     seriestype = get_subplot_seriestype(subplot, estimatorcolumns)
     # a list of ions with no type is a populations subplot, and its names hold no type
     series: list[t.Any] = (
-        names if seriestype is None else [[seriestype, names[1:] if names[0] == seriestype else names]]
+        items if seriestype is None else [[seriestype, items[1:] if items[0] == seriestype else items]]
     )
     directives = [
         [
@@ -1192,9 +1284,40 @@ SERIES_SUGGESTION_COUNT: t.Final = 4
 NEW_SUBPLOT_SUGGESTION_COUNT: t.Final = 5
 
 
-def get_subplot_names(subplot: "Sequence[str]") -> list[str]:
-    """Return the items of a subplot that are not a directive, e.g. the variables or the series type and its names."""
+def get_series_items(subplot: "Sequence[str]") -> list[str]:
+    """Return the items of a subplot that are not a directive, with the style of each series, e.g. "Fe II@color=C3"."""
     return [item for item in subplot if get_item_directive(item) is None]
+
+
+def get_series_name(item: str) -> str:
+    """Return the name of a series item without its style, e.g. "Fe II" for "Fe II@color=C3"."""
+    return item.partition(SERIES_STYLE_MARK)[0]
+
+
+def get_item_style(item: str) -> dict[str, str]:
+    """Return the style of a series item, e.g. {"color": "C3"} for "Fe II@color=C3".
+
+    A style that is not valid gives no style here. plotestimators rejects it, and the status line gives the reason.
+    """
+    try:
+        return read_series_style(item)[1]
+    except ValueError:
+        return {}
+
+
+def get_subplot_names(subplot: "Sequence[str]") -> list[str]:
+    """Return the names of a subplot without the directives and the styles.
+
+    The names are e.g. the variables, or a series type and its ions.
+    """
+    return [get_series_name(item) for item in get_series_items(subplot)]
+
+
+def set_item_style(subplot: "Sequence[str]", position: int, style: "Mapping[str, str | None]") -> tuple[str, ...]:
+    """Return the subplot with a new style for the series item at position. A value of None removes its key."""
+    item = subplot[position]
+    newitem = join_series_style(get_series_name(item), style)
+    return (*subplot[:position], newitem, *subplot[position + 1 :])
 
 
 def get_subplot_seriestype(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> str | None:
@@ -1476,15 +1599,16 @@ def change_subplot_type(
         return tuple(subplot)
     keptdirectives = {"yscale", "ionpoptype"} if seriestype == "populations" else {"yscale"}
     directives = [item for item in subplot if get_item_directive(item) in keptdirectives]
-    names = get_subplot_names(subplot)
-    if oldtype is not None and names and names[0] == oldtype:
-        names = names[1:]
+    # a name that stays in the subplot keeps its style
+    items = get_series_items(subplot)
+    if oldtype is not None and items and items[0] == oldtype:
+        items = items[1:]
     if seriestype == VARIABLES_TYPE:
-        variables = [name for name in names if oldtype is None and name in estimatorcolumns]
+        variables = [item for item in items if oldtype is None and get_series_name(item) in estimatorcolumns]
         common = [name for name in COMMON_VARIABLES if name in estimatorcolumns]
         return (*(variables or common[:1] or ["Te"]), *directives)
     choices = get_species_choices(seriestype, estimatorcolumns, levelnames)
-    kept = [name for name in names if name in choices]
+    kept = [item for item in items if get_series_name(item) in choices]
     return (seriestype, *(kept or get_first_choice(choices)), *directives)
 
 
@@ -1515,7 +1639,7 @@ def get_moved_rows(
 
 def get_card_summary(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> str:
     """Return the text that the header of a collapsed card shows in place of its controls, e.g. "Te, TR · log"."""
-    items = [item for _, item in get_chip_items(subplot, estimatorcolumns)]
+    items = [get_series_name(item) for _, item in get_chip_items(subplot, estimatorcolumns)]
     maxshown = 4
     text = ", ".join(items[:maxshown]) + (f" +{len(items) - maxshown}" if len(items) > maxshown else "")
     yscale = get_directive_value(subplot, "yscale")
@@ -1523,7 +1647,7 @@ def get_card_summary(subplot: "Sequence[str]", estimatorcolumns: "Collection[str
 
 
 def get_chip_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> list[tuple[int, str]]:
-    """Return the position and the text of each item of a subplot that shows as a chip.
+    """Return the position and the item of each series of a subplot that shows as a chip, with the style of the item.
 
     The type selector shows the series type, and a control of the card sets each directive, thus they show no chip.
     """
@@ -1589,7 +1713,7 @@ def get_command_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[st
         and names[0] not in estimatorcolumns
         and (is_seriestype(names[0], estimatorcolumns) or bool(get_species_choices(names[0], estimatorcolumns)))
     )
-    return tuple(item for item in subplot if item not in names) if seriestypeonly else tuple(subplot)
+    return tuple(item for item in subplot if get_item_directive(item) is not None) if seriestypeonly else tuple(subplot)
 
 
 def get_nearest_cell(viewer: EstimatorViewer, xdata: float) -> int | None:
@@ -1667,6 +1791,8 @@ class SubplotCard(t.NamedTuple):
     poptypebox: "QtWidgets.QComboBox | None"
     yminedit: "QtWidgets.QLineEdit"
     ymaxedit: "QtWidgets.QLineEdit"
+    # the button of the line of each series chip, by the name of the series. A plot gives each button its image
+    swatchbuttons: "dict[str, QtWidgets.QToolButton]"
 
 
 # the style of the cards, the chips, and the suggestions. A style sheet for each widget took about 10 ms each time
@@ -1681,25 +1807,57 @@ SUBPLOT_STYLE_SHEET: t.Final = (
 )
 
 
-def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]") -> "QtWidgets.QFrame":
+def make_chip(
+    text: str,
+    tooltip: str,
+    on_remove: "Callable[[], None]",
+    swatchbutton: "QtWidgets.QToolButton | None" = None,
+    *,
+    hasstyle: bool = False,
+) -> "QtWidgets.QFrame":
     """Return a chip that shows one item of a subplot, with a button that removes the item.
 
-    SUBPLOT_STYLE_SHEET gives the chip its border.
+    swatchbutton shows the line of the series at the start of the chip. If hasstyle is True, a dot after the text shows
+    that the series has a style of its own. SUBPLOT_STYLE_SHEET gives the chip its border.
     """
     from PySide6 import QtWidgets
 
     chip = QtWidgets.QFrame()
     chip.setObjectName("chip")
     layout = QtWidgets.QHBoxLayout(chip)
-    layout.setContentsMargins(8, 1, 2, 1)
+    layout.setContentsMargins(2 if swatchbutton is not None else 8, 1, 2, 1)
     layout.setSpacing(0)
-    label = QtWidgets.QLabel(text)
+    if swatchbutton is not None:
+        layout.addWidget(swatchbutton)
+    label = QtWidgets.QLabel(f"{text} •" if hasstyle else text)
     label.setToolTip(tooltip)
     removebutton = make_glyph_button("✕", f"Remove {text} from the subplot", f"Remove {text}")
     removebutton.clicked.connect(on_remove)
     layout.addWidget(label)
     layout.addWidget(removebutton)
     return chip
+
+
+def get_series_at(axis: "mplax.Axes", event: t.Any, *, legendonly: bool) -> str | None:
+    """Return the name of the series of the legend entry or the line under the pointer, or None.
+
+    plotestimators gives each line the name of its series as the gid. The legend holds copies of the lines with no gid,
+    thus the order of the legend entries gives their series.
+    """
+    from artistools.plottools import get_legend_entries_in_draw_order
+
+    legend = axis.get_legend()
+    if legend is not None and legend.get_visible():
+        handles, _ = get_legend_entries_in_draw_order(axis)
+        for handle, legendhandle, text in zip(handles, legend.legend_handles, legend.get_texts(), strict=False):
+            hit = text.contains(event)[0] or (legendhandle is not None and legendhandle.contains(event)[0])
+            if hit and isinstance(gid := handle.get_gid(), str):
+                return gid
+    if legendonly:
+        return None
+    return next(
+        (gid for line in axis.get_lines() if isinstance(gid := line.get_gid(), str) and line.contains(event)[0]), None
+    )
 
 
 def get_readout(axis: "mplax.Axes", x: float) -> str:
@@ -2010,13 +2168,27 @@ def open_window(
     subplotsperrowbox = QtWidgets.QSpinBox()
     subplotsperrowbox.setRange(1, 12)
     subplotsperrowbox.setToolTip(helptexts.get("subplotsperrow", ""))
-    for box in (fontsizebox, figscalebox, subplotsperrowbox):
+    linewidthscalebox = QtWidgets.QDoubleSpinBox()
+    linewidthscalebox.setRange(0.1, 10.0)
+    linewidthscalebox.setSingleStep(0.25)
+    linewidthscalebox.setDecimals(2)
+    linewidthscalebox.setToolTip(helptexts.get("linewidthscale", ""))
+    for box in (fontsizebox, figscalebox, subplotsperrowbox, linewidthscalebox):
         box.setKeyboardTracking(False)
     add_row(appearancegrid, 0, list(appearancechecks.values()))
     add_row(
         appearancegrid, 1, [QtWidgets.QLabel("-labelfontsize"), fontsizebox, QtWidgets.QLabel("-figscale"), figscalebox]
     )
-    add_row(appearancegrid, 2, [QtWidgets.QLabel("-subplotsperrow"), subplotsperrowbox])
+    add_row(
+        appearancegrid,
+        2,
+        [
+            QtWidgets.QLabel("-subplotsperrow"),
+            subplotsperrowbox,
+            QtWidgets.QLabel("-linewidthscale"),
+            linewidthscalebox,
+        ],
+    )
 
     defaultdpi: int = viewer.parser.get_default("dpi")
     # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
@@ -2060,6 +2232,7 @@ def open_window(
         fontsizebox,
         figscalebox,
         subplotsperrowbox,
+        linewidthscalebox,
         *appearancechecks.values(),
     ]
 
@@ -2206,12 +2379,34 @@ def open_window(
         chipsbox = QtWidgets.QWidget()
         chipslayout = make_flow_layout()
         chipsbox.setLayout(chipslayout)
+        swatchbuttons: dict[str, QtWidgets.QToolButton] = {}
         for position, item in get_chip_items(subplot, columns):
+            name = get_series_name(item)
             if seriestype is None:
-                tooltip = plain_label(get_ylabel(item)).strip() or item
+                tooltip = plain_label(get_ylabel(name)).strip() or name
             else:
-                tooltip = f"The {currenttype} of {item}"
-            chipslayout.addWidget(make_chip(item, tooltip, partial(on_remove_item, row, position)))
+                tooltip = f"The {currenttype} of {name}"
+            # a colour image has no lines, thus its chips have no line style
+            swatchbutton = None
+            if not isimage:
+                swatchbutton = QtWidgets.QToolButton()
+                swatchbutton.setObjectName("swatch")
+                swatchbutton.setAutoRaise(True)
+                # make_line_swatch gives an image of this size, and a series with no line keeps the space
+                swatchbutton.setIconSize(QtCore.QSize(36, 14))
+                swatchbutton.setToolTip(f"The line of {name} in the plot. Click to change the line properties")
+                swatchbutton.setAccessibleName(f"Set the line properties of {name}")
+                swatchbutton.clicked.connect(partial(edit_item_style, row, position))
+                swatchbuttons[name] = swatchbutton
+            chipslayout.addWidget(
+                make_chip(
+                    name,
+                    tooltip,
+                    partial(on_remove_item, row, position),
+                    swatchbutton,
+                    hasstyle=bool(get_item_style(item)),
+                )
+            )
         cardlayout.addWidget(chipsbox)
 
         levelnames = get_levelnames(currenttype)
@@ -2330,7 +2525,13 @@ def open_window(
             ])
         )
         return SubplotCard(
-            key=key, frame=card, yscalebox=yscalebox, poptypebox=poptypebox, yminedit=yminedit, ymaxedit=ymaxedit
+            key=key,
+            frame=card,
+            yscalebox=yscalebox,
+            poptypebox=poptypebox,
+            yminedit=yminedit,
+            ymaxedit=ymaxedit,
+            swatchbuttons=swatchbuttons,
         )
 
     # the names of the NLTE levels of the run, which get_levelnames reads when a card first needs them
@@ -2479,6 +2680,7 @@ def open_window(
         for card in cards[len(subplots) :]:
             remove_widget(subplotslayout, card.frame)
         del cards[len(subplots) :]
+        show_swatches()
         if insertrow is not None and insertrow <= len(cards):
             subplotslayout.insertWidget(insertrow, insertbox)
         else:
@@ -2492,6 +2694,74 @@ def open_window(
             if target is not None:
                 # a popup of a completer gives the focus back when it hides, thus the control takes it after the popup
                 QtCore.QTimer.singleShot(0, target, target.setFocus)
+
+    def show_swatches() -> None:
+        """Show the line of each series of the last plot on the button of its chip.
+
+        A series that the plot does not show, e.g. an ion that the model does not hold, shows no line.
+        """
+        from artistools.viewertools.series import make_line_swatch
+
+        for row, card in enumerate(cards):
+            for name, button in card.swatchbuttons.items():
+                swatch = viewer.swatches.get((row, name))
+                button.setIcon(QtGui.QIcon(make_line_swatch(*swatch)) if swatch is not None else QtGui.QIcon())
+
+    def edit_item_style(row: int, position: int) -> None:
+        """Ask for the line properties of one series of a subplot, and show each change in the plot immediately."""
+        import matplotlib as mpl
+
+        from artistools.viewertools.series import edit_series_properties
+
+        subplot = viewer.values.subplots[row]
+        if position >= len(subplot):
+            return
+        item = subplot[position]
+        name = get_series_name(item)
+        style = get_item_style(item)
+        defaultcolour, defaultlinewidth = get_default_line(row, name)
+
+        def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
+            # a change applies to the current values, because Play can move the time while the dialog is open. A
+            # value of None for changes gives the series its style from before the dialog
+            current = viewer.values.subplots
+            if row >= len(current) or position >= len(current[row]) or get_series_name(current[row][position]) != name:
+                return
+            newstyle = style if changes is None else {flag.removeprefix("-"): value for flag, value in changes.items()}
+            subplots = list(current)
+            subplots[row] = set_item_style(current[row], position, newstyle)
+            apply(dc.replace(viewer.values, subplots=tuple(subplots)), undoable=undoable)
+
+        edit_series_properties(
+            window,
+            name,
+            {f"-{key}": value for key, value in style.items()},
+            defaultcolour,
+            defaultlinewidth or float(mpl.rcParams["lines.linewidth"]),
+            show_changes,
+        )
+
+    def get_default_line(row: int, name: str) -> tuple[str, float | None]:
+        """Return the colour and the width of the line of a series with no style of its own, as the last plot gives.
+
+        A series with no colour in the data takes the colour of the axes cycle, thus its line in the plot gives it.
+        """
+        import matplotlib.colors as mplcolors
+
+        lastdata = viewer.lastdata
+        figuredata = lastdata[1][0][0] if lastdata is not None else None
+        swatch = viewer.swatches.get((row, name))
+        style = get_item_style(
+            next((item for item in viewer.values.subplots[row] if get_series_name(item) == name), "")
+        )
+        if isinstance(figuredata, LineFigureData) and row < len(figuredata.subplots):
+            for seriesindex, seriesdata in enumerate(figuredata.subplots[row][0]):
+                if seriesdata.seriesname == name:
+                    colour = seriesdata.plotkwargs.get("color") or (
+                        swatch.colour if swatch is not None and "color" not in style else f"C{seriesindex % 10}"
+                    )
+                    return mplcolors.to_hex(colour), seriesdata.plotkwargs.get("linewidth")
+        return (swatch.colour if swatch is not None else "black"), None
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
@@ -2574,6 +2844,11 @@ def open_window(
             figscale = get_row_values(rows, "-figscale") or (str(viewer.parser.get_default("figscale")),)
             set_spin_value(figscalebox, float(figscale[0]))
         set_spin_value(subplotsperrowbox, get_subplots_per_row(rows))
+        with contextlib.suppress(ValueError):
+            linewidthscale = get_row_values(rows, "-linewidthscale") or (
+                str(viewer.parser.get_default("linewidthscale")),
+            )
+            set_spin_value(linewidthscalebox, float(linewidthscale[0]))
         timeslider.setValue((firstpos + lastpos) // 2)
         widthslider.setValue(lastpos - firstpos + 1)
         set_edit_text(widthedit, str(lastpos - firstpos + 1))
@@ -2801,6 +3076,10 @@ def open_window(
         isdefault = math.isclose(figscale, viewer.parser.get_default("figscale"))
         apply_rows({"-figscale": None if isdefault else (format(figscale, "g"),)})
 
+    def on_linewidthscale(scale: float) -> None:
+        isdefault = math.isclose(scale, viewer.parser.get_default("linewidthscale"))
+        apply_rows({"-linewidthscale": None if isdefault else (format(scale, "g"),)})
+
     def on_subplotsperrow(count: int) -> None:
         isdefault = count == viewer.parser.get_default("subplotsperrow")
         apply_rows({"-subplotsperrow": None if isdefault else (str(count),)})
@@ -2862,7 +3141,9 @@ def open_window(
 
     def add_item(row: int, item: str) -> None:
         subplot = viewer.values.subplots[row]
-        item = VARIABLE_ALIASES.get(item, item)
+        # the style after the name stays, e.g. n_e@color=C3 gives nne@color=C3
+        name = get_series_name(item)
+        item = VARIABLE_ALIASES.get(name, name) + item.removeprefix(name)
         directive = get_item_directive(item)
         if directive is not None:
             value = item.partition("=")[2].strip()
@@ -2870,14 +3151,14 @@ def open_window(
                 show_error(f"Give a value after {item}, e.g. {directive}=1e-16")
                 return
             set_subplot(row, replace_directives(subplot, {directive: value}))
-        elif item in subplot:
-            show_error(f"The subplot already shows {item}")
+        elif get_series_name(item) in get_subplot_names(subplot):
+            show_error(f"The subplot already shows {get_series_name(item)}")
         else:
-            names = get_subplot_names(subplot)
+            items = get_series_items(subplot)
             # a name goes after the other names, thus the directives stay at the end
             set_subplot(
                 row,
-                (*names, item, *subplot[len(names) :]) if subplot[: len(names)] == tuple(names) else (*subplot, item),
+                (*items, item, *subplot[len(items) :]) if subplot[: len(items)] == tuple(items) else (*subplot, item),
             )
 
     def popup_has_pick(edit: QtWidgets.QLineEdit) -> bool:
@@ -3113,12 +3394,42 @@ def open_window(
     def set_row_yscale(row: int, yscale: str) -> None:
         set_directives(row, {"yscale": yscale})
 
+    def get_clicked_item(frameindex: int, event: t.Any, *, legendonly: bool) -> tuple[int, int] | None:
+        """Return the row of the subplot and the position of the series item under the pointer, or None.
+
+        The pointer can be on a legend entry, or on a line if legendonly is False.
+        """
+        row = get_subplot_row(frameindex)
+        if row is None or not plot_shows_values():
+            return None
+        seriesname = get_series_at(get_plot_frames(viewer.fig)[frameindex], event, legendonly=legendonly)
+        subplot = viewer.values.subplots[row]
+        position = next(
+            (
+                position
+                for position, item in get_chip_items(subplot, viewer.run.estimatorcolumns)
+                if VARIABLE_ALIASES.get(get_series_name(item), get_series_name(item)) == seriesname
+            ),
+            None,
+        )
+        return (row, position) if position is not None else None
+
+    def on_click(frameindex: int, event: t.Any) -> None:
+        if (clicked := get_clicked_item(frameindex, event, legendonly=True)) is not None:
+            edit_item_style(*clicked)
+
     def on_menu(frameindex: int, event: t.Any) -> None:
         """Show the menu of a subplot: the y scale, the y range, the plot of a cell or of a snapshot, and the figure."""
         if not plot_shows_values():
             return
         menu = QtWidgets.QMenu(window)
         row = get_subplot_row(frameindex)
+        # a line or a legend entry under the pointer gives the actions of its series first
+        if (clicked := get_clicked_item(frameindex, event, legendonly=False)) is not None:
+            name = get_series_name(viewer.values.subplots[clicked[0]][clicked[1]])
+            styleaction = menu.addAction(f"Line Properties of {name}…")
+            styleaction.triggered.connect(lambda: edit_item_style(*clicked))
+            menu.addSeparator()
         if row is not None:
             add_y_axis_actions(
                 menu,
@@ -3238,6 +3549,7 @@ def open_window(
     fontsizebox.valueChanged.connect(on_fontsize)
     figscalebox.valueChanged.connect(on_figscale)
     subplotsperrowbox.valueChanged.connect(on_subplotsperrow)
+    linewidthscalebox.valueChanged.connect(on_linewidthscale)
     xbox.activated.connect(on_xvariable)
     if (xlineedit := xbox.lineEdit()) is not None:
         xlineedit.editingFinished.connect(on_xvariable)
@@ -3266,6 +3578,7 @@ def open_window(
         on_select_y=on_select_y,
         on_menu=on_menu,
         show_tag=make_readout_tag(canvas),
+        on_click=on_click,
     )
     connect_time_keys(
         window,

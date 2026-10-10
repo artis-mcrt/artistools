@@ -18,6 +18,7 @@ import numpy.typing as npt
 import polars as pl
 import polars.testing as pltest
 import pytest
+from matplotlib.backend_bases import MouseEvent
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
@@ -3954,6 +3955,80 @@ def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
     assert command.endswith("-timestep 10-12 -xbins 8 -plot populations 'Fe II' 'Fe III' 'Ni II' -plot nne")
 
     assert_same_lines(viewer.fig, get_command_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
+
+
+def test_series_style_reads_commas_in_its_values() -> None:
+    """A part of a series style with no known key continues the value before it, e.g. a dash pattern or a label."""
+    assert plotestimators.read_series_style("Te@dashes=5,2,linewidth=2,label=T, electrons") == (
+        "Te",
+        {"dashes": "5,2", "linewidth": "2", "label": "T, electrons"},
+    )
+    assert plotestimators.read_series_style("Fe II") == ("Fe II", {})
+    for item in ("Te@colour=red", "Te@color=notacolour", "Te@dashes=5", "Te@linealpha=2"):
+        with pytest.raises(ValueError, match="Te"):
+            plotestimators.read_series_style(item)
+
+
+def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
+    """The style of a plot item changes its own series alone, and -linewidthscale multiplies each width.
+
+    A label from the user needs a legend, also in a subplot of one variable, which shows its name on the y axis.
+    """
+    tokens = [
+        "Te@color=#00ff00,linewidth=3,label=Electrons",
+        str(modelpath_classic_3d),
+        "-timestep",
+        "10",
+        "-linewidthscale",
+        "2",
+        "-plot",
+        "populations",
+        "Fe II",
+        "Fe III@color=#d55e00,linestyle=dotted",
+    ]
+    fig = get_command_figure(tokens, tmp_path / "estimators.pdf")
+    linesbyname = [{line.get_gid(): line for line in axis.get_lines()} for axis in fig.axes]
+    templine = linesbyname[0]["Te"]
+    assert templine.get_color() == "#00ff00"
+    assert templine.get_linewidth() == pytest.approx(6.0)
+    legend = fig.axes[0].get_legend()
+    assert legend is not None
+    assert [text.get_text() for text in legend.get_texts()] == ["Electrons"]
+
+    defaultion, styledion = linesbyname[1]["Fe II"], linesbyname[1]["Fe III"]
+    assert styledion.get_color() == "#d55e00"
+    assert styledion.get_linestyle() == ":"
+    assert defaultion.get_color() != "#d55e00"
+    # plotestimators draws Fe II with a width of 1.5 points
+    assert defaultion.get_linewidth() == pytest.approx(3.0)
+
+
+def test_interactive_style_change_reuses_the_data() -> None:
+    """A change of a series style or of -linewidthscale draws the data of the last plot again, and reads no data.
+
+    A change of the time reads the data again. A click on a legend entry finds its series, also after a new style.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+    assert viewer.change(dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe III"),))) is None
+    styled = dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe III@color=#d55e00,label=Iron 2+"),))
+    with mock.patch.object(plotestimators, "get_figures_data", wraps=plotestimators.get_figures_data) as getdata:
+        assert viewer.change(styled) is None
+        widevalues = interactive.replace_option_rows(viewer, viewer.values, (("-linewidthscale", ("2",)),))
+        assert viewer.change(widevalues) is None
+        assert getdata.call_count == 0
+        assert viewer.change(viewer.select_timesteps(viewer.values, 11, 1)) is None
+        assert getdata.call_count == 1
+
+    assert viewer.swatches[0, "Fe III"].colour == "#d55e00"
+    axis = interactive.get_plot_frames(viewer.fig)[0]
+    viewer.fig.canvas.draw()
+    legend = axis.get_legend()
+    assert legend is not None
+    for text in legend.get_texts():
+        centre = text.get_window_extent().get_points().mean(axis=0)
+        event = MouseEvent("button_press_event", viewer.fig.canvas, *centre)
+        expected = "Fe III" if text.get_text() == "Iron 2+" else "Fe II"
+        assert interactive.get_series_at(axis, event, legendonly=True) == expected
 
 
 def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
