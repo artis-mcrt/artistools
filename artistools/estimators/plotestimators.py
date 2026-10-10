@@ -1334,6 +1334,9 @@ def plot_multi_ion_series(
             )
         )
 
+    # the colour of an ion comes from its stage, thus Fe II and Co II take the same colour. A subplot of more than one
+    # element thus keeps the colours of the elements, and the ions of an element differ by the dash
+    colorbyion = args.colorbyion and len({atomic_number for atomic_number, _ in iontuplelist}) == 1
     plans = []
     for seriesindex, ((atomic_number, ion_stage), dfseries) in enumerate(zip(iontuplelist, lazyframes, strict=True)):
         plotlabel = str(
@@ -1353,7 +1356,7 @@ def plot_multi_ion_series(
 
         color = get_elemcolor(atomic_number=atomic_number)
         styleindex = variantindex
-        if args.colorbyion:
+        if colorbyion:
             # the colour separates the ions, thus every series keeps the first style
             styleindex = 0
             if ion_stage != "ALL":
@@ -2595,7 +2598,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--colorbyion",
         action="store_true",
         help=(
-            "Give each ion a colour of its own, and not the colour of its element. A plot with x bins always does this"
+            "Give each ion a colour of its own, and not the colour of its element. A plot with x bins always does"
+            " this. A subplot of more than one element keeps the colours of the elements"
         ),
     )
 

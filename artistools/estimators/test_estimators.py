@@ -4003,6 +4003,24 @@ def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
     assert defaultion.get_linewidth() == pytest.approx(3.0)
 
 
+def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path) -> None:
+    """A subplot of more than one element keeps the colours of the elements with --colorbyion.
+
+    --colorbyion takes the colour of an ion from its stage, thus Fe II and Co II had the same colour.
+    """
+    tokens = [str(modelpath_classic_3d), "-timestep", "10", "--colorbyion", "-xbins", "5"]
+    plotlists = (["-plot", "populations", "Fe II", "Fe III", "Co II"], ["-plot", "populations", "Fe II", "Fe III"])
+    severalelements, oneelement = (
+        {
+            line.get_gid(): line.get_color()
+            for line in get_command_figure([*tokens, *plotlist], tmp_path / f"{index}.pdf").axes[0].get_lines()
+        }
+        for index, plotlist in enumerate(plotlists)
+    )
+    assert severalelements["Fe II"] == severalelements["Fe III"] != severalelements["Co II"]
+    assert oneelement["Fe II"] != oneelement["Fe III"]
+
+
 def test_interactive_style_change_reuses_the_data() -> None:
     """A change of a series style or of -linewidthscale draws the data of the last plot again, and reads no data.
 
