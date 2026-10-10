@@ -1,0 +1,54 @@
+---
+name: Claude code review
+permissions:
+    contents: read
+# "Test and lint" runs on push only. A pull_request trigger there would run the full test matrix a
+# second time for each commit on a pull request branch, thus the review has its own workflow
+on:
+    pull_request:
+        types: [opened, synchronize, ready_for_review, reopened]
+# a new push makes the review of the previous commit obsolete
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+    cancel-in-progress: true
+jobs:
+    review:
+        timeout-minutes: 30
+        # a pull request from a fork or from Dependabot cannot read the Actions secrets. A draft is
+        # not ready for a review, and ready_for_review starts the review when the author marks it
+        if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+            }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: write
+            id-token: write
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  fetch-depth: 1
+                  persist-credentials: false
+
+            - name: Review the pull request with Claude
+              uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+              with:
+                  anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+                  prompt: |
+                      REPO: ${{ github.repository }}
+                      PR NUMBER: ${{ github.event.pull_request.number }}
+
+                      Review this pull request. The working directory holds the checkout of the PR branch.
+
+                      Find these problems first:
+                      - bugs and incorrect physics or unit conversions;
+                      - code that does not obey the rules in CLAUDE.md;
+                      - polars queries that collect in a loop or that make a very large join;
+                      - a bug fix that has no regression test.
+
+                      Report only problems that you can show. Do not comment on style that ruff, pyrefly, or ty checks.
+                      Use `mcp__github_inline_comment__create_inline_comment` (with `confirmed: true`) for each problem.
+                      Use `gh pr comment` for one short summary. If you find no problems, write that in the summary.
+                      Only post GitHub comments. Do not submit the review text as messages.
+                  claude_args: |
+                      --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
