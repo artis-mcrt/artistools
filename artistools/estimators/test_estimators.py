@@ -657,6 +657,11 @@ def copy_model_inputs(folder: Path, *extranames: str, source: Path = modelpath) 
         shutil.copy(source / name, folder / name)
 
 
+def relabel_cell(celltext: str, modelgridindex: int) -> str:
+    """Return the text of a cell of cell 0 with a different cell index."""
+    return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
+
+
 def get_cell_texts(estimatortext: str) -> list[str]:
     """Return the text of each cell of an estimator file. The line of a timestep starts the text of a cell."""
     celltexts: list[str] = []
@@ -677,10 +682,7 @@ def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(tmp_path: Pat
     """
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     ncopies = 130
-    copytexts = [
-        "".join(celltext.replace("modelgridindex 0 ", f"modelgridindex {copyindex} ") for celltext in celltexts)
-        for copyindex in range(ncopies)
-    ]
+    copytexts = ["".join(relabel_cell(celltext, copyindex) for celltext in celltexts) for copyindex in range(ncopies)]
     assert sum(len(copytext) for copytext in copytexts) > 16 * 1024 * 1024
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, ["".join(copytexts[:50]), "".join(copytexts[50:51]), "".join(copytexts[51:])])
@@ -782,13 +784,10 @@ def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: 
     def without_gamma_r(celltext: str) -> str:
         return "".join(line for line in celltext.splitlines(keepends=True) if not line.startswith("gamma_R "))
 
-    def relabel(celltext: str, modelgridindex: int) -> str:
-        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
-
     # rank 1 writes no gamma_R line, e.g. because its cells hold no iron
     (tmp_path / "estimators_0000.out").write_text("".join(celltexts), encoding="utf-8")
     (tmp_path / "estimators_0001.out").write_text(
-        "".join(without_gamma_r(relabel(celltext, 1)) for celltext in celltexts), encoding="utf-8"
+        "".join(without_gamma_r(relabel_cell(celltext, 1)) for celltext in celltexts), encoding="utf-8"
     )
     dfranks = at.rustext.estimparse(tmp_path, 0, 1)
     assert dfranks["gamma_R_Fe_II"].null_count() == 0
@@ -799,7 +798,11 @@ def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: 
     ncopies = 160
     copytexts = [
         "".join(
-            (relabel(celltext, copyindex) if copyindex < 20 else without_gamma_r(relabel(celltext, copyindex)))
+            (
+                relabel_cell(celltext, copyindex)
+                if copyindex < 20
+                else without_gamma_r(relabel_cell(celltext, copyindex))
+            )
             for celltext in celltexts
         )
         for copyindex in range(ncopies)
@@ -831,18 +834,15 @@ def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> No
     def without_gamma_r(celltext: str) -> str:
         return "".join(line for line in celltext.splitlines(keepends=True) if not line.startswith("gamma_R "))
 
-    def relabel(celltext: str, modelgridindex: int) -> str:
-        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
-
     # a text part of the parallel parse holds at least 16 MB, thus only the last text part holds the gamma_R lines. The
     # first parquet part of a timestep then has no column that a later parquet part has
     ncopies = 200
     copytexts = [
         "".join(
             (
-                relabel(celltext, copyindex)
+                relabel_cell(celltext, copyindex)
                 if copyindex >= ncopies - 20
-                else without_gamma_r(relabel(celltext, copyindex))
+                else without_gamma_r(relabel_cell(celltext, copyindex))
             )
             for celltext in celltexts
         )
@@ -865,8 +865,9 @@ def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> No
     assert len(batchheights) >= 2
 
     assert any(len(parts) >= 2 for parts in timestepparts.values())
-    sort_timestep_parts(timestepparts)
-    dfbatches = scan_timestep_parts(timestepparts, get_parts_schema(timestepparts)).collect()
+    schema = get_parts_schema(timestepparts)
+    sort_timestep_parts(timestepparts, schema)
+    dfbatches = scan_timestep_parts(timestepparts, schema).collect()
     dfoneread = at.rustext.estimparse_allranks(allranksfile)
     assert dfbatches.height == dfoneread.height == sum(batchheights)
     assert dfbatches["gamma_R_Fe_II"].null_count() == 0
@@ -1044,13 +1045,10 @@ def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
     copy_model_inputs(tmp_path)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
-    def relabel(celltext: str, modelgridindex: int) -> str:
-        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
-
     # two cells in each timestep, and the last timestep holds the first cell only
     lasttimestep = len(celltexts) - 1
     texts = [
-        relabel(celltext, modelgridindex)
+        relabel_cell(celltext, modelgridindex)
         for timestep, celltext in enumerate(celltexts)
         for modelgridindex in ((0,) if timestep == lasttimestep else (0, 1))
     ]
@@ -1081,11 +1079,8 @@ def test_a_column_of_a_dropped_timestep_stays_in_the_cache(tmp_path: Path) -> No
     lasttimestep = len(celltexts) - 1
     (tmp_path / "estimators_allranks.out").write_text("".join(celltexts), encoding="utf-8")
 
-    def relabel(celltext: str, modelgridindex: int) -> str:
-        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
-
     # two cells in each complete timestep, and the last timestep holds one cell with a column of its own
-    completetext = "".join(relabel(celltext, mgi) for celltext in celltexts[:lasttimestep] for mgi in (0, 1))
+    completetext = "".join(relabel_cell(celltext, mgi) for celltext in celltexts[:lasttimestep] for mgi in (0, 1))
     lasttext = celltexts[lasttimestep].replace("\n", "\ncooling: onlylasttimestep 5.0\n", 1)
     textbatches = []
     for textbatchindex, text in enumerate((completetext, lasttext)):
@@ -1122,16 +1117,13 @@ def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_pat
     copy_model_inputs(tmp_path)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
-    def relabel(celltext: str, modelgridindex: int) -> str:
-        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
-
     # rank 0 wrote its frame of the last timestep, and the frame of rank 1 comes 10 s later
     lasttimestep = len(celltexts) - 1
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(
         allranksfile,
         [
-            relabel(celltext, modelgridindex)
+            relabel_cell(celltext, modelgridindex)
             for timestep, celltext in enumerate(celltexts)
             for modelgridindex in ((0,) if timestep == lasttimestep else (0, 1))
         ],
@@ -1146,7 +1138,7 @@ def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_pat
     assert cachefile.stat().st_mtime_ns == cachemtime
 
     write_zstd_frames(
-        allranksfile, [relabel(celltext, modelgridindex) for celltext in celltexts for modelgridindex in (0, 1)]
+        allranksfile, [relabel_cell(celltext, modelgridindex) for celltext in celltexts for modelgridindex in (0, 1)]
     )
     os.utime(allranksfile, (1010.0, 1010.0))
     dfestim = at.estimators.scan_estimators(tmp_path).collect()
@@ -1180,10 +1172,7 @@ def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(tmp_path:
     """
     celltext = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))[0]
     ranktexts = [
-        "".join(
-            celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
-            for modelgridindex in range(rank * 300, (rank + 1) * 300)
-        )
+        "".join(relabel_cell(celltext, modelgridindex) for modelgridindex in range(rank * 300, (rank + 1) * 300))
         for rank in range(2)
     ]
     allranksfile = tmp_path / "estimators_allranks.out.zst"
@@ -1306,12 +1295,10 @@ def test_incomplete_newer_rank_files_leave_the_file_of_all_ranks_in_use(tmp_path
     write_model_of_two_cells(tmp_path, nprocs=2)
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
-    def relabel(celltext: str, modelgridindex: int) -> str:
-        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
-
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(
-        allranksfile, [relabel(celltext, modelgridindex) for celltext in celltexts[:40] for modelgridindex in (0, 1)]
+        allranksfile,
+        [relabel_cell(celltext, modelgridindex) for celltext in celltexts[:40] for modelgridindex in (0, 1)],
     )
     os.utime(allranksfile, (1000.0, 1000.0))
     rankfiles = [tmp_path / f"estimators_{rank:04d}.out" for rank in (0, 1)]
@@ -1325,7 +1312,7 @@ def test_incomplete_newer_rank_files_leave_the_file_of_all_ranks_in_use(tmp_path
     assert pl.read_parquet_metadata(cachefile)["textsource"] == "allranks file"
 
     # the complete files of the ranks, e.g. after the script of ARTIS combined them while the job ran, give the cache
-    rankfiles[1].write_text("".join(relabel(celltext, 1) for celltext in celltexts), encoding="utf-8")
+    rankfiles[1].write_text("".join(relabel_cell(celltext, 1) for celltext in celltexts), encoding="utf-8")
     for rankfile in rankfiles:
         os.utime(rankfile, (3000.0, 3000.0))
     assert at.estimators.scan_estimators(tmp_path).collect().height == 2 * len(celltexts)
@@ -1347,8 +1334,7 @@ def test_conversion_keeps_a_complete_last_timestep_of_the_ranks_that_it_reads(tm
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     (tmp_path / "estimators_0000.out").write_text("".join(celltexts), encoding="utf-8")
     (tmp_path / "estimators_0001.out").write_text(
-        "".join(celltext.replace("modelgridindex 0 ", "modelgridindex 1 ", 1) for celltext in celltexts),
-        encoding="utf-8",
+        "".join(relabel_cell(celltext, 1) for celltext in celltexts), encoding="utf-8"
     )
 
     dfestim = at.estimators.scan_estimators(tmp_path).collect()

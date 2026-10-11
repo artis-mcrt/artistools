@@ -51,8 +51,8 @@ from artistools.misc.modelinfo import get_nonempty_cellcounts
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
-from artistools.rustext import estimparse
 from artistools.rustext import estimparse_allranks_textbatches
+from artistools.rustext import estimparse_textbatches
 from artistools.rustext import estimtimesteps
 
 if t.TYPE_CHECKING:
@@ -669,9 +669,6 @@ MIN_TEXTBATCH_BYTES = 1024**3
 # cache was 0.62 GB
 CACHE_ZSTD_LEVEL = 9
 
-# The number of rank files that one call of estimparse reads
-RANKFILES_PER_TEXTBATCH = 100
-
 # A part exists only during the conversion, thus the speed is more important than the size. On Leonardo, the parts
 # of 4.6 GB of text took 1.8 s to write and 3.6 s to read with no compression. With lz4, they took 4.6 s and 7.1 s,
 # and they were half as large
@@ -781,8 +778,9 @@ def convert_text_to_parts(state: "EstimatorBatchState", partsfolder: Path) -> Ti
             estimparse_allranks_textbatches(state.textfile, MIN_TEXTBATCH_BYTES, submit_text_batch)
         else:
             print(f"    reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
-            for rankbatch in batched(state.mpiranks, RANKFILES_PER_TEXTBATCH, strict=False):
-                submit_text_batch(estimparse(state.runfolder, min(rankbatch), max(rankbatch)))
+            estimparse_textbatches(
+                state.runfolder, min(state.mpiranks), max(state.mpiranks), MIN_TEXTBATCH_BYTES, submit_text_batch
+            )
         if pendingwrite is not None:
             pendingwrite.result()
 
@@ -793,7 +791,7 @@ def convert_text_to_parts(state: "EstimatorBatchState", partsfolder: Path) -> Ti
     return timestepparts
 
 
-def sort_timestep_parts(timestepparts: TimestepParts) -> None:
+def sort_timestep_parts(timestepparts: TimestepParts, schema: pl.Schema) -> None:
     """Sort the rows of each timestep by cell, if the text gives the cells of a timestep in a different order.
 
     sn3d and the script of ARTIS write the file of all ranks in the order of the cells, and the files of the ranks
@@ -805,10 +803,7 @@ def sort_timestep_parts(timestepparts: TimestepParts) -> None:
         ):
             continue
         dftimestep = (
-            pl
-            .concat([pl.read_parquet(part.path) for part in parts], how="diagonal")
-            .fill_null(0)
-            .sort("modelgridindex", maintain_order=True)
+            scan_timestep_parts({timestep: parts}, schema).sort("modelgridindex", maintain_order=True).collect()
         )
         for part in parts:
             part.path.unlink()
@@ -1040,7 +1035,7 @@ def get_estimators_parquetfile(
                         rank: count for rank, count in nonempty_cellcounts.items() if rank in readranks
                     }
                 drop_incomplete_last_timestep(timestepparts, state.runfolder, nonempty_cellcounts)
-                sort_timestep_parts(timestepparts)
+                sort_timestep_parts(timestepparts, schema)
 
             print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
             time_start = time.perf_counter()

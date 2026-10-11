@@ -8,9 +8,9 @@ for the ARTIS radiative transfer code.
 import os
 import sys
 
-# polars starts one thread for each CPU, and a node of a cluster has more than 100. On Leonardo, 16 threads wrote the
-# estimator cache of 4.6 GB of text in 4.1 s, and 128 threads took 10.4 s. polars reads the value when it loads, thus
-# the value has no effect if a script imports polars before artistools
+# polars and artistools.rustext start one thread for each CPU, and a node of a cluster has more than 100. On Leonardo,
+# 16 threads wrote the estimator cache of 4.6 GB of text in 4.1 s, and 128 threads took 10.4 s. 8 and 16 threads read
+# that text at the same speed, and more threads used more memory. Each pool reads the value when its module loads
 os.environ.setdefault("POLARS_MAX_THREADS", str(min(os.process_cpu_count() or 1, 16)))
 
 # numpy must load before polars. Otherwise polars makes a proxy for numpy, and on a free-threaded build two

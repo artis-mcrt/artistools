@@ -1272,19 +1272,18 @@ def temporary_parts_folder(parquetfilepath: Path) -> Generator[Path]:
     The folder is on the file system of the cache, because the parts of a large model need as much space as the cache.
     The name of the folder starts with a dot, thus no glob of the caches finds it.
     """
-    import shutil
     import tempfile
 
     try:
-        partsfolder = Path(tempfile.mkdtemp(dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.parts"))
+        partsfolder = tempfile.TemporaryDirectory(
+            dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.parts", ignore_cleanup_errors=True
+        )
     except OSError as exc:
         if not is_readonly_error(exc):
             raise
         raise get_readonly_cache_error(parquetfilepath) from exc
-    try:
-        yield partsfolder
-    finally:
-        shutil.rmtree(partsfolder, ignore_errors=True)
+    with partsfolder as partsfoldername:
+        yield Path(partsfoldername)
 
 
 def write_parquet_atomic(

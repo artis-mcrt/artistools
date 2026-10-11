@@ -92,24 +92,6 @@ struct EstimatorColumns {
     overflowcount: usize,
 }
 
-/// Return true if `name` is the words of `namewords`, with an underscore between each pair of words
-fn name_equals_words(name: &str, namewords: &[&str]) -> bool {
-    let mut rest = name;
-    for (wordindex, nameword) in namewords.iter().enumerate() {
-        if wordindex > 0 {
-            let Some(afterunderscore) = rest.strip_prefix('_') else {
-                return false;
-            };
-            rest = afterunderscore;
-        }
-        let Some(afterword) = rest.strip_prefix(nameword) else {
-            return false;
-        };
-        rest = afterword;
-    }
-    rest.is_empty()
-}
-
 /// Columns that identify a row rather than measure a quantity, and so must stay exact integers.
 /// Only names verified to be written as integers belong here: parsing is strict, so listing a column that
 /// some ARTIS version writes as a float would turn a readable file into a hard error.
@@ -172,15 +154,15 @@ impl EstimatorColumns {
 
     /// Return the column that `namewords` names, and add the column if the store does not hold it
     fn find_or_add_column(&mut self, namewords: &[&str]) -> usize {
+        self.set_namebuf(namewords);
         if let Some(&colindex) = self
             .prevcellcolumns
             .get(self.expectedposition)
-            .filter(|&&colindex| name_equals_words(&self.colnames[colindex], namewords))
+            .filter(|&&colindex| self.colnames[colindex] == self.namebuf)
         {
             self.expectedposition += 1;
             return colindex;
         }
-        self.set_namebuf(namewords);
         let colindex = if let Some(&colindex) = self.colindex.get(self.namebuf.as_str()) {
             colindex
         } else {
@@ -316,20 +298,18 @@ impl EstimatorColumns {
         // the quantity divided by the electron density (nne) of this cell is also a column. After this cell sets nne,
         // its column has one value for each row. A shorter column holds the nne of an earlier cell, thus the code
         // cannot use it
-        let varname_nonne = variablename.strip_suffix("*nne");
-        let nne = if varname_nonne.is_some() {
-            Some(
+        let nonne = variablename
+            .strip_suffix("*nne")
+            .map(|varname_nonne| {
                 self.colindex
                     .get("nne")
                     .map(|&colindex| &self.coldata[colindex])
                     .filter(|values| values.len() == self.rownum)
                     .and_then(|values| values.last())
-                    .copied()
-                    .ok_or_else(|| malformed("nne is not set for this cell".into()))?,
-            )
-        } else {
-            None
-        };
+                    .map(|&nne| (varname_nonne, nne))
+                    .ok_or_else(|| malformed("nne is not set for this cell".into()))
+            })
+            .transpose()?;
 
         let mut nnelement = 0.0;
         for (ionstage, value) in token_pairs(tokens) {
@@ -352,7 +332,7 @@ impl EstimatorColumns {
             }
 
             let ionstageroman = ionstage_roman(ionstage)?;
-            if let (Some(varname_nonne), Some(nne)) = (varname_nonne, nne) {
+            if let Some((varname_nonne, nne)) = nonne {
                 self.push(&[varname_nonne, elsym, ionstageroman], colvalue / nne)?;
             }
             self.push(&[variablename, elsym, ionstageroman], colvalue)?;
@@ -398,14 +378,6 @@ impl EstimatorColumns {
     }
 }
 
-/// Find the estimator file of an MPI rank, which may or may not be compressed
-fn find_estimator_file(folderpath: &Path, rank: i32) -> Option<PathBuf> {
-    ["", ".zst", ".gz", ".xz"]
-        .iter()
-        .map(|ext| folderpath.join(format!("estimators_{rank:04}.out{ext}")))
-        .find(|filepath| filepath.is_file())
-}
-
 /// The count of the values above the range of f32 in a text, and the line of the first such value
 #[derive(Clone, Copy, Default)]
 struct Overflows {
@@ -414,10 +386,10 @@ struct Overflows {
 }
 
 impl Overflows {
-    /// Add the overflows of a later part of the same text
-    fn add(&mut self, later: Self) {
-        if self.count == 0 {
-            self.firstline = later.firstline;
+    /// Add the overflows of a later part of the same text, whose first line has the number `firstlinenum`
+    fn add(&mut self, later: Self, firstlinenum: usize) {
+        if self.count == 0 && later.count > 0 {
+            self.firstline = firstlinenum + later.firstline - 1;
         }
         self.count += later.count;
     }
@@ -436,46 +408,101 @@ impl Overflows {
     }
 }
 
-/// Parse the lines of an estimator text into a `DataFrame`. An error names the file and the line, and the
-/// first line has the number `firstlinenum`.
-fn parse_estimator_lines<'a>(
-    lines: impl Iterator<Item = &'a str>,
-    filepath: &Path,
-    firstlinenum: usize,
-) -> PolarsResult<(DataFrame, Overflows)> {
+/// An error in a part of an estimator text, at a line number that counts from the first line of the part
+///
+/// The threads parse the parts in parallel, thus the line number of the first line of a part is known only after the
+/// parse of the parts before it.
+enum PartError {
+    /// a byte that is not UTF-8
+    NotUtf8 { linenum: usize },
+    /// a line that the parser cannot read
+    Malformed { linenum: usize, err: PolarsError },
+}
+
+impl PartError {
+    /// Return the error with the file and the line in the file, for a part whose first line has the number
+    /// `firstlinenum`
+    fn in_file(self, filepath: &Path, firstlinenum: usize) -> PolarsError {
+        match self {
+            // the same message as a read of each line. pyo3-polars gives Python only the text of the io::Error, thus
+            // the place goes into that text
+            Self::NotUtf8 { linenum } => io_error_at(
+                &std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "stream did not contain valid UTF-8",
+                ),
+                &format!("{}:{}", filepath.display(), firstlinenum + linenum - 1),
+            )
+            .into(),
+            Self::Malformed { linenum, err } => {
+                error_at_line(&err, filepath, firstlinenum + linenum - 1)
+            }
+        }
+    }
+}
+
+/// The table of one part of an estimator text, its overflows, and the count of its lines
+struct ParsedPart {
+    dfpart: DataFrame,
+    overflows: Overflows,
+    linecount: usize,
+}
+
+/// Parse one part of an estimator text. The line numbers of an error and of the overflows count from the first line
+/// of the part.
+///
+/// The thread of each part checks its UTF-8 and counts its lines. A check by the thread that splits the text would
+/// make each part wait for the parts before it.
+fn parse_part(text: &[u8]) -> Result<ParsedPart, PartError> {
+    let text = std::str::from_utf8(text).map_err(|err| PartError::NotUtf8 {
+        linenum: count_newlines(&text[..err.valid_up_to()]) + 1,
+    })?;
     let mut columns = EstimatorColumns::default();
     let mut firstoverflowline = 0;
-    for (linenum, line) in (firstlinenum..).zip(lines) {
+    let mut linecount = 0;
+    for (linenum, line) in (1..).zip(text.lines()) {
         columns
             .parse_line(line)
-            .map_err(|err| error_at_line(&err, filepath, linenum))?;
+            .map_err(|err| PartError::Malformed { linenum, err })?;
         if firstoverflowline == 0 && columns.overflowcount > 0 {
             firstoverflowline = linenum;
         }
+        linecount = linenum;
     }
     let overflows = Overflows {
         count: columns.overflowcount,
         firstline: firstoverflowline,
     };
+    let dfpart = columns
+        .into_dataframe()
+        .map_err(|err| PartError::Malformed {
+            linenum: linecount,
+            err,
+        })?;
 
-    Ok((columns.into_dataframe()?, overflows))
+    Ok(ParsedPart {
+        dfpart,
+        overflows,
+        linecount,
+    })
 }
 
-/// Read the estimator file of one MPI rank, e.g. `estimators_0000.out[.zst]`, and return a `DataFrame`
-///
-/// The second item is a warning about the values above the range of f32, or None if the file holds none.
-fn read_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<(DataFrame, Option<String>)> {
-    let filepath = find_estimator_file(folderpath, rank).ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!(
-                "no estimator file found for rank {rank} in {}",
-                folderpath.display()
-            ),
-        )
-    })?;
-
-    read_estimator_text(&filepath)
+/// Find the estimator file of an MPI rank, which may or may not be compressed
+fn find_estimator_file(folderpath: &Path, rank: i32) -> PolarsResult<PathBuf> {
+    ["", ".zst", ".gz", ".xz"]
+        .iter()
+        .map(|ext| folderpath.join(format!("estimators_{rank:04}.out{ext}")))
+        .find(|filepath| filepath.is_file())
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "no estimator file found for rank {rank} in {}",
+                    folderpath.display()
+                ),
+            )
+            .into()
+        })
 }
 
 /// Join the `DataFrame`s of the files of the ranks, or of the parts of one file, into one `DataFrame`
@@ -493,6 +520,77 @@ fn concat_estimator_frames(vecdfs: &[DataFrame]) -> PolarsResult<DataFrame> {
     }
 }
 
+/// Read the files of the ranks from rankmin to rankmax in text batches, and give the `DataFrame` of each text batch to
+/// `on_batch` in the order of the ranks
+///
+/// The threads read one file of a rank each. A text batch ends after the file of a rank that brings its text to
+/// `textbatchbytes` or more, thus a run with few ranks and many cells also keeps its memory small. The result is a
+/// warning for each file with values above the range of f32.
+fn read_rankfile_textbatches(
+    folderpath: &Path,
+    rankmin: i32,
+    rankmax: i32,
+    textbatchbytes: usize,
+    mut on_batch: impl FnMut(DataFrame) -> PolarsResult<()>,
+) -> PolarsResult<Vec<String>> {
+    if rankmin > rankmax {
+        polars_bail!(ComputeError: "the rank range {rankmin} to {rankmax} holds no rank");
+    }
+    let ranks: Vec<i32> = (rankmin..=rankmax).collect();
+    let mut warnings = Vec::new();
+    let mut textbatchframes = Vec::new();
+    let mut textbytes = 0;
+    for rankgroup in ranks.chunks(rayon::current_num_threads()) {
+        let rankresults: Vec<(DataFrame, Option<String>, usize)> = rankgroup
+            .par_iter()
+            .map(|&rank| read_estimator_text(&find_estimator_file(folderpath, rank)?, false))
+            .collect::<PolarsResult<_>>()?;
+        for (dfrank, warning, ranktextbytes) in rankresults {
+            textbatchframes.push(dfrank);
+            warnings.extend(warning);
+            textbytes += ranktextbytes;
+            if textbytes >= textbatchbytes {
+                on_batch(concat_estimator_frames(&textbatchframes)?)?;
+                textbatchframes.clear();
+                textbytes = 0;
+            }
+        }
+    }
+    if !textbatchframes.is_empty() {
+        on_batch(concat_estimator_frames(&textbatchframes)?)?;
+    }
+
+    Ok(warnings)
+}
+
+/// Call a Python function for each text batch of a reader, and return the warnings of the reader
+///
+/// The read runs without the GIL, and each call of `on_batch` holds it. An exception in `on_batch` stops the read.
+fn read_with_batch_callback<T>(
+    py: Python<'_>,
+    on_batch: &Py<PyAny>,
+    read: impl Send + FnOnce(&mut dyn FnMut(DataFrame) -> PolarsResult<()>) -> PolarsResult<T>,
+) -> PyResult<T>
+where
+    T: Send,
+{
+    let mut callbackerror: Option<PyErr> = None;
+    let result = py.detach(|| {
+        read(&mut |dftextbatch| {
+            Python::attach(|py| on_batch.call1(py, (PyDataFrame(dftextbatch),)))
+                .map(|_| ())
+                .map_err(|err| {
+                    callbackerror = Some(err);
+                    polars_err!(ComputeError: "the batch callback raised an exception")
+                })
+        })
+    });
+    if let Some(err) = callbackerror {
+        return Err(err);
+    }
+    Ok(result.map_err(PyPolarsErr::from)?)
+}
+
 /// Read the estimator files from rankmin to rankmax and concatenate them into a single `DataFrame`
 ///
 /// The parse runs without the GIL, thus other Python threads can run at the same time.
@@ -504,24 +602,42 @@ pub fn estimparse(
     rankmin: i32,
     rankmax: i32,
 ) -> PyResult<PyDataFrame> {
-    let (dfbatch, warnings) = py
-        .detach(|| {
-            if rankmin > rankmax {
-                polars_bail!(ComputeError: "the rank range {rankmin} to {rankmax} holds no rank");
-            }
-            let rankresults: Vec<(DataFrame, Option<String>)> = (rankmin..=rankmax)
-                .into_par_iter()
-                .map(|rank| read_estimator_file(&folderpath, rank))
-                .collect::<PolarsResult<_>>()?;
-            let (vecdfs, warnings): (Vec<DataFrame>, Vec<Option<String>>) =
-                rankresults.into_iter().unzip();
-
-            Ok((concat_estimator_frames(&vecdfs)?, warnings))
+    let (dfranks, warnings) = py
+        .detach(|| -> PolarsResult<(DataFrame, Vec<String>)> {
+            let mut dfranks = DataFrame::empty();
+            // a text batch of unlimited size holds the text of all the ranks
+            let warnings =
+                read_rankfile_textbatches(&folderpath, rankmin, rankmax, usize::MAX, |dfbatch| {
+                    dfranks = dfbatch;
+                    Ok(())
+                })?;
+            Ok((dfranks, warnings))
         })
         .map_err(PyPolarsErr::from)?;
-    give_warnings(py, warnings.iter().flatten())?;
+    give_warnings(py, warnings.iter())?;
 
-    Ok(PyDataFrame(dfbatch))
+    Ok(PyDataFrame(dfranks))
+}
+
+/// Read the estimator files from rankmin to rankmax in text batches, and call `on_batch` with the `DataFrame` of each
+/// text batch in the order of the ranks
+///
+/// A text batch ends after the file of a rank that brings its text to `textbatchbytes` or more, thus a caller can
+/// convert files whose table is larger than the memory.
+#[pyfunction]
+#[expect(clippy::needless_pass_by_value)]
+pub fn estimparse_textbatches(
+    py: Python<'_>,
+    folderpath: PathBuf,
+    rankmin: i32,
+    rankmax: i32,
+    textbatchbytes: usize,
+    on_batch: Py<PyAny>,
+) -> PyResult<()> {
+    let warnings = read_with_batch_callback(py, &on_batch, |on_textbatch| {
+        read_rankfile_textbatches(&folderpath, rankmin, rankmax, textbatchbytes, on_textbatch)
+    })?;
+    give_warnings(py, warnings.iter())
 }
 
 /// Give a Python warning for each text, e.g. a warning about the values of a file above the range of f32
@@ -543,25 +659,17 @@ fn give_warnings<'a>(py: Python<'_>, warnings: impl Iterator<Item = &'a String>)
 /// The minimum size of the text of one part of an estimator file. One thread parses each part.
 const TEXTPART_BYTES: usize = 16 * 1024 * 1024;
 
-/// A part of an estimator text, and the line number of its first line in the file
-struct TextPart {
-    firstlinenum: usize,
-    text: String,
-}
-
 /// Split the blocks of a text into parts that end at the end of a cell. An empty line ends each cell, thus no
 /// cell spans two parts. The last part drops a cell that the end of the text cuts.
 ///
-/// One thread splits the text for all the threads that parse it. A block of ARTIS frames ends at the end of a cell,
-/// and it then becomes a part with no copy.
+/// One thread splits the text for all the threads that parse it, thus it does as little as possible with the text. A
+/// block of ARTIS frames ends at the end of a cell, and it then becomes a part with no copy.
 struct TextParts<'a> {
     blocks: TextBlocks,
     /// the file of the text, which an I/O error names
     filepath: &'a Path,
     /// the text after the last complete cell of the part before
     carry: Vec<u8>,
-    /// the line number of the first line of `carry`
-    nextlinenum: usize,
     finished: bool,
 }
 
@@ -594,7 +702,7 @@ fn count_newlines(text: &[u8]) -> usize {
 }
 
 impl Iterator for TextParts<'_> {
-    type Item = std::io::Result<TextPart>;
+    type Item = std::io::Result<Vec<u8>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
@@ -628,41 +736,12 @@ impl Iterator for TextParts<'_> {
                 }
                 Some(Err(err)) => {
                     self.finished = true;
-                    let place = format!(
-                        "{}:{}",
-                        self.filepath.display(),
-                        self.nextlinenum + count_newlines(&text)
-                    );
-                    return Some(Err(io_error_at(&err, &place)));
+                    return Some(Err(io_error_at(&err, &self.filepath.display().to_string())));
                 }
             }
         }
 
-        let firstlinenum = self.nextlinenum;
-        self.nextlinenum += count_newlines(&text);
-        if text.is_empty() {
-            return None;
-        }
-        Some(
-            String::from_utf8(text)
-                .map(|text| TextPart { firstlinenum, text })
-                .map_err(|err| {
-                    // the same message as a read of each line, at the line of the first byte that is not UTF-8
-                    let validtext = &err.as_bytes()[..err.utf8_error().valid_up_to()];
-                    let place = format!(
-                        "{}:{}",
-                        self.filepath.display(),
-                        firstlinenum + count_newlines(validtext)
-                    );
-                    io_error_at(
-                        &std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            "stream did not contain valid UTF-8",
-                        ),
-                        &place,
-                    )
-                }),
-        )
+        (!text.is_empty()).then_some(Ok(text))
     }
 }
 
@@ -670,79 +749,86 @@ impl Iterator for TextParts<'_> {
 /// the file
 ///
 /// A text batch holds the text of whole parts, and it ends after the part that brings its text to `textbatchbytes` or
-/// more. The reader holds one text batch at a time. The threads parse the parts of a text batch in parallel, and the rows keep the
-/// order of the file. A text that does not end with an empty line ends inside a cell, e.g. because a job stopped
-/// during the write. The reader drops that cell in both forms of the text, thus each value in the table comes from a
-/// complete cell of the text. The result is a warning about the values above the range of f32, or None for no such
-/// value.
+/// more. The reader holds one text batch at a time. The threads parse the parts of a text batch in parallel, and the
+/// rows keep the order of the file. A text that does not end with an empty line ends inside a cell, e.g. because a job
+/// stopped during the write. The reader drops that cell in both forms of the text, thus each value in the table comes
+/// from a complete cell of the text. The result is a warning about the values above the range of f32, or None for no
+/// such value, and the size of the text.
 fn read_estimator_textbatches(
     filepath: &Path,
+    parallelzstd: bool,
     textbatchbytes: usize,
     mut on_batch: impl FnMut(DataFrame) -> PolarsResult<()>,
-) -> PolarsResult<Option<String>> {
-    let parse_part = |part: std::io::Result<TextPart>| -> PolarsResult<(DataFrame, Overflows)> {
-        let part = part?;
-        parse_estimator_lines(part.text.lines(), filepath, part.firstlinenum)
-    };
+) -> PolarsResult<(Option<String>, usize)> {
     let mut parts = TextParts {
-        blocks: open_text_blocks(filepath)?,
+        blocks: open_text_blocks(filepath, parallelzstd)?,
         filepath,
         carry: Vec::new(),
-        nextlinenum: 1,
         finished: false,
     };
     let mut overflows = Overflows::default();
+    // the line number of the first line of the next part
+    let mut nextlinenum = 1;
+    let mut totaltextbytes = 0;
     while let Some(firstpart) = parts.next() {
-        let dfbatch = if parts.finished {
-            // the last part of the text needs no thread and no concatenation, e.g. the whole text of a small rank file
-            let (dfpart, partoverflows) = parse_part(firstpart)?;
-            overflows.add(partoverflows);
-            dfpart
-        } else {
-            let mut textbytes = firstpart.as_ref().map_or(0, |part| part.text.len());
-            let laterparts = std::iter::from_fn(|| {
-                if textbytes >= textbatchbytes {
-                    return None;
-                }
-                let part = parts.next()?;
-                textbytes += part.as_ref().map_or(0, |part| part.text.len());
-                Some(part)
-            });
-            let mut indexedparts: Vec<(usize, (DataFrame, Overflows))> = std::iter::once(firstpart)
-                .chain(laterparts)
-                .enumerate()
-                .par_bridge()
-                .map(|(partindex, part)| Ok((partindex, parse_part(part)?)))
-                .collect::<PolarsResult<_>>()?;
+        let mut textbytes = firstpart.as_ref().map_or(0, Vec::len);
+        let parsedparts: Vec<(usize, std::io::Result<Result<ParsedPart, PartError>>)> =
+            if parts.finished {
+                // the last part of the text needs no thread and no concatenation, e.g. the whole text of a small rank file
+                vec![(0, firstpart.map(|text| parse_part(&text)))]
+            } else {
+                let laterparts = std::iter::from_fn(|| {
+                    if textbytes >= textbatchbytes {
+                        return None;
+                    }
+                    let part = parts.next()?;
+                    textbytes += part.as_ref().map_or(0, Vec::len);
+                    Some(part)
+                });
+                // the threads parse each part while the splitter reads the next, and the result of each part stays,
+                // thus an error gets its line number from the line counts of the parts before it
+                let mut parsedparts: Vec<(usize, std::io::Result<Result<ParsedPart, PartError>>)> =
+                    std::iter::once(firstpart)
+                        .chain(laterparts)
+                        .enumerate()
+                        .par_bridge()
+                        .map(|(partindex, part)| (partindex, part.map(|text| parse_part(&text))))
+                        .collect();
+                parsedparts.sort_unstable_by_key(|(partindex, _)| *partindex);
+                parsedparts
+            };
+        totaltextbytes += textbytes;
 
-            indexedparts.sort_unstable_by_key(|(partindex, _)| *partindex);
-            let vecdfs: Vec<DataFrame> = indexedparts
-                .into_iter()
-                .map(|(_, (dfpart, partoverflows))| {
-                    overflows.add(partoverflows);
-                    dfpart
-                })
-                .collect();
-            concat_estimator_frames(&vecdfs)?
-        };
-        on_batch(dfbatch)?;
+        let mut vecdfs = Vec::with_capacity(parsedparts.len());
+        for (_, parsedpart) in parsedparts {
+            let parsedpart = parsedpart?.map_err(|err| err.in_file(filepath, nextlinenum))?;
+            overflows.add(parsedpart.overflows, nextlinenum);
+            nextlinenum += parsedpart.linecount;
+            vecdfs.push(parsedpart.dfpart);
+        }
+        on_batch(concat_estimator_frames(&vecdfs)?)?;
     }
 
-    Ok(overflows.warning(filepath))
+    Ok((overflows.warning(filepath), totaltextbytes))
 }
 
 /// Read an estimator text, which is the file of one rank or the file of all ranks, and return a `DataFrame`
 ///
-/// The second item is a warning about the values above the range of f32, or None if the text holds none.
-fn read_estimator_text(filepath: &Path) -> PolarsResult<(DataFrame, Option<String>)> {
-    let mut dfestimators = concat_estimator_frames(&[])?;
+/// The second item is a warning about the values above the range of f32, or None if the text holds none. The third item
+/// is the size of the text.
+fn read_estimator_text(
+    filepath: &Path,
+    parallelzstd: bool,
+) -> PolarsResult<(DataFrame, Option<String>, usize)> {
+    let mut dfestimators = DataFrame::empty();
     // a text batch of unlimited size holds the whole text
-    let warning = read_estimator_textbatches(filepath, usize::MAX, |dfbatch| {
-        dfestimators = dfbatch;
-        Ok(())
-    })?;
+    let (warning, textbytes) =
+        read_estimator_textbatches(filepath, parallelzstd, usize::MAX, |dfbatch| {
+            dfestimators = dfbatch;
+            Ok(())
+        })?;
 
-    Ok((dfestimators, warning))
+    Ok((dfestimators, warning, textbytes))
 }
 
 /// Read the estimator file of all ranks, e.g. `estimators_allranks.out.zst`, and return a `DataFrame`
@@ -751,26 +837,18 @@ fn read_estimator_text(filepath: &Path) -> PolarsResult<(DataFrame, Option<Strin
 #[pyfunction]
 #[expect(clippy::needless_pass_by_value)]
 pub fn estimparse_allranks(py: Python<'_>, filepath: PathBuf) -> PyResult<PyDataFrame> {
-    let (dfallranks, warning) = py
-        .detach(|| read_estimator_text(&filepath))
+    let (dfallranks, warning, _) = py
+        .detach(|| read_estimator_text(&filepath, true))
         .map_err(PyPolarsErr::from)?;
     give_warnings(py, warning.iter())?;
 
     Ok(PyDataFrame(dfallranks))
 }
 
-/// The maximum number of threads that parse the parts of the estimator file of all ranks
-///
-/// One thread splits the text into parts for the others, thus more threads give no speed. Each thread holds one part,
-/// thus more threads use more memory. On a login node of Leonardo, 4.6 GB of text took 10.7 s with 4 threads, and
-/// 8.3 s with 8 threads and 16 threads.
-const MAX_PARSE_THREADS: usize = 16;
-
 /// Read the estimator file of all ranks in text batches, and call `on_batch` with the `DataFrame` of each text batch
 ///
 /// A text batch ends after the part of the text that brings its text to `textbatchbytes` or more. The reader holds one
-/// text batch at a time, thus a caller can convert a file whose table is larger than the memory. The parse runs without
-/// the GIL, and each call of `on_batch` holds it.
+/// text batch at a time, thus a caller can convert a file whose table is larger than the memory.
 #[pyfunction]
 #[expect(clippy::needless_pass_by_value)]
 pub fn estimparse_allranks_textbatches(
@@ -779,30 +857,10 @@ pub fn estimparse_allranks_textbatches(
     textbatchbytes: usize,
     on_batch: Py<PyAny>,
 ) -> PyResult<()> {
-    let mut callbackerror: Option<PyErr> = None;
-    let result = py.detach(|| {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(rayon::current_num_threads().min(MAX_PARSE_THREADS))
-            .build()
-            .map_err(|err| polars_err!(ComputeError: "{err}"))?;
-        pool.install(|| {
-            read_estimator_textbatches(&filepath, textbatchbytes, |dfbatch| {
-                Python::attach(|py| on_batch.call1(py, (PyDataFrame(dfbatch),)))
-                    .map(|_| ())
-                    .map_err(|err| {
-                        callbackerror = Some(err);
-                        polars_err!(ComputeError: "the batch callback raised an exception")
-                    })
-            })
-        })
-    });
-    if let Some(err) = callbackerror {
-        return Err(err);
-    }
-    let warning = result.map_err(PyPolarsErr::from)?;
-    give_warnings(py, warning.iter())?;
-
-    Ok(())
+    let (warning, _) = read_with_batch_callback(py, &on_batch, |on_textbatch| {
+        read_estimator_textbatches(&filepath, true, textbatchbytes, on_textbatch)
+    })?;
+    give_warnings(py, warning.iter())
 }
 
 /// Return the timesteps of the cells of an estimator file in ascending order, without repeats
