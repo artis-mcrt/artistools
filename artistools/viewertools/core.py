@@ -21,6 +21,7 @@ from artistools.misc import path_is_file
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
 from artistools.misc.cliutils import SERIES_DEFAULT
+from artistools.misc.cliutils import SERIES_STYLE_KEYS
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import get_series_colors
 
@@ -639,7 +640,7 @@ def get_option_row_tokens(rows: OptionRows) -> list[str]:
 
 
 # the options that give one value for each series, e.g. each spectrum, in the order of the paths of the command
-SERIES_STYLE_FLAGS: t.Final = ("-label", "-color", "-linestyle", "-linewidth", "-linealpha", "-dashes")
+SERIES_STYLE_FLAGS: t.Final = tuple(f"-{key}" for key in SERIES_STYLE_KEYS)
 
 
 def get_series_value(values: "Sequence[str]", index: int) -> str | None:

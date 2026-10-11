@@ -2290,7 +2290,7 @@ def open_window(
         values = viewer.values
         if path not in values.spectra:
             return
-        # the colour of the dialog for "Default" is the colour that the spectrum has with no -color of its own
+        # the colour of the popup for "Default" is the colour that the spectrum has with no -color of its own
         defaultcolours = get_series_colours(
             values.spectra, set_series_values(values, path, {"-color": None}).otheroptions
         )
@@ -2298,8 +2298,8 @@ def open_window(
         name = style["-label"] or get_series_name(path)
 
         def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
-            # a change applies to the current values, because Play can move the time while the dialog is open. No
-            # change gives the series its style from before the dialog
+            # a change applies to the current values, because Play can move the time while the popup is open. A value
+            # of None for changes gives the series its style from before the popup
             apply(set_series_values(viewer.values, path, style if changes is None else changes), undoable=undoable)
 
         edit_series_properties(
@@ -2330,8 +2330,8 @@ def open_window(
         partial(show_status_note, statusbar),
         "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
         " -label and the style of each series. The time controls read the timesteps of the ARTIS model with ⏱."
-        " Click ▲ or ▼, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the order. The command"
-        " gives a file from the reference data of artistools by its name alone.",
+        " Click the up or the down arrow, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the"
+        " order. The command gives a file from the reference data of artistools by its name alone.",
         ReferenceData(
             kind="reference spectrum",
             folder=get_path("artistools_dir") / "data" / "refspectra",

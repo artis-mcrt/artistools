@@ -192,7 +192,7 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
   2. `application.py` starts the Qt application, and it opens and remembers the windows;
   3. `widgets.py` makes the widgets, e.g. the sections, the option table, and the status bar;
   4. `sections.py` makes the sections of the viewing direction, the axes, and the time;
-  5. `series.py` makes the list of the series and the dialog of the line properties;
+  5. `series.py` makes the list of the series and the popup of the line properties;
   6. `menus.py` makes the menus and the actions of the figure;
   7. `window.py` builds the window and draws the plot in a worker thread.
 - Examples of the shared code:
@@ -200,7 +200,7 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
   - `add_series_list` gives the list of the models and the reference files;
   - `add_direction_section` gives the section of the viewing direction;
   - `add_y_limits_row` and `add_y_axis_actions` give the controls of the y range and the y scale;
-  - `edit_series_properties` gives the dialog of the line properties of a series, e.g. the label and the colour;
+  - `edit_series_properties` gives the popup of the line properties of a series, e.g. the label and the colour;
   - `reload_runs` reads the runs again.
 - Use the same heading for the same section in each viewer. plotlightcurves uses "Horizontal axis: Time [d]" for its x section, because its x axis is always the time. plotspectra gives the quantity and the unit of its x axis in the same form, e.g. "Horizontal axis: Wavelength [Å]". The headings are:
   - "Data sources", which comes first and holds the list of the models and the reference files;
