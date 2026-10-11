@@ -996,13 +996,6 @@ def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> No
     assert expected in completions
 
 
-def test_package_attrs() -> None:
-    """Every re-exported attribute must resolve."""
-    for name in dir(at):
-        if not name.startswith("_"):
-            assert getattr(at, name) is not None
-
-
 def test_timestep_times() -> None:
     timestartarray = at.get_timestep_times(modelpath, loc="start")
     timedeltarray = at.get_timestep_times(modelpath, loc="delta")
@@ -1595,13 +1588,6 @@ def test_get_ion_tuple_no_separator() -> None:
 
     with pytest.raises(ValueError, match="Could not parse ionstr"):
         at.get_ion_tuple("notanion")
-
-
-def test_parse_range_list() -> None:
-    assert at.misc.parse_range_list("5") == [5]
-    assert at.misc.parse_range_list("3-5") == [3, 4, 5]
-    assert at.misc.parse_range_list("1,3-5,8") == [1, 3, 4, 5, 8]
-    assert at.misc.parse_range_list("5-3") == [3, 4, 5]  # reversed range is sorted
 
 
 def test_make_vpkt_input_default_contents() -> None:

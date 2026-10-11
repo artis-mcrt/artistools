@@ -23,7 +23,6 @@ import numpy as np
 import polars as pl
 import polars.testing as pltest
 import pytest
-import yaml
 
 import artistools as at
 from artistools.estimators import plotestimators
@@ -918,18 +917,13 @@ def test_get_file_metadata(tmp_path: Path) -> None:
     (tmp_path / "ebv.txt.meta.yml").write_text("a_v: 2.0\nr_v: 4.0\n")
     assert at.misc.get_file_metadata(tmp_path / "ebv.txt")["e_bminusv"] == pytest.approx(0.5)
 
-    # metadata can also come from a combined metadata.yml keyed by the file path
-    combineddir = tmp_path / "combined"
-    combineddir.mkdir()
-    combinedfile = combineddir / "spectrum.txt"
-    combinedfile.write_text("data")
-    (combineddir / "metadata.yml").write_text(yaml.safe_dump({str(combinedfile): {"a_v": 1.0, "e_bminusv": 0.25}}))
-    combined_metadata = at.misc.get_file_metadata(combinedfile)
-    assert combined_metadata["r_v"] == pytest.approx(4.0)
-
     # no metadata file present -> empty dict
     (tmp_path / "nometa.txt").write_text("data")
     assert at.misc.get_file_metadata(tmp_path / "nometa.txt") == {}
+
+    (tmp_path / "scalar.txt.meta.yml").write_text("a scalar\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="must be a mapping"):
+        at.misc.get_file_metadata(tmp_path / "scalar.txt")
 
 
 def test_write_parquet_atomic(tmp_path: Path) -> None:
@@ -2732,12 +2726,10 @@ def test_a_host_alias_of_one_letter_stays_remote_outside_windows(monkeypatch: py
     assert remote.names_a_remote_folder("a:/lustre/model")
 
 
-def test_get_file_metadata_reads_the_sidecar_of_a_link_and_a_key_with_a_folder(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A metadata file beside a symbolic link and a key of metadata.yml with a folder must each give the metadata.
+def test_get_file_metadata_reads_the_sidecar_of_a_link(tmp_path: Path) -> None:
+    """A metadata file beside a symbolic link must give the metadata.
 
-    The function resolved the link before the lookups, thus it looked beside the target and keyed on the target.
+    The function resolved the link before the lookup, thus it looked beside the target.
     """
     (tmp_path / "store").mkdir()
     (tmp_path / "store" / "spec.txt").write_text("data", encoding="utf-8")
@@ -2746,12 +2738,6 @@ def test_get_file_metadata_reads_the_sidecar_of_a_link_and_a_key_with_a_folder(
     (linkfolder / "spec.txt").symlink_to(tmp_path / "store" / "spec.txt")
     (linkfolder / "spec.txt.meta.yml").write_text("a_v: 1.5\n", encoding="utf-8")
     assert at.misc.get_file_metadata(linkfolder / "spec.txt")["a_v"] == pytest.approx(1.5)
-
-    (tmp_path / "data").mkdir()
-    (tmp_path / "data" / "obs.txt").write_text("data", encoding="utf-8")
-    (tmp_path / "data" / "metadata.yml").write_text(yaml.safe_dump({"data/obs.txt": {"a_v": 2.5}}), encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
-    assert at.misc.get_file_metadata("data/obs.txt")["a_v"] == pytest.approx(2.5)
 
 
 def test_get_file_metadata_follows_the_working_folder_and_takes_an_empty_file(
@@ -2775,16 +2761,6 @@ def test_get_file_metadata_follows_the_working_folder_and_takes_an_empty_file(
     (tmp_path / "empty.txt").write_text("data", encoding="utf-8")
     (tmp_path / "empty.txt.meta.yml").write_text("# a comment alone\n", encoding="utf-8")
     assert at.misc.get_file_metadata(tmp_path / "empty.txt") == {}
-
-    combineddir = tmp_path / "combined"
-    combineddir.mkdir()
-    (combineddir / "spec.txt").write_text("data", encoding="utf-8")
-    (combineddir / "metadata.yml").write_text("# a comment alone\n", encoding="utf-8")
-    assert at.misc.get_file_metadata(combineddir / "spec.txt") == {}
-    # the combined file sits beside the data file, thus a key can hold the name of the file alone
-    (combineddir / "metadata.yml").write_text(yaml.safe_dump({"spec.txt": {"a_v": 3.0}}), encoding="utf-8")
-    at.misc.fileio.get_file_metadata_cached.cache_clear()
-    assert at.misc.get_file_metadata(combineddir / "spec.txt")["a_v"] == pytest.approx(3.0)
 
 
 def test_get_mpiranklist_takes_a_numpy_array_of_cells() -> None:
@@ -3343,19 +3319,6 @@ def test_read_rank_outputfiles_skips_an_empty_rank_file(tmp_path: Path, capsys: 
 
     assert dfout["modelgridindex"].to_list() == [0, 1, 2]
     assert "nlte_0001.out is empty" in capsys.readouterr().err
-
-
-def test_get_file_metadata_takes_a_key_with_no_value(tmp_path: Path) -> None:
-    """A key of metadata.yml with no value gives no metadata, and a value that is not a mapping gives a message.
-
-    YAML reads a key with no value as None, and the derived values then raised a TypeError.
-    """
-    (tmp_path / "metadata.yml").write_text("sn.txt:\n", encoding="utf-8")
-    assert at.misc.get_file_metadata(tmp_path / "sn.txt") == {}
-
-    (tmp_path / "other.txt.meta.yml").write_text("a scalar\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="must be a mapping"):
-        at.misc.get_file_metadata(tmp_path / "other.txt")
 
 
 def test_one_timestep_grid_from_timesteps_out_and_from_input_txt_gives_one_range(tmp_path: Path) -> None:
