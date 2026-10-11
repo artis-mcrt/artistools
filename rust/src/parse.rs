@@ -1,8 +1,9 @@
 use autocompress::io::ProcessorReader;
 use autocompress::xz::XzDecompress;
-use autocompress::{FileFormat, PlainProcessor, Processor};
+use autocompress::{FileFormat, Processor};
 use polars::prelude::*;
-use std::io::{BufReader, Read};
+use rayon::prelude::*;
+use std::io::{BufReader, Cursor, Read};
 use std::path::Path;
 use std::str::FromStr;
 
@@ -32,21 +33,325 @@ pub fn io_error_at(err: &std::io::Error, place: &str) -> std::io::Error {
     std::io::Error::new(err.kind(), format!("{place}: {err}"))
 }
 
-/// Open a file with transparent decompression detected from its content (not the file name),
-/// placing no memory limit on the xz decoder. An error names the file.
-pub fn open_decompressed(filepath: &Path) -> std::io::Result<impl Read> {
-    let open = || -> std::io::Result<_> {
-        let mut reader = BufReader::new(std::fs::File::open(filepath)?);
-        let decompressor: Box<dyn Processor + Send + Unpin> =
-            match FileFormat::from_buf_reader(&mut reader)? {
-                Some(format) => unlimited_decompressor(format)?,
-                None => Box::new(PlainProcessor::new()),
-            };
+/// A sequence of blocks of decompressed text, in the order of the file
+pub type TextBlocks = Box<dyn Iterator<Item = std::io::Result<Vec<u8>>> + Send>;
 
-        Ok(ProcessorReader::with_processor(decompressor, reader))
+/// The size of a block of text from a file that is not zstd
+const STREAM_TEXTBLOCK_BYTES: usize = 16 * 1024 * 1024;
+
+/// Open a file and return its decompressed text in blocks
+///
+/// The content of the file, and not its name, gives the compression format. The xz decoder has no memory limit. An
+/// error names the file. With `parallelzstd`, other threads decompress the frames of a zstd file, and a block holds
+/// whole frames. ARTIS ends each frame of an estimator file at the end of a cell. A caller that reads many files at
+/// the same time, e.g. the files of the ranks, gives false, thus each file has no threads of its own.
+pub fn open_text_blocks(filepath: &Path, parallelzstd: bool) -> std::io::Result<TextBlocks> {
+    let open = || -> std::io::Result<TextBlocks> {
+        let mut reader = BufReader::new(std::fs::File::open(filepath)?);
+        Ok(match FileFormat::from_buf_reader(&mut reader)? {
+            Some(FileFormat::Zstd) if parallelzstd => parallel_zstd_text_blocks(reader)?,
+            Some(format) => Box::new(StreamTextBlocks {
+                reader: ProcessorReader::with_processor(unlimited_decompressor(format)?, reader),
+                finished: false,
+            }),
+            None => Box::new(StreamTextBlocks {
+                reader,
+                finished: false,
+            }),
+        })
     };
 
     open().map_err(|err| io_error_at(&err, &filepath.display().to_string()))
+}
+
+/// Open one file as `open_text_blocks` does, and return a reader of its decompressed text
+pub fn open_decompressed(filepath: &Path) -> std::io::Result<TextBlocksReader> {
+    Ok(TextBlocksReader {
+        blocks: open_text_blocks(filepath, true)?,
+        block: Vec::new(),
+        blockpos: 0,
+    })
+}
+
+/// The blocks of text of a reader
+struct StreamTextBlocks<R: Read> {
+    reader: R,
+    finished: bool,
+}
+
+impl<R: Read> Iterator for StreamTextBlocks<R> {
+    type Item = std::io::Result<Vec<u8>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished {
+            return None;
+        }
+        let mut block = Vec::with_capacity(STREAM_TEXTBLOCK_BYTES);
+        match (&mut self.reader)
+            .take(STREAM_TEXTBLOCK_BYTES as u64)
+            .read_to_end(&mut block)
+        {
+            Ok(bytecount) => {
+                self.finished = bytecount < STREAM_TEXTBLOCK_BYTES;
+                (!block.is_empty()).then_some(Ok(block))
+            }
+            Err(err) => {
+                self.finished = true;
+                Some(Err(err))
+            }
+        }
+    }
+}
+
+/// A reader of the text of blocks
+pub struct TextBlocksReader {
+    blocks: TextBlocks,
+    /// the block that a read takes now, and the position of its next byte
+    block: Vec<u8>,
+    blockpos: usize,
+}
+
+impl Read for TextBlocksReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        while self.blockpos == self.block.len() {
+            match self.blocks.next() {
+                Some(block) => {
+                    self.block = block?;
+                    self.blockpos = 0;
+                }
+                None => return Ok(0),
+            }
+        }
+        let count = buf.len().min(self.block.len() - self.blockpos);
+        buf[..count].copy_from_slice(&self.block[self.blockpos..self.blockpos + count]);
+        self.blockpos += count;
+        Ok(count)
+    }
+}
+
+/// The magic number at the start of a zstd frame
+const ZSTD_MAGIC: u32 = 0xFD2F_B528;
+
+/// The minimum compressed size of a group of zstd frames that one thread decompresses
+const MIN_FRAMEGROUP_BYTES: usize = 4 * 1024 * 1024;
+
+/// The maximum compressed size of a zstd frame that the parallel reader decompresses. The zstd command writes one large
+/// frame, and the streaming decoder then gives the text of that frame in blocks that several threads can parse
+const MAX_FRAME_BYTES: usize = MIN_FRAMEGROUP_BYTES;
+
+/// The result of a read of one zstd frame
+enum FrameRead {
+    /// the buffer holds the complete frame
+    Complete,
+    /// the file ends before the frame starts
+    End,
+    /// the frame is cut, larger than `MAX_FRAME_BYTES`, or of a form that the reader does not know. The buffer holds
+    /// the bytes of the frame that the reader read
+    Unusual,
+}
+
+/// Append `count` bytes of `reader` to `buffer`, and return false if the file ends before them
+///
+/// The buffer keeps the bytes before the end of a cut file, thus the streaming decoder can read their complete zstd
+/// blocks.
+fn append_bytes(
+    reader: &mut impl Read,
+    buffer: &mut Vec<u8>,
+    count: usize,
+) -> std::io::Result<bool> {
+    Ok(reader.by_ref().take(count as u64).read_to_end(buffer)? == count)
+}
+
+/// Return the little-endian integer of the last `count` bytes of `buffer`
+fn last_bytes_as_integer(buffer: &[u8], count: usize) -> usize {
+    buffer[buffer.len() - count..]
+        .iter()
+        .rev()
+        .fold(0, |value, &byte| (value << 8) | usize::from(byte))
+}
+
+/// Append the next zstd frame of `reader` to `buffer`
+///
+/// The header of the frame and of each zstd block give the size of the frame, thus the reader finds the end of the
+/// frame without a decompression. Request for Comments (RFC) 8878 gives the format.
+fn read_zstd_frame(reader: &mut impl Read, buffer: &mut Vec<u8>) -> std::io::Result<FrameRead> {
+    let framestart = buffer.len();
+    if !append_bytes(reader, buffer, 4)? {
+        return Ok(if buffer.len() == framestart {
+            FrameRead::End
+        } else {
+            FrameRead::Unusual
+        });
+    }
+    let magic = last_bytes_as_integer(buffer, 4);
+    if magic & 0xFFFF_FFF0 == 0x184D_2A50 {
+        // a skippable frame, which the decoder ignores
+        if !append_bytes(reader, buffer, 4)? {
+            return Ok(FrameRead::Unusual);
+        }
+        let size = last_bytes_as_integer(buffer, 4);
+        if size > MAX_FRAME_BYTES || !append_bytes(reader, buffer, size)? {
+            return Ok(FrameRead::Unusual);
+        }
+        return Ok(FrameRead::Complete);
+    }
+    if magic != ZSTD_MAGIC as usize || !append_bytes(reader, buffer, 1)? {
+        return Ok(FrameRead::Unusual);
+    }
+
+    let descriptor = buffer[buffer.len() - 1];
+    let singlesegment = descriptor & 0x20 != 0;
+    let windowbytes = usize::from(!singlesegment);
+    let dictidbytes = [0, 1, 2, 4][usize::from(descriptor & 3)];
+    let contentsizebytes = [usize::from(singlesegment), 2, 4, 8][usize::from(descriptor >> 6)];
+    if !append_bytes(reader, buffer, windowbytes + dictidbytes + contentsizebytes)? {
+        return Ok(FrameRead::Unusual);
+    }
+
+    loop {
+        if !append_bytes(reader, buffer, 3)? {
+            return Ok(FrameRead::Unusual);
+        }
+        let blockheader = last_bytes_as_integer(buffer, 3);
+        let blocksize = match (blockheader >> 1) & 3 {
+            // a raw zstd block or a compressed zstd block
+            0 | 2 => blockheader >> 3,
+            // a run-length encoding (RLE) block holds one byte
+            1 => 1,
+            _ => return Ok(FrameRead::Unusual),
+        };
+        if buffer.len() - framestart + blocksize > MAX_FRAME_BYTES
+            || !append_bytes(reader, buffer, blocksize)?
+        {
+            return Ok(FrameRead::Unusual);
+        }
+        if blockheader & 1 != 0 {
+            break;
+        }
+    }
+
+    let checksumbytes = if descriptor & 4 == 0 { 0 } else { 4 };
+    if !append_bytes(reader, buffer, checksumbytes)? {
+        return Ok(FrameRead::Unusual);
+    }
+
+    Ok(FrameRead::Complete)
+}
+
+/// Decompress a group of complete zstd frames
+fn decompress_framegroup(framegroup: &[u8]) -> std::io::Result<Vec<u8>> {
+    let mut text = Vec::new();
+    ProcessorReader::with_processor(FileFormat::Zstd.decompressor(), Cursor::new(framegroup))
+        .read_to_end(&mut text)?;
+    Ok(text)
+}
+
+/// The reason that a group of zstd frames ended
+enum FramegroupEnd {
+    /// the group holds `MIN_FRAMEGROUP_BYTES` or more
+    Full,
+    /// the file ends after the group
+    End,
+    /// the next frame is cut, larger than `MAX_FRAME_BYTES`, or of a form that the reader does not know. The bytes of
+    /// that frame and the rest of the file go to the streaming decoder
+    Unusual(Vec<u8>),
+}
+
+/// Read complete zstd frames until the group holds `MIN_FRAMEGROUP_BYTES`, and return the group and its end
+fn read_framegroup(source: &mut impl Read) -> std::io::Result<(Vec<u8>, FramegroupEnd)> {
+    let mut framegroup = Vec::new();
+    loop {
+        let framestart = framegroup.len();
+        match read_zstd_frame(source, &mut framegroup)? {
+            FrameRead::Complete if framegroup.len() < MIN_FRAMEGROUP_BYTES => {}
+            FrameRead::Complete => return Ok((framegroup, FramegroupEnd::Full)),
+            FrameRead::End => return Ok((framegroup, FramegroupEnd::End)),
+            FrameRead::Unusual => {
+                let unusualframe = framegroup.split_off(framestart);
+                return Ok((framegroup, FramegroupEnd::Unusual(unusualframe)));
+            }
+        }
+    }
+}
+
+/// Return the text of a zstd file in blocks that other threads decompress while the caller parses them
+///
+/// ARTIS writes the estimator file of all ranks as many small frames, and one thread decompresses approximately 1 GB
+/// each second. The parser is faster than that. One thread reads several groups of frames, and a pool of threads
+/// decompresses the groups. The parse threads wait for the blocks, thus the pool is a different pool. It has the size
+/// of the global pool. The channel holds the blocks of one round of groups, thus the memory stays small while the
+/// caller parses the round before.
+fn parallel_zstd_text_blocks(source: BufReader<std::fs::File>) -> std::io::Result<TextBlocks> {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(rayon::current_num_threads())
+        .build()
+        .map_err(std::io::Error::other)?;
+    let (sender, receiver) = std::sync::mpsc::sync_channel(pool.current_num_threads());
+    std::thread::spawn(move || send_zstd_text_blocks(source, &pool, &sender));
+    Ok(Box::new(receiver.into_iter()))
+}
+
+/// Read the frames of a zstd file, and send the decompressed text of each group of frames in the order of the file
+///
+/// An unusual frame and the rest of the file go to the streaming decoder. The decoder gives the complete zstd blocks
+/// of a cut frame, as for a file of one frame. The thread stops when the receiver stops.
+fn send_zstd_text_blocks(
+    mut source: BufReader<std::fs::File>,
+    pool: &rayon::ThreadPool,
+    sender: &std::sync::mpsc::SyncSender<std::io::Result<Vec<u8>>>,
+) {
+    loop {
+        let mut framegroups: Vec<Vec<u8>> = Vec::new();
+        let mut groupend = FramegroupEnd::Full;
+        while framegroups.len() < pool.current_num_threads()
+            && matches!(groupend, FramegroupEnd::Full)
+        {
+            let (framegroup, end) = match read_framegroup(&mut source) {
+                Ok(framegroupandend) => framegroupandend,
+                Err(err) => {
+                    let _ = sender.send(Err(err));
+                    return;
+                }
+            };
+            if !framegroup.is_empty() {
+                framegroups.push(framegroup);
+            }
+            groupend = end;
+        }
+
+        let texts: Vec<std::io::Result<Vec<u8>>> = pool.install(|| {
+            framegroups
+                .par_iter()
+                .map(|framegroup| decompress_framegroup(framegroup))
+                .collect()
+        });
+        for text in texts {
+            let failed = text.is_err();
+            if sender.send(text).is_err() || failed {
+                return;
+            }
+        }
+
+        match groupend {
+            FramegroupEnd::Full => {}
+            FramegroupEnd::End => return,
+            FramegroupEnd::Unusual(unusualframe) => {
+                let streaming = StreamTextBlocks {
+                    reader: ProcessorReader::with_processor(
+                        FileFormat::Zstd.decompressor(),
+                        Cursor::new(unusualframe).chain(source),
+                    ),
+                    finished: false,
+                };
+                for block in streaming {
+                    if sender.send(block).is_err() {
+                        return;
+                    }
+                }
+                return;
+            }
+        }
+    }
 }
 
 /// Add the file and the line number to the message of an error

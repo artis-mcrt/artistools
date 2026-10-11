@@ -41,6 +41,35 @@ def test_estimparse_drops_a_cell_that_a_cut_file_ends_inside(tmp_path: Path) -> 
         pltest.assert_frame_equal(dfrank, dfcomplete.head(99).select(dfrank.columns))
 
 
+def test_parallel_zstd_reader_gives_the_text_in_the_order_of_the_file(tmp_path: Path) -> None:
+    """The reader of a zstd file decompresses groups of frames in parallel, and it must keep the order of the file.
+
+    A group holds at least 4 MiB of compressed frames, thus this file has several groups. Each frame holds different
+    cells. The same text in a plain file goes through the reader of a file that is not zstd.
+    """
+    from artistools.estimators.test_estimators import write_zstd_frames
+
+    ranktext = (modelpath / "estimators_0000.out").read_text(encoding="utf-8")
+    frametexts = [
+        re.sub(
+            r"modelgridindex (\d+) ",
+            lambda match, frameindex=frameindex: f"modelgridindex {int(match[1]) + 1000 * frameindex} ",
+            ranktext,
+        )
+        for frameindex in range(500)
+    ]
+    zstdfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(zstdfile, frametexts)
+    assert zstdfile.stat().st_size > 2 * 4 * 1024 * 1024
+    plainfile = tmp_path / "plain" / "estimators_allranks.out"
+    plainfile.parent.mkdir()
+    plainfile.write_text("".join(frametexts), encoding="utf-8")
+
+    dfzstd = at.rustext.estimparse_allranks(zstdfile)
+    assert dfzstd["modelgridindex"].is_sorted()
+    pltest.assert_frame_equal(dfzstd, at.rustext.estimparse_allranks(plainfile), check_column_order=False)
+
+
 def test_estimparse_gives_no_row_for_a_text_with_no_complete_cell(tmp_path: Path) -> None:
     """A text that ends inside the first cell gives a frame with no column, as the file of all ranks does."""
     (tmp_path / "estimators_0000.out").write_text(

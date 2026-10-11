@@ -1,9 +1,20 @@
 import os
+from collections.abc import Callable
 
 import polars as pl
 
 def estimparse(folderpath: str | os.PathLike[str], rankmin: int, rankmax: int) -> pl.DataFrame: ...
 def estimparse_allranks(filepath: str | os.PathLike[str]) -> pl.DataFrame: ...
+def estimparse_allranks_textbatches(
+    filepath: str | os.PathLike[str], textbatchbytes: int, on_batch: Callable[[pl.DataFrame], None]
+) -> None: ...
+def estimparse_textbatches(
+    folderpath: str | os.PathLike[str],
+    rankmin: int,
+    rankmax: int,
+    textbatchbytes: int,
+    on_batch: Callable[[pl.DataFrame], None],
+) -> None: ...
 def estimtimesteps(filepath: str | os.PathLike[str]) -> list[int]: ...
 def sum_binned_line_opacities(
     dflevels: pl.DataFrame,
