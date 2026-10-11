@@ -92,20 +92,20 @@ struct EstimatorColumns {
     overflowcount: usize,
 }
 
-/// Return true if `name` is the words of `nameparts`, with an underscore between each pair of words
-fn name_matches(name: &str, nameparts: &[&str]) -> bool {
+/// Return true if `name` is the words of `namewords`, with an underscore between each pair of words
+fn name_equals_words(name: &str, namewords: &[&str]) -> bool {
     let mut rest = name;
-    for (partindex, namepart) in nameparts.iter().enumerate() {
-        if partindex > 0 {
+    for (wordindex, nameword) in namewords.iter().enumerate() {
+        if wordindex > 0 {
             let Some(afterunderscore) = rest.strip_prefix('_') else {
                 return false;
             };
             rest = afterunderscore;
         }
-        let Some(afterpart) = rest.strip_prefix(namepart) else {
+        let Some(afterword) = rest.strip_prefix(nameword) else {
             return false;
         };
-        rest = afterpart;
+        rest = afterword;
     }
     rest.is_empty()
 }
@@ -160,27 +160,27 @@ impl EstimatorColumns {
     }
 
     /// Set `namebuf` to the words of a column name, with an underscore between each pair of words
-    fn set_name(&mut self, nameparts: &[&str]) {
+    fn set_namebuf(&mut self, namewords: &[&str]) {
         self.namebuf.clear();
-        for (partindex, namepart) in nameparts.iter().enumerate() {
-            if partindex > 0 {
+        for (wordindex, nameword) in namewords.iter().enumerate() {
+            if wordindex > 0 {
                 self.namebuf.push('_');
             }
-            self.namebuf.push_str(namepart);
+            self.namebuf.push_str(nameword);
         }
     }
 
-    /// Return the column that `nameparts` names, and add the column if the store does not hold it
-    fn find_column(&mut self, nameparts: &[&str]) -> usize {
+    /// Return the column that `namewords` names, and add the column if the store does not hold it
+    fn find_or_add_column(&mut self, namewords: &[&str]) -> usize {
         if let Some(&colindex) = self
             .prevcellcolumns
             .get(self.expectedposition)
-            .filter(|&&colindex| name_matches(&self.colnames[colindex], nameparts))
+            .filter(|&&colindex| name_equals_words(&self.colnames[colindex], namewords))
         {
             self.expectedposition += 1;
             return colindex;
         }
-        self.set_name(nameparts);
+        self.set_namebuf(namewords);
         let colindex = if let Some(&colindex) = self.colindex.get(self.namebuf.as_str()) {
             colindex
         } else {
@@ -200,9 +200,9 @@ impl EstimatorColumns {
         colindex
     }
 
-    /// Set the value of the measured column that `nameparts` names for the current cell
-    fn push(&mut self, nameparts: &[&str], colvalue: f32) -> PolarsResult<()> {
-        let colindex = self.find_column(nameparts);
+    /// Set the value of the measured column that `namewords` names for the current cell
+    fn push(&mut self, namewords: &[&str], colvalue: f32) -> PolarsResult<()> {
+        let colindex = self.find_or_add_column(namewords);
         self.cellcolumns.push(colindex);
         push_value(&mut self.coldata[colindex], self.rownum, colvalue)
     }
@@ -669,15 +669,15 @@ impl Iterator for TextParts<'_> {
 /// Read an estimator text in text batches, and give the `DataFrame` of each text batch to `on_batch` in the order of
 /// the file
 ///
-/// A text batch holds the text of whole parts, and it ends after the part that brings its text to `batchbytes` or
+/// A text batch holds the text of whole parts, and it ends after the part that brings its text to `textbatchbytes` or
 /// more. The reader holds one text batch at a time. The threads parse the parts of a text batch in parallel, and the rows keep the
 /// order of the file. A text that does not end with an empty line ends inside a cell, e.g. because a job stopped
 /// during the write. The reader drops that cell in both forms of the text, thus each value in the table comes from a
 /// complete cell of the text. The result is a warning about the values above the range of f32, or None for no such
 /// value.
-fn read_estimator_text_batches(
+fn read_estimator_textbatches(
     filepath: &Path,
-    batchbytes: usize,
+    textbatchbytes: usize,
     mut on_batch: impl FnMut(DataFrame) -> PolarsResult<()>,
 ) -> PolarsResult<Option<String>> {
     let parse_part = |part: std::io::Result<TextPart>| -> PolarsResult<(DataFrame, Overflows)> {
@@ -701,7 +701,7 @@ fn read_estimator_text_batches(
         } else {
             let mut textbytes = firstpart.as_ref().map_or(0, |part| part.text.len());
             let laterparts = std::iter::from_fn(|| {
-                if textbytes >= batchbytes {
+                if textbytes >= textbatchbytes {
                     return None;
                 }
                 let part = parts.next()?;
@@ -737,7 +737,7 @@ fn read_estimator_text_batches(
 fn read_estimator_text(filepath: &Path) -> PolarsResult<(DataFrame, Option<String>)> {
     let mut dfestimators = concat_estimator_frames(&[])?;
     // a text batch of unlimited size holds the whole text
-    let warning = read_estimator_text_batches(filepath, usize::MAX, |dfbatch| {
+    let warning = read_estimator_textbatches(filepath, usize::MAX, |dfbatch| {
         dfestimators = dfbatch;
         Ok(())
     })?;
@@ -768,15 +768,15 @@ const MAX_PARSE_THREADS: usize = 16;
 
 /// Read the estimator file of all ranks in text batches, and call `on_batch` with the `DataFrame` of each text batch
 ///
-/// A text batch ends after the part of the text that brings its text to `batchbytes` or more. The reader holds one
+/// A text batch ends after the part of the text that brings its text to `textbatchbytes` or more. The reader holds one
 /// text batch at a time, thus a caller can convert a file whose table is larger than the memory. The parse runs without
 /// the GIL, and each call of `on_batch` holds it.
 #[pyfunction]
 #[expect(clippy::needless_pass_by_value)]
-pub fn estimparse_allranks_batches(
+pub fn estimparse_allranks_textbatches(
     py: Python<'_>,
     filepath: PathBuf,
-    batchbytes: usize,
+    textbatchbytes: usize,
     on_batch: Py<PyAny>,
 ) -> PyResult<()> {
     let mut callbackerror: Option<PyErr> = None;
@@ -786,7 +786,7 @@ pub fn estimparse_allranks_batches(
             .build()
             .map_err(|err| polars_err!(ComputeError: "{err}"))?;
         pool.install(|| {
-            read_estimator_text_batches(&filepath, batchbytes, |dfbatch| {
+            read_estimator_textbatches(&filepath, textbatchbytes, |dfbatch| {
                 Python::attach(|py| on_batch.call1(py, (PyDataFrame(dfbatch),)))
                     .map(|_| ())
                     .map_err(|err| {

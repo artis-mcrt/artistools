@@ -40,19 +40,19 @@ from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
 from artistools.misc.cliutils import contiguous_runs
-from artistools.misc.fileio import cache_parts_folder
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import mtime_matches_stamp
 from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
+from artistools.misc.fileio import temporary_parts_folder
 from artistools.misc.modelinfo import get_nonempty_cellcounts
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 from artistools.rustext import estimparse
-from artistools.rustext import estimparse_allranks_batches
+from artistools.rustext import estimparse_allranks_textbatches
 from artistools.rustext import estimtimesteps
 
 if t.TYPE_CHECKING:
@@ -663,14 +663,14 @@ def get_allranks_timesteps(folderpath: Path | str) -> tuple[int, ...] | None:
 # The minimum size of one text batch. 1 GiB of the text of a 3D kilonova model gives a table of about 0.35 GB. On a
 # Mac, text batches of 1 GiB gave the same speed as text batches of 2 GiB. The peak memory was 3.7 GB in place of
 # 4.9 GB
-ESTIMATOR_TEXTBATCH_BYTES = 1024**3
+MIN_TEXTBATCH_BYTES = 1024**3
 
 # The zstd level of the cache. For the cache of 4.0 GB of text, level 9 took 1.2 s and level 13 took 2.3 s, and each
 # cache was 0.62 GB
-CACHE_COMPRESSION_LEVEL = 9
+CACHE_ZSTD_LEVEL = 9
 
 # The number of rank files that one call of estimparse reads
-RANKFILE_BATCH_SIZE = 100
+RANKFILES_PER_TEXTBATCH = 100
 
 # A part exists only during the conversion, thus the speed is more important than the size. On Leonardo, the parts
 # of 4.6 GB of text took 1.8 s to write and 3.6 s to read with no compression. With lz4, they took 4.6 s and 7.1 s,
@@ -698,7 +698,7 @@ class ParquetPart(t.NamedTuple):
 type TimestepParts = dict[int, list[ParquetPart]]
 
 
-def write_part(dftimestep: pl.DataFrame, partpath: Path) -> ParquetPart:
+def write_parquet_part(dftimestep: pl.DataFrame, partpath: Path) -> ParquetPart:
     """Write the rows of one timestep to a parquet part, and return the part."""
     dftimestep.write_parquet(partpath, compression=PART_COMPRESSION)
     cells = dftimestep["modelgridindex"]
@@ -712,7 +712,7 @@ def write_part(dftimestep: pl.DataFrame, partpath: Path) -> ParquetPart:
     )
 
 
-def write_text_batch(dftextbatch: pl.DataFrame, partsfolder: Path, timestepparts: TimestepParts) -> None:
+def write_text_batch_parts(dftextbatch: pl.DataFrame, partsfolder: Path, timestepparts: TimestepParts) -> None:
     """Write each timestep of a text batch to a parquet part, and add each part to timestepparts.
 
     A cache holds the rows in the order of the timesteps. One part for each timestep and text batch gives that order to
@@ -743,10 +743,10 @@ def write_text_batch(dftextbatch: pl.DataFrame, partsfolder: Path, timestepparts
     for timestep, dftimestep in timestepframes:
         assert isinstance(timestep, int)
         parts = timestepparts.setdefault(timestep, [])
-        parts.append(write_part(dftimestep, partsfolder / f"ts{timestep:05d}_part{len(parts):05d}.parquet"))
+        parts.append(write_parquet_part(dftimestep, partsfolder / f"ts{timestep:05d}_part{len(parts):05d}.parquet"))
 
 
-def read_estimator_text(state: "EstimatorBatchState", partsfolder: Path) -> TimestepParts:
+def convert_text_to_parts(state: "EstimatorBatchState", partsfolder: Path) -> TimestepParts:
     """Convert the estimator text of a cache to parquet files of each timestep in partsfolder.
 
     The text is the estimator file of all ranks, or the files of the ranks of the cache. The memory holds a maximum of
@@ -762,14 +762,14 @@ def read_estimator_text(state: "EstimatorBatchState", partsfolder: Path) -> Time
 
     with ThreadPoolExecutor(max_workers=1) as partwriter:
 
-        def write_batch(dftextbatch: pl.DataFrame) -> None:
+        def submit_text_batch(dftextbatch: pl.DataFrame) -> None:
             # one thread writes a text batch while the reader parses the next one. This function first waits for the
             # write of the previous text batch, thus the memory holds a maximum of two text batches
             nonlocal textholdscell, pendingwrite
             textholdscell |= dftextbatch.width > 0
             if pendingwrite is not None:
                 pendingwrite.result()
-            pendingwrite = partwriter.submit(write_text_batch, dftextbatch, partsfolder, timestepparts)
+            pendingwrite = partwriter.submit(write_text_batch_parts, dftextbatch, partsfolder, timestepparts)
 
         if state.textfile is not None:
             textsize_mib = state.textfile.stat().st_size / 1024 / 1024
@@ -778,11 +778,11 @@ def read_estimator_text(state: "EstimatorBatchState", partsfolder: Path) -> Time
                 end="",
                 flush=True,
             )
-            estimparse_allranks_batches(state.textfile, ESTIMATOR_TEXTBATCH_BYTES, write_batch)
+            estimparse_allranks_textbatches(state.textfile, MIN_TEXTBATCH_BYTES, submit_text_batch)
         else:
             print(f"    reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
-            for rankbatch in batched(state.mpiranks, RANKFILE_BATCH_SIZE, strict=False):
-                write_batch(estimparse(state.runfolder, min(rankbatch), max(rankbatch)))
+            for rankbatch in batched(state.mpiranks, RANKFILES_PER_TEXTBATCH, strict=False):
+                submit_text_batch(estimparse(state.runfolder, min(rankbatch), max(rankbatch)))
         if pendingwrite is not None:
             pendingwrite.result()
 
@@ -812,7 +812,9 @@ def sort_timestep_parts(timestepparts: TimestepParts) -> None:
         )
         for part in parts:
             part.path.unlink()
-        timestepparts[timestep] = [write_part(dftimestep, parts[0].path.with_name(f"ts{timestep:05d}_sorted.parquet"))]
+        timestepparts[timestep] = [
+            write_parquet_part(dftimestep, parts[0].path.with_name(f"ts{timestep:05d}_sorted.parquet"))
+        ]
 
 
 def scan_timestep_parts(timestepparts: TimestepParts) -> pl.LazyFrame:
@@ -855,7 +857,7 @@ def get_estimator_textcompression(textfiles: Sequence[Path]) -> str:
     return ",".join(sorted({file.suffix if file.suffix in COMPRESSED_EXTENSIONS else "" for file in textfiles}))
 
 
-def read_unchanged_estimator_text(
+def convert_unchanged_text_to_parts(
     state: "EstimatorBatchState", partsfolder: Path
 ) -> tuple[TimestepParts, "EstimatorBatchState", list[Path], int]:
     """Convert the estimator text of a cache to parts, and do it again if a job changed the text.
@@ -879,7 +881,7 @@ def read_unchanged_estimator_text(
         )
         textfiles = get_estimator_textfiles(state.runfolder, textfile)
         textsize = get_estimator_textsize(textfiles)
-        timestepparts = read_estimator_text(state, partsfolder)
+        timestepparts = convert_text_to_parts(state, partsfolder)
         textfile_after, textsource_mtime_after, _ = get_estimator_textsource(state.runfolder, state.mpiranks)
         if (
             textfile_after == textfile
@@ -959,7 +961,7 @@ def write_estimator_cache(
             "batchindex": str(state.batchindex),
         },
         replaces=state.outdatedparquet,
-        compression_level=CACHE_COMPRESSION_LEVEL,
+        compression_level=CACHE_ZSTD_LEVEL,
     )
 
 
@@ -1012,8 +1014,8 @@ def get_estimators_parquetfile(
 
         time_start = time.perf_counter()
 
-        with cache_parts_folder(parquetfilepath) as partsfolder:
-            timestepparts, state, textfiles, textsize = read_unchanged_estimator_text(state, partsfolder)
+        with temporary_parts_folder(parquetfilepath) as partsfolder:
+            timestepparts, state, textfiles, textsize = convert_unchanged_text_to_parts(state, partsfolder)
             if state.allranks:
                 nonempty_cellcounts = get_nonempty_cellcounts(modelpath)
                 if nonempty_cellcounts is not None and state.textfile is None:

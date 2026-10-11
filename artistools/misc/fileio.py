@@ -1266,7 +1266,7 @@ def get_readonly_cache_error(parquetfilepath: Path) -> PermissionError:
 
 
 @contextlib.contextmanager
-def cache_parts_folder(parquetfilepath: Path) -> Generator[Path]:
+def temporary_parts_folder(parquetfilepath: Path) -> Generator[Path]:
     """Give a temporary folder beside a cache for the parts of the cache, and remove the folder after use.
 
     The folder is on the file system of the cache, because the parts of a large model need as much space as the cache.

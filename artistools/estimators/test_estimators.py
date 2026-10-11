@@ -750,19 +750,19 @@ def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Pa
     write_zstd_frames(allranksfile, celltexts[:40])
     os.utime(allranksfile, (1000.0, 1000.0))
 
-    read_estimator_text = artistools.estimators.core.read_estimator_text
+    convert_text_to_parts = artistools.estimators.core.convert_text_to_parts
 
     def read_during_a_write(
         state: artistools.estimators.core.EstimatorBatchState, partsfolder: Path
     ) -> artistools.estimators.core.TimestepParts:
-        timestepparts = read_estimator_text(state, partsfolder)
+        timestepparts = convert_text_to_parts(state, partsfolder)
         if mockread.call_count == 1:
             write_zstd_frames(allranksfile, celltexts)
             os.utime(allranksfile, (1005.0, 1005.0))
         return timestepparts
 
     with mock.patch.object(
-        artistools.estimators.core, "read_estimator_text", side_effect=read_during_a_write
+        artistools.estimators.core, "convert_text_to_parts", side_effect=read_during_a_write
     ) as mockread:
         dfestim = at.estimators.scan_estimators(tmp_path).collect()
 
@@ -823,7 +823,7 @@ def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> No
     """
     from artistools.estimators.core import scan_timestep_parts
     from artistools.estimators.core import sort_timestep_parts
-    from artistools.estimators.core import write_text_batch
+    from artistools.estimators.core import write_text_batch_parts
 
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
@@ -855,12 +855,12 @@ def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> No
     timestepparts: TimestepParts = {}
     batchheights: list[int] = []
 
-    def write_batch(dfbatch: pl.DataFrame) -> None:
+    def record_text_batch(dfbatch: pl.DataFrame) -> None:
         batchheights.append(dfbatch.height)
-        write_text_batch(dfbatch, partsfolder, timestepparts)
+        write_text_batch_parts(dfbatch, partsfolder, timestepparts)
 
     # a size limit of one byte puts one text part in each text batch
-    at.rustext.estimparse_allranks_batches(allranksfile, 1, write_batch)
+    at.rustext.estimparse_allranks_textbatches(allranksfile, 1, record_text_batch)
     assert len(batchheights) >= 2
 
     assert any(len(parts) >= 2 for parts in timestepparts.values())
@@ -1329,7 +1329,7 @@ def test_conversion_reads_once_a_text_that_changed_before_the_read(tmp_path: Pat
     write_zstd_frames(allranksfile, celltexts)
     os.utime(allranksfile, (2000.0, 2000.0))
     with mock.patch.object(
-        artistools.estimators.core, "read_estimator_text", wraps=artistools.estimators.core.read_estimator_text
+        artistools.estimators.core, "convert_text_to_parts", wraps=artistools.estimators.core.convert_text_to_parts
     ) as mockread:
         convert_estimator_batch_caches(tmp_path, states, verbose=False)
 
