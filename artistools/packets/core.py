@@ -22,7 +22,6 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.inputmodel import get_modeldata
 from artistools.misc import drop_trailing_null_column
-from artistools.misc import extra_csv_columns_ignored
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_identity
@@ -366,7 +365,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
             has_header=False,
             comment_prefix="#",
             new_columns=column_names,
-            **extra_csv_columns_ignored(),
+            extra_columns="ignore",
             infer_schema_length=20000,
             schema_overrides=dtype_overrides,
         )
@@ -431,7 +430,7 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
             has_header=False,
             comment_prefix="#",
             schema=schema,
-            **extra_csv_columns_ignored(),
+            extra_columns="ignore",
             raise_if_empty=False,
         )
 

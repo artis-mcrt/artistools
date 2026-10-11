@@ -32,15 +32,6 @@ COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
 POLARS_READABLE_EXTENSIONS = (".zst", ".gz")
 
 
-def extra_csv_columns_ignored() -> dict[str, t.Any]:
-    """Return the CSV reader arguments that drop the columns of a file that have no name.
-
-    polars 2 rejects a list of names that is shorter than the file, and polars 1 has no
-    `extra_columns` argument. The caller unpacks the dict into the call of the reader.
-    """
-    return {"extra_columns": "ignore"} if "extra_columns" in inspect.signature(pl.scan_csv).parameters else {}
-
-
 @t.overload
 def drop_trailing_null_column(df: pl.DataFrame) -> pl.DataFrame: ...
 
@@ -471,8 +462,7 @@ def read_wsv(
         normalised.seek(0)
 
         # a lazy scan gets the name of every column, and the projection pushdown then parses only the
-        # requested columns. This works on polars 1 and polars 2, which differ in how read_csv
-        # matches a name list against a column selection
+        # requested columns. read_csv rejects a list of names that holds only some of the columns
         lzscan = pl.scan_csv(
             normalised,
             separator=" ",

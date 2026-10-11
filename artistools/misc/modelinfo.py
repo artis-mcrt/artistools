@@ -18,7 +18,6 @@ from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
 from artistools.misc.cliutils import print_detail
 from artistools.misc.cliutils import print_warning
-from artistools.misc.fileio import extra_csv_columns_ignored
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import modelpath_cache
@@ -138,7 +137,7 @@ def get_nu_grid_cached(modelpath: Path) -> npt.NDArray[np.floating]:
             skip_rows=1,
             columns=[0],
             new_columns=["nu"],
-            **extra_csv_columns_ignored(),
+            extra_columns="ignore",
         )
     return specdata["nu"].to_numpy()
 
