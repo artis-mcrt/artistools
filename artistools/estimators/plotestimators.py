@@ -3296,8 +3296,6 @@ def get_figures_data(
     def get_changed_args() -> dict[str, t.Any]:
         return {key: value for key, value in vars(args).items() if key in plainargs and plainargs[key] != value}
 
-    # the cells are a part of the data, thus a window that draws a new style with the same data selects no cells
-    select_cells(args, modelpath)
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
     estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
@@ -3349,17 +3347,19 @@ def get_figures_data(
     return figures, get_changed_args()
 
 
-def get_figures_data_without_styles(
+def get_figures_data_from_host(
     modelpath: Path,
     args: argparse.Namespace,
     timesteps_included: list[int],
     batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
 ) -> FiguresData:
-    """Return get_figures_data of the arguments, and give the host the plot items without their series styles.
+    """Select the cells, and return get_figures_data with the plot items of the host, which have no series styles.
 
     The client draws the styles, see draw_line_figure. A host that runs an older release read a styled item as an
-    unknown directive, e.g. "'Te@color' is not a plot directive".
+    unknown directive, e.g. "'Te@color' is not a plot directive". That release also selected no cells. The selection is
+    a part of the data, thus a window that draws a new style with the same data selects no cells.
     """
+    select_cells(args, modelpath)
     styledplotlist = args.plotlist
     if styledplotlist:
         args.plotlist = [split_plotitem_styles(plotitems)[0] for plotitems in styledplotlist]
@@ -3386,7 +3386,7 @@ def draw_plot(
     """
     modelpath, timesteps_included = resolve_plot_args(args)
     if figuresdata is None:
-        figuresdata = get_figures_data_without_styles(modelpath, args, timesteps_included, batchcaches)
+        figuresdata = get_figures_data_from_host(modelpath, args, timesteps_included, batchcaches)
     figures, changedargs = figuresdata
     vars(args).update(changedargs)
     draw_figure_data(figures[0], args, fig)
@@ -3413,7 +3413,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     try:
-        figures, changedargs = get_figures_data_without_styles(modelpath, args, timesteps_included)
+        figures, changedargs = get_figures_data_from_host(modelpath, args, timesteps_included)
     except NoEstimatorRowsError as exc:
         report_data_available(modelpath, classicartis=args.classicartis)
         # the command makes no plot, thus a script that runs it must see a failure

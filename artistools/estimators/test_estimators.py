@@ -4503,16 +4503,19 @@ def test_swatches_show_the_drawn_colours() -> None:
 
 
 def test_host_receives_the_plot_items_without_styles(tmp_path: Path) -> None:
-    """The client draws the series styles, thus the host receives the names alone.
+    """The client draws the series styles and selects the cells, thus the host receives the names and the cells.
 
     A host that runs an older release read a styled item as an unknown directive, e.g. "'Te@color' is not a plot
-    directive". The data cache also selects the cells only when it reads the data.
+    directive". That release also selected no cells, thus -readonlymgi plotted no rows. The data cache also selects
+    the cells only when it reads the data.
     """
     plotlists: list[t.Any] = []
+    selectedcells: list[t.Any] = []
     getfiguresdata = plotestimators.get_figures_data
 
     def record_plotlist(modelpath: Path, args: argparse.Namespace, *otherargs: t.Any) -> "plotestimators.FiguresData":
         plotlists.append(copy.deepcopy(args.plotlist))
+        selectedcells.append(args.modelgridindex)
         return getfiguresdata(modelpath, args, *otherargs)
 
     with mock.patch.object(plotestimators, "get_figures_data", side_effect=record_plotlist):
@@ -4521,9 +4524,13 @@ def test_host_receives_the_plot_items_without_styles(tmp_path: Path) -> None:
             modelpath=modelpath_classic_3d,
             plotlist=[["Te@color=C3,label=T e", "TR"]],
             timestep=10,
+            readonlymgi="alongaxis",
+            axis="+x",
             outputfile=tmp_path / "styled.pdf",
         )
     assert plotlists == [[["Te", "TR"]]]
+    assert len(selectedcells) == 1
+    assert selectedcells[0]
     assert (tmp_path / "styled.pdf").is_file()
 
     viewer = make_headless_viewer([
