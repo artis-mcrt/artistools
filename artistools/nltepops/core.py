@@ -14,6 +14,7 @@ from artistools.atomic import get_ionstring
 from artistools.atomic import get_kept_levels
 from artistools.constants import K_B_ev_per_K
 from artistools.misc import read_rank_outputfiles
+from artistools.misc.fileio import folder_holds_match
 from artistools.misc.fileio import resolve_modelpath
 
 
@@ -208,3 +209,12 @@ def read_nltepops_cached(modelpath: Path, timestep: int | None, cells: int | tup
     """Read the NLTE populations of the model at an absolute path. One read of a large run takes minutes."""
     modelgridindex = list(cells) if isinstance(cells, tuple) else cells
     return read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex)
+
+
+def has_nlte_populations(modelpath: Path | str) -> bool:
+    """Return True if the run wrote NLTE populations, e.g. nlte_0001.out or nlte_allranks.out.zst.
+
+    A rank whose cells all hold no matter writes no file, thus the file of any rank counts. The search also reads the
+    run folders of the model, e.g. job_from_ts0000. The host of a remote model gives the answer.
+    """
+    return folder_holds_match(Path(modelpath), "**/nlte_*.out*")

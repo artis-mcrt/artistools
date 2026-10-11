@@ -726,6 +726,17 @@ def test_read_wsv(tmp_path: Path) -> None:
     assert dfprojected["c"].to_list() == ["x", "y"]
 
 
+def test_read_wsv_keeps_the_lines_of_the_line_filter(tmp_path: Path) -> None:
+    """A line filter keeps the header line and the selected rows of the raw text, before the parse."""
+    filepath = tmp_path / "rows.txt"
+    filepath.write_text("timestep modelgridindex value\n0 1 1.5\n0  2 2.5\n1 2 3.5\n", encoding="utf-8")
+
+    line = pl.col("line")
+    dfout = at.misc.read_wsv(filepath, line_filter=line.str.starts_with("timestep ") | line.str.contains("^0 +2 "))
+    assert dfout.columns == ["timestep", "modelgridindex", "value"]
+    assert dfout["value"].to_list() == pytest.approx([2.5])
+
+
 def test_read_wsv_whitespace_runs(tmp_path: Path) -> None:
     """A run of ASCII whitespace between two fields acts as a single separator."""
     filepath = tmp_path / "whitespace.txt"
@@ -2076,8 +2087,13 @@ def test_nonempty_cellcounts_reads_the_rank_assignments(tmp_path: Path) -> None:
     assert get_nonempty_cellcounts(at.get_path("testdata") / "testmodel") is None
 
 
-def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
-    """A cell that holds no matter must say so, and not name a file that it never had."""
+@pytest.mark.parametrize("has_allranks_file", [False, True])
+def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path, has_allranks_file: bool) -> None:
+    """A cell that holds no matter must say so, and not name a file that it never had.
+
+    A file of all ranks has no row for such a cell, and the reader then gave an empty frame without a message. A list
+    of such cells gave FileNotFoundError from the files of the ranks, but an empty frame from a file of all ranks.
+    """
     from artistools.misc.modelinfo import read_rank_outputfiles
 
     (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n")
@@ -2085,9 +2101,12 @@ def test_read_rank_outputfiles_names_an_empty_cell(tmp_path: Path) -> None:
     # ARTIS ends each cell of an estimator file with an empty line, and a reader takes a cell without it as cut
     (tmp_path / "estimators_0000.out").write_text("timestep 0 modelgridindex 0\n\n")
     (tmp_path / "model.txt").write_text("1\n1.0\n0 0.0 0.0 0.0 0.0\n")
+    if has_allranks_file:
+        (tmp_path / "nlte_allranks.out").write_text("timestep modelgridindex nnlevel\n")
 
-    with pytest.raises(ValueError, match="Cell 0 holds no matter"):
-        read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=0)
+    for modelgridindex in (0, [0]):
+        with pytest.raises(ValueError, match="Cell 0 holds no matter"):
+            read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=modelgridindex)
 
 
 def write_rank_output_model(modelpath: Path, rowsoffolder: dict[str, list[tuple[int, int, float]]]) -> None:
@@ -2163,6 +2182,107 @@ def test_read_rank_outputfiles_drops_the_repeated_timestep_of_a_restart(tmp_path
 
     # the earlier folder holds no row for cell 4, thus the row of the later folder stays
     assert dfout.filter(timestep=1, modelgridindex=4)["nnlevel"].item() == 8.0
+
+
+def write_allranks_nlte_file(modelpath: Path, mtime: float) -> Path:
+    """Write the nlte file of all ranks for timestep 0 of the model of write_rank_output_model, with other values."""
+    allranksfile = modelpath / "nlte_allranks.out"
+    allranksfile.write_text(
+        "timestep modelgridindex nnlevel\n" + "".join(f"0 {cell} {cell + 10.5}\n" for cell in range(5)),
+        encoding="utf-8",
+    )
+    os.utime(allranksfile, (mtime, mtime))
+    return allranksfile
+
+
+def test_read_rank_outputfiles_takes_the_rank_files_for_some_cells(tmp_path: Path) -> None:
+    """A read of some cells takes the files of their ranks, and a read of all cells takes a current file of all ranks.
+
+    The ARTIS script that combines the files keeps the files of the ranks. It gives the combined file the time of the
+    newest file of a rank. A read of one cell then parsed every cell of the file of all ranks.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {".": [(0, cell, cell + 0.5) for cell in range(5)]})
+    rankfile = tmp_path / "nlte_0000.out"
+    os.utime(rankfile, (2000.0, 2000.0))
+    write_allranks_nlte_file(tmp_path, mtime=2000.0)
+
+    def read_values(modelgridindex: int | None = None) -> list[float]:
+        dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0, modelgridindex=modelgridindex)
+        return dfout["nnlevel"].to_list()
+
+    # the script gives the combined file the time of the newest file of a rank
+    assert read_values() == pytest.approx([cell + 10.5 for cell in range(5)])
+    assert read_values(modelgridindex=3) == pytest.approx([3.5])
+
+    # a newer file of a rank shows that the script combined the files of a job that still ran
+    os.utime(rankfile, (3000.0, 3000.0))
+    assert read_values() == pytest.approx([cell + 0.5 for cell in range(5)])
+
+    # the reader takes the plain file of a rank before a compressed copy, thus a newer stale copy does not count
+    os.utime(rankfile, (1000.0, 1000.0))
+    (tmp_path / "nlte_0000.out.zst").write_bytes(b"")
+    os.utime(tmp_path / "nlte_0000.out.zst", (3000.0, 3000.0))
+    assert read_values() == pytest.approx([cell + 10.5 for cell in range(5)])
+
+    # with the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes no file of a rank
+    rankfile.unlink()
+    (tmp_path / "nlte_0000.out.zst").unlink()
+    assert read_values(modelgridindex=3) == pytest.approx([13.5])
+
+
+def test_read_rank_outputfiles_takes_the_file_of_all_ranks_for_a_missing_rank_file(tmp_path: Path) -> None:
+    """A file of all ranks gives the rows of a rank whose file is missing, also when the other rank files are newer.
+
+    A user can keep only the file of rank 0, and a copy without the times can make it newer. The reader then raised
+    FileNotFoundError for the file of rank 1, although the file of all ranks held its rows.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {".": [(0, cell, cell + 0.5) for cell in range(3)]})
+    # two ranks share the five cells, thus rank 0 handles cells 0 to 2 and rank 1 handles cells 3 and 4
+    (tmp_path / "input.txt").write_text("\n".join(["0"] * 21 + ["2"]) + "\n", encoding="utf-8")
+    os.utime(tmp_path / "nlte_0000.out", (2000.0, 2000.0))
+    write_allranks_nlte_file(tmp_path, mtime=1000.0)
+
+    dfall = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")
+    assert dfall["nnlevel"].to_list() == pytest.approx([cell + 10.5 for cell in range(5)])
+    dfcell = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=4)
+    assert dfcell["nnlevel"].to_list() == pytest.approx([14.5])
+
+
+def test_read_rank_outputfiles_names_a_cell_outside_the_model_with_a_file_of_all_ranks(tmp_path: Path) -> None:
+    """A cell that is not in the model stops the read, also when a file of all ranks holds the rows.
+
+    The reader took the file of all ranks without the test of the cells, thus it gave no row and no message.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {".": [(0, cell, cell + 0.5) for cell in range(5)]})
+    (tmp_path / "nlte_0000.out").rename(tmp_path / "nlte_allranks.out")
+
+    with pytest.raises(ValueError, match="Cell 99 is not in this model"):
+        read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=[2, 99])
+
+
+def test_read_rank_outputfiles_keeps_the_numbers_beside_a_file_with_only_the_header(tmp_path: Path) -> None:
+    """A run folder whose file holds only the header line leaves the values of the other run folders as numbers.
+
+    ARTIS writes the header at the start of a job, and a job of LTE timesteps writes no NLTE population. The frame of
+    such a file had a String column for each value. The concat of the run folders then made each value a String.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {"job0": [(0, 0, 1.0)], "job1": [(1, 0, 2.0)]})
+    (tmp_path / "job0" / "nlte_0000.out").write_text("timestep modelgridindex nnlevel\n", encoding="utf-8")
+
+    dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")
+    assert dfout.schema["nnlevel"] == pl.Float64
+    assert dfout["nnlevel"].to_list() == pytest.approx([2.0])
+
+    # a timestep of the run folder with only the header gives no row, thus a caller can read all timesteps instead
+    assert read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", timestep=0).is_empty()
 
 
 def test_addarg_modelpath_positional_also_takes_the_option() -> None:

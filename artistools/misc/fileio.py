@@ -273,11 +273,12 @@ def normalised_lines(
     skip_rows: int = 0,
     comment_prefix: str | None = None,
     encoding: t.Literal["utf8", "utf8-lossy"] = "utf8",
+    line_filter: pl.Expr | None = None,
 ) -> pl.LazyFrame:
     """Return the lines of a text file with each run of whitespace collapsed to a single space.
 
-    The function drops the first skip_rows lines, removes the text from comment_prefix to the end of a line,
-    and drops a blank line.
+    The function drops the first skip_rows lines, and it keeps only the lines for which line_filter is true. It then
+    removes the text from comment_prefix to the end of a line, and it drops a blank line.
     """
     line = pl.col("line")
     if comment_prefix:
@@ -285,8 +286,9 @@ def normalised_lines(
         # takes the prefix as text, thus no escape of a regular expression character is necessary
         line = line.str.split(comment_prefix).list.first()
 
+    lines = scan_lines(filepath, skip_rows=skip_rows, encoding=encoding)
     return (
-        scan_lines(filepath, skip_rows=skip_rows, encoding=encoding)
+        (lines.filter(line_filter) if line_filter is not None else lines)
         # the class holds each ASCII whitespace character that a line can contain. The Unicode class \s
         # would also split a field that holds a no-break space, which an ARTIS column must keep
         .select(line.str.replace_all(r"[ \t\r\x0b\x0c]+", " ").str.strip_chars(" "))
@@ -380,11 +382,14 @@ def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_
     return True
 
 
-def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> io.BytesIO:
+def normalise_whitespace(
+    filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None, line_filter: pl.Expr | None = None
+) -> io.BytesIO:
     """Return a buffer of the normalised lines of a text file, which a CSV parser can read.
 
     The separator of the buffer is a single space, and the buffer is at position zero. A byte that is not
-    valid UTF-8 raises an error, unless the comment step removes the text that holds it.
+    valid UTF-8 raises an error, unless the comment step removes the text that holds it. The buffer holds only
+    the lines for which line_filter is true.
     """
 
     def sink(lflines: pl.LazyFrame) -> io.BytesIO:
@@ -396,7 +401,7 @@ def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str
         return normalised
 
     try:
-        return sink(normalised_lines(filepath, skip_rows, comment_prefix))
+        return sink(normalised_lines(filepath, skip_rows, comment_prefix, line_filter=line_filter))
     except pl.exceptions.ComputeError:
         # polars decodes a line before the comment step removes it, thus a comment that holds a byte
         # which is not valid UTF-8 stops the read. Such a comment is common in a file from a different
@@ -406,7 +411,9 @@ def normalise_whitespace(filepath: Path, skip_rows: int = 0, comment_prefix: str
             raise
 
         # only a comment holds a bad byte, thus read the file again and replace each one
-        return sink(normalised_lines(filepath, skip_rows, comment_prefix, encoding="utf8-lossy"))
+        return sink(
+            normalised_lines(filepath, skip_rows, comment_prefix, encoding="utf8-lossy", line_filter=line_filter)
+        )
 
 
 def read_wsv(
@@ -419,6 +426,7 @@ def read_wsv(
     header_from_comment: bool = False,
     skip_rows: int = 0,
     schema_overrides: t.Mapping[str, pl.DataType | type[pl.DataType]] | None = None,
+    line_filter: pl.Expr | None = None,
 ) -> pl.DataFrame:
     """Read a whitespace-separated text file into a DataFrame, where any run of whitespace is one separator.
 
@@ -433,6 +441,9 @@ def read_wsv(
     When columns is given, the function parses and returns only those columns, in the given order, which
     saves memory on a wide file. When header_from_comment is set and the first line is a comment, its words
     (after comment_prefix) become the column names. This covers a file whose header line is a comment.
+    line_filter is an expression on the column "line" of the raw text, and the function keeps only the lines for
+    which it is true. It must keep the header line. A filter that drops most lines before the parse saves the
+    memory of a large file.
     """
     filepath = Path(filename)
     if not filepath.is_file():
@@ -455,7 +466,9 @@ def read_wsv(
             has_header = False
 
     with polars_error_note(filepath):
-        normalised = normalise_whitespace(filepath, skip_rows=skip_rows, comment_prefix=comment_prefix)
+        normalised = normalise_whitespace(
+            filepath, skip_rows=skip_rows, comment_prefix=comment_prefix, line_filter=line_filter
+        )
 
     def parse(infer_schema_length: int | None) -> pl.DataFrame:
         # this function runs again when the first schema turns out to be wrong, thus rewind the buffer

@@ -63,7 +63,6 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.inputmodel import get_modelmeta
 from artistools.misc import exit_with_error
-from artistools.misc import firstexisting_or_none
 from artistools.misc import get_runfolders
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
@@ -77,6 +76,7 @@ from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
+from artistools.nltepops import has_nlte_populations
 from artistools.plottools import DARKMODE_COLOURS
 from artistools.plottools import get_light_grey
 from artistools.plottools import LABELWIDTH_INCHES
@@ -800,14 +800,6 @@ def set_smoothing(rows: OptionRows, mode: str, numbers: "Sequence[int]") -> Opti
             "-filtersavgol": tuple(str(number) for number in numbers[:2]) if mode == "savgol" else None,
         },
     )
-
-
-def has_nlte_populations(modelpath: Path) -> bool:
-    """Return True if the run wrote NLTE populations, which a plot of level populations reads.
-
-    The search also reads the run folders of the model, e.g. 12345.slurm.
-    """
-    return firstexisting_or_none("nlte_0000.out", folder=modelpath, tryzipped=True) is not None
 
 
 def get_level_names(modelpath: Path, timestep: int, cell: int) -> list[str]:

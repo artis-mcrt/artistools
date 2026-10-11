@@ -1699,6 +1699,16 @@ def test_averageexcitation_plotitem_needs_nlte_files(tmp_path: Path) -> None:
         "the run has no NLTE population files (nlte_*.out)"
     )
 
+    # a rank whose cells all hold no matter writes no file, e.g. rank 0 of a model whose inner shell has no 3D cell
+    (tmp_path / "emptyrank0" / "job_from_ts0000").mkdir(parents=True)
+    (tmp_path / "emptyrank0" / "job_from_ts0000" / "nlte_0001.out.zst").touch()
+    assert get_default_plotitem_skip_reason(plotitem, estimatorcolumns, tmp_path / "emptyrank0") is None
+
+    # with the option WRITE_COMBINED_ALLRANK_OUT_FILES, a run folder holds the NLTE populations of all ranks in one file
+    (tmp_path / "allranks" / "job_from_ts0000").mkdir(parents=True)
+    (tmp_path / "allranks" / "job_from_ts0000" / "nlte_allranks.out.zst").touch()
+    assert get_default_plotitem_skip_reason(plotitem, estimatorcolumns, tmp_path / "allranks") is None
+
 
 def test_get_elemcolor_is_stable_and_unbounded() -> None:
     """Every element must have a colour, fixed by the element and not by how many plots came before it.
