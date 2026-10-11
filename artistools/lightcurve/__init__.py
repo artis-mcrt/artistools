@@ -4,7 +4,6 @@ __all__ = ["plot", "plotlightcurve"]
 
 # the core module comes first. A module of a different package imports these names from this package, and
 # the plot modules below import such modules, thus a name must exist before a cycle comes back here
-from artistools.lightcurve.core import bracket_spectrum_to_band as bracket_spectrum_to_band
 from artistools.lightcurve.core import find_bol_reflightcurve_file as find_bol_reflightcurve_file
 from artistools.lightcurve.core import find_lightcurve_file as find_lightcurve_file
 from artistools.lightcurve.core import generate_band_lightcurve_data as generate_band_lightcurve_data

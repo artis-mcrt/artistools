@@ -72,7 +72,6 @@ from artistools.misc.dirbins import get_costhetabin_phibin_labels as get_costhet
 from artistools.misc.dirbins import get_dirbin_definitions as get_dirbin_definitions
 from artistools.misc.dirbins import get_dirbins as get_dirbins
 from artistools.misc.dirbins import get_opacity_condition_label as get_opacity_condition_label
-from artistools.misc.dirbins import get_phi_bin_steps as get_phi_bin_steps
 from artistools.misc.dirbins import get_phi_bins as get_phi_bins
 from artistools.misc.dirbins import get_phibin_rank_ascending as get_phibin_rank_ascending
 from artistools.misc.dirbins import get_viewingdirection_costhetabincount as get_viewingdirection_costhetabincount
@@ -82,7 +81,6 @@ from artistools.misc.dirbins import print_theta_phi_definitions as print_theta_p
 from artistools.misc.dirbins import split_multitable_dataframe as split_multitable_dataframe
 from artistools.misc.fileio import combine_frames as combine_frames
 from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_null_column
-from artistools.misc.fileio import extra_csv_columns_ignored as extra_csv_columns_ignored
 from artistools.misc.fileio import find_reference_data_file as find_reference_data_file
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
@@ -122,7 +120,6 @@ from artistools.misc.modelinfo import get_inputparams as get_inputparams
 from artistools.misc.modelinfo import get_model_logname as get_model_logname
 from artistools.misc.modelinfo import get_model_name as get_model_name
 from artistools.misc.modelinfo import get_mpiranklist as get_mpiranklist
-from artistools.misc.modelinfo import get_mpirankofcell as get_mpirankofcell
 from artistools.misc.modelinfo import get_nprocs as get_nprocs
 from artistools.misc.modelinfo import get_npts_model as get_npts_model
 from artistools.misc.modelinfo import get_nu_grid as get_nu_grid

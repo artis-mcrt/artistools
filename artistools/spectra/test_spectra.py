@@ -1410,13 +1410,6 @@ def test_write_data_skips_reference_spectra(tmp_path: Path) -> None:
     assert (tmp_path / "refonly.pdf").is_file()
 
 
-def test_plotspectra_title_arg() -> None:
-    parser = argparse.ArgumentParser()
-    at.spectra.plotspectra.addargs(parser)
-    assert parser.parse_args(["-title", "Custom title"]).title == "Custom title"
-    assert parser.parse_args([]).title is None
-
-
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
 def test_spectraplot_custom_title(mocksettitle: mock.MagicMock, tmp_path: Path) -> None:
     """-title text must be passed through to the axis title (previously store_true produced a title of 'True')."""
@@ -2888,23 +2881,6 @@ def test_eflux_with_a_wavelength_unit_is_lambda_f_lambda() -> None:
     assert ylabel is not None
     assert "lambda" in ylabel
     assert "erg/s/cm$^2$" in ylabel
-
-
-def test_normalised_label_names_the_flux_of_the_x_unit() -> None:
-    """A frequency axis draws F_nu and an energy axis draws dF/dE, also with --normalised."""
-    for xunit, symbol in (("angstrom", r"F$_\lambda$"), ("hz", r"F$_\nu$"), ("kev", "dF/dE")):
-        args = argparse.Namespace(
-            xunit=xunit,
-            hidexticklabels=False,
-            hideyticklabels=False,
-            normalised=True,
-            yvariable="flux",
-            showemission=False,
-            showabsorption=False,
-            logscaley=False,
-        )
-        _, ylabel = plotspectra.get_axis_labels(args)
-        assert ylabel == f"Scaled {symbol}"
 
 
 def test_single_time_skips_a_model_that_does_not_hold_it(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

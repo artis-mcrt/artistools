@@ -456,18 +456,6 @@ def test_makeartismodelfrom_fortrangriddat(tmp_path: Path) -> None:
     assert np.isclose(modelmeta["t_model_init_days"], 0.1)
 
 
-def test_makeartismodelfromparticlegridmap_short_time_flag_means_timedays() -> None:
-    """-t means -timedays on every command, and the old name of the argument still works."""
-    parser = at.commands.SuggestingArgumentParser(prog="makeartismodelfromparticlegridmap")
-    at.inputmodel.modelfromhydro.addargs(parser)
-
-    assert parser.parse_args([]).timedays == 0.1
-    for flag in ("-t", "-timedays", "-time", "-targetmodeltime_days"):
-        assert parser.parse_args([flag, "300"]).timedays == 300.0
-    with pytest.raises(SystemExit):
-        parser.parse_args(["-timestep", "40"])
-
-
 def test_make1dmodelfromcone(tmp_path: Path) -> None:
     at.inputmodel.slice1dfromconein3dmodel.main(
         argsraw=[],
@@ -666,7 +654,7 @@ def test_get_trajectory_abund_q(trajectory_copy: Path) -> None:
     particleid = 109215
 
     abund_q = at.inputmodel.rprocess_from_trajectory.get_trajectory_abund_q(
-        particleid=particleid, traj_root=trajectory_copy, t_model_s=0.1 * 86400, getqdotintegral=True
+        particleid=particleid, traj_root=trajectory_copy, t_model_s=0.1 * 86400
     )
 
     expected: dict[tuple[int, int] | str, float] = {
@@ -2086,22 +2074,17 @@ def test_vel_on_c_excludes_kmps_columns() -> None:
     )
 
 
-def test_scale_model_to_time_uses_modelmeta() -> None:
-    """The model time key must be the same one that get_modeldata and save_modeldata use."""
+def test_scale_model_to_time() -> None:
     dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
     t_model_init_days = modelmeta["t_model_init_days"]
-    targettime = t_model_init_days * 2.0
 
     dfmodel_collected = dfmodel.collect()
     rho_before = dfmodel_collected["logrho"].to_numpy().copy()
 
-    # the cell widths are positions at t_model, thus a model that keeps the old widths has cells that overlap
-    dfscaled, modelmeta_out = at.inputmodel.scale_model_to_time(
-        dfmodel=dfmodel_collected, targetmodeltime_days=targettime, modelmeta=modelmeta | {"wid_init_x": 3.0e14}
+    dfscaled = at.inputmodel.scale_model_to_time(
+        dfmodel=dfmodel_collected, targetmodeltime_days=t_model_init_days * 2.0, t_model_days=t_model_init_days
     )
 
-    assert modelmeta_out["t_model_init_days"] == targettime
-    assert modelmeta_out["wid_init_x"] == pytest.approx(6.0e14)
     # homologous expansion by a factor of two drops the density by a factor of eight
     assert dfscaled["logrho"].to_numpy() == pytest.approx(rho_before + math.log10(2.0**-3))
 
@@ -2201,19 +2184,8 @@ def test_make1dslice_plot(tmp_path: Path) -> None:
     assert pdfpath.is_file()
 
 
-def test_opacityfile_uniform_roundtrip(tmp_path: Path) -> None:
-    """A written uniform opacity.txt must read back with the same opacity in every cell."""
-    at.inputmodel.opacityinputfile.main(
-        argsraw=[], action="uniform", modelpath=modelpath, outputpath=tmp_path, kappa=0.25
-    )
-
-    opacities = at.inputmodel.opacityinputfile.get_opacity_from_file(tmp_path)
-    assert len(opacities) == 1, "testmodel is a single-cell 1D model"
-    assert np.allclose(opacities, 0.25)
-
-
 def test_opacityfile_uniform_multicell(tmp_path: Path) -> None:
-    """The single-cell case must not be special: a 1000-cell model reads back 1000 opacities."""
+    """A uniform opacity.txt reads back with the same opacity in each of the 1000 cells of the model."""
     at.inputmodel.opacityinputfile.main(
         argsraw=[], action="uniform", modelpath=modelpath_classic_3d, outputpath=tmp_path, kappa=0.1
     )

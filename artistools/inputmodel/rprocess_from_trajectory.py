@@ -328,10 +328,8 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     return qdotintegral
 
 
-def get_trajectory_abund_q(
-    particleid: int, traj_root: Path, t_model_s: float, getqdotintegral: bool = False
-) -> dict[tuple[int, int] | str, float]:
-    """Get the nuclear mass fractions (and Qdotintegral) for a particle particle number as a given time."""
+def get_trajectory_abund_q(particleid: int, traj_root: Path, t_model_s: float) -> dict[tuple[int, int] | str, float]:
+    """Return the nuclear mass fractions of a particle at a given time, and its integral of Qdot under the key "q"."""
     # find the closest timestep to the required time
     try:
         nts = get_closest_network_timesteps(traj_root, particleid, [t_model_s])[0]
@@ -347,9 +345,6 @@ def get_trajectory_abund_q(
     except FileNotFoundError:
         return {}
 
-    if t_model_s is None:
-        t_model_s = traj_time_s
-
     massfractotal = dftrajnucabund["massfrac"].sum()
     dftrajnucabund = dftrajnucabund.filter(pl.col("Z") >= 1)
 
@@ -360,11 +355,10 @@ def get_trajectory_abund_q(
         (Z, N): massfrac / massfractotal for Z, N, massfrac in dftrajnucabund[["Z", "N", "massfrac"]].iter_rows()
     }
 
-    if getqdotintegral:
-        # set the cell energy at model time [erg/g]
-        dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(
-            particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s
-        )
+    # set the cell energy at model time [erg/g]
+    dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(
+        particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s
+    )
 
     return dict_traj_nuc_abund
 
@@ -539,7 +533,7 @@ def add_abundancecontributions(
 
     print("Reading trajectory abundances...")
     timestart = time.perf_counter()
-    trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=Path(traj_root), getqdotintegral=True)
+    trajworker = partial(get_trajectory_abund_q, t_model_s=t_model_s, traj_root=Path(traj_root))
 
     list_traj_nuc_abund = parallel_map(trajworker, particleids, chunksize=16)
 

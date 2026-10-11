@@ -717,7 +717,6 @@ def addarg_timeminmax(
 def addarg_axislimits(
     parser: argparse.ArgumentParser,
     *,
-    xlimtype: type[int] | type[float] = float,
     xmindefault: float | None = None,
     xmaxdefault: float | None = None,
     xminhelp: str = "Plot range: minimum x value",
@@ -735,8 +734,8 @@ def addarg_axislimits(
     if include_x:
         xminflags = ("-xmin", "-lambdamin") if wavelength_aliases else ("-xmin",)
         xmaxflags = ("-xmax", "-lambdamax") if wavelength_aliases else ("-xmax",)
-        group.add_argument(*xminflags, dest="xmin", type=xlimtype, default=xmindefault, help=xminhelp)
-        group.add_argument(*xmaxflags, dest="xmax", type=xlimtype, default=xmaxdefault, help=xmaxhelp)
+        group.add_argument(*xminflags, dest="xmin", type=float, default=xmindefault, help=xminhelp)
+        group.add_argument(*xmaxflags, dest="xmax", type=float, default=xmaxdefault, help=xmaxhelp)
     if include_y:
         group.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis minimum")
         group.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
@@ -1749,8 +1748,8 @@ def flatten_list(listin: list[t.Any]) -> list[t.Any]:
     return listout
 
 
-def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]:
-    """Return a flat list of Paths from one path or a nested sequence of paths, or the default if there is no path.
+def normalize_path_list(paths: PathArg) -> list[Path]:
+    """Return a flat list of Paths from one path or a nested sequence of paths, or the working folder for no path.
 
     A remote path gets the canonical form of get_canonical_path, thus its parent keeps the host.
     """
@@ -1760,7 +1759,7 @@ def normalize_path_list(paths: PathArg, default: Path | str = ".") -> list[Path]
         return get_canonical_path(model_path_from_text(path) if isinstance(path, str) else Path(path))
 
     if not paths:
-        return [Path(default)]
+        return [Path()]
     if isinstance(paths, str | Path):
         return [to_path(paths)]
     return [to_path(p) for p in flatten_list(list(paths))]

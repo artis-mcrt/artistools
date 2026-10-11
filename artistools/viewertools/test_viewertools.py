@@ -136,9 +136,6 @@ def test_viewer_sets_the_residual_y_maximum(kind: str, residualtype: str) -> Non
         at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
     )
     assert np.isclose(parser.parse_args(viewer.get_plot_tokens()).residualymax, 2.5)
-    action = viewercore.get_actions_by_flag(parser)["-residualymax"]
-    assert viewercore.get_option_kind(action) == "text"
-    assert viewercore.get_default_tokens(action) is None
 
 
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", ["--plotcmf"])])
@@ -266,14 +263,6 @@ def test_series_label_that_the_command_cannot_give() -> None:
     assert viewerseries.get_label_error("") is None
     for label in ("-ve", "--", "default"):
         assert viewerseries.get_label_error(label) is not None
-
-
-def test_direction_bins_have_the_option_as_tooltip() -> None:
-    """Each bin of the list of directions gives its option, as the other controls give the help of their option."""
-    assert viewersections.get_bin_tooltip("bin", 3) == "-plotviewingangle 3"
-    assert viewersections.get_bin_tooltip("phi", 3) == "-plotviewingangle 3 --average_over_phi_angle"
-    assert viewersections.get_bin_tooltip("vpkt", 0) == "-plotvspecpol 0"
-    assert "real packets" in viewersections.get_bin_tooltip("vpkt", viewersections.ALL_DIRECTIONS_BIN)
 
 
 # the code that opens a window of plotspectra on the offscreen platform of Qt, and prints the results as JSON

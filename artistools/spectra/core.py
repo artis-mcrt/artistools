@@ -1661,14 +1661,12 @@ def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tup
     return edges, unit
 
 
-def get_default_losvelocity_shells(
-    modelpath: Path | str, nshells: int = 10
-) -> tuple[list[float], t.Literal["kmps", "c"]]:
-    """Return the edges [km/s] of nshells equal shells from -vmax to vmax, plus one shell to each corner, and the unit.
+def get_default_losvelocity_shells(modelpath: Path | str) -> tuple[list[float], t.Literal["kmps", "c"]]:
+    """Return the edges [km/s] of 10 equal shells from -vmax to vmax, plus one shell to each corner, and the unit.
 
     A positive velocity along the line of sight is motion toward the observer.
     """
-    edges, unit = get_default_velocity_shells(modelpath, nshells=nshells // 2)
+    edges, unit = get_default_velocity_shells(modelpath, nshells=5)
     return [*(-edge for edge in reversed(edges[1:])), *edges], unit
 
 

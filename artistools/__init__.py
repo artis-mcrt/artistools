@@ -70,7 +70,6 @@ from artistools import plotviewingangles as plotviewingangles
 from artistools import rustext as rustext
 from artistools import spectra as spectra
 from artistools import timesteps as timesteps
-from artistools import transitions as transitions
 from artistools import writecomparisondata as writecomparisondata
 from artistools.atomic import decode_roman_numeral as decode_roman_numeral
 from artistools.atomic import get_atomic_number as get_atomic_number

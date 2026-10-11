@@ -1,6 +1,5 @@
 """Small generic utilities."""
 
-import contextlib
 import functools
 import sys
 import typing as t
@@ -227,10 +226,9 @@ def parallel_map[IterableType, ResultType](
     progressclass = get_progress_class()
 
     use_multiprocessing = True
-    with contextlib.suppress(AttributeError):
-        if not sys._is_gil_enabled():  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-            # return a thread pool if we have no GIL (free threading)
-            use_multiprocessing = False
+    if not sys._is_gil_enabled():  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        # return a thread pool if we have no GIL (free threading)
+        use_multiprocessing = False
 
     executor: Executor
     if use_multiprocessing:

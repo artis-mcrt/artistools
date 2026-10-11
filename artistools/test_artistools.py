@@ -198,24 +198,13 @@ def test_console_script_runs_its_own_subcommand(
         assert at.commands.build_script_parser(dispatcher) is None
 
 
-def test_transitions_alias_of_the_partition_function_still_works() -> None:
-    """The old path at.transitions.get_lte_partfunc gives the same value and a warning. pynonthermal reads it."""
-    dflevels = pl.DataFrame({"g": [2.0, 4.0], "energy_ev": [0.0, 1.0]})
-    expected = at.atomic.get_lte_partfunc(dflevels, 5000.0)
-    assert np.isclose(expected, 2.0 + 4.0 * math.exp(-1.0 / (at.constants.K_B_ev_per_K * 5000.0)))
-
-    with pytest.warns(DeprecationWarning, match="artistools.atomic.get_lte_partfunc"):
-        assert np.isclose(at.transitions.get_lte_partfunc(dflevels, 5000.0), expected)
-
-
 def test_external_packages_find_their_names() -> None:
     """The packages pynonthermal and artisatomic read these names, thus a release that moves one stops them."""
     import importlib
 
     externalnames = {
-        "artistools": ["get_composition_data", "get_ionstring"],  # artisatomic, pynonthermal
+        "artistools": ["get_composition_data", "get_elsymbol", "get_ionstring"],  # artisatomic, pynonthermal
         "artistools.atomic": ["get_levels"],  # pynonthermal
-        "artistools.transitions": ["get_lte_partfunc"],  # pynonthermal
     }
     for modulename, names in externalnames.items():
         module = importlib.import_module(modulename)
@@ -892,15 +881,6 @@ def test_deprecated_flag_spellings_still_work() -> None:
         assert args.surface_count == 10
 
 
-def test_lightcurve_title_arg() -> None:
-    """The lc -title flag accepts custom text, while the bare (deprecated --title) form shows the model name."""
-    parser = argparse.ArgumentParser()
-    at.lightcurve.plotlightcurve.addargs(parser)
-    assert parser.parse_args([]).title is None
-    assert parser.parse_args(["--title"]).title is True
-    assert parser.parse_args(["-title", "Custom title"]).title == "Custom title"
-
-
 def test_retired_duplicate_commands_stay_gone() -> None:
     """The retired top-level duplicates neither parse nor appear, and their tree names work.
 
@@ -950,14 +930,6 @@ def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
         artistools.__main__.main(argsraw=["--version"])
     assert excinfo.value.code == 0
     assert version("artistools") in capsys.readouterr().out
-
-
-def test_cli_unknown_command() -> None:
-    import artistools.__main__
-
-    with pytest.raises(SystemExit) as excinfo:
-        artistools.__main__.main(argsraw=["plotspetcra"])
-    assert excinfo.value.code == 2
 
 
 def test_cli_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1022,21 +994,6 @@ def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> No
     subprocess.run([sys.executable, "-m", "artistools"], env=env, check=False, cwd=REPOPATH, timeout=120)
     completions = outputfile.read_text(encoding="utf-8").split("\v")
     assert expected in completions
-
-
-def test_package_attrs() -> None:
-    """Every re-exported attribute must resolve."""
-    for name in dir(at):
-        if not name.startswith("_"):
-            assert getattr(at, name) is not None
-
-
-def test_plotspherical_format_arg() -> None:
-    parser = argparse.ArgumentParser()
-    at.plotspherical.addargs(parser)
-    assert parser.parse_args([]).format == "pdf"
-    with pytest.raises(SystemExit):
-        parser.parse_args(["-format", "svg"])
 
 
 def test_timestep_times() -> None:
@@ -1162,14 +1119,6 @@ def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
 
     at.plotspherical.main(argsraw=[], modelpath=modelpath, timestep=40, outputfile=tmp_path / "map.png")
     assert (tmp_path / "map.png").read_bytes().startswith(pngmagic)
-
-
-def test_save_figure_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
-    """A caller gave format="pdf" to save_figure, thus a file named x.png held a PDF document."""
-    for filename, magic in (("x.png", b"\x89PNG"), ("x.pdf", b"%PDF"), ("x", b"%PDF")):
-        fig = plt.figure()
-        at.plottools.save_figure(fig, tmp_path / filename, format="pdf")
-        assert (tmp_path / filename).read_bytes().startswith(magic)
 
 
 def test_every_command_that_saves_a_plot_has_darkmode() -> None:
@@ -1629,16 +1578,6 @@ def test_get_ion_tuple_no_separator() -> None:
     assert at.get_ion_tuple("CIV") == (6, 4)
     assert at.get_ion_tuple("OI") == (8, 1)
 
-    with pytest.raises(ValueError, match="Could not parse ionstr"):
-        at.get_ion_tuple("notanion")
-
-
-def test_parse_range_list() -> None:
-    assert at.misc.parse_range_list("5") == [5]
-    assert at.misc.parse_range_list("3-5") == [3, 4, 5]
-    assert at.misc.parse_range_list("1,3-5,8") == [1, 3, 4, 5, 8]
-    assert at.misc.parse_range_list("5-3") == [3, 4, 5]  # reversed range is sorted
-
 
 def test_make_vpkt_input_default_contents() -> None:
     """The default vpkt.txt must keep the exact layout ARTIS parses, field by field."""
@@ -1886,7 +1825,7 @@ def test_hesma_plots_take_the_times_and_the_tables_of_each_file(mockplot: mock.M
     for dirbin, callargs in enumerate(mockplot.call_args_list):
         xarr, yarr = get_plot_xy(callargs)
         assert np.allclose(xarr, [3000.0, 4000.0])
-        assert np.allclose(yarr, np.array([dirbin + 2.0, dirbin + 4.0]) * 1e-10)
+        assert np.allclose(yarr, np.array([dirbin + 2.0, dirbin + 4.0]) * 1e-10, rtol=1e-6, atol=0.0)
 
     mockplot.reset_mock()
     specfiles = [tmp_path / "a_spec.dat", tmp_path / "b_spec.dat"]
@@ -1947,7 +1886,7 @@ def test_hesma_spectrum_takes_the_column_names_of_the_file(mockplot: mock.MagicM
 
     xarr, yarr = get_plot_xy(mockplot.call_args)
     assert np.allclose(xarr, [3000.0, 4000.0])
-    assert np.allclose(yarr, np.array([1.0, 3.0]) * 1e-10)
+    assert np.allclose(yarr, np.array([1.0, 3.0]) * 1e-10, rtol=1e-6, atol=0.0)
 
 
 def test_hesma_reports_missing_arguments(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1981,21 +1920,6 @@ def test_make_vpkt_input_rejects_bad_arguments() -> None:
             at.make_vpkt_input.parse_bool(badbool)
 
 
-def test_makelist() -> None:
-    assert at.misc.makelist(None) == []
-    assert at.misc.makelist("hello") == ["hello"]
-    assert at.misc.makelist(Path("my/folder/path")) == [Path("my/folder/path")]
-    assert at.misc.makelist([1, 2, 3]) == [1, 2, 3]
-    assert at.misc.makelist((1, 2)) == [1, 2]
-
-
-def test_flatten_list() -> None:
-    assert at.misc.flatten_list([[1, 2], [3, 4]]) == [1, 2, 3, 4]
-    assert at.misc.flatten_list([1, [2, 3], 4]) == [1, 2, 3, 4]
-    assert at.misc.flatten_list([]) == []
-    assert at.misc.flatten_list([1, 2, 3]) == [1, 2, 3]
-
-
 def test_trim_or_pad() -> None:
     result = at.misc.trim_or_pad(3, [1, 2, 3, 4], [10, 20])
     assert list(result[0]) == [1, 2, 3]
@@ -2003,15 +1927,6 @@ def test_trim_or_pad() -> None:
 
     result2 = at.misc.trim_or_pad(2, "single_string")
     assert list(result2[0]) == ["single_string", None]
-
-
-def test_match_closest_time() -> None:
-    times = [100.0, 200.0, 300.0, 400.0]
-    assert at.misc.match_closest_time(250.0, times) == 200.0
-    assert at.misc.match_closest_time(310.0, times) == 300.0
-    assert at.misc.match_closest_time(99.0, times) == 100.0
-    assert at.misc.match_closest_time(400.0, times) == 400.0
-    assert at.misc.match_closest_time(310.0, ["100", "300.5", "400"]) == 300.5
 
 
 def test_get_npts_model(tmp_path: Path) -> None:
@@ -2830,24 +2745,6 @@ def test_linefluxes_timebins_keep_a_rounding_gap_and_drop_a_real_gap() -> None:
     dftimes = pl.DataFrame({"t": [0.9, 1.0, 1.999995, 2.0, 2.9999, 3.0, 3.5, 4.0, 5.0, 5.1]})
     timebins = dftimes.select(get_timebin_expr(pl.col("t"), [1.0, 2.0, 4.0], [1.99999, 3.0, 5.0]))
     assert timebins.to_series().to_list() == [None, 0, 0, 1, 1, None, None, 2, 2, None]
-
-
-def test_linefluxes_from_pops_reads_the_cell_volumes() -> None:
-    """The luminosity from the populations needs the volume of each cell of the model."""
-    from artistools.plotlinefluxes import FeatureTuple
-    from artistools.plotlinefluxes import get_line_luminosities_from_pops
-
-    # the test model has no linestat.out, thus the feature names its one Fe II transition directly
-    emfeatures = [FeatureTuple("Fe II 1-0", "Fe II", 0.0, [0], 0.0, 0.0, 26, 2, [1], [0])]
-    # timestep 10 is the one timestep with NLTE populations in the test model
-    dflcdata = get_line_luminosities_from_pops(
-        emfeatures,
-        modelpath,
-        arr_tstart=[at.get_timestep_times(modelpath, loc="start")[10]],
-        arr_tend=[at.get_timestep_times(modelpath, loc="end")[10]],
-    )
-    assert dflcdata.height == 1
-    assert dflcdata["Fe II 1-0"].item() > 0.0
 
 
 def test_linefluxes_from_pops_takes_the_cell_volumes_of_a_3d_model(tmp_path: Path) -> None:

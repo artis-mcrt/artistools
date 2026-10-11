@@ -32,15 +32,6 @@ COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
 POLARS_READABLE_EXTENSIONS = (".zst", ".gz")
 
 
-def extra_csv_columns_ignored() -> dict[str, t.Any]:
-    """Return the CSV reader arguments that drop the columns of a file that have no name.
-
-    polars 2 rejects a list of names that is shorter than the file, and polars 1 has no
-    `extra_columns` argument. The caller unpacks the dict into the call of the reader.
-    """
-    return {"extra_columns": "ignore"} if "extra_columns" in inspect.signature(pl.scan_csv).parameters else {}
-
-
 @t.overload
 def drop_trailing_null_column(df: pl.DataFrame) -> pl.DataFrame: ...
 
@@ -484,8 +475,7 @@ def read_wsv(
         normalised.seek(0)
 
         # a lazy scan gets the name of every column, and the projection pushdown then parses only the
-        # requested columns. This works on polars 1 and polars 2, which differ in how read_csv
-        # matches a name list against a column selection
+        # requested columns. read_csv rejects a list of names that holds only some of the columns
         lzscan = pl.scan_csv(
             normalised,
             separator=" ",
@@ -868,16 +858,16 @@ def check_metadata_mapping(metadata: object, metafile: Path) -> dict[str, t.Any]
 
 
 def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
-    """Return a dict of metadata for a file, either from a metadata file or from the big combined metadata file.
+    """Return a dict of metadata for a file from its metadata file, e.g. spectrum.txt.meta.yml for spectrum.txt.
 
     The cache key holds the absolute path, see ModelpathCache. The absolute path keeps a symbolic link, because the
-    metadata file of a link is beside the link. A key of metadata.yml can hold the path as the user gives it.
+    metadata file of a link is beside the link.
     """
-    return get_file_metadata_cached(Path(filepath).absolute(), str(filepath))
+    return get_file_metadata_cached(Path(filepath).absolute())
 
 
 @lru_cache(maxsize=24)
-def get_file_metadata_cached(filepath: Path, givenpath: str) -> dict[str, t.Any]:
+def get_file_metadata_cached(filepath: Path) -> dict[str, t.Any]:
     """Return the metadata of the file at an absolute path, and keep it for the next caller."""
 
     def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
@@ -893,35 +883,16 @@ def get_file_metadata_cached(filepath: Path, givenpath: str) -> dict[str, t.Any]
     import yaml
 
     filepath = without_compressed_extension(filepath)
-    givenpath = str(without_compressed_extension(Path(givenpath)))
+    metafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
+    if not metafile.exists():
+        print(f"No metadata found for: {filepath}")
+        return {}
 
-    # check if the reference file (e.g. spectrum.txt) has an metadata file (spectrum.txt.meta.yml)
-    individualmetafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
-    if individualmetafile.exists():
-        with individualmetafile.open("r", encoding="utf-8") as yamlfile:
-            # a file of comments alone gives None
-            metadata = yaml.safe_load(yamlfile) or {}
+    with metafile.open("r", encoding="utf-8") as yamlfile:
+        # a file of comments alone gives None
+        metadata = yaml.safe_load(yamlfile) or {}
 
-        return add_derived_metadata(check_metadata_mapping(metadata, individualmetafile))
-
-    # check if the metadata is in the big combined metadata file (todo: eliminate this file)
-    combinedmetafile = Path(filepath.parent.resolve(), "metadata.yml")
-    if combinedmetafile.exists():
-        with combinedmetafile.open("r", encoding="utf-8") as yamlfile:
-            combined_metadata = yaml.safe_load(yamlfile) or {}
-        # a key can hold the path as the user gives it, the absolute path, or the name of the file alone, because
-        # the file sits beside the data files
-        metadata = next(
-            (combined_metadata[key] for key in (givenpath, str(filepath), filepath.name) if key in combined_metadata),
-            None,
-        )
-
-        # an absent key and a key with no value both give None
-        return add_derived_metadata(check_metadata_mapping(metadata or {}, combinedmetafile))
-
-    print(f"No metadata found for: {filepath}")
-
-    return {}
+    return add_derived_metadata(check_metadata_mapping(metadata, metafile))
 
 
 def merge_pdf_files(pdf_files: list[str], outputpath: Path | str | None = None) -> str:

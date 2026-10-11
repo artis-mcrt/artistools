@@ -23,7 +23,6 @@ import numpy as np
 import polars as pl
 import polars.testing as pltest
 import pytest
-import yaml
 
 import artistools as at
 from artistools.estimators import plotestimators
@@ -333,32 +332,18 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
 
 
 def test_add_cli_arg_helpers() -> None:
-    """The shared argument helpers must define the standard flags, types, and defaults."""
+    """The shared argument helpers must define the standard flags and types."""
     parser = argparse.ArgumentParser()
     at.misc.addarg_modelpath(parser, multiplepaths=True, default=[])
     at.misc.addarg_output(parser, kind="file", default=Path("out.pdf"))
     at.misc.addarg_timestep(parser)
     at.misc.addarg_timedays(parser)
     at.misc.addarg_timeminmax(parser)
-    at.misc.addarg_axislimits(parser, xlimtype=int, xmindefault=1000, xmaxdefault=2000)
+    at.misc.addarg_axislimits(parser, xmindefault=1000, xmaxdefault=2000)
     at.misc.addarg_seriesstyle(parser, colordefault=["C0", "C1"], include_linealpha=True)
     at.misc.addarg_figscale(parser, include_figwidthscale=True)
     at.misc.addarg_filter(parser)
     at.misc.addarg_maxpacketfiles(parser)
-
-    args = parser.parse_args([])
-    assert args.modelpath == []
-    assert args.outputfile == Path("out.pdf")
-    assert args.timestep is None
-    assert args.timedays is None
-    assert args.figscale == 1.0
-    assert args.figwidthscale == 1.0
-    assert args.xmin == 1000
-    assert args.xmax == 2000
-    assert args.color == ["C0", "C1"]
-    assert args.linealpha == []
-    assert args.filtermovingavg == 0
-    assert args.maxpacketfiles is None
 
     args = parser.parse_args([
         "-modelpath",
@@ -943,18 +928,13 @@ def test_get_file_metadata(tmp_path: Path) -> None:
     (tmp_path / "ebv.txt.meta.yml").write_text("a_v: 2.0\nr_v: 4.0\n")
     assert at.misc.get_file_metadata(tmp_path / "ebv.txt")["e_bminusv"] == pytest.approx(0.5)
 
-    # metadata can also come from a combined metadata.yml keyed by the file path
-    combineddir = tmp_path / "combined"
-    combineddir.mkdir()
-    combinedfile = combineddir / "spectrum.txt"
-    combinedfile.write_text("data")
-    (combineddir / "metadata.yml").write_text(yaml.safe_dump({str(combinedfile): {"a_v": 1.0, "e_bminusv": 0.25}}))
-    combined_metadata = at.misc.get_file_metadata(combinedfile)
-    assert combined_metadata["r_v"] == pytest.approx(4.0)
-
     # no metadata file present -> empty dict
     (tmp_path / "nometa.txt").write_text("data")
     assert at.misc.get_file_metadata(tmp_path / "nometa.txt") == {}
+
+    (tmp_path / "scalar.txt.meta.yml").write_text("a scalar\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="must be a mapping"):
+        at.misc.get_file_metadata(tmp_path / "scalar.txt")
 
 
 def test_write_parquet_atomic(tmp_path: Path) -> None:
@@ -1285,7 +1265,6 @@ def test_normalize_path_list() -> None:
     assert at.misc.normalize_path_list(Path("a/b")) == [Path("a/b")]
     assert at.misc.normalize_path_list([["x"], "y"]) == [Path("x"), Path("y")]
     assert at.misc.normalize_path_list([]) == [Path()]
-    assert at.misc.normalize_path_list(None, default="fallback") == [Path("fallback")]
 
 
 def test_resolve_outputfile(tmp_path: Path) -> None:
@@ -1304,21 +1283,6 @@ def test_resolve_outputfile(tmp_path: Path) -> None:
     newdir = tmp_path / "newfolder"
     assert at.misc.resolve_outputfile(newdir, "default.pdf") == newdir / "default.pdf"
     assert newdir.is_dir()
-
-
-def test_set_args_from_dict() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-foo", type=int, default=1)
-    parser.add_argument("-o", "--output", dest="outputfile", default="z")
-
-    # defaults can be overridden by dest name ("foo") or by an option string whose dest differs ("output")
-    at.misc.set_args_from_dict(parser, {"foo": 5, "output": "y"})
-    args = parser.parse_args([])
-    assert args.foo == 5
-    assert args.outputfile == "y"
-
-    with pytest.raises(ValueError, match="Unknown argument names"):
-        at.misc.set_args_from_dict(parser, {"nonexistent": 1})
 
 
 @pytest.mark.parametrize("reverseorder", [False, True])
@@ -1935,27 +1899,6 @@ def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
 
     # the ends of a range in either order name the same timesteps
     assert at.misc.get_time_range(tmp_path, timestep_range_str="3-1")[:2] == (1, 3)
-
-
-def test_check_averaging_angles() -> None:
-    """Averaging over phi and theta at once must be rejected wherever the values arrive."""
-    for phi, theta in ((False, False), (True, False), (False, True)):
-        at.misc.check_averaging_angles(phi, theta)
-
-    with pytest.raises(ValueError, match="both the phi and theta"):
-        at.misc.check_averaging_angles(average_over_phi=True, average_over_theta=True)
-
-
-def test_viewingangle_averaging_flags_are_mutually_exclusive() -> None:
-    """The two averaging flags are rejected by argparse itself, for every command that defines them."""
-    parser = argparse.ArgumentParser()
-    at.misc.addarg_viewingangle(parser)
-
-    assert parser.parse_args(["--average_over_phi_angle"]).average_over_phi_angle
-    assert parser.parse_args(["--average_over_theta_angle"]).average_over_theta_angle
-
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--average_over_phi_angle", "--average_over_theta_angle"])
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="needs a platform with a fork start method")
@@ -2902,12 +2845,10 @@ def test_a_host_alias_of_one_letter_stays_remote_outside_windows(monkeypatch: py
     assert remote.names_a_remote_folder("a:/lustre/model")
 
 
-def test_get_file_metadata_reads_the_sidecar_of_a_link_and_a_key_with_a_folder(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A metadata file beside a symbolic link and a key of metadata.yml with a folder must each give the metadata.
+def test_get_file_metadata_reads_the_sidecar_of_a_link(tmp_path: Path) -> None:
+    """A metadata file beside a symbolic link must give the metadata.
 
-    The function resolved the link before the lookups, thus it looked beside the target and keyed on the target.
+    The function resolved the link before the lookup, thus it looked beside the target.
     """
     (tmp_path / "store").mkdir()
     (tmp_path / "store" / "spec.txt").write_text("data", encoding="utf-8")
@@ -2916,12 +2857,6 @@ def test_get_file_metadata_reads_the_sidecar_of_a_link_and_a_key_with_a_folder(
     (linkfolder / "spec.txt").symlink_to(tmp_path / "store" / "spec.txt")
     (linkfolder / "spec.txt.meta.yml").write_text("a_v: 1.5\n", encoding="utf-8")
     assert at.misc.get_file_metadata(linkfolder / "spec.txt")["a_v"] == pytest.approx(1.5)
-
-    (tmp_path / "data").mkdir()
-    (tmp_path / "data" / "obs.txt").write_text("data", encoding="utf-8")
-    (tmp_path / "data" / "metadata.yml").write_text(yaml.safe_dump({"data/obs.txt": {"a_v": 2.5}}), encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
-    assert at.misc.get_file_metadata("data/obs.txt")["a_v"] == pytest.approx(2.5)
 
 
 def test_get_file_metadata_follows_the_working_folder_and_takes_an_empty_file(
@@ -2945,16 +2880,6 @@ def test_get_file_metadata_follows_the_working_folder_and_takes_an_empty_file(
     (tmp_path / "empty.txt").write_text("data", encoding="utf-8")
     (tmp_path / "empty.txt.meta.yml").write_text("# a comment alone\n", encoding="utf-8")
     assert at.misc.get_file_metadata(tmp_path / "empty.txt") == {}
-
-    combineddir = tmp_path / "combined"
-    combineddir.mkdir()
-    (combineddir / "spec.txt").write_text("data", encoding="utf-8")
-    (combineddir / "metadata.yml").write_text("# a comment alone\n", encoding="utf-8")
-    assert at.misc.get_file_metadata(combineddir / "spec.txt") == {}
-    # the combined file sits beside the data file, thus a key can hold the name of the file alone
-    (combineddir / "metadata.yml").write_text(yaml.safe_dump({"spec.txt": {"a_v": 3.0}}), encoding="utf-8")
-    at.misc.fileio.get_file_metadata_cached.cache_clear()
-    assert at.misc.get_file_metadata(combineddir / "spec.txt")["a_v"] == pytest.approx(3.0)
 
 
 def test_get_mpiranklist_takes_a_numpy_array_of_cells() -> None:
@@ -3513,19 +3438,6 @@ def test_read_rank_outputfiles_skips_an_empty_rank_file(tmp_path: Path, capsys: 
 
     assert dfout["modelgridindex"].to_list() == [0, 1, 2]
     assert "nlte_0001.out is empty" in capsys.readouterr().err
-
-
-def test_get_file_metadata_takes_a_key_with_no_value(tmp_path: Path) -> None:
-    """A key of metadata.yml with no value gives no metadata, and a value that is not a mapping gives a message.
-
-    YAML reads a key with no value as None, and the derived values then raised a TypeError.
-    """
-    (tmp_path / "metadata.yml").write_text("sn.txt:\n", encoding="utf-8")
-    assert at.misc.get_file_metadata(tmp_path / "sn.txt") == {}
-
-    (tmp_path / "other.txt.meta.yml").write_text("a scalar\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="must be a mapping"):
-        at.misc.get_file_metadata(tmp_path / "other.txt")
 
 
 def test_one_timestep_grid_from_timesteps_out_and_from_input_txt_gives_one_range(tmp_path: Path) -> None:

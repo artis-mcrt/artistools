@@ -27,6 +27,7 @@ jobs:
             contents: read # required for actions/checkout
             id-token: write # required for OIDC authentication with CodSpeed
         env:
+            # pyo3 0.29 supports Python 3.15 at most. This setting permits a build for Python 3.16.
             PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
             UV_FROZEN: 1
         name: codspeed benchmarks
