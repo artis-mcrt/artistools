@@ -68,7 +68,6 @@ from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import artis_subfolders
 from artistools.misc import exit_with_error
-from artistools.misc import firstexisting_or_none
 from artistools.misc import flatten_list
 from artistools.misc import folder_is_artis_run
 from artistools.misc import format_frame_path
@@ -97,6 +96,7 @@ from artistools.misc.cliutils import positive_float_arg
 from artistools.misc.cliutils import SERIES_STYLE_KEYS
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.remote import on_model_host
+from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_values
@@ -1142,7 +1142,7 @@ def get_default_plotitem_skip_reason(
 
         # averageexcitation reads the NLTE population files, which a model need not have written
         if len(plotitems) == 2 and plotitems[0] == "averageexcitation" and modelpath is not None:
-            if firstexisting_or_none("nlte_0000.out", folder=modelpath, tryzipped=True) is None:
+            if not has_nlte_populations(modelpath):
                 return "the run has no NLTE population files (nlte_*.out)"
             plotitems = plotitems[1]
 

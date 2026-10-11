@@ -48,6 +48,7 @@ from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.fileio import temporary_parts_folder
 from artistools.misc.modelinfo import get_nonempty_cellcounts
+from artistools.misc.modelinfo import get_rank_outputfiles
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
@@ -405,10 +406,13 @@ def get_rankbatch_parquetpath(folderpath: Path | str, batch_mpiranks: Sequence[i
     return Path(folderpath) / filename
 
 
-# With the option WRITE_ESTIMATORS_COMBINE_ALLRANKS, ARTIS writes the estimators of all ranks into this file of a run
-# folder. Without the option, ARTIS writes one file for each rank. scripts/combine_estimator_files.py of ARTIS makes
+# With the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes the estimators of all ranks into this file of a run
+# folder. Without the option, ARTIS writes one file for each rank. scripts/combine_allrank_out_files.py of ARTIS makes
 # the same file from the files of the ranks.
 ALLRANKS_TEXTFILENAME = "estimators_allranks.out"
+
+# get_rank_outputfiles selects the same file of each rank as find_estimator_file() in rust/src/estimators.rs
+RANK_TEXTFILENAME_FORMAT = "estimators_{mpirank:04d}.out"
 
 
 def get_allranks_textfile(folderpath: Path | str) -> Path | None:
@@ -471,34 +475,15 @@ SPECIES_COLUMN_PATTERN = r"_(?:n|[A-Z][a-z]{0,2})_[IVX]+$|^nnelement_|^nniso_"
 CACHEVERSION = 1
 
 
-def get_rank_textfiles(folderpath: Path | str) -> dict[int, Path]:
-    """Return the estimator file of each rank in a run folder, keyed by MPI rank.
-
-    The glob finds the ranks, and the suffix order then selects one file for each rank: the same
-    file that find_estimator_file() in rust/src/estimators.rs reads. A leftover sibling, e.g.
-    estimators_0000.out.bak beside estimators_0000.out, thus has no effect.
-    """
-    folderpath = Path(folderpath)
-    # the names of the glob select the files. A test of each suffix with stat took 3.4 s on Lustre for the 15368
-    # rank files of a run, because each stat there is a request to a server
-    textfiles = {textfile.name: textfile for textfile in folderpath.glob("estimators_*.out*")}
-    # ARTIS pads the rank to a minimum width of four, thus a rank of 10000 or more has more digits
-    ranks = {int(rankstr) for rankstr in (name.split("_")[1].split(".")[0] for name in textfiles) if rankstr.isdigit()}
-    rankfiles: dict[int, Path] = {}
-    for rank in sorted(ranks):
-        stem = f"estimators_{rank:04d}.out"
-        candidates = (stem, *(stem + ext for ext in COMPRESSED_EXTENSIONS))
-        if (name := next((name for name in candidates if name in textfiles), None)) is not None:
-            rankfiles[rank] = textfiles[name]
-    return rankfiles
-
-
 def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
     """Return the time of the last change of each rank's estimator file, keyed by MPI rank.
 
-    get_rank_textfiles selects the file of each rank, thus a leftover sibling cannot decide the freshness.
+    get_rank_outputfiles selects the file of each rank, thus a leftover sibling cannot decide the freshness.
     """
-    return {rank: rankfile.stat().st_mtime for rank, rankfile in get_rank_textfiles(folderpath).items()}
+    return {
+        rank: rankfile.stat().st_mtime
+        for rank, rankfile in get_rank_outputfiles(Path(folderpath), RANK_TEXTFILENAME_FORMAT).items()
+    }
 
 
 def get_batch_textsource_state(
@@ -842,7 +827,9 @@ def get_estimator_textfiles(runfolder: Path, textfile: Path | None) -> list[Path
 
     A leftover sibling, e.g. estimators_0000.out.bak, is not in the list.
     """
-    return [textfile] if textfile is not None else list(get_rank_textfiles(runfolder).values())
+    return (
+        [textfile] if textfile is not None else list(get_rank_outputfiles(runfolder, RANK_TEXTFILENAME_FORMAT).values())
+    )
 
 
 def get_estimator_textsize(textfiles: Sequence[Path]) -> int:
