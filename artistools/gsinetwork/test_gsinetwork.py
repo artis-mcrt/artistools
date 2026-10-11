@@ -157,7 +157,7 @@ def test_particledata_holds_the_last_abundance_after_the_network_ends(tmp_path: 
 
     abundances = particledata["Sr"][0].to_numpy()
     assert abundances[0] > 0.0
-    assert np.isclose(abundances[0], abundances[1], rtol=1e-6)
+    assert np.isclose(abundances[0], abundances[1], rtol=1e-6, atol=0.0)
 
 
 def test_particledata_reads_the_exact_step_at_the_time_of_a_network_step(tmp_path: Path) -> None:
@@ -181,7 +181,7 @@ def test_particledata_reads_the_exact_step_at_the_time_of_a_network_step(tmp_pat
     dfnucabund, _ = get_trajectory_timestepfile_nuc_abund(tmp_path, 114511, "./Run_rprocess/nz-plane00223")
     expected_sr = float(dfnucabund.filter(pl.col("Z") == 38)["massfrac"].sum())
     assert expected_sr > 0.0
-    assert np.isclose(particledata["Sr"][0][0], expected_sr, rtol=1e-6)
+    assert np.isclose(particledata["Sr"][0][0], expected_sr, rtol=1e-6, atol=0.0)
 
 
 def test_decayproducts_counts_each_trajectory_in_one_ye_bin(tmp_path: Path, trajectory_copy: Path) -> None:

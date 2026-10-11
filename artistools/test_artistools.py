@@ -1875,7 +1875,7 @@ def test_hesma_plots_take_the_times_and_the_tables_of_each_file(mockplot: mock.M
     for dirbin, callargs in enumerate(mockplot.call_args_list):
         xarr, yarr = get_plot_xy(callargs)
         assert np.allclose(xarr, [3000.0, 4000.0])
-        assert np.allclose(yarr, np.array([dirbin + 2.0, dirbin + 4.0]) * 1e-10)
+        assert np.allclose(yarr, np.array([dirbin + 2.0, dirbin + 4.0]) * 1e-10, rtol=1e-6, atol=0.0)
 
     mockplot.reset_mock()
     specfiles = [tmp_path / "a_spec.dat", tmp_path / "b_spec.dat"]
@@ -1936,7 +1936,7 @@ def test_hesma_spectrum_takes_the_column_names_of_the_file(mockplot: mock.MagicM
 
     xarr, yarr = get_plot_xy(mockplot.call_args)
     assert np.allclose(xarr, [3000.0, 4000.0])
-    assert np.allclose(yarr, np.array([1.0, 3.0]) * 1e-10)
+    assert np.allclose(yarr, np.array([1.0, 3.0]) * 1e-10, rtol=1e-6, atol=0.0)
 
 
 def test_hesma_reports_missing_arguments(capsys: pytest.CaptureFixture[str]) -> None:

@@ -5577,8 +5577,8 @@ def test_rate_of_an_ion_leaves_out_a_cell_with_none_of_the_element() -> None:
         "gamma_NT_Fe_II": [2.0e-6, 0.0],
         "cooling_coll_Fe_II": [2.0e-9, 0.0],
     }
-    assert np.isclose(get_bin_value("gamma_NT", "absolute", columns), 2.0e-6, rtol=1e-9)
-    assert np.isclose(get_bin_value("cooling_coll", "absolute", columns), 1.0e-9, rtol=1e-9)
+    assert np.isclose(get_bin_value("gamma_NT", "absolute", columns), 2.0e-6, rtol=1e-9, atol=0.0)
+    assert np.isclose(get_bin_value("cooling_coll", "absolute", columns), 1.0e-9, rtol=1e-9, atol=0.0)
 
 
 def test_exportmassfractions_leaves_out_an_empty_cell(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
