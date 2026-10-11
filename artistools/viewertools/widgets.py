@@ -10,6 +10,7 @@ import sys
 import typing as t
 from functools import cache
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 
@@ -39,67 +40,104 @@ if t.TYPE_CHECKING:
     from PySide6 import QtWidgets
 
 
-# a section with one of these titles starts closed, because a user needs it less often than the plot controls
-CLOSED_SECTIONS: t.Final = frozenset({"Other options", "Command", "Python"})
-
-
 def add_section(
-    panellayout: "QtWidgets.QVBoxLayout", title: str, key: str | None = None
+    panellayout: "QtWidgets.QVBoxLayout", title: str, key: str | None = None, *, closed: bool = False
 ) -> "tuple[QtWidgets.QToolButton, QtWidgets.QGridLayout]":
     """Add a section with a heading and a grid for its controls to the panel of the window.
 
-    A click on the heading closes or opens the section, as a disclosure triangle does in the inspector of Keynote. The
-    settings keep the state of each section by its key, which is the title if the caller gives no key.
+    The heading has the form of a section of an inspector in the apps of macOS: a thin line above a bold title. A click
+    on the heading closes or opens the section, and the pointer over it shows "Show" or "Hide" at the right. The
+    settings keep the state of each section by its key, which is the title if the caller gives no key. A section that
+    a user needs less often than the plot controls starts closed with closed=True, until the user opens it.
     """
-    from PySide6 import QtCore
     from PySide6 import QtWidgets
 
-    header = QtWidgets.QToolButton()
-    header.setText(title)
-    header.setCheckable(True)
-    header.setAutoRaise(True)
-    header.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-    # a faint band across the panel sets each heading apart from the controls. The grey with an alpha suits the light
-    # and the dark appearance
-    header.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
-    header.setStyleSheet(SECTION_HEADER_STYLE)
-    # the macOS style gives a tool button a small font, and a heading takes the bold font of the application
-    font = QtWidgets.QApplication.font()
-    font.setBold(True)
-    header.setFont(font)
+    header = get_section_header_class()(title)
     content = QtWidgets.QWidget()
     content.setObjectName(SECTION_CONTENT_NAME)
     grid = QtWidgets.QGridLayout(content)
     # the space under the content of a section is larger than the space between its rows, thus each section stays a
     # group of its own
-    grid.setContentsMargins(12, 6, 4, 14)
+    grid.setContentsMargins(4, 4, 4, 12)
     grid.setVerticalSpacing(ROW_SPACING)
     # the columns of the grid have the gap of a row of make_row_layout, thus a control in the grid and a control in a
     # row start at one place
     grid.setHorizontalSpacing(ROW_SPACING)
     grid.setColumnStretch(1, 1)
-    settingkey = f"{QtWidgets.QApplication.applicationDisplayName()}/sections/{key or title}"
-    isopen = get_bool_setting(settingkey, default=title not in CLOSED_SECTIONS)
+    # the earlier versions wrote the state of each section to "sections" when a window opened, also with no click on
+    # the heading. Thus the new default, which is closed, applies only with a different key
+    settingkey = f"{QtWidgets.QApplication.applicationDisplayName()}/sectionstates/{key or title}"
 
-    def set_open(checked: bool) -> None:
-        header.setArrowType(QtCore.Qt.ArrowType.DownArrow if checked else QtCore.Qt.ArrowType.RightArrow)
-        header.setToolTip(f"{'Close' if checked else 'Open'} the section")
+    def show_open(checked: bool) -> None:
+        header.setToolTip(f"{'Hide' if checked else 'Show'} the section")
         content.setVisible(checked)
+
+    def on_click(checked: bool) -> None:
+        show_open(checked)
         get_settings().setValue(settingkey, checked)
 
     # the stretch at the end of the panel keeps each section, also Command and Python, below the last one
     index = panellayout.count() - 1
     panellayout.insertWidget(index, header)
-    # a widget with no parent shows as a window of its own, thus the content goes into the panel before set_open
+    # a widget with no parent shows as a window of its own, thus the content goes into the panel before show_open
     panellayout.insertWidget(index + 1, content)
-    header.toggled.connect(set_open)
+    isopen = get_bool_setting(settingkey, default=not closed)
     header.setChecked(isopen)
-    set_open(isopen)
+    show_open(isopen)
+    header.toggled.connect(on_click)
     return header, grid
 
 
-# a button that shows one symbol, e.g. ✕ or ▲, has no frame, and a light background shows under the pointer, as the
-# small buttons of the apps of macOS have. The grey with an alpha suits the light and the dark appearance
+@cache
+def get_section_header_class() -> "Callable[[str], QtWidgets.QToolButton]":
+    """Return the class of the section headings, which show "Show" or "Hide" at the right under the pointer.
+
+    PySide keeps memory for each class, thus the viewers make the class one time.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    class SectionHeader(QtWidgets.QToolButton):
+        """A heading of a section that the user can click to close or open the section."""
+
+        def __init__(self, title: str) -> None:
+            super().__init__()
+            self.setText(title)
+            self.setCheckable(True)
+            self.setAutoRaise(True)
+            self.setObjectName("sectionheader")
+            self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+            self.setStyleSheet(SECTION_HEADER_STYLE)
+
+        @t.override
+        def paintEvent(self, event: QtGui.QPaintEvent, /) -> None:
+            # the style of a tool button centres its text, and an inspector heading starts at the left
+            painter = QtGui.QPainter(self)
+            palette = self.palette()
+            painter.setPen(QtGui.QPen(palette.color(QtGui.QPalette.ColorRole.Mid), 1.0))
+            painter.drawLine(0, 0, self.width(), 0)
+            textrect = self.rect().adjusted(4, 5, -4, 0)
+            font = self.font()
+            font.setBold(True)
+            painter.setFont(font)
+            painter.setPen(palette.color(QtGui.QPalette.ColorRole.WindowText))
+            alignment = int(QtCore.Qt.AlignmentFlag.AlignVCenter)
+            painter.drawText(textrect, alignment | int(QtCore.Qt.AlignmentFlag.AlignLeft), self.text())
+            # an auto-raise button paints again when the pointer moves onto it or off it
+            if self.underMouse():
+                font.setBold(False)
+                painter.setFont(font)
+                painter.setPen(get_accent_colour(fortext=True))
+                hint = "Hide" if self.isChecked() else "Show"
+                painter.drawText(textrect, alignment | int(QtCore.Qt.AlignmentFlag.AlignRight), hint)
+            painter.end()
+
+    return SectionHeader
+
+
+# a button that shows one symbol, e.g. "xmark", has no frame. A light background shows under the pointer, as on the
+# small buttons of the apps of macOS. The grey with an alpha suits the light and the dark appearance
 GLYPH_BUTTON_STYLE: t.Final = (
     "QToolButton { border: none; background: transparent; padding: 1px 4px; border-radius: 4px; }"
     " QToolButton:hover { background: rgba(128, 128, 128, 60); }"
@@ -110,22 +148,142 @@ GLYPH_BUTTON_STYLE: t.Final = (
 ROW_SPACING: t.Final = 6
 LABEL_GAP: t.Final = 12
 SECTION_CONTENT_NAME: t.Final = "sectioncontent"
+# the size of a section heading. paintEvent of the heading draws the line above it and the bold title at the left
 SECTION_HEADER_STYLE: t.Final = (
-    "QToolButton { border: none; border-radius: 5px; padding: 3px 6px; background: rgba(128, 128, 128, 34); }"
-    " QToolButton:hover { background: rgba(128, 128, 128, 60); }"
+    "QToolButton#sectionheader { border: none; padding: 8px 4px 3px 4px; background: transparent; font-weight: bold; }"
 )
 
 
-def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidgets.QToolButton":
-    """Return a small button that shows one symbol, e.g. ✕ to remove an item, with no frame."""
+def set_disclosure_symbol(button: "QtWidgets.QToolButton", *, isopen: bool) -> None:
+    """Show a thin chevron on a button that opens and closes a part of the window, as the outlines of macOS do."""
+    set_symbol(button, "chevron.down" if isopen else "chevron.right")
+
+
+def get_accent_colour(*, fortext: bool = False) -> "QtGui.QColor":
+    """Return the accent colour of the system, which System Settings sets on macOS.
+
+    The highlight colour of an inactive window is a pale grey on macOS. Thus the accent role of the active group gives
+    the colour of a link, a token, or a selected button. With fortext, a dark window takes a lighter accent, as the
+    links of the apps of macOS in Dark Mode do. The accent of the palette had too little contrast on dark grey.
+    """
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    palette = QtWidgets.QApplication.palette()
+    accent = palette.color(QtGui.QPalette.ColorGroup.Active, QtGui.QPalette.ColorRole.Accent)
+    isdark = palette.color(QtGui.QPalette.ColorRole.Window).lightness() < 128
+    return accent.lighter(150) if fortext and isdark else accent
+
+
+def make_glyph_button(symbol: str, tooltip: str, accessiblename: str) -> "QtWidgets.QToolButton":
+    """Return a small button that shows one symbol of SYMBOL_STROKES, e.g. "xmark" to remove an item, with no frame."""
     from PySide6 import QtWidgets
 
     button = QtWidgets.QToolButton()
-    button.setText(glyph)
+    set_symbol(button, symbol)
     button.setStyleSheet(GLYPH_BUTTON_STYLE)
     button.setToolTip(tooltip)
     button.setAccessibleName(accessiblename)
     return button
+
+
+def make_grip(tooltip: str) -> "QtWidgets.QLabel":
+    """Return the grip of a row or a card that the user can drag, which shows three short lines.
+
+    A label gives each click to its row, thus the drag starts there. Qt shows the pointer of a disabled widget from its
+    parent, thus the grip is a label and not a disabled button.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    grip = QtWidgets.QLabel()
+    set_symbol(grip, "line.3.horizontal")
+    # the margins of the label are the padding of GLYPH_BUTTON_STYLE, thus the grip has the size of a glyph button
+    grip.setContentsMargins(4, 1, 4, 1)
+    grip.setToolTip(tooltip)
+    grip.setAccessibleName(tooltip)
+    grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+    return grip
+
+
+# the size in pixels of a symbol of a glyph button, which suits the small text of the sidebar
+SYMBOL_SIZE: t.Final = 10
+
+# the strokes of each symbol, in the form of SF Symbols of macOS, as lines through points in a square from 0 to 1
+SYMBOL_STROKES: t.Final = MappingProxyType({
+    "xmark": (((0.2, 0.2), (0.8, 0.8)), ((0.8, 0.2), (0.2, 0.8))),
+    "plus": (((0.5, 0.12), (0.5, 0.88)), ((0.12, 0.5), (0.88, 0.5))),
+    "chevron.up": (((0.15, 0.68), (0.5, 0.32), (0.85, 0.68)),),
+    "chevron.down": (((0.15, 0.32), (0.5, 0.68), (0.85, 0.32)),),
+    "chevron.right": (((0.32, 0.15), (0.68, 0.5), (0.32, 0.85)),),
+    "line.3.horizontal": (((0.12, 0.25), (0.88, 0.25)), ((0.12, 0.5), (0.88, 0.5)), ((0.12, 0.75), (0.88, 0.75))),
+})
+
+
+def set_symbol(widget: "QtWidgets.QToolButton | QtWidgets.QLabel", symbol: str) -> None:
+    """Show a symbol of SYMBOL_STROKES on a button or a label.
+
+    A label, e.g. a grip, shows the symbol in the grey of disabled text. The property "symbol" of the widget names the
+    symbol. refresh_palette_style_sheets then draws the symbol again in the colour of a new appearance.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    icon = make_symbol_icon(symbol)
+    size = QtCore.QSize(SYMBOL_SIZE, SYMBOL_SIZE)
+    if isinstance(widget, QtWidgets.QLabel):
+        widget.setPixmap(icon.pixmap(size, QtGui.QIcon.Mode.Disabled))
+    else:
+        widget.setIcon(icon)
+        widget.setIconSize(size)
+    widget.setProperty("symbol", symbol)
+
+
+def make_symbol_icon(symbol: str) -> "QtGui.QIcon":
+    """Return an icon of a symbol of SYMBOL_STROKES with thin round strokes in the colour of the text.
+
+    A disabled button takes the colour of a disabled text. The icon holds images at the pixel ratio of the screen.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    palette = QtWidgets.QApplication.palette()
+    icon = QtGui.QIcon()
+    for mode, group in (
+        (QtGui.QIcon.Mode.Normal, QtGui.QPalette.ColorGroup.Active),
+        (QtGui.QIcon.Mode.Disabled, QtGui.QPalette.ColorGroup.Disabled),
+    ):
+        pixmap = make_screen_pixmap(SYMBOL_SIZE, SYMBOL_SIZE)
+        pen = QtGui.QPen(palette.color(group, QtGui.QPalette.ColorRole.ButtonText), max(1.0, SYMBOL_SIZE / 8.0))
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+        painter = QtGui.QPainter(pixmap)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(pen)
+        for stroke in SYMBOL_STROKES[symbol]:
+            painter.drawPolyline([QtCore.QPointF(x * SYMBOL_SIZE, y * SYMBOL_SIZE) for x, y in stroke])
+        painter.end()
+        icon.addPixmap(pixmap, mode)
+    return icon
+
+
+def make_screen_pixmap(width: int, height: int) -> "QtGui.QPixmap":
+    """Return a transparent image of a size in device-independent pixels, at the highest pixel ratio of the screens.
+
+    An image of a Retina screen (ratio 2) then has twice the pixels in each direction, and Qt does not blur it. A
+    window can move to a different screen, and a smaller image of a lower ratio stays sharp.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    ratio = max((screen.devicePixelRatio() for screen in QtWidgets.QApplication.screens()), default=1.0)
+    pixmap = QtGui.QPixmap(round(width * ratio), round(height * ratio))
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+    return pixmap
 
 
 def make_row_layout(widgets: "Sequence[QtWidgets.QWidget]") -> "QtWidgets.QVBoxLayout":
@@ -404,12 +562,15 @@ def make_drag_header(
     on_drag: "Callable[[QtCore.QPoint], None]",
     on_drop: "Callable[[QtCore.QPoint], None]",
     on_move: "Callable[[int], None]",
+    on_click: "Callable[[QtCore.QPoint], None] | None" = None,
 ) -> "QtWidgets.QWidget":
     """Return a header that the user can drag, e.g. to move a card to a new place in a list.
 
     During a drag, on_drag receives each position of the pointer on the screen. on_drop receives the last position.
-    A child control, e.g. a button, keeps its clicks, thus a drag starts only on the background or on a label. The
-    header also takes the keyboard focus, and Alt-Up (Option-Up on macOS) or Alt-Down gives -1 or 1 to on_move. A
+    on_click receives the position of a click with no drag. A child control, e.g. a button, keeps its clicks, thus a
+    drag starts only on the background or on a label.
+
+    The header also takes the keyboard focus, and Alt-Up (Option-Up on macOS) or Alt-Down gives -1 or 1 to on_move. A
     user of the keyboard can then move the card too. The object name "dragheader" selects the header in a style sheet.
     """
     from PySide6 import QtCore
@@ -422,6 +583,7 @@ def make_drag_header(
     header.setProperty("on_drag", on_drag)
     header.setProperty("on_drop", on_drop)
     header.setProperty("on_move", on_move)
+    header.setProperty("on_click", on_click)
     return header
 
 
@@ -549,12 +711,19 @@ def get_drag_header_class() -> "type[QtWidgets.QWidget]":
 
         @t.override
         def mouseReleaseEvent(self, event: QtGui.QMouseEvent, /) -> None:
-            wasdragging = self.dragging
+            # a press on a child button and a release outside it is a cancelled click, and the header got no press
+            waspressed, wasdragging = self.pressposition is not None, self.dragging
             self.pressposition, self.dragging = None, False
             self.unsetCursor()
             # on_drop can make the card again, thus the header resets its state first
             if wasdragging:
                 self.send("on_drop", event.globalPosition().toPoint())
+            elif (
+                waspressed
+                and event.button() == QtCore.Qt.MouseButton.LeftButton
+                and callable(self.property("on_click"))
+            ):
+                self.send("on_click", event.globalPosition().toPoint())
             else:
                 super().mouseReleaseEvent(event)
 
@@ -703,7 +872,28 @@ def make_sidebar() -> "tuple[QtWidgets.QWidget, QtWidgets.QVBoxLayout]":
     panelscroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
     panelscroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     sidebarlayout.addWidget(panelscroll, stretch=1)
+    use_small_controls(panel)
     return sidebar, panellayout
+
+
+# the size of the small system font of macOS, which NSFont.smallSystemFontSize gives
+MACOS_SMALL_FONT_POINTS: t.Final = 11.0
+
+
+def use_small_controls(panel: "QtWidgets.QWidget") -> None:
+    """Give each control of the panel the small size of macOS, as an inspector of an Apple app has.
+
+    The attribute of the panel also applies to a control that the panel gets later, e.g. a chip. The attribute does not
+    change the font of a button, a check box, or a label, thus the panel also gets the small font. The small size
+    applies only on macOS.
+    """
+    from PySide6 import QtCore
+
+    if sys.platform == "darwin":
+        panel.setAttribute(QtCore.Qt.WidgetAttribute.WA_MacSmallSize)
+        font = panel.font()
+        font.setPointSizeF(MACOS_SMALL_FONT_POINTS)
+        panel.setFont(font)
 
 
 def make_plot_area(canvas: "FigureCanvasQTAgg", on_resize: "Callable[[], None]") -> "QtWidgets.QWidget":
@@ -1143,7 +1333,7 @@ def make_option_table(
             for field in fields:
                 field.editingFinished.connect(on_fields)
 
-        removebutton = make_glyph_button("✕", f"Remove {flag} from the command", f"Remove {flag}")
+        removebutton = make_glyph_button("xmark", f"Remove {flag} from the command", f"Remove {flag}")
         removebutton.clicked.connect(lambda: QtCore.QTimer.singleShot(0, window, lambda: set_option(row, "")))
         layout.addWidget(removebutton)
         editor.setToolTip(helptexts.get(action.dest, ""))
@@ -1206,15 +1396,16 @@ def add_command_section(
 def add_copy_box(
     panellayout: "QtWidgets.QVBoxLayout", title: str, copytooltip: str, *, maxlines: int = 8, wraplines: bool = True
 ) -> "tuple[QtWidgets.QPlainTextEdit, QtWidgets.QPushButton]":
-    """Add a section with a read-only box of text and a Copy button, and return the box and the button.
+    """Add a closed section with a read-only text box and a Copy button, and return both widgets.
 
-    The box shows up to maxlines lines, and a longer text scrolls. Code keeps its lines without a wrap.
+    The box shows up to maxlines lines, and a longer text scrolls. Code keeps its lines without a wrap. The section
+    starts closed, because a user needs the text less often than the plot controls.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    _, grid = add_section(panellayout, title)
+    _, grid = add_section(panellayout, title, closed=True)
     # the text takes the width, and the Copy button keeps its size at the right
     grid.setColumnStretch(0, 1)
     grid.setColumnStretch(1, 0)
@@ -1552,6 +1743,8 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
         ("Edit", "Copy Figure", QtGui.QKeySequence(standardkey.Copy)),
         ("Edit", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
         ("Edit", "Copy Python", QtGui.QKeySequence("Ctrl+Alt+C")),
+        ("Edit", "Add Series", QtGui.QKeySequence("Ctrl+Shift+A")),
+        ("Edit", "Add Subplot", QtGui.QKeySequence("Ctrl+Shift+N")),
         # macOS moves this item to the menu of the application
         ("Edit", "Settings…", QtGui.QKeySequence("Ctrl+,")),
         ("View", "Play", QtGui.QKeySequence("Space")),

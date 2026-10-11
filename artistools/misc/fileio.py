@@ -1256,11 +1256,42 @@ def is_readonly_error(exc: OSError) -> bool:
     return isinstance(exc, PermissionError) or exc.errno == errno.EROFS
 
 
+def get_readonly_cache_error(parquetfilepath: Path) -> PermissionError:
+    """Return the error for a cache that artistools cannot write, because its folder is read-only."""
+    msg = (
+        f"artistools cannot write its cache {parquetfilepath.name}, because the folder"
+        f" {parquetfilepath.parent} is read-only"
+    )
+    return PermissionError(msg)
+
+
+@contextlib.contextmanager
+def temporary_parts_folder(parquetfilepath: Path) -> Generator[Path]:
+    """Give a temporary folder beside a cache for the parts of the cache, and remove the folder after use.
+
+    The folder is on the file system of the cache, because the parts of a large model need as much space as the cache.
+    The name of the folder starts with a dot, thus no glob of the caches finds it.
+    """
+    import tempfile
+
+    try:
+        partsfolder = tempfile.TemporaryDirectory(
+            dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.parts", ignore_cleanup_errors=True
+        )
+    except OSError as exc:
+        if not is_readonly_error(exc):
+            raise
+        raise get_readonly_cache_error(parquetfilepath) from exc
+    with partsfolder as partsfoldername:
+        yield Path(partsfoldername)
+
+
 def write_parquet_atomic(
     pldf: pl.DataFrame | pl.LazyFrame,
     parquetfilepath: Path,
     metadata: dict[str, str] | None = None,
     replaces: tuple[int, int] | None = None,
+    compression_level: int = 13,
 ) -> None:
     """Write a parquet file with zstd compression through a temporary file, thus no reader sees a partial file.
 
@@ -1292,11 +1323,7 @@ def write_parquet_atomic(
     except OSError as exc:
         if not is_readonly_error(exc):
             raise
-        msg = (
-            f"artistools cannot write its cache {parquetfilepath.name}, because the folder"
-            f" {parquetfilepath.parent} is read-only"
-        )
-        raise PermissionError(msg) from exc
+        raise get_readonly_cache_error(parquetfilepath) from exc
     os.close(fd)
     partialfilepath = Path(partialfilename)
     # mkstemp creates the file 0600, and the destination takes the mode of the file that lands on it, so a
@@ -1306,7 +1333,9 @@ def write_parquet_atomic(
     destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
     partialfilepath.chmod(destmode & 0o777)
     try:
-        pldf.lazy().sink_parquet(partialfilepath, compression="zstd", compression_level=13, metadata=metadata)
+        pldf.lazy().sink_parquet(
+            partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata
+        )
         try:
             # gives the file a second name, and fails if that name is taken, thus the destination appears
             # complete in one step and no reader of it ever sees a different file at the same path

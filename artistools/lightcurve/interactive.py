@@ -86,7 +86,6 @@ from artistools.viewertools.series import add_series_list
 from artistools.viewertools.series import edit_series_properties
 from artistools.viewertools.series import make_series_swatch
 from artistools.viewertools.series import ReferenceData
-from artistools.viewertools.series import SERIES_PROPERTY_FLAGS
 from artistools.viewertools.series import SeriesListActions
 from artistools.viewertools.series import SeriesRow
 from artistools.viewertools.widgets import add_row
@@ -1156,15 +1155,15 @@ def open_window(
         if path not in values.lightcurves:
             return
         isreference = [path_is_reference_lightcurve(other) for other in values.lightcurves]
-        # the colour of the dialog for "Default" is the colour that the light curve has with no -color of its own
+        # the colour of the popup for "Default" is the colour that the light curve has with no -color of its own
         defaultrows = set_series_rows(values.otheroptions, values.lightcurves, path, {"-color": None})
         defaultcolour = get_path_colours(values.lightcurves, isreference, defaultrows)[path]
 
         style = get_series_style(values.otheroptions, values.lightcurves, path)
 
         def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
-            # a change applies to the current values, because the window can change them while the dialog is open,
-            # e.g. the fit of the width. No change gives the series its style from before the dialog
+            # a change applies to the current values, because the window can change them while the popup is open,
+            # e.g. the fit of the width. A value of None for changes gives the series its style from before the popup
             current = viewer.values
             rows = set_series_rows(
                 current.otheroptions, current.lightcurves, path, style if changes is None else changes
@@ -1180,7 +1179,7 @@ def open_window(
             show_changes,
             flags=("-label", "-color", "-linewidth", "-linealpha")
             if path_is_reference_lightcurve(path)
-            else SERIES_PROPERTY_FLAGS,
+            else SERIES_STYLE_FLAGS,
         )
 
     def is_run_folder(path: str) -> bool:
@@ -1191,9 +1190,9 @@ def open_window(
         window,
         partial(show_status_note, statusbar),
         "The ARTIS models and the reference light curves of the plot, in the order of the command. The order sets the"
-        " -label and the style of each series. Click ▲ or ▼, drag a row, or press Alt-Up or Alt-Down (Option on a"
-        " Mac)"
-        " to change the order. The command gives a file from the reference data of artistools by its name alone.",
+        " -label and the style of each series. Click the up or the down arrow, drag a row, or press Alt-Up or Alt-Down"
+        " (Option on a Mac) to change the order. The command gives a file from the reference data of artistools by its"
+        " name alone.",
         ReferenceData(
             kind="reference light curve",
             folder=get_path("artistools_dir") / "data" / "lightcurves" / "bollightcurves",

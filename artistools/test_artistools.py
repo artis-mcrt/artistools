@@ -3,6 +3,7 @@ import contextlib
 import dataclasses as dc
 import hashlib
 import importlib
+import importlib.util
 import inspect
 import io
 import itertools
@@ -5726,3 +5727,63 @@ def test_viewer_python_code_gives_the_changed_arguments() -> None:
     assert "notitle=True" in code
     rejected = viewerwidgets.get_python_code(parser, ["-xmin", "abc"], "plotlightcurves", "at.lightcurve.plot")
     assert rejected == "# plotlightcurves rejects the command"
+
+
+# the code of each order of import, which checks the names that broke after PySide6 loaded
+LAZY_IMPORT_CHECK_CODE: t.Final = """
+import importlib.util
+import sys
+import types
+
+qtfirst = sys.argv[1] == "qtfirst"
+hasqt = importlib.util.find_spec("PySide6") is not None
+if qtfirst:
+    from PySide6 import QtCore
+import artistools
+if not qtfirst:
+    # a search loads no Qt package, thus the imports of artistools stay lazy
+    importlib.util.find_spec("PySide6")
+    assert sys.get_lazy_imports() == "all"
+    if hasqt:
+        # the imports of a script are eager, thus PySide6 runs one time and keeps each of its modules
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+        from PySide6 import QtCore
+        from PySide6 import QtWidgets
+        import PySide6
+        assert PySide6.QtCore is QtCore and PySide6.QtWidgets is QtWidgets
+    else:
+        # the loader of a Qt package runs this function, and the test calls it in place of that load
+        artistools.lazyimports.resolve_lazy_imports()
+pending = [
+    f"{module.__name__}.{name}"
+    for module in list(sys.modules.values())
+    if module.__name__.startswith("artistools")
+    for name, value in list(vars(module).items())
+    if isinstance(value, getattr(types, "LazyImportType", ()))
+]
+assert not pending, pending
+from artistools.misc import print_error
+assert callable(print_error)
+if hasqt:
+    import kiwisolver
+    assert isinstance(kiwisolver.__version__, str)
+"""
+
+
+@pytest.mark.skipif(not hasattr(sys, "set_lazy_imports"), reason="only Python 3.15 and later have lazy imports")
+@pytest.mark.parametrize("order", ["qtfirst", "artistoolsfirst"])
+def test_lazy_imports_survive_the_qt_bindings(order: str) -> None:
+    """No lazy import of artistools stays pending when PySide6 loads, in either order of import.
+
+    After PySide6 loads, the attribute of a module gave a pending lazy import as it was, e.g. print_error of artistools
+    and the version of kiwisolver. A window then stopped with "'lazy_import' object is not callable". The guard then
+    resolved the imports inside the search of PySide6. A lazy import of PySide6 in a script thus ran the package two
+    times, and a search alone made the imports eager. The test runs in a new interpreter, because the order of the
+    imports decides the result.
+    """
+    if order == "qtfirst" and importlib.util.find_spec("PySide6") is None:
+        pytest.skip("the import of PySide6 before artistools needs PySide6")
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", LAZY_IMPORT_CHECK_CODE, order], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr
