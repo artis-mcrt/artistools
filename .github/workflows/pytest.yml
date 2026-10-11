@@ -11,6 +11,8 @@ on:
     repository_dispatch:
         types: [trigger_checks]
 env:
+    # pyo3 0.29 supports Python 3.15 at most. This setting permits a build for Python 3.16.
+    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
     RUFF_OUTPUT_FORMAT: github
     UV_FROZEN: 1
 jobs:
