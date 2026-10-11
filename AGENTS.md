@@ -6,10 +6,10 @@ The package has **no public API**. You can delete code that has no callers. This
 
 Two packages outside this repository read artistools:
 
-- `pynonthermal` reads `at.get_ionstring`, `at.atomic.get_levels`, and `at.transitions.get_lte_partfunc`.
+- `pynonthermal` reads `at.get_elsymbol`, `at.get_ionstring`, and `at.atomic.get_levels`.
 - `artisatomic` reads `at.get_composition_data` as `from artistools import get_composition_data`.
 
-Keep these names and their paths, because a release that moves one of them stops the installed package. The test `test_external_packages_find_their_names` holds this list. The name `at.transitions.get_lte_partfunc` is a deprecated alias of `at.atomic.get_lte_partfunc`, and `artistools/transitions.py` holds nothing else. This alias is the one permitted exception to the rule above. Delete that module after `pynonthermal` reads the new name.
+Keep these names and their paths, because a release that moves one of them stops the installed package. The test `test_external_packages_find_their_names` holds this list.
 
 A command-line argument is different. A user writes such an argument in a script and in a note, thus a
 new spelling that takes the old one away stops that work. Keep the old spelling of a renamed argument

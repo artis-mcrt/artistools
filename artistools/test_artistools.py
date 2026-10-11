@@ -198,24 +198,13 @@ def test_console_script_runs_its_own_subcommand(
         assert at.commands.build_script_parser(dispatcher) is None
 
 
-def test_transitions_alias_of_the_partition_function_still_works() -> None:
-    """The old path at.transitions.get_lte_partfunc gives the same value and a warning. pynonthermal reads it."""
-    dflevels = pl.DataFrame({"g": [2.0, 4.0], "energy_ev": [0.0, 1.0]})
-    expected = at.atomic.get_lte_partfunc(dflevels, 5000.0)
-    assert np.isclose(expected, 2.0 + 4.0 * math.exp(-1.0 / (at.constants.K_B_ev_per_K * 5000.0)))
-
-    with pytest.warns(DeprecationWarning, match="artistools.atomic.get_lte_partfunc"):
-        assert np.isclose(at.transitions.get_lte_partfunc(dflevels, 5000.0), expected)
-
-
 def test_external_packages_find_their_names() -> None:
     """The packages pynonthermal and artisatomic read these names, thus a release that moves one stops them."""
     import importlib
 
     externalnames = {
-        "artistools": ["get_composition_data", "get_ionstring"],  # artisatomic, pynonthermal
+        "artistools": ["get_composition_data", "get_elsymbol", "get_ionstring"],  # artisatomic, pynonthermal
         "artistools.atomic": ["get_levels"],  # pynonthermal
-        "artistools.transitions": ["get_lte_partfunc"],  # pynonthermal
     }
     for modulename, names in externalnames.items():
         module = importlib.import_module(modulename)
