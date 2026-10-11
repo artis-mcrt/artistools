@@ -1680,6 +1680,10 @@ SUBPLOT_STYLE_SHEET: t.Final = (
     " QWidget#dragheader:focus { border: 2px solid palette(highlight); border-radius: 4px; }"
 )
 
+# the grip, the + button, and the ✕ buttons of a card and of its chips are the targets of a click or a drag, and the
+# small font of a tool button made them hard to hit
+SUBPLOT_CARD_GLYPH_FONTSCALE: t.Final = 1.6
+
 
 def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]") -> "QtWidgets.QFrame":
     """Return a chip that shows one item of a subplot, with a button that removes the item.
@@ -1695,7 +1699,9 @@ def make_chip(text: str, tooltip: str, on_remove: "Callable[[], None]") -> "QtWi
     layout.setSpacing(0)
     label = QtWidgets.QLabel(text)
     label.setToolTip(tooltip)
-    removebutton = make_glyph_button("✕", f"Remove {text} from the subplot", f"Remove {text}")
+    removebutton = make_glyph_button(
+        "✕", f"Remove {text} from the subplot", f"Remove {text}", fontscale=SUBPLOT_CARD_GLYPH_FONTSCALE
+    )
     removebutton.clicked.connect(on_remove)
     layout.addWidget(label)
     layout.addWidget(removebutton)
@@ -2157,35 +2163,39 @@ def open_window(
         # a narrow sidebar cuts the text of the header and the type, and the buttons of the header stay in view
         quantity.setMinimumWidth(1)
         typebox.setMinimumWidth(100)
-        disclosure = QtWidgets.QToolButton()
-        disclosure.setArrowType(QtCore.Qt.ArrowType.RightArrow if iscollapsed else QtCore.Qt.ArrowType.DownArrow)
-        disclosure.setStyleSheet("QToolButton { border: none; }")
-        disclosure.setToolTip("Show the controls of the subplot" if iscollapsed else "Hide the controls of the subplot")
-        disclosure.setAccessibleName("Expand" if iscollapsed else "Collapse")
-        disclosure.clicked.connect(partial(on_collapse_subplot, row))
         header = make_drag_header(
             partial(on_drag_subplot, row), partial(on_drop_subplot, row), partial(on_move_key, row)
         )
         header.setToolTip("Drag the header to move the subplot. Alt-Up and Alt-Down (Option on a Mac) also move it.")
         headerlayout = QtWidgets.QHBoxLayout(header)
         headerlayout.setContentsMargins(0, 0, 0, 0)
-        headerlayout.addWidget(disclosure)
+        grip = QtWidgets.QLabel("≡")
+        grip.setEnabled(False)
+        grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+        gripfont = grip.font()
+        gripfont.setPointSizeF(gripfont.pointSizeF() * SUBPLOT_CARD_GLYPH_FONTSCALE)
+        grip.setFont(gripfont)
+        headerlayout.addWidget(grip)
         headerlayout.addWidget(QtWidgets.QLabel(f"<b>{row + 1}</b>"))
         headerlayout.addWidget(typebox)
         headerlayout.addWidget(quantity, 1)
+        # the delete button is the last item of the header, at the right edge of the card, as a close button
         for text, tooltip, callback in (
             ("+", "Insert a new subplot below this subplot", partial(open_insert_field, row + 1)),
             ("✕", "Delete the subplot", partial(on_delete_subplot, row)),
         ):
-            button = make_glyph_button(text, tooltip, tooltip)
+            button = make_glyph_button(text, tooltip, tooltip, fontscale=SUBPLOT_CARD_GLYPH_FONTSCALE)
             button.clicked.connect(callback)
             headerlayout.addWidget(button)
-        grip = QtWidgets.QLabel("≡")
-        grip.setEnabled(False)
-        grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
-        headerlayout.addWidget(grip)
-        # the keyboard and VoiceOver reach the moves through the menu of the header
+        # the grip takes the place of a disclosure button at the left of the header. Thus the menu of the header holds
+        # the collapse of the card, and the keyboard and VoiceOver reach it and the moves there
         header.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.ActionsContextMenu)
+        collapseaction = QtGui.QAction("Expand" if iscollapsed else "Collapse", header)
+        collapseaction.setToolTip(
+            "Show the controls of the subplot" if iscollapsed else "Hide the controls of the subplot"
+        )
+        collapseaction.triggered.connect(partial(on_collapse_subplot, row))
+        header.addAction(collapseaction)
         for text, target, enabled in (
             ("Move Up", row - 1, row > 0),
             ("Move Down", row + 1, row < len(viewer.values.subplots) - 1),

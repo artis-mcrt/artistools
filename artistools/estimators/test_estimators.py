@@ -1,9 +1,11 @@
 import argparse
 import dataclasses as dc
+import json
 import os
 import re
 import shlex
 import shutil
+import subprocess  # ruff:ignore[suspicious-subprocess-import]
 import sys
 import typing as t
 from collections.abc import Sequence
@@ -4889,6 +4891,75 @@ def test_card_state_follows_its_subplot() -> None:
     assert interactive.get_moved_rows(before, (("Te",), ("TR", "yscale=log"), ("nne",)), {1}) == {1}
     # the change removes the subplot of the row
     assert not interactive.get_moved_rows(before, before[1:], {0})
+
+
+# the code that opens a window of plotestimators on the offscreen platform of Qt, and prints the header of the first
+# subplot card before and after the Collapse action of its menu, as JSON
+CARD_HEADER_CHECK_CODE: t.Final = """
+import json, sys, time
+from PySide6 import QtCore, QtWidgets
+QtCore.QSettings.setDefaultFormat(QtCore.QSettings.Format.IniFormat)
+QtCore.QSettings.setPath(QtCore.QSettings.Format.IniFormat, QtCore.QSettings.Scope.UserScope, sys.argv[2])
+from artistools.estimators import interactive
+from artistools.viewertools.application import start_application
+
+app = start_application(interactive.APPLICATION_NAME, interactive.get_icon_curve())
+windows = []
+assert interactive.open_window([sys.argv[1]], windows) is None
+window = windows[-1]
+
+def get_first_header():
+    end = time.monotonic() + 60.0
+    while time.monotonic() < end:
+        app.processEvents()
+        headers = [header for header in window.findChildren(QtWidgets.QWidget, "dragheader") if header.isVisible()]
+        if headers:
+            return min(headers, key=lambda header: header.mapTo(window, QtCore.QPoint(0, 0)).y())
+        time.sleep(0.01)
+    raise TimeoutError
+
+def describe(header):
+    layout = header.layout()
+    return {
+        "first": layout.itemAt(0).widget().text(),
+        "last": layout.itemAt(layout.count() - 1).widget().text(),
+        "actions": [action.text() for action in header.actions()],
+    }
+
+results = {"before": describe(get_first_header())}
+next(action for action in get_first_header().actions() if action.text() == "Collapse").trigger()
+end = time.monotonic() + 5.0
+while time.monotonic() < end:
+    app.processEvents()
+    time.sleep(0.01)
+results["after"] = describe(get_first_header())
+print(json.dumps(results))
+window.close()
+"""
+
+
+def test_card_header_has_the_grip_first_and_the_delete_button_last(tmp_path: Path) -> None:
+    """The grip is the first item of the header of a subplot card, the ✕ button is the last, and the menu collapses it.
+
+    The grip took the place of the disclosure button, thus the menu of the header now holds Collapse and Expand. A fresh
+    interpreter opens the window, because a QCoreApplication of a different test in this process cannot show a widget.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    environment = os.environ | {"QT_QPA_PLATFORM": "offscreen", viewercore.MACOS_BUNDLE_VARIABLE: "1"}
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", CARD_HEADER_CHECK_CODE, str(modelpath), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr[-3000:]
+    results = json.loads(next(line for line in result.stdout.splitlines() if line.startswith('{"before"')))
+    assert results["before"]["first"] == "≡"
+    assert results["before"]["last"] == "✕"
+    assert results["before"]["actions"][0] == "Collapse"
+    assert results["after"]["actions"][0] == "Expand", "the Collapse action of the menu must collapse the card"
 
 
 def test_time_axis_takes_no_automatic_bins() -> None:

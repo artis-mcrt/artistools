@@ -116,8 +116,11 @@ SECTION_HEADER_STYLE: t.Final = (
 )
 
 
-def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidgets.QToolButton":
-    """Return a small button that shows one symbol, e.g. ✕ to remove an item, with no frame."""
+def make_glyph_button(glyph: str, tooltip: str, accessiblename: str, fontscale: float = 1.0) -> "QtWidgets.QToolButton":
+    """Return a small button that shows one symbol, e.g. ✕ to remove an item, with no frame.
+
+    fontscale multiplies the size of the font of the symbol.
+    """
     from PySide6 import QtWidgets
 
     button = QtWidgets.QToolButton()
@@ -125,6 +128,10 @@ def make_glyph_button(glyph: str, tooltip: str, accessiblename: str) -> "QtWidge
     button.setStyleSheet(GLYPH_BUTTON_STYLE)
     button.setToolTip(tooltip)
     button.setAccessibleName(accessiblename)
+    if fontscale != 1.0:
+        font = button.font()
+        font.setPointSizeF(font.pointSizeF() * fontscale)
+        button.setFont(font)
     return button
 
 
