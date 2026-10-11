@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
 from itertools import batched
+from itertools import pairwise
 from pathlib import Path
 from types import MappingProxyType
 
@@ -56,6 +57,7 @@ from artistools.rustext import estimtimesteps
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterator
+    from concurrent.futures import Future
 
 # Suffixes that give the units of a derived name, e.g. vel_r_min_kmps and init_kinetic_en_erg. A name
 # carries its quantity at its end more often than at its start, thus get_units tries these first.
@@ -658,16 +660,56 @@ def get_allranks_timesteps(folderpath: Path | str) -> tuple[int, ...] | None:
     return None if textfile is None else tuple(estimtimesteps(textfile))
 
 
-# The minimum size of one text batch. Only one text batch is in memory at a time. 2 GiB of the text of a 3D
-# kilonova model gives a table of about 0.7 GB
-ESTIMATOR_TEXTBATCH_BYTES = 2 * 1024**3
+# The minimum size of one text batch. 1 GiB of the text of a 3D kilonova model gives a table of about 0.35 GB. On a
+# Mac, text batches of 1 GiB gave the same speed as text batches of 2 GiB. The peak memory was 3.7 GB in place of
+# 4.9 GB
+ESTIMATOR_TEXTBATCH_BYTES = 1024**3
+
+# The zstd level of the cache. For the cache of 4.0 GB of text, level 9 took 1.2 s and level 13 took 2.3 s, and each
+# cache was 0.62 GB
+CACHE_COMPRESSION_LEVEL = 9
 
 # The number of rank files that one call of estimparse reads
 RANKFILE_BATCH_SIZE = 100
 
-# The parts of a conversion of the estimator text. Each key is a timestep, and each value lists the parquet files of
-# that timestep in the order of the text
-type TimestepParts = dict[int, list[Path]]
+# A part exists only during the conversion, thus the speed is more important than the size. On Leonardo, the parts
+# of 4.6 GB of text took 1.8 s to write and 3.6 s to read with no compression. With lz4, they took 4.6 s and 7.1 s,
+# and they were half as large
+PART_COMPRESSION: t.Final = "uncompressed"
+
+
+class ParquetPart(t.NamedTuple):
+    """A parquet part of one timestep of a conversion, and the facts about its rows that the later steps need.
+
+    The facts come from the rows in memory. A read of each part on Lustre took 24 s for a large model, because the
+    footer of a parquet file of 2620 columns is large.
+    """
+
+    path: Path
+    rowcount: int
+    firstcell: int
+    lastcell: int
+    cellsinorder: bool
+    schema: pl.Schema
+
+
+# The parts of a conversion of the estimator text. Each key is a timestep, and each value lists the parts of that
+# timestep in the order of the text
+type TimestepParts = dict[int, list[ParquetPart]]
+
+
+def write_part(dftimestep: pl.DataFrame, partpath: Path) -> ParquetPart:
+    """Write the rows of one timestep to a parquet part, and return the part."""
+    dftimestep.write_parquet(partpath, compression=PART_COMPRESSION)
+    cells = dftimestep["modelgridindex"]
+    return ParquetPart(
+        path=partpath,
+        rowcount=dftimestep.height,
+        firstcell=int(cells[0]),
+        lastcell=int(cells[-1]),
+        cellsinorder=cells.is_sorted(),
+        schema=dftimestep.schema,
+    )
 
 
 def write_text_batch(dftextbatch: pl.DataFrame, partsfolder: Path, timestepparts: TimestepParts) -> None:
@@ -701,40 +743,48 @@ def write_text_batch(dftextbatch: pl.DataFrame, partsfolder: Path, timestepparts
     for timestep, dftimestep in timestepframes:
         assert isinstance(timestep, int)
         parts = timestepparts.setdefault(timestep, [])
-        partpath = partsfolder / f"ts{timestep:05d}_part{len(parts):05d}.parquet"
-        # a part exists only during the conversion, thus a fast compression is better than a small file
-        dftimestep.write_parquet(partpath, compression="lz4")
-        parts.append(partpath)
+        parts.append(write_part(dftimestep, partsfolder / f"ts{timestep:05d}_part{len(parts):05d}.parquet"))
 
 
 def read_estimator_text(state: "EstimatorBatchState", partsfolder: Path) -> TimestepParts:
     """Convert the estimator text of a cache to parquet files of each timestep in partsfolder.
 
-    The text is the estimator file of all ranks, or the files of the ranks of the cache. The reader keeps only one text
-    batch in memory, thus the size of the table has no limit. The table of a large 3D model is larger than the
+    The text is the estimator file of all ranks, or the files of the ranks of the cache. The memory holds a maximum of
+    two text batches, thus the size of the table has no limit. The table of a large 3D model is larger than the
     memory that a login node gives to one user.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     timestepparts: TimestepParts = {}
     # a text of empty cells gives the key columns and no row. Only a text with no complete cell gives no column
     textholdscell = False
+    pendingwrite: Future[None] | None = None
 
-    def write_batch(dftextbatch: pl.DataFrame) -> None:
-        nonlocal textholdscell
-        textholdscell |= dftextbatch.width > 0
-        write_text_batch(dftextbatch, partsfolder, timestepparts)
+    with ThreadPoolExecutor(max_workers=1) as partwriter:
 
-    if state.textfile is not None:
-        textsize_mib = state.textfile.stat().st_size / 1024 / 1024
-        print(
-            f"    reading {state.textfile.name} ({textsize_mib:.1f} MiB) in {state.runfolder.name}...",
-            end="",
-            flush=True,
-        )
-        estimparse_allranks_batches(state.textfile, ESTIMATOR_TEXTBATCH_BYTES, write_batch)
-    else:
-        print(f"    reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
-        for rankbatch in batched(state.mpiranks, RANKFILE_BATCH_SIZE, strict=False):
-            write_batch(estimparse(state.runfolder, min(rankbatch), max(rankbatch)))
+        def write_batch(dftextbatch: pl.DataFrame) -> None:
+            # one thread writes a text batch while the reader parses the next one. This function first waits for the
+            # write of the previous text batch, thus the memory holds a maximum of two text batches
+            nonlocal textholdscell, pendingwrite
+            textholdscell |= dftextbatch.width > 0
+            if pendingwrite is not None:
+                pendingwrite.result()
+            pendingwrite = partwriter.submit(write_text_batch, dftextbatch, partsfolder, timestepparts)
+
+        if state.textfile is not None:
+            textsize_mib = state.textfile.stat().st_size / 1024 / 1024
+            print(
+                f"    reading {state.textfile.name} ({textsize_mib:.1f} MiB) in {state.runfolder.name}...",
+                end="",
+                flush=True,
+            )
+            estimparse_allranks_batches(state.textfile, ESTIMATOR_TEXTBATCH_BYTES, write_batch)
+        else:
+            print(f"    reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
+            for rankbatch in batched(state.mpiranks, RANKFILE_BATCH_SIZE, strict=False):
+                write_batch(estimparse(state.runfolder, min(rankbatch), max(rankbatch)))
+        if pendingwrite is not None:
+            pendingwrite.result()
 
     if not textholdscell:
         # a job that stopped during the write of the first cell leaves a text with no complete cell. A cache with no
@@ -750,21 +800,19 @@ def sort_timestep_parts(timestepparts: TimestepParts) -> None:
     in a different order. The sort reads one timestep at a time and keeps the order of the text for equal cells.
     """
     for timestep, parts in timestepparts.items():
-        # a later part can have a column that the first part does not have, and this scan reads only the cells
-        modelgridindices = pl.scan_parquet(parts, extra_columns="ignore").select("modelgridindex").collect().to_series()
-        if modelgridindices.is_sorted():
+        if all(part.cellsinorder for part in parts) and all(
+            earlier.lastcell <= later.firstcell for earlier, later in pairwise(parts)
+        ):
             continue
         dftimestep = (
             pl
-            .concat([pl.read_parquet(part) for part in parts], how="diagonal")
+            .concat([pl.read_parquet(part.path) for part in parts], how="diagonal")
             .fill_null(0)
             .sort("modelgridindex", maintain_order=True)
         )
         for part in parts:
-            part.unlink()
-        sortedpart = parts[0].with_name(f"ts{timestep:05d}_sorted.parquet")
-        dftimestep.write_parquet(sortedpart, compression="lz4")
-        timestepparts[timestep] = [sortedpart]
+            part.path.unlink()
+        timestepparts[timestep] = [write_part(dftimestep, parts[0].path.with_name(f"ts{timestep:05d}_sorted.parquet"))]
 
 
 def scan_timestep_parts(timestepparts: TimestepParts) -> pl.LazyFrame:
@@ -775,12 +823,12 @@ def scan_timestep_parts(timestepparts: TimestepParts) -> pl.LazyFrame:
     """
     if not timestepparts:
         return pl.LazyFrame(schema={"timestep": pl.Int32, "modelgridindex": pl.Int32})
-    partpaths = [part for timestep in sorted(timestepparts) for part in timestepparts[timestep]]
+    parts = [part for timestep in sorted(timestepparts) for part in timestepparts[timestep]]
     columntypes: dict[str, pl.DataType] = {}
-    for part in partpaths:
-        columntypes.update(pl.read_parquet_schema(part))
+    for part in parts:
+        columntypes.update(part.schema)
     schema = pl.Schema({colname: columntypes[colname] for colname in sorted(columntypes, key=estimator_colsortkey)})
-    return pl.scan_parquet(partpaths, schema=schema, missing_columns="insert").fill_null(0)
+    return pl.scan_parquet([part.path for part in parts], schema=schema, missing_columns="insert").fill_null(0)
 
 
 def get_estimator_textfiles(runfolder: Path, textfile: Path | None) -> list[Path]:
@@ -862,10 +910,7 @@ def drop_incomplete_last_timestep(
     """
     if not timestepparts:
         return
-    cellcounts = {
-        timestep: pl.scan_parquet(parts, extra_columns="ignore").select(pl.len()).collect().item()
-        for timestep, parts in timestepparts.items()
-    }
+    cellcounts = {timestep: sum(part.rowcount for part in parts) for timestep, parts in timestepparts.items()}
     if nonempty_cellcounts is not None:
         complete_cellcount = sum(nonempty_cellcounts.values())
     elif len(cellcounts) >= 2:
@@ -914,6 +959,7 @@ def write_estimator_cache(
             "batchindex": str(state.batchindex),
         },
         replaces=state.outdatedparquet,
+        compression_level=CACHE_COMPRESSION_LEVEL,
     )
 
 

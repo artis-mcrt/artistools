@@ -1292,6 +1292,7 @@ def write_parquet_atomic(
     parquetfilepath: Path,
     metadata: dict[str, str] | None = None,
     replaces: tuple[int, int] | None = None,
+    compression_level: int = 13,
 ) -> None:
     """Write a parquet file with zstd compression through a temporary file, thus no reader sees a partial file.
 
@@ -1333,7 +1334,9 @@ def write_parquet_atomic(
     destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
     partialfilepath.chmod(destmode & 0o777)
     try:
-        pldf.lazy().sink_parquet(partialfilepath, compression="zstd", compression_level=13, metadata=metadata)
+        pldf.lazy().sink_parquet(
+            partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata
+        )
         try:
             # gives the file a second name, and fails if that name is taken, thus the destination appears
             # complete in one step and no reader of it ever sees a different file at the same path

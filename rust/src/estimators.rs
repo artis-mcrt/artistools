@@ -1,7 +1,9 @@
+use crate::parse::TextBlocks;
 use crate::parse::error_at_line;
 use crate::parse::io_error_at;
 use crate::parse::malformed;
 use crate::parse::open_decompressed;
+use crate::parse::open_text_blocks;
 use crate::parse::parse_field;
 use polars::prelude::*;
 use pyo3::exceptions::PyRuntimeWarning;
@@ -31,13 +33,11 @@ const ROMAN: [&str; 21] = [
     "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
 ];
 
-/// Split a line into (name, value) token pairs, ignoring an unpaired trailing token
-fn token_pairs<'a>(tokens: &'a [&'a str]) -> impl Iterator<Item = (&'a str, &'a str)> {
-    tokens
-        .as_chunks::<2>()
-        .0
-        .iter()
-        .map(|&[name, value]| (name, value))
+/// Split the tokens of a line into (name, value) pairs, and discard a last token that has no pair
+fn token_pairs<'a>(
+    mut tokens: impl Iterator<Item = &'a str>,
+) -> impl Iterator<Item = (&'a str, &'a str)> {
+    std::iter::from_fn(move || Some((tokens.next()?, tokens.next()?)))
 }
 
 /// Look up the element symbol for an atomic number given as a decimal string
@@ -69,13 +69,45 @@ fn ionstage_roman(ionstage: &str) -> PolarsResult<&'static str> {
 /// quantities for different cells (e.g. because zero-abundance ions were skipped).
 #[derive(Default)]
 struct EstimatorColumns {
-    coldata: HashMap<String, Vec<f32>>,
+    /// the position of each measured column in `colnames` and `coldata`
+    colindex: PlHashMap<String, usize>,
+    colnames: Vec<String>,
+    coldata: Vec<Vec<f32>>,
     /// index columns, kept as integers because f32 cannot hold every cell number of a large 3D grid exactly
     intcoldata: HashMap<String, Vec<i32>>,
+    /// the name of the next column value. A name that the store already holds needs no new String
+    namebuf: String,
+    /// the columns of the values of the cell before, in the order of the text. Each cell usually gives its values in
+    /// the same order, thus a comparison with the expected name replaces most lookups of a name
+    prevcellcolumns: Vec<usize>,
+    /// the columns of the values of the current cell so far
+    cellcolumns: Vec<usize>,
+    /// the position of each column in `prevcellcolumns`, or `usize::MAX` for a column that the cell before did not give
+    prevcellposition: Vec<usize>,
+    /// the position in `prevcellcolumns` of the expected column of the next value
+    expectedposition: usize,
     /// number of cells seen so far, including the one currently being filled
     rownum: usize,
     /// the count of the values above the range of f32, which the columns hold as infinity
     overflowcount: usize,
+}
+
+/// Return true if `name` is the words of `nameparts`, with an underscore between each pair of words
+fn name_matches(name: &str, nameparts: &[&str]) -> bool {
+    let mut rest = name;
+    for (partindex, namepart) in nameparts.iter().enumerate() {
+        if partindex > 0 {
+            let Some(afterunderscore) = rest.strip_prefix('_') else {
+                return false;
+            };
+            rest = afterunderscore;
+        }
+        let Some(afterpart) = rest.strip_prefix(namepart) else {
+            return false;
+        };
+        rest = afterpart;
+    }
+    rest.is_empty()
 }
 
 /// Columns that identify a row rather than measure a quantity, and so must stay exact integers.
@@ -83,18 +115,10 @@ struct EstimatorColumns {
 /// some ARTIS version writes as a float would turn a readable file into a hard error.
 const INDEX_COLUMNS: [&str; 2] = ["timestep", "modelgridindex"];
 
-/// Pad every column of a store out to `rownum`, for the columns the current cell did not define
-fn resize_columns<T: Copy + Default>(coldata: &mut HashMap<String, Vec<T>>, rownum: usize) {
-    for values in coldata.values_mut() {
-        values.resize(rownum, T::default());
-    }
-}
-
-/// Set a column value for the current cell, creating the column if it doesn't exist yet
+/// Set the value of a column for the current cell, after the zeros of the cells before it
 fn push_value<T: Copy + Default>(
-    coldata: &mut HashMap<String, Vec<T>>,
+    values: &mut Vec<T>,
     rownum: usize,
-    colname: String,
     colvalue: T,
 ) -> PolarsResult<()> {
     if rownum == 0 {
@@ -102,7 +126,6 @@ fn push_value<T: Copy + Default>(
             "the line gives a value, but no cell header with values comes before it".into(),
         ));
     }
-    let values = coldata.entry(colname).or_default();
     if values.len() >= rownum {
         return Err(malformed(
             "a column was given two values for one cell".into(),
@@ -118,18 +141,76 @@ fn push_value<T: Copy + Default>(
 impl EstimatorColumns {
     /// Finish the current cell by padding every column that it did not define with a zero
     fn end_cell(&mut self) {
-        resize_columns(&mut self.coldata, self.rownum);
-        resize_columns(&mut self.intcoldata, self.rownum);
+        for values in &mut self.coldata {
+            values.resize(self.rownum, 0.0);
+        }
+        for values in self.intcoldata.values_mut() {
+            values.resize(self.rownum, 0);
+        }
+        if !self.cellcolumns.is_empty() {
+            std::mem::swap(&mut self.prevcellcolumns, &mut self.cellcolumns);
+            self.cellcolumns.clear();
+            self.prevcellposition.clear();
+            self.prevcellposition.resize(self.coldata.len(), usize::MAX);
+            for (position, &colindex) in self.prevcellcolumns.iter().enumerate() {
+                self.prevcellposition[colindex] = position;
+            }
+        }
+        self.expectedposition = 0;
     }
 
-    /// Set a measured column value for the current cell
-    fn push(&mut self, colname: String, colvalue: f32) -> PolarsResult<()> {
-        push_value(&mut self.coldata, self.rownum, colname, colvalue)
+    /// Set `namebuf` to the words of a column name, with an underscore between each pair of words
+    fn set_name(&mut self, nameparts: &[&str]) {
+        self.namebuf.clear();
+        for (partindex, namepart) in nameparts.iter().enumerate() {
+            if partindex > 0 {
+                self.namebuf.push('_');
+            }
+            self.namebuf.push_str(namepart);
+        }
+    }
+
+    /// Return the column that `nameparts` names, and add the column if the store does not hold it
+    fn find_column(&mut self, nameparts: &[&str]) -> usize {
+        if let Some(&colindex) = self
+            .prevcellcolumns
+            .get(self.expectedposition)
+            .filter(|&&colindex| name_matches(&self.colnames[colindex], nameparts))
+        {
+            self.expectedposition += 1;
+            return colindex;
+        }
+        self.set_name(nameparts);
+        let colindex = if let Some(&colindex) = self.colindex.get(self.namebuf.as_str()) {
+            colindex
+        } else {
+            let colindex = self.coldata.len();
+            self.colindex.insert(self.namebuf.clone(), colindex);
+            self.colnames.push(self.namebuf.clone());
+            self.coldata.push(Vec::new());
+            colindex
+        };
+        // the cell skipped some columns of the cell before or gave a new column. The expected order continues after
+        // this column
+        if let Some(&position) = self.prevcellposition.get(colindex)
+            && position != usize::MAX
+        {
+            self.expectedposition = position + 1;
+        }
+        colindex
+    }
+
+    /// Set the value of the measured column that `nameparts` names for the current cell
+    fn push(&mut self, nameparts: &[&str], colvalue: f32) -> PolarsResult<()> {
+        let colindex = self.find_column(nameparts);
+        self.cellcolumns.push(colindex);
+        push_value(&mut self.coldata[colindex], self.rownum, colvalue)
     }
 
     /// Set an index column value for the current cell
-    fn push_int(&mut self, colname: String, colvalue: i32) -> PolarsResult<()> {
-        push_value(&mut self.intcoldata, self.rownum, colname, colvalue)
+    fn push_int(&mut self, colname: &str, colvalue: i32) -> PolarsResult<()> {
+        let values = self.intcoldata.entry(colname.to_owned()).or_default();
+        push_value(values, self.rownum, colvalue)
     }
 
     /// Parse a measured value into f32
@@ -154,20 +235,24 @@ impl EstimatorColumns {
 
     /// Parse a single line from an estimator file and update the column data
     fn parse_line(&mut self, line: &str) -> PolarsResult<()> {
-        let tokens: Vec<&str> = line.split_whitespace().collect();
-        let Some((&firsttoken, rest)) = tokens.split_first() else {
+        let mut tokens = line.split_ascii_whitespace();
+        let Some(firsttoken) = tokens.next() else {
             return Ok(());
         };
 
         if firsttoken == "timestep" {
-            self.parse_cell_header(&tokens)?;
-        } else if rest.first().is_some_and(|token| token.starts_with("Z=")) {
-            self.parse_ion_line(firsttoken, rest)?;
+            self.parse_cell_header(line)?;
+        } else if tokens
+            .clone()
+            .next()
+            .is_some_and(|token| token.starts_with("Z="))
+        {
+            self.parse_ion_line(firsttoken, tokens)?;
         } else if let Some(prefix) = firsttoken.strip_suffix(':') {
             // deposition, heating, cooling
-            for (name, value) in token_pairs(rest) {
+            for (name, value) in token_pairs(tokens) {
                 let value = self.parse_value(value)?;
-                self.push(format!("{prefix}_{name}"), value)?;
+                self.push(&[prefix, name], value)?;
             }
         }
 
@@ -176,20 +261,20 @@ impl EstimatorColumns {
 
     /// Finish the previous cell and start a new one from a line like
     /// `timestep 0 modelgridindex 0 TR 2000 Te 2000 W 1 TJ 2000 nne 71393.3`
-    fn parse_cell_header(&mut self, tokens: &[&str]) -> PolarsResult<()> {
+    fn parse_cell_header(&mut self, line: &str) -> PolarsResult<()> {
         self.end_cell();
 
-        if tokens.get(4) == Some(&"EMPTYCELL") {
+        if line.split_ascii_whitespace().nth(4) == Some("EMPTYCELL") {
             return Ok(());
         }
 
         self.rownum += 1;
-        for (colname, value) in token_pairs(tokens) {
+        for (colname, value) in token_pairs(line.split_ascii_whitespace()) {
             if INDEX_COLUMNS.contains(&colname) {
-                self.push_int(colname.to_owned(), parse_field(value, "an integer")?)?;
+                self.push_int(colname, parse_field(value, "an integer")?)?;
             } else {
                 let value = self.parse_value(value)?;
-                self.push(colname.to_owned(), value)?;
+                self.push(&[colname], value)?;
             }
         }
         // the row of a cell with no index value would get a zero, which names a different cell
@@ -207,24 +292,47 @@ impl EstimatorColumns {
     }
 
     /// Parse a per-ion line, e.g. `populations  Z=26  1: 6.226e+05  2: 8.059e+01  3: 3.940e-24`
-    fn parse_ion_line(&mut self, variablename: &str, tokens: &[&str]) -> PolarsResult<()> {
-        let ztoken = tokens[0]
+    fn parse_ion_line<'a>(
+        &mut self,
+        variablename: &str,
+        mut tokens: impl Iterator<Item = &'a str>,
+    ) -> PolarsResult<()> {
+        let firsttoken = tokens.next().unwrap_or_default();
+        let ztoken = firsttoken
             .strip_prefix("Z=")
-            .ok_or_else(|| malformed(format!("{:?} does not start with Z=", tokens[0])))?;
+            .ok_or_else(|| malformed(format!("{firsttoken:?} does not start with Z=")))?;
 
-        let (atomic_number, stagetokens) = if ztoken.is_empty() {
+        let atomic_number = if ztoken.is_empty() {
             // the atomic number is a separate token: "Z= 26"
-            tokens[1..]
-                .split_first()
+            tokens
+                .next()
                 .ok_or_else(|| malformed("ion line ends after Z=".into()))?
         } else {
             // no space after the equals sign: "Z=26"
-            (&ztoken, &tokens[1..])
+            ztoken
         };
         let elsym = elsymbol(atomic_number)?;
 
+        // the quantity divided by the electron density (nne) of this cell is also a column. After this cell sets nne,
+        // its column has one value for each row. A shorter column holds the nne of an earlier cell, thus the code
+        // cannot use it
+        let varname_nonne = variablename.strip_suffix("*nne");
+        let nne = if varname_nonne.is_some() {
+            Some(
+                self.colindex
+                    .get("nne")
+                    .map(|&colindex| &self.coldata[colindex])
+                    .filter(|values| values.len() == self.rownum)
+                    .and_then(|values| values.last())
+                    .copied()
+                    .ok_or_else(|| malformed("nne is not set for this cell".into()))?,
+            )
+        } else {
+            None
+        };
+
         let mut nnelement = 0.0;
-        for (ionstage, value) in token_pairs(stagetokens) {
+        for (ionstage, value) in token_pairs(tokens) {
             let ionstage = ionstage.strip_suffix(':').ok_or_else(|| {
                 malformed(format!("ion stage {ionstage:?} has no trailing colon"))
             })?;
@@ -235,40 +343,23 @@ impl EstimatorColumns {
                     nnelement = colvalue;
                 } else if ionstage.starts_with(|c: char| c.is_ascii_digit()) {
                     nnelement += colvalue;
-                    self.push(
-                        format!("nnion_{elsym}_{}", ionstage_roman(ionstage)?),
-                        colvalue,
-                    )?;
+                    self.push(&["nnion", elsym, ionstage_roman(ionstage)?], colvalue)?;
                 } else {
                     // an isotopic population, where the ion stage field holds e.g. "Ni56"
-                    self.push(format!("nniso_{ionstage}"), colvalue)?;
+                    self.push(&["nniso", ionstage], colvalue)?;
                 }
                 continue;
             }
 
             let ionstageroman = ionstage_roman(ionstage)?;
-            if let Some(varname_nonne) = variablename.strip_suffix("*nne") {
-                // also store the quantity divided by the electron density of this cell. The column is only as long
-                // as the current row once this cell has set it, so a shorter column means nne belongs to an
-                // earlier cell and must not be used here
-                let nne = self
-                    .coldata
-                    .get("nne")
-                    .filter(|values| values.len() == self.rownum)
-                    .and_then(|values| values.last())
-                    .copied()
-                    .ok_or_else(|| malformed("nne is not set for this cell".into()))?;
-
-                self.push(
-                    format!("{varname_nonne}_{elsym}_{ionstageroman}"),
-                    colvalue / nne,
-                )?;
+            if let (Some(varname_nonne), Some(nne)) = (varname_nonne, nne) {
+                self.push(&[varname_nonne, elsym, ionstageroman], colvalue / nne)?;
             }
-            self.push(format!("{variablename}_{elsym}_{ionstageroman}"), colvalue)?;
+            self.push(&[variablename, elsym, ionstageroman], colvalue)?;
         }
 
         if variablename == "populations" {
-            self.push(format!("nnelement_{elsym}"), nnelement)?;
+            self.push(&["nnelement", elsym], nnelement)?;
         }
 
         Ok(())
@@ -292,10 +383,15 @@ impl EstimatorColumns {
                 values.shrink_to_fit();
                 Column::new(colname.into(), values)
             })
-            .chain(self.coldata.into_iter().map(|(colname, mut values)| {
-                values.shrink_to_fit();
-                Column::new(colname.into(), values)
-            }))
+            .chain(
+                self.colnames
+                    .into_iter()
+                    .zip(self.coldata)
+                    .map(|(colname, mut values)| {
+                        values.shrink_to_fit();
+                        Column::new(colname.into(), values)
+                    }),
+            )
             .collect();
 
         DataFrame::new(self.rownum, columns)
@@ -453,66 +549,128 @@ struct TextPart {
     text: String,
 }
 
-/// Split the text of a reader into parts that end at the end of a cell. An empty line ends each cell, thus no
+/// Split the blocks of a text into parts that end at the end of a cell. An empty line ends each cell, thus no
 /// cell spans two parts. The last part drops a cell that the end of the text cuts.
-struct TextParts<'a, R: BufRead> {
-    reader: R,
+///
+/// One thread splits the text for all the threads that parse it. A block of ARTIS frames ends at the end of a cell,
+/// and it then becomes a part with no copy.
+struct TextParts<'a> {
+    blocks: TextBlocks,
     /// the file of the text, which an I/O error names
     filepath: &'a Path,
+    /// the text after the last complete cell of the part before
+    carry: Vec<u8>,
+    /// the line number of the first line of `carry`
     nextlinenum: usize,
     finished: bool,
 }
 
-impl<R: BufRead> Iterator for TextParts<'_, R> {
+/// Return the end of the last empty line of a text, which is the end of the last complete cell, or None
+fn last_cell_end(text: &[u8]) -> Option<usize> {
+    // the newline that ends the last complete line. A text after it is an incomplete line
+    let mut lineend = text.iter().rposition(|&byte| byte == b'\n')?;
+    loop {
+        let linestart = text[..lineend]
+            .iter()
+            .rposition(|&byte| byte == b'\n')
+            .map_or(0, |newline| newline + 1);
+        if text[linestart..lineend].iter().all(u8::is_ascii_whitespace) {
+            return Some(lineend + 1);
+        }
+        if linestart == 0 {
+            return None;
+        }
+        lineend = linestart - 1;
+    }
+}
+
+/// Return the number of lines that end in a text
+#[expect(
+    clippy::naive_bytecount,
+    reason = "the compiler vectorises this loop, and the bytecount crate adds a dependency"
+)]
+fn count_newlines(text: &[u8]) -> usize {
+    text.iter().filter(|&&byte| byte == b'\n').count()
+}
+
+impl Iterator for TextParts<'_> {
     type Item = std::io::Result<TextPart>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
             return None;
         }
-        let firstlinenum = self.nextlinenum;
-        let mut text = String::new();
-        // the end of the last empty line of the text, which is the end of the last complete cell
-        let mut cellsend = 0;
+        let mut text = std::mem::take(&mut self.carry);
         loop {
-            let linestart = text.len();
-            match self.reader.read_line(&mut text) {
-                Ok(0) => {
+            match self.blocks.next() {
+                None => {
                     self.finished = true;
                     // A text that does not end with an empty line ends inside a cell. The decoder gives the complete
-                    // blocks of a zstd frame that a stopped job cut, and it gives no error. Thus the part removes the
+                    // zstd blocks of a frame that a stopped job cut, and it gives no error. Thus the part removes the
                     // cut cell, and the conversion then drops its timestep as incomplete.
-                    text.truncate(cellsend);
+                    text.truncate(last_cell_end(&text).unwrap_or(0));
                     break;
                 }
-                Ok(_) => {
-                    self.nextlinenum += 1;
-                    let lineisempty = text
-                        .get(linestart..)
-                        .is_some_and(|line| line.trim().is_empty());
-                    if lineisempty {
-                        cellsend = text.len();
-                        if text.len() >= TEXTPART_BYTES {
-                            break;
-                        }
+                Some(Ok(block)) => {
+                    if text.is_empty() {
+                        text = block;
+                    } else {
+                        text.extend_from_slice(&block);
+                    }
+                    // a cell that is longer than the text so far needs another block. The search starts at the end
+                    // of the text, thus it reads only the last cell
+                    if text.len() >= TEXTPART_BYTES
+                        && let Some(cellsend) = last_cell_end(&text)
+                    {
+                        self.carry = text.split_off(cellsend);
+                        break;
                     }
                 }
-                Err(err) => {
+                Some(Err(err)) => {
                     self.finished = true;
-                    let place = format!("{}:{}", self.filepath.display(), self.nextlinenum);
+                    let place = format!(
+                        "{}:{}",
+                        self.filepath.display(),
+                        self.nextlinenum + count_newlines(&text)
+                    );
                     return Some(Err(io_error_at(&err, &place)));
                 }
             }
         }
 
-        (!text.is_empty()).then_some(Ok(TextPart { firstlinenum, text }))
+        let firstlinenum = self.nextlinenum;
+        self.nextlinenum += count_newlines(&text);
+        if text.is_empty() {
+            return None;
+        }
+        Some(
+            String::from_utf8(text)
+                .map(|text| TextPart { firstlinenum, text })
+                .map_err(|err| {
+                    // the same message as a read of each line, at the line of the first byte that is not UTF-8
+                    let validtext = &err.as_bytes()[..err.utf8_error().valid_up_to()];
+                    let place = format!(
+                        "{}:{}",
+                        self.filepath.display(),
+                        firstlinenum + count_newlines(validtext)
+                    );
+                    io_error_at(
+                        &std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "stream did not contain valid UTF-8",
+                        ),
+                        &place,
+                    )
+                }),
+        )
     }
 }
 
-/// Read an estimator text in batches, and give the `DataFrame` of each batch to `on_batch` in the order of the file
+/// Read an estimator text in text batches, and give the `DataFrame` of each text batch to `on_batch` in the order of
+/// the file
 ///
-/// A batch holds the text of whole parts, and it ends after the part that brings its text to `batchbytes` or more.
-/// Only one batch is in memory at a time. The threads parse the parts of a batch in parallel, and the rows keep the
+/// A text batch holds the text of whole parts, and it ends after the part that brings its text to `batchbytes` or
+/// more. The reader holds one text batch at a time. The threads parse the parts of a text batch in parallel, and the rows keep the
 /// order of the file. A text that does not end with an empty line ends inside a cell, e.g. because a job stopped
 /// during the write. The reader drops that cell in both forms of the text, thus each value in the table comes from a
 /// complete cell of the text. The result is a warning about the values above the range of f32, or None for no such
@@ -527,8 +685,9 @@ fn read_estimator_text_batches(
         parse_estimator_lines(part.text.lines(), filepath, part.firstlinenum)
     };
     let mut parts = TextParts {
-        reader: BufReader::new(open_decompressed(filepath)?),
+        blocks: open_text_blocks(filepath)?,
         filepath,
+        carry: Vec::new(),
         nextlinenum: 1,
         finished: false,
     };
@@ -577,7 +736,7 @@ fn read_estimator_text_batches(
 /// The second item is a warning about the values above the range of f32, or None if the text holds none.
 fn read_estimator_text(filepath: &Path) -> PolarsResult<(DataFrame, Option<String>)> {
     let mut dfestimators = concat_estimator_frames(&[])?;
-    // a batch of unlimited size holds the whole text
+    // a text batch of unlimited size holds the whole text
     let warning = read_estimator_text_batches(filepath, usize::MAX, |dfbatch| {
         dfestimators = dfbatch;
         Ok(())
@@ -602,15 +761,15 @@ pub fn estimparse_allranks(py: Python<'_>, filepath: PathBuf) -> PyResult<PyData
 
 /// The maximum number of threads that parse the parts of the estimator file of all ranks
 ///
-/// One thread decompresses the file and gives the parts to the others. On a login node of Leonardo, a 4 GB text took
-/// 62 s with 1 thread, 12 s with 8 and 16 threads, and 14 s with 128 threads. The peak memory was 1.5 GB with 16
-/// threads and 4.1 GB with 128 threads, because each thread holds one part of the text.
+/// One thread splits the text into parts for the others, thus more threads give no speed. Each thread holds one part,
+/// thus more threads use more memory. On a login node of Leonardo, 4.6 GB of text took 10.7 s with 4 threads, and
+/// 8.3 s with 8 threads and 16 threads.
 const MAX_PARSE_THREADS: usize = 16;
 
-/// Read the estimator file of all ranks in batches, and call `on_batch` with the `DataFrame` of each batch
+/// Read the estimator file of all ranks in text batches, and call `on_batch` with the `DataFrame` of each text batch
 ///
-/// A batch ends after the part of the text that brings its text to `batchbytes` or more. Only one batch is in
-/// memory at a time, thus a caller can convert a file whose table is larger than the memory. The parse runs without
+/// A text batch ends after the part of the text that brings its text to `batchbytes` or more. The reader holds one
+/// text batch at a time, thus a caller can convert a file whose table is larger than the memory. The parse runs without
 /// the GIL, and each call of `on_batch` holds it.
 #[pyfunction]
 #[expect(clippy::needless_pass_by_value)]
