@@ -821,6 +821,7 @@ def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> No
     cells. A text batch whose cells write no line of a quantity has no column for it, and the scan must give zero there
     and not a null.
     """
+    from artistools.estimators.core import get_parts_schema
     from artistools.estimators.core import scan_timestep_parts
     from artistools.estimators.core import sort_timestep_parts
     from artistools.estimators.core import write_text_batch_parts
@@ -865,7 +866,7 @@ def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> No
 
     assert any(len(parts) >= 2 for parts in timestepparts.values())
     sort_timestep_parts(timestepparts)
-    dfbatches = scan_timestep_parts(timestepparts).collect()
+    dfbatches = scan_timestep_parts(timestepparts, get_parts_schema(timestepparts)).collect()
     dfoneread = at.rustext.estimparse_allranks(allranksfile)
     assert dfbatches.height == dfoneread.height == sum(batchheights)
     assert dfbatches["gamma_R_Fe_II"].null_count() == 0
@@ -1064,6 +1065,50 @@ def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
     assert dfestim.height == 2 * (len(celltexts) - 1)
     # the conversion clears the timesteps that the process read before it, thus the list agrees with the cache
     assert lasttimestep not in get_runfolder_timesteps(tmp_path)
+
+
+def test_a_column_of_a_dropped_timestep_stays_in_the_cache(tmp_path: Path) -> None:
+    """A column that only the incomplete last timestep writes stays in the cache with zeros.
+
+    The reader gives each column of a text batch to each row of that text batch. One timestep of a large model is a
+    text batch of its own, thus the parts of the dropped timestep are the only parts with such a column. The cache
+    before the conversion in parts also kept that column, as for a column that only some cells write.
+    """
+    import artistools.estimators.core
+
+    copy_model_inputs(tmp_path)
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    lasttimestep = len(celltexts) - 1
+    (tmp_path / "estimators_allranks.out").write_text("".join(celltexts), encoding="utf-8")
+
+    def relabel(celltext: str, modelgridindex: int) -> str:
+        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
+
+    # two cells in each complete timestep, and the last timestep holds one cell with a column of its own
+    completetext = "".join(relabel(celltext, mgi) for celltext in celltexts[:lasttimestep] for mgi in (0, 1))
+    lasttext = celltexts[lasttimestep].replace("\n", "\ncooling: onlylasttimestep 5.0\n", 1)
+    textbatches = []
+    for textbatchindex, text in enumerate((completetext, lasttext)):
+        textfile = tmp_path / f"textbatch{textbatchindex}.out"
+        textfile.write_text(text, encoding="utf-8")
+        textbatches.append(at.rustext.estimparse_allranks(textfile))
+        textfile.unlink()
+
+    def parse_in_two_textbatches(
+        _filepath: Path, _textbatchbytes: int, on_batch: t.Callable[[pl.DataFrame], None]
+    ) -> None:
+        for dftextbatch in textbatches:
+            on_batch(dftextbatch)
+
+    with mock.patch.object(
+        artistools.estimators.core, "estimparse_allranks_textbatches", side_effect=parse_in_two_textbatches
+    ):
+        at.estimators.scan_estimators(tmp_path).collect()
+
+    dfestim = pl.read_parquet(tmp_path / "estimators_allranks.out.parquet")
+    assert lasttimestep not in dfestim["timestep"].to_list()
+    assert dfestim.height == 2 * lasttimestep
+    assert dfestim["cooling_onlylasttimestep"].to_list() == [0.0] * dfestim.height
 
 
 def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_path: Path) -> None:

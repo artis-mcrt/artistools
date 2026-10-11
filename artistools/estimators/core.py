@@ -817,19 +817,28 @@ def sort_timestep_parts(timestepparts: TimestepParts) -> None:
         ]
 
 
-def scan_timestep_parts(timestepparts: TimestepParts) -> pl.LazyFrame:
-    """Scan the parquet files of a conversion as one table in the order of the timesteps.
+def get_parts_schema(timestepparts: TimestepParts) -> pl.Schema:
+    """Return the columns of all the parts of a conversion, in the order of the cache.
+
+    The conversion takes the schema before it drops an incomplete last timestep. A column that only that timestep writes
+    then stays in the cache with zeros, as a column that only some cells write does.
+    """
+    columntypes: dict[str, pl.DataType] = {"timestep": pl.Int32(), "modelgridindex": pl.Int32()}
+    for parts in timestepparts.values():
+        for part in parts:
+            columntypes.update(part.schema)
+    return pl.Schema({colname: columntypes[colname] for colname in sorted(columntypes, key=estimator_colsortkey)})
+
+
+def scan_timestep_parts(timestepparts: TimestepParts, schema: pl.Schema) -> pl.LazyFrame:
+    """Scan the parquet files of a conversion as one table with the columns of schema, in the order of the timesteps.
 
     A part has no column for a quantity that its cells do not write, e.g. the ion of an element that no cell of a text
     batch holds. The scan gives a zero to such a column, as the reader does inside one text batch.
     """
-    if not timestepparts:
-        return pl.LazyFrame(schema={"timestep": pl.Int32, "modelgridindex": pl.Int32})
     parts = [part for timestep in sorted(timestepparts) for part in timestepparts[timestep]]
-    columntypes: dict[str, pl.DataType] = {}
-    for part in parts:
-        columntypes.update(part.schema)
-    schema = pl.Schema({colname: columntypes[colname] for colname in sorted(columntypes, key=estimator_colsortkey)})
+    if not parts:
+        return pl.LazyFrame(schema=schema)
     return pl.scan_parquet([part.path for part in parts], schema=schema, missing_columns="insert").fill_null(0)
 
 
@@ -931,7 +940,11 @@ def drop_incomplete_last_timestep(
 
 
 def write_estimator_cache(
-    state: "EstimatorBatchState", timestepparts: TimestepParts, textfiles: Sequence[Path], textsize: int
+    state: "EstimatorBatchState",
+    timestepparts: TimestepParts,
+    schema: pl.Schema,
+    textfiles: Sequence[Path],
+    textsize: int,
 ) -> None:
     """Write the parquet cache of a batch of MPI ranks or of the file of all ranks from the parts.
 
@@ -951,7 +964,7 @@ def write_estimator_cache(
         else {"batch_rank_min": str(min(state.mpiranks)), "batch_rank_max": str(max(state.mpiranks))}
     )
     write_parquet_atomic(
-        scan_timestep_parts(timestepparts),
+        scan_timestep_parts(timestepparts, schema),
         state.parquetfile,
         metadata={
             "creationtimeutc": str(dt.datetime.now(dt.UTC)),
@@ -1016,6 +1029,7 @@ def get_estimators_parquetfile(
 
         with temporary_parts_folder(parquetfilepath) as partsfolder:
             timestepparts, state, textfiles, textsize = convert_unchanged_text_to_parts(state, partsfolder)
+            schema = get_parts_schema(timestepparts)
             if state.allranks:
                 nonempty_cellcounts = get_nonempty_cellcounts(modelpath)
                 if nonempty_cellcounts is not None and state.textfile is None:
@@ -1030,7 +1044,7 @@ def get_estimators_parquetfile(
 
             print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
             time_start = time.perf_counter()
-            write_estimator_cache(state, timestepparts, textfiles, textsize)
+            write_estimator_cache(state, timestepparts, schema, textfiles, textsize)
 
         print(f"took {time.perf_counter() - time_start:.1f} s.")
 
