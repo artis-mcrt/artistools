@@ -15,7 +15,6 @@ from artistools.estimators.core import scan_estimators as scan_estimators
 
 # isort: split
 from artistools.estimators import deposition as deposition
-from artistools.estimators import estimators_classic as estimators_classic
 from artistools.estimators import exportmassfractions as exportmassfractions
 from artistools.estimators import plotestimators as plotestimators
 from artistools.estimators.plotestimators import addargs as addargs

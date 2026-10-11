@@ -6,10 +6,8 @@ __all__ = ["plot"]
 # the plot modules below import such modules, thus a name must exist before a cycle comes back here
 from artistools.nltepops.core import add_lte_pops as add_lte_pops
 from artistools.nltepops.core import read_nltepops as read_nltepops
-from artistools.nltepops.core import read_nltepops_cached as read_nltepops_cached
 from artistools.nltepops.core import texifyconfiguration as texifyconfiguration
 from artistools.nltepops.core import texifyterm as texifyterm
 
 # isort: split
-from artistools.nltepops.plotnltepops import addargs as addargs
 from artistools.nltepops.plotnltepops import main as plot

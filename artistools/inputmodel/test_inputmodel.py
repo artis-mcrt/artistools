@@ -654,7 +654,7 @@ def test_get_trajectory_abund_q(trajectory_copy: Path) -> None:
     particleid = 109215
 
     abund_q = at.inputmodel.rprocess_from_trajectory.get_trajectory_abund_q(
-        particleid=particleid, traj_root=trajectory_copy, t_model_s=0.1 * 86400, getqdotintegral=True
+        particleid=particleid, traj_root=trajectory_copy, t_model_s=0.1 * 86400
     )
 
     expected: dict[tuple[int, int] | str, float] = {

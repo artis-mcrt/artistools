@@ -72,7 +72,6 @@ from artistools.misc.dirbins import get_costhetabin_phibin_labels as get_costhet
 from artistools.misc.dirbins import get_dirbin_definitions as get_dirbin_definitions
 from artistools.misc.dirbins import get_dirbins as get_dirbins
 from artistools.misc.dirbins import get_opacity_condition_label as get_opacity_condition_label
-from artistools.misc.dirbins import get_phi_bin_steps as get_phi_bin_steps
 from artistools.misc.dirbins import get_phi_bins as get_phi_bins
 from artistools.misc.dirbins import get_phibin_rank_ascending as get_phibin_rank_ascending
 from artistools.misc.dirbins import get_viewingdirection_costhetabincount as get_viewingdirection_costhetabincount
@@ -121,7 +120,6 @@ from artistools.misc.modelinfo import get_inputparams as get_inputparams
 from artistools.misc.modelinfo import get_model_logname as get_model_logname
 from artistools.misc.modelinfo import get_model_name as get_model_name
 from artistools.misc.modelinfo import get_mpiranklist as get_mpiranklist
-from artistools.misc.modelinfo import get_mpirankofcell as get_mpirankofcell
 from artistools.misc.modelinfo import get_nprocs as get_nprocs
 from artistools.misc.modelinfo import get_npts_model as get_npts_model
 from artistools.misc.modelinfo import get_nu_grid as get_nu_grid
