@@ -456,18 +456,6 @@ def test_makeartismodelfrom_fortrangriddat(tmp_path: Path) -> None:
     assert np.isclose(modelmeta["t_model_init_days"], 0.1)
 
 
-def test_makeartismodelfromparticlegridmap_short_time_flag_means_timedays() -> None:
-    """-t means -timedays on every command, and the old name of the argument still works."""
-    parser = at.commands.SuggestingArgumentParser(prog="makeartismodelfromparticlegridmap")
-    at.inputmodel.modelfromhydro.addargs(parser)
-
-    assert parser.parse_args([]).timedays == 0.1
-    for flag in ("-t", "-timedays", "-time", "-targetmodeltime_days"):
-        assert parser.parse_args([flag, "300"]).timedays == 300.0
-    with pytest.raises(SystemExit):
-        parser.parse_args(["-timestep", "40"])
-
-
 def test_make1dmodelfromcone(tmp_path: Path) -> None:
     at.inputmodel.slice1dfromconein3dmodel.main(
         argsraw=[],
@@ -2201,19 +2189,8 @@ def test_make1dslice_plot(tmp_path: Path) -> None:
     assert pdfpath.is_file()
 
 
-def test_opacityfile_uniform_roundtrip(tmp_path: Path) -> None:
-    """A written uniform opacity.txt must read back with the same opacity in every cell."""
-    at.inputmodel.opacityinputfile.main(
-        argsraw=[], action="uniform", modelpath=modelpath, outputpath=tmp_path, kappa=0.25
-    )
-
-    opacities = at.inputmodel.opacityinputfile.get_opacity_from_file(tmp_path)
-    assert len(opacities) == 1, "testmodel is a single-cell 1D model"
-    assert np.allclose(opacities, 0.25)
-
-
 def test_opacityfile_uniform_multicell(tmp_path: Path) -> None:
-    """The single-cell case must not be special: a 1000-cell model reads back 1000 opacities."""
+    """A uniform opacity.txt reads back with the same opacity in each of the 1000 cells of the model."""
     at.inputmodel.opacityinputfile.main(
         argsraw=[], action="uniform", modelpath=modelpath_classic_3d, outputpath=tmp_path, kappa=0.1
     )

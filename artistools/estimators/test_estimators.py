@@ -1504,7 +1504,11 @@ def test_estimparse_malformed_line(tmp_path: Path, badline: str, errormessage: s
 
 
 def test_add_derived_estimator_columns_preserves_nulls() -> None:
-    """Missing nnelement values count as zero, but a null in any other column must not become a real zero."""
+    """A null number density is zero, but a null in a different column stays null.
+
+    A number density column that a whole MPI rank omitted arrives as null. The reader fills such a value with zero
+    inside one estimator file, thus a null here must also be zero. Else one ion has two values for two ranks.
+    """
     pldf = pl.LazyFrame({
         "timestep": [0, 1],
         "modelgridindex": [0, 0],
@@ -1512,56 +1516,19 @@ def test_add_derived_estimator_columns_preserves_nulls() -> None:
         "nne": [None, 1.0e8],
         "nnelement_Fe": [2.0, None],
         "nnelement_Ni": [3.0, 4.0],
-    })
-
-    dfout = at.estimators.add_derived_estimator_columns(pldf).collect()
-
-    # nnelement nulls are filled with zero and summed into nntot
-    assert dfout["nnelement_Fe"].to_list() == [2.0, 0.0]
-    assert dfout["nntot"].to_list() == [5.0, 4.0]
-
-    # every other column keeps its nulls
-    assert dfout["Te"].to_list() == [5000.0, None]
-    assert dfout["nne"].to_list() == [None, 1.0e8]
-
-
-def test_add_derived_estimator_columns_total_dep() -> None:
-    pldf = pl.LazyFrame({
-        "timestep": [0],
-        "deposition_gamma": [1.0],
-        "deposition_positron": [2.0],
-        "deposition_alpha": [4.0],
-    })
-
-    dfout = at.estimators.add_derived_estimator_columns(pldf).collect()
-
-    assert dfout["total_dep"].to_list() == [7.0]
-    assert "nntot" not in dfout.columns
-
-
-def test_add_derived_estimator_columns_fills_ion_and_isotope_nulls() -> None:
-    """A number density column that a whole MPI rank omitted arrives as null, and must be read as zero.
-
-    Within a single estimator file the reader already fills these with zero, so leaving the cross-rank nulls
-    alone would give the same missing ion two different values depending on which rank wrote the cell.
-    """
-    pldf = pl.LazyFrame({
-        "timestep": [0, 1],
-        "modelgridindex": [0, 1],
-        "nnelement_Fe": [2.0, None],
         "nnion_Fe_II": [None, 1.5],
         "nniso_Ni56": [None, 3.0],
-        "Te": [5000.0, None],
     })
 
     dfout = at.estimators.add_derived_estimator_columns(pldf).collect()
 
+    assert dfout["nnelement_Fe"].to_list() == [2.0, 0.0]
     assert dfout["nnion_Fe_II"].to_list() == [0.0, 1.5]
     assert dfout["nniso_Ni56"].to_list() == [0.0, 3.0]
-    assert dfout["nnelement_Fe"].to_list() == [2.0, 0.0]
+    assert dfout["nntot"].to_list() == [5.0, 4.0]
 
-    # temperatures are not number densities, so a null must stay null
     assert dfout["Te"].to_list() == [5000.0, None]
+    assert dfout["nne"].to_list() == [None, 1.0e8]
 
 
 def test_estimparse_rejects_missing_nne(tmp_path: Path) -> None:
@@ -2147,7 +2114,7 @@ def test_estimator_directive_underscore_is_optional(mockyscale: mock.MagicMock, 
 
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
 def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
-    """Each subplot carries its own ion population type, thus one figure holds more than one of them."""
+    """Each subplot has its own ion population type, and a subplot with no directive gives absolute densities."""
     from artistools.estimators.plotestimators import POPTYPE_YLABELS
 
     at.estimators.plot(
@@ -2156,7 +2123,7 @@ def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock, 
         outputfile=tmp_path,
         timedays=260,
         plotlist=[
-            [["populations", ["Fe II", "Fe III"]], ["ionpoptype", "absolute"]],
+            [["populations", ["Fe II", "Fe III"]]],
             [["populations", ["Fe II", "Fe III"]], ["ionpoptype", "elpop"]],
         ],
     )
@@ -2164,24 +2131,6 @@ def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock, 
     labels = {call.args[1] for call in mockylabel.call_args_list if len(call.args) >= 2}
     assert POPTYPE_YLABELS["absolute"] in labels
     assert POPTYPE_YLABELS["elpop"] in labels
-
-
-@mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_estimator_ionpoptype_default_is_absolute(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
-    """A population series with no directive gives an absolute number density."""
-    from artistools.estimators.plotestimators import POPTYPE_YLABELS
-
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        outputfile=tmp_path,
-        timedays=260,
-        plotlist=[[["populations", ["Fe II", "Fe III"]]]],
-    )
-
-    labels = {call.args[1] for call in mockylabel.call_args_list if len(call.args) >= 2}
-    assert POPTYPE_YLABELS["absolute"] in labels
-    assert POPTYPE_YLABELS["elpop"] not in labels
 
 
 def test_estimator_unknown_ionpoptype_names_the_valid_ones(capsys: pytest.CaptureFixture[str]) -> None:
@@ -3034,14 +2983,6 @@ def test_estimator_slice_of_two_axes_gives_a_line(mockplot: mock.MagicMock, tmp_
     # the line repeats its end points, thus each cell appears one time in the order of x
     _, firstindex = np.unique(xvalues, return_index=True)
     assert np.allclose(yvalues[firstindex], dfexpected["Te"].to_numpy())
-
-
-@pytest.mark.parametrize("flag", ["-dimensionreduce", "-dim"])
-def test_dimensionreduce_has_a_short_alias(flag: str) -> None:
-    """-dim is an alias of -dimensionreduce."""
-    parser = argparse.ArgumentParser()
-    at.estimators.plotestimators.addargs(parser)
-    assert parser.parse_args(["Te", flag, "2"]).dimensionreduce == 2
 
 
 def test_estimator_image_refuses_arguments_that_do_not_apply(tmp_path: Path) -> None:

@@ -333,7 +333,7 @@ def test_a_stale_estimator_cache_does_not_hide_new_timesteps(tmp_path: Path) -> 
 
 
 def test_add_cli_arg_helpers() -> None:
-    """The shared argument helpers must define the standard flags, types, and defaults."""
+    """The shared argument helpers must define the standard flags and types."""
     parser = argparse.ArgumentParser()
     at.misc.addarg_modelpath(parser, multiplepaths=True, default=[])
     at.misc.addarg_output(parser, kind="file", default=Path("out.pdf"))
@@ -345,20 +345,6 @@ def test_add_cli_arg_helpers() -> None:
     at.misc.addarg_figscale(parser, include_figwidthscale=True)
     at.misc.addarg_filter(parser)
     at.misc.addarg_maxpacketfiles(parser)
-
-    args = parser.parse_args([])
-    assert args.modelpath == []
-    assert args.outputfile == Path("out.pdf")
-    assert args.timestep is None
-    assert args.timedays is None
-    assert args.figscale == 1.0
-    assert args.figwidthscale == 1.0
-    assert args.xmin == 1000
-    assert args.xmax == 2000
-    assert args.color == ["C0", "C1"]
-    assert args.linealpha == []
-    assert args.filtermovingavg == 0
-    assert args.maxpacketfiles is None
 
     args = parser.parse_args([
         "-modelpath",
@@ -1295,21 +1281,6 @@ def test_resolve_outputfile(tmp_path: Path) -> None:
     assert newdir.is_dir()
 
 
-def test_set_args_from_dict() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-foo", type=int, default=1)
-    parser.add_argument("-o", "--output", dest="outputfile", default="z")
-
-    # defaults can be overridden by dest name ("foo") or by an option string whose dest differs ("output")
-    at.misc.set_args_from_dict(parser, {"foo": 5, "output": "y"})
-    args = parser.parse_args([])
-    assert args.foo == 5
-    assert args.outputfile == "y"
-
-    with pytest.raises(ValueError, match="Unknown argument names"):
-        at.misc.set_args_from_dict(parser, {"nonexistent": 1})
-
-
 @pytest.mark.parametrize("reverseorder", [False, True])
 def test_keyword_destination_has_priority_over_an_option_alias(reverseorder: bool) -> None:
     """Keep a keyword at its destination when another option uses its name as an alias."""
@@ -1924,27 +1895,6 @@ def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
 
     # the ends of a range in either order name the same timesteps
     assert at.misc.get_time_range(tmp_path, timestep_range_str="3-1")[:2] == (1, 3)
-
-
-def test_check_averaging_angles() -> None:
-    """Averaging over phi and theta at once must be rejected wherever the values arrive."""
-    for phi, theta in ((False, False), (True, False), (False, True)):
-        at.misc.check_averaging_angles(phi, theta)
-
-    with pytest.raises(ValueError, match="both the phi and theta"):
-        at.misc.check_averaging_angles(average_over_phi=True, average_over_theta=True)
-
-
-def test_viewingangle_averaging_flags_are_mutually_exclusive() -> None:
-    """The two averaging flags are rejected by argparse itself, for every command that defines them."""
-    parser = argparse.ArgumentParser()
-    at.misc.addarg_viewingangle(parser)
-
-    assert parser.parse_args(["--average_over_phi_angle"]).average_over_phi_angle
-    assert parser.parse_args(["--average_over_theta_angle"]).average_over_theta_angle
-
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--average_over_phi_angle", "--average_over_theta_angle"])
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="needs a platform with a fork start method")

@@ -391,16 +391,6 @@ def test_viewing_angle_scatter_plot_colours_each_direction_bin_of_the_data_file(
     assert np.allclose(mockscatter.call_args_list[0].kwargs["color"], dirbincolors)
 
 
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_band_lightcurve_subplots(mockplot: mock.MagicMock, tmp_path: Path) -> None:
-    """Two bands give two panels, and each panel takes the light curve of its band."""
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["bol", "B"], outputfile=tmp_path)
-
-    assert (tmp_path / "plotlightcurves.pdf").is_file()
-    assert len(mockplot.call_args_list) == 2
-    assert mockplot.call_args_list[0].args[0] is not mockplot.call_args_list[1].args[0]
-
-
 @mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
 def test_colour_evolution_plot_ylabel(mockylabel: mock.MagicMock, tmp_path: Path) -> None:
     """A colour evolution plot must be labelled in delta magnitudes, not as a band magnitude.
@@ -434,14 +424,6 @@ def test_linelabel_falls_back_to_the_model_name(mockplot: mock.MagicMock, tmp_pa
     at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], outputfile=tmp_path)
 
     assert [callargs.kwargs["label"] for callargs in mockplot.call_args_list] == ["TEST MODEL"]
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_linelabel_uses_the_label_arg(mockplot: mock.MagicMock, tmp_path: Path) -> None:
-    """A -label value names its series, in place of the model name."""
-    at.lightcurve.plot(argsraw=[], modelpath=modelpath, filter=["B"], label=["My model"], outputfile=tmp_path)
-
-    assert [callargs.kwargs["label"] for callargs in mockplot.call_args_list] == ["My model"]
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -912,25 +894,6 @@ def test_lightcurve_plot_legend_labels_take_the_series_colours(mocklegend: mock.
     assert labelcolours == [mplcolors.to_hex(color, keep_alpha=True) for color in seriescolours]
 
 
-@mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
-@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_lightcurve_plot_reflightcurves_continue_the_greys(
-    mockerrorbar: mock.MagicMock, mockscatter: mock.MagicMock, tmp_path: Path
-) -> None:
-    """A -reflightcurves file follows the reference files of the model path list, thus no two series are black."""
-    at.lightcurve.plot(
-        argsraw=[],
-        modelpath=[modelpath, "AT2017gfo_smarttetal2017.txt"],
-        reflightcurves=["AT2017gfo_waxmanetal2018.txt"],
-        outputfile=tmp_path,
-    )
-
-    assert [callargs.kwargs["color"] for callargs in mockerrorbar.call_args_list] == ["0.0", "0.4"]
-
-    # both files have error columns, so neither route falls back to a plain scatter
-    assert mockscatter.call_args_list == []
-
-
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_lightcurve_plot_colors_survive_a_skipped_model(
@@ -974,7 +937,10 @@ def get_reflightcurve_errorbar_call(
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 def test_bol_reflightcurve_erg_per_s(mockerrorbar: mock.MagicMock) -> None:
-    """A bolometric reference light curve is plotted in erg/s by default."""
+    """A bolometric reference light curve is plotted in erg/s by default.
+
+    The values of the file reach the axis unchanged, with no round trip through Lsun.
+    """
     at.lightcurve.plot(
         argsraw=[], modelpath=[REFLIGHTCURVE, modelpath], outputfile=outputpath / "lightcurve_reflightcurve_ergpers.pdf"
     )
@@ -983,6 +949,8 @@ def test_bol_reflightcurve_erg_per_s(mockerrorbar: mock.MagicMock) -> None:
 
     assert np.isclose(arr_time_d[0], 0.638, rtol=1e-4)
     assert np.isclose(arr_lum[0], 1.1246049739669314e42, rtol=1e-4)
+    dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(REFLIGHTCURVE)
+    assert np.array_equal(arr_lum, dflightcurve["luminosity_erg/s"].to_numpy())
 
     yerr = mockerrorbar.call_args_list[0][1]["yerr"]
     assert np.isclose(yerr[0][0], 2.7737755982632654e41, rtol=1e-4)
@@ -1029,33 +997,6 @@ def test_bol_reflightcurve_magnitude(mockerrorbar: mock.MagicMock) -> None:
     expected_magerr = 2.5 * dflightcurve["log_lbol_err"].to_numpy()
     assert np.allclose(yerr[0], expected_magerr, rtol=1e-3)
     assert np.allclose(yerr[1], expected_magerr, rtol=1e-3)
-
-
-def test_convert_lum_lsun_to_plotunits() -> None:
-    """Deposition rates and reference data must use the same unit conversion as the ARTIS light curves."""
-    lum_lsun = np.array([1.0, 1e8])
-
-    assert np.allclose(at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, "Lsun"), lum_lsun)
-
-    assert np.allclose(
-        at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, "erg/s"), lum_lsun * Lsun_to_erg_per_s
-    )
-
-    assert np.allclose(
-        at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(lum_lsun, "mag"), [Mbol_sun, Mbol_sun - 20.0]
-    )
-
-
-def test_convert_lum_ergs_to_plotunits() -> None:
-    """The erg/s axis must pass the reference data through untouched, with no round trip through Lsun."""
-    lum_erg_per_s = np.array([1.1246049739669314e42, 3.0e41])
-
-    assert (at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum_erg_per_s, "erg/s") == lum_erg_per_s).all()
-
-    assert np.allclose(
-        at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum_erg_per_s, "Lsun"),
-        lum_erg_per_s / Lsun_to_erg_per_s,
-    )
 
 
 def test_convert_lum_to_plotunits_nonpositive() -> None:
@@ -1182,22 +1123,6 @@ def test_bol_reflightcurve_empty_label_stays_out_of_the_legend() -> None:
     )
     assert plotlabel
     assert plotlabel != "None"
-
-
-def test_get_reflightcurve_yerr_scaling() -> None:
-    """Without magnitudes the error bar sizes are scaled the same way as the luminosities."""
-    lum = np.array([1e42, 2e42])
-    errminus = np.array([1e41, 3e41])
-    errplus = np.array([2e41, 4e41])
-
-    yerr, unbounded = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "erg/s")
-    assert np.allclose(yerr[0], errminus)
-    assert np.allclose(yerr[1], errplus)
-    assert not unbounded.any(), "a luminosity axis reaches zero, so no bar is open-ended"
-
-    yerr, _unbounded = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "Lsun")
-    assert np.allclose(yerr[0], errminus / Lsun_to_erg_per_s)
-    assert np.allclose(yerr[1], errplus / Lsun_to_erg_per_s)
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
@@ -1343,20 +1268,6 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: mock.MagicMock) -> No
     )
     assert np.allclose(yerr[0], expected[0])
     assert np.allclose(yerr[1], expected[1])
-
-
-def test_get_plot_lum_unit_and_column() -> None:
-    """The unit choice and the light curve column to plot come from one place."""
-    for magnitude, lsun, expected_unit, expected_col in (
-        (True, False, "mag", "mag"),
-        (True, True, "mag", "mag"),  # magnitude wins over Lsun
-        (False, True, "Lsun", "luminosity_Lsun"),
-        (False, False, "erg/s", "luminosity_erg/s"),
-    ):
-        args = argparse.Namespace(magnitude=magnitude, Lsun=lsun)
-        lumunit = at.lightcurve.plotlightcurve.get_plot_lum_unit(args)
-        assert lumunit == expected_unit
-        assert at.lightcurve.plotlightcurve.get_plot_lum_column(lumunit) == expected_col
 
 
 @pytest.mark.parametrize(

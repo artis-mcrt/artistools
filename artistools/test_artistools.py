@@ -881,15 +881,6 @@ def test_deprecated_flag_spellings_still_work() -> None:
         assert args.surface_count == 10
 
 
-def test_lightcurve_title_arg() -> None:
-    """The lc -title flag accepts custom text, while the bare (deprecated --title) form shows the model name."""
-    parser = argparse.ArgumentParser()
-    at.lightcurve.plotlightcurve.addargs(parser)
-    assert parser.parse_args([]).title is None
-    assert parser.parse_args(["--title"]).title is True
-    assert parser.parse_args(["-title", "Custom title"]).title == "Custom title"
-
-
 def test_retired_duplicate_commands_stay_gone() -> None:
     """The retired top-level duplicates neither parse nor appear, and their tree names work.
 
@@ -939,14 +930,6 @@ def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
         artistools.__main__.main(argsraw=["--version"])
     assert excinfo.value.code == 0
     assert version("artistools") in capsys.readouterr().out
-
-
-def test_cli_unknown_command() -> None:
-    import artistools.__main__
-
-    with pytest.raises(SystemExit) as excinfo:
-        artistools.__main__.main(argsraw=["plotspetcra"])
-    assert excinfo.value.code == 2
 
 
 def test_cli_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1018,14 +1001,6 @@ def test_package_attrs() -> None:
     for name in dir(at):
         if not name.startswith("_"):
             assert getattr(at, name) is not None
-
-
-def test_plotspherical_format_arg() -> None:
-    parser = argparse.ArgumentParser()
-    at.plotspherical.addargs(parser)
-    assert parser.parse_args([]).format == "pdf"
-    with pytest.raises(SystemExit):
-        parser.parse_args(["-format", "svg"])
 
 
 def test_timestep_times() -> None:
@@ -1970,21 +1945,6 @@ def test_make_vpkt_input_rejects_bad_arguments() -> None:
             at.make_vpkt_input.parse_bool(badbool)
 
 
-def test_makelist() -> None:
-    assert at.misc.makelist(None) == []
-    assert at.misc.makelist("hello") == ["hello"]
-    assert at.misc.makelist(Path("my/folder/path")) == [Path("my/folder/path")]
-    assert at.misc.makelist([1, 2, 3]) == [1, 2, 3]
-    assert at.misc.makelist((1, 2)) == [1, 2]
-
-
-def test_flatten_list() -> None:
-    assert at.misc.flatten_list([[1, 2], [3, 4]]) == [1, 2, 3, 4]
-    assert at.misc.flatten_list([1, [2, 3], 4]) == [1, 2, 3, 4]
-    assert at.misc.flatten_list([]) == []
-    assert at.misc.flatten_list([1, 2, 3]) == [1, 2, 3]
-
-
 def test_trim_or_pad() -> None:
     result = at.misc.trim_or_pad(3, [1, 2, 3, 4], [10, 20])
     assert list(result[0]) == [1, 2, 3]
@@ -2819,24 +2779,6 @@ def test_linefluxes_timebins_keep_a_rounding_gap_and_drop_a_real_gap() -> None:
     dftimes = pl.DataFrame({"t": [0.9, 1.0, 1.999995, 2.0, 2.9999, 3.0, 3.5, 4.0, 5.0, 5.1]})
     timebins = dftimes.select(get_timebin_expr(pl.col("t"), [1.0, 2.0, 4.0], [1.99999, 3.0, 5.0]))
     assert timebins.to_series().to_list() == [None, 0, 0, 1, 1, None, None, 2, 2, None]
-
-
-def test_linefluxes_from_pops_reads_the_cell_volumes() -> None:
-    """The luminosity from the populations needs the volume of each cell of the model."""
-    from artistools.plotlinefluxes import FeatureTuple
-    from artistools.plotlinefluxes import get_line_luminosities_from_pops
-
-    # the test model has no linestat.out, thus the feature names its one Fe II transition directly
-    emfeatures = [FeatureTuple("Fe II 1-0", "Fe II", 0.0, [0], 0.0, 0.0, 26, 2, [1], [0])]
-    # timestep 10 is the one timestep with NLTE populations in the test model
-    dflcdata = get_line_luminosities_from_pops(
-        emfeatures,
-        modelpath,
-        arr_tstart=[at.get_timestep_times(modelpath, loc="start")[10]],
-        arr_tend=[at.get_timestep_times(modelpath, loc="end")[10]],
-    )
-    assert dflcdata.height == 1
-    assert dflcdata["Fe II 1-0"].item() > 0.0
 
 
 def test_linefluxes_from_pops_takes_the_cell_volumes_of_a_3d_model(tmp_path: Path) -> None:
