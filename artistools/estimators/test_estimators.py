@@ -25,6 +25,9 @@ from artistools.estimators import interactive
 from artistools.estimators import plotestimators
 from artistools.viewertools import core as viewercore
 
+if t.TYPE_CHECKING:
+    from artistools.estimators.core import TimestepParts
+
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
@@ -749,12 +752,14 @@ def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Pa
 
     read_estimator_text = artistools.estimators.core.read_estimator_text
 
-    def read_during_a_write(state: artistools.estimators.core.EstimatorBatchState) -> pl.DataFrame:
-        dfestimators = read_estimator_text(state)
+    def read_during_a_write(
+        state: artistools.estimators.core.EstimatorBatchState, partsfolder: Path
+    ) -> artistools.estimators.core.TimestepParts:
+        timestepparts = read_estimator_text(state, partsfolder)
         if mockread.call_count == 1:
             write_zstd_frames(allranksfile, celltexts)
             os.utime(allranksfile, (1005.0, 1005.0))
-        return dfestimators
+        return timestepparts
 
     with mock.patch.object(
         artistools.estimators.core, "read_estimator_text", side_effect=read_during_a_write
@@ -807,6 +812,70 @@ def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: 
     assert dfallranks.height == ncopies * len(celltexts)
     assert dfallranks["gamma_R_Fe_II"].null_count() == 0
     assert dfallranks.filter(pl.col("modelgridindex") >= 20)["gamma_R_Fe_II"].unique().to_list() == [0.0]
+
+
+def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> None:
+    """A conversion writes each text batch to parts, thus the memory never holds the full table of a large model.
+
+    The scan of the parts must give the table of one read of the whole text in the order of the timesteps and the
+    cells. A text batch whose cells write no line of a quantity has no column for it, and the scan must give zero there
+    and not a null.
+    """
+    from artistools.estimators.core import scan_timestep_parts
+    from artistools.estimators.core import sort_timestep_parts
+    from artistools.estimators.core import write_text_batch
+
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+
+    def without_gamma_r(celltext: str) -> str:
+        return "".join(line for line in celltext.splitlines(keepends=True) if not line.startswith("gamma_R "))
+
+    def relabel(celltext: str, modelgridindex: int) -> str:
+        return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
+
+    # a text part of the parallel parse holds at least 16 MB, thus only the last text part holds the gamma_R lines. The
+    # first parquet part of a timestep then has no column that a later parquet part has
+    ncopies = 200
+    copytexts = [
+        "".join(
+            (
+                relabel(celltext, copyindex)
+                if copyindex >= ncopies - 20
+                else without_gamma_r(relabel(celltext, copyindex))
+            )
+            for celltext in celltexts
+        )
+        for copyindex in range(ncopies)
+    ]
+    assert sum(len(copytext) for copytext in copytexts[: ncopies - 21]) > 16 * 1024 * 1024
+    allranksfile = tmp_path / "estimators_allranks.out.zst"
+    write_zstd_frames(allranksfile, copytexts)
+    partsfolder = tmp_path / "parts"
+    partsfolder.mkdir()
+    timestepparts: TimestepParts = {}
+    batchheights: list[int] = []
+
+    def write_batch(dfbatch: pl.DataFrame) -> None:
+        batchheights.append(dfbatch.height)
+        write_text_batch(dfbatch, partsfolder, timestepparts)
+
+    # a size limit of one byte puts one text part in each text batch
+    at.rustext.estimparse_allranks_batches(allranksfile, 1, write_batch)
+    assert len(batchheights) >= 2
+
+    assert any(len(parts) >= 2 for parts in timestepparts.values())
+    sort_timestep_parts(timestepparts)
+    dfbatches = scan_timestep_parts(timestepparts).collect()
+    dfoneread = at.rustext.estimparse_allranks(allranksfile)
+    assert dfbatches.height == dfoneread.height == sum(batchheights)
+    assert dfbatches["gamma_R_Fe_II"].null_count() == 0
+    pltest.assert_frame_equal(
+        dfbatches,
+        dfoneread
+        .with_columns(pl.col("timestep", "modelgridindex").cast(pl.Int32))
+        .select(dfbatches.columns)
+        .sort("timestep", "modelgridindex", maintain_order=True),
+    )
 
 
 def test_an_older_text_does_not_replace_a_newer_cache(tmp_path: Path) -> None:

@@ -284,15 +284,18 @@ impl EstimatorColumns {
             self.intcoldata.entry(colname.to_owned()).or_default();
         }
 
+        // a column keeps its buffer until the end of the conversion, and the growth of a Vec can leave half of it unused
         let columns: Vec<Column> = self
             .intcoldata
             .into_iter()
-            .map(|(colname, values)| Column::new(colname.into(), values))
-            .chain(
-                self.coldata
-                    .into_iter()
-                    .map(|(colname, values)| Column::new(colname.into(), values)),
-            )
+            .map(|(colname, mut values)| {
+                values.shrink_to_fit();
+                Column::new(colname.into(), values)
+            })
+            .chain(self.coldata.into_iter().map(|(colname, mut values)| {
+                values.shrink_to_fit();
+                Column::new(colname.into(), values)
+            }))
             .collect();
 
         DataFrame::new(self.rownum, columns)
@@ -506,13 +509,19 @@ impl<R: BufRead> Iterator for TextParts<'_, R> {
     }
 }
 
-/// Read an estimator text, which is the file of one rank or the file of all ranks, and return a `DataFrame`
+/// Read an estimator text in batches, and give the `DataFrame` of each batch to `on_batch` in the order of the file
 ///
-/// The threads parse the parts of the text in parallel, and the rows keep the order of the file. A text that does
-/// not end with an empty line ends inside a cell, e.g. because a job stopped during the write. The reader drops
-/// that cell in both forms of the text, thus a zero never stands for a value that the text does not hold. The
-/// second item is a warning about the values above the range of f32, or None if the text holds none.
-fn read_estimator_text(filepath: &Path) -> PolarsResult<(DataFrame, Option<String>)> {
+/// A batch holds the text of whole parts, and it ends after the part that brings its text to `batchbytes` or more.
+/// Only one batch is in memory at a time. The threads parse the parts of a batch in parallel, and the rows keep the
+/// order of the file. A text that does not end with an empty line ends inside a cell, e.g. because a job stopped
+/// during the write. The reader drops that cell in both forms of the text, thus each value in the table comes from a
+/// complete cell of the text. The result is a warning about the values above the range of f32, or None for no such
+/// value.
+fn read_estimator_text_batches(
+    filepath: &Path,
+    batchbytes: usize,
+    mut on_batch: impl FnMut(DataFrame) -> PolarsResult<()>,
+) -> PolarsResult<Option<String>> {
     let parse_part = |part: std::io::Result<TextPart>| -> PolarsResult<(DataFrame, Overflows)> {
         let part = part?;
         parse_estimator_lines(part.text.lines(), filepath, part.firstlinenum)
@@ -523,20 +532,31 @@ fn read_estimator_text(filepath: &Path) -> PolarsResult<(DataFrame, Option<Strin
         nextlinenum: 1,
         finished: false,
     };
-    let (dfestimators, overflows) = match parts.next() {
-        None => (concat_estimator_frames(&[])?, Overflows::default()),
-        // the text of a rank is usually smaller than one part, and it then needs no thread and no concatenation
-        Some(firstpart) if parts.finished => parse_part(firstpart)?,
-        Some(firstpart) => {
+    let mut overflows = Overflows::default();
+    while let Some(firstpart) = parts.next() {
+        let dfbatch = if parts.finished {
+            // the last part of the text needs no thread and no concatenation, e.g. the whole text of a small rank file
+            let (dfpart, partoverflows) = parse_part(firstpart)?;
+            overflows.add(partoverflows);
+            dfpart
+        } else {
+            let mut textbytes = firstpart.as_ref().map_or(0, |part| part.text.len());
+            let laterparts = std::iter::from_fn(|| {
+                if textbytes >= batchbytes {
+                    return None;
+                }
+                let part = parts.next()?;
+                textbytes += part.as_ref().map_or(0, |part| part.text.len());
+                Some(part)
+            });
             let mut indexedparts: Vec<(usize, (DataFrame, Overflows))> = std::iter::once(firstpart)
-                .chain(parts)
+                .chain(laterparts)
                 .enumerate()
                 .par_bridge()
                 .map(|(partindex, part)| Ok((partindex, parse_part(part)?)))
                 .collect::<PolarsResult<_>>()?;
 
             indexedparts.sort_unstable_by_key(|(partindex, _)| *partindex);
-            let mut overflows = Overflows::default();
             let vecdfs: Vec<DataFrame> = indexedparts
                 .into_iter()
                 .map(|(_, (dfpart, partoverflows))| {
@@ -544,11 +564,26 @@ fn read_estimator_text(filepath: &Path) -> PolarsResult<(DataFrame, Option<Strin
                     dfpart
                 })
                 .collect();
-            (concat_estimator_frames(&vecdfs)?, overflows)
-        }
-    };
+            concat_estimator_frames(&vecdfs)?
+        };
+        on_batch(dfbatch)?;
+    }
 
-    Ok((dfestimators, overflows.warning(filepath)))
+    Ok(overflows.warning(filepath))
+}
+
+/// Read an estimator text, which is the file of one rank or the file of all ranks, and return a `DataFrame`
+///
+/// The second item is a warning about the values above the range of f32, or None if the text holds none.
+fn read_estimator_text(filepath: &Path) -> PolarsResult<(DataFrame, Option<String>)> {
+    let mut dfestimators = concat_estimator_frames(&[])?;
+    // a batch of unlimited size holds the whole text
+    let warning = read_estimator_text_batches(filepath, usize::MAX, |dfbatch| {
+        dfestimators = dfbatch;
+        Ok(())
+    })?;
+
+    Ok((dfestimators, warning))
 }
 
 /// Read the estimator file of all ranks, e.g. `estimators_allranks.out.zst`, and return a `DataFrame`
@@ -563,6 +598,52 @@ pub fn estimparse_allranks(py: Python<'_>, filepath: PathBuf) -> PyResult<PyData
     give_warnings(py, warning.iter())?;
 
     Ok(PyDataFrame(dfallranks))
+}
+
+/// The maximum number of threads that parse the parts of the estimator file of all ranks
+///
+/// One thread decompresses the file and gives the parts to the others. On a login node of Leonardo, a 4 GB text took
+/// 62 s with 1 thread, 12 s with 8 and 16 threads, and 14 s with 128 threads. The peak memory was 1.5 GB with 16
+/// threads and 4.1 GB with 128 threads, because each thread holds one part of the text.
+const MAX_PARSE_THREADS: usize = 16;
+
+/// Read the estimator file of all ranks in batches, and call `on_batch` with the `DataFrame` of each batch
+///
+/// A batch ends after the part of the text that brings its text to `batchbytes` or more. Only one batch is in
+/// memory at a time, thus a caller can convert a file whose table is larger than the memory. The parse runs without
+/// the GIL, and each call of `on_batch` holds it.
+#[pyfunction]
+#[expect(clippy::needless_pass_by_value)]
+pub fn estimparse_allranks_batches(
+    py: Python<'_>,
+    filepath: PathBuf,
+    batchbytes: usize,
+    on_batch: Py<PyAny>,
+) -> PyResult<()> {
+    let mut callbackerror: Option<PyErr> = None;
+    let result = py.detach(|| {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(rayon::current_num_threads().min(MAX_PARSE_THREADS))
+            .build()
+            .map_err(|err| polars_err!(ComputeError: "{err}"))?;
+        pool.install(|| {
+            read_estimator_text_batches(&filepath, batchbytes, |dfbatch| {
+                Python::attach(|py| on_batch.call1(py, (PyDataFrame(dfbatch),)))
+                    .map(|_| ())
+                    .map_err(|err| {
+                        callbackerror = Some(err);
+                        polars_err!(ComputeError: "the batch callback raised an exception")
+                    })
+            })
+        })
+    });
+    if let Some(err) = callbackerror {
+        return Err(err);
+    }
+    let warning = result.map_err(PyPolarsErr::from)?;
+    give_warnings(py, warning.iter())?;
+
+    Ok(())
 }
 
 /// Return the timesteps of the cells of an estimator file in ascending order, without repeats
