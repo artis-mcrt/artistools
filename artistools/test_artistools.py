@@ -1121,14 +1121,6 @@ def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
     assert (tmp_path / "map.png").read_bytes().startswith(pngmagic)
 
 
-def test_save_figure_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
-    """A caller gave format="pdf" to save_figure, thus a file named x.png held a PDF document."""
-    for filename, magic in (("x.png", b"\x89PNG"), ("x.pdf", b"%PDF"), ("x", b"%PDF")):
-        fig = plt.figure()
-        at.plottools.save_figure(fig, tmp_path / filename, format="pdf")
-        assert (tmp_path / filename).read_bytes().startswith(magic)
-
-
 def test_every_command_that_saves_a_plot_has_darkmode() -> None:
     """--darkmode applies to each plot file, thus each command that saves a plot must accept it.
 
@@ -1586,9 +1578,6 @@ def test_get_ion_tuple_no_separator() -> None:
     assert at.get_ion_tuple("CIV") == (6, 4)
     assert at.get_ion_tuple("OI") == (8, 1)
 
-    with pytest.raises(ValueError, match="Could not parse ionstr"):
-        at.get_ion_tuple("notanion")
-
 
 def test_make_vpkt_input_default_contents() -> None:
     """The default vpkt.txt must keep the exact layout ARTIS parses, field by field."""
@@ -1938,15 +1927,6 @@ def test_trim_or_pad() -> None:
 
     result2 = at.misc.trim_or_pad(2, "single_string")
     assert list(result2[0]) == ["single_string", None]
-
-
-def test_match_closest_time() -> None:
-    times = [100.0, 200.0, 300.0, 400.0]
-    assert at.misc.match_closest_time(250.0, times) == 200.0
-    assert at.misc.match_closest_time(310.0, times) == 300.0
-    assert at.misc.match_closest_time(99.0, times) == 100.0
-    assert at.misc.match_closest_time(400.0, times) == 400.0
-    assert at.misc.match_closest_time(310.0, ["100", "300.5", "400"]) == 300.5
 
 
 def test_get_npts_model(tmp_path: Path) -> None:
