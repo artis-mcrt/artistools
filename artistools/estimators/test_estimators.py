@@ -4539,28 +4539,16 @@ def test_interactive_subplot_types_and_suggestions() -> None:
     # a control of the card sets each directive, thus only the names show as chips
     assert interactive.get_chip_items(("populations", "Fe II", "yscale=log", "ymin=1"), columns) == [(1, "Fe II")]
 
-    assert interactive.make_new_subplot("populations", columns) == ("populations", "Fe I")
-    assert interactive.make_new_subplot("gamma_NT Fe II", columns) == ("gamma_NT", "Fe II")
-    assert interactive.make_new_subplot("Te TR", columns) == ("Te", "TR")
     newsubplots = interactive.get_new_subplot_suggestions(viewer.values.subplots, viewer.run.defaultsubplots, columns)
     assert ("populations", "Fe I", "Fe II") in newsubplots
-    # the field of a new subplot read the text of a suggestion as one name, e.g. "'Fe I' 'Fe II'"
-    for subplot in newsubplots:
-        assert interactive.make_new_subplot(shlex.join(subplot), columns) == subplot
-    assert interactive.make_new_subplot("populations Fe II Fe III yscale=log", columns) == (
-        "populations",
-        "Fe II",
-        "Fe III",
-        "yscale=log",
-    )
-    assert interactive.make_new_subplot("averageionisation Fe Co", columns) == ("averageionisation", "Fe", "Co")
-    assert interactive.make_new_subplot("Fe II 'Fe III'", columns) == ("Fe II", "Fe III")
-    # cooling_coll is a variable and also the family of the cooling of each ion
-    coolingcolumns = ["cooling_coll", "cooling_coll_Fe_II", "Te"]
-    assert interactive.make_new_subplot("cooling_coll Fe II", coolingcolumns) == ("cooling_coll", "Fe II")
-    assert interactive.make_new_subplot("cooling_coll Te", coolingcolumns) == ("cooling_coll", "Te")
-    # plotestimators reads an alias as its variable, and the card of n_e was a card of populations
-    assert interactive.make_new_subplot("n_e T_e", columns) == ("nne", "Te")
+    # the + button of a card needs no text: it adds the first suggestion, or else a common variable
+    assert interactive.get_new_subplot(viewer.values.subplots, viewer.run.defaultsubplots, columns) == newsubplots[0]
+    allsuggested = [*viewer.values.subplots, *newsubplots]
+    remaining = interactive.get_new_subplot_suggestions(allsuggested, viewer.run.defaultsubplots, columns)
+    while remaining:
+        allsuggested += remaining
+        remaining = interactive.get_new_subplot_suggestions(allsuggested, viewer.run.defaultsubplots, columns)
+    assert interactive.get_new_subplot(allsuggested, viewer.run.defaultsubplots, columns) == ("Te",)
     aliasviewer = make_headless_viewer(["n_e", str(modelpath), "-timestep", "50", "--interactive"])
     assert aliasviewer.values.subplots == (("nne",),)
     # a colour image gives the card the controls of a colour scale, thus the card of an image is a new card

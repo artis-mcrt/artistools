@@ -1538,56 +1538,17 @@ def get_new_subplot_suggestions(
     return list(dict.fromkeys(suggestions))[:NEW_SUBPLOT_SUGGESTION_COUNT]
 
 
-def group_species_names(words: "Sequence[str]", choices: "Collection[str]") -> list[str]:
-    """Return the names of species that the words give, e.g. "Fe II" and "Fe III" for the words Fe II Fe III.
-
-    A name can have more than one word, e.g. "Fe II 0" for a level, thus the longest name in the choices goes first.
-    A name that is not in the choices keeps an ion stage with its element, e.g. "Zn II".
-    """
-    names: list[str] = []
-    position = 0
-    while position < len(words):
-        pairisanion = position + 1 < len(words) and is_valid_ion(" ".join(words[position : position + 2]))
-        end = next(
-            (end for end in range(len(words), position, -1) if " ".join(words[position:end]) in choices),
-            position + (2 if pairisanion else 1),
-        )
-        names.append(" ".join(words[position:end]))
-        position = end
-    return names
-
-
-def make_new_subplot(
-    text: str, estimatorcolumns: "Collection[str]", levelnames: "Sequence[str]" = ()
+def get_new_subplot(
+    subplots: "Sequence[Sequence[str]]", defaultsubplots: "Sequence[tuple[str, ...]]", estimatorcolumns: "Sequence[str]"
 ) -> tuple[str, ...]:
-    """Return the items of a new subplot that the user typed, e.g. the text of a suggestion.
+    """Return the subplot that the + button of a card adds.
 
-    Quotes keep a name with spaces together, e.g. populations 'Fe II'. The names of a series type can also have
-    spaces and no quotes, e.g. populations Fe II Fe III. A series type with no name takes its first species, because
-    plotestimators needs at least one. A directive such as yscale=log goes after the names.
+    plotestimators needs at least one series in each subplot. Thus the new subplot takes the first suggestion, or else
+    a common variable. The card of the new subplot then sets the type and the series.
     """
-    try:
-        tokens = shlex.split(text)
-    except ValueError:
-        tokens = text.split()
-    words = resolve_aliases(token for token in tokens if get_item_directive(token) is None)
-    directives = tuple(token for token in tokens if get_item_directive(token) is not None)
-    if not words:
-        return ()
-    first = words[0]
-    choices = get_species_choices(first, estimatorcolumns, levelnames)
-    names = group_species_names(words[1:], set(choices))
-    # a family of ion columns can also be a variable of its own, e.g. cooling_coll. Then the names after it set
-    # the type
-    isvariable = first in estimatorcolumns
-    if (not isvariable and (choices or is_seriestype(first, estimatorcolumns))) or (
-        names and is_ionseriestype(first, estimatorcolumns, names)
-    ):
-        return (first, *(names or get_first_choice(choices)), *directives)
-    ions = group_species_names(words, set(get_species_choices("populations", estimatorcolumns)))
-    if first not in estimatorcolumns and all(is_valid_ion(ion) for ion in ions):
-        return (*ions, *directives)
-    return (*words, *directives)
+    if suggestions := get_new_subplot_suggestions(subplots, defaultsubplots, estimatorcolumns):
+        return suggestions[0]
+    return (next((name for name in COMMON_VARIABLES if name in estimatorcolumns), estimatorcolumns[0]),)
 
 
 # the name of the type of a subplot of variables in the type selector of a subplot, which gives no -plot token
@@ -2262,31 +2223,12 @@ def open_window(
     subplotslayout = QtWidgets.QVBoxLayout(subplotsbox)
     subplotslayout.setContentsMargins(0, 0, 0, 0)
     subplotslayout.setSpacing(6)
-    newsubplotedit = QtWidgets.QLineEdit()
-    newsubplotedit.setPlaceholderText("New subplot, e.g. nne, or populations Fe II")
-    newsubplotedit.setToolTip(
-        "Type a variable, a type of series and its names, or an ion. Press Return to add the subplot. Part of a name"
-        " shows the names that hold it."
-    )
-    # the + button of a card opens this field under the card, and Return inserts the new subplot there
-    insertbox = QtWidgets.QWidget()
-    insertlayout = QtWidgets.QHBoxLayout(insertbox)
-    insertlayout.setContentsMargins(0, 0, 0, 0)
-    insertedit = QtWidgets.QLineEdit()
-    insertedit.setPlaceholderText("Insert a subplot, e.g. nne, or populations Fe II")
-    insertedit.setToolTip("Type a variable, a type of series and its names, or an ion. Press Return to insert it.")
-    insertcancel = make_glyph_button("xmark", "Close the field (Escape)", "Close")
-    insertlayout.addWidget(insertedit, 1)
-    insertlayout.addWidget(insertcancel)
-    insertbox.hide()
-    # the row of the new subplot, or None while the field is closed
-    insertrow: int | None = None
     # the rows of the cards that show only their header
     collapsedrows: set[int] = set()
     # the rows of the cards that show the controls of the y axis
     openyrows: set[int] = set()
     # the subplots of the cards on the screen. After each change, e.g. a move, Undo, or a rejected change,
-    # show_subplots moves the collapsed cards and the insert field with their subplots
+    # show_subplots moves the collapsed cards with their subplots
     shownsubplots: tuple[tuple[str, ...], ...] = ()
     # the line that shows where a dragged card goes
     dropline = QtWidgets.QFrame(subplotsbox)
@@ -2296,14 +2238,11 @@ def open_window(
     chipdropline = QtWidgets.QFrame(subplotsbox)
     chipdropline.setObjectName("dropline")
     chipdropline.hide()
-    addsubplotbutton = QtWidgets.QPushButton("Add Subplot")
-    addsubplotbutton.setToolTip("Add a subplot of the text in the field")
     defaultbutton = QtWidgets.QPushButton("Default")
     defaultbutton.setToolTip("Show the default subplots of plotestimators for this model")
     newsubplotrow = QtWidgets.QHBoxLayout()
-    newsubplotrow.addWidget(newsubplotedit, 1)
-    newsubplotrow.addWidget(addsubplotbutton)
     newsubplotrow.addWidget(defaultbutton)
+    newsubplotrow.addStretch(1)
     newsuggestionsbox = QtWidgets.QWidget()
     newsuggestionsbox.setStyleSheet(subplotstylesheet)
     newsuggestionsbox.setProperty("stylesheetfactory", get_subplot_style_sheet)
@@ -2513,11 +2452,16 @@ def open_window(
         headerlayout.addWidget(QtWidgets.QLabel(f"<b>{row + 1}</b>"))
         headerlayout.addWidget(typebox)
         headerlayout.addWidget(quantity, 1)
-        for symbol, tooltip, callback in (
-            ("plus", "Insert a new subplot below this subplot", partial(open_insert_field, row + 1)),
-            ("xmark", "Delete the subplot", partial(on_delete_subplot, row)),
+        # the plot needs at least one subplot. The key of the card changes with the last row, thus the state stays true
+        isonlysubplot = len(viewer.values.subplots) == 1
+        for symbol, tooltip, enabled, callback in (
+            ("plus", "Insert a new subplot below this subplot", True, partial(insert_new_subplot, row + 1)),
+            ("xmark", "Delete the subplot", not isonlysubplot, partial(on_delete_subplot, row)),
         ):
             button = make_glyph_button(symbol, tooltip, tooltip)
+            button.setEnabled(enabled)
+            if not enabled:
+                button.setToolTip("The plot needs at least one subplot")
             button.clicked.connect(callback)
             headerlayout.addWidget(button)
         headerlayout.addWidget(make_grip("Drag the header to move the subplot"))
@@ -2816,22 +2760,8 @@ def open_window(
                 label.setText(f"{name} •" if get_item_style(subplot[position]) else name)
         card.resetaction.setEnabled(remove_item_styles(subplot) != tuple(subplot))
 
-    def show_new_subplot_suggestions(subplottypes: "Sequence[str]", *, columnschanged: bool) -> None:
-        """Show the suggestions of a new subplot.
-
-        If the columns changed, the field of a new subplot also takes a completer with the new names.
-        """
-        if columnschanged:
-            oldcompleter = newsubplotedit.completer()
-            newsubplotedit.setCompleter(
-                make_completer([*subplottypes[1:], *viewer.run.estimatorcolumns], newsubplotedit)
-            )
-            if oldcompleter is not None:
-                oldcompleter.deleteLater()
-            oldcompleter = insertedit.completer()
-            insertedit.setCompleter(make_completer([*subplottypes[1:], *viewer.run.estimatorcolumns], insertedit))
-            if oldcompleter is not None:
-                oldcompleter.deleteLater()
+    def show_new_subplot_suggestions() -> None:
+        """Show the suggestions of a new subplot."""
         oldbuttons = [
             item.widget()
             for index in range(newsuggestionslayout.count())
@@ -2856,24 +2786,18 @@ def open_window(
         A card with the same key stays, and its controls show the new directives. A new card of the same row gives
         the focus to the control that had it in the old card.
         """
-        nonlocal shownnewkey, pendingfocus, shownsubplots, insertrow
+        nonlocal shownnewkey, pendingfocus, shownsubplots
         subplots, columns = viewer.values.subplots, viewer.run.estimatorcolumns
         if subplots != shownsubplots:
             for rows in (collapsedrows, openyrows):
                 movedrows = get_moved_rows(shownsubplots, subplots, rows)
                 rows.clear()
                 rows.update(movedrows)
-            # the insert field stays under its card, and it closes when its card goes
-            if insertrow is not None:
-                movedcard = get_moved_rows(shownsubplots, subplots, {insertrow - 1})
-                insertrow = min(movedcard) + 1 if movedcard else None
             shownsubplots = subplots
         subplottypes = get_subplot_types(columns, viewer.nltetypes)
         isimage = get_geometry_mode(viewer.values) in IMAGE_MODES
         focuswidget = QtWidgets.QApplication.focusWidget()
         focus, pendingfocus = pendingfocus, None
-        # the cards take their places by the row, thus the insert field leaves the layout during the rebuild
-        subplotslayout.removeWidget(insertbox)
         for row, subplot in enumerate(subplots):
             # the header of a collapsed card shows the summary, which holds the y scale
             summary = get_card_summary(subplot, columns) if row in collapsedrows else None
@@ -2897,13 +2821,9 @@ def open_window(
             remove_widget(subplotslayout, card.frame)
         del cards[len(subplots) :]
         show_swatches()
-        if insertrow is not None and insertrow <= len(cards):
-            subplotslayout.insertWidget(insertrow, insertbox)
-        else:
-            insertbox.hide()
         newkey = (subplots, viewer.run.defaultsubplots, columns)
         if newkey != shownnewkey:
-            show_new_subplot_suggestions(subplottypes, columnschanged=newkey[2:] != shownnewkey[2:])
+            show_new_subplot_suggestions()
             shownnewkey = newkey
         if focus is not None and focus[1] and focus[0] < len(cards):
             target = cards[focus[0]].frame.findChild(QtWidgets.QWidget, focus[1])
@@ -3403,6 +3323,8 @@ def open_window(
         apply_subplots([subplots[item] if isinstance(item, int) else item for item in order])
 
     def on_delete_subplot(row: int) -> None:
+        if len(viewer.values.subplots) <= 1:
+            return
         apply_subplot_order([oldrow for oldrow in range(len(viewer.values.subplots)) if oldrow != row])
 
     def move_subplot(row: int, newrow: int) -> None:
@@ -3524,7 +3446,6 @@ def open_window(
     def on_add_series_key() -> None:
         """Give the keyboard to the field that adds a series to the card with the focus, or else to the last card."""
         if not cards:
-            newsubplotedit.setFocus()
             return
         focuswidget = QtWidgets.QApplication.focusWidget()
         row = next(
@@ -3577,46 +3498,13 @@ def open_window(
             pendingfocus = (len(viewer.values.subplots), "add")
             apply_subplots([*viewer.values.subplots, subplot])
 
-    def open_insert_field(row: int) -> None:
-        """Show the field of a new subplot under the card above row, and give it the keyboard."""
-        nonlocal insertrow
-        insertrow = row
-        subplotslayout.removeWidget(insertbox)
-        subplotslayout.insertWidget(row, insertbox)
-        insertbox.show()
-        insertedit.clear()
-        insertedit.setFocus()
-
-    def close_insert_field() -> None:
-        nonlocal insertrow
-        insertrow = None
-        insertedit.clear()
-        subplotslayout.removeWidget(insertbox)
-        insertbox.hide()
-
-    def on_insert_subplot() -> None:
+    def insert_new_subplot(row: int) -> None:
+        """Insert a new subplot at row, and give the keyboard to the field of its card that adds a series."""
         nonlocal pendingfocus
-        # a name that the user picks in the popup goes into the field, and the next Return inserts the subplot
-        if popup_has_pick(insertedit) or insertrow is None:
-            return
-        row, text = insertrow, insertedit.text()
-        words = text.split()
-        subplot = make_new_subplot(text, viewer.run.estimatorcolumns, get_levelnames(words[0] if words else ""))
-        close_insert_field()
-        if subplot:
-            # the field of the new card takes the focus, thus the user can add more names
-            pendingfocus = (row, "add")
-            oldrows = range(len(viewer.values.subplots))
-            apply_subplot_order([*oldrows[:row], subplot, *oldrows[row:]])
-
-    def on_new_subplot() -> None:
-        # a name that the user picks in the popup goes into the field, and the next Return adds the subplot
-        if popup_has_pick(newsubplotedit):
-            return
-        text = newsubplotedit.text()
-        newsubplotedit.clear()
-        words = text.split()
-        add_new_subplot(make_new_subplot(text, viewer.run.estimatorcolumns, get_levelnames(words[0] if words else "")))
+        pendingfocus = (row, "add")
+        oldrows = range(len(viewer.values.subplots))
+        subplot = get_new_subplot(viewer.values.subplots, viewer.run.defaultsubplots, viewer.run.estimatorcolumns)
+        apply_subplot_order([*oldrows[:row], subplot, *oldrows[row:]])
 
     def on_reload() -> None:
         """Read the run again in the worker thread, and keep the window responsive.
@@ -3891,13 +3779,6 @@ def open_window(
     xbinsedit.editingFinished.connect(on_style)
     markerscheck.toggled.connect(on_style)
     colorbyioncheck.toggled.connect(on_style)
-    newsubplotedit.returnPressed.connect(on_new_subplot)
-    insertedit.returnPressed.connect(on_insert_subplot)
-    insertcancel.clicked.connect(close_insert_field)
-    QtGui.QShortcut(
-        QtGui.QKeySequence(QtCore.Qt.Key.Key_Escape), insertedit, context=QtCore.Qt.ShortcutContext.WidgetShortcut
-    ).activated.connect(close_insert_field)
-    addsubplotbutton.clicked.connect(on_new_subplot)
     defaultbutton.clicked.connect(lambda: apply_subplots(viewer.run.defaultsubplots))
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
