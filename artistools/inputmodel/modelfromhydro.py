@@ -197,8 +197,7 @@ def read_griddat_file(
     )
 
     if targetmodeltime_days is not None:
-        # the metadata that this function builds below replaces the metadata of the scaled model
-        griddata, _ = scale_model_to_time(
+        griddata = scale_model_to_time(
             targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
         )
         t_model_days = targetmodeltime_days

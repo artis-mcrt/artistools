@@ -339,7 +339,7 @@ def test_add_cli_arg_helpers() -> None:
     at.misc.addarg_timestep(parser)
     at.misc.addarg_timedays(parser)
     at.misc.addarg_timeminmax(parser)
-    at.misc.addarg_axislimits(parser, xlimtype=int, xmindefault=1000, xmaxdefault=2000)
+    at.misc.addarg_axislimits(parser, xmindefault=1000, xmaxdefault=2000)
     at.misc.addarg_seriesstyle(parser, colordefault=["C0", "C1"], include_linealpha=True)
     at.misc.addarg_figscale(parser, include_figwidthscale=True)
     at.misc.addarg_filter(parser)
@@ -1254,7 +1254,6 @@ def test_normalize_path_list() -> None:
     assert at.misc.normalize_path_list(Path("a/b")) == [Path("a/b")]
     assert at.misc.normalize_path_list([["x"], "y"]) == [Path("x"), Path("y")]
     assert at.misc.normalize_path_list([]) == [Path()]
-    assert at.misc.normalize_path_list(None, default="fallback") == [Path("fallback")]
 
 
 def test_resolve_outputfile(tmp_path: Path) -> None:

@@ -2074,22 +2074,17 @@ def test_vel_on_c_excludes_kmps_columns() -> None:
     )
 
 
-def test_scale_model_to_time_uses_modelmeta() -> None:
-    """The model time key must be the same one that get_modeldata and save_modeldata use."""
+def test_scale_model_to_time() -> None:
     dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
     t_model_init_days = modelmeta["t_model_init_days"]
-    targettime = t_model_init_days * 2.0
 
     dfmodel_collected = dfmodel.collect()
     rho_before = dfmodel_collected["logrho"].to_numpy().copy()
 
-    # the cell widths are positions at t_model, thus a model that keeps the old widths has cells that overlap
-    dfscaled, modelmeta_out = at.inputmodel.scale_model_to_time(
-        dfmodel=dfmodel_collected, targetmodeltime_days=targettime, modelmeta=modelmeta | {"wid_init_x": 3.0e14}
+    dfscaled = at.inputmodel.scale_model_to_time(
+        dfmodel=dfmodel_collected, targetmodeltime_days=t_model_init_days * 2.0, t_model_days=t_model_init_days
     )
 
-    assert modelmeta_out["t_model_init_days"] == targettime
-    assert modelmeta_out["wid_init_x"] == pytest.approx(6.0e14)
     # homologous expansion by a factor of two drops the density by a factor of eight
     assert dfscaled["logrho"].to_numpy() == pytest.approx(rho_before + math.log10(2.0**-3))
 

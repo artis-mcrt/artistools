@@ -1619,19 +1619,8 @@ def dimension_reduce_model(
     return (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out)
 
 
-def scale_model_to_time(
-    dfmodel: pl.DataFrame,
-    targetmodeltime_days: float,
-    t_model_days: float | None = None,
-    modelmeta: dict[str, t.Any] | None = None,
-) -> tuple[pl.DataFrame, dict[str, t.Any]]:
+def scale_model_to_time(dfmodel: pl.DataFrame, targetmodeltime_days: float, t_model_days: float) -> pl.DataFrame:
     """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""
-    if t_model_days is None:
-        assert modelmeta is not None
-        t_model_days = modelmeta["t_model_init_days"]
-
-    assert t_model_days is not None
-
     timefactor = targetmodeltime_days / t_model_days
 
     print(
@@ -1644,20 +1633,7 @@ def scale_model_to_time(
         scale_exprs.append(pl.col("rho") * timefactor**-3)
     if "logrho" in dfmodel.columns:
         scale_exprs.append(pl.col("logrho") + math.log10(timefactor**-3))
-    dfmodel = dfmodel.with_columns(scale_exprs)
-
-    if modelmeta is None:
-        modelmeta = {}
-
-    modelmeta["t_model_init_days"] = targetmodeltime_days
-    # the cell widths hold positions at t_model, thus they expand with the positions
-    for key in [key for key in modelmeta if key == "wid_init" or key.startswith("wid_init_")]:
-        modelmeta[key] *= timefactor
-    modelmeta.setdefault("headercommentlines", []).append(
-        f"scaled from {t_model_days} to {targetmodeltime_days} (no abund change from decays)"
-    )
-
-    return dfmodel, modelmeta
+    return dfmodel.with_columns(scale_exprs)
 
 
 def savetologfile(outputfolderpath: Path, logfilename: str = "modellog.txt") -> Callable[..., None]:

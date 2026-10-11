@@ -1710,16 +1710,14 @@ def test_get_elemcolor_is_stable_and_unbounded() -> None:
     from artistools.estimators.plotestimators import elementcolors
     from artistools.estimators.plotestimators import get_elemcolor
 
-    assert get_elemcolor(elsymbol="Fe") == colors_tab10[0]
-    assert get_elemcolor(elsymbol="Ni") == colors_tab10[1]
-    assert get_elemcolor(elsymbol="Co") == colors_tab10[2]
+    assert get_elemcolor(atomic_number=26) == colors_tab10[0]
+    assert get_elemcolor(atomic_number=28) == colors_tab10[1]
+    assert get_elemcolor(atomic_number=27) == colors_tab10[2]
 
     # far more elements than the reserved list can hold, in two different orders
     colors_ascending = [get_elemcolor(atomic_number=Z) for Z in range(1, 93)]
     colors_descending = [get_elemcolor(atomic_number=Z) for Z in reversed(range(1, 93))]
     assert colors_ascending == list(reversed(colors_descending))
-
-    assert get_elemcolor(elsymbol="O") == get_elemcolor(atomic_number=8)
 
     # a reserved colour must stay unique to its element, so that Fe, Ni and Co remain identifiable
     reservedZ = {at.get_atomic_number(elsymbol) for elsymbol in elementcolors}

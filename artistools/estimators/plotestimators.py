@@ -154,7 +154,7 @@ POPTYPE_YLABELS: t.Final[Mapping[str, str]] = MappingProxyType({
 })
 
 
-def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None) -> t.Any:
+def get_elemcolor(atomic_number: int) -> t.Any:
     """Return the plot colour of an element, keyed on the element itself so that it never varies between plots.
 
     The three reserved elements keep their colour. Every other element takes one from a long palette indexed by
@@ -162,16 +162,7 @@ def get_elemcolor(atomic_number: int | None = None, elsymbol: str | None = None)
     call order instead made an element's colour depend on which plots preceded it in the same process, and ran
     off the end of the ten-colour list once eleven elements had been seen.
     """
-    assert (atomic_number is None) != (elsymbol is None)
-    if atomic_number is None:
-        assert elsymbol is not None
-        atomic_number = get_atomic_number(elsymbol)
-        if atomic_number < 0:
-            msg = f"{elsymbol!r} is not an element symbol, so it has no colour"
-            raise ValueError(msg)
-    else:
-        elsymbol = get_elsymbol(atomic_number)
-
+    elsymbol = get_elsymbol(atomic_number)
     if elsymbol in elementcolors:
         return elementcolors[elsymbol]
 
