@@ -1471,9 +1471,9 @@ def format_frame_path(frametemplate: Path | str, **fields: t.Any) -> str:
     A user writes the template, thus a field that the command does not give is a mistake of the
     arguments and not a fault of artistools.
     """
-    withold = fields | {old: fields[new] for old, new in OLDTEMPLATEFIELDS.items() if new in fields}
+    fieldsandoldnames = fields | {old: fields[new] for old, new in OLDTEMPLATEFIELDS.items() if new in fields}
     try:
-        return str(frametemplate).format(**withold)
+        return str(frametemplate).format(**fieldsandoldnames)
     except KeyError as exc:
         given = ", ".join(f"{{{name}}}" for name in fields)
         msg = f"the name of the output holds the field {exc}, and this command gives {given}"

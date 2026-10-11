@@ -1494,7 +1494,7 @@ def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
     ],
 )
 def test_estimparse_malformed_line(tmp_path: Path, badline: str, errormessage: str) -> None:
-    """Unparseable estimator data raises a Python exception naming the file and line, never a panic."""
+    """Check that bad estimator data gives a Python exception with the file and the line, and not a Rust panic."""
     (tmp_path / "estimators_0000.out").write_text(
         f"timestep 0 modelgridindex 0 TR 2000 Te 2000 W 1 TJ 2000 nne 71393.3\n{badline}\n\n"
     )

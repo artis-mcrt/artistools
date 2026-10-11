@@ -139,6 +139,7 @@ audit-command = ""
 # one-off baseline reset of about 4.5 points, not a regression.
 source = ["artistools"]
 omit = ["*/test_*.py", "*/conftest.py"]
+branch = true
 
 [tool.uv]
 required-version = ">=0.12.9"
@@ -250,6 +251,7 @@ addopts = [
     "auto",
 ]
 testpaths = ["artistools"]
+strict = true
 
 [tool.ruff]
 line-length = 120
@@ -350,6 +352,31 @@ unresolved-import = "ignore"
 
 [tool.ty.src]
 exclude = [".venv/**"]
+
+# the default locale accepts both the British and the American spellings. The locale "en-gb" also
+# reports each American identifier, e.g. the matplotlib keyword `color`. Thus this configuration
+# keeps the default locale
+[tool.typos.files]
+extend-exclude = ["artistools/data/", "artistools/matplotlibrc", "images/", "tests/data/", "*.lock"]
+
+[tool.typos.default.extend-identifiers]
+# a matplotlib method that has this spelling
+contains_branch_seperately = "contains_branch_seperately"
+
+# short names from physics and from the ARTIS files, e.g. the grid indices `iy` and `iz`, barium
+# (`ba`), and the term symbol `Fo`
+[tool.typos.default.extend-words]
+ba = "ba"
+fo = "fo"
+gam = "gam"
+iy = "iy"
+iz = "iz"
+mch = "mch"
+nd = "nd"
+rin = "rin"
+strin = "strin"
+thr = "thr"
+yhat = "yhat"
 
 [tool.vulture]
 exclude = [".*", "build/", ".eggs/", ".venv", "venv"]

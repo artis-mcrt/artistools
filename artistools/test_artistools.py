@@ -442,7 +442,11 @@ def test_residual_panel_rejects_an_invalid_baseline(seriescount: int, baselinein
     plt.close(fig)
 
 
-@pytest.mark.parametrize("addargs", [at.spectra.plotspectra.addargs, at.lightcurve.plotlightcurve.addargs])
+@pytest.mark.parametrize(
+    "addargs",
+    [at.spectra.plotspectra.addargs, at.lightcurve.plotlightcurve.addargs],
+    ids=["plotspectra", "plotlightcurves"],
+)
 @pytest.mark.parametrize(
     ("tokens", "expected"),
     [

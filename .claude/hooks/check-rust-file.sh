@@ -37,7 +37,7 @@ rustfmt --edition 2024 -- "$filepath" >/dev/null 2>&1
 reformatted=0
 [ "$before" = "$(cat -- "$filepath")" ] || reformatted=1
 
-lints="$(withlimit cargo clippy --all-features --message-format short -- -D warnings -D clippy::pedantic 2>&1)"
+lints="$(withlimit cargo clippy --all-features --message-format short -- -D warnings 2>&1)"
 lintstatus=$?
 
 if [ "$lintstatus" -eq 124 ]; then
@@ -55,7 +55,7 @@ fi
     fi
     if [ "$lintstatus" -ne 0 ]; then
         printf 'cargo clippy:\n%s\n\n' "$(printf '%s\n' "$lints" | grep -v '^ *Compiling\|^ *Checking\|^ *Finished')"
-        printf 'CI runs clippy with -D warnings -D clippy::pedantic. Correct each warning.\n'
+        printf 'CI runs clippy with -D warnings and the lints of rust/Cargo.toml. Correct each warning.\n'
     fi
 } >&2
 

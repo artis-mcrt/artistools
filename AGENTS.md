@@ -62,7 +62,7 @@ uv run -- pyrefly check
 uv run -- ty check
 uv run -- vulture                                      # informational, see below
 uv run -- python -m pytest artistools/<area> -n auto   # e.g. artistools/spectra
-cargo clippy --all-features -- -D warnings -D clippy::pedantic   # in rust/, for a Rust change
+cargo clippy --all-features -- -D warnings             # in rust/, for a Rust change
 ```
 
 The type checkers pyrefly and ty must both give no errors. A change that satisfies one checker must not cause an error in a different checker. The file `.github/workflows/pytest.yml` defines what CI runs. CI also runs the `prek` hooks from `.pre-commit-config.yaml`. The vulture check gives information only. It reports code that possibly has no callers, but some of these reports are incorrect, thus CI does not fail on them.

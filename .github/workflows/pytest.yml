@@ -10,6 +10,11 @@ on:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
+# a new push to a branch makes the run of the previous commit obsolete. Each commit on main keeps its
+# run, thus each commit on main has a test result and a coverage report
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 env:
     # pyo3 0.29 supports Python 3.15 at most. This setting permits a build for Python 3.16.
     PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
@@ -74,9 +79,13 @@ jobs:
               continue-on-error: true
               run: uv run -- vulture
 
+            # the Ruff steps above run the version in uv.lock, and --no-fix makes them report each error.
+            # The hooks correct the errors and show only the files that they change, thus this step skips them
             - name: Run prek pre-commit checks
               if: always()
               uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
+              env:
+                  SKIP: ruff-check,ruff-format
 
             - name: Run rust format check
               if: always()
@@ -90,7 +99,7 @@ jobs:
               working-directory: rust/
               run: |
                   rustup component add clippy
-                  cargo clippy --all-features -- -D warnings -D clippy::pedantic
+                  cargo clippy --all-features -- -D warnings
 
     pytest:
         timeout-minutes: 120

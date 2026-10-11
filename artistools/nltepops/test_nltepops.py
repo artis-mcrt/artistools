@@ -339,7 +339,7 @@ def test_add_lte_pops_matches_a_row_by_row_reference(maxlevel: int) -> None:
                 assert math.isclose(value, expectedrow[columnname], rel_tol=1e-12)
 
 
-@pytest.mark.parametrize("timedays", [300, "300", 300.0])
+@pytest.mark.parametrize("timedays", [300, "300", 300.0], ids=["int", "str", "float"])
 def test_nltepops_keyword_timedays_reads_a_number(timedays: float | str, tmp_path: Path) -> None:
     """A command line gives a string, and a keyword argument of the API gives a number. Both name one time."""
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, modelgridindex=0, timedays=timedays)
@@ -444,7 +444,7 @@ def test_departure_coefficients_of_a_reference_with_a_different_count_of_levels(
     plt.close(fig)
 
 
-@pytest.mark.parametrize("ion_stages", ["2", 2, [2]])
+@pytest.mark.parametrize("ion_stages", ["2", 2, [2]], ids=["str", "int", "list"])
 def test_nltepops_ion_stages_of_a_keyword_argument(ion_stages: str | int | list[int], tmp_path: Path) -> None:
     """A keyword argument of main() does not pass through the parser, thus -ion_stages can be text, a number, or a list.
 
