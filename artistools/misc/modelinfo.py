@@ -18,6 +18,7 @@ from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
 from artistools.misc.cliutils import print_detail
 from artistools.misc.cliutils import print_warning
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import extra_csv_columns_ignored
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
@@ -468,35 +469,29 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
-def get_current_allranks_outputfile(folderpath: Path, filenameformat: str) -> Path | None:
-    """Return the file of all ranks of a run folder, e.g. nlte_allranks.out.zst, or None when it is absent or stale.
+def get_rank_outputfiles(folderpath: Path, filenameformat: str) -> dict[int, Path]:
+    """Return the output file of each MPI rank in a run folder, keyed by rank, e.g. nlte_0001.out.zst for rank 1.
 
-    With the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes the text of all ranks into this file. The script
-    scripts/combine_allrank_out_files.py of ARTIS makes the same file from the files of the ranks. The script can
-    combine the files of a job that still runs, thus a newer file of a rank shows that the file of all ranks is stale.
-    The estimators apply the same rule.
+    filenameformat names the file of a rank, e.g. "nlte_{mpirank:04d}.out". One glob gives the names, and the
+    precedence of firstexisting then selects one file for each rank: the plain file before a compressed file. A test
+    of each name with stat took 3.4 s on Lustre for the 15368 rank files of a run. Each stat there is a request to a
+    server.
     """
     prefix, suffix = re.split(r"\{mpirank[^}]*\}", filenameformat)
-    allranksfile = firstexisting_or_none(
-        f"{prefix}allranks{suffix}", folder=folderpath, tryzipped=True, search_subfolders=False
-    )
-    if allranksfile is None:
-        return None
-    allranks_mtime = allranksfile.stat().st_mtime
-    rankstems = {
-        name[: name.index(suffix) + len(suffix)]
-        for name in (path.name for path in folderpath.glob(f"{prefix}*{suffix}*"))
-        if suffix in name and name[len(prefix) : name.index(suffix)].isdigit()
+    files_by_name = {path.name: path for path in folderpath.glob(f"{prefix}*{suffix}*")}
+    # ARTIS pads the rank to a minimum width of four, thus a rank of 10000 or more has more digits
+    ranks = {
+        int(rankstr)
+        for rankstr in (name.removeprefix(prefix).split(".")[0] for name in files_by_name)
+        if rankstr.isdigit()
     }
-    # the reader takes one file of each rank, e.g. a plain file before a stale .zst copy, thus only that file counts
-    rankfiles = (
-        firstexisting_or_none(stem, folder=folderpath, tryzipped=True, search_subfolders=False) for stem in rankstems
-    )
-    return (
-        None
-        if any(rankfile is not None and rankfile.stat().st_mtime > allranks_mtime for rankfile in rankfiles)
-        else allranksfile
-    )
+    rankfiles: dict[int, Path] = {}
+    for rank in sorted(ranks):
+        stem = filenameformat.format(mpirank=rank)
+        candidates = (stem, *(stem + ext for ext in COMPRESSED_EXTENSIONS))
+        if (name := next((name for name in candidates if name in files_by_name), None)) is not None:
+            rankfiles[rank] = files_by_name[name]
+    return rankfiles
 
 
 def read_rank_outputfiles(
@@ -507,23 +502,31 @@ def read_rank_outputfiles(
 ) -> pl.DataFrame:
     """Read the output files of each MPI rank, e.g. radfield_{mpirank:04d}.out, in the run folders into one DataFrame.
 
-    When a timestep, a model grid cell, or a sequence of cells is given, only the run folders and ranks
-    that could contain them are read, and the rows are filtered to that selection (negative values mean no filter).
-    A run folder with a current file of all ranks, e.g. radfield_allranks.out, gives the rows from that file.
+    Each row of the files starts with the timestep and the model grid cell. A timestep, a model grid cell, or a
+    sequence of cells selects the rows, and a negative value selects all of them.
+
+    With the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes the rows of all ranks into one file of a run
+    folder, e.g. radfield_allranks.out. The script scripts/combine_allrank_out_files.py of ARTIS makes the same file
+    from the files of the ranks, and it keeps them by default. A read of some cells takes the files of their ranks,
+    because a file of all ranks holds every cell. A read of all cells takes the file of all ranks, unless a file of a
+    rank is newer. When the file of a rank is missing, the read also takes the file of all ranks.
     """
+    prefix, suffix = re.split(r"\{mpirank[^}]*\}", filenameformat)
     # the format holds a field for the rank, thus a message names the family rather than one file
-    filefamily = re.sub(r"\{mpirank[^}]*\}", "*", filenameformat)
+    filefamily = f"{prefix}*{suffix}"
+    cells: list[int] = [modelgridindex] if isinstance(modelgridindex, int) else list(modelgridindex or [])
+    # a negative cell number selects all cells
+    selectedcells: list[int] = cells if all(mgi >= 0 for mgi in cells) else []
+    # get_mpiranklist also stops with an error for a cell that is not in the model
+    mpiranks = get_mpiranklist(modelpath, modelgridindex=modelgridindex)
+    # a rank whose cells all hold no matter writes no file, and a file of all ranks has no row for its cells
     nonemptycounts = get_nonempty_cellcounts(modelpath)
-    # a rank whose cells all hold no matter writes no file, and a file of all ranks has no row for its cells. Thus the
-    # count of the rank shows that a cell holds no matter, before any read
-    if isinstance(modelgridindex, int) and modelgridindex >= 0 and nonemptycounts is not None:
-        mpirank = get_mpirankofcell(modelgridindex, modelpath=modelpath)
-        if nonemptycounts.get(mpirank) == 0:
-            msg = (
-                f"Cell {modelgridindex} holds no matter, thus it has no {filefamily} data. ARTIS "
-                f"assigned no 3D cell to it, and rank {mpirank} wrote no file for it"
-            )
-            raise ValueError(msg)
+    ranks_with_matter = [rank for rank in mpiranks if nonemptycounts is None or nonemptycounts.get(rank) != 0]
+    if selectedcells and not ranks_with_matter:
+        cellstext = f"Cell {selectedcells[0]} holds" if len(selectedcells) == 1 else f"The cells {selectedcells} hold"
+        msg = f"{cellstext} no matter. ARTIS writes no {filefamily} data for a cell with no matter"
+        raise ValueError(msg)
+
     runfolders = get_runfolders(modelpath, timestep=timestep)
     if not runfolders and timestep is not None and timestep >= 0 and (allfolders := get_runfolders(modelpath)):
         heldtimesteps = sorted({ts for folder in allfolders for ts in get_runfolder_timesteps(folder)})
@@ -535,84 +538,90 @@ def read_rank_outputfiles(
 
     filepathsofeachfolder: list[list[Path]] = []
     for folderpath in runfolders:
-        if (allranksfile := get_current_allranks_outputfile(folderpath, filenameformat)) is not None:
-            filepathsofeachfolder.append([allranksfile])
-            continue
-        folderfilepaths: list[Path] = []
-        for mpirank in get_mpiranklist(modelpath, modelgridindex=modelgridindex):
-            # the loop above reads each run folder. A search below one of them would read the
-            # files of the next run folder again, thus this search reads one folder alone
-            filepath = firstexisting_or_none(
-                filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True, search_subfolders=False
+        rankfiles = get_rank_outputfiles(folderpath, filenameformat)
+        missingranks = [rank for rank in ranks_with_matter if rank not in rankfiles]
+        allranksfile = firstexisting_or_none(
+            f"{prefix}allranks{suffix}", folder=folderpath, tryzipped=True, search_subfolders=False
+        )
+        if allranksfile is not None and (
+            missingranks
+            or (
+                not selectedcells
+                and max((rankfiles[rank].stat().st_mtime for rank in ranks_with_matter), default=0.0)
+                <= allranksfile.stat().st_mtime
             )
-            if filepath is not None:
-                folderfilepaths.append(filepath)
-            elif nonemptycounts is None or nonemptycounts.get(mpirank) != 0:
-                # the rank handles a cell that holds matter, thus the file is missing. firstexisting
-                # names every compressed form that it looked for
-                firstexisting(
-                    filenameformat.format(mpirank=mpirank), folder=folderpath, tryzipped=True, search_subfolders=False
-                )
-
-        if folderfilepaths:
-            filepathsofeachfolder.append(folderfilepaths)
+        ):
+            filepathsofeachfolder.append([allranksfile])
+        elif missingranks:
+            # the rank handles a cell that holds matter, thus the file is missing. firstexisting
+            # names every compressed form that it looked for
+            firstexisting(
+                filenameformat.format(mpirank=missingranks[0]),
+                folder=folderpath,
+                tryzipped=True,
+                search_subfolders=False,
+            )
+        elif ranks_with_matter:
+            filepathsofeachfolder.append([rankfiles[rank] for rank in ranks_with_matter])
 
     if not filepathsofeachfolder:
         msg = f"No {filefamily} files found in {modelpath}"
         raise FileNotFoundError(msg)
 
-    # a file of all ranks holds every cell, thus the filters act on each run folder before the next read. They also act
-    # on the key columns of the deduplication below, and make it smaller
-    selection: list[pl.Expr] = []
-    matchcells = [modelgridindex] if isinstance(modelgridindex, int) else modelgridindex
-    if matchcells and all(mgi >= 0 for mgi in matchcells):
-        selection.append(pl.col("modelgridindex").is_in(matchcells))
+    # A file of all ranks holds every cell. Thus a filter of the raw lines on the timestep and the cell keeps the
+    # memory of a read small. The filter keeps the header line, which starts with "timestep modelgridindex"
+    leadingfields = pl.col("line").str.extract_groups(r"^[ \t]*(?<timestep>[^ \t]+)[ \t]+(?<cell>[^ \t]+)")
+    rowconditions: list[pl.Expr] = []
     if timestep is not None and timestep >= 0:
-        selection.append(pl.col("timestep") == timestep)
+        rowconditions.append(leadingfields.struct.field("timestep") == str(timestep))
+    if selectedcells:
+        rowconditions.append(leadingfields.struct.field("cell").is_in([str(mgi) for mgi in selectedcells]))
+    line_filter = (
+        (leadingfields.struct.field("timestep") == "timestep") | pl.all_horizontal(rowconditions)
+        if rowconditions
+        else None
+    )
 
-    dfofeachfolder: list[pl.DataFrame] = []
-    for folderindex, folderfilepaths in enumerate(filepathsofeachfolder):
-        dfsoffolder = [dfrank for dfrank in map(read_rank_file, folderfilepaths) if dfrank is not None]
-        if dfsoffolder:
-            dffolder = (
-                pl
-                .concat(dfsoffolder, how="vertical_relaxed")
-                .rename({"ionstage": "ion_stage"}, strict=False)
-                .with_columns(
-                    pl.col("modelgridindex").cast(pl.Int64),
-                    pl.col("timestep").cast(pl.Int64),
-                    pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
-                )
-            )
-            dfofeachfolder.append(dffolder.filter(*selection) if selection else dffolder)
-    if not dfofeachfolder:
+    dfsoffiles = [
+        dffile.rename({"ionstage": "ion_stage"}, strict=False).with_columns(
+            pl.col("modelgridindex").cast(pl.Int64),
+            pl.col("timestep").cast(pl.Int64),
+            pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
+        )
+        for folderindex, folderfilepaths in enumerate(filepathsofeachfolder)
+        for filepath in folderfilepaths
+        if (dffile := read_rank_file(filepath, line_filter=line_filter)) is not None
+    ]
+    if not dfsoffiles:
         msg = f"Each {filefamily} file of {modelpath} is empty"
         raise ValueError(msg)
 
-    dfout = pl.concat(dfofeachfolder, how="vertical_relaxed")
+    # A file with the header line and no row gives a String column for each value. A relaxed concat with such a
+    # frame would make each value column of the result a String
+    dfout = pl.concat(
+        [dffile for dffile in dfsoffiles if not dffile.is_empty()] or dfsoffiles[:1], how="vertical_relaxed"
+    )
 
     # the first timestep of a restarted run repeats the last timestep of the folder before it.
     # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.
     # A later folder can hold a cell that the earlier folder never wrote. Thus the pair of the
     # timestep and the cell decides, and not the timestep alone, and the earliest folder of the pair keeps its rows
-    if len(dfofeachfolder) > 1:
+    if len(filepathsofeachfolder) > 1:
         dfout = dfout.filter(pl.col("folderindex") == pl.col("folderindex").min().over(["timestep", "modelgridindex"]))
 
-    # the files of the ranks give the rows of each rank in turn, and a file of all ranks gives each timestep in turn.
-    # The sort gives one order for both, and it keeps the order of the rows of a cell, e.g. the bins
-    return dfout.drop("folderindex").sort(["timestep", "modelgridindex"], maintain_order=True)
+    return dfout.drop("folderindex")
 
 
-def read_rank_file(filepath: Path) -> pl.DataFrame | None:
-    """Return the rows of the output file of one rank, or None when the file is empty.
+def read_rank_file(filepath: Path, line_filter: pl.Expr | None = None) -> pl.DataFrame | None:
+    """Return the rows of an output file of one rank or of all ranks, or None when the file is empty.
 
-    ARTIS writes the header of a rank file at the first flush, after the first timestep. Thus a job that stopped
-    before it leaves an empty file.
+    A job that stopped before its first write leaves an empty file. line_filter keeps only the lines for which it is
+    true, see read_wsv.
     """
     try:
-        return read_wsv(filepath)
+        return read_wsv(filepath, line_filter=line_filter)
     except pl.exceptions.NoDataError:
-        print_warning(f"{filepath} is empty, thus its rank gives no rows. The job stopped before its first timestep")
+        print_warning(f"{filepath} is empty, thus it gives no rows. The job stopped before its first write")
         return None
 
 
