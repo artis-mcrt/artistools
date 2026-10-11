@@ -200,8 +200,7 @@ def get_popup_class() -> "type[QtWidgets.QDialog]":
             else:
                 # a popup window has no background of its own, thus the controls showed over the window below it
                 self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
-            # the colour buttons and the line styles are the glyph buttons of the window, and the selected line style
-            # takes a tint of the accent colour of the system
+            # the selected line style takes a tint of the accent colour of the system, as a selected button of macOS
             self.setStyleSheet(
                 f"{boxstyle} {GLYPH_BUTTON_STYLE}"
                 f" QToolButton:checked {{ background: rgba({accent.red()}, {accent.green()}, {accent.blue()}, 70); }}"
@@ -276,7 +275,7 @@ def edit_series_properties(
     dialog = get_popup_class()(parent)
     dialog.setAccessibleName(f"Line Properties of {name}")
     form = QtWidgets.QFormLayout(dialog)
-    # the round corners of the popover need a wider margin than a box
+    # the round corners of the popup need a wider margin than a box
     form.setContentsMargins(16, 14, 16, 14)
     chosencolour: list[str | None] = [style.get("-color")]
 
@@ -354,22 +353,27 @@ def edit_series_properties(
     )
     form.addRow("Dash pattern:", dashesedit)
 
-    def make_default_spinbox(high: float, step: float, value: str | None, tooltip: str) -> QtWidgets.QDoubleSpinBox:
-        # the lowest value of the box shows "Default", which gives the series no value
+    def make_default_spinbox(
+        lowest: float, high: float, step: float, value: str | None, tooltip: str
+    ) -> QtWidgets.QDoubleSpinBox:
+        # the lowest value of the box shows "Default", which gives the series no value, see get_box_text
         box = QtWidgets.QDoubleSpinBox()
-        box.setRange(0.0, high)
+        box.setRange(lowest, high)
         box.setSingleStep(step)
         box.setDecimals(2)
         box.setSpecialValueText("Default")
-        box.setValue(float(value) if value else 0.0)
+        box.setValue(float(value) if value else lowest)
         box.setToolTip(tooltip)
         # a form of the macOS style keeps a field at its size hint, which leaves no space for the text "Default"
         box.setMinimumWidth(box.fontMetrics().horizontalAdvance("Default") + 56)
         return box
 
-    widthbox = make_default_spinbox(10.0, 0.25, style.get("-linewidth"), "The width of the line in points (-linewidth)")
+    widthbox = make_default_spinbox(
+        0.0, 10.0, 0.25, style.get("-linewidth"), "The width of the line in points (-linewidth)"
+    )
+    # an opacity of 0 hides the line, thus the value of "Default" is below 0
     alphabox = make_default_spinbox(
-        1.0, 0.05, style.get("-linealpha"), "The opacity of the line, from 0 (clear) to 1 (opaque) (-linealpha)"
+        -0.05, 1.0, 0.05, style.get("-linealpha"), "The opacity of the line, from 0 (clear) to 1 (opaque) (-linealpha)"
     )
     widthrow = QtWidgets.QHBoxLayout()
     widthrow.addWidget(widthbox)
@@ -419,6 +423,10 @@ def edit_series_properties(
     def get_linestyle() -> str | None:
         return next((value for value, button in linestylebuttons.items() if button.isChecked()), None)
 
+    def get_box_text(box: QtWidgets.QDoubleSpinBox) -> str | None:
+        """Return the value of a box as text, or None for the lowest value, which shows "Default"."""
+        return None if box.value() <= box.minimum() else format(box.value(), "g")
+
     def show_preview() -> None:
         previewtimer.start()
         colour = chosencolour[0] or defaultcolour
@@ -438,8 +446,8 @@ def edit_series_properties(
         previewlabel.setPixmap(
             make_line_swatch(
                 colour,
-                alphabox.value() or 1.0,
-                (widthbox.value() or defaultlinewidth) * linewidthscale,
+                float(get_box_text(alphabox) or 1.0),
+                float(get_box_text(widthbox) or defaultlinewidth) * linewidthscale,
                 get_dash_pattern(get_linestyle(), dashes) if "-linestyle" in flags else None,
             )
         )
@@ -450,6 +458,8 @@ def edit_series_properties(
 
     def on_colour_edit() -> None:
         text = colouredit.text().strip()
+        if not text:
+            return
         if mplcolors.is_color_like(text):
             colouredit.clear()
             choose_colour(text)
@@ -457,13 +467,17 @@ def edit_series_properties(
             errorlabel.setText(f"'{text}' is not a colour of matplotlib. Type a colour such as tab:red or #1f77b4")
             errorlabel.show()
 
+    # Reset gives each option the default, also a value that no field shows, e.g. an empty label
+    resetdone = [False]
+
     def on_restore_defaults() -> None:
         labeledit.clear()
         chosencolour[0] = None
         linestylebuttons[None].setChecked(True)
         dashesedit.clear()
-        widthbox.setValue(0.0)
-        alphabox.setValue(0.0)
+        widthbox.setValue(widthbox.minimum())
+        alphabox.setValue(alphabox.minimum())
+        resetdone[0] = True
         show_preview()
 
     def get_widget_values(*, lenient: bool = False) -> dict[str, str | None] | None:
@@ -488,8 +502,8 @@ def edit_series_properties(
             "-color": chosencolour[0],
             "-linestyle": get_linestyle(),
             "-dashes": dashes,
-            "-linewidth": format(widthbox.value(), "g") if widthbox.value() else None,
-            "-linealpha": format(alphabox.value(), "g") if alphabox.value() else None,
+            "-linewidth": get_box_text(widthbox),
+            "-linealpha": get_box_text(alphabox),
         }
         return {flag: value for flag, value in values.items() if flag in flags}
 
@@ -498,10 +512,12 @@ def edit_series_properties(
 
         A field cannot show each value of the command, e.g. a width above the range of its box, an empty label that
         hides the series, or a line style that the popup does not list. Thus an option keeps its value of the command
-        until the user changes its field.
+        until the user changes its field or clicks Reset.
         """
         if (widgetvalues := get_widget_values(lenient=lenient)) is None:
             return None
+        if resetdone[0]:
+            return widgetvalues
         return {
             flag: value if value != openwidgetvalues.get(flag) else style.get(flag)
             for flag, value in widgetvalues.items()
@@ -525,8 +541,8 @@ def edit_series_properties(
     previewtimer.timeout.connect(show_plot_changes)
 
     def on_return() -> None:
-        # the colour field takes its own Return, which applies the typed colour
-        if colouredit.hasFocus():
+        # the colour field takes its own Return, which applies the typed colour. An empty field has no colour to apply
+        if colouredit.hasFocus() and colouredit.text().strip():
             return
         # a bad label or dash pattern keeps the popup open, and the red text gives the reason
         if get_changes() is None:
@@ -569,7 +585,6 @@ def edit_series_properties(
         ("-linewidth", widthrow),
     ):
         form.setRowVisible(field, flag in flags)
-    alphabox.setVisible("-linealpha" in flags)
     show_preview()
     previewtimer.stop()
     openwidgetvalues = get_widget_values() or {}
@@ -586,9 +601,8 @@ def edit_series_properties(
             min(max(position.y(), area.top()), area.bottom() - dialog.height()),
         )
     dialog.move(position)
-    # exec() starts a modal session, which on macOS blocks a click on the window, and a click outside the popup then did
-    # not close it. A local event loop ran inside the handler of the chip that the preview deletes. Thus the popup is
-    # not modal, and on_finished ends it
+    # exec() blocked a click outside the popup on macOS, and its event loop ran in the handler of a deleted chip. Thus
+    # the popup is not modal, and on_finished ends it
     dialog.show()
     labeledit.setFocus()
 

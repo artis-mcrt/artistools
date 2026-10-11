@@ -1,9 +1,12 @@
 import argparse
+import copy
 import dataclasses as dc
+import json
 import os
 import re
 import shlex
 import shutil
+import subprocess  # ruff:ignore[suspicious-subprocess-import]
 import sys
 import typing as t
 from collections.abc import Sequence
@@ -2680,7 +2683,7 @@ def get_cone_cellcount(coneangle: float) -> int:
     from artistools.estimators.plotestimators import select_cells_along_axis
 
     args = argparse.Namespace(modelpath=[modelpath_classic_3d], readonlymgi="cone", axis="+z", coneangle=coneangle)
-    select_cells_along_axis(args)
+    select_cells_along_axis(args, modelpath_classic_3d)
 
     return len(args.modelgridindex)
 
@@ -4085,15 +4088,303 @@ def test_move_series_item_keeps_the_type_and_the_directives() -> None:
     assert interactive.move_series_item(((("Te", "TR"), ("TR",))), (0, 1), 1, 0, columns) is None
 
 
-def test_has_several_elements_reads_the_ions_of_a_subplot() -> None:
-    """Only an ion subplot with more than one element keeps the element colours with --colorbyion."""
-    columns = ("Te", "nnion_Fe_II", "nnion_Co_II", "nnelement_Fe", "gamma_NT_Fe_II", "gamma_NT_Co_II")
-    assert interactive.has_several_elements(("populations", "Fe II", "Co II"), columns)
-    assert interactive.has_several_elements(("Fe II", "Co II@color=C3"), columns)
-    assert interactive.has_several_elements(("gamma_NT", "Fe II", "Co II"), columns)
-    assert not interactive.has_several_elements(("populations", "Fe II", "Fe"), columns)
-    # the average ionisation draws one series for each element and does not read --colorbyion
-    assert not interactive.has_several_elements(("averageionisation", "Fe", "Co"), columns)
+# the code that drives the keys, the mouse, and the line properties popup of an estimator window on the offscreen
+# platform of Qt, and prints the results
+ESTIMATOR_WINDOW_CHECK_CODE: t.Final = """
+import json
+import sys
+import time
+
+from PySide6 import QtCore
+from PySide6 import QtGui
+from PySide6 import QtTest
+from PySide6 import QtWidgets
+
+QtCore.QSettings.setDefaultFormat(QtCore.QSettings.Format.IniFormat)
+QtCore.QSettings.setPath(QtCore.QSettings.Format.IniFormat, QtCore.QSettings.Scope.UserScope, sys.argv[2])
+from artistools.estimators import interactive
+from artistools.viewertools.application import start_application
+
+app = start_application(interactive.APPLICATION_NAME, interactive.get_icon_curve())
+windows = []
+tokens = [sys.argv[1], "-timestep", "50", "-plot", "Te", "TR@linealpha=0", "nne@linewidth=2,color=red"]
+assert interactive.open_window(tokens, windows) is None
+window = windows[-1]
+window.show()
+LEFT = QtCore.Qt.MouseButton.LeftButton
+NOMOD = QtCore.Qt.KeyboardModifier.NoModifier
+
+
+def settle(seconds=0.6):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+
+
+def get_command():
+    return next(
+        box.toPlainText()
+        for box in window.findChildren(QtWidgets.QPlainTextEdit)
+        if box.toPlainText().startswith("artistools ")
+    )
+
+
+def get_chip(name):
+    return next(
+        chip
+        for chip in window.findChildren(QtWidgets.QWidget, "chip")
+        if chip.isVisible() and chip.findChild(QtWidgets.QLabel, "chiplabel").text().split()[0] == name
+    )
+
+
+def get_focus_text():
+    widget = QtWidgets.QApplication.focusWidget()
+    if widget is not None and (label := widget.findChild(QtWidgets.QLabel, "chiplabel")) is not None:
+        return label.text().split()[0]
+    return widget.objectName() if widget is not None else None
+
+
+def get_popup():
+    return next(
+        (widget for widget in QtWidgets.QApplication.topLevelWidgets() if widget.isVisible() and widget is not window),
+        None,
+    )
+
+
+def get_action(text):
+    return next(action for action in window.findChildren(QtGui.QAction) if action.text() == text)
+
+
+settle(2.0)
+results = {}
+# Alt-Down twice moves the same chip to the end
+get_chip("Te").setFocus()
+settle(0.2)
+for _ in range(2):
+    QtTest.QTest.keyClick(
+        QtWidgets.QApplication.focusWidget(), QtCore.Qt.Key.Key_Down, QtCore.Qt.KeyboardModifier.AltModifier
+    )
+    settle()
+results["chipfocus"] = get_focus_text()
+results["chiporder"] = get_command()
+
+# a press on the remove button of a chip, a move off the button, and a release open no popup
+remove = next(
+    button for button in get_chip("Te").findChildren(QtWidgets.QToolButton) if button.objectName() != "swatch"
+)
+centre = remove.rect().center()
+QtTest.QTest.mousePress(remove, LEFT, NOMOD, centre)
+offbutton = QtCore.QPoint(remove.width() + 3, centre.y())
+QtTest.QTest.mouseMove(remove, offbutton)
+QtTest.QTest.mouseRelease(remove, LEFT, NOMOD, offbutton)
+settle()
+results["cancelledclickpopup"] = get_popup() is not None
+if (popup := get_popup()) is not None:
+    popup.close()
+    settle()
+
+# the popup shows an opacity of 0, and Reset then Return removes it
+get_chip("TR").findChild(QtWidgets.QToolButton, "swatch").click()
+settle()
+popup = get_popup()
+alphabox = popup.findChildren(QtWidgets.QDoubleSpinBox)[-1]
+results["alphatext"] = alphabox.text()
+next(button for button in popup.findChildren(QtWidgets.QPushButton) if button.text() == "Reset").click()
+settle()
+QtTest.QTest.keyClick(popup, QtCore.Qt.Key.Key_Return)
+settle()
+results["resetcommand"] = get_command()
+
+# Return in the empty colour field closes the popup
+get_chip("Te").findChild(QtWidgets.QToolButton, "swatch").click()
+settle()
+popup = get_popup()
+colouredit = next(
+    edit for edit in popup.findChildren(QtWidgets.QLineEdit) if edit.placeholderText().startswith("other")
+)
+colouredit.setFocus()
+QtTest.QTest.keyClick(colouredit, QtCore.Qt.Key.Key_Return)
+settle()
+results["emptycolourclosed"] = get_popup() is None
+
+# Escape gives the item its text from before the popup
+get_chip("nne").findChild(QtWidgets.QToolButton, "swatch").click()
+settle()
+popup = get_popup()
+next(
+    button for button in popup.findChildren(QtWidgets.QToolButton) if button.accessibleName().startswith("Colour ")
+).click()
+settle(1.0)
+results["previewcommand"] = get_command()
+QtTest.QTest.keyClick(popup, QtCore.Qt.Key.Key_Escape)
+settle()
+results["escapecommand"] = get_command()
+
+# Add Series on a collapsed card gives the keyboard to its field
+window.activateWindow()
+settle(0.3)
+next(
+    button
+    for button in window.findChildren(QtWidgets.QToolButton)
+    if button.isVisible() and button.accessibleName() == "Collapse"
+).click()
+settle()
+next(box for box in window.findChildren(QtWidgets.QComboBox, "type") if box.isVisible()).setFocus()
+get_action("Add Series").trigger()
+settle()
+results["addseriesfocus"] = get_focus_text()
+
+# Add Subplot adds a subplot below the card with the focus, and the y axis button takes the keyboard
+get_action("Add Subplot").trigger()
+settle()
+results["addsubplotcommand"] = get_command()
+results["addsubplotfocus"] = get_focus_text()
+results["yaxisfocus"] = all(
+    button.focusPolicy() == QtCore.Qt.FocusPolicy.StrongFocus
+    for button in window.findChildren(QtWidgets.QToolButton, "yaxis")
+)
+print(json.dumps(results))
+window.close()
+settle(0.3)
+"""
+
+
+def test_estimator_window_keeps_the_keyboard_and_the_popup_values(tmp_path: Path) -> None:
+    """The keys, a cancelled click, and the line properties popup give the series and the focus that the user expects.
+
+    The window had these faults:
+
+    - after Alt-Down, the first chip took the focus, thus the next key moved a different series;
+    - a press on the remove button of a chip and a release outside it opened the popup;
+    - the popup showed an opacity of 0 as "Default", and Reset kept it;
+    - Return in the empty colour field kept the popup open with an error;
+    - Escape wrote the style keys of the item in a different order;
+    - Add Series on a collapsed card gave the focus back to the header;
+    - no menu item added a subplot, and Tab on macOS reaches no button that adds one.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    environment = os.environ | {"QT_QPA_PLATFORM": "offscreen", viewercore.MACOS_BUNDLE_VARIABLE: "1"}
+    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", ESTIMATOR_WINDOW_CHECK_CODE, str(modelpath), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=environment,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr[-3000:]
+    # the window prints its command when it closes, thus the results are on the line of the JSON object
+    results = json.loads(next(line for line in result.stdout.splitlines() if line.startswith('{"chipfocus"')))
+    assert results["chipfocus"] == "Te"
+    assert " TR@linealpha=0 nne@linewidth=2,color=red Te " in results["chiporder"]
+    assert not results["cancelledclickpopup"]
+    assert results["alphatext"] != "Default"
+    assert "linealpha" not in results["resetcommand"]
+    assert results["emptycolourclosed"]
+    assert "nne@color=" in results["previewcommand"]
+    assert " nne@linewidth=2,color=red " in results["escapecommand"]
+    assert results["addseriesfocus"] == "add"
+    assert results["addsubplotcommand"].count("-plot") == 1
+    assert results["addsubplotfocus"] == "add"
+    assert results["yaxisfocus"]
+
+
+def test_colour_note_follows_the_colours_of_the_plot() -> None:
+    """The note of the element colours shows only for a subplot whose plot gives its ions the element colours.
+
+    The note counted the names of the subplot, but the plot leaves out an ion that the model does not hold. Thus the
+    note showed for Fe II, Fe III, and Zn II, and the plot gave each ion its own colour.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--colorbyion", "--interactive"])
+    subplots = (("populations", "Fe II", "Fe III", "Zn II"), ("populations", "Fe II", "Co II"))
+    assert viewer.change(dc.replace(viewer.values, subplots=subplots)) is None
+    assert viewer.elementcolourrows == frozenset({1})
+
+
+def test_style_change_keeps_the_warning_of_the_data() -> None:
+    """A plot that draws the data of the last plot shows the warning of that data again.
+
+    The data cache read no data, thus the plot printed no warning, and the status bar removed a warning that applied.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+    assert viewer.change(dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe VIII"),))) is None
+    warning = viewer.warning
+    assert "compositiondata.txt" in warning
+    assert viewer.change(dc.replace(viewer.values, subplots=(("populations", "Fe II@color=C3", "Fe VIII"),))) is None
+    assert viewer.warning == warning
+
+
+def test_style_colour_keeps_the_colours_of_the_other_series() -> None:
+    """A colour of a style changes only its own series, and each other series keeps its colour of the axes cycle.
+
+    A series with a style colour took no place in the cycle, thus each later series took the colour before its own.
+    """
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+
+    def get_line_colours(subplot: tuple[str, ...]) -> dict[str, str]:
+        assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None
+        lines = interactive.get_plot_frames(viewer.fig)[0].get_lines()
+        return {str(line.get_gid()): mplcolors.to_hex(line.get_color()) for line in lines}
+
+    plain = get_line_colours(("TR", "TJ", "W"))
+    styled = get_line_colours(("TR@color=black", "TJ", "W"))
+    assert styled == plain | {"TR": "#000000"}
+    assert viewer.swatches[0, "TJ"].colour == plain["TJ"]
+    assert viewer.swatches[0, "TJ"].defaultcolour == plain["TJ"]
+
+
+def test_swatches_show_the_drawn_colours() -> None:
+    """The swatch of a chip shows the opacity of its colour and the colour of Dark Mode, as the plot draws the line."""
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+    subplot = ("TR@color=#ff000080", "TJ@color=none", "W@color=#000000")
+    assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None
+    assert np.isclose(viewer.swatches[0, "TR"].alpha, 128 / 255)
+    assert viewer.swatches[0, "TR"].colour == "#ff0000"
+    assert viewer.swatches[0, "TJ"].alpha == 0.0
+    viewer.darkcolours = at.plottools.DARKMODE_COLOURS
+    assert viewer.change(dc.replace(viewer.values, subplots=(subplot[::-1],))) is None
+    assert viewer.swatches[0, "W"].colour == "#ffffff"
+
+
+def test_host_receives_the_plot_items_without_styles(tmp_path: Path) -> None:
+    """The client draws the series styles, thus the host receives the names alone.
+
+    A host that runs an older release read a styled item as an unknown directive, e.g. "'Te@color' is not a plot
+    directive". The data cache also selects the cells only when it reads the data.
+    """
+    plotlists: list[t.Any] = []
+    getfiguresdata = plotestimators.get_figures_data
+
+    def record_plotlist(modelpath: Path, args: argparse.Namespace, *otherargs: t.Any) -> "plotestimators.FiguresData":
+        plotlists.append(copy.deepcopy(args.plotlist))
+        return getfiguresdata(modelpath, args, *otherargs)
+
+    with mock.patch.object(plotestimators, "get_figures_data", side_effect=record_plotlist):
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath_classic_3d,
+            plotlist=[["Te@color=C3,label=T e", "TR"]],
+            timestep=10,
+            outputfile=tmp_path / "styled.pdf",
+        )
+    assert plotlists == [[["Te", "TR"]]]
+    assert (tmp_path / "styled.pdf").is_file()
+
+    viewer = make_headless_viewer([
+        str(modelpath_classic_3d),
+        "-timestep",
+        "10",
+        "-readonlymgi",
+        "alongaxis",
+        "-axis",
+        "+x",
+        "--interactive",
+    ])
+    assert viewer.change(dc.replace(viewer.values, subplots=(("Te",),))) is None
+    with mock.patch.object(plotestimators, "get_cells_along_axis", wraps=plotestimators.get_cells_along_axis) as cells:
+        assert viewer.change(dc.replace(viewer.values, subplots=(("Te@color=C3",),))) is None
+        assert cells.call_count == 0
 
 
 def test_interactive_style_change_reuses_the_data() -> None:
@@ -4930,10 +5221,10 @@ def test_variable_menu_groups_the_columns() -> None:
 
 
 def test_card_state_follows_its_subplot() -> None:
-    """A collapsed card and the insert field stay with their subplot after each change of the subplots.
+    """A collapsed card and a card with an open y axis stay with their subplot after each change of the subplots.
 
     The window moved the rows only for a move, an insert, or a delete of the window. After Undo of a delete, the
-    window collapsed a different card, and it put the insert field below a different card.
+    window collapsed a different card.
     """
     before = (("Te",), ("TR",), ("nne",))
     # a delete of the first subplot, then Undo of the delete

@@ -157,7 +157,7 @@ def set_disclosure_symbol(button: "QtWidgets.QToolButton", *, isopen: bool) -> N
 def get_accent_colour(*, fortext: bool = False) -> "QtGui.QColor":
     """Return the accent colour of the system, which System Settings sets on macOS.
 
-    The highlight colour of an inactive window is a pale grey on macOS, thus the accent role of the active group gives
+    The highlight colour of an inactive window is a pale grey on macOS. Thus the accent role of the active group gives
     the colour of a link, a token, or a selected button. With fortext, a dark window takes a lighter accent, as the
     links of the apps of macOS in Dark Mode do. The accent of the palette had too little contrast on dark grey.
     """
@@ -251,16 +251,16 @@ def make_symbol_icon(symbol: str) -> "QtGui.QIcon":
 
 
 def make_screen_pixmap(width: int, height: int) -> "QtGui.QPixmap":
-    """Return a transparent image of a size in device-independent pixels, at the pixel ratio of the screen.
+    """Return a transparent image of a size in device-independent pixels, at the highest pixel ratio of the screens.
 
-    An image of a Retina screen (ratio 2) then has twice the pixels in each direction, and Qt does not blur it.
+    An image of a Retina screen (ratio 2) then has twice the pixels in each direction, and Qt does not blur it. A
+    window can move to a different screen, and a smaller image of a lower ratio stays sharp.
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    screen = QtWidgets.QApplication.primaryScreen()
-    ratio = screen.devicePixelRatio() if screen is not None else 1.0
+    ratio = max((screen.devicePixelRatio() for screen in QtWidgets.QApplication.screens()), default=1.0)
     pixmap = QtGui.QPixmap(round(width * ratio), round(height * ratio))
     pixmap.setDevicePixelRatio(ratio)
     pixmap.fill(QtCore.Qt.GlobalColor.transparent)
@@ -548,9 +548,10 @@ def make_drag_header(
     """Return a header that the user can drag, e.g. to move a card to a new place in a list.
 
     During a drag, on_drag receives each position of the pointer on the screen. on_drop receives the last position.
-    on_click receives the position of a click with no drag.
-    A child control, e.g. a button, keeps its clicks, thus a drag starts only on the background or on a label. The
-    header also takes the keyboard focus, and Alt-Up (Option-Up on macOS) or Alt-Down gives -1 or 1 to on_move. A
+    on_click receives the position of a click with no drag. A child control, e.g. a button, keeps its clicks, thus a
+    drag starts only on the background or on a label.
+
+    The header also takes the keyboard focus, and Alt-Up (Option-Up on macOS) or Alt-Down gives -1 or 1 to on_move. A
     user of the keyboard can then move the card too. The object name "dragheader" selects the header in a style sheet.
     """
     from PySide6 import QtCore
@@ -691,13 +692,18 @@ def get_drag_header_class() -> "type[QtWidgets.QWidget]":
 
         @t.override
         def mouseReleaseEvent(self, event: QtGui.QMouseEvent, /) -> None:
-            wasdragging = self.dragging
+            # a press on a child button and a release outside it is a cancelled click, and the header got no press
+            waspressed, wasdragging = self.pressposition is not None, self.dragging
             self.pressposition, self.dragging = None, False
             self.unsetCursor()
             # on_drop can make the card again, thus the header resets its state first
             if wasdragging:
                 self.send("on_drop", event.globalPosition().toPoint())
-            elif event.button() == QtCore.Qt.MouseButton.LeftButton and callable(self.property("on_click")):
+            elif (
+                waspressed
+                and event.button() == QtCore.Qt.MouseButton.LeftButton
+                and callable(self.property("on_click"))
+            ):
                 self.send("on_click", event.globalPosition().toPoint())
             else:
                 super().mouseReleaseEvent(event)
@@ -1719,6 +1725,7 @@ def get_menu_items() -> "list[tuple[str, str, QtGui.QKeySequence]]":
         ("Edit", "Copy Command", QtGui.QKeySequence("Ctrl+Shift+C")),
         ("Edit", "Copy Python", QtGui.QKeySequence("Ctrl+Alt+C")),
         ("Edit", "Add Series", QtGui.QKeySequence("Ctrl+Shift+A")),
+        ("Edit", "Add Subplot", QtGui.QKeySequence("Ctrl+Shift+N")),
         # macOS moves this item to the menu of the application
         ("Edit", "Settings…", QtGui.QKeySequence("Ctrl+,")),
         ("View", "Play", QtGui.QKeySequence("Space")),

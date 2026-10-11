@@ -32,6 +32,7 @@ from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
 from artistools.estimators.plotestimators import DIRECTIVES
 from artistools.estimators.plotestimators import draw_plot
+from artistools.estimators.plotestimators import get_default_colours
 from artistools.estimators.plotestimators import get_default_x
 from artistools.estimators.plotestimators import get_iontuple
 from artistools.estimators.plotestimators import get_iontuple_sortkey
@@ -75,6 +76,8 @@ from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
+from artistools.plottools import DARKMODE_COLOURS
+from artistools.plottools import get_light_grey
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
@@ -264,8 +267,8 @@ class ControlValues:
 class RenderedPlot(t.NamedTuple):
     """The properties of a plot that the worker thread drew, which the window shows.
 
-    plotestimators chooses the bins, the markers, and the colours when the command gives no option. The last three
-    fields hold the values that the plot used.
+    plotestimators chooses the bins, the markers, and the colours when the command gives no option. xbins, markers, and
+    colorbyion hold the values that the plot used.
     """
 
     isimage: bool
@@ -274,6 +277,10 @@ class RenderedPlot(t.NamedTuple):
     markers: bool
     colorbyion: bool
     swatches: "Mapping[tuple[int, str], SeriesSwatch]"
+    # the rows of the subplots whose ions take the colours of their elements with --colorbyion
+    elementcolourrows: frozenset[int]
+    # the plot used the data of the last plot, thus it printed none of the warnings of the data
+    reuseddata: bool
 
 
 class SeriesSwatch(t.NamedTuple):
@@ -292,54 +299,48 @@ class SeriesSwatch(t.NamedTuple):
 
 
 def get_series_swatches(
-    figuredata: LineFigureData, args: argparse.Namespace, fig: mplfig.Figure
+    figuredata: LineFigureData, args: argparse.Namespace, darkforeground: str | None
 ) -> dict[tuple[int, str], SeriesSwatch]:
     """Return the line of each series by the index of its subplot and its name, as the plot draws it.
 
-    A series with no colour in the data takes the next colour of the axes cycle, thus the colour comes from the line.
+    darkforeground is the foreground colour of Dark Mode, which takes the place of a dark grey, see get_light_grey.
     """
     import matplotlib as mpl
     import matplotlib.colors as mplcolors
 
     from artistools.viewertools.series import get_dash_pattern
 
-    frames = get_plot_frames(fig)
+    def get_shown_rgba(colour: t.Any) -> tuple[float, float, float, float]:
+        rgba = mplcolors.to_rgba(colour)
+        if darkforeground is not None and (lightgrey := get_light_grey(rgba, darkforeground)) is not None:
+            return lightgrey
+        return rgba
+
     swatches: dict[tuple[int, str], SeriesSwatch] = {}
     stylesofsubplots = get_styles_of_subplots(args, len(figuredata.subplots))
     for index, ((series, _), styles) in enumerate(zip(figuredata.subplots, stylesofsubplots, strict=True)):
-        # --markers draws the points of a series after its line, with a lighter colour. The first line of a series
-        # gives its colour, and -xbins 0 draws the points alone, with a colour of three numbers
-        linecolours: dict[str | None, str] = {}
-        for line in frames[index].get_lines():
-            linecolours.setdefault(line.get_gid(), mplcolors.to_hex(line.get_color()))
-        # a series with no colour takes the next colour of the axes cycle, and a series with a colour does not move it
-        cycleposition = 0
-        for seriesdata in series:
-            style: dict[str, str] = styles.get(seriesdata.seriesname, {})
-            _, plotkwargs = get_styled_series(seriesdata, style, args.linewidthscale)
-            drawncolour = linecolours.get(seriesdata.seriesname, "black")
-            defaultcolour = seriesdata.plotkwargs.get("color") or f"C{cycleposition}"
-            if "color" not in plotkwargs:
-                cycleposition += 1
+        for seriesdata, defaultcolour in zip(series, get_default_colours(series), strict=True):
+            _, plotkwargs = get_styled_series(seriesdata, styles.get(seriesdata.seriesname, {}), args.linewidthscale)
+            rgba = get_shown_rgba(plotkwargs.get("color", defaultcolour))
             dashes = plotkwargs.get("dashes") or get_dash_pattern(plotkwargs.get("linestyle"), None)
             swatches[index, seriesdata.seriesname] = SeriesSwatch(
-                colour=mplcolors.to_hex(plotkwargs.get("color") or drawncolour),
-                alpha=float(plotkwargs.get("alpha", 1.0)),
+                colour=mplcolors.to_hex(rgba),
+                # an alpha of the line replaces the alpha of its colour, as matplotlib does
+                alpha=float(plotkwargs.get("alpha", rgba[3])),
                 linewidth=float(plotkwargs.get("linewidth", mpl.rcParams["lines.linewidth"])),
                 dashpattern=tuple(dashes) if dashes else None,
-                defaultcolour=mplcolors.to_hex(defaultcolour),
+                defaultcolour=mplcolors.to_hex(get_shown_rgba(defaultcolour)),
                 defaultlinewidth=float(seriesdata.plotkwargs.get("linewidth", mpl.rcParams["lines.linewidth"])),
             )
     return swatches
 
 
 # the arguments that only the functions that draw a figure read, e.g. draw_line_figure and draw_image_figure
-DRAW_DESTS: t.Final = frozenset({
+DRAW_DESTS: t.Final = OUTPUT_DESTS | frozenset({
     "darkmode",
     "dpi",
     "figscale",
     "figwidthscale",
-    "format",
     "hidexlabel",
     "labelfontsize",
     "legendcols",
@@ -347,7 +348,6 @@ DRAW_DESTS: t.Final = frozenset({
     "linewidthscale",
     "nolegend",
     "notitle",
-    "outputfile",
     "show",
     "subplotsperrow",
 })
@@ -357,7 +357,7 @@ def get_data_key(args: argparse.Namespace) -> str:
     """Return a key of the arguments that select the data of a plot, without the series styles and DRAW_DESTS.
 
     The data has no style, thus two commands with the same key read the same data. The window then draws the new style
-    with the data of the last plot, and a new width of the window, e.g. -figwidthscale, also reads no data.
+    with the data of the last plot. A new width of the figure, e.g. -figwidthscale, also reads no data.
     """
 
     # the positional items also hold the folder, which can contain the mark, e.g. user@host:path. The window has one
@@ -977,8 +977,13 @@ class EstimatorViewer:
         self.darkcolours: tuple[str, str] | None = None
         # the line of each series in the last plot, by the index of its subplot and its name
         self.swatches: Mapping[tuple[int, str], SeriesSwatch] = {}
-        # the data of the last plot and its key, see get_data_key. The worker thread sets and reads it
+        # the data of the last plot and its key, see get_data_key. The worker thread sets and reads it, and Reload
+        # Data clears it
         self.lastdata: tuple[str, FiguresData] | None = None
+        # the last warning of the plot that read the data, which a plot with the same data shows again
+        self.datawarning = ""
+        # the rows of the subplots whose ions take the colours of their elements, see RenderedPlot
+        self.elementcolourrows: frozenset[int] = frozenset()
 
     def get_default_xvariable(self, otheroptions: OptionRows, *, timegiven: bool) -> str:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
@@ -1159,22 +1164,38 @@ class EstimatorViewer:
             datakey = get_data_key(plotargs)
             lastdata = self.lastdata
             figuresdata = lastdata[1] if lastdata is not None and lastdata[0] == datakey else None
+            reuseddata = figuresdata is not None
             figuresdata = draw_plot(plotargs, fig, self.run.batchcaches, figuresdata)
             self.lastdata = (datakey, figuresdata)
             figuredata = figuresdata[0][0]
+            # render_command gives the figure these colours after the draw, see apply_dark_colours
+            darkcolours = DARKMODE_COLOURS if plotargs.darkmode else self.darkcolours
+            islines = isinstance(figuredata, LineFigureData)
             return RenderedPlot(
                 isimage=plotargs.dimensionreduce == 2,
                 xlimitscale=C_cm_per_s / km_to_cm if plotargs.x == "beta" and givenx != "beta" else 1.0,
                 xbins=plotargs.xbins,
                 markers=bool(plotargs.markers),
                 colorbyion=bool(plotargs.colorbyion),
-                swatches=get_series_swatches(figuredata, plotargs, fig)
-                if isinstance(figuredata, LineFigureData)
+                swatches=get_series_swatches(figuredata, plotargs, darkcolours[1] if darkcolours else None)
+                if islines
                 else {},
+                elementcolourrows=frozenset(
+                    index for index, (_, settings) in enumerate(figuredata.subplots) if settings.get("elementcolours")
+                )
+                if islines
+                else frozenset(),
+                reuseddata=reuseddata,
             )
 
         def keep(plot: RenderedPlot) -> None:
-            self.isimage, self.xlimitscale, self.plotxbins, self.plotmarkers, self.plotcolorbyion, self.swatches = plot
+            self.isimage, self.xlimitscale, self.plotxbins, self.plotmarkers, self.plotcolorbyion = plot[:5]
+            self.swatches, self.elementcolourrows = plot.swatches, plot.elementcolourrows
+            # a plot with the data of the last plot printed none of its warnings, e.g. of an ion that the model lacks
+            if plot.reuseddata:
+                self.warning = self.warning or self.datawarning
+            else:
+                self.datawarning = self.warning
 
         return render_command(self, values, draw, keep, quiet=quiet)
 
@@ -1746,21 +1767,6 @@ def remove_item_styles(subplot: "Sequence[str]") -> tuple[str, ...]:
     return tuple(get_series_name(item) if get_item_directive(item) is None else item for item in subplot)
 
 
-def has_several_elements(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> bool:
-    """Return True for a subplot of ions with more than one element, which keeps the element colours.
-
-    --colorbyion gives each ion the colour of its ion stage, thus plotestimators keeps the colours of the elements
-    in such a subplot. Only a populations subplot and an ion series, e.g. gamma_NT, read --colorbyion.
-    """
-    seriestype = get_subplot_seriestype(subplot, estimatorcolumns)
-    if seriestype is None or (seriestype != "populations" and is_seriestype(seriestype, estimatorcolumns)):
-        return False
-    elements = {
-        get_iontuple(name)[0] for name in get_subplot_names(subplot) if name != seriestype and is_valid_ion(name)
-    }
-    return len(elements) > 1
-
-
 def get_command_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> tuple[str, ...]:
     """Return the items of a subplot that the command gives.
 
@@ -2240,16 +2246,13 @@ def open_window(
     chipdropline.hide()
     defaultbutton = QtWidgets.QPushButton("Default")
     defaultbutton.setToolTip("Show the default subplots of plotestimators for this model")
-    newsubplotrow = QtWidgets.QHBoxLayout()
-    newsubplotrow.addWidget(defaultbutton)
-    newsubplotrow.addStretch(1)
     newsuggestionsbox = QtWidgets.QWidget()
     newsuggestionsbox.setStyleSheet(subplotstylesheet)
     newsuggestionsbox.setProperty("stylesheetfactory", get_subplot_style_sheet)
     newsuggestionslayout = make_flow_layout()
     newsuggestionsbox.setLayout(newsuggestionslayout)
     subplotgrid.addWidget(subplotsbox, 0, 0, 1, -1)
-    subplotgrid.addLayout(newsubplotrow, 1, 0, 1, -1)
+    subplotgrid.addWidget(defaultbutton, 1, 0, 1, -1, QtCore.Qt.AlignmentFlag.AlignLeft)
     subplotgrid.addWidget(newsuggestionsbox, 2, 0, 1, -1)
     skippeddefaultslabel = make_note_label()
     subplotgrid.addWidget(skippeddefaultslabel, 3, 0, 1, -1)
@@ -2364,8 +2367,9 @@ def open_window(
     # the cards of the subplots on the screen, and the key of the suggestions of a new subplot
     cards: list[SubplotCard] = []
     shownnewkey: tuple[object, ...] = ()
-    # the row of a card and the name of its control that takes the focus when show_subplots runs next
-    pendingfocus: tuple[int, str] | None = None
+    # the row of a card, the name of its control, and the position of a chip, which take the focus when show_subplots
+    # runs next. Each chip has the name "chip", thus the position selects one
+    pendingfocus: tuple[int, str, int | None] | None = None
 
     def make_suggestion_button(text: str, tooltip: str, callback: "Callable[[], None]") -> QtWidgets.QToolButton:
         button = QtWidgets.QToolButton()
@@ -2523,6 +2527,7 @@ def open_window(
                 None if isimage else partial(on_click_chip, row, position),
             )
             make_chip(chip, name, tooltip, partial(on_remove_item, row, position), swatchbutton)
+            chip.setProperty("chipposition", position)
             chipslayout.addWidget(chip)
             chips.append((position, chip))
         cardlayout.addWidget(chipsbox)
@@ -2644,6 +2649,8 @@ def open_window(
         yaxisbutton = QtWidgets.QToolButton()
         yaxisbutton.setObjectName("yaxis")
         yaxisbutton.setAutoRaise(True)
+        # the keyboard of macOS reaches only the controls with a strong focus, and the y range has no other control
+        yaxisbutton.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
         yaxisbutton.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         isyaxisopen = row in openyrows
         set_disclosure_symbol(yaxisbutton, isopen=isyaxisopen)
@@ -2741,7 +2748,7 @@ def open_window(
         widget.hide()
         widget.deleteLater()
 
-    def show_card_directives(card: SubplotCard, subplot: "Sequence[str]") -> None:
+    def show_card_directives(row: int, card: SubplotCard, subplot: "Sequence[str]") -> None:
         """Show the directives of a subplot on the controls of its card, e.g. the ymin= of a Shift-drag."""
         set_box_text(card.yscalebox, get_yscale_choice(subplot))
         if card.poptypebox is not None:
@@ -2752,7 +2759,7 @@ def open_window(
         axisname = "Values" if get_geometry_mode(viewer.values) in IMAGE_MODES else "y axis"
         yrange = "auto range" if ymin is None and ymax is None else f"{ymin or 'auto'} to {ymax or 'auto'}"
         card.yaxisbutton.setText(f"{axisname}: {get_yscale_choice(subplot)} scale, {yrange}")
-        card.colournote.setVisible(viewer.plotcolorbyion and has_several_elements(subplot, viewer.run.estimatorcolumns))
+        card.colournote.setVisible(row in viewer.elementcolourrows)
         # a dot after the name of a chip shows that its series has a style of its own
         for position, chip in card.chips:
             if position < len(subplot) and (label := chip.findChild(QtWidgets.QLabel, "chiplabel")) is not None:
@@ -2803,15 +2810,16 @@ def open_window(
             summary = get_card_summary(subplot, columns) if row in collapsedrows else None
             key = (*get_card_key(row, subplots, columns, isimage=isimage), summary)
             if row < len(cards) and cards[row].key == key:
-                show_card_directives(cards[row], subplot)
+                show_card_directives(row, cards[row], subplot)
                 continue
             if row < len(cards):
                 oldframe = cards[row].frame
                 if focus is None and focuswidget is not None and oldframe.isAncestorOf(focuswidget):
-                    focus = (row, focuswidget.objectName())
+                    chipposition = focuswidget.property("chipposition")
+                    focus = (row, focuswidget.objectName(), chipposition if isinstance(chipposition, int) else None)
                 remove_widget(subplotslayout, oldframe)
             card = make_subplot_card(row, subplot, subplottypes, key, isimage=isimage)
-            show_card_directives(card, subplot)
+            show_card_directives(row, card, subplot)
             subplotslayout.insertWidget(row, card.frame)
             if row < len(cards):
                 cards[row] = card
@@ -2826,7 +2834,12 @@ def open_window(
             show_new_subplot_suggestions()
             shownnewkey = newkey
         if focus is not None and focus[1] and focus[0] < len(cards):
-            target = cards[focus[0]].frame.findChild(QtWidgets.QWidget, focus[1])
+            row, name, chipposition = focus
+            target = (
+                get_chip_widget(row, chipposition)
+                if chipposition is not None
+                else cards[row].frame.findChild(QtWidgets.QWidget, name)
+            )
             if target is not None:
                 # a popup of a completer gives the focus back when it hides, thus the control takes it after the popup
                 QtCore.QTimer.singleShot(0, target, target.setFocus)
@@ -2855,6 +2868,17 @@ def open_window(
                     else QtGui.QIcon()
                 )
 
+    def get_linewidthscale(rows: OptionRows) -> float:
+        """Return the -linewidthscale of the option rows, or the default for no row or a value that is not a number.
+
+        The rows keep a value that the worker rejects until the plot ends.
+        """
+        default = float(viewer.parser.get_default("linewidthscale"))
+        try:
+            return float((get_row_values(rows, "-linewidthscale") or (default,))[0])
+        except ValueError:
+            return default
+
     def edit_item_style(row: int, position: int, anchor: QtCore.QPoint | None = None) -> None:
         """Ask for the line properties of one series of a subplot, and show each change in the plot immediately."""
         import matplotlib as mpl
@@ -2876,9 +2900,13 @@ def open_window(
             current = viewer.values.subplots
             if row >= len(current) or position >= len(current[row]) or get_series_name(current[row][position]) != name:
                 return
-            newstyle = style if changes is None else {flag.removeprefix("-"): value for flag, value in changes.items()}
             subplots = list(current)
-            subplots[row] = set_item_style(current[row], position, newstyle)
+            if changes is None:
+                # the item from before the popup, with its text, thus the step of Undo reverts to the same command
+                subplots[row] = (*current[row][:position], item, *current[row][position + 1 :])
+            else:
+                newstyle = {flag.removeprefix("-"): value for flag, value in changes.items()}
+                subplots[row] = set_item_style(current[row], position, newstyle)
             apply(dc.replace(viewer.values, subplots=tuple(subplots)), undoable=undoable)
 
         edit_series_properties(
@@ -2889,7 +2917,7 @@ def open_window(
             swatch.defaultlinewidth if swatch is not None else float(mpl.rcParams["lines.linewidth"]),
             show_changes,
             anchor=anchor,
-            linewidthscale=float((get_row_values(viewer.values.otheroptions, "-linewidthscale") or ("1",))[0]),
+            linewidthscale=get_linewidthscale(viewer.values.otheroptions),
             # the label is a part of one plot item, thus a label that starts with "-" is no flag
             labelinlist=False,
         )
@@ -2975,11 +3003,7 @@ def open_window(
             figscale = get_row_values(rows, "-figscale") or (str(viewer.parser.get_default("figscale")),)
             set_spin_value(figscalebox, float(figscale[0]))
         set_spin_value(subplotsperrowbox, get_subplots_per_row(rows))
-        with contextlib.suppress(ValueError):
-            linewidthscale = get_row_values(rows, "-linewidthscale") or (
-                str(viewer.parser.get_default("linewidthscale")),
-            )
-            set_spin_value(linewidthscalebox, float(linewidthscale[0]))
+        set_spin_value(linewidthscalebox, get_linewidthscale(rows))
         timeslider.setValue((firstpos + lastpos) // 2)
         widthslider.setValue(lastpos - firstpos + 1)
         set_edit_text(widthedit, str(lastpos - firstpos + 1))
@@ -3337,7 +3361,7 @@ def open_window(
         """Move the subplot one row up or down, and keep the focus on its header for the next key."""
         nonlocal pendingfocus
         if 0 <= row + step < len(viewer.values.subplots):
-            pendingfocus = (row + step, "dragheader")
+            pendingfocus = (row + step, "dragheader", None)
             move_subplot(row, row + step)
 
     def on_collapse_subplot(row: int) -> None:
@@ -3386,11 +3410,19 @@ def open_window(
         if (chip := get_chip_widget(row, position)) is not None:
             set_drag_fade(chip, faded=faded)
 
+    def is_same_subplot_type(row: int, targetrow: int) -> bool:
+        """Return True if a series of one subplot can move to the other subplot.
+
+        A name takes the meaning of the type of its subplot, e.g. Te in a populations subplot is tellurium.
+        """
+        subplots, columns = viewer.values.subplots, viewer.run.estimatorcolumns
+        return get_subplot_seriestype(subplots[row], columns) == get_subplot_seriestype(subplots[targetrow], columns)
+
     def on_drag_chip(row: int, position: int, pointer: QtCore.QPoint) -> None:
-        """Show a vertical line at the place where the dragged chip goes."""
+        """Show a vertical line at the place where the dragged chip goes, if the chip can go there."""
         set_chip_fade(row, position, faded=True)
         target = get_chip_drop_target(pointer)
-        if target is None:
+        if target is None or not is_same_subplot_type(row, target[0]):
             chipdropline.hide()
             return
         card = cards[target[0]]
@@ -3415,8 +3447,7 @@ def open_window(
 
     def move_chip(row: int, position: int, targetrow: int, chipindex: int) -> None:
         subplots, columns = viewer.values.subplots, viewer.run.estimatorcolumns
-        # a name takes the meaning of the type of its subplot, e.g. Te in a populations subplot is tellurium
-        if get_subplot_seriestype(subplots[row], columns) != get_subplot_seriestype(subplots[targetrow], columns):
+        if not is_same_subplot_type(row, targetrow):
             show_error("A series can move only to a subplot of the same type")
             return
         moved = move_series_item(subplots, (row, position), targetrow, chipindex, columns)
@@ -3430,6 +3461,7 @@ def open_window(
 
         The viewer makes the card again. The moved chip then takes the focus, thus the next key moves the same series.
         """
+        nonlocal pendingfocus
         subplot = viewer.values.subplots[row]
         chippositions = [chipposition for chipposition, _ in get_chip_items(subplot, viewer.run.estimatorcolumns)]
         if position not in chippositions or not 0 <= (index := chippositions.index(position) + step) < len(
@@ -3439,20 +3471,26 @@ def open_window(
         other = chippositions[index]
         items = list(subplot)
         items[position], items[other] = items[other], items[position]
+        pendingfocus = (row, "chip", other)
         set_subplot(row, tuple(items))
-        if (chip := get_chip_widget(row, other)) is not None:
-            chip.setFocus()
 
-    def on_add_series_key() -> None:
-        """Give the keyboard to the field that adds a series to the card with the focus, or else to the last card."""
-        if not cards:
-            return
+    def get_focus_row() -> int:
+        """Return the row of the card with the keyboard focus, or else of the last card."""
         focuswidget = QtWidgets.QApplication.focusWidget()
-        row = next(
+        return next(
             (row for row, card in enumerate(cards) if focuswidget is not None and card.frame.isAncestorOf(focuswidget)),
             len(cards) - 1,
         )
+
+    def on_add_series_key() -> None:
+        """Give the keyboard to the field that adds a series to the card with the focus, or else to the last card."""
+        nonlocal pendingfocus
+        if not cards:
+            return
+        row = get_focus_row()
         if row in collapsedrows:
+            # the card that opens is a new card, and show_subplots gives the focus after this function
+            pendingfocus = (row, "add", None)
             on_collapse_subplot(row)
         if (addedit := cards[row].frame.findChild(QtWidgets.QLineEdit, "add")) is None:
             return
@@ -3462,6 +3500,10 @@ def open_window(
         if scrollarea is not None:
             scrollarea.ensureWidgetVisible(addedit)
         addedit.setFocus()
+
+    def on_add_subplot_key() -> None:
+        """Add a subplot below the card with the keyboard focus, or else after the last card."""
+        insert_new_subplot(get_focus_row() + 1)
 
     def get_drop_index(position: QtCore.QPoint) -> int:
         """Return the index of the gap between the cards that is nearest to a position on the screen."""
@@ -3495,13 +3537,13 @@ def open_window(
         nonlocal pendingfocus
         if subplot:
             # the field of the new card takes the focus, thus the user can add more names
-            pendingfocus = (len(viewer.values.subplots), "add")
+            pendingfocus = (len(viewer.values.subplots), "add", None)
             apply_subplots([*viewer.values.subplots, subplot])
 
     def insert_new_subplot(row: int) -> None:
         """Insert a new subplot at row, and give the keyboard to the field of its card that adds a series."""
         nonlocal pendingfocus
-        pendingfocus = (row, "add")
+        pendingfocus = (row, "add", None)
         oldrows = range(len(viewer.values.subplots))
         subplot = get_new_subplot(viewer.values.subplots, viewer.run.defaultsubplots, viewer.run.estimatorcolumns)
         apply_subplot_order([*oldrows[:row], subplot, *oldrows[row:]])
@@ -3734,6 +3776,7 @@ def open_window(
             "Reload Data": on_reload,
             "Export Animation…": on_export_animation,
             "Add Series": on_add_series_key,
+            "Add Subplot": on_add_subplot_key,
         },
     )
     set_drop_handler(window, on_drop)

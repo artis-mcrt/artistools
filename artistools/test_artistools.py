@@ -5737,16 +5737,23 @@ import types
 
 qtfirst = sys.argv[1] == "qtfirst"
 hasqt = importlib.util.find_spec("PySide6") is not None
-# a call of import_module is eager, and an import statement at module level can be lazy
 if qtfirst:
-    importlib.import_module("PySide6.QtCore")
+    from PySide6 import QtCore
 import artistools
 if not qtfirst:
+    # a search loads no Qt package, thus the imports of artistools stay lazy
+    importlib.util.find_spec("PySide6")
+    assert sys.get_lazy_imports() == "all"
     if hasqt:
-        importlib.import_module("PySide6.QtCore")
+        # the imports of a script are eager, thus PySide6 runs one time and keeps each of its modules
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+        from PySide6 import QtCore
+        from PySide6 import QtWidgets
+        import PySide6
+        assert PySide6.QtCore is QtCore and PySide6.QtWidgets is QtWidgets
     else:
-        # the guard runs at the first import of the Qt bindings, and the test calls it in place of that import
-        next(finder for finder in sys.meta_path if type(finder).__name__ == "QtImportGuard").find_spec("PySide6")
+        # the loader of a Qt package runs this function, and the test calls it in place of that load
+        artistools.lazyimports.resolve_lazy_imports()
 pending = [
     f"{module.__name__}.{name}"
     for module in list(sys.modules.values())
@@ -5769,8 +5776,10 @@ def test_lazy_imports_survive_the_qt_bindings(order: str) -> None:
     """No lazy import of artistools stays pending when PySide6 loads, in either order of import.
 
     After PySide6 loads, the attribute of a module gave a pending lazy import as it was, e.g. print_error of artistools
-    and the version of kiwisolver. A window then stopped with "'lazy_import' object is not callable". The test runs in a
-    new interpreter, because the order of the imports decides the result.
+    and the version of kiwisolver. A window then stopped with "'lazy_import' object is not callable". The guard then
+    resolved the imports inside the search of PySide6. A lazy import of PySide6 in a script thus ran the package two
+    times, and a search alone made the imports eager. The test runs in a new interpreter, because the order of the
+    imports decides the result.
     """
     if order == "qtfirst" and importlib.util.find_spec("PySide6") is None:
         pytest.skip("the import of PySide6 before artistools needs PySide6")

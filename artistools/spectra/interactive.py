@@ -2330,8 +2330,8 @@ def open_window(
         partial(show_status_note, statusbar),
         "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
         " -label and the style of each series. The time controls read the timesteps of the ARTIS model with ⏱."
-        " Click ▲ or ▼, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the order. The command"
-        " gives a file from the reference data of artistools by its name alone.",
+        " Click the up or the down arrow, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the"
+        " order. The command gives a file from the reference data of artistools by its name alone.",
         ReferenceData(
             kind="reference spectrum",
             folder=get_path("artistools_dir") / "data" / "refspectra",

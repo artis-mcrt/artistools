@@ -31,19 +31,7 @@ if (
     and hasattr(sys, "set_lazy_imports")
     and not lazyimports.qt_is_loaded()
 ):
-    sys.set_lazy_imports_filter(
-        # some matplotlib modules read a name that another import of matplotlib gives as a side effect, e.g. a
-        # docstring part or fontTools.ttLib. Thus these imports stay eager. Code with no __name__ gives None
-        lambda importing, imported, _fromlist: (
-            not (
-                imported.startswith(("numpy", "polars"))
-                or (
-                    (importing or "").startswith(("matplotlib", "mpl_toolkits"))
-                    and imported.startswith(("matplotlib", "mpl_toolkits", "fontTools"))
-                )
-            )
-        )
-    )
+    sys.set_lazy_imports_filter(lazyimports.can_import_lazily)
     sys.set_lazy_imports("all")
     sys.meta_path.insert(0, lazyimports.QtImportGuard())
 else:

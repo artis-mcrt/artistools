@@ -65,6 +65,8 @@ MENU_HELPTEXTS: t.Final = MappingProxyType({
     "Copy Figure": "Copy the figure in the format of the Figure section",
     "Copy Command": "Copy the command",
     "Copy Python": "Copy the Python code of the plot",
+    "Add Series": "Type the name of a new series in the subplot with the focus",
+    "Add Subplot": "Add a subplot below the subplot with the focus",
     "Play": "Play or pause",
     "Cancel Plot": "Stop the wait for a slow plot, and keep the plot on the screen",
     "Hide Sidebar": "Hide or show the sidebar",
@@ -516,14 +518,13 @@ def follow_colour_scheme(
     """Draw the plot again with the colours of each new appearance, e.g. Dark Mode, or of a change in Settings.
 
     Qt gives the new palette after the signal, thus the plot waits until Qt has no other events. The Settings window
-    reaches each window through its property "settingshandler". A new accent colour changes only the palette, thus
-    the style sheets and the symbols then take the new colours, but the plot stays.
+    reaches each window through its property "settingshandler". Each new palette, e.g. of Dark Mode or of a new accent
+    colour, applies the style sheets and the symbols again through the property "palettehandler".
     """
     from PySide6 import QtCore
     from PySide6 import QtGui
 
     def draw_with_new_colours() -> None:
-        refresh_palette_style_sheets(window)
         viewer.darkcolours = get_dark_plot_colours()
         queue.redraw()
 

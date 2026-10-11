@@ -79,7 +79,6 @@ from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_timesteps
 from artistools.misc import item_names_a_folder
-from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_modelpath
@@ -201,16 +200,17 @@ def get_ylabel(variable: str) -> str:
     return get_variablelongunits(variable) or get_units_string(variable)
 
 
-def get_point_colour(color: "mplt.ColorType") -> tuple[float, float, float]:
-    """Return a lighter shade of the colour of a series, for its points.
+def get_point_colour(color: "mplt.ColorType") -> tuple[float, float, float, float]:
+    """Return a lighter shade of the colour of a series, for its points, with the opacity of the colour.
 
     The lightness stays below 0.85, because a lighter colour is almost white and a point of that colour does not
-    show on the white background.
+    show on the white background. The opacity stays, thus the points of a clear colour, e.g. "none", stay clear.
     """
     import colorsys
 
-    hue, lightness, saturation = colorsys.rgb_to_hls(*mc.to_rgb(color))
-    return colorsys.hls_to_rgb(hue, min(0.85, 1.5 * lightness), saturation)
+    red, green, blue, alpha = mc.to_rgba(color)
+    hue, lightness, saturation = colorsys.rgb_to_hls(red, green, blue)
+    return (*colorsys.hls_to_rgb(hue, min(0.85, 1.5 * lightness), saturation), alpha)
 
 
 def draw_points(
@@ -260,9 +260,8 @@ class SeriesPlan(t.NamedTuple):
     label: str | None
     dfseries: pl.LazyFrame
     plotkwargs: dict[str, t.Any]
-    # the name of the series in its plot item, e.g. "Fe II" or "Te". A series style uses this name to find the series.
-    # The default keeps the data of a host that runs an older release, which gives no name
-    seriesname: str = ""
+    # the name of the series in its plot item, e.g. "Fe II" or "Te". A series style uses this name to find the series
+    seriesname: str
 
 
 class SeriesData(t.NamedTuple):
@@ -276,6 +275,7 @@ class SeriesData(t.NamedTuple):
     plotkwargs: dict[str, t.Any]
     dflinepoints: pl.DataFrame | None
     dfpoints: pl.DataFrame | None
+    # the default keeps the data of a host that runs an older release, which gives no name. Then no style applies
     seriesname: str = ""
 
 
@@ -297,6 +297,8 @@ class SubplotSettings(t.TypedDict, total=False):
     ymax: float
     showlegend: bool
     legendncols: int
+    # the ions take the colours of their elements with --colorbyion, because the subplot holds more than one element
+    elementcolours: bool
 
 
 def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.LazyFrame:
@@ -428,12 +430,13 @@ def draw_subplot(
         set_exponent_label(ax)
 
     # a subplot of one variable shows its name on the y axis and has no legend, but a label from the user needs a
-    # legend. Make a new dict, because the window uses the same data again for the next style
+    # legend. The window uses the same data again for the next style, thus the settings are a new dict
     if any("label" in styles.get(seriesdata.seriesname, {}) for seriesdata in series):
         settings = {**settings, "showlegend": True}
 
-    for seriesdata in series:
+    for seriesdata, defaultcolour in zip(series, get_default_colours(series), strict=True):
         label, plotkwargs = get_styled_series(seriesdata, styles.get(seriesdata.seriesname, {}), args.linewidthscale)
+        plotkwargs.setdefault("color", defaultcolour)
         draw_series(
             seriesdata.dflinepoints,
             seriesdata.dfpoints,
@@ -975,13 +978,29 @@ def get_styles_of_subplots(args: argparse.Namespace, count: int) -> list[dict[st
     return [*styles, *({} for _ in range(count - len(styles)))]
 
 
+def get_default_colours(series: Sequence[SeriesData]) -> list[t.Any]:
+    """Return the colour of each series with no style: its own colour, or else the next colour of the axes cycle.
+
+    A colour of a style does not take a place in the cycle. Without this, a style colour of one series moved each later
+    series to the previous colour of the cycle.
+    """
+    cycleposition = 0
+    colours: list[t.Any] = []
+    for seriesdata in series:
+        if (colour := seriesdata.plotkwargs.get("color")) is None:
+            colour = f"C{cycleposition}"
+            cycleposition += 1
+        colours.append(colour)
+    return colours
+
+
 def get_styled_series(
     series: "SeriesData", style: Mapping[str, str], linewidthscale: float
 ) -> tuple[str | None, dict[str, t.Any]]:
     """Return the label and the plot keywords of a series with the style of its plot item and -linewidthscale.
 
-    A line style of the item replaces the dash pattern of the plot, e.g. of an ion, and a dash pattern of the item
-    replaces the line style.
+    A line style of the item replaces the dash pattern of the plot, e.g. of an ion. A dash pattern of the item replaces
+    the line style.
     """
     import matplotlib as mpl
 
@@ -1360,6 +1379,8 @@ def plot_multi_ion_series(
     # the colour of an ion comes from its stage, thus Fe II and Co II take the same colour. A subplot of more than one
     # element thus keeps the colours of the elements, and the ions of an element differ by the dash
     colorbyion = args.colorbyion and len({atomic_number for atomic_number, _ in iontuplelist}) == 1
+    if args.colorbyion and not colorbyion:
+        settings["elementcolours"] = True
     plans = []
     for seriesindex, ((atomic_number, ion_stage), dfseries) in enumerate(zip(iontuplelist, lazyframes, strict=True)):
         plotlabel = str(
@@ -2921,7 +2942,15 @@ def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, s
     return lzmodel.select("modelgridindex").collect()["modelgridindex"].to_list()
 
 
-def select_cells_along_axis(args: argparse.Namespace) -> None:
+def select_cells(args: argparse.Namespace, modelpath: Path) -> None:
+    """Select the cells of -slice or of -readonlymgi. The cells of the plot then come back with the data."""
+    if args.slice is not None:
+        select_cells_of_slice(args, modelpath, parse_slice_argument(args.slice))
+    elif args.readonlymgi:
+        select_cells_along_axis(args, modelpath)
+
+
+def select_cells_along_axis(args: argparse.Namespace, modelpath: Path) -> None:
     """Select the cells on an axis or in a cone of a 3D model, and record the two axes that stay.
 
     The selection functions of slice1dfromconein3dmodel read these axis names from the arguments.
@@ -2932,7 +2961,7 @@ def select_cells_along_axis(args: argparse.Namespace) -> None:
     otheraxes = [axisname for axisname in "xyz" if axisname != args.sliceaxis]
     args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 
-    args.modelgridindex = get_cells_along_axis(normalize_path_list(args.modelpath)[0], args)
+    args.modelgridindex = get_cells_along_axis(modelpath, args)
 
 
 @on_model_host
@@ -3159,7 +3188,7 @@ def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
     resolve_positional_args(args)
     modelpath = Path(args.modelpath)
     require_artis_folder(modelpath)
-    sliceconditions = resolve_snapshot_arguments(args)
+    resolve_snapshot_arguments(args)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
 
@@ -3169,11 +3198,6 @@ def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
             + get_time_range_text(timestepmin, timestepmax, args.timemin, args.timemax)
         )
         print_modelpath(modelpath)
-
-    if sliceconditions and not wantslisting:
-        select_cells_of_slice(args, modelpath, sliceconditions)
-    elif args.readonlymgi:
-        select_cells_along_axis(args)
 
     return modelpath, list(range(timestepmin, timestepmax + 1))
 
@@ -3248,6 +3272,8 @@ def get_figures_data(
     def get_changed_args() -> dict[str, t.Any]:
         return {key: value for key, value in vars(args).items() if key in plainargs and plainargs[key] != value}
 
+    # the cells are a part of the data, thus a window that draws a new style with the same data selects no cells
+    select_cells(args, modelpath)
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
     estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
@@ -3299,6 +3325,26 @@ def get_figures_data(
     return figures, get_changed_args()
 
 
+def get_figures_data_without_styles(
+    modelpath: Path,
+    args: argparse.Namespace,
+    timesteps_included: list[int],
+    batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
+) -> FiguresData:
+    """Return get_figures_data of the arguments, and give the host the plot items without their series styles.
+
+    The client draws the styles, see draw_line_figure. A host that runs an older release read a styled item as an
+    unknown directive, e.g. "'Te@color' is not a plot directive".
+    """
+    styledplotlist = args.plotlist
+    if styledplotlist:
+        args.plotlist = [split_plotitem_styles(plotitems)[0] for plotitems in styledplotlist]
+    try:
+        return get_figures_data(modelpath, args, timesteps_included, batchcaches)
+    finally:
+        args.plotlist = styledplotlist
+
+
 def draw_plot(
     args: argparse.Namespace,
     fig: "mplfig.Figure",
@@ -3316,7 +3362,7 @@ def draw_plot(
     """
     modelpath, timesteps_included = resolve_plot_args(args)
     if figuresdata is None:
-        figuresdata = get_figures_data(modelpath, args, timesteps_included, batchcaches)
+        figuresdata = get_figures_data_without_styles(modelpath, args, timesteps_included, batchcaches)
     figures, changedargs = figuresdata
     vars(args).update(changedargs)
     draw_figure_data(figures[0], args, fig)
@@ -3343,7 +3389,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     try:
-        figures, changedargs = get_figures_data(modelpath, args, timesteps_included)
+        figures, changedargs = get_figures_data_without_styles(modelpath, args, timesteps_included)
     except NoEstimatorRowsError as exc:
         report_data_available(modelpath, classicartis=args.classicartis)
         # the command makes no plot, thus a script that runs it must see a failure

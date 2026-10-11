@@ -439,7 +439,7 @@ def item_names_a_folder(item: str) -> bool:
     """
     from artistools.misc.remote import is_remote_path
 
-    # a name of an item has no colon, thus a last item of the form host:path names a remote folder
+    # a remote path has no "=" in its host, thus a style value with a colon, e.g. Te@color=tab:red, names no folder
     return bool(item) and (is_remote_path(item) or Path(item).is_dir() or item_names_a_path(item))
 
 
