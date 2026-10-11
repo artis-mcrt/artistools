@@ -67,6 +67,7 @@ if t.TYPE_CHECKING:
     import matplotlib.axes as mplax
     import matplotlib.figure as mplfig
     from matplotlib.backend_bases import FigureCanvasBase
+    from matplotlib.backend_bases import MouseEvent
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
     from PySide6 import QtCore
     from PySide6 import QtWidgets
@@ -775,10 +776,10 @@ def connect_plot_mouse(
     on_reset: "Callable[[], None]",
     can_select: "Callable[[], bool]",
     on_select_y: "Callable[[int, float, float], None] | None" = None,
-    on_menu: "Callable[[int, t.Any], None] | None" = None,
+    on_menu: "Callable[[int, MouseEvent], None] | None" = None,
     show_tag: "Callable[[t.Any, str], None] | None" = None,
-    on_click: "Callable[[int, t.Any], None] | None" = None,
-    get_click_hint: "Callable[[int, t.Any], str | None] | None" = None,
+    on_click: "Callable[[int, MouseEvent], None] | None" = None,
+    get_click_hint: "Callable[[int, MouseEvent], str | None] | None" = None,
 ) -> "Callable[[], None]":
     """Give the plot a readout under the pointer, a drag across a frame that selects an x range, and a double-click.
 

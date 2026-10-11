@@ -6,6 +6,7 @@ Examples are temperatures, populations, heating/cooling rates.
 import argparse
 import contextlib
 import math
+import re
 import string
 import typing as t
 from collections.abc import Collection
@@ -375,7 +376,9 @@ def draw_series(
 
     if args.markers:
         assert dfpoints is not None
-        draw_points(ax, dfpoints, color, plotkwargs, label=None)
+        # each id of an SVG file must be different
+        pointgid: dict[str, str] = {"gid": f"{plotkwargs['gid']}-points"} if "gid" in plotkwargs else {}
+        draw_points(ax, dfpoints, color, plotkwargs | pointgid, label=None)
 
     else:
         yvalues_binned_min = dflinepoints.get_column("yvalue_binned_min")
@@ -408,6 +411,7 @@ def get_series_data(
 
 def draw_subplot(
     ax: mplax.Axes,
+    subplotindex: int,
     series: Sequence[SeriesData],
     settings: SubplotSettings,
     args: argparse.Namespace,
@@ -437,6 +441,7 @@ def draw_subplot(
     for seriesdata, defaultcolour in zip(series, get_default_colours(series), strict=True):
         label, plotkwargs = get_styled_series(seriesdata, styles.get(seriesdata.seriesname, {}), args.linewidthscale)
         plotkwargs.setdefault("color", defaultcolour)
+        plotkwargs["gid"] = get_series_gid(subplotindex, seriesdata.seriesname)
         draw_series(
             seriesdata.dflinepoints,
             seriesdata.dfpoints,
@@ -1019,9 +1024,27 @@ def get_styled_series(
         plotkwargs["alpha"] = float(style["linealpha"])
     if linewidthscale != 1.0:
         plotkwargs["linewidth"] = plotkwargs.get("linewidth", mpl.rcParams["lines.linewidth"]) * linewidthscale
-    # the window finds the series of a line from its gid, e.g. for a click on the line or on its legend entry
-    plotkwargs["gid"] = series.seriesname
     return style.get("label", series.label), plotkwargs
+
+
+def get_series_gid(subplotindex: int, seriesname: str) -> str:
+    """Return the gid of the line of a series, which an SVG file gives as the id of the line.
+
+    The window finds the series of a line from its gid, e.g. for a click on the line or on its legend entry. Each id of
+    an SVG file must be different and have no space. Thus the gid holds the index of the subplot. Each character of
+    the name other than an ASCII letter, a digit, or "_" becomes its hexadecimal code between two full stops. A "-"
+    then separates the parts of the gid, e.g. the suffix of the points of a series.
+    """
+    escapedname = "".join(
+        char if char.isascii() and (char.isalnum() or char == "_") else f".{ord(char):x}." for char in seriesname
+    )
+    return f"subplot{subplotindex}-{escapedname}"
+
+
+def get_gid_series_name(gid: str) -> str:
+    """Return the name of the series of a gid from get_series_gid, e.g. "Fe II" for "subplot0-Fe.20.II"."""
+    escapedname = gid.split("-")[1]
+    return re.sub(r"\.([0-9a-f]+)\.", lambda match: chr(int(match[1], 16)), escapedname)
 
 
 def get_iontuple(ionstr: str) -> tuple[int, str | int]:
@@ -1299,8 +1322,7 @@ def plot_multi_ion_series(
     # the series of an ion keeps the name of its plot item, e.g. "Fe 2" or "Fe II", because a series style uses it. Two
     # spellings of one ion give two series, as two plot items do
     ionentries = sorted(((get_iontuple(ionstr), ionstr) for ionstr in ionlist), key=get_ionentry_sortkey)
-    iontuplelist = [iontuple for iontuple, _ in ionentries]
-    print(f"Subplot with ions: {iontuplelist}")
+    print(f"Subplot with ions: {[iontuple for iontuple, _ in ionentries]}")
 
     missingions: set[tuple[int, str | int]] = set()
     if not args.classicartis:
@@ -1311,7 +1333,7 @@ def plot_multi_ion_series(
             # thus the plot still gives the other ions
             print_warning("Could not read an ARTIS compositiondata.txt file to check ion availability")
         else:
-            for atomic_number, ion_stage in iontuplelist:
+            for (atomic_number, ion_stage), _ in ionentries:
                 if (
                     isinstance(ion_stage, int)
                     and compositiondata.filter(
@@ -1326,22 +1348,20 @@ def plot_multi_ion_series(
         print_warning(f"Can't plot {seriestype} for {missingions} because these ions are not in compositiondata.txt")
 
     ionentries = [entry for entry in ionentries if entry[0] not in missingions]
-    iontuplelist = [iontuple for iontuple, _ in ionentries]
 
     # An ion of the model can still have no column of this series. The top ion of an element has no
     # gamma_NT and no bound-free cooling. Drop such an ion here, so that the plot gives the others.
     estimatorcolumns = estimators.collect_schema().names()
     nocolumnions = {
-        iontuple for iontuple in iontuplelist if get_column_name(seriestype, *iontuple)[0] not in estimatorcolumns
+        iontuple for iontuple, _ in ionentries if get_column_name(seriestype, *iontuple)[0] not in estimatorcolumns
     }
     if nocolumnions:
         print_warning(f"Can't plot {seriestype} for {nocolumnions} because the estimators hold no such column")
 
     ionentries = [entry for entry in ionentries if entry[0] not in nocolumnions]
-    iontuplelist = [iontuple for iontuple, _ in ionentries]
 
     lazyframes = []
-    for atomic_number, ion_stage in iontuplelist:
+    for (atomic_number, ion_stage), _ in ionentries:
         colname, ionstr = get_column_name(seriestype, atomic_number, ion_stage)
         expr_yvals = pl.col(colname)
         print(f"  plotting {seriestype} {ionstr.replace('_', ' ')}")
@@ -1378,11 +1398,13 @@ def plot_multi_ion_series(
 
     # the colour of an ion comes from its stage, thus Fe II and Co II take the same colour. A subplot of more than one
     # element thus keeps the colours of the elements, and the ions of an element differ by the dash
-    colorbyion = args.colorbyion and len({atomic_number for atomic_number, _ in iontuplelist}) == 1
+    colorbyion = args.colorbyion and len({atomic_number for (atomic_number, _), _ in ionentries}) == 1
     if args.colorbyion and not colorbyion:
         settings["elementcolours"] = True
     plans = []
-    for seriesindex, ((atomic_number, ion_stage), dfseries) in enumerate(zip(iontuplelist, lazyframes, strict=True)):
+    for seriesindex, (((atomic_number, ion_stage), seriesname), dfseries) in enumerate(
+        zip(ionentries, lazyframes, strict=True)
+    ):
         plotlabel = str(
             ion_stage
             if hasattr(ion_stage, "lower") and ion_stage != "ALL"
@@ -1420,7 +1442,7 @@ def plot_multi_ion_series(
                 label=plotlabel,
                 dfseries=dfseries,
                 plotkwargs={"linewidth": linewidth, "color": color} | plotkwargs,
-                seriesname=ionentries[seriesindex][1],
+                seriesname=seriesname,
             )
         )
 
@@ -1962,8 +1984,10 @@ def draw_line_figure(
     xbinwidth = (xhigh - xlow) / args.xbins if args.xbins and xlow is not None and xhigh is not None else None
     # the data has no series styles, thus a change of style in the window needs no new data
     stylesofsubplots = get_styles_of_subplots(args, len(figuredata.subplots))
-    for ax, (series, settings), styles in zip(axes, figuredata.subplots, stylesofsubplots, strict=True):
-        draw_subplot(ax, series, settings, args, startfromzero, xbinwidth, styles)
+    for subplotindex, (ax, (series, settings), styles) in enumerate(
+        zip(axes, figuredata.subplots, stylesofsubplots, strict=True)
+    ):
+        draw_subplot(ax, subplotindex, series, settings, args, startfromzero, xbinwidth, styles)
         # a stacked subplot puts its lowest label beside the highest label of the subplot below
         prune_log_ticks(ax.yaxis)
 

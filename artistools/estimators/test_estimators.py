@@ -4003,7 +4003,10 @@ def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
         "Fe III@color=#d55e00,linestyle=dotted",
     ]
     fig = get_command_figure(tokens, tmp_path / "estimators.pdf")
-    linesbyname = [{line.get_gid(): line for line in axis.get_lines()} for axis in fig.axes]
+    linesbyname = [
+        {plotestimators.get_gid_series_name(str(line.get_gid())): line for line in axis.get_lines()}
+        for axis in fig.axes
+    ]
     templine = linesbyname[0]["Te"]
     assert templine.get_color() == "#00ff00"
     assert templine.get_linewidth() == pytest.approx(6.0)
@@ -4028,7 +4031,7 @@ def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path
     plotlists = (["-plot", "populations", "Fe II", "Fe III", "Co II"], ["-plot", "populations", "Fe II", "Fe III"])
     severalelements, oneelement = (
         {
-            line.get_gid(): line.get_color()
+            plotestimators.get_gid_series_name(str(line.get_gid())): line.get_color()
             for line in get_command_figure([*tokens, *plotlist], tmp_path / f"{index}.pdf").axes[0].get_lines()
         }
         for index, plotlist in enumerate(plotlists)
@@ -4050,7 +4053,9 @@ def test_interactive_swatches_give_the_colours_of_the_lines() -> None:
     )
     # the line of TR comes first, and its points come after it
     trline, trpoints = (
-        line for line in interactive.get_plot_frames(viewer.fig)[0].get_lines() if line.get_gid() == "TR"
+        line
+        for line in interactive.get_plot_frames(viewer.fig)[0].get_lines()
+        if plotestimators.get_gid_series_name(str(line.get_gid())) == "TR"
     )
     assert viewer.swatches[0, "TR"].colour == mplcolors.to_hex(trline.get_color()) == mplcolors.to_hex("C0")
     assert mplcolors.to_hex(trpoints.get_color()) != mplcolors.to_hex("C0")
@@ -4158,6 +4163,13 @@ def get_action(text):
 
 settle(2.0)
 results = {}
+# the window keeps the state of a section only after a click on its heading
+results["sectionsettings"] = [key for key in QtCore.QSettings().allKeys() if "section" in key]
+# Qt shows the pointer of a disabled widget from its parent
+grips = [label for label in window.findChildren(QtWidgets.QLabel) if label.property("symbol") == "line.3.horizontal"]
+results["gripcursor"] = bool(grips) and all(
+    grip.isEnabled() and grip.cursor().shape() == QtCore.Qt.CursorShape.OpenHandCursor for grip in grips
+)
 # Alt-Down twice moves the same chip to the end
 get_chip("Te").setFocus()
 settle(0.2)
@@ -4221,6 +4233,19 @@ QtTest.QTest.keyClick(popup, QtCore.Qt.Key.Key_Escape)
 settle()
 results["escapecommand"] = get_command()
 
+# a bad dash pattern keeps the preview of the width
+get_chip("nne").findChild(QtWidgets.QToolButton, "swatch").click()
+settle()
+popup = get_popup()
+next(edit for edit in popup.findChildren(QtWidgets.QLineEdit) if edit.placeholderText().startswith("none")).setText(
+    "5,"
+)
+popup.findChildren(QtWidgets.QDoubleSpinBox)[0].setValue(4.0)
+settle(1.0)
+results["badfieldpreview"] = get_command()
+QtTest.QTest.keyClick(popup, QtCore.Qt.Key.Key_Escape)
+settle()
+
 # Add Series on a collapsed card gives the keyboard to its field
 window.activateWindow()
 settle(0.3)
@@ -4260,6 +4285,9 @@ def test_estimator_window_keeps_the_keyboard_and_the_popup_values(tmp_path: Path
     - the popup showed an opacity of 0 as "Default", and Reset kept it;
     - Return in the empty colour field kept the popup open with an error;
     - Escape wrote the style keys of the item in a different order;
+    - a bad dash pattern stopped the preview of each other field;
+    - the window wrote the state of each section when it opened, thus a new default of closed did not apply;
+    - a grip showed the arrow pointer, because it was a disabled button;
     - Add Series on a collapsed card gave the focus back to the header;
     - no menu item added a subplot, and Tab on macOS reaches no button that adds one.
     """
@@ -4275,7 +4303,7 @@ def test_estimator_window_keeps_the_keyboard_and_the_popup_values(tmp_path: Path
     )
     assert result.returncode == 0, result.stderr[-3000:]
     # the window prints its command when it closes, thus the results are on the line of the JSON object
-    results = json.loads(next(line for line in result.stdout.splitlines() if line.startswith('{"chipfocus"')))
+    results = json.loads(next(line for line in result.stdout.splitlines() if line.startswith('{"sectionsettings"')))
     assert results["chipfocus"] == "Te"
     assert " TR@linealpha=0 nne@linewidth=2,color=red Te " in results["chiporder"]
     assert not results["cancelledclickpopup"]
@@ -4284,6 +4312,9 @@ def test_estimator_window_keeps_the_keyboard_and_the_popup_values(tmp_path: Path
     assert results["emptycolourclosed"]
     assert "nne@color=" in results["previewcommand"]
     assert " nne@linewidth=2,color=red " in results["escapecommand"]
+    assert " nne@color=red,linewidth=4 " in results["badfieldpreview"]
+    assert results["sectionsettings"] == []
+    assert results["gripcursor"]
     assert results["addseriesfocus"] == "add"
     assert results["addsubplotcommand"].count("-plot") == 1
     assert results["addsubplotfocus"] == "add"
@@ -4315,6 +4346,27 @@ def test_style_change_keeps_the_warning_of_the_data() -> None:
     assert viewer.warning == warning
 
 
+def test_svg_ids_of_the_lines_are_different(tmp_path: Path) -> None:
+    """Each line of an SVG file has a different id with no space, and the gid of a line still gives its series.
+
+    The gid of a line was the name of its series. Te in two subplots, the points of a series, and Fe II gave ids
+    that SVG does not permit.
+    """
+    tokens = [str(modelpath_classic_3d), "-timestep", "10", "--markers"]
+    plotlists = ["-plot", "Te", "-plot", "Te", "-plot", "populations", "Fe II", "Fe III"]
+    fig = get_command_figure([*tokens, *plotlists], tmp_path / "estimators.pdf")
+    svgfile = tmp_path / "estimators.svg"
+    fig.savefig(svgfile)
+    ids = re.findall(r'\bid="([^"]*)"', svgfile.read_text(encoding="utf-8"))
+    assert len(ids) == len(set(ids))
+    assert not [svgid for svgid in ids if " " in svgid]
+    seriesnames = [
+        [plotestimators.get_gid_series_name(gid) for line in axis.get_lines() if isinstance(gid := line.get_gid(), str)]
+        for axis in fig.axes
+    ]
+    assert seriesnames == [["Te", "Te"], ["Te", "Te"], ["Fe II", "Fe II", "Fe III", "Fe III"]]
+
+
 def test_style_colour_keeps_the_colours_of_the_other_series() -> None:
     """A colour of a style changes only its own series, and each other series keeps its colour of the axes cycle.
 
@@ -4325,7 +4377,10 @@ def test_style_colour_keeps_the_colours_of_the_other_series() -> None:
     def get_line_colours(subplot: tuple[str, ...]) -> dict[str, str]:
         assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None
         lines = interactive.get_plot_frames(viewer.fig)[0].get_lines()
-        return {str(line.get_gid()): mplcolors.to_hex(line.get_color()) for line in lines}
+        return {
+            plotestimators.get_gid_series_name(str(line.get_gid())): mplcolors.to_hex(line.get_color())
+            for line in lines
+        }
 
     plain = get_line_colours(("TR", "TJ", "W"))
     styled = get_line_colours(("TR@color=black", "TJ", "W"))

@@ -34,7 +34,7 @@ from artistools.viewertools.widgets import get_menu_items
 from artistools.viewertools.widgets import get_menu_shortcut_texts
 from artistools.viewertools.widgets import make_fps_box
 from artistools.viewertools.widgets import make_segmented_control
-from artistools.viewertools.widgets import make_symbol_icon
+from artistools.viewertools.widgets import set_symbol
 from artistools.viewertools.widgets import show_status_message
 from artistools.viewertools.widgets import show_status_note
 from artistools.viewertools.widgets import StatusBar
@@ -546,14 +546,16 @@ def refresh_palette_style_sheets(window: "QtWidgets.QWidget") -> None:
 
     Qt reads a colour of the palette in a style sheet one time only. Without this, a chip of plotestimators keeps the
     white background of a light window in Dark Mode. A widget with the property "stylesheetfactory" gets a new style
-    sheet from that function, e.g. with the accent colour of the new appearance. A button with the property "symbol"
-    gets its symbol in the new colour of the text.
+    sheet from that function, e.g. with the accent colour of the new appearance. A button or a label with the property
+    "symbol" gets its symbol in the new colour of the text.
     """
     from PySide6 import QtWidgets
 
     for widget in [window, *window.findChildren(QtWidgets.QWidget)]:
-        if isinstance(widget, QtWidgets.QAbstractButton) and isinstance(symbol := widget.property("symbol"), str):
-            widget.setIcon(make_symbol_icon(symbol))
+        if isinstance(widget, QtWidgets.QToolButton | QtWidgets.QLabel) and isinstance(
+            symbol := widget.property("symbol"), str
+        ):
+            set_symbol(widget, symbol)
         if callable(factory := widget.property("stylesheetfactory")):
             widget.setStyleSheet(str(factory()))
         elif "palette(" in (stylesheet := widget.styleSheet()):

@@ -86,7 +86,6 @@ from artistools.viewertools.series import add_series_list
 from artistools.viewertools.series import edit_series_properties
 from artistools.viewertools.series import make_series_swatch
 from artistools.viewertools.series import ReferenceData
-from artistools.viewertools.series import SERIES_PROPERTY_FLAGS
 from artistools.viewertools.series import SeriesListActions
 from artistools.viewertools.series import SeriesRow
 from artistools.viewertools.widgets import add_row
@@ -1180,7 +1179,7 @@ def open_window(
             show_changes,
             flags=("-label", "-color", "-linewidth", "-linealpha")
             if path_is_reference_lightcurve(path)
-            else SERIES_PROPERTY_FLAGS,
+            else SERIES_STYLE_FLAGS,
         )
 
     def is_run_folder(path: str) -> bool:

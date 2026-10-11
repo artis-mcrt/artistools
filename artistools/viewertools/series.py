@@ -13,13 +13,13 @@ from artistools.misc.cliutils import dashes_arg
 from artistools.misc.cliutils import LINESTYLE_ALIASES
 from artistools.misc.cliutils import LINESTYLE_NAMES
 from artistools.misc.cliutils import SERIES_DEFAULT
-from artistools.misc.cliutils import SERIES_STYLE_KEYS
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import split_remote_path
 from artistools.viewertools.application import add_recent_model
 from artistools.viewertools.application import get_recent_models
 from artistools.viewertools.application import set_drop_handler
+from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.widgets import copy_text
 from artistools.viewertools.widgets import get_accent_colour
 from artistools.viewertools.widgets import get_message_colours
@@ -44,6 +44,8 @@ if t.TYPE_CHECKING:
 
 # the line styles of the popup of the line properties: the value of -linestyle and the text of the button
 LINESTYLE_CHOICES: t.Final = tuple(zip(LINESTYLE_NAMES, ("Solid", "Dashed", "Dotted", "Dash-dot"), strict=True))
+SWATCH_WIDTH: t.Final = 36
+SWATCH_HEIGHT: t.Final = 14
 
 
 def get_dash_pattern(linestyle: str | None, dashes: str | None) -> list[float] | None:
@@ -70,7 +72,7 @@ def get_dash_pattern(linestyle: str | None, dashes: str | None) -> list[float] |
 
 
 def make_line_swatch(
-    colour: str, alpha: float, linewidth: float, dashpattern: "Sequence[float] | None", width: int = 36
+    colour: str, alpha: float, linewidth: float, dashpattern: "Sequence[float] | None", width: int = SWATCH_WIDTH
 ) -> "QtGui.QPixmap":
     """Return a short image of a line with the colour, the opacity, the width, and the dash pattern of a series.
 
@@ -80,7 +82,7 @@ def make_line_swatch(
     from PySide6 import QtCore
     from PySide6 import QtGui
 
-    height = 14
+    height = SWATCH_HEIGHT
     pixmap = make_screen_pixmap(width, height)
     red, green, blue = (round(255 * part) for part in mplcolors.to_rgb(colour))
     pen = QtGui.QPen(QtGui.QColor(red, green, blue, round(255 * alpha)))
@@ -98,6 +100,24 @@ def make_line_swatch(
     return pixmap
 
 
+def make_swatch_button(name: str, width: int, onclick: "Callable[[], object]") -> "QtWidgets.QToolButton":
+    """Return a button that shows the line of a series and opens the popup of its line properties.
+
+    A series with no line keeps the space of the image of its line, thus the icon size has the full width.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    button = QtWidgets.QToolButton()
+    button.setObjectName("swatch")
+    button.setAutoRaise(True)
+    button.setIconSize(QtCore.QSize(width, SWATCH_HEIGHT))
+    button.setToolTip(f"The line of {name} in the plot. Click to change the line properties")
+    button.setAccessibleName(f"Set the line properties of {name}")
+    button.clicked.connect(onclick)
+    return button
+
+
 def make_series_swatch(colour: str, style: "Mapping[str, str | None]") -> "QtGui.QPixmap":
     """Return the image of the line of a series from its colour and the values of its series style options."""
     import matplotlib as mpl
@@ -112,9 +132,6 @@ def make_series_swatch(colour: str, style: "Mapping[str, str | None]") -> "QtGui
 
 # the pause after a change of the popup of the line properties before the plot shows it
 PREVIEW_MILLISECONDS: t.Final = 250
-
-# the options of the popup of the line properties, which each give one value for each series
-SERIES_PROPERTY_FLAGS: t.Final = tuple(f"-{key}" for key in SERIES_STYLE_KEYS)
 
 
 def get_label_error(label: str) -> str | None:
@@ -244,7 +261,7 @@ def edit_series_properties(
     defaultcolour: str,
     defaultlinewidth: float,
     show_changes: "Callable[[Mapping[str, str | None] | None, bool], None]",
-    flags: "Collection[str]" = SERIES_PROPERTY_FLAGS,
+    flags: "Collection[str]" = SERIES_STYLE_FLAGS,
     anchor: "QtCore.QPoint | None" = None,
     *,
     linewidthscale: float = 1.0,
@@ -335,7 +352,7 @@ def edit_series_properties(
             button.setText(text)
         else:
             button.setIcon(QtGui.QIcon(make_line_swatch("gray", 1.0, 2.0, get_dash_pattern(value, None))))
-            button.setIconSize(QtCore.QSize(36, 14))
+            button.setIconSize(QtCore.QSize(SWATCH_WIDTH, SWATCH_HEIGHT))
         button.setChecked(
             value == currentlinestyle or (value is None and currentlinestyle not in dict(LINESTYLE_CHOICES))
         )
@@ -534,11 +551,12 @@ def edit_series_properties(
         show_changes(changes, not madestep[0])
         shownchanges[0], madestep[0] = changes, True
 
-    # a typed label or a typed pattern gives a plot after a short pause, and not after each key
+    # a typed label or a typed pattern gives a plot after a short pause, and not after each key. A bad field keeps its
+    # value from before the popup, thus the plot still shows the changes of the other fields
     previewtimer = QtCore.QTimer(dialog)
     previewtimer.setSingleShot(True)
     previewtimer.setInterval(PREVIEW_MILLISECONDS)
-    previewtimer.timeout.connect(show_plot_changes)
+    previewtimer.timeout.connect(partial(show_plot_changes, lenient=True))
 
     def on_return() -> None:
         # the colour field takes its own Return, which applies the typed colour. An empty field has no colour to apply
@@ -988,16 +1006,11 @@ def add_series_list(
         rowlayout.setContentsMargins(4, 0, 2, 0)
         rowlayout.setSpacing(2)
         rowlayout.addWidget(QtWidgets.QLabel(f"<b>{index + 1}</b>"))
-        swatch = QtWidgets.QToolButton()
-        swatch.setAutoRaise(True)
-        swatch.setIconSize(QtCore.QSize(36, 14))
-        swatch.setIcon(QtGui.QIcon(seriesrow.swatch))
-        swatch.setToolTip(
-            "The colour and the line style of the series in the plot. Click to change the line properties"
-        )
-        swatch.setAccessibleName(f"Set the line properties of {name}")
         # the new list replaces this row, thus each action of a button waits until the click ends
-        swatch.clicked.connect(partial(QtCore.QTimer.singleShot, 0, window, partial(actions.edit_properties, path)))
+        swatch = make_swatch_button(
+            name, SWATCH_WIDTH, partial(QtCore.QTimer.singleShot, 0, window, partial(actions.edit_properties, path))
+        )
+        swatch.setIcon(QtGui.QIcon(seriesrow.swatch))
         rowlayout.addWidget(swatch)
         namelabel = QtWidgets.QLabel(name)
         namelabel.setToolTip(

@@ -64,22 +64,27 @@ def add_section(
     # row start at one place
     grid.setHorizontalSpacing(ROW_SPACING)
     grid.setColumnStretch(1, 1)
-    settingkey = f"{QtWidgets.QApplication.applicationDisplayName()}/sections/{key or title}"
-    isopen = get_bool_setting(settingkey, default=not closed)
+    # the earlier versions wrote the state of each section to "sections" when a window opened, also with no click on
+    # the heading. Thus the new default, which is closed, applies only with a different key
+    settingkey = f"{QtWidgets.QApplication.applicationDisplayName()}/sectionstates/{key or title}"
 
-    def set_open(checked: bool) -> None:
+    def show_open(checked: bool) -> None:
         header.setToolTip(f"{'Hide' if checked else 'Show'} the section")
         content.setVisible(checked)
+
+    def on_click(checked: bool) -> None:
+        show_open(checked)
         get_settings().setValue(settingkey, checked)
 
     # the stretch at the end of the panel keeps each section, also Command and Python, below the last one
     index = panellayout.count() - 1
     panellayout.insertWidget(index, header)
-    # a widget with no parent shows as a window of its own, thus the content goes into the panel before set_open
+    # a widget with no parent shows as a window of its own, thus the content goes into the panel before show_open
     panellayout.insertWidget(index + 1, content)
-    header.toggled.connect(set_open)
+    isopen = get_bool_setting(settingkey, default=not closed)
     header.setChecked(isopen)
-    set_open(isopen)
+    show_open(isopen)
+    header.toggled.connect(on_click)
     return header, grid
 
 
@@ -182,14 +187,21 @@ def make_glyph_button(symbol: str, tooltip: str, accessiblename: str) -> "QtWidg
     return button
 
 
-def make_grip(tooltip: str) -> "QtWidgets.QToolButton":
-    """Return the grip of a row or a card that the user can drag, which shows three short lines."""
-    from PySide6 import QtCore
+def make_grip(tooltip: str) -> "QtWidgets.QLabel":
+    """Return the grip of a row or a card that the user can drag, which shows three short lines.
 
-    grip = make_glyph_button("line.3.horizontal", tooltip, tooltip)
-    # a disabled button takes no click, thus the drag goes to the row, and the symbol takes the grey of disabled text
-    grip.setEnabled(False)
-    grip.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+    A label gives each click to its row, thus the drag starts there. Qt shows the pointer of a disabled widget from its
+    parent, thus the grip is a label and not a disabled button.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    grip = QtWidgets.QLabel()
+    set_symbol(grip, "line.3.horizontal")
+    # the margins of the label are the padding of GLYPH_BUTTON_STYLE, thus the grip has the size of a glyph button
+    grip.setContentsMargins(4, 1, 4, 1)
+    grip.setToolTip(tooltip)
+    grip.setAccessibleName(tooltip)
     grip.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
     return grip
 
@@ -208,17 +220,24 @@ SYMBOL_STROKES: t.Final = MappingProxyType({
 })
 
 
-def set_symbol(button: "QtWidgets.QToolButton", symbol: str) -> None:
-    """Show a symbol of SYMBOL_STROKES on a button.
+def set_symbol(widget: "QtWidgets.QToolButton | QtWidgets.QLabel", symbol: str) -> None:
+    """Show a symbol of SYMBOL_STROKES on a button or a label.
 
-    The property "symbol" of the button names the symbol. refresh_palette_style_sheets then draws the symbol again in
-    the colour of a new appearance.
+    A label, e.g. a grip, shows the symbol in the grey of disabled text. The property "symbol" of the widget names the
+    symbol. refresh_palette_style_sheets then draws the symbol again in the colour of a new appearance.
     """
     from PySide6 import QtCore
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
 
-    button.setIcon(make_symbol_icon(symbol))
-    button.setIconSize(QtCore.QSize(SYMBOL_SIZE, SYMBOL_SIZE))
-    button.setProperty("symbol", symbol)
+    icon = make_symbol_icon(symbol)
+    size = QtCore.QSize(SYMBOL_SIZE, SYMBOL_SIZE)
+    if isinstance(widget, QtWidgets.QLabel):
+        widget.setPixmap(icon.pixmap(size, QtGui.QIcon.Mode.Disabled))
+    else:
+        widget.setIcon(icon)
+        widget.setIconSize(size)
+    widget.setProperty("symbol", symbol)
 
 
 def make_symbol_icon(symbol: str) -> "QtGui.QIcon":
