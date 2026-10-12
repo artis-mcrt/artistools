@@ -120,6 +120,8 @@ jobs:
               with:
                   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
                   github_token: ${{ github.token }}
+                  # TEMPORARY: shows the error of Claude Code. A later commit removes this setting
+                  show_full_output: true
                   # a prompt that starts with /code-review runs the review as a local command, which ran no turn in
                   # the action. The Skill tool runs the same review
                   prompt: 'Use the Skill tool to run the code-review skill with these arguments: ${{ env.REVIEWEFFORT }} --comment ${{ env.PRURL }}'
