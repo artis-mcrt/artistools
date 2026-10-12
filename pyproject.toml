@@ -198,8 +198,10 @@ ignore-missing-imports = [
 unbound-name = false
 implicit-any-empty-container = true
 implicit-any-lambda = true
+implicitly-defined-attribute = true
 no-any-return-explicit = true
 no-any-return-implicit = true
+not-required-key-access = true
 string-as-iterable = true
 unnecessary-type-conversion = true
 unsupported-operation = true
@@ -349,6 +351,17 @@ convention = "pep257"
 
 [tool.ty.rules]
 unresolved-import = "ignore"
+# these rules are off by default
+blanket-ignore-comment = "error"
+disjoint-cast = "error"
+dynamic-function-decorator-return = "error"
+invalid-legacy-positional-parameter = "error"
+invalid-mutable-override = "error"
+missing-override-decorator = "error"
+missing-type-argument = "error"
+possibly-missing-attribute = "error"
+possibly-missing-import = "error"
+unsupported-dynamic-base = "error"
 
 [tool.ty.src]
 exclude = [".venv/**"]

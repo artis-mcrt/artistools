@@ -3417,6 +3417,7 @@ def test_average_ionisation_ylim_covers_every_element() -> None:
     settings: plotestimators.SubplotSettings = {}
     # Ni comes last and reaches charge 0, but the Fe curve reaches charge 5
     plotestimators.plot_average_ionisation(settings, ["Fe", "Ni"], estimators)
+    assert "ylim" in settings
     assert settings["ylim"][1] > 5.0
 
 

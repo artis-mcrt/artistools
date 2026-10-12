@@ -820,6 +820,7 @@ class ModelpathCache[**P, R]:
 
             return self.callcached(resolve_modelpath(args[0]), *args[1:], **kwargs)
 
+    @t.override
     def __reduce__(self) -> str:
         """Give pickle the name of the module attribute, because pickle cannot copy the cache."""
         return self.name

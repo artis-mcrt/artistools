@@ -1775,8 +1775,8 @@ def get_subplot_plans(
                 seriestype, ionlist = plotitem
                 # an ion population plot reads best on a log scale, thus that is the default here. A
                 # yscale directive of the plot item wins over it
-                settings.setdefault("yscale", "log")
-                if seriestype == "populations" and len(ionlist) > 2 and settings["yscale"] == "log":
+                yscale = settings.setdefault("yscale", "log")
+                if seriestype == "populations" and len(ionlist) > 2 and yscale == "log":
                     settings["legendncols"] = 2
 
                 plans += plot_multi_ion_series(

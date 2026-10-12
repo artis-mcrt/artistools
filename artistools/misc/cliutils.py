@@ -41,12 +41,13 @@ class CommaJoinAction(argparse.Action):
     Without this the last occurrence replaces the first, and the command drops a cell silently.
     """
 
+    @t.override
     def __call__(
         self,
-        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: str | Sequence[t.Any] | None,
-        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+        option_string: str | None = None,
     ) -> None:
         """Put the joined text of every occurrence of this flag in the namespace."""
         previous = getattr(namespace, self.dest, None)
@@ -61,12 +62,13 @@ class CellListAction(argparse.Action):
     "-cell 3 -cell 5-7" gives [3, 5, 6, 7]. Each command then reads a list, whatever text the user gave.
     """
 
+    @t.override
     def __call__(
         self,
-        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: str | Sequence[t.Any] | None,
-        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+        option_string: str | None = None,
     ) -> None:
         """Put the cells of every occurrence of this flag in the namespace."""
         previous = getattr(namespace, self.dest, None)
@@ -188,12 +190,13 @@ class KeepGivenPaths(argparse.Action):
     thus it counts also when it is equal to the default.
     """
 
+    @t.override
     def __call__(
         self,
         parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: "str | Sequence[t.Any] | None",
-        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+        option_string: str | None = None,
     ) -> None:
         """Set the paths of the positional argument, unless the option form already gave some."""
         userwrote = bool(values) and values is not self.default
@@ -217,12 +220,13 @@ class ReplaceGivenPaths(argparse.Action):
     replaced the paths of the positional, and the user got no message.
     """
 
+    @t.override
     def __call__(
         self,
         parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: "str | Sequence[t.Any] | None",
-        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+        option_string: str | None = None,
     ) -> None:
         """Set the paths of the option, and name the paths that it replaces."""
         # the namespace holds the default object itself until KeepGivenPaths stores the paths that the user wrote
@@ -818,12 +822,13 @@ class KeepDefaultColors(argparse.Action):
             for index, colour in enumerate(colours)
         ]
 
+    @t.override
     def __call__(
         self,
-        parser: argparse.ArgumentParser,  # ruff:ignore[unused-method-argument]
+        parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
         values: "str | Sequence[t.Any] | None",
-        option_string: str | None = None,  # ruff:ignore[unused-method-argument]
+        option_string: str | None = None,
     ) -> None:
         """Set the colours, and give each entry SERIES_DEFAULT the default colour of its series."""
         colours: list[t.Any] = [] if values is None else [values] if isinstance(values, str) else list(values)

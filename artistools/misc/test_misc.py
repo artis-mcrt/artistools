@@ -1351,6 +1351,7 @@ def test_reply_of_the_server_cannot_call_a_function(tmp_path: Path) -> None:
     import pickle  # ruff:ignore[suspicious-pickle-import]
 
     class CommandOnClient:
+        @t.override
         def __reduce__(self) -> tuple[t.Any, ...]:
             return (subprocess.call, (["true"],))
 
@@ -1358,6 +1359,7 @@ def test_reply_of_the_server_cannot_call_a_function(tmp_path: Path) -> None:
         remote.load_reply(pickle.dumps((True, CommandOnClient())))
 
     class FileOnClient:
+        @t.override
         def __reduce__(self) -> tuple[t.Any, ...]:
             return (np.memmap, (str(tmp_path / "overwritten"), "float64", "w+", 0, (1,)))
 

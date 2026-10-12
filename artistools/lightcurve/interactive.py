@@ -390,6 +390,40 @@ class RenderedLightCurve(t.NamedTuple):
     residualaxis: "mplax.Axes | None"
 
 
+class LightCurveRuns(t.NamedTuple):
+    """The ARTIS runs of the light curves, and the values of the controls that the runs give.
+
+    The viewer replaces the whole object, thus a worker thread that reads it one time sees the runs of one load.
+    """
+
+    runfolders: list[Path]
+    # the start of the first timestep and the end of the last timestep of all the runs
+    timebounds: tuple[float, float]
+    energyratecolumns: frozenset[str]
+    directionkinds: list[str]
+    # the tokens of the list of light curves that the viewer read the runs from
+    lightcurves: tuple[str, ...]
+
+
+def read_light_curve_runs(lightcurves: "Sequence[str | Path]") -> LightCurveRuns:
+    """Read the times and the columns of deposition.out of the ARTIS runs of the light curves.
+
+    The time controls cover the timesteps of all the runs. A reference light curve has no run.
+    """
+    runfolders = get_artis_run_folders(lightcurves)
+    return LightCurveRuns(
+        runfolders=runfolders,
+        timebounds=(
+            min(float(get_timestep_times(runfolder, loc="start")[0]) for runfolder in runfolders),
+            max(float(get_timestep_times(runfolder, loc="end")[-1]) for runfolder in runfolders),
+        ),
+        energyratecolumns=get_energy_rate_columns(runfolders),
+        # the direction controls read the first run, e.g. for the observers of -plotvspecpol
+        directionkinds=get_direction_kinds(runfolders[0]),
+        lightcurves=tuple(str(path) for path in lightcurves),
+    )
+
+
 class LightCurveViewer:
     """The plot of the viewer and the values of its controls.
 
@@ -418,7 +452,7 @@ class LightCurveViewer:
                 "--interactive takes the time range and the energy rates from an ARTIS run, and no path names a run",
                 "Give the folder of an ARTIS run, e.g. plotlightcurves mymodel --interactive",
             )
-        self.load_runs(args.modelpath)
+        self.runs = read_light_curve_runs(args.modelpath)
 
         self.parser = parser
 
@@ -429,7 +463,9 @@ class LightCurveViewer:
             # -plotviewingangle -2 selects each direction bin, and the window shows a check box for each one
             directionbins = tuple(
                 dirbin
-                for dirbin, _ in get_direction_choices(self.runfolders[0], directionkind, usedegrees=args.usedegrees)
+                for dirbin, _ in get_direction_choices(
+                    self.runs.runfolders[0], directionkind, usedegrees=args.usedegrees
+                )
             )
         self.values = ControlValues(
             timemin="" if args.timemin is None else format(args.timemin, ".10g"),
@@ -472,20 +508,8 @@ class LightCurveViewer:
         self.figsize: tuple[float, float] = (0.0, 0.0)
 
     def load_runs(self, lightcurves: "Sequence[str | Path]") -> None:
-        """Read the times and the columns of deposition.out of the ARTIS runs of the light curves.
-
-        The time controls cover the timesteps of all the runs. A reference light curve has no run.
-        """
-        runfolders = get_artis_run_folders(lightcurves)
-        self.runfolders = runfolders
-        self.timebounds = (
-            min(float(get_timestep_times(runfolder, loc="start")[0]) for runfolder in runfolders),
-            max(float(get_timestep_times(runfolder, loc="end")[-1]) for runfolder in runfolders),
-        )
-        self.energyratecolumns = get_energy_rate_columns(runfolders)
-        # the direction controls read the first run, e.g. for the observers of -plotvspecpol
-        self.directionkinds = get_direction_kinds(runfolders[0])
-        self.runlightcurves = tuple(str(path) for path in lightcurves)
+        """Read the ARTIS runs of the light curves again, e.g. after a change of the list of light curves."""
+        self.runs = read_light_curve_runs(lightcurves)
 
     def get_plot_tokens(self, values: ControlValues | None = None) -> list[str]:
         """Return the plotlightcurves arguments of the values, or of the current values if the caller gives none."""
@@ -582,7 +606,7 @@ class LightCurveViewer:
         columns = get_energy_rate_column_names(dest, particle)
         if not columns:
             return f"-{dest} takes no {particle}, because ARTIS writes no such rate in deposition.out"
-        if missing := [column for column in columns if column not in self.energyratecolumns]:
+        if missing := [column for column in columns if column not in self.runs.energyratecolumns]:
             return f"No run of the plot gives {' or '.join(missing)} in deposition.out"
         return None
 
@@ -681,9 +705,9 @@ def open_window(
     # a command with no path reads the model of the working folder
     modelnames = [
         resolve_modelpath(path).name for path in viewer.values.lightcurves if not path_is_reference_lightcurve(path)
-    ] or [resolve_modelpath(viewer.runfolders[0]).name]
+    ] or [resolve_modelpath(viewer.runs.runfolders[0]).name]
     viewerwindow = start_viewer_window(
-        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.runfolders[0], ", ".join(modelnames))
+        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.runs.runfolders[0], ", ".join(modelnames))
     )
     if isinstance(viewerwindow, str):
         return viewerwindow
@@ -774,7 +798,7 @@ def open_window(
     show_direction, set_direction_run = add_direction_section(
         panellayout,
         helptexts,
-        viewer.runfolders[0],
+        viewer.runs.runfolders[0],
         lambda: (get_direction_choice(viewer.values), False),
         lambda choice: on_direction(choice),  # ruff:ignore[unnecessary-lambda]
         lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
@@ -880,10 +904,10 @@ def open_window(
     def show_run_ranges() -> None:
         """Set the range of the time slider and the direction bins from the runs of the plot, e.g. after Add Model."""
         nonlocal logtrange, shownruns
-        logtrange = (math.log10(max(viewer.timebounds[0], 1e-3)), math.log10(viewer.timebounds[1]))
+        logtrange = (math.log10(max(viewer.runs.timebounds[0], 1e-3)), math.log10(viewer.runs.timebounds[1]))
         # the direction bins come from the new first run
-        set_direction_run(viewer.runfolders[0])
-        shownruns = viewer.runlightcurves
+        set_direction_run(viewer.runs.runfolders[0])
+        shownruns = viewer.runs.lightcurves
 
     def to_position(value: float) -> int:
         low, high = logtrange
@@ -945,9 +969,9 @@ def open_window(
         try:
             values = viewer.values
             # Undo or a rejected change can give a different list of light curves, and its runs have different times
-            if values.lightcurves != viewer.runlightcurves:
+            if values.lightcurves != viewer.runs.lightcurves:
                 viewer.load_runs(values.lightcurves)
-            if viewer.runlightcurves != shownruns:
+            if viewer.runs.lightcurves != shownruns:
                 show_run_ranges()
             show_series_rows(get_lightcurves_key(values), partial(make_lightcurve_rows, values))
             packetbox.setCurrentIndex(1 if values.gamma else 0)
@@ -1011,8 +1035,8 @@ def open_window(
                 )
             )
             set_timerange_positions(
-                to_position(float(values.timemin) if values.timemin else viewer.timebounds[0]),
-                to_position(float(values.timemax) if values.timemax else viewer.timebounds[1]),
+                to_position(float(values.timemin) if values.timemin else viewer.runs.timebounds[0]),
+                to_position(float(values.timemax) if values.timemax else viewer.runs.timebounds[1]),
             )
             set_edit_text(timeminedit, values.timemin)
             set_edit_text(timemaxedit, values.timemax)
@@ -1103,8 +1127,8 @@ def open_window(
         """Set the limit of the handle that moved, and keep the other limit as its text field gives it."""
         limit = float(f"{from_position(position):.3g}")
         values = viewer.values
-        high = float(values.timemax) if values.timemax else viewer.timebounds[1]
-        low = float(values.timemin) if values.timemin else viewer.timebounds[0]
+        high = float(values.timemax) if values.timemax else viewer.runs.timebounds[1]
+        low = float(values.timemin) if values.timemin else viewer.runs.timebounds[0]
         if handle == 0 and limit < high:
             apply(dc.replace(values, timemin=format(limit, ".10g")))
         elif handle == 1 and limit > low:
@@ -1142,7 +1166,7 @@ def open_window(
             otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.lightcurves, lightcurves),
         )
         # a new first run can have no data for a kind of viewing direction, e.g. the observers of the virtual packets
-        if values.directionkind not in viewer.directionkinds:
+        if values.directionkind not in viewer.runs.directionkinds:
             values = dc.replace(values, directionkind="", directionbins=())
         apply(values)
 
@@ -1217,7 +1241,7 @@ def open_window(
             show_run_ranges()
             queue.redraw()
 
-        reload_runs(queue, viewer.runfolders, show_reloaded_runs, show_error)
+        reload_runs(queue, viewer.runs.runfolders, show_reloaded_runs, show_error)
 
     command = ViewerCommand(
         name="plotlightcurves",
