@@ -50,7 +50,7 @@ def get_massfraction_lines(
     if totaldens <= 0.0:
         msg = (
             f"The estimators of cell {modelgridindex} at timestep {timestep} give no element number density"
-            " (nnelement_*). A run of the classic ARTIS code, or a model with no estimator files, has none"
+            " (nnelement_*). A model of the classic ARTIS code, or a model with no estimator files, has none"
         )
         raise ValueError(msg)
 

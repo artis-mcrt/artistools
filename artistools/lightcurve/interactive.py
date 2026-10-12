@@ -274,9 +274,9 @@ REFUSABLE_OPTIONS: t.Final[
 
 
 def get_energy_rate_columns(modelfolders: "Sequence[Path]") -> frozenset[str]:
-    """Return each column of deposition.out that at least one run of the plot gives.
+    """Return each column of deposition.out that at least one model of the plot gives.
 
-    A run with no deposition.out, or with a deposition.out that does not match its timesteps, gives no column.
+    A model with no deposition.out, or with a deposition.out that does not match its timesteps, gives no column.
     plotlightcurves then stops only when the user selects an energy rate.
     """
     columns: set[str] = set()
@@ -391,24 +391,24 @@ class RenderedLightCurve(t.NamedTuple):
 
 
 class LoadedModels(t.NamedTuple):
-    """The ARTIS runs of the light curves, and the values of the controls that the runs give.
+    """The ARTIS models of the light curves, and the values of the controls that the models give.
 
-    The viewer replaces the whole object, thus a worker thread that reads it one time sees the runs of one load.
+    The viewer replaces the whole object, thus a worker thread that reads it one time sees the models of one load.
     """
 
     modelfolders: tuple[Path, ...]
-    # the start of the first timestep and the end of the last timestep of all the runs
+    # the start of the first timestep and the end of the last timestep of all the models
     timebounds: tuple[float, float]
     energyratecolumns: frozenset[str]
     directionkinds: tuple[str, ...]
-    # the tokens of the list of light curves that the viewer read the runs from
+    # the tokens of the list of light curves that the viewer read the models from
     lightcurves: tuple[str, ...]
 
 
 def read_loaded_models(lightcurves: "Sequence[str | Path]") -> LoadedModels:
-    """Read the times and the columns of deposition.out of the ARTIS runs of the light curves.
+    """Read the times and the columns of deposition.out of the ARTIS models of the light curves.
 
-    The time controls cover the timesteps of all the runs. A reference light curve has no run.
+    The time controls cover the timesteps of all the models. A reference light curve has no model.
     """
     modelfolders = get_artis_model_folders(lightcurves)
     return LoadedModels(
@@ -418,7 +418,7 @@ def read_loaded_models(lightcurves: "Sequence[str | Path]") -> LoadedModels:
             max(float(get_timestep_times(modelfolder, loc="end")[-1]) for modelfolder in modelfolders),
         ),
         energyratecolumns=get_energy_rate_columns(modelfolders),
-        # the direction controls read the first run, e.g. for the observers of -plotvspecpol
+        # the direction controls read the first model, e.g. for the observers of -plotvspecpol
         directionkinds=tuple(get_direction_kinds(modelfolders[0])),
         lightcurves=tuple(str(path) for path in lightcurves),
     )
@@ -449,8 +449,9 @@ class LightCurveViewer:
 
         if not get_artis_model_folders(args.modelpath):
             exit_with_error(
-                "--interactive takes the time range and the energy rates from an ARTIS run, and no path names a run",
-                "Give the folder of an ARTIS run, e.g. plotlightcurves mymodel --interactive",
+                "--interactive takes the time range and the energy rates from an ARTIS model, and no path names a"
+                " model",
+                "Give a model folder, e.g. plotlightcurves mymodel --interactive",
             )
         self.models = read_loaded_models(args.modelpath)
 
@@ -508,7 +509,7 @@ class LightCurveViewer:
         self.figsize: tuple[float, float] = (0.0, 0.0)
 
     def load_models(self, lightcurves: "Sequence[str | Path]") -> None:
-        """Read the ARTIS runs of the light curves again, e.g. after a change of the list of light curves."""
+        """Read the ARTIS models of the light curves again, e.g. after a change of the list of light curves."""
         self.models = read_loaded_models(lightcurves)
 
     def get_plot_tokens(self, values: ControlValues | None = None) -> list[str]:
@@ -602,12 +603,12 @@ class LightCurveViewer:
         return self.drop_refused_options(newvalues)
 
     def get_energy_rate_reason(self, dest: str, particle: str) -> str | None:
-        """Return why no run of the plot gives an energy rate of a particle, or None if a run gives it."""
+        """Return why no model of the plot gives an energy rate of a particle, or None if a model gives it."""
         columns = get_energy_rate_column_names(dest, particle)
         if not columns:
             return f"-{dest} takes no {particle}, because ARTIS writes no such rate in deposition.out"
         if missing := [column for column in columns if column not in self.models.energyratecolumns]:
-            return f"No run of the plot gives {' or '.join(missing)} in deposition.out"
+            return f"No model of the plot gives {' or '.join(missing)} in deposition.out"
         return None
 
     def draw(self, *, quiet: bool = True) -> str | None:
@@ -819,7 +820,7 @@ def open_window(
         "deposition": ("Deposition", "The deposition rate: the energy that the particles give to the ejecta"),
         "emission": (
             "Monte Carlo",
-            "The Monte Carlo emission rate, which ARTIS counts at the decays of the pellets in the run",
+            "The Monte Carlo emission rate, which ARTIS counts at the decays of the pellets in the model",
         ),
         "analyticemission": (
             "Analytical",
@@ -901,15 +902,15 @@ def open_window(
         yscalebox,
     ]
 
-    # the time slider acts on log10(t) over the times of the runs
+    # the time slider acts on log10(t) over the times of the models
     logtrange = (0.0, 1.0)
     shownmodels: tuple[str, ...] | None = None
 
     def show_model_ranges() -> None:
-        """Set the range of the time slider and the direction bins from the runs of the plot, e.g. after Add Model."""
+        """Set the range of the time slider and the direction bins from the models of the plot, e.g. after Add Model."""
         nonlocal logtrange, shownmodels
         logtrange = (math.log10(max(viewer.models.timebounds[0], 1e-3)), math.log10(viewer.models.timebounds[1]))
-        # the direction bins come from the new first run
+        # the direction bins come from the new first model
         set_direction_model(viewer.models.modelfolders[0])
         shownmodels = viewer.models.lightcurves
 
@@ -972,7 +973,7 @@ def open_window(
         # an error in a widget value, e.g. a bad colour of the option table, must not leave the signals blocked
         try:
             values = viewer.values
-            # Undo or a rejected change can give a different list of light curves, and its runs have different times
+            # Undo or a rejected change can give a different list of light curves, and its models have different times
             if values.lightcurves != viewer.models.lightcurves:
                 viewer.load_models(values.lightcurves)
             if viewer.models.lightcurves != shownmodels:
@@ -985,7 +986,7 @@ def open_window(
             datasourcebox.setToolTip(
                 "-topnucs reads the packets files"
                 if values.topnucs
-                else "The files of the light curves of the ARTIS runs"
+                else "The files of the light curves of the ARTIS models"
             )
             topnucsbox.setValue(values.topnucs)
             # the command refuses an option together with a different option, thus ask it about each option
@@ -1021,7 +1022,8 @@ def open_window(
                     unavailable.append(f"• {PARTICLETEXTS[particle]} {ENERGYRATENAMES[dest]}: {reason}")
             set_note_text(
                 unavailablenote,
-                f"The runs give no data for the {len(unavailable)} grey {'box' if len(unavailable) == 1 else 'boxes'}."
+                f"The models give no data for the {len(unavailable)} grey"
+                f" {'box' if len(unavailable) == 1 else 'boxes'}."
                 if unavailable
                 else "",
                 "\n".join(unavailable),
@@ -1161,7 +1163,7 @@ def open_window(
         apply(viewer.set_direction(viewer.values, choice))
 
     def apply_lightcurves(lightcurves: "Sequence[str]") -> None:
-        """Read the runs of a new list of light curves, and apply the list."""
+        """Read the models of a new list of light curves, and apply the list."""
         viewer.load_models(lightcurves)
         # each series style option, e.g. -label, stays on its light curve
         values = dc.replace(
@@ -1169,7 +1171,7 @@ def open_window(
             lightcurves=tuple(lightcurves),
             otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.lightcurves, lightcurves),
         )
-        # a new first run can have no data for a kind of viewing direction, e.g. the observers of the virtual packets
+        # a new first model can have no data for a kind of viewing direction, e.g. the observers of the virtual packets
         if values.directionkind not in viewer.models.directionkinds:
             values = dc.replace(values, directionkind="", directionbins=())
         apply(values)
@@ -1238,7 +1240,7 @@ def open_window(
     )
 
     def on_reload() -> None:
-        """Read the runs again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
+        """Read the models again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
 
         def show_reloaded_models() -> None:
             viewer.load_models(viewer.values.lightcurves)

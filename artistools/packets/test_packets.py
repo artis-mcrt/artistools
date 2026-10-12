@@ -682,7 +682,7 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
     assert heatmap[0, 25] > 0.0
 
 
-def test_get_packets_stops_for_a_run_with_no_escaped_gamma_packets(tmp_path: Path) -> None:
+def test_get_packets_stops_for_a_model_with_no_escaped_gamma_packets(tmp_path: Path) -> None:
     """ARTIS removes the escaped gamma packets unless KEEP_ESCAPED_GAMMAS is true, which is not the default.
 
     The empty frame gave a gamma-ray light curve and a gamma-ray spectrum of zero with no message.

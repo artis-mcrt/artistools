@@ -115,11 +115,11 @@ def add_direction_section(
     The first item of the list is all the directions, and the check boxes of the bins follow it. get_choice gives the
     choice of the values of the window, and whether the plot draws one bin, e.g. an emission plot. Such a plot has a
     radio button for each bin, and a click on a bin replaces the bin. on_change receives each new choice. A new kind
-    keeps each bin that the kind also has. has_direction_data tells whether a run gives the plot of a bin of a kind,
+    keeps each bin that the kind also has. has_direction_data tells whether a model gives the plot of a bin of a kind,
     "bin" or "vpkt", with the data source of the values. The window disables each bin that has no data.
 
     Return the function that shows the choice of get_choice, and the function that reads the kinds of direction and
-    the labels of the bins of a new first run.
+    the labels of the bins of a new first model.
     """
     from PySide6 import QtCore
     from PySide6 import QtWidgets
@@ -138,7 +138,7 @@ def add_direction_section(
         "theta": QtWidgets.QCheckBox("--average_over_theta_angle"),
     }
     add_row(directiongrid, 1, [*averagechecks.values(), usedegreescheck])
-    # the list of a run can hold 100 bins, thus a button opens it as a drop-down list, and the button gives the choice
+    # the list of a model can hold 100 bins, thus a button opens it as a drop-down list, and the button gives the choice
     binbutton = QtWidgets.QPushButton()
     binbutton.setToolTip(
         "The directions of the plot: all the directions, the direction bins, or the observers of the virtual packets."
@@ -155,19 +155,19 @@ def add_direction_section(
     binbutton.setMenu(binmenu)
     directiongrid.addWidget(binbutton, 2, 0, 1, -1)
     binchecks: dict[int, QtWidgets.QAbstractButton] = {}
-    # the labels of the bins come from the files of the run, thus the section reads them one time for each kind
+    # the labels of the bins come from the files of the model, thus the section reads them one time for each kind
     binlabels: dict[tuple[str, bool], list[tuple[int, str]]] = {}
     shownlist: tuple[str, bool, bool] | None = None
-    run: list[Path | str] = [modelfolder]
+    currentmodelfolder: list[Path | str] = [modelfolder]
 
     def get_bins(kind: str, usedegrees: bool) -> list[tuple[int, str]]:
         if (kind, usedegrees) not in binlabels:
-            binlabels[kind, usedegrees] = get_direction_bins(run[0], kind, usedegrees=usedegrees)
+            binlabels[kind, usedegrees] = get_direction_bins(currentmodelfolder[0], kind, usedegrees=usedegrees)
         return binlabels[kind, usedegrees]
 
     def set_model(newmodelfolder: Path | str) -> None:
         nonlocal shownlist
-        run[0], shownlist = newmodelfolder, None
+        currentmodelfolder[0], shownlist = newmodelfolder, None
         binlabels.clear()
         kinds = get_direction_kinds(Path(newmodelfolder))
         with QtCore.QSignalBlocker(kindbox):
@@ -178,7 +178,7 @@ def add_direction_section(
                     kindbox.setItemData(
                         kindbox.count() - 1, f"{helptexts.get(dest, '')} (-{dest})", QtCore.Qt.ItemDataRole.ToolTipRole
                     )
-        # a run with no virtual packets has one kind, thus the box gives no choice
+        # a model with no virtual packets has one kind, thus the box gives no choice
         kindbox.setVisible(kindbox.count() > 1)
 
     def get_shown_kind() -> str:
@@ -229,15 +229,15 @@ def add_direction_section(
             usedegreescheck.setChecked(choice.usedegrees)
         listkind = get_shown_kind()
         usedegreescheck.setEnabled(bool(choice.kind))
-        # the data of the bins can change with the data source, e.g. a run with only the packets files
-        hasbins = has_direction_data(run[0], "bin")
-        haslistbins = hasbins if listkind in BIN_KINDS else has_direction_data(run[0], listkind)
+        # the data of the bins can change with the data source, e.g. a model with only the packets files
+        hasbins = has_direction_data(currentmodelfolder[0], "bin")
+        haslistbins = hasbins if listkind in BIN_KINDS else has_direction_data(currentmodelfolder[0], listkind)
         for averagekind, check in averagechecks.items():
             check.setEnabled(hasbins)
             check.setToolTip(
                 helptexts.get(f"average_over_{averagekind}_angle", "")
                 if hasbins
-                else "The run and the data source give no plot of a direction bin, thus no average over an angle"
+                else "The model and the data source give no plot of a direction bin, thus no average over an angle"
             )
         isnewlist = show_bins(listkind, choice.usedegrees, onebin)
         checkedbins = choice.bins if choice.kind else (ALL_DIRECTIONS_BIN,)
@@ -248,7 +248,7 @@ def add_direction_section(
             check.setToolTip(
                 get_bin_tooltip(listkind, dirbin)
                 if dirbin == ALL_DIRECTIONS_BIN or haslistbins
-                else "The run and the data source give no plot of this direction, e.g. no *_res.out file"
+                else "The model and the data source give no plot of this direction, e.g. no *_res.out file"
             )
         labels = dict(get_bins(listkind, choice.usedegrees))
         summary = get_direction_summary(choice, labels)

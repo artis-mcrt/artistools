@@ -1096,7 +1096,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelpath, timestep_range_str=args.timestep, timedays_range_str=args.timedays
         )
     elif args.x == "velocity":
-        # each time gives one series for each level, thus every timestep of a run gave a plot that nobody can read
+        # each time gives one series for each level, thus every timestep of a model gave a plot that nobody can read
         exit_with_error(
             "-x velocity needs a time",
             "Give a time with -timedays, e.g. -timedays 300, or a panel for each time with -timedayslist",

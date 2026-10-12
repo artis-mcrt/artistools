@@ -153,7 +153,7 @@ subcommandtree: CommandTree = {
         "estimators.deposition",
         helptext="Give the deposition rate per unit volume, per ion, and per unit mass.",
         note=(
-            "The deposition_ estimators of each cell give the rate, thus the command needs a run of a"
+            "The deposition_ estimators of each cell give the rate, thus the command needs the output of a"
             " recent ARTIS version. Every column covers the cells that hold matter."
         ),
     ),
@@ -224,7 +224,7 @@ subcommandtree: CommandTree = {
     },
     "makevpktinput": CommandSpec(
         "make_vpkt_input",
-        helptext="Write a vpkt.txt for a run.",
+        helptext="Write a vpkt.txt for a model.",
         note="The file holds the configuration of the virtual packets.",
     ),
     "plotdensity": CommandSpec(
@@ -264,7 +264,7 @@ subcommandtree: CommandTree = {
     "plotlogfiles": CommandSpec(
         "plotlogfiles",
         helptext="Plot the time that each rank took.",
-        note="The times come from the log files of a run.",
+        note="The times come from the log files of each run of a model.",
     ),
     "plotnltepops": CommandSpec(
         "nltepops.plotnltepops",
@@ -319,7 +319,7 @@ subcommandtree: CommandTree = {
     "spencerfano": CommandSpec(
         "nonthermal.spencerfano",
         helptext="Solve the Spencer-Fano equation for a cell.",
-        note="The data comes from one cell of an ARTIS run at one timestep.",
+        note="The data comes from one cell of an ARTIS model at one timestep.",
     ),
     "timesteps": CommandSpec(
         "timesteps",

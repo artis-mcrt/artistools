@@ -236,8 +236,8 @@ def get_from_packets(
         nprocs_read, dfpackets = get_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        # the comoving frame needs the velocity of the model surface. A copy of a run can leave out a large model.txt,
-        # and the rest frame light curve needs no model.txt
+        # the comoving frame needs the velocity of the model surface. A copy of a model folder can leave out a large
+        # model.txt, and the rest frame light curve needs no model.txt
         try:
             escapesurfacegamma = get_escape_surface_gamma(modelpath)
         except FileNotFoundError:
@@ -389,7 +389,7 @@ def generate_band_lightcurve_data(
         average_over_theta_angle=False,
     )
     # get_spectrum_at_time reads the angle average of bin -1 from spec.out, thus its times come from there too.
-    # A vpkt run can have no specpol.out
+    # A model with virtual packets can have no specpol.out
     isvpktobserver = bool(args.plotvspecpol) and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file()
     if isvpktobserver:
         print("Found vpkt.txt, using virtual packets")

@@ -31,7 +31,7 @@ def make_remotepath_pattern(*, windows: bool) -> re.Pattern[str]:
     r"""Return the pattern of a remote path, with the rule of rsync.
 
     A colon before the first slash makes a remote path, e.g. "vae26:~/mymodel" and "user@vae26:/lustre/mymodel". A
-    local path with such a colon starts with "./", e.g. "./run:2". An IPv6 address is in brackets, e.g.
+    local path with such a colon starts with "./", e.g. "./model:2". An IPv6 address is in brackets, e.g.
     "user@[2001:db8::1]:/lustre/mymodel". On Windows, a host of one letter in front of a path separator is a drive,
     e.g. "C:\Users\me\mymodel". On a different system, it is an ssh host alias, e.g. "a:/lustre/mymodel".
 
@@ -162,7 +162,7 @@ def is_remote_path(path: Path | str) -> bool:
 def model_path_from_text(text: str) -> Path:
     """Return the Path of a model path that a user writes.
 
-    Path removes the "./" at the start of "./run:2", and the colon of the result then makes a remote path. Thus a
+    Path removes the "./" at the start of "./model:2", and the colon of the result then makes a remote path. Thus a
     local path with a colon before its first slash becomes absolute. argparse uses this function as the type of a
     model path.
     """

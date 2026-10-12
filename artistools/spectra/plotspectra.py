@@ -173,7 +173,7 @@ def path_is_reference_spectrum(filepath: str | Path) -> bool:
     This mirrors path_is_reference_lightcurve, so that the two commands classify a path the same way.
 
     A name that ends in .out belongs to ARTIS, e.g. spec.out. A user can give reference data such a
-    name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files.
+    name as well, thus the folder decides: an ARTIS model folder holds input.txt beside its output files.
     """
     return path_is_reference_data(filepath, "data/refspectra")
 
@@ -197,10 +197,10 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
         if problem_messages and not allow_invalid:
             lastend_days = get_timestep_times(modelpath, loc="end")[timesteplast]
             if timemin > lastend_days:
-                # the run wrote no spectrum after its last timestep, thus --plotinvalidpart cannot give a plot
+                # ARTIS wrote no spectrum after the last timestep of the model, thus --plotinvalidpart gives no plot
                 problem_messages.append(
-                    f"The run computed the timesteps up to {timesteplast}, which ends at {lastend_days:.2f} days,"
-                    " thus it holds no spectrum of this time"
+                    f"ARTIS calculated the timesteps up to {timesteplast}, which ends at"
+                    f" {lastend_days:.2f} days. Thus the model has no spectrum at this time"
                 )
             else:
                 problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")
@@ -574,11 +574,11 @@ def get_spatial_scale_deltalogx(
             ),
         ),
     }
-    velocity, run, _ = choices[scale]
+    velocity, scalemodelfolder, _ = choices[scale]
     otherscale = "largest" if scale == "smallest" else "smallest"
     note = (
         f"-deltalogx {scale}scale = Δv/c = {velocity / C_cm_per_s:.3g}, where Δv = {velocity / km_to_cm:.0f} km/s is"
-        f" the {scale} spatial scale in {get_model_name(run)}. The resolving power is λ/Δλ = c/Δv ="
+        f" the {scale} spatial scale in {get_model_name(scalemodelfolder)}. The resolving power is λ/Δλ = c/Δv ="
         f" {C_cm_per_s / velocity:.0f}. -deltalogx {otherscale}scale gives {choices[otherscale][0] / C_cm_per_s:.3g}"
     )
     method = [
@@ -951,7 +951,7 @@ def plot_artis_spectrum(
                 average_over_theta=average_over_theta,
                 fluxfilterfunc=filterfunc,
                 gamma=args.gamma,
-                # bin -1 stays, because the plot shows it in place of a bin that the run does not have
+                # bin -1 stays, because the plot shows it in place of a bin that the model does not have
                 directionbins=[-1, *directionbins],
             )
 
@@ -1242,7 +1242,7 @@ def make_spectrum_plot(
 
     if nseriesplotted == 0:
         exit_with_error(
-            "no spectra were plotted. Check that each given path holds an ARTIS run or a reference spectrum"
+            "no spectra were plotted. Check that each given path holds an ARTIS model or a reference spectrum"
         )
 
     for axis in axes:
@@ -2421,7 +2421,7 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
 
 @lru_cache(maxsize=64)
 def has_gamma_spec_file(modelfolder: Path) -> bool:
-    """Return True if the run has gamma_spec.out.
+    """Return True if the model folder has gamma_spec.out.
 
     The spectrum viewer resolves the arguments at each change, and the search of the subfolders is slow on a network
     drive. Thus a file that exspec writes later stays unknown until Reload Data clears the cache, and until then the
@@ -2432,11 +2432,11 @@ def has_gamma_spec_file(modelfolder: Path) -> bool:
 
 @modelpath_cache(maxsize=64)
 def get_no_sampled_emission_reason(modelfolder: Path) -> str | None:
-    """Return why the packets of the run hold no sampled emission, or None if they hold it.
+    """Return why the packets of the model hold no sampled emission, or None if they hold it.
 
-    A run with no packets also gives None, and the packets reader gives its error later. The spectrum viewer resolves
-    the arguments at each change. Thus the cache keeps the result until Reload Data clears it, also after a new run of
-    ARTIS in the folder.
+    A model folder with no packets also gives None, and the packets reader gives its error later. The spectrum viewer
+    resolves the arguments at each change. Thus the cache keeps the result until Reload Data clears it, also after a
+    new run of ARTIS in the folder.
     """
     columnnames = get_packets_column_names(modelfolder)
     return None if columnnames is None else get_no_sampled_emission_message(modelfolder, columnnames)
@@ -2515,7 +2515,7 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
     if not args.modelspecpaths:
         exit_with_error(
             "an emission plot draws the contributions of one ARTIS model, and no path names such a model",
-            "Give the folder of an ARTIS run",
+            "Give a model folder",
         )
 
     if len(args.modelspecpaths) > 1:
@@ -2573,7 +2573,7 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
             "Give -groupby element, ion, or line, or remove --use_sampledemissiontype",
         )
 
-    # most runs have no sampled emission, thus the command stops before it reads the packets
+    # most models have no sampled emission, thus the command stops before it reads the packets
     if args.use_sampledemissiontype:
         for modelfolder in get_artis_model_folders(args.modelspecpaths):
             if (reason := get_no_sampled_emission_reason(modelfolder)) is not None:
@@ -2787,7 +2787,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         )
 
     # one time axis serves every model, thus the range resolves one time and before any plot runs. A path
-    # that is not a run gives no timesteps, and the plot loop skips it with a warning
+    # that is not an ARTIS model gives no timesteps, and the plot loop skips it with a warning
     clamp_to_timesteps = not args.notimeclamp
     # the emission plot and the default shells read the first model, thus every reader takes the same list
     args.modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
@@ -2797,7 +2797,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     if args.timestep is not None and args.timedays is None and not artispaths and not codecomparisonpaths:
         # a reference spectrum has no timesteps. The command plotted it before the range resolution moved to main
         print_warning(
-            "-timestep names a timestep of a model, and no path is an ARTIS run or a code comparison model,"
+            "-timestep names a timestep of a model, and no path is an ARTIS model or a code comparison model,"
             " thus it has no effect"
         )
     else:

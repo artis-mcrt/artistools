@@ -50,7 +50,7 @@ Run "artistools" (or the short alias "at") at the command-line to get a full lis
 - artistools plotnltepops
 - artistools inputmodel describe
 
-Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Run a command in an ARTIS run folder, or give the path of the folder. A command that reads a model takes the folder with `-modelpath`, e.g. `artistools timesteps -modelpath mymodel`. Most of these commands also take the folder as the last positional argument, e.g. `artistools plotspectra -t 300 mymodel`.
+Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Run a command in a model folder, or give the path of the model folder. A command that reads a model takes the model path with `-modelpath`, e.g. `artistools timesteps -modelpath mymodel`. Most of these commands also take the model path as the last positional argument, e.g. `artistools plotspectra -t 300 mymodel`.
 
 ### A model on a different host
 
@@ -65,7 +65,7 @@ These commands accept a model path of the form `host:path`, where `host` is a na
 artistools plotspectra -t 300 vae26:~/scratch/mymodel
 ```
 
-The rule of rsync decides whether a path is remote: a colon before the first slash makes a remote path. A local folder with such a colon in its name needs "./" at the start, e.g. `./run:2`.
+The rule of rsync decides whether a path is remote: a colon before the first slash makes a remote path. A local folder with such a colon in its name needs "./" at the start, e.g. `./model:2`.
 
 artistools starts the server on that host through ssh, and it prints the command and the reason for it. A release of artistools starts `uvx artistools@<version> server`, with the versions of the local artistools and polars. Thus the host needs only [uv](https://docs.astral.sh/uv/). A clone whose package code differs from the release starts its git commit with uvx, if the commit is on a remote branch. The host then also needs git and Rust. For a commit that is only in the clone, the release starts, because the host cannot get the commit. The command sets `POLARS_MAX_THREADS=16`, because a login node can have hundreds of cores, and other users share them. The server reads the files and makes the data of each plot, e.g. it puts the packets into bins. Only the data to draw comes back, and the parquet caches stay beside the data on the host. A script sends the filter and the columns of each query to the host, and only the rows of the query come back.
 

@@ -140,7 +140,7 @@ def strnuc_to_latex(strnuc: str) -> str:
 
 
 def get_mean_stable_masses_amu(modelpath: str | Path) -> dict[int, float] | None:
-    """Return the mean stable nucleus mass of each element of the run, or None if the run has no compositiondata.txt.
+    """Return the mean stable nucleus mass of each element, or None if the model has no compositiondata.txt.
 
     Only compositiondata.txt gives the masses. The composition in output_0-0.txt gives no masses.
     """
@@ -176,7 +176,7 @@ def get_artis_abund_sequences(
         estimatorcolumns = estimators_lazy.collect_schema().names()
         # ARTIS gives the number density of the stable isotopes that it does not follow as <El>_otherstable. Such a
         # nucleus has the mean stable mass of the element in compositiondata.txt (decay.cc). Only such a column
-        # needs the file, thus a run with no compositiondata.txt still gives every other curve
+        # needs the file, thus a model with no compositiondata.txt still gives every other curve
         meannucmass_amu_of_z = (
             get_mean_stable_masses_amu(modelpath)
             if any(col.endswith("_otherstable") for col in estimatorcolumns)
@@ -293,7 +293,7 @@ def plot_qdot(
         depdata = df_filter_minmax_bracketed(get_deposition(modelpath=modelpath), "tmid_days", None, xmax).collect()
 
     except (FileNotFoundError, ValueError) as exc:
-        # a mismatched deposition.out belongs to a different run, thus the plot of the heating rate stops as for no file
+        # a mismatched deposition.out belongs to a different model, thus the heating rate gives no plot, as with no file
         print(f"Can't do qdot plot: {exc}")
         return
 
@@ -321,7 +321,7 @@ def plot_qdot(
     axis.set_yscale("log")
     axis.set_ylabel(r"$\dot{Q}$ [erg/s/g]")
 
-    # ARTIS writes the fission column only when the run held spontaneous fission
+    # ARTIS writes the fission column only when the model has spontaneous fission
     qdotseries = (
         ("hbeta", "Qdot_betaminus_ana_erg/s/g", "solid", r"$\dot{Q}_\beta$"),
         ("halpha", "Qdotalpha_ana_erg/s/g", "dashed", r"$\dot{Q}_\alpha$"),

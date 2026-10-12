@@ -100,7 +100,7 @@ def clear_estimator_caches() -> None:
 def clear_output_caches() -> None:
     """Clear each cache of the files that ARTIS writes while it runs, e.g. spec.out, in this process.
 
-    The files of the input of a run stay the same, e.g. input.txt and model.txt, thus their caches stay.
+    The files of the input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay.
     """
     from artistools.misc.modelinfo import get_nu_grid_cached
     from artistools.misc.timesteps import get_deposition_cached
@@ -139,9 +139,10 @@ def clear_output_caches() -> None:
 
 @on_model_host
 def clear_output_caches_of_model(modelfolder: Path, estimatorsonly: bool) -> None:
-    """Clear the caches of the output files on the host of a run. A local run clears the caches of this process.
+    """Clear the caches of the output files on the host of a model.
 
-    With estimatorsonly, the function clears only the caches of the estimators and the NLTE populations.
+    For a local model, the function clears the caches of this process. With estimatorsonly, the function clears only
+    the caches of the estimators and the NLTE populations.
     """
     del modelfolder
     if estimatorsonly:
@@ -159,11 +160,12 @@ def reload_models(
     estimatorsonly: bool = False,
     read_models: "Callable[[], None] | None" = None,
 ) -> None:
-    """Clear the caches of the runs in the worker thread, e.g. while ARTIS writes more timesteps, then call on_reloaded.
+    """Clear the caches of the models in the worker thread, then call on_reloaded.
 
-    The caches of this process and of the host of a remote run hold old data, thus the function clears both. The
-    reload waits for the plot in progress, and a new plot waits for the reload. read_models reads the runs again in the
-    worker thread, because a conversion of new text files can take minutes. on_reloaded runs in the window thread.
+    The user reloads the models e.g. while ARTIS writes more timesteps. The caches of this process and of the host of
+    a remote model hold old data, thus the function clears both. The reload waits for the plot in progress, and a new
+    plot waits for the reload. read_models reads the models again in the worker thread, because a conversion of new
+    text files can take minutes. on_reloaded runs in the window thread.
     """
 
     def read() -> None:
@@ -178,12 +180,12 @@ def reload_models(
 
     def on_done(message: str | None) -> None:
         if message is not None:
-            show_error(f"The viewer cannot reload the runs: {message}")
+            show_error(f"The viewer cannot reload the models: {message}")
             return
         on_reloaded()
 
     if not queue.run_task(lambda: run_command_step(read, quiet=False), "Reload in progress...", on_done):
-        show_error("A different task is in progress. Reload the runs after it")
+        show_error("A different task is in progress. Reload the models after it")
 
 
 class ViewerWindow(t.NamedTuple):
@@ -293,7 +295,7 @@ def finish_viewer_window[ValuesT: PlotValues](
     """Connect the parts that each window of a viewer has, then show the window.
 
     get_session_tokens gives the command that opens the window again at the next start. on_closed runs when the window
-    closes, e.g. to clear the caches of a run.
+    closes, e.g. to clear the caches of a model.
     """
     window, canvas, plotarea = viewerwindow.window, viewerwindow.canvas, viewerwindow.plotarea
 
@@ -595,7 +597,7 @@ class DrawQueue[ValuesT]:
         self.redraw()
 
     def redraw(self) -> None:
-        """Show the values of the viewer, and draw them when Qt has no other events, e.g. after new data of the run."""
+        """Show the values of the viewer, and draw them when Qt has no other events, e.g. after new model data."""
         from PySide6 import QtCore
 
         if self.requestedvalues is None:

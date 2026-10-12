@@ -158,7 +158,7 @@ def test_nltepops_versus_velocity(mockplot: mock.MagicMock, tmp_path: Path) -> N
 
 
 def test_nltepops_versus_velocity_needs_a_time(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """With no time, a plot against velocity drew one series for each level at every timestep of the run."""
+    """With no time, a plot against velocity drew one series for each level at every timestep of the model."""
     with pytest.raises(SystemExit):
         at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, x="velocity", ion_stages=2, levels=[0])
 
@@ -389,7 +389,7 @@ def test_plotnltepops_reads_the_folder_after_the_elements(tmp_path: Path) -> Non
 def test_read_nltepops_keeps_the_last_read() -> None:
     """A figure of several subplots and a window read the same populations many times, thus the last read stays.
 
-    Each read parsed the text files again. The read of a large run takes minutes.
+    Each read parsed the text files again. The read of a large model takes minutes.
     """
     from artistools.nltepops.core import read_nltepops_cached
 

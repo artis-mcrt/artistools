@@ -144,6 +144,25 @@ A test on a small model can pass with an incorrect unit or physical factor. Thus
 - Import each constant and conversion factor from `artistools/constants.py`. Do not write the number as a literal.
 - Log each physical assumption that a command applies, and its source.
 
+## Model paths, model folders, and run folders
+
+Use each of these terms with one meaning only:
+
+- A **model** is one ARTIS simulation: its input and all of its output.
+- A **run** is one job of ARTIS. A model can have more than one run, e.g. after a restart.
+- A **model path** is the path that a user gives. It names a model folder, a file in a model folder (e.g.
+  `light_curve.out`), or a remote model as `host:path`. `get_model_folder` returns the model folder of a model path.
+- A **model folder** holds the input of one model, e.g. `input.txt`, and its output, e.g. `light_curve.out`.
+  `folder_is_artis_model` tests for `input.txt`, and `get_artis_model_folders` returns the model folder of each model
+  path.
+- A **run folder** is a folder where one run writes its rank files. A run on a cluster writes them into a subfolder of
+  the model folder, e.g. `12411848.slurm/estimators_0000.out`. A local run writes them into the model folder, which is
+  then also a run folder. `get_runfolders` and `get_run_subfolders` in `artistools/misc/modelinfo.py` return the run
+  folders.
+
+Do not call a model or a model folder a run. For example, give a variable that holds a model folder the name
+`modelfolder`, and not `runfolder`.
+
 ## Command-line entry points
 
 A module that supplies a subcommand has this structure:
@@ -169,12 +188,12 @@ A `main` function can already contain the data code, the physics code, and the p
 Use the shared functions to build a parser and to find a path. Import them from `artistools.misc`, e.g. `from artistools.misc import addarg_modelpath`. Do not write this code again:
 
 - `addarg_modelpath(parser)` adds a `-modelpath` argument or a positional model path.
-- `addarg_positional_items(parser, ...)` adds the positional arguments of a command that names its items on the command line, e.g. the estimator variables of `plotestimators`. `resolve_positional_modelpath(args, dest)` then removes the ARTIS folder from the end. Such a command adds `-modelpath` with the default of `addarg_modelpath`, which is `None`. A value that is not `None` then shows that the user gave `-modelpath`.
+- `addarg_positional_items(parser, ...)` adds the positional arguments of a command that names its items on the command line, e.g. the estimator variables of `plotestimators`. `resolve_positional_modelpath(args, dest)` then removes the model path from the end. Such a command adds `-modelpath` with the default of `addarg_modelpath`, which is `None`. A value that is not `None` then shows that the user gave `-modelpath`.
 - `normalize_path_list(args.modelpath)` applies the default and returns a `list[Path]`. Do not write `if not args.modelpath: args.modelpath = Path()`.
 - `at.get_timestep_times(modelpath, loc="mid")` gives the mid-point times. Do not calculate the mean of the `start` array and the `end` array.
 - `at.plottools.set_axis_properties` and `at.plottools.set_axis_labels` set the usual axis and tick properties. You can use `artistools/plottools.py` only as `at.plottools.*`, because the top level re-exports none of its names. Read that module before you write new plot code.
 
-A command that takes only paths as positional arguments reads them first, e.g. `artistools plotlightcurves mymodel`. A command that also names its items reads the ARTIS folder as the **last** positional argument, e.g. `artistools plotestimators Te TR mymodel`. Only the last argument can name a folder. A folder in an earlier place gives an error. Keep this order for each new command.
+A command that takes only paths as positional arguments reads them first, e.g. `artistools plotlightcurves mymodel`. A command that also names its items reads the model path as the **last** positional argument, e.g. `artistools plotestimators Te TR mymodel`. Only the last argument can name a folder. A folder in an earlier place gives an error. Keep this order for each new command.
 
 Use the conventions of common Linux tools for CLI behaviour. A user then knows the behaviour already. For example, a command
 that writes a file that exists asks `(y/n)` before the work starts, as `gzip` does. The flag `-f` or `--force` permits a
@@ -201,7 +220,7 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
   - `add_direction_section` gives the section of the viewing direction;
   - `add_y_limits_row` and `add_y_axis_actions` give the controls of the y range and the y scale;
   - `edit_series_properties` gives the popup of the line properties of a series, e.g. the label and the colour;
-  - `reload_runs` reads the runs again.
+  - `reload_models` reads the models again.
 - Use the same heading for the same section in each viewer. plotlightcurves uses "Horizontal axis: Time [d]" for its x section, because its x axis is always the time. plotspectra gives the quantity and the unit of its x axis in the same form, e.g. "Horizontal axis: Wavelength [Å]". The headings are:
   - "Data sources", which comes first and holds the list of the models and the reference files;
   - "Time";
@@ -243,7 +262,7 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
 - Before you write a join or a reshape (`pivot`, `unpivot`, or `explode`), calculate the result size for a large model. A join on a key that repeats on both sides multiplies the rows. For example, a kilonova model on a 50³ grid has 125 000 cells, 2500 nuclides, and 500 000 pairs of particle and cell in `gridcontributions.txt`. Commit 3cc0d9fb joined these pairs with a dataframe in long format, which had approximately 800 nuclides for each particle. That join made approximately 400 million rows, thus `makeartismodelfromparticlegridmap` used more than 16 GB of memory until the operating system stopped it. The streaming engine did not prevent this, because the `group_by` after the join held one group for each pair of cell and nuclide.
 - If a dataframe in long format has too many rows, use the wide format, e.g. one column for each nuclide. If a join of all the columns is still too large, join one batch of columns in each query. A loop that calls `.collect()` for each batch is then permitted, because each query reads only dataframes in memory. For an example, see `get_dfnucabundances` in `artistools/inputmodel/rprocess_from_trajectory.py`.
 - The tests use small models, thus they do not find a problem with the time or the memory on a large model. After you rewrite a query that joins or reshapes dataframes, run the command on a large model. If you do not know the path of a large model, ask the user. Measure the time and the maximum memory, e.g. with `/usr/bin/time -l` on macOS or `/usr/bin/time -v` on Linux. Measure the same values for the code before your change. Give both sets of values in the commit message.
-- Use the lazy scanner that reads a full run, e.g. `at.scan_estimators`. The eager reader `at.estimators.read_estimators` operates on one cell, and it is very slow for many cells and timesteps. Do not call an eager reader in a loop over the cells.
+- Use the lazy scanner that reads all the cells and timesteps of a model, e.g. `at.scan_estimators`. The eager reader `at.estimators.read_estimators` operates on one cell, and it is very slow for many cells and timesteps. Do not call an eager reader in a loop over the cells.
 
 ## Repository rules
 

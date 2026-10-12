@@ -652,7 +652,7 @@ def freeze_photoionisation_arrays(dfallions: pl.DataFrame) -> None:
 
     A clone of a frame shares the numpy array of an object column, thus a caller could change the
     cross sections that the next caller reads. A copy of those arrays takes 10 ms for each call of a
-    small model, against 0.05 ms for the call itself, and a model of a full run holds far more of them.
+    small model, against 0.05 ms for the call itself, and a large model holds far more of them.
     The arrays take this mark one time instead, thus such a write raises in place of passing.
     """
     for dflevels in dfallions["levels"]:
@@ -1090,7 +1090,7 @@ def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
         "lowerlevel": pl.Int32,
         "upperionlevel": pl.Int32,
     }
-    # a run with no bound-free transitions writes only the count line, and scan_csv would raise
+    # the bflist.out of a model with no bound-free transitions holds only the count line, and scan_csv would raise
     # NoDataError at whatever collect() eventually consumes this frame, far from the cause here
     with zopen(bflistpath) as fbflist:
         fbflist.readline()  # the number of transitions

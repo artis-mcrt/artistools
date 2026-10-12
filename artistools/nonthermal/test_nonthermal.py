@@ -174,14 +174,14 @@ def test_ntlepton_deposition_rate_density_follows_artis() -> None:
     }
     assert get_ntlepton_deposition_rate_density(newermodel) == pytest.approx(3.5e-10, rel=1e-12)
 
-    # an older run gives no rate for each particle, and its total_dep is the rate that ARTIS used
+    # a model from an older ARTIS version gives no rate for each particle, and its total_dep is the rate that ARTIS used
     oldermodel = {"total_dep": 7.7e-10, "heating_dep": 6.5e-10}
     assert get_ntlepton_deposition_rate_density(oldermodel) == pytest.approx(7.7e-10, rel=1e-12)
     assert get_ntlepton_deposition_rate_density({"heating_dep": 6.5e-10}) is None
 
 
 def test_spencerfano_takes_the_deposition_of_the_cell() -> None:
-    """The solution of an ARTIS cell takes total_dep of an older run, and not the smaller heating_dep."""
+    """The solution of a cell takes total_dep of a model from an older ARTIS version, and not heating_dep."""
     from artistools.nonthermal import spencerfano
 
     parser = argparse.ArgumentParser()
@@ -203,7 +203,7 @@ def test_spencerfano_stops_with_a_message_for_a_cell_of_no_deposition(capsys: py
 
 
 def test_spencerfano_needs_no_nlte_populations(tmp_path: Path) -> None:
-    """The solution takes the ion populations of the estimators, thus a run with no NLTE output can be solved.
+    """The solution takes the ion populations of the estimators, thus a model with no NLTE output can be solved.
 
     The command stopped with FileNotFoundError when the model folder held no nlte_*.out file.
     """

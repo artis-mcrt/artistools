@@ -231,7 +231,7 @@ def fix_title_position(axis: "mplax.Axes") -> None:
 
 
 def get_direction_kinds(modelfolder: Path) -> list[str]:
-    """Return the kinds of viewing direction of the run. A run with a configuration of virtual packets has observers."""
+    """Return the kinds of viewing direction of the model. A model with virtual packets has observers."""
     return ["", "bin", "phi", "theta", *(["vpkt"] if path_is_file(modelfolder / "vpkt.txt") else [])]
 
 
@@ -239,7 +239,7 @@ def get_direction_kinds(modelfolder: Path) -> list[str]:
 def model_has_direction_data(
     modelfolder: Path, kind: str, resfilenames: tuple[str, ...], vpktpattern: str, *, frompackets: bool
 ) -> bool:
-    """Return True if a run gives the plot of a direction bin of a kind, "bin" or "vpkt", with its data source.
+    """Return True if a model gives the plot of a direction bin of a kind, "bin" or "vpkt", with its data source.
 
     A direction bin comes from a file of resfilenames, e.g. spec_res.out, or from the packets files with --frompackets.
     The commands read the packets for a direction bin only with --frompackets. An observer of the virtual packets needs

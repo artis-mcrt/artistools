@@ -321,8 +321,8 @@ def test_artis_abundance_converts_nniso_with_the_atomic_mass_unit(tmp_path: Path
     assert math.isclose(abund_of_mgi[0]["X_Sr88"].item(), 1.0, rel_tol=1e-9)
 
 
-def test_artis_abundance_of_a_run_with_no_compositiondata(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """A run with no compositiondata.txt still gives each curve, and an element leaves out its other stable isotopes.
+def test_artis_abundance_of_a_model_with_no_compositiondata(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A model with no compositiondata.txt still gives each curve, and an element leaves out its other stable isotopes.
 
     The abundances read compositiondata.txt for every species, thus a missing file gave no ARTIS curve at all.
     output_0-0.txt gives no masses of the elements, thus it is no replacement for the file.

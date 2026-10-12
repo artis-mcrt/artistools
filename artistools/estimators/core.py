@@ -492,7 +492,7 @@ def get_batch_textsource_state(
     """Return the newest change time of the text files of a batch, and whether the batch holds them all.
 
     Every file of the batch counts. One rank file that a restart rewrote makes the whole batch cache
-    stale, thus no single file can decide for the others. A user keeps the cache of a run and drops
+    stale, thus no single file can decide for the others. A user keeps the cache of a run folder and drops
     the text files, sometimes every file except the one of rank 0. Such a batch is incomplete: the
     files that remain say nothing about the files that are gone, and no conversion can take place.
     """
@@ -503,7 +503,7 @@ def get_batch_textsource_state(
 def rankbatch_cache_cannot_be_rebuilt(parquetfilepath: Path, *, textsource_complete: bool) -> bool:
     """Return True when the cache is readable and the estimator text files cannot replace it.
 
-    A conversion needs the text file of every rank of the batch. An archived run drops those files,
+    A conversion needs the text file of every rank of the batch. The archive of a model folder removes those files,
     sometimes every file except the one of rank 0, thus no conversion can take place. A damaged cache
     is no source at all, thus only a readable parquet counts.
     """
@@ -515,7 +515,7 @@ def rankbatch_parquet_is_current(
 ) -> bool:
     """Return True when the reader takes the data of a batch from the parquet cache.
 
-    get_runfolder_timesteps() must name the timesteps that a scan of the run then gives it. A batch
+    get_runfolder_timesteps() must name the timesteps that a scan of the model then gives it. A batch
     that holds no full set of text files keeps its cache, because no conversion can replace it, thus
     a readable cache of such a batch answers here even when it is stale. A complete batch converts
     its text files again, thus only a current cache answers there.
@@ -842,8 +842,8 @@ def get_estimator_textcompression(textfiles: Sequence[Path]) -> str:
 
     A user can compress the text after the conversion, and zstd keeps the time of the file. The size of the text then
     changes, and its data stays the same. Thus the cache compares its stamp of the size only with a text of the same
-    compression. The files of the ranks can have different compressions, e.g. during a compression of the run, and the
-    result then holds each one.
+    compression. The files of the ranks can have different compressions, e.g. during a compression of the model
+    folder, and the result then holds each one.
     """
     return ",".join(sorted({file.suffix if file.suffix in COMPRESSED_EXTENSIONS else "" for file in textfiles}))
 
@@ -1097,7 +1097,7 @@ def get_remote_estimator_schema(
 
     If the source has no batch caches, this checks the text files of the selection and converts the stale batches.
     The source that comes back holds the caches of the selection, and each query then reads them with no check of the
-    text files. A check of a large run on Lustre takes 0.7 s for 3842 text files.
+    text files. A check of a large model on Lustre takes 0.7 s for 3842 text files.
     """
     if source.batchcaches is None and not source.classicartis and not path_is_codecomparison(modelpath):
         states = get_estimator_batch_states(modelpath, source.cells, source.timesteps)
@@ -1158,7 +1158,7 @@ def scan_remote_estimators(
     """Return a LazyFrame of the estimators of a remote model, and the metadata of the model if the model data joins.
 
     A script builds its queries on this frame as for a local model. When the script collects the frame, the host
-    sends the rows and the columns of the query. batchcaches gives the caches of the run on the host.
+    sends the rows and the columns of the query. batchcaches gives the caches of the model on the host.
     """
     import functools
 
@@ -1352,7 +1352,7 @@ def scan_estimators(
     """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
 
     A selection of timesteps or cells decreases the number of files to read, thus the scan is faster.
-    batchcaches gives the current parquet caches of all the batches of an ARTIS run, as convert_estimator_batch_caches
+    batchcaches gives the current parquet caches of all the batches of an ARTIS model, as convert_estimator_batch_caches
     gives them. The scan then selects the caches of the timesteps and the cells, and it checks and converts no file.
     """
     modelpath = Path(modelpath)
@@ -1442,7 +1442,7 @@ def select_timesteps_and_cells(
 class EstimatorBatchCache(t.NamedTuple):
     """The parquet cache of the estimators of one batch of MPI ranks in one run folder, or of all its ranks.
 
-    For a remote run, the paths are the paths on the host. on_model_host maps no path inside a NamedTuple, thus a
+    For a remote model, the paths are the paths on the host. on_model_host maps no path inside a NamedTuple, thus a
     window gives these caches back to the host as they are, and only the host reads them.
     """
 
@@ -1480,7 +1480,7 @@ def get_estimator_batch_states(
 ) -> list[EstimatorBatchState]:
     """Return the state of the cache of each batch of MPI ranks that holds the timesteps and the cells.
 
-    The state says whether a conversion of the text files must replace the cache. A run with no run folders has no
+    The state says whether a conversion of the text files must replace the cache. A model with no run folders has no
     batches. The check reads the metadata of each cache and the modification times of the text files, thus it takes
     less than one second. A caller can then run the conversion elsewhere, e.g. in a child process.
     """
@@ -1551,7 +1551,7 @@ def get_estimator_batch_states(
         batchcaches = tuple(sorted(runfolder.glob("estimbatch*.out.parquet*")))
         if textsource[0] is None and batchcaches and not allranks_parquetpath.is_file():
             # an earlier artistools version made the caches of the batches. They stay in use while they are all
-            # current, or while some files of the ranks are absent, e.g. in a run that is partly archived. A
+            # current, or while some files of the ranks are absent, e.g. in a model folder that is partly archived. A
             # conversion then rebuilds only the stale batches. Otherwise the whole folder goes into one cache
             # one glob of the folder gives the text file mtimes of every batch, because a glob of a folder
             # that holds one file for each MPI rank is slow
@@ -1644,15 +1644,15 @@ def scan_artis_estimators(
     verbose: bool,
     batchcaches: Sequence[EstimatorBatchCache] | None = None,
 ) -> pl.LazyFrame:
-    """Scan the parquet estimator caches of an ARTIS run, or cross join model cells with timesteps if there are none.
+    """Scan the parquet estimator caches of an ARTIS model, or cross join model cells with timesteps if there are none.
 
-    batchcaches gives the current caches of all the batches of the run. The scan then selects from them, and it
+    batchcaches gives the current caches of all the batches of the model. The scan then selects from them, and it
     checks and converts no file. When a different process removed one of these caches, the scan checks the caches of
-    the run again.
+    the model again.
     """
     if batchcaches is not None and not all(batchcache.parquetfile.is_file() for batchcache in batchcaches):
         # the conversion of a different process can remove the batch caches of an earlier artistools version, because
-        # the cache of all the estimators replaces them. The scan thus checks the caches of the run again
+        # the cache of all the estimators replaces them. The scan thus checks the caches of the model again
         batchcaches = None
     selectedcaches = (
         convert_estimator_batch_caches(

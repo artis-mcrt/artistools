@@ -621,7 +621,7 @@ def reopen_session_windows(open_window: OpenWindow, windows: "list[QtWidgets.QMa
 
     A window with the same command as an open window does not open again. The comparison leaves out -figwidthscale,
     because each window fits it to its own size. An error of a window goes to the terminal. Each window opens after
-    the event loop runs again, thus the first window can draw and take input while the others read their runs. A
+    the event loop runs again, thus the first window can draw and take input while the others read their models. A
     window gets the command of the last session, and no option of the Settings window, because the user can have
     removed such an option, e.g. -figscale.
     """
@@ -755,7 +755,7 @@ def open_model_folder(
     open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
     windows: "list[QtWidgets.QMainWindow]",
 ) -> str | None:
-    """Open a new window for the folder of a run. Return an error message if no window opened.
+    """Open a new window for a model folder. Return an error message if no window opened.
 
     A SystemExit in a Qt slot ends the process, thus an error of the new window stays in this window.
     """

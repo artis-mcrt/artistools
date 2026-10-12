@@ -30,7 +30,7 @@ if t.TYPE_CHECKING:
 # a path argument arrives as a scalar, as a sequence, or as a nested sequence from repeated -modelpath
 type PathArg = Path | str | Sequence[PathArg] | None
 
-# an error message names the ARTIS folders that are near. A folder of runs can hold many,
+# an error message names the model folders that are near. A folder of models can hold many,
 # thus this constant gives the maximum number of names
 MAXNEARBYFOLDERS = 6
 
@@ -249,7 +249,7 @@ def warn_ignored_paths(ignored: "str | Sequence[t.Any] | None", kept: "str | Seq
 
 
 def trailing_folder_count(values: list[t.Any], *, anypath: bool = False) -> int:
-    """Return how many values at the end of a list name an ARTIS run folder, or with anypath, a path that exists.
+    """Return how many values at the end of a list name an ARTIS model folder, or with anypath, a path that exists.
 
     The text alone decides for a value of the form host:path. A test of a remote folder asks its host through ssh,
     and a label of a list option can have that form, e.g. "W7:Kasen". An empty value is a label, and not the
@@ -421,7 +421,7 @@ def addarg_modelpath(
 def item_names_a_path(item: str) -> bool:
     """Return whether a positional argument names a path in any position.
 
-    A path that a user writes has a parent folder that exists, e.g. "runs/mymodel", or it names a
+    A path that a user writes has a parent folder that exists, e.g. "models/mymodel", or it names a
     virtual codecomparison data set. A separator alone does not make a path, because an estimator
     variable can have one, e.g. heating_dep/total_dep.
     """
@@ -492,7 +492,7 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
             )
         args.modelpath = givenpath
 
-    # a bare name that holds an ARTIS run is a folder that the user wrote too early. A name that only
+    # a bare name that holds an ARTIS model is a folder that the user wrote too early. A name that only
     # matches a folder stays an item, thus a variable keeps its meaning when a folder has that name
     def item_is_misplaced(item: str) -> bool:
         return item_names_a_path(item) or folder_is_artis_model(item)
@@ -514,9 +514,9 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
 
 
 def artis_subfolders(folder: Path) -> list[str]:
-    """Return the names of the subfolders of this folder that hold an ARTIS run.
+    """Return the names of the subfolders of this folder that hold an ARTIS model.
 
-    A user often runs a command one level above the model, e.g. in the folder that holds every run.
+    A user often runs a command one level above the model, e.g. in the folder that holds every model.
     An error message can then name the folders that are near. The user does not have to list the folder.
     """
     from artistools.misc.fileio import folder_is_artis_model
@@ -1678,7 +1678,7 @@ def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[int]:
     end: int = start if len(parts) == 1 else parts[1]
 
     if start > end:
-        # "last-1" reads as "the timestep before the last", thus a swap would select almost the whole run
+        # "last-1" reads as "the timestep before the last", thus a swap would select almost all the timesteps
         if any(part in dictvars for part in strparts):
             msg = f"The range '{rng}' ends before it starts. Give the two ends as numbers, e.g. 40-45"
             raise ValueError(msg)

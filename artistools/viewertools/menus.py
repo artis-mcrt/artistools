@@ -57,7 +57,7 @@ if t.TYPE_CHECKING:
 # the help text of each menu item in the table of the keys
 MENU_HELPTEXTS: t.Final = MappingProxyType({
     "Open Model…": "Open a model in a new window",
-    "Reload Data": "Read the run again, e.g. while ARTIS writes more timesteps",
+    "Reload Data": "Read the model again, e.g. while ARTIS writes more timesteps",
     "Save Figure…": "Save the figure in the format of the Figure section",
     "Export Animation…": "Save a GIF file of the steps of Play",
     "Undo": "Undo the last change",
@@ -793,16 +793,16 @@ def open_model_window(
     open_window: "Callable[[Sequence[str], list[QtWidgets.QMainWindow]], str | None]",
     windows: "list[QtWidgets.QMainWindow]",
 ) -> str | None:
-    """Ask for the folder of a run, and open a new window for it. Return an error message if no window opened.
+    """Ask for a model folder, and open a new window for it. Return an error message if no window opened.
 
     A SystemExit in a Qt slot ends the process, thus an error of the new window stays in this window.
     """
     from PySide6 import QtWidgets
 
-    # the dialog starts beside the model that the user opened last, where the other runs of a project are
+    # the dialog starts beside the model that the user opened last, where the other models of a project are
     settings = get_settings()
     startfolder = settings.value("modelfolder", str(Path.cwd()))
-    folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open the folder of an ARTIS run", str(startfolder))
+    folder = QtWidgets.QFileDialog.getExistingDirectory(window, "Open a model folder", str(startfolder))
     if not folder:
         return None
     return open_model_folder(folder, open_window, windows)

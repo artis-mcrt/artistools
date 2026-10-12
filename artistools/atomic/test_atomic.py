@@ -393,7 +393,7 @@ def test_atomic_files_with_comment_lines(tmp_path: Path, ionlist: list[tuple[int
 
 @pytest.mark.parametrize("bflistcontents", ["0\n", "", "0"])
 def test_get_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> None:
-    """A run with no bound-free transitions must give an empty frame, not fail at a later collect().
+    """A model with no bound-free transitions must give an empty frame, not fail at a later collect().
 
     pl.scan_csv is lazy, so an empty bflist.out used to surface as NoDataError from whichever
     collect() consumed the frame, e.g. deep inside the packet query of a --frompackets spectrum.
