@@ -2,7 +2,7 @@
 name: Dependabot auto-merge
 # this job checks out no code from the pull request, thus pull_request_target is safe here. The trigger
 # lets the job read GH_TOKEN from the Actions secrets
-on: pull_request_target # zizmor: ignore[dangerous-triggers]
+on: pull_request_target
 # the job merges with GH_TOKEN and not with the built-in token, thus the built-in token needs no permissions
 permissions: {}
 jobs:
