@@ -892,7 +892,7 @@ class SeriesListActions(t.NamedTuple):
     # return the full path of a series, e.g. of ".", thus two spellings of one series give one row
     get_full_path: "Callable[[str], Path]"
     # return True for the folder of an ARTIS run. A plot needs one run at least
-    is_run: "Callable[[str], bool]"
+    is_model: "Callable[[str], bool]"
     show_error: "Callable[[str], None]"
 
 
@@ -981,7 +981,7 @@ def add_series_list(
     def remove_path(path: str) -> None:
         paths = [other for other in actions.get_paths() if other != path]
         # the time controls read the timesteps of a run, thus the plot needs an ARTIS model
-        if not any(actions.is_run(other) for other in paths):
+        if not any(actions.is_model(other) for other in paths):
             actions.show_error(
                 "The plot needs one ARTIS model at least. Add a different model before you remove this one"
             )
@@ -1124,13 +1124,13 @@ def add_series_list(
 
     def get_start_folder() -> Path:
         # the dialog shows only local folders, thus it opens in the working folder for a first run on a different host
-        runs = [path for path in actions.get_paths() if actions.is_run(path)]
+        runs = [path for path in actions.get_paths() if actions.is_model(path)]
         if not runs or is_remote_path(runs[0]):
             return Path.cwd()
         return actions.get_full_path(runs[0]).parent
 
     def add_model_folder(folder: str) -> None:
-        if not actions.is_run(folder):
+        if not actions.is_model(folder):
             actions.show_error(f"{folder} is not the folder of an ARTIS run, which holds input.txt")
             return
         add_recent_model(folder)
@@ -1181,7 +1181,7 @@ def add_series_list(
     def on_drop(paths: list[str]) -> None:
         """Add each dropped ARTIS run and each dropped file of reference data to the series of the plot."""
         folders = [path for path in paths if Path(path).is_dir()]
-        runs = [folder for folder in folders if actions.is_run(folder)]
+        runs = [folder for folder in folders if actions.is_model(folder)]
         if len(runs) < len(folders):
             actions.show_error("A dropped folder is not the folder of an ARTIS run, which holds input.txt")
         add_paths([*runs, *(get_reference_token(path, reference.find) for path in paths if Path(path).is_file())])

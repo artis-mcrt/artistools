@@ -31,9 +31,9 @@ from artistools.viewertools.core import FIT_MILLISECONDS
 from artistools.viewertools.core import FIT_TOLERANCE
 from artistools.viewertools.core import fix_title_position
 from artistools.viewertools.core import get_first_line
+from artistools.viewertools.core import model_has_direction_data
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import run_command_step_with_warning
-from artistools.viewertools.core import run_has_direction_data
 from artistools.viewertools.core import SIDEBAR_WIDTH
 from artistools.viewertools.core import UNDO_LIMIT
 from artistools.viewertools.core import UNDO_MERGE_SECONDS
@@ -120,7 +120,7 @@ def clear_output_caches() -> None:
         # the file tests of the client also go, e.g. after exspec writes gamma_spec.out
         has_gamma_spec_file,
         get_no_sampled_emission_reason,
-        run_has_direction_data,
+        model_has_direction_data,
         get_nu_grid_cached,
         get_deposition_cached,
         get_escaped_arrivalrange_cached,
@@ -138,31 +138,31 @@ def clear_output_caches() -> None:
 
 
 @on_model_host
-def clear_output_caches_of_run(runfolder: Path, estimatorsonly: bool) -> None:
+def clear_output_caches_of_model(modelfolder: Path, estimatorsonly: bool) -> None:
     """Clear the caches of the output files on the host of a run. A local run clears the caches of this process.
 
     With estimatorsonly, the function clears only the caches of the estimators and the NLTE populations.
     """
-    del runfolder
+    del modelfolder
     if estimatorsonly:
         clear_estimator_caches()
     else:
         clear_output_caches()
 
 
-def reload_runs(
+def reload_models(
     queue: "DrawQueue[t.Any]",
-    runfolders: "Sequence[Path | str]",
+    modelfolders: "Sequence[Path | str]",
     on_reloaded: "Callable[[], None]",
     show_error: "Callable[[str], None]",
     *,
     estimatorsonly: bool = False,
-    read_runs: "Callable[[], None] | None" = None,
+    read_models: "Callable[[], None] | None" = None,
 ) -> None:
     """Clear the caches of the runs in the worker thread, e.g. while ARTIS writes more timesteps, then call on_reloaded.
 
     The caches of this process and of the host of a remote run hold old data, thus the function clears both. The
-    reload waits for the plot in progress, and a new plot waits for the reload. read_runs reads the runs again in the
+    reload waits for the plot in progress, and a new plot waits for the reload. read_models reads the runs again in the
     worker thread, because a conversion of new text files can take minutes. on_reloaded runs in the window thread.
     """
 
@@ -171,10 +171,10 @@ def reload_runs(
             clear_estimator_caches()
         else:
             clear_output_caches()
-        for runfolder in runfolders:
-            clear_output_caches_of_run(Path(runfolder), estimatorsonly)
-        if read_runs is not None:
-            read_runs()
+        for modelfolder in modelfolders:
+            clear_output_caches_of_model(Path(modelfolder), estimatorsonly)
+        if read_models is not None:
+            read_models()
 
     def on_done(message: str | None) -> None:
         if message is not None:

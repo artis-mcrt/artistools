@@ -255,7 +255,7 @@ def trailing_folder_count(values: list[t.Any], *, anypath: bool = False) -> int:
     and a label of a list option can have that form, e.g. "W7:Kasen". An empty value is a label, and not the
     working folder.
     """
-    from artistools.misc.fileio import folder_is_artis_run
+    from artistools.misc.fileio import folder_is_artis_model
     from artistools.misc.remote import is_remote_path
     from artistools.misc.remote import names_a_remote_folder
 
@@ -263,7 +263,7 @@ def trailing_folder_count(values: list[t.Any], *, anypath: bool = False) -> int:
         if is_remote_path(value):
             return names_a_remote_folder(value)
 
-        return Path(value).exists() if anypath else folder_is_artis_run(value)
+        return Path(value).exists() if anypath else folder_is_artis_model(value)
 
     count = 0
     for value in reversed(values):
@@ -474,7 +474,7 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
     The command adds -modelpath with the default of addarg_modelpath, which is None. A value that is
     not None then shows that the user gave -modelpath. The working folder applies at the end.
     """
-    from artistools.misc.fileio import folder_is_artis_run
+    from artistools.misc.fileio import folder_is_artis_model
 
     items: list[str] = list(getattr(args, dest))
 
@@ -495,7 +495,7 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
     # a bare name that holds an ARTIS run is a folder that the user wrote too early. A name that only
     # matches a folder stays an item, thus a variable keeps its meaning when a folder has that name
     def item_is_misplaced(item: str) -> bool:
-        return item_names_a_path(item) or folder_is_artis_run(item)
+        return item_names_a_path(item) or folder_is_artis_model(item)
 
     if misplaced := [item for item in items if item_is_misplaced(item)]:
         kept = [item for item in items if not item_is_misplaced(item)]
@@ -519,10 +519,10 @@ def artis_subfolders(folder: Path) -> list[str]:
     A user often runs a command one level above the model, e.g. in the folder that holds every run.
     An error message can then name the folders that are near. The user does not have to list the folder.
     """
-    from artistools.misc.fileio import folder_is_artis_run
+    from artistools.misc.fileio import folder_is_artis_model
 
     try:
-        children = sorted(child.name for child in folder.iterdir() if folder_is_artis_run(child))
+        children = sorted(child.name for child in folder.iterdir() if folder_is_artis_model(child))
     except OSError:
         # the folder can give a permission error. A message about the model helps more than that error
         return []

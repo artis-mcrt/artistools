@@ -69,7 +69,7 @@ from artistools.misc import addarg_verbose
 from artistools.misc import artis_subfolders
 from artistools.misc import exit_with_error
 from artistools.misc import flatten_list
-from artistools.misc import folder_is_artis_run
+from artistools.misc import folder_is_artis_model
 from artistools.misc import format_frame_path
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
@@ -2770,8 +2770,8 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     """
     notimegiven = not time_is_given(args)
     framepertimestep = args.makegif or args.multiplot
-    wantswholerun = framepertimestep or args.listvariables or args.listnuclides
-    if notimegiven and (wantswholerun or args.modelgridindex is not None or args.x in {None, *TIME_XVARIABLES}):
+    wantsalltimesteps = framepertimestep or args.listvariables or args.listnuclides
+    if notimegiven and (wantsalltimesteps or args.modelgridindex is not None or args.x in {None, *TIME_XVARIABLES}):
         args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
 
     if args.x is None:
@@ -3179,7 +3179,7 @@ def require_artis_folder(modelpath: Path) -> None:
     The command reads the working folder when the user names no folder. A user can run the command in
     a folder that is not an ARTIS folder. The message then names that folder and not an absent file.
     """
-    if path_is_codecomparison(modelpath) or folder_is_artis_run(modelpath):
+    if path_is_codecomparison(modelpath) or folder_is_artis_model(modelpath):
         return
 
     # a user often runs the command one level above the runs, thus name the folders that are near

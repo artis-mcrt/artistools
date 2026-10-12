@@ -687,7 +687,7 @@ def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
         return True
 
     # a run folder holds the output of ARTIS, and a run of the cluster writes into a subfolder of it
-    return not any(folder_is_artis_run(folder) for folder in (path.parent, path.parent.parent))
+    return not any(folder_is_artis_model(folder) for folder in (path.parent, path.parent.parent))
 
 
 def get_model_folder(modelpath: str | Path) -> Path:
@@ -708,7 +708,7 @@ def path_is_artis_model(filepath: Path | str) -> bool:
     return filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS))) or path_is_dir(filepath)
 
 
-def folder_is_artis_run(folder: Path | str) -> bool:
+def folder_is_artis_model(folder: Path | str) -> bool:
     """Return whether this folder holds the input of an ARTIS run.
 
     An ARTIS run holds input.txt beside its output files. Every reader of a run needs that file, thus
@@ -721,12 +721,12 @@ def folder_is_artis_run(folder: Path | str) -> bool:
     return folder.is_dir() and (folder / "input.txt").is_file()
 
 
-def get_artis_run_folders(modelpaths: Sequence[Path | str]) -> list[Path]:
+def get_artis_model_folders(modelpaths: Sequence[Path | str]) -> list[Path]:
     """Return the folder of each ARTIS run in modelpaths. A reference file or a code comparison file gives none."""
     return [
         get_model_folder(path)
         for path in modelpaths
-        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
+        if path_is_artis_model(path) and folder_is_artis_model(get_model_folder(path))
     ]
 
 

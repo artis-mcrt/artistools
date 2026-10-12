@@ -46,7 +46,7 @@ class DirectionChoice(t.NamedTuple):
     usedegrees: bool
 
 
-def get_direction_bins(runfolder: Path | str, kind: str, *, usedegrees: bool) -> list[tuple[int, str]]:
+def get_direction_bins(modelfolder: Path | str, kind: str, *, usedegrees: bool) -> list[tuple[int, str]]:
     """Return each bin of a kind of viewing direction with its label, and first the average over all the directions.
 
     The average is bin -1. All the directions alone give a plot with no direction option. A kind of the direction bins
@@ -54,7 +54,7 @@ def get_direction_bins(runfolder: Path | str, kind: str, *, usedegrees: bool) ->
     give the plot of the real packets.
     """
     alltext = "All directions (real packets)" if kind == "vpkt" else "All directions"
-    return [(ALL_DIRECTIONS_BIN, alltext), *get_direction_choices(Path(runfolder), kind, usedegrees=usedegrees)]
+    return [(ALL_DIRECTIONS_BIN, alltext), *get_direction_choices(Path(modelfolder), kind, usedegrees=usedegrees)]
 
 
 def get_direction_summary(choice: DirectionChoice, labels: "Mapping[int, str]") -> str:
@@ -104,7 +104,7 @@ def get_new_direction_choice(
 def add_direction_section(
     panellayout: "QtWidgets.QVBoxLayout",
     helptexts: "Mapping[str, str]",
-    runfolder: Path | str,
+    modelfolder: Path | str,
     get_choice: "Callable[[], tuple[DirectionChoice, bool]]",
     on_change: "Callable[[DirectionChoice], None]",
     show_error: "Callable[[str], None]",
@@ -158,18 +158,18 @@ def add_direction_section(
     # the labels of the bins come from the files of the run, thus the section reads them one time for each kind
     binlabels: dict[tuple[str, bool], list[tuple[int, str]]] = {}
     shownlist: tuple[str, bool, bool] | None = None
-    run: list[Path | str] = [runfolder]
+    run: list[Path | str] = [modelfolder]
 
     def get_bins(kind: str, usedegrees: bool) -> list[tuple[int, str]]:
         if (kind, usedegrees) not in binlabels:
             binlabels[kind, usedegrees] = get_direction_bins(run[0], kind, usedegrees=usedegrees)
         return binlabels[kind, usedegrees]
 
-    def set_run(newrunfolder: Path | str) -> None:
+    def set_model(newmodelfolder: Path | str) -> None:
         nonlocal shownlist
-        run[0], shownlist = newrunfolder, None
+        run[0], shownlist = newmodelfolder, None
         binlabels.clear()
-        kinds = get_direction_kinds(Path(newrunfolder))
+        kinds = get_direction_kinds(Path(newmodelfolder))
         with QtCore.QSignalBlocker(kindbox):
             kindbox.clear()
             for kind, text, dest in DIRECTION_KINDS:
@@ -318,8 +318,8 @@ def add_direction_section(
     for averagekind, check in averagechecks.items():
         check.toggled.connect(partial(on_average, averagekind))
     binmenu.aboutToShow.connect(on_show_menu)
-    set_run(runfolder)
-    return show, set_run
+    set_model(modelfolder)
+    return show, set_model
 
 
 def add_y_axis_actions(

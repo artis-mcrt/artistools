@@ -1883,12 +1883,12 @@ def test_plotspectra_skips_a_folder_that_is_not_a_run(tmp_path: Path) -> None:
 
     The range resolution of main asked the first folder for its timesteps and stopped before any plot.
     """
-    notarun = tmp_path / "notarun"
-    notarun.mkdir()
+    notamodel = tmp_path / "notamodel"
+    notamodel.mkdir()
     outputfolder = tmp_path / "output"
     outputfolder.mkdir()
 
-    at.spectra.plot(argsraw=["-timedays", "300", str(notarun), str(modelpath), "-outputfile", str(outputfolder)])
+    at.spectra.plot(argsraw=["-timedays", "300", str(notamodel), str(modelpath), "-outputfile", str(outputfolder)])
 
     assert len(list(outputfolder.glob("*.pdf"))) == 1
 
@@ -3246,8 +3246,8 @@ def test_interactive_new_first_model_gives_the_time_grid() -> None:
     assert last - first + 1 == 4
     centre = viewer.values.centre
 
-    viewer.values = interactive.set_runs(viewer, [str(classic1dpath), str(modelpath_classic_3d)], "")
-    assert viewer.grid.runfolders[0] == classic1dpath
+    viewer.values = interactive.set_models(viewer, [str(classic1dpath), str(modelpath_classic_3d)], "")
+    assert viewer.grid.modelfolders[0] == classic1dpath
     first, last = interactive.get_grid_selection(viewer.grid, viewer.values)
     assert last - first + 1 == 4
     assert viewer.values.centre == pytest.approx(centre, rel=0.05)
@@ -3262,16 +3262,16 @@ def test_interactive_time_grid_of_a_later_model() -> None:
     classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
     spectra = [str(modelpath_classic_3d), str(classic1dpath)]
     viewer = make_headless_viewer([*spectra, "-t", "4.5-5", "--interactive"])
-    viewer.values = interactive.set_runs(viewer, spectra, str(classic1dpath))
+    viewer.values = interactive.set_models(viewer, spectra, str(classic1dpath))
     assert viewer.grid.gridfolder == classic1dpath
     assert viewer.values.spectra == tuple(spectra)
     first, last = interactive.get_grid_selection(viewer.grid, viewer.values)
     assert last - first + 1 == 4
-    for runtimes in viewer.grid.runtimes.values():
-        assert runtimes.tstart <= viewer.grid.timebounds[0] < viewer.grid.timebounds[1] <= runtimes.tend
+    for modeltimes in viewer.grid.modeltimes.values():
+        assert modeltimes.tstart <= viewer.grid.timebounds[0] < viewer.grid.timebounds[1] <= modeltimes.tend
 
     # after the removal of the model, the time controls use the timesteps of the first model again
-    viewer.values = interactive.set_runs(viewer, spectra[:1], viewer.values.timegrid)
+    viewer.values = interactive.set_models(viewer, spectra[:1], viewer.values.timegrid)
     assert (viewer.values.timegrid, viewer.grid.gridfolder) == ("", modelpath_classic_3d)
 
 
@@ -3286,11 +3286,11 @@ def test_interactive_time_fits_the_timestep_of_each_run() -> None:
     timestep = 25
     # the valid times end in the middle of the timestep
     validend = (tstarts[timestep] + tends[timestep]) / 2.0
-    runtimes = interactive.RunTimes(tstart=tstarts[0], tend=tends[-1], validstart=tstarts[0], validend=validend)
+    modeltimes = interactive.ModelTimes(tstart=tstarts[0], tend=tends[-1], validstart=tstarts[0], validend=validend)
     earlytime = f"{tstarts[timestep] + 0.25 * (tends[timestep] - tstarts[timestep]):.6f}"
     assert float(earlytime) < validend
-    assert not interactive.fits_each_run([(classic1dpath, runtimes)], earlytime)
-    assert interactive.fits_each_run([(classic1dpath, runtimes)], f"{tstarts[timestep - 1] + 0.001:.6f}")
+    assert not interactive.fits_each_model([(classic1dpath, modeltimes)], earlytime)
+    assert interactive.fits_each_model([(classic1dpath, modeltimes)], f"{tstarts[timestep - 1] + 0.001:.6f}")
 
 
 def test_interactive_series_styles_stay_on_their_spectrum() -> None:
@@ -3806,7 +3806,7 @@ def test_interactive_time_stays_inside_the_runs_of_the_list(tmp_path: Path) -> N
     FigureCanvasAgg(fig)
     viewer = interactive.SpectrumViewer([str(widemodel), "-t", "300", "--interactive"], fig)
     widestart = viewer.grid.timebounds[0]
-    viewer.load_runs((str(widemodel), str(modelpath)))
+    viewer.load_models((str(widemodel), str(modelpath)))
     assert viewer.grid.timebounds[0] > widestart
     firsttime = viewer.move_to_end(last=False)
     assert viewer.change(dc.replace(firsttime, spectra=(str(widemodel), str(modelpath)))) is None
@@ -3865,13 +3865,13 @@ def test_interactive_gamma_spectrum_needs_one_source_for_all_runs(tmp_path: Path
     plotspectra reads the packets of each run when one run has no gamma_spec.out. A list with gamma_spec.out alone in
     one run and packets alone in the other run enabled the gamma packets, and the plot then failed.
     """
-    specrun, packetsrun = tmp_path / "specrun", tmp_path / "packetsrun"
-    for runfolder, filename in ((specrun, "gamma_spec.out"), (packetsrun, "packets00_0000.out")):
-        runfolder.mkdir()
-        (runfolder / filename).write_text("", encoding="utf-8")
-    assert interactive.has_gamma_spectrum([specrun])
-    assert interactive.has_gamma_spectrum([packetsrun])
-    assert not interactive.has_gamma_spectrum([specrun, packetsrun])
+    specmodel, packetsmodel = tmp_path / "specmodel", tmp_path / "packetsmodel"
+    for modelfolder, filename in ((specmodel, "gamma_spec.out"), (packetsmodel, "packets00_0000.out")):
+        modelfolder.mkdir()
+        (modelfolder / filename).write_text("", encoding="utf-8")
+    assert interactive.has_gamma_spectrum([specmodel])
+    assert interactive.has_gamma_spectrum([packetsmodel])
+    assert not interactive.has_gamma_spectrum([specmodel, packetsmodel])
 
 
 def test_interactive_direction_kinds_follow_the_first_run() -> None:
@@ -3881,7 +3881,7 @@ def test_interactive_direction_kinds_follow_the_first_run() -> None:
     """
     viewer = make_headless_viewer([str(at.get_path("testdata") / "vpktcontrib"), "--interactive"])
     assert "vpkt" in viewer.grid.directionkinds
-    viewer.load_runs([str(modelpath), str(at.get_path("testdata") / "vpktcontrib")])
+    viewer.load_models([str(modelpath), str(at.get_path("testdata") / "vpktcontrib")])
     assert "vpkt" not in viewer.grid.directionkinds
 
 
@@ -3954,8 +3954,8 @@ def test_viewer_keys_the_runs_by_the_tokens_of_the_list() -> None:
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
     viewer = interactive.SpectrumViewer([f"{modelpath}/", "-t", "300"], fig)
-    assert set(viewer.grid.runtimes) == set(viewer.values.spectra)
-    assert viewer.grid.runkey == (viewer.values.spectra, viewer.values.timegrid)
+    assert set(viewer.grid.modeltimes) == set(viewer.values.spectra)
+    assert viewer.grid.loadkey == (viewer.values.spectra, viewer.values.timegrid)
 
 
 def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
@@ -3975,7 +3975,7 @@ def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
         return interactive.SpectrumViewer(tokens, fig)
 
     viewer = make([*models, "-t", "4.5-5"])
-    viewer.values = interactive.set_runs(viewer, viewer.values.spectra, models[1])
+    viewer.values = interactive.set_models(viewer, viewer.values.spectra, models[1])
     command = viewer.get_command()
     reopened = make([*shlex.split(command)[2:], "--interactive"])
     assert reopened.get_command() == command
@@ -4139,7 +4139,7 @@ def test_interactive_command_reads_one_grid_of_the_runs() -> None:
     oldgrid = viewer.grid
     get_grid_selection = interactive.get_grid_selection
 
-    def select_then_load(grid: interactive.RunGrid, values: interactive.ControlValues) -> tuple[int, int]:
+    def select_then_load(grid: interactive.TimestepGrid, values: interactive.ControlValues) -> tuple[int, int]:
         viewer.grid = oldgrid._replace(tmids=oldgrid.tmids[:1], tstarts=oldgrid.tstarts[:1], tends=oldgrid.tends[:1])
         return get_grid_selection(grid, values)
 
@@ -4191,17 +4191,17 @@ def test_interactive_reload_reads_the_data_source_again(tmp_path: Path) -> None:
     """
     from artistools.viewertools.window import clear_output_caches
 
-    runfolder = tmp_path / "run"
-    runfolder.mkdir()
+    modelfolder = tmp_path / "run"
+    modelfolder.mkdir()
     for path in modelpath.iterdir():
-        (runfolder / path.name).symlink_to(path)
-    assert not (runfolder / "gamma_spec.out").exists()
-    viewer = interactive.SpectrumViewer([str(runfolder), "-t", "300", "--gamma", "--interactive"], mplfig.Figure())
+        (modelfolder / path.name).symlink_to(path)
+    assert not (modelfolder / "gamma_spec.out").exists()
+    viewer = interactive.SpectrumViewer([str(modelfolder), "-t", "300", "--gamma", "--interactive"], mplfig.Figure())
     assert interactive.get_auto_reason(viewer, viewer.values) == "--gamma with no gamma_spec.out"
-    (runfolder / "gamma_spec.out").write_bytes((modelpath / "spec.out").read_bytes())
+    (modelfolder / "gamma_spec.out").write_bytes((modelpath / "spec.out").read_bytes())
     # Reload Data clears the caches of the files, then it reads the runs again
     clear_output_caches()
-    viewer.load_runs(viewer.values.spectra, viewer.values.timegrid)
+    viewer.load_models(viewer.values.spectra, viewer.values.timegrid)
     assert interactive.get_auto_reason(viewer, viewer.values) is None
 
 
@@ -4213,7 +4213,7 @@ def test_interactive_animation_keeps_the_time_grid_of_its_start() -> None:
     viewer = interactive.SpectrumViewer([str(modelpath), "-t", "300", "--interactive"], mplfig.Figure())
     count, get_frame_tokens = interactive.get_animation_frames(viewer)
     firsttokens, lasttokens = get_frame_tokens(0), get_frame_tokens(count - 1)
-    viewer.load_runs([str(modelpath_classic_3d)])
+    viewer.load_models([str(modelpath_classic_3d)])
     assert len(viewer.grid.validtimesteps) < count
     assert get_frame_tokens(0) == firsttokens
     assert get_frame_tokens(count - 1) == lasttokens

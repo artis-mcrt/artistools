@@ -164,7 +164,7 @@ def test_ntlepton_deposition_rate_density_follows_artis() -> None:
     """
     from artistools.nonthermal.spencerfano import get_ntlepton_deposition_rate_density
 
-    newerrun = {
+    newermodel = {
         "deposition_gamma": 2.0e-10,
         "deposition_positron": 1.0e-10,
         "deposition_electron": 5.0e-11,
@@ -172,11 +172,11 @@ def test_ntlepton_deposition_rate_density_follows_artis() -> None:
         "total_dep": 3.75e-10,
         "heating_dep": 3.0e-10,
     }
-    assert get_ntlepton_deposition_rate_density(newerrun) == pytest.approx(3.5e-10, rel=1e-12)
+    assert get_ntlepton_deposition_rate_density(newermodel) == pytest.approx(3.5e-10, rel=1e-12)
 
     # an older run gives no rate for each particle, and its total_dep is the rate that ARTIS used
-    olderrun = {"total_dep": 7.7e-10, "heating_dep": 6.5e-10}
-    assert get_ntlepton_deposition_rate_density(olderrun) == pytest.approx(7.7e-10, rel=1e-12)
+    oldermodel = {"total_dep": 7.7e-10, "heating_dep": 6.5e-10}
+    assert get_ntlepton_deposition_rate_density(oldermodel) == pytest.approx(7.7e-10, rel=1e-12)
     assert get_ntlepton_deposition_rate_density({"heating_dep": 6.5e-10}) is None
 
 

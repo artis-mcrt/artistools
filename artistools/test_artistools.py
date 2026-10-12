@@ -5437,7 +5437,7 @@ def test_direction_data_follows_the_files_and_the_data_source() -> None:
     with only the packets, and the plot then showed all the directions. It disabled the observers of a run with only
     the vspecpol files.
     """
-    has_data = viewercore.run_has_direction_data
+    has_data = viewercore.model_has_direction_data
     datafolder = at.get_path("testdata")
     lightcurveres = ("light_curve_res.out",)
     # testmodel has the packets files and no light_curve_res.out

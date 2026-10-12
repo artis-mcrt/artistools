@@ -607,12 +607,12 @@ def test_artis_subfolders_names_the_runs_of_a_folder(tmp_path: Path) -> None:
     for name in ("run1", "run2"):
         (tmp_path / name).mkdir()
         (tmp_path / name / "input.txt").write_text("", encoding="utf-8")
-    (tmp_path / "notarun").mkdir()
+    (tmp_path / "notamodel").mkdir()
 
     assert at.misc.artis_subfolders(tmp_path) == ["run1", "run2"]
     assert at.misc.artis_subfolders(tmp_path / "absent") == []
-    assert at.misc.folder_is_artis_run(tmp_path / "run1")
-    assert not at.misc.folder_is_artis_run(tmp_path / "notarun")
+    assert at.misc.folder_is_artis_model(tmp_path / "run1")
+    assert not at.misc.folder_is_artis_model(tmp_path / "notamodel")
 
 
 # --- modelinfo.py ------------------------------------------------------------------------------
@@ -2651,9 +2651,9 @@ def test_get_runfolder_timesteps_of_a_classic_estimator_file_gives_no_timesteps(
     """A classic-mode estimator file has no timestep header line, thus the code must not index the empty result."""
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
-    runfolder = at.get_path("testdata") / "test-classicmode_1d" / "32086771.slurm"
+    modelfolder = at.get_path("testdata") / "test-classicmode_1d" / "32086771.slurm"
 
-    assert get_runfolder_timesteps(runfolder) == ()
+    assert get_runfolder_timesteps(modelfolder) == ()
 
 
 def test_get_runfolder_timesteps_tries_every_rank_stem(tmp_path: Path) -> None:
@@ -2964,7 +2964,7 @@ def test_a_label_with_a_colon_is_no_remote_folder_and_starts_no_ssh() -> None:
     """A -label value with a colon must stay a label, and the test of the trailing folders must not start ssh.
 
     The host of a remote path took a space, thus "Model B: Fe/Ni" named the host "Model B". A label such as
-    "W7:Kasen" went to folder_is_artis_run, which asked the host W7 through ssh and stopped the command.
+    "W7:Kasen" went to folder_is_artis_model, which asked the host W7 through ssh and stopped the command.
     """
     from artistools.lightcurve import plotlightcurve
     from artistools.spectra import plotspectra
