@@ -42,20 +42,21 @@ jobs:
             # an issue_comment event has no pull_request object, thus the URL comes from the number of the issue
             PRURL: ${{ format('{0}/{1}/pull/{2}', github.server_url, github.repository, github.event.pull_request.number || github.event.issue.number) }}
         steps:
-            # TEMPORARY: compare the API answer for small and large values of max_tokens. A later commit removes this
-            - name: Check the API key with different max_tokens
+            # TEMPORARY: the API accepts a direct request but refuses the request of Claude Code. A later commit removes this
+            - name: Check Claude Code with the API key
               continue-on-error: true
               env:
                   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
               run: |
-                  for maxtokens in 1 4096 16000 32000 64000 128000; do
-                      body=$(jq -nc --argjson m "$maxtokens" '{model: "claude-opus-5-5", max_tokens: $m, messages: [{role: "user", content: "Reply with one word."}]}')
-                      status=$(curl -sS https://api.anthropic.com/v1/messages -H "x-api-key: $ANTHROPIC_API_KEY" \
-                          -H "anthropic-version: 2023-06-01" -H "content-type: application/json" -o response.json \
-                          -w "%{http_code}" -d "$body")
-                      echo "max_tokens=$maxtokens HTTP $status $(jq -c '{type, error: .error.message, output_tokens: .usage.output_tokens}' response.json)"
+                  curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.296 > /dev/null
+                  export PATH="$HOME/.local/bin:$PATH"
+                  cd "$RUNNER_TEMP"
+                  for model in claude-haiku-5-5 claude-sonnet-5-5 claude-opus-5-5; do
+                      echo "model=$model $(claude -p 'Reply with one word.' --model "$model" --output-format json | jq -c '{is_error, result, api_error_status}')"
                   done
-                  rm -f response.json
+                  ANTHROPIC_LOG=debug claude -p 'Reply with one word.' --model claude-opus-5-5 --output-format json > debug.out 2> debug.err || true
+                  jq -c '{is_error, result}' debug.out
+                  grep -iE 'max_tokens|anthropic-beta|"speed"|service_tier|inference_geo|"thinking"|"effort"|"model"|status|credit|/v1/' debug.err | cut -c1-400 | head -60
 
             # the event of a comment does not show the repository of the pull request. The review runs the code of
             # the pull request in a job that holds the API key, thus it must not review a fork
