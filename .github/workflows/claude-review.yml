@@ -39,7 +39,8 @@ jobs:
             # the first review and a review on request use the maximum effort. A review after a new push
             # (synchronize) uses the medium effort, which reports only the findings that it is most sure of
             REVIEWEFFORT: ${{ github.event.action == 'synchronize' && 'medium' || 'max' }}
-            PRURL: ${{ github.event.pull_request.html_url || github.event.issue.html_url }}
+            # an issue_comment event has no pull_request object, thus the URL comes from the number of the issue
+            PRURL: ${{ format('{0}/{1}/pull/{2}', github.server_url, github.repository, github.event.pull_request.number || github.event.issue.number) }}
         steps:
             # the event of a comment does not show the repository of the pull request. The review runs the code of
             # the pull request in a job that holds the API key, thus it must not review a fork
