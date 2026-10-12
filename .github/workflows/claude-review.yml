@@ -41,7 +41,8 @@ jobs:
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
-                  fetch-depth: 1
+                  # the review reads the history with git log, git show, and git blame
+                  fetch-depth: 0
                   persist-credentials: false
 
             - name: Review the pull request with Claude
@@ -50,7 +51,9 @@ jobs:
                   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
                   prompt: /code-review ${{ env.REVIEWEFFORT }} --comment ${{ env.PRURL }}
                   # the built-in review needs Agent for its finder agents and its verifiers. Without that tool, it
-                  # does one pass alone. It posts with gh api if the inline comment tool is not available
+                  # does one pass alone. It posts with gh api if the inline comment tool is not available.
+                  # gh pr checks and gh run view show the results of CI. WebFetch and WebSearch read the documentation
+                  # of a library. The review gets no tool that runs the code of the pull request
                   claude_args: |
                       --model claude-opus-5-5
-                      --allowedTools "Agent,Read,Grep,Glob,mcp__github_inline_comment__create_inline_comment,Bash(gh api:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+                      --allowedTools "Agent,Read,Grep,Glob,WebFetch,WebSearch,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(gh pr checks:*),Bash(gh run view:*),mcp__github_inline_comment__create_inline_comment,Bash(gh api:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
