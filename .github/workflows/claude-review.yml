@@ -43,7 +43,7 @@ jobs:
             PRURL: ${{ format('{0}/{1}/pull/{2}', github.server_url, github.repository, github.event.pull_request.number || github.event.issue.number) }}
         steps:
             # the event of a comment does not show the repository of the pull request. The review runs the code of
-            # the pull request in a job that holds the API key, thus it must not review a fork
+            # the pull request in a job that holds the OAuth token of Claude, thus it must not review a fork
             - name: Refuse a pull request from a fork
               if: github.event_name == 'issue_comment'
               env:
@@ -91,7 +91,7 @@ jobs:
               run: source ./setuptestdata.sh
 
             # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB uses bubblewrap to put each command in its own process namespace.
-            # Then a command cannot read the API key from the environment of the Claude process
+            # Then a command cannot read the OAuth token from the environment of the Claude process
             - name: Install the sandbox of the commands
               run: |
                   sudo apt-get update -qq
@@ -103,10 +103,10 @@ jobs:
             - name: Review the pull request with Claude
               uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
               env:
-                  # remove the API key and the other credentials from the environment of each command
+                  # remove the OAuth token and the other credentials from the environment of each command
                   CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: 1
               with:
-                  anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+                  claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
                   github_token: ${{ github.token }}
                   # a prompt that starts with /code-review runs the review as a local command, which ran no turn in
                   # the action. The Skill tool runs the same review
