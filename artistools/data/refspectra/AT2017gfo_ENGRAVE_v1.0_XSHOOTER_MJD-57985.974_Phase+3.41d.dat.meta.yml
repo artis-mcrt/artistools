@@ -4,5 +4,5 @@ label: AT2017gfo 3.41d
 t: 3.41
 e_bminusv: 0.11 # smartt 2017
 r_v: 3.1
-z: 0.009727
+z: 0.00984 # ENGRAVE data release
 mask_telluric: true
