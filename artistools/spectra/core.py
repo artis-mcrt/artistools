@@ -1625,7 +1625,7 @@ def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str,
         else pl.format(
             "{} λ{} {}-{}",
             pl.col("ion_str"),
-            pl.col("lambda_angstroms_air").sub(0.5).round(0).cast(pl.String).str.strip_suffix(".0"),
+            pl.col("lambda_angstroms_air").round(0).cast(pl.String).str.strip_suffix(".0"),
             pl.col("upperlevelindex"),
             pl.col("lowerlevelindex"),
         ).alias(labelcolumn),
@@ -2021,6 +2021,7 @@ def get_flux_contributions_from_packets(
         print(
             "Grouping by line. Line labels are wavelengths in air between 2,000-20,000 Å,"
             " and vacuum wavelengths outside this range."
+            " The refractive index of air comes from Peck & Reeder (1972), J. Opt. Soc. Am., 62, 958."
             " This matches the NIST default options and many astrophysics papers."
         )
 

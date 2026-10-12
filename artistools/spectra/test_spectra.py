@@ -344,8 +344,8 @@ def get_contributions_classic_3d(
             776,
             [
                 ("free-free", 5.6865311711303595e-09),
-                ("Co II λ3754 69-25", 4.2743896083241423e-10),
-                ("Co II λ4160 69-31", 3.974052796767683e-10),
+                ("Co II λ3755 69-25", 4.2743896083241423e-10),
+                ("Co II λ4161 69-31", 3.974052796767683e-10),
             ],
         ),
     ],
@@ -376,7 +376,7 @@ def test_spectra_absorption_contributions_from_packets(groupby: str) -> None:
     """The group of the contributions sets the shape of each absorption label.
 
     The ion group gives an ion label, e.g. "Co II". The nucmass group gives a line label, which also
-    names the wavelength of the line, e.g. "Co II λ3754 69-25". No label names a free-free process or
+    names the wavelength of the line, e.g. "Co II λ3755 69-25". No label names a free-free process or
     a bound-free process, because ARTIS records no absorption frequency for these processes.
     """
     contributions, _, _ = get_contributions_classic_3d(groupby=groupby, getemission=False)
