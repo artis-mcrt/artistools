@@ -687,7 +687,7 @@ def test_get_levels_of_atomic_data_numbered_from_zero(tmp_path: Path) -> None:
 def test_vacuum_to_air_angstroms_agrees_with_nist() -> None:
     """The air wavelengths agree with the Ritz wavelengths of Sr II in the NIST Atomic Spectra Database.
 
-    Outside 2000-20000 Å, the function gives the vacuum wavelength, as NIST does.
+    At and outside the limits of 2000 Å and 20000 Å, the function gives the vacuum wavelength, as NIST does.
     """
     nist_vacuum_and_air_angstroms = [
         (2153.528, 2152.850),
@@ -696,6 +696,8 @@ def test_vacuum_to_air_angstroms_agrees_with_nist() -> None:
         (10039.405, 10036.653),
         (10917.877, 10914.887),
         (1500.0, 1500.0),
+        (2000.0, 2000.0),
+        (20000.0, 20000.0),
         (25000.0, 25000.0),
     ]
     dfwavelengths = pl.DataFrame(

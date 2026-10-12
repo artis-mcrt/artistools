@@ -1625,7 +1625,7 @@ def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str,
         else pl.format(
             "{} λ{} {}-{}",
             pl.col("ion_str"),
-            pl.col("lambda_angstroms_air").round(0).cast(pl.Int32).cast(pl.String),
+            pl.col("lambda_angstroms_air").round(0).cast(pl.String).str.strip_suffix(".0"),
             pl.col("upperlevelindex"),
             pl.col("lowerlevelindex"),
         ).alias(labelcolumn),

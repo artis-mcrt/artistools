@@ -22,8 +22,10 @@ from polars import selectors as cs
 
 from artistools import misc
 from artistools.commands import get_path
+from artistools.constants import angstroms_per_micron
 from artistools.constants import hc_in_ev_angstrom
 from artistools.constants import K_B_ev_per_K
+from artistools.constants import peck_reeder_air_coefficients
 from artistools.misc import firstexisting_or_none
 from artistools.misc import polars_source
 from artistools.misc.fileio import firstexisting
@@ -1171,22 +1173,22 @@ def read_linestatfile(
 
 
 def vacuum_to_air_angstroms(lambda_vacuum_angstroms: pl.Expr) -> pl.Expr:
-    """Return the air wavelength between 2000 and 20000 Å, and the vacuum wavelength outside this range.
+    """Return the air wavelength between 2000 and 20000 Å, and the vacuum wavelength at and outside these limits.
 
     The refractive index of standard air comes from the five-parameter formula of Peck & Reeder (1972),
     J. Opt. Soc. Am., 62, 958, doi:10.1364/JOSA.62.000958. The NIST Atomic Spectra Database uses the same
     formula and the same wavelength range. Thus a line label agrees with the NIST air wavelength.
     """
+    coeff_a, coeff_b, coeff_c, coeff_d, coeff_e = peck_reeder_air_coefficients
     lambda_vacuum_angstroms = lambda_vacuum_angstroms.cast(pl.Float64)
-    wavenumber_sq_per_micron_sq = (1e4 / lambda_vacuum_angstroms) ** 2
+    wavenumber_sq_per_micron_sq = (angstroms_per_micron / lambda_vacuum_angstroms) ** 2
     refractive_index_air = 1.0 + 1e-8 * (
-        8060.51
-        + 2480990.0 / (132.274 - wavenumber_sq_per_micron_sq)
-        + 17455.7 / (39.32957 - wavenumber_sq_per_micron_sq)
+        coeff_a + coeff_b / (coeff_c - wavenumber_sq_per_micron_sq) + coeff_d / (coeff_e - wavenumber_sq_per_micron_sq)
     )
+    # NIST gives the vacuum wavelength at the two limits, thus the interval is open.
     return (
         pl
-        .when(lambda_vacuum_angstroms.is_between(2000, 20000))
+        .when(lambda_vacuum_angstroms.is_between(2000, 20000, closed="none"))
         .then(lambda_vacuum_angstroms / refractive_index_air)
         .otherwise(lambda_vacuum_angstroms)
     )
