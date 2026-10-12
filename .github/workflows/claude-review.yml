@@ -31,9 +31,9 @@ jobs:
             pull-requests: write
             id-token: write
         env:
-            # the first review and a review on request use the built-in review of Claude Code at the maximum
-            # effort. A review after a new push (synchronize) uses the code-review plugin
-            ISFULLREVIEW: ${{ github.event.action != 'synchronize' }}
+            # the first review and a review on request use the maximum effort. A review after a new push
+            # (synchronize) uses the medium effort, which reports only the findings that it is most sure of
+            REVIEWEFFORT: ${{ github.event.action == 'synchronize' && 'medium' || 'max' }}
             PRURL: ${{ github.event.pull_request.html_url || github.event.issue.html_url }}
         steps:
             # an issue_comment event checks out the default branch, thus the ref names the head of the pull request
@@ -48,11 +48,7 @@ jobs:
               uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
               with:
                   anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-                  # the plugin command is /code-review:code-review. The built-in review is /code-review, thus a
-                  # full review installs no plugin
-                  plugin_marketplaces: ${{ env.ISFULLREVIEW != 'true' && 'https://github.com/anthropics/claude-code.git' || '' }}
-                  plugins: ${{ env.ISFULLREVIEW != 'true' && 'code-review@claude-code-plugins' || '' }}
-                  prompt: ${{ env.ISFULLREVIEW == 'true' && '/code-review max --comment' || '/code-review:code-review --comment' }} ${{ env.PRURL }}
+                  prompt: /code-review ${{ env.REVIEWEFFORT }} --comment ${{ env.PRURL }}
                   # the built-in review needs Agent for its finder agents and its verifiers. Without that tool, it
                   # does one pass alone. It posts with gh api if the inline comment tool is not available
                   claude_args: |
