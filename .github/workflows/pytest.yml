@@ -10,11 +10,11 @@ on:
     workflow_dispatch:
     repository_dispatch:
         types: [trigger_checks]
-# a new push to a branch makes the run of the previous commit obsolete. Each commit on main keeps its
-# run, thus each commit on main has a test result and a coverage report
+# a new push to a branch makes the run of the previous commit obsolete. A group also cancels a run that
+# waits for it, thus each run on main has its own group, and each commit on main has a test result
 concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}
-    cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+    group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+    cancel-in-progress: true
 env:
     # pyo3 0.29 supports Python 3.15 at most. This setting permits a build for Python 3.16.
     PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1

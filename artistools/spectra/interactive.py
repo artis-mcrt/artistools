@@ -372,7 +372,7 @@ class RunTimes(t.NamedTuple):
 
 
 class RunGrid(t.NamedTuple):
-    """The runs of the list of spectra and the timestep grid of the time controls, which load_runs reads.
+    """The runs of the list of spectra and the timestep grid of the time controls, which read_run_grid reads.
 
     The viewer replaces the whole object, thus a worker thread that reads it one time sees the grid of one load.
     """

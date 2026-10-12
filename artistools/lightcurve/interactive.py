@@ -396,11 +396,11 @@ class LightCurveRuns(t.NamedTuple):
     The viewer replaces the whole object, thus a worker thread that reads it one time sees the runs of one load.
     """
 
-    runfolders: list[Path]
+    runfolders: tuple[Path, ...]
     # the start of the first timestep and the end of the last timestep of all the runs
     timebounds: tuple[float, float]
     energyratecolumns: frozenset[str]
-    directionkinds: list[str]
+    directionkinds: tuple[str, ...]
     # the tokens of the list of light curves that the viewer read the runs from
     lightcurves: tuple[str, ...]
 
@@ -412,14 +412,14 @@ def read_light_curve_runs(lightcurves: "Sequence[str | Path]") -> LightCurveRuns
     """
     runfolders = get_artis_run_folders(lightcurves)
     return LightCurveRuns(
-        runfolders=runfolders,
+        runfolders=tuple(runfolders),
         timebounds=(
             min(float(get_timestep_times(runfolder, loc="start")[0]) for runfolder in runfolders),
             max(float(get_timestep_times(runfolder, loc="end")[-1]) for runfolder in runfolders),
         ),
         energyratecolumns=get_energy_rate_columns(runfolders),
         # the direction controls read the first run, e.g. for the observers of -plotvspecpol
-        directionkinds=get_direction_kinds(runfolders[0]),
+        directionkinds=tuple(get_direction_kinds(runfolders[0])),
         lightcurves=tuple(str(path) for path in lightcurves),
     )
 
