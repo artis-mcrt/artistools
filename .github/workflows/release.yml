@@ -30,10 +30,15 @@ jobs:
                       exit 1
                   fi
 
+            # main is protected and the github-actions bot is not in the bypass list, so the
+            # built-in token cannot push here. GH_TOKEN is a PAT owned by a user that can bypass it
+            # (a secret cannot be named GITHUB_TOKEN: that name is reserved for the built-in token)
             - name: Checkout Code
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              # this is the one checkout that has to keep its credentials: the version bump is
+              # pushed from the working copy further down
               with:
-                  persist-credentials: false
+                  token: ${{ secrets.GH_TOKEN }}
 
             - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
@@ -63,13 +68,8 @@ jobs:
                       exit 1
                   fi
 
-            # main is protected, and the bypass list does not include the github-actions bot. Thus the
-            # built-in token cannot push here. GH_TOKEN is a personal access token (PAT) of a user that
-            # the bypass list includes. GitHub keeps the name GITHUB_TOKEN for the built-in token.
-            # gh auth setup-git lets git read GH_TOKEN for the push, thus the checkout keeps no credentials
             - name: Commit the version bump
               env:
-                  GH_TOKEN: ${{ secrets.GH_TOKEN }}
                   VERSION: ${{ steps.setversion.outputs.version }}
                   DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
               run: |
@@ -84,7 +84,6 @@ jobs:
                   git config user.name "${GITHUB_ACTOR}"
                   git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
                   git commit --all --message "Set version to ${VERSION}"
-                  gh auth setup-git
                   git push origin "HEAD:${DEFAULT_BRANCH}"
 
             # --target pins the release to the version bump commit, and publishing the draft is
