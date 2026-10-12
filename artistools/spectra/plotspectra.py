@@ -52,7 +52,7 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting_or_none
-from artistools.misc import get_artis_run_folders
+from artistools.misc import get_artis_model_folders
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
@@ -173,7 +173,7 @@ def path_is_reference_spectrum(filepath: str | Path) -> bool:
     This mirrors path_is_reference_lightcurve, so that the two commands classify a path the same way.
 
     A name that ends in .out belongs to ARTIS, e.g. spec.out. A user can give reference data such a
-    name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files.
+    name as well, thus the folder decides: an ARTIS model folder holds input.txt beside its output files.
     """
     return path_is_reference_data(filepath, "data/refspectra")
 
@@ -197,10 +197,10 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
         if problem_messages and not allow_invalid:
             lastend_days = get_timestep_times(modelpath, loc="end")[timesteplast]
             if timemin > lastend_days:
-                # the run wrote no spectrum after its last timestep, thus --plotinvalidpart cannot give a plot
+                # ARTIS wrote no spectrum after the last timestep of the model, thus --plotinvalidpart gives no plot
                 problem_messages.append(
-                    f"The run computed the timesteps up to {timesteplast}, which ends at {lastend_days:.2f} days,"
-                    " thus it holds no spectrum of this time"
+                    f"ARTIS calculated the timesteps up to {timesteplast}, which ends at"
+                    f" {lastend_days:.2f} days. Thus the model has no spectrum at this time"
                 )
             else:
                 problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")
@@ -551,7 +551,7 @@ def parse_deltalogx_argument(value: str) -> float | str:
 
 
 def get_spatial_scale_deltalogx(
-    runfolders: Sequence[Path], scale: t.Literal["smallest", "largest"]
+    modelfolders: Sequence[Path], scale: t.Literal["smallest", "largest"]
 ) -> tuple[float, str, list[str]]:
     """Return the value of -deltalogx for the smallest or the largest spatial scale, a short note, and the method lines.
 
@@ -560,25 +560,25 @@ def get_spatial_scale_deltalogx(
     models. The smallest spatial scale of all the models gives bins that lose no detail of the grid. The largest
     spatial scale of all the models gives bins that show no detail that is finer than the grid.
     """
-    spatialscales = {runfolder: get_spatial_scales(runfolder) for runfolder in runfolders}
-    smallestrun = min(spatialscales, key=lambda runfolder: spatialscales[runfolder][0])
-    largestrun = max(spatialscales, key=lambda runfolder: spatialscales[runfolder][1])
+    spatialscales = {modelfolder: get_spatial_scales(modelfolder) for modelfolder in modelfolders}
+    smallestmodel = min(spatialscales, key=lambda modelfolder: spatialscales[modelfolder][0])
+    largestmodel = max(spatialscales, key=lambda modelfolder: spatialscales[modelfolder][1])
     choices = {
-        "smallest": (spatialscales[smallestrun][0], smallestrun, "lose no detail of the grid"),
+        "smallest": (spatialscales[smallestmodel][0], smallestmodel, "lose no detail of the grid"),
         "largest": (
-            spatialscales[largestrun][1],
-            largestrun,
+            spatialscales[largestmodel][1],
+            largestmodel,
             (
                 "are at least as wide as each spatial scale of all the models. Thus the bins show no detail that is"
                 " finer than the grid"
             ),
         ),
     }
-    velocity, run, _ = choices[scale]
+    velocity, scalemodelfolder, _ = choices[scale]
     otherscale = "largest" if scale == "smallest" else "smallest"
     note = (
         f"-deltalogx {scale}scale = Δv/c = {velocity / C_cm_per_s:.3g}, where Δv = {velocity / km_to_cm:.0f} km/s is"
-        f" the {scale} spatial scale in {get_model_name(run)}. The resolving power is λ/Δλ = c/Δv ="
+        f" the {scale} spatial scale in {get_model_name(scalemodelfolder)}. The resolving power is λ/Δλ = c/Δv ="
         f" {C_cm_per_s / velocity:.0f}. -deltalogx {otherscale}scale gives {choices[otherscale][0] / C_cm_per_s:.3g}"
     )
     method = [
@@ -588,14 +588,14 @@ def get_spatial_scale_deltalogx(
         ),
         *(
             f"The {name} spatial scale of the models: Δv = {width / km_to_cm:.0f} km/s in"
-            f" {resolve_modelpath(widthrun)}. Δv/c = {width / C_cm_per_s:.3g}, and λ/Δλ = c/Δv ="
+            f" {resolve_modelpath(widthmodel)}. Δv/c = {width / C_cm_per_s:.3g}, and λ/Δλ = c/Δv ="
             f" {C_cm_per_s / width:.0f}. Bins of this width {effect}."
-            for name, (width, widthrun, effect) in choices.items()
+            for name, (width, widthmodel, effect) in choices.items()
         ),
         f"-deltalogx {scale}scale selects the {scale} spatial scale.",
         *(
-            f"{resolve_modelpath(runfolder)}: {description}."
-            for runfolder, (_, _, description) in spatialscales.items()
+            f"{resolve_modelpath(modelfolder)}: {description}."
+            for modelfolder, (_, _, description) in spatialscales.items()
         ),
         (
             "The Monte Carlo noise of the packets can make the resolution worse than this estimate. The estimate does"
@@ -613,14 +613,14 @@ def resolve_deltalogx_scale(args: argparse.Namespace) -> None:
     args.deltalogxnote = ""
     if not isinstance(args.deltalogx, str):
         return
-    runfolders = get_artis_run_folders(args.modelspecpaths)
-    if not runfolders:
+    modelfolders = get_artis_model_folders(args.modelspecpaths)
+    if not modelfolders:
         exit_with_error(
             f"-deltalogx {args.deltalogx} reads the grid of each ARTIS model, and the command names no model",
             "Give an ARTIS model, or give -deltalogx a number",
         )
     scale: t.Literal["smallest", "largest"] = "smallest" if args.deltalogx == "smallestscale" else "largest"
-    args.deltalogx, args.deltalogxnote, method = get_spatial_scale_deltalogx(runfolders, scale)
+    args.deltalogx, args.deltalogxnote, method = get_spatial_scale_deltalogx(modelfolders, scale)
     print_heading("Bin width from the spatial scales of the models")
     for line in method:
         print_detail(line)
@@ -951,7 +951,7 @@ def plot_artis_spectrum(
                 average_over_theta=average_over_theta,
                 fluxfilterfunc=filterfunc,
                 gamma=args.gamma,
-                # bin -1 stays, because the plot shows it in place of a bin that the run does not have
+                # bin -1 stays, because the plot shows it in place of a bin that the model does not have
                 directionbins=[-1, *directionbins],
             )
 
@@ -1242,7 +1242,7 @@ def make_spectrum_plot(
 
     if nseriesplotted == 0:
         exit_with_error(
-            "no spectra were plotted. Check that each given path holds an ARTIS run or a reference spectrum"
+            "no spectra were plotted. Check that each given path holds an ARTIS model or a reference spectrum"
         )
 
     for axis in axes:
@@ -2420,26 +2420,26 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
 
 
 @lru_cache(maxsize=64)
-def has_gamma_spec_file(runfolder: Path) -> bool:
-    """Return True if the run has gamma_spec.out.
+def has_gamma_spec_file(modelfolder: Path) -> bool:
+    """Return True if the model folder has gamma_spec.out.
 
     The spectrum viewer resolves the arguments at each change, and the search of the subfolders is slow on a network
     drive. Thus a file that exspec writes later stays unknown until Reload Data clears the cache, and until then the
     plot reads the packets.
     """
-    return firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None
+    return firstexisting_or_none("gamma_spec.out", folder=modelfolder) is not None
 
 
 @modelpath_cache(maxsize=64)
-def get_no_sampled_emission_reason(runfolder: Path) -> str | None:
-    """Return why the packets of the run hold no sampled emission, or None if they hold it.
+def get_no_sampled_emission_reason(modelfolder: Path) -> str | None:
+    """Return why the packets of the model hold no sampled emission, or None if they hold it.
 
-    A run with no packets also gives None, and the packets reader gives its error later. The spectrum viewer resolves
-    the arguments at each change. Thus the cache keeps the result until Reload Data clears it, also after a new run of
-    ARTIS in the folder.
+    A model folder with no packets also gives None, and the packets reader gives its error later. The spectrum viewer
+    resolves the arguments at each change. Thus the cache keeps the result until Reload Data clears it, also after a
+    new run of ARTIS in the folder.
     """
-    columnnames = get_packets_column_names(runfolder)
-    return None if columnnames is None else get_no_sampled_emission_message(runfolder, columnnames)
+    columnnames = get_packets_column_names(modelfolder)
+    return None if columnnames is None else get_no_sampled_emission_message(modelfolder, columnnames)
 
 
 def resolve_frompackets(args: argparse.Namespace) -> None:
@@ -2463,8 +2463,8 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
         "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
         "--gamma with no gamma_spec.out": args.gamma
         and not all(
-            has_gamma_spec_file(runfolder)
-            for runfolder in get_artis_run_folders([
+            has_gamma_spec_file(modelfolder)
+            for modelfolder in get_artis_model_folders([
                 Path(path) for path in args.specpath if not path_is_reference_spectrum(path)
             ])
         ),
@@ -2515,7 +2515,7 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
     if not args.modelspecpaths:
         exit_with_error(
             "an emission plot draws the contributions of one ARTIS model, and no path names such a model",
-            "Give the folder of an ARTIS run",
+            "Give a model folder",
         )
 
     if len(args.modelspecpaths) > 1:
@@ -2573,10 +2573,10 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
             "Give -groupby element, ion, or line, or remove --use_sampledemissiontype",
         )
 
-    # most runs have no sampled emission, thus the command stops before it reads the packets
+    # most models have no sampled emission, thus the command stops before it reads the packets
     if args.use_sampledemissiontype:
-        for runfolder in get_artis_run_folders(args.modelspecpaths):
-            if (reason := get_no_sampled_emission_reason(runfolder)) is not None:
+        for modelfolder in get_artis_model_folders(args.modelspecpaths):
+            if (reason := get_no_sampled_emission_reason(modelfolder)) is not None:
                 exit_with_error(reason, NO_SAMPLED_EMISSION_HELP)
 
     # get_flux_contributions_from_packets makes the same test, but only after it reads the packets
@@ -2787,17 +2787,17 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         )
 
     # one time axis serves every model, thus the range resolves one time and before any plot runs. A path
-    # that is not a run gives no timesteps, and the plot loop skips it with a warning
+    # that is not an ARTIS model gives no timesteps, and the plot loop skips it with a warning
     clamp_to_timesteps = not args.notimeclamp
     # the emission plot and the default shells read the first model, thus every reader takes the same list
     args.modelspecpaths = [path for path in args.specpath if not path_is_reference_spectrum(path)]
     modelspecpaths = args.modelspecpaths
-    artispaths = get_artis_run_folders(modelspecpaths)
+    artispaths = get_artis_model_folders(modelspecpaths)
     codecomparisonpaths = [path for path in modelspecpaths if path_is_codecomparison(path)]
     if args.timestep is not None and args.timedays is None and not artispaths and not codecomparisonpaths:
         # a reference spectrum has no timesteps. The command plotted it before the range resolution moved to main
         print_warning(
-            "-timestep names a timestep of a model, and no path is an ARTIS run or a code comparison model,"
+            "-timestep names a timestep of a model, and no path is an ARTIS model or a code comparison model,"
             " thus it has no effect"
         )
     else:

@@ -85,9 +85,9 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
 
 @lru_cache(maxsize=2)
 def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
-    """Return the classic estimators of a run, and keep them for the next caller.
+    """Return the classic estimators of a model, and keep them for the next caller.
 
-    The cache serves the no-data report, which reads the run a second time. Do not change the dict
+    The cache serves the no-data report, which reads the model a second time. Do not change the dict
     that this function returns.
     """
     estimfiles = get_classic_estimator_files(modelpath)
@@ -108,7 +108,7 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
     # that this reports the loss rather than passing wrong data to a plot
     folderofkey: dict[tuple[int, int], Path] = {}
     # a restarted job writes its first timestep again, as sn3d does. When both logs give their first
-    # timestep, the row of the earlier job stays, as the reader of a modern run keeps it
+    # timestep, the row of the earlier job stays, as the reader of the modern format keeps it
     for estfilepath in estimfiles:
         if str(estfilepath.parent) in first_timesteps_in_dir:
             timestep = first_timesteps_in_dir[str(estfilepath.parent)]

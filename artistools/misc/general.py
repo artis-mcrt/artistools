@@ -202,7 +202,7 @@ def call_in_child_process[*ArgTypes, ResultType](fn: Callable[[*ArgTypes], Resul
     Only a window calls this function.
     """
     import multiprocessing as mp
-    from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures import ProcessPoolExecutor  # ruff:ignore[banned-api]
 
     # spawn, because a fork of a process that already has polars threads is unsafe
     with ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn")) as executor:
@@ -219,7 +219,7 @@ def parallel_map[IterableType, ResultType](
 
     The progress bar takes the keyword arguments other than chunksize, e.g. desc and unit.
     """
-    from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures import ProcessPoolExecutor  # ruff:ignore[banned-api]
     from concurrent.futures import ThreadPoolExecutor
     from operator import length_hint
 

@@ -184,7 +184,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
 
     # Step 2) create the heatmap. Normalise packet energy to modelgrid cell volume at packet emission time (lab frame)
     # the kernel gives the bins of np.histogram2d. np.histogram2d took 0.13 s for 2.5 million packets at 2 days of
-    # a 3D kilonova run. The kernel made the command 0.11 s faster
+    # a 3D kilonova model. The kernel made the command 0.11 s faster
     xedges = np.linspace(0, 0.5, num=26)
     yedges = np.linspace(-0.5, 0.5, num=51)
     xbinindex = get_bin_indices(dfpackets_selected.select("beta_r_cyl_em"), "beta_r_cyl_em", xedges.tolist())[

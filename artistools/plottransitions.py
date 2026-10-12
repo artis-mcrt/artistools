@@ -667,7 +667,7 @@ def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[tuple[int, i
         return strions, ionfracs_str
 
     def departure(ionid: tuple[int, int], width: int) -> str:
-        """Give the departure coefficient of one line, or a mark when the run covered no such line."""
+        """Give the departure coefficient of one line, or a mark when the model gives no coefficient for it."""
         value = depcoeffs.get(ionid)
 
         return f"{value:{width}.2f}" if value is not None else "-".rjust(width)

@@ -583,36 +583,36 @@ def test_the_positional_items_read_the_folder_last(monkeypatch: pytest.MonkeyPat
     assert args.items == ["Te", "TR"]
 
     # a path before the last item names a folder in the wrong place
-    (tmp_path / "runs").mkdir()
+    (tmp_path / "models").mkdir()
     with pytest.raises(SystemExit):
-        parse(["runs/mymodel", "Te"])
+        parse(["models/mymodel", "Te"])
 
     # a name that has a separator but no parent folder is an item, e.g. heating_dep/total_dep
     args = parse(["heating_dep/total_dep"])
     assert args.items == ["heating_dep/total_dep"]
 
-    # a bare name that holds an ARTIS run is a folder that the user wrote too early
+    # a bare name that holds an ARTIS model is a folder that the user wrote too early
     (tmp_path / "mymodel" / "input.txt").write_text("", encoding="utf-8")
     with pytest.raises(SystemExit):
         parse(["mymodel", "Te"])
 
-    # a folder that holds no run keeps the meaning of the item, e.g. a folder of the name of a variable
+    # a folder that holds no model keeps the meaning of the item, e.g. a folder of the name of a variable
     (tmp_path / "Te").mkdir()
     args = parse(["Te", "TR"])
     assert args.items == ["Te", "TR"]
 
 
-def test_artis_subfolders_names_the_runs_of_a_folder(tmp_path: Path) -> None:
-    """A folder that holds input.txt is an ARTIS run, thus an error can name the runs that are near."""
-    for name in ("run1", "run2"):
+def test_artis_subfolders_names_the_models_of_a_folder(tmp_path: Path) -> None:
+    """A folder that holds input.txt is a model folder, thus an error can name the model folders that are near."""
+    for name in ("model1", "model2"):
         (tmp_path / name).mkdir()
         (tmp_path / name / "input.txt").write_text("", encoding="utf-8")
-    (tmp_path / "notarun").mkdir()
+    (tmp_path / "notamodel").mkdir()
 
-    assert at.misc.artis_subfolders(tmp_path) == ["run1", "run2"]
+    assert at.misc.artis_subfolders(tmp_path) == ["model1", "model2"]
     assert at.misc.artis_subfolders(tmp_path / "absent") == []
-    assert at.misc.folder_is_artis_run(tmp_path / "run1")
-    assert not at.misc.folder_is_artis_run(tmp_path / "notarun")
+    assert at.misc.folder_is_artis_model(tmp_path / "model1")
+    assert not at.misc.folder_is_artis_model(tmp_path / "notamodel")
 
 
 # --- modelinfo.py ------------------------------------------------------------------------------
@@ -1318,14 +1318,14 @@ def test_remote_path_follows_the_rule_of_rsync(tmp_path: Path, monkeypatch: pyte
     Path removes the "./" that marks a local path, thus the text of the argument decides.
     """
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "run:2").mkdir()
+    (tmp_path / "model:2").mkdir()
     assert remote.split_remote_path("user@vae26:model") == ("user@vae26", Path("~/model"))
     assert remote.split_remote_path(Path("vae26:/lustre/model")) == ("vae26", Path("/lustre/model"))
-    assert remote.is_remote_path("run:2")
-    assert not remote.is_remote_path("./run:2")
-    assert not remote.is_remote_path("runs/run:2")
-    assert remote.model_path_from_text("./run:2") == tmp_path / "run:2"
-    assert at.misc.normalize_path_list(["./run:2", "vae26:model"]) == [tmp_path / "run:2", Path("vae26:~/model")]
+    assert remote.is_remote_path("model:2")
+    assert not remote.is_remote_path("./model:2")
+    assert not remote.is_remote_path("models/model:2")
+    assert remote.model_path_from_text("./model:2") == tmp_path / "model:2"
+    assert at.misc.normalize_path_list(["./model:2", "vae26:model"]) == [tmp_path / "model:2", Path("vae26:~/model")]
     # rsync takes an IPv6 address in brackets, and ssh takes it with no brackets
     assert remote.split_remote_path("user@[2001:db8::1]:/model") == ("user@[2001:db8::1]", Path("/model"))
     assert remote.get_server_argv("user@[2001:db8::1]", "artistools server")[1:3] == ["--", "user@2001:db8::1"]
@@ -1351,6 +1351,7 @@ def test_reply_of_the_server_cannot_call_a_function(tmp_path: Path) -> None:
     import pickle  # ruff:ignore[suspicious-pickle-import]
 
     class CommandOnClient:
+        @t.override
         def __reduce__(self) -> tuple[t.Any, ...]:
             return (subprocess.call, (["true"],))
 
@@ -1358,6 +1359,7 @@ def test_reply_of_the_server_cannot_call_a_function(tmp_path: Path) -> None:
         remote.load_reply(pickle.dumps((True, CommandOnClient())))
 
     class FileOnClient:
+        @t.override
         def __reduce__(self) -> tuple[t.Any, ...]:
             return (np.memmap, (str(tmp_path / "overwritten"), "float64", "w+", 0, (1,)))
 
@@ -1730,7 +1732,7 @@ def test_get_timestep_of_timedays(tmp_path: Path) -> None:
     # the message says the model covers up to 150 days, thus exactly 150 names the last timestep
     assert at.get_timestep_of_timedays(tmp_path, 150) == 4
 
-    # the message names the range that the run covers, so that the user can correct the value
+    # the message names the range that the model covers, so that the user can correct the value
     with pytest.raises(ValueError, match=r"No timestep of this model covers 500 days.*100\.00 to 150\.00 days"):
         at.get_timestep_of_timedays(tmp_path, 500)
 
@@ -1773,7 +1775,7 @@ def test_get_deposition(tmp_path: Path) -> None:
         at.get_deposition(longdir).collect()
 
 
-def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_different_run(
+def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_different_model(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A deposition.out whose times do not match the timesteps gives the arrival range a warning, not a stop.
@@ -2001,7 +2003,7 @@ def test_get_series_label() -> None:
 
 
 def test_shorten_middle_keeps_both_ends() -> None:
-    """A long run folder name keeps the model at the start and the run details at the end."""
+    """A long name of a model folder keeps the name of the model at the start and the details at the end."""
     name = "w7_outercut_20260816_150_410d_2e9pkt_develop_3dgrid50_virgo"
     short = at.misc.modelinfo.shorten_middle(name, 50)
 
@@ -2649,9 +2651,9 @@ def test_get_runfolder_timesteps_of_a_classic_estimator_file_gives_no_timesteps(
     """A classic-mode estimator file has no timestep header line, thus the code must not index the empty result."""
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
-    runfolder = at.get_path("testdata") / "test-classicmode_1d" / "32086771.slurm"
+    modelfolder = at.get_path("testdata") / "test-classicmode_1d" / "32086771.slurm"
 
-    assert get_runfolder_timesteps(runfolder) == ()
+    assert get_runfolder_timesteps(modelfolder) == ()
 
 
 def test_get_runfolder_timesteps_tries_every_rank_stem(tmp_path: Path) -> None:
@@ -2757,7 +2759,7 @@ def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
     """A reader that gives accept_unstamped must keep a cache that the versions before the stamps wrote.
 
     Such a cache holds no cacheversion and no textsource_mtime. A rejection rebuilds every cache of
-    an archived run of estimators or packets, which costs hours and reads text files that the run may
+    an archived model folder for estimators or packets, which costs hours and reads text files that the model folder can
     no longer hold. A reader that does not give accept_unstamped keeps the strict rule, because a
     cache that a few seconds rebuild gives a wrong number for no gain.
     """
@@ -2818,7 +2820,7 @@ def test_remote_path_is_not_reference_data_and_needs_no_connection() -> None:
     The menu of the recent models tested each remote model in the window thread, and each ssh call stopped the window.
     """
     with mock.patch("artistools.misc.remote.call_on_host", side_effect=AssertionError("ssh started")):
-        assert not at.misc.fileio.path_is_reference_data("nohost.invalid:/runs/model", "data/refspectra")
+        assert not at.misc.fileio.path_is_reference_data("nohost.invalid:/models/model", "data/refspectra")
 
 
 def test_a_windows_drive_letter_is_no_remote_host(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2962,7 +2964,7 @@ def test_a_label_with_a_colon_is_no_remote_folder_and_starts_no_ssh() -> None:
     """A -label value with a colon must stay a label, and the test of the trailing folders must not start ssh.
 
     The host of a remote path took a space, thus "Model B: Fe/Ni" named the host "Model B". A label such as
-    "W7:Kasen" went to folder_is_artis_run, which asked the host W7 through ssh and stopped the command.
+    "W7:Kasen" went to folder_is_artis_model, which asked the host W7 through ssh and stopped the command.
     """
     from artistools.lightcurve import plotlightcurve
     from artistools.spectra import plotspectra
@@ -2995,20 +2997,20 @@ def test_a_list_option_that_takes_a_file_or_a_folder_gives_a_warning(
 ) -> None:
     """A reference file or a model folder with no input.txt after -label must not go away with no message.
 
-    -label took "run1" and "sn2011fe.txt" as labels, and the command then plotted the working folder.
+    -label took "model1" and "sn2011fe.txt" as labels, and the command then plotted the working folder.
     """
     from artistools.spectra import plotspectra
 
-    (tmp_path / "run1").mkdir()
+    (tmp_path / "model1").mkdir()
     (tmp_path / "sn2011fe.txt").write_text("4000 1\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    args = parse_cli_args(plotspectra.addargs, None, None, ["-label", "ARTIS", "SN 2011fe", "run1", "sn2011fe.txt"])
-    assert args.label == ["ARTIS", "SN 2011fe", "run1", "sn2011fe.txt"]
-    assert "-label read 'run1', 'sn2011fe.txt' as values" in capsys.readouterr().err
+    args = parse_cli_args(plotspectra.addargs, None, None, ["-label", "ARTIS", "SN 2011fe", "model1", "sn2011fe.txt"])
+    assert args.label == ["ARTIS", "SN 2011fe", "model1", "sn2011fe.txt"]
+    assert "-label read 'model1', 'sn2011fe.txt' as values" in capsys.readouterr().err
 
     # every value names a path, thus the option can read paths, e.g. -reflightcurves
-    parse_cli_args(plotspectra.addargs, None, None, ["-label", "run1", "sn2011fe.txt"])
+    parse_cli_args(plotspectra.addargs, None, None, ["-label", "model1", "sn2011fe.txt"])
     assert "WARNING" not in capsys.readouterr().err
 
 
@@ -3328,7 +3330,7 @@ def test_a_cached_reader_goes_through_pickle_and_to_the_server(tmp_path: Path) -
 def test_get_runfolders_gives_a_repeated_timestep_to_the_earlier_folder(tmp_path: Path) -> None:
     """A restarted run repeats the last timestep of the folder before it, and only the earlier folder keeps it.
 
-    A folder with no earlier folder keeps its first timestep, e.g. a run whose first job folder is gone. The rule of
+    A folder with no earlier folder keeps its first timestep, e.g. a model whose first run folder is gone. The rule of
     a restart dropped that timestep, thus no folder held it, and a plot of that timestep stopped.
     """
     import shutil
@@ -3409,7 +3411,7 @@ def test_replace_outdated_file_locks_a_descriptor_that_can_write(tmp_path: Path)
 
 
 def test_read_rank_outputfiles_names_a_timestep_that_no_run_folder_holds(tmp_path: Path) -> None:
-    """A timestep after the stop of a run names the timesteps of the run, and not a missing file.
+    """A timestep after the last timestep of a model names the timesteps of the run folders, and not a missing file.
 
     The files were there, and the message "No nlte_*.out files found" sent the user to look for them.
     """
@@ -3441,7 +3443,7 @@ def test_read_rank_outputfiles_skips_an_empty_rank_file(tmp_path: Path, capsys: 
 
 
 def test_one_timestep_grid_from_timesteps_out_and_from_input_txt_gives_one_range(tmp_path: Path) -> None:
-    """A timestep of two runs with one grid names one range, also when only one run holds timesteps.out.
+    """A timestep of two models with one grid names one range, also when only one model holds timesteps.out.
 
     ARTIS writes timesteps.out with 6 significant digits, and the times of input.txt have more. The test of the grids
     took a difference of 1e-4 d as a different grid, thus -timestep stopped with two equal ranges in its message.
@@ -3484,8 +3486,8 @@ def test_the_last_costheta_bin_holds_cos_theta_of_one() -> None:
     assert labels[-2] == "0.6 ≤ cos θ < 0.8"
 
 
-def test_a_direction_bin_outside_the_run_gives_a_message() -> None:
-    """-plotviewingangle 500 stopped with an IndexError in the labels, and now names the bins of the run."""
+def test_a_direction_bin_outside_the_bins_gives_a_message() -> None:
+    """-plotviewingangle 500 stopped with an IndexError in the labels, and now names the permitted bins."""
     with pytest.raises(ValueError, match="not one of the 100 bins 0 to 99"):
         dirbins.get_dirbin_labels([500])
 

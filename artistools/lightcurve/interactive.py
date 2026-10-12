@@ -35,7 +35,7 @@ from artistools.lightcurve.plotlightcurve import make_plot_figure
 from artistools.lightcurve.plotlightcurve import RefusedOption
 from artistools.lightcurve.plotlightcurve import resolve_plot_args
 from artistools.misc import exit_with_error
-from artistools.misc import get_artis_run_folders
+from artistools.misc import get_artis_model_folders
 from artistools.misc import get_deposition
 from artistools.misc import get_file_metadata
 from artistools.misc import get_model_name
@@ -60,10 +60,10 @@ from artistools.viewertools.core import get_series_style
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
+from artistools.viewertools.core import model_has_direction_data
 from artistools.viewertools.core import move_series_styles
 from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
-from artistools.viewertools.core import run_has_direction_data
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import set_figscale_row
 from artistools.viewertools.core import set_series_rows
@@ -106,7 +106,7 @@ from artistools.viewertools.window import DrawQueue
 from artistools.viewertools.window import finish_viewer_window
 from artistools.viewertools.window import get_line_readouts
 from artistools.viewertools.window import make_readout_tag
-from artistools.viewertools.window import reload_runs
+from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
 from artistools.viewertools.window import start_viewer_window
 
@@ -273,16 +273,16 @@ REFUSABLE_OPTIONS: t.Final[
 })
 
 
-def get_energy_rate_columns(runfolders: "Sequence[Path]") -> frozenset[str]:
-    """Return each column of deposition.out that at least one run of the plot gives.
+def get_energy_rate_columns(modelfolders: "Sequence[Path]") -> frozenset[str]:
+    """Return each column of deposition.out that at least one model of the plot gives.
 
-    A run with no deposition.out, or with a deposition.out that does not match its timesteps, gives no column.
+    A model with no deposition.out, or with a deposition.out that does not match its timesteps, gives no column.
     plotlightcurves then stops only when the user selects an energy rate.
     """
     columns: set[str] = set()
-    for runfolder in runfolders:
+    for modelfolder in modelfolders:
         with contextlib.suppress(FileNotFoundError, ValueError):
-            columns |= set(get_deposition(runfolder).collect_schema().names())
+            columns |= set(get_deposition(modelfolder).collect_schema().names())
     return frozenset(columns)
 
 
@@ -390,6 +390,40 @@ class RenderedLightCurve(t.NamedTuple):
     residualaxis: "mplax.Axes | None"
 
 
+class LoadedModels(t.NamedTuple):
+    """The ARTIS models of the light curves, and the values of the controls that the models give.
+
+    The viewer replaces the whole object, thus a worker thread that reads it one time sees the models of one load.
+    """
+
+    modelfolders: tuple[Path, ...]
+    # the start of the first timestep and the end of the last timestep of all the models
+    timebounds: tuple[float, float]
+    energyratecolumns: frozenset[str]
+    directionkinds: tuple[str, ...]
+    # the tokens of the list of light curves that the viewer read the models from
+    lightcurves: tuple[str, ...]
+
+
+def read_loaded_models(lightcurves: "Sequence[str | Path]") -> LoadedModels:
+    """Read the times and the columns of deposition.out of the ARTIS models of the light curves.
+
+    The time controls cover the timesteps of all the models. A reference light curve has no model.
+    """
+    modelfolders = get_artis_model_folders(lightcurves)
+    return LoadedModels(
+        modelfolders=tuple(modelfolders),
+        timebounds=(
+            min(float(get_timestep_times(modelfolder, loc="start")[0]) for modelfolder in modelfolders),
+            max(float(get_timestep_times(modelfolder, loc="end")[-1]) for modelfolder in modelfolders),
+        ),
+        energyratecolumns=get_energy_rate_columns(modelfolders),
+        # the direction controls read the first model, e.g. for the observers of -plotvspecpol
+        directionkinds=tuple(get_direction_kinds(modelfolders[0])),
+        lightcurves=tuple(str(path) for path in lightcurves),
+    )
+
+
 class LightCurveViewer:
     """The plot of the viewer and the values of its controls.
 
@@ -413,12 +447,13 @@ class LightCurveViewer:
             )
         self.args = args
 
-        if not get_artis_run_folders(args.modelpath):
+        if not get_artis_model_folders(args.modelpath):
             exit_with_error(
-                "--interactive takes the time range and the energy rates from an ARTIS run, and no path names a run",
-                "Give the folder of an ARTIS run, e.g. plotlightcurves mymodel --interactive",
+                "--interactive takes the time range and the energy rates from an ARTIS model, and no path names a"
+                " model",
+                "Give a model folder, e.g. plotlightcurves mymodel --interactive",
             )
-        self.load_runs(args.modelpath)
+        self.models = read_loaded_models(args.modelpath)
 
         self.parser = parser
 
@@ -429,7 +464,9 @@ class LightCurveViewer:
             # -plotviewingangle -2 selects each direction bin, and the window shows a check box for each one
             directionbins = tuple(
                 dirbin
-                for dirbin, _ in get_direction_choices(self.runfolders[0], directionkind, usedegrees=args.usedegrees)
+                for dirbin, _ in get_direction_choices(
+                    self.models.modelfolders[0], directionkind, usedegrees=args.usedegrees
+                )
             )
         self.values = ControlValues(
             timemin="" if args.timemin is None else format(args.timemin, ".10g"),
@@ -471,21 +508,9 @@ class LightCurveViewer:
         # a window can change the size of the figure, thus the size of the frames stays here
         self.figsize: tuple[float, float] = (0.0, 0.0)
 
-    def load_runs(self, lightcurves: "Sequence[str | Path]") -> None:
-        """Read the times and the columns of deposition.out of the ARTIS runs of the light curves.
-
-        The time controls cover the timesteps of all the runs. A reference light curve has no run.
-        """
-        runfolders = get_artis_run_folders(lightcurves)
-        self.runfolders = runfolders
-        self.timebounds = (
-            min(float(get_timestep_times(runfolder, loc="start")[0]) for runfolder in runfolders),
-            max(float(get_timestep_times(runfolder, loc="end")[-1]) for runfolder in runfolders),
-        )
-        self.energyratecolumns = get_energy_rate_columns(runfolders)
-        # the direction controls read the first run, e.g. for the observers of -plotvspecpol
-        self.directionkinds = get_direction_kinds(runfolders[0])
-        self.runlightcurves = tuple(str(path) for path in lightcurves)
+    def load_models(self, lightcurves: "Sequence[str | Path]") -> None:
+        """Read the ARTIS models of the light curves again, e.g. after a change of the list of light curves."""
+        self.models = read_loaded_models(lightcurves)
 
     def get_plot_tokens(self, values: ControlValues | None = None) -> list[str]:
         """Return the plotlightcurves arguments of the values, or of the current values if the caller gives none."""
@@ -578,12 +603,12 @@ class LightCurveViewer:
         return self.drop_refused_options(newvalues)
 
     def get_energy_rate_reason(self, dest: str, particle: str) -> str | None:
-        """Return why no run of the plot gives an energy rate of a particle, or None if a run gives it."""
+        """Return why no model of the plot gives an energy rate of a particle, or None if a model gives it."""
         columns = get_energy_rate_column_names(dest, particle)
         if not columns:
             return f"-{dest} takes no {particle}, because ARTIS writes no such rate in deposition.out"
-        if missing := [column for column in columns if column not in self.energyratecolumns]:
-            return f"No run of the plot gives {' or '.join(missing)} in deposition.out"
+        if missing := [column for column in columns if column not in self.models.energyratecolumns]:
+            return f"No model of the plot gives {' or '.join(missing)} in deposition.out"
         return None
 
     def draw(self, *, quiet: bool = True) -> str | None:
@@ -681,9 +706,9 @@ def open_window(
     # a command with no path reads the model of the working folder
     modelnames = [
         resolve_modelpath(path).name for path in viewer.values.lightcurves if not path_is_reference_lightcurve(path)
-    ] or [resolve_modelpath(viewer.runfolders[0]).name]
+    ] or [resolve_modelpath(viewer.models.modelfolders[0]).name]
     viewerwindow = start_viewer_window(
-        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.runfolders[0], ", ".join(modelnames))
+        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.models.modelfolders[0], ", ".join(modelnames))
     )
     if isinstance(viewerwindow, str):
         return viewerwindow
@@ -771,16 +796,20 @@ def open_window(
     )
 
     # the handlers come later in this function, thus the lambdas read them at the time of a change
-    show_direction, set_direction_run = add_direction_section(
+    show_direction, set_direction_model = add_direction_section(
         panellayout,
         helptexts,
-        viewer.runfolders[0],
+        viewer.models.modelfolders[0],
         lambda: (get_direction_choice(viewer.values), False),
         lambda choice: on_direction(choice),  # ruff:ignore[unnecessary-lambda]
         lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
         # the observers of the virtual packets always read the packets, thus that kind takes --frompackets
-        lambda runfolder, kind: run_has_direction_data(
-            Path(runfolder), kind, ("light_curve_res.out",), "", frompackets=viewer.values.frompackets or kind == "vpkt"
+        lambda modelfolder, kind: model_has_direction_data(
+            Path(modelfolder),
+            kind,
+            ("light_curve_res.out",),
+            "",
+            frompackets=viewer.values.frompackets or kind == "vpkt",
         ),
     )
 
@@ -791,7 +820,7 @@ def open_window(
         "deposition": ("Deposition", "The deposition rate: the energy that the particles give to the ejecta"),
         "emission": (
             "Monte Carlo",
-            "The Monte Carlo emission rate, which ARTIS counts at the decays of the pellets in the run",
+            "The Monte Carlo emission rate, which ARTIS counts at the decays of the pellets in the model",
         ),
         "analyticemission": (
             "Analytical",
@@ -873,17 +902,17 @@ def open_window(
         yscalebox,
     ]
 
-    # the time slider acts on log10(t) over the times of the runs
+    # the time slider acts on log10(t) over the times of the models
     logtrange = (0.0, 1.0)
-    shownruns: tuple[str, ...] | None = None
+    shownmodels: tuple[str, ...] | None = None
 
-    def show_run_ranges() -> None:
-        """Set the range of the time slider and the direction bins from the runs of the plot, e.g. after Add Model."""
-        nonlocal logtrange, shownruns
-        logtrange = (math.log10(max(viewer.timebounds[0], 1e-3)), math.log10(viewer.timebounds[1]))
-        # the direction bins come from the new first run
-        set_direction_run(viewer.runfolders[0])
-        shownruns = viewer.runlightcurves
+    def show_model_ranges() -> None:
+        """Set the range of the time slider and the direction bins from the models of the plot, e.g. after Add Model."""
+        nonlocal logtrange, shownmodels
+        logtrange = (math.log10(max(viewer.models.timebounds[0], 1e-3)), math.log10(viewer.models.timebounds[1]))
+        # the direction bins come from the new first model
+        set_direction_model(viewer.models.modelfolders[0])
+        shownmodels = viewer.models.lightcurves
 
     def to_position(value: float) -> int:
         low, high = logtrange
@@ -911,7 +940,7 @@ def open_window(
     def make_lightcurve_rows(values: ControlValues) -> list[SeriesRow]:
         """Return a row for each light curve."""
         lightcurves = values.lightcurves
-        models = [path for path in lightcurves if get_artis_run_folders([path])]
+        models = [path for path in lightcurves if get_artis_model_folders([path])]
         colours = get_path_colours(
             lightcurves, [path_is_reference_lightcurve(path) for path in lightcurves], values.otheroptions
         )
@@ -944,11 +973,11 @@ def open_window(
         # an error in a widget value, e.g. a bad colour of the option table, must not leave the signals blocked
         try:
             values = viewer.values
-            # Undo or a rejected change can give a different list of light curves, and its runs have different times
-            if values.lightcurves != viewer.runlightcurves:
-                viewer.load_runs(values.lightcurves)
-            if viewer.runlightcurves != shownruns:
-                show_run_ranges()
+            # Undo or a rejected change can give a different list of light curves, and its models have different times
+            if values.lightcurves != viewer.models.lightcurves:
+                viewer.load_models(values.lightcurves)
+            if viewer.models.lightcurves != shownmodels:
+                show_model_ranges()
             show_series_rows(get_lightcurves_key(values), partial(make_lightcurve_rows, values))
             packetbox.setCurrentIndex(1 if values.gamma else 0)
             # -topnucs reads the packets, thus the box shows that and takes no choice
@@ -957,7 +986,7 @@ def open_window(
             datasourcebox.setToolTip(
                 "-topnucs reads the packets files"
                 if values.topnucs
-                else "The files of the light curves of the ARTIS runs"
+                else "The files of the light curves of the ARTIS models"
             )
             topnucsbox.setValue(values.topnucs)
             # the command refuses an option together with a different option, thus ask it about each option
@@ -993,7 +1022,8 @@ def open_window(
                     unavailable.append(f"• {PARTICLETEXTS[particle]} {ENERGYRATENAMES[dest]}: {reason}")
             set_note_text(
                 unavailablenote,
-                f"The runs give no data for the {len(unavailable)} grey {'box' if len(unavailable) == 1 else 'boxes'}."
+                f"The models give no data for the {len(unavailable)} grey"
+                f" {'box' if len(unavailable) == 1 else 'boxes'}."
                 if unavailable
                 else "",
                 "\n".join(unavailable),
@@ -1011,8 +1041,8 @@ def open_window(
                 )
             )
             set_timerange_positions(
-                to_position(float(values.timemin) if values.timemin else viewer.timebounds[0]),
-                to_position(float(values.timemax) if values.timemax else viewer.timebounds[1]),
+                to_position(float(values.timemin) if values.timemin else viewer.models.timebounds[0]),
+                to_position(float(values.timemax) if values.timemax else viewer.models.timebounds[1]),
             )
             set_edit_text(timeminedit, values.timemin)
             set_edit_text(timemaxedit, values.timemax)
@@ -1103,8 +1133,8 @@ def open_window(
         """Set the limit of the handle that moved, and keep the other limit as its text field gives it."""
         limit = float(f"{from_position(position):.3g}")
         values = viewer.values
-        high = float(values.timemax) if values.timemax else viewer.timebounds[1]
-        low = float(values.timemin) if values.timemin else viewer.timebounds[0]
+        high = float(values.timemax) if values.timemax else viewer.models.timebounds[1]
+        low = float(values.timemin) if values.timemin else viewer.models.timebounds[0]
         if handle == 0 and limit < high:
             apply(dc.replace(values, timemin=format(limit, ".10g")))
         elif handle == 1 and limit > low:
@@ -1133,16 +1163,16 @@ def open_window(
         apply(viewer.set_direction(viewer.values, choice))
 
     def apply_lightcurves(lightcurves: "Sequence[str]") -> None:
-        """Read the runs of a new list of light curves, and apply the list."""
-        viewer.load_runs(lightcurves)
+        """Read the models of a new list of light curves, and apply the list."""
+        viewer.load_models(lightcurves)
         # each series style option, e.g. -label, stays on its light curve
         values = dc.replace(
             viewer.values,
             lightcurves=tuple(lightcurves),
             otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.lightcurves, lightcurves),
         )
-        # a new first run can have no data for a kind of viewing direction, e.g. the observers of the virtual packets
-        if values.directionkind not in viewer.directionkinds:
+        # a new first model can have no data for a kind of viewing direction, e.g. the observers of the virtual packets
+        if values.directionkind not in viewer.models.directionkinds:
             values = dc.replace(values, directionkind="", directionbins=())
         apply(values)
 
@@ -1182,8 +1212,8 @@ def open_window(
             else SERIES_STYLE_FLAGS,
         )
 
-    def is_run_folder(path: str) -> bool:
-        return bool(get_artis_run_folders([path]))
+    def is_model_folder(path: str) -> bool:
+        return bool(get_artis_model_folders([path]))
 
     show_series_rows = add_series_list(
         lightcurvegrid,
@@ -1204,20 +1234,20 @@ def open_window(
             apply_paths=apply_lightcurves,
             edit_properties=on_edit_properties,
             get_full_path=get_lightcurve_path,
-            is_run=is_run_folder,
+            is_model=is_model_folder,
             show_error=show_error,
         ),
     )
 
     def on_reload() -> None:
-        """Read the runs again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
+        """Read the models again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
 
-        def show_reloaded_runs() -> None:
-            viewer.load_runs(viewer.values.lightcurves)
-            show_run_ranges()
+        def show_reloaded_models() -> None:
+            viewer.load_models(viewer.values.lightcurves)
+            show_model_ranges()
             queue.redraw()
 
-        reload_runs(queue, viewer.runfolders, show_reloaded_runs, show_error)
+        reload_models(queue, viewer.models.modelfolders, show_reloaded_models, show_error)
 
     command = ViewerCommand(
         name="plotlightcurves",

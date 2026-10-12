@@ -62,7 +62,7 @@ ROWSPERBATCH = CELLSPERBATCH * 1200
 
 
 class OpacityLines(t.NamedTuple):
-    """The levels and the binned lines of the ions that the estimators hold, for all the cells of a run."""
+    """The levels and the binned lines of the ions that the estimators hold, for all the cells of a model."""
 
     ionstrs: list[str]
     """The ion of each ionindex in dflevels."""
@@ -111,8 +111,8 @@ def get_opacity_columns(taucaps: Sequence[float]) -> list[str]:
 def get_expopac_grid(modelpath: Path | str) -> tuple[float, float, float] | None:
     """Return the minimum, the maximum, and the width of the expansion opacity bins of ARTIS in Angstroms.
 
-    The values come from rpkt.h in the artis folder of the run, which holds the source code of the run. A run with
-    no such file, or a file with no expopac constants, gives None.
+    The values come from rpkt.h in the artis folder of the model. That folder holds a copy of the ARTIS source code
+    that the model used. A model with no such file, or a file with no expopac constants, gives None.
     """
     rpkttext = get_artis_source_text(modelpath, "rpkt.h")
     if rpkttext is None:
@@ -146,7 +146,7 @@ def get_opacity_lines(
 ) -> OpacityLines:
     """Return the levels and the lines of each ion that the estimators give a population for.
 
-    The lines do not depend on a cell, thus a run prepares them one time for all the cells.
+    The lines do not depend on a cell, thus the command prepares them one time for all the cells.
     """
     sobolevfactor = HCLIGHTOVERFOURPI * time_days * day_to_s
     ionstrs: list[str] = []
@@ -312,9 +312,9 @@ def get_selected_timestep(modelpath: Path | str, timestep: str | int | None, tim
 
 
 def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:
-    """Return LTEPOP_EXCITATION_USE_TJ of artis/artisoptions.h in the folder of the run.
+    """Return LTEPOP_EXCITATION_USE_TJ of artis/artisoptions.h in the model folder.
 
-    A run with no such file, or a file with no such option, gives None.
+    A model with no such file, or a file with no such option, gives None.
     """
     value = get_artis_option(modelpath, "LTEPOP_EXCITATION_USE_TJ")
     return value == "true" if value in {"true", "false"} else None
@@ -323,14 +323,14 @@ def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:
 def get_excitation_temperature_column(modelpath: Path | str, selection: str) -> str:
     """Return the estimator column that gives T_exc, and log the column and the reason for it.
 
-    A selection of "auto" takes the temperature that ARTIS used for the LTE level populations of the run.
+    A selection of "auto" takes the temperature that ARTIS used for the LTE level populations of the model.
     """
     if selection != "auto":
         column, reason = selection, f"-exctemperature {selection}"
     elif (usestj := get_artis_excitation_uses_tj(modelpath)) is None:
         column, reason = "Te", "the default"
         print_warning(
-            "artis/artisoptions.h of the run gives no LTEPOP_EXCITATION_USE_TJ, thus the level populations take Te."
+            "artis/artisoptions.h of the model gives no LTEPOP_EXCITATION_USE_TJ, thus the level populations take Te."
             " Give -exctemperature TJ or -exctemperature Te to select the temperature"
         )
     else:
@@ -387,7 +387,7 @@ def get_next_cell_with_estimators_text(modelpath: Path | str, timestep: int, mod
     """Return a sentence that names the first cell after modelgridindex that has estimators at the timestep.
 
     A scan of a range of cells reads only the batches of the ranks that update them. Thus the search starts with a
-    small range, and it doubles the range until it finds a cell. A first use of a large run then converts few batches.
+    small range, and it doubles the range until it finds a cell. A first use of a large model then converts few batches.
     """
     npts_model = get_npts_model(modelpath)
     firstcell, cellcount = modelgridindex + 1, 64
@@ -447,7 +447,7 @@ def addarg_excitationtemperature(parser: argparse.ArgumentParser) -> None:
             "Estimator temperature of the LTE level populations: "
             + " or ".join(f"{column}, {name}" for column, name in EXCITATIONTEMPERATURE_NAMES.items())
             + ". auto takes the temperature that ARTIS used, from LTEPOP_EXCITATION_USE_TJ in artis/artisoptions.h of"
-            " the run, or Te if the run has no such option"
+            " the model, or Te if the model has no such option"
         ),
     )
 

@@ -39,7 +39,7 @@ updates:
                   - '*'
 
     - package-ecosystem: cargo
-      directory: /
+      directory: /rust
       schedule:
           interval: weekly
       cooldown:

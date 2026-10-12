@@ -1871,9 +1871,9 @@ def test_lightcurve_timestep_must_mean_the_same_days_for_every_model() -> None:
 
 
 def test_lightcurve_timestep_takes_a_path_that_names_a_file(tmp_path: Path) -> None:
-    """A path can name the light curve file of a run, and -timestep must read the folder of that run.
+    """A path can name the light curve file of a model, and -timestep must read the model folder of that file.
 
-    get_time_range reads timesteps.out or input.txt of a run. The file went to it as it came, thus
+    get_time_range reads timesteps.out or input.txt of a model folder. The file went to it as it came, thus
     "light_curve.out -timestep 20" asked for light_curve.out/input.txt and stopped.
     """
     outputfile = tmp_path / "lc.pdf"
@@ -2559,9 +2559,10 @@ def test_scan_lightcurve_reads_many_leading_zeros(tmp_path: Path) -> None:
 
 
 def test_band_lightcurve_of_the_angle_average_with_virtual_packets() -> None:
-    """With -plotvspecpol, bin -1 is the angle average of spec.out, and a vpkt run can have no specpol.out.
+    """With -plotvspecpol, bin -1 is the angle average of spec.out.
 
-    The reader took the times of bin -1 from specpol.out, thus it stopped with FileNotFoundError.
+    A model with virtual packets can have no specpol.out. The reader took the times of bin -1 from specpol.out, thus
+    it stopped with FileNotFoundError.
     """
     from artistools.lightcurve.core import generate_band_lightcurve_data
 
@@ -2588,7 +2589,7 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
         ("alpha",),
     )
     assert viewer.draw() is None
-    # the deposition.out of this run is older than the fission columns, and ARTIS writes no emission rate of positrons
+    # the deposition.out of this model is older than the fission columns, and ARTIS writes no emission rate of positrons
     assert viewer.get_energy_rate_reason("deposition", "fission") is not None
     assert viewer.get_energy_rate_reason("emission", "betaplus") is not None
     assert viewer.get_energy_rate_reason("thermalisation", "betaplus") is None
@@ -2762,7 +2763,7 @@ def test_scan_lightcurve_of_a_build_with_a_different_count_of_direction_bins(
 ) -> None:
     """ARTIS sets MABINS when it compiles. A file of a different count of direction bins gives a warning.
 
-    scan_lightcurve stopped for each count other than 100, thus the light curves of such a run were not readable.
+    scan_lightcurve stopped for each count other than 100, thus the light curves of such a model were not readable.
     """
     lcpath = tmp_path / "light_curve_res.out"
     table = "1.0 2.0 3.0\n2.0 4.0 6.0\n"
@@ -3181,8 +3182,8 @@ def test_band_outside_a_virtual_packet_spectrum_gives_a_warning(capsys: pytest.C
     assert "the uvw1 filter" in stderr
 
 
-def test_band_light_curve_of_a_run_with_only_specpol_out() -> None:
-    """A POL_ON run can write specpol.out and no spec.out. Its Stokes I spectrum gives the angle average.
+def test_band_light_curve_of_a_model_with_only_specpol_out() -> None:
+    """A model with POL_ON can hold specpol.out and no spec.out. Its Stokes I spectrum gives the angle average.
 
     The band light curve of bin -1 stopped with FileNotFoundError, because get_spectra read spec.out only.
     """
@@ -3237,7 +3238,7 @@ def test_packets_light_curve_of_a_model_with_no_model_file(
 ) -> None:
     """The rest frame light curve of the packets needs no model.txt. Only the comoving frame needs it.
 
-    A copy of a run with no model.txt stopped with FileNotFoundError, also with no --plotcmf.
+    A copy of a model folder with no model.txt stopped with FileNotFoundError, also with no --plotcmf.
     """
     modelcopy = tmp_path / "nomodel"
     modelcopy.mkdir()

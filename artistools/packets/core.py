@@ -546,16 +546,16 @@ def get_first_packets_file(modelpath: Path) -> Path | None:
 
 @on_model_host
 def has_packets_files(modelpath: Path) -> bool:
-    """Return True if the run holds the packets text files, or the parquet cache of their first batch.
+    """Return True if the model holds the packets text files, or the parquet cache of their first batch.
 
-    A run can keep only the parquet cache of its packets. The host of a remote path gives the answer.
+    A model can keep only the parquet cache of its packets. The host of a remote path gives the answer.
     """
     return get_first_packets_file(modelpath) is not None
 
 
 @on_model_host
 def get_packets_column_names(modelpath: Path) -> list[str] | None:
-    """Return the names of the columns of the packets of a run, or None if the run holds no packets.
+    """Return the names of the columns of the packets of a model, or None if the model holds no packets.
 
     The text file of the first rank gives the names, or else the parquet cache of the first batch. The host of a
     remote path gives the answer.
@@ -788,7 +788,7 @@ def get_packets_batch_parquet_paths(
     """Return the number of ranks that the reader reads and the paths of the parquet caches.
 
     The function makes each outdated cache from the text files. The result of the check of the caches stays in
-    memory. For a run of 20 batches, the check took 9 ms at each plot of the spectrum viewer. A new check runs only
+    memory. For a model of 20 batches, the check took 9 ms at each plot of the spectrum viewer. A new check runs only
     when the text file of the first rank of a batch changes, when a cache changes, or when a folder of the scan
     changes.
     """
@@ -1118,7 +1118,7 @@ def sum_packets_by_dirbin(
 
     bin_edges gives the lower edges and the final upper edge. Each bin is [lower, upper), except the last bin, which
     also holds its upper edge. dirbin -1 selects all directions, as in filter_packets_dirbin. The Rust kernel bins the
-    packets of all the requested direction bins in one pass. For 65 million packets of a 3D kilonova run, the polars
+    packets of all the requested direction bins in one pass. For 65 million packets of a 3D kilonova model, the polars
     group_by took 0.40 s, and the read and the kernel took 0.13 s.
     """
     from artistools.rustext import sum_weights_in_bins

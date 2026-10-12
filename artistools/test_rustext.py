@@ -299,7 +299,7 @@ def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
     """The opacities take only the first nlevelsmax levels of each ion from compositiondata.txt, as ARTIS does.
 
     The partition function summed all 1792 levels of Fe I in adata.txt. ARTIS keeps 500 of them in the classic test
-    run, and the sum of all the levels is 1.97 times the sum of the kept levels at 20000 K.
+    model, and the sum of all the levels is 1.97 times the sum of the kept levels at 20000 K.
     """
     classicmodelpath = at.get_path("testdata") / "test-classicmode_3d"
     adata = at.ejectaopacity.get_opacity_atomic_data(classicmodelpath)

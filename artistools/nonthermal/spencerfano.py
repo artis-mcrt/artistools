@@ -268,9 +268,10 @@ class PlasmaConditions(t.NamedTuple):
 def get_ntlepton_deposition_rate_density(estim: Mapping[str, t.Any]) -> float | None:
     """Return the deposition rate in erg/s/cm3 that ARTIS uses for the Spencer-Fano solution of a cell.
 
-    A newer run gives the deposition of each particle, and ARTIS takes the sum of NTLEPTON_DEPOSITION_CHANNELS. An
-    older run gives total_dep, which is the rate that such a run used. heating_dep holds only the heating part of
-    the rate, and a newer run adds the alpha and the fission deposition to it. Return None if the estimators give
+    A model from a newer ARTIS version gives the deposition of each particle, and ARTIS takes the sum of
+    NTLEPTON_DEPOSITION_CHANNELS. A model from an older version gives total_dep, which is the rate that ARTIS used for
+    it. heating_dep holds only the heating part of the rate, and a newer version adds the alpha and the fission
+    deposition to it. Return None if the estimators give
     no deposition.
     """
     if "deposition_gamma" in estim:
@@ -464,7 +465,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.plotstats:
-        # this plot reads a stats file that a former run wrote, thus it calls no solver
+        # this plot reads a stats file that an earlier command with -ostat wrote, thus it calls no solver
         make_ntstats_plot(args.plotstats, args)
         return
 

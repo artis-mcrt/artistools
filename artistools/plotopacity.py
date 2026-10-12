@@ -66,7 +66,7 @@ if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
     import numpy.typing as npt
 
-# the width of a bin in Angstroms for a run with no rpkt.h. ARTIS used this width in 2026
+# the width of a bin in Angstroms for a model with no rpkt.h. ARTIS used this width in 2026
 DEFAULT_DELTALAMBDA: t.Final = 20.0
 
 # the line style of each capped opacity, in the order of the caps. The expansion opacity and an opacity capped at 1
@@ -108,7 +108,7 @@ def get_massweighted_opacities(
     """Return the mean binned opacities over the cells, and the mean Planck mean of the expansion opacity.
 
     The mass of each cell is the weight of both means. For one cell, the result is the opacity of that cell. The bins
-    have one width. The Planck mean takes the bins with a middle in planckrange. A planckrange of None, or a run with
+    have one width. The Planck mean takes the bins with a middle in planckrange. A planckrange of None, or a model with
     no cell temperature, gives a Planck mean of NaN.
 
     The column linecount gives the number of lines in each bin. It counts each line that the opacities sum, thus it
@@ -169,9 +169,9 @@ def get_computed_bin_edges(
 ) -> tuple[list[float], float]:
     """Return the edges of the bins that the plot needs, and the width of a bin.
 
-    The bins lie on the grid of rpkt.h of the run. The command calculates only the bins of the plot range, and one bin
+    The bins lie on the grid of rpkt.h of the model. The command calculates only the bins of the plot range, and one bin
     more than half the window of the moving average at each end. Each moving average of the plot then takes the same
-    bins as a calculation of the full grid. A run with no rpkt.h takes bins from xmin, with a width of 20 Angstroms.
+    bins as a calculation of the full grid. A model with no rpkt.h takes bins from xmin, with a width of 20 Angstroms.
     """
     grid = get_expopac_grid(modelpath)
     if deltalambda is None:
@@ -481,8 +481,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=None,
         help=(
-            "Wavelength bin width in Angstroms. The default is expopac_deltalambda of artis/rpkt.h in the folder of"
-            f" the run, or {DEFAULT_DELTALAMBDA:g} if the run has no rpkt.h"
+            "Wavelength bin width in Angstroms. The default is expopac_deltalambda of artis/rpkt.h in the model"
+            f" folder, or {DEFAULT_DELTALAMBDA:g} if the model has no rpkt.h"
         ),
     )
     parser.add_argument(

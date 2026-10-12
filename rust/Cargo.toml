@@ -25,17 +25,12 @@ pyo3 = { version = "0.29.1", features = ["abi3-py313", "abi3t-py315"] }
 pyo3-polars = { version = "0.28.0" }
 rayon = "1.10"
 
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
 [profile.dev]
 opt-level = 3
-debug = "full"
-#lto = "thin"
-strip = "none"
 
 [profile.release]
-#codegen-units = 1
-debug = "none"
-opt-level = 3
-overflow-checks = false
-#lto = "fat"
-#fixes mis-aligned LINKEDIT string pool error on macos
+# the default strip of a release is "debuginfo", which gives a mis-aligned LINKEDIT string pool on macOS
 strip = "none"

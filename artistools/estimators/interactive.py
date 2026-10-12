@@ -146,7 +146,7 @@ from artistools.viewertools.window import FLAG_LABELS
 from artistools.viewertools.window import get_line_readouts
 from artistools.viewertools.window import make_readout_tag
 from artistools.viewertools.window import make_timer
-from artistools.viewertools.window import reload_runs
+from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
 from artistools.viewertools.window import start_viewer_window
 
@@ -189,9 +189,9 @@ CONTROLLED_DESTS: t.Final = frozenset({
 # these options change only the output file. Save Figure in the File menu gives the file, thus the command drops them
 OUTPUT_DESTS: t.Final = frozenset({"outputfile", "format"})
 
-# the window reads the run in the format of --classicartis when it opens, thus a change later has no effect. The option
-# table neither shows nor offers this row, and the row stays in the command
-RUN_DESTS: t.Final = frozenset({"classicartis"})
+# the window reads the model in the format of --classicartis when it opens, thus a change later has no effect. The
+# option table neither shows nor offers this row, and the row stays in the command
+MODELFORMAT_DESTS: t.Final = frozenset({"classicartis"})
 
 # the ways to select the cells of the plot, by the key of the selector of the window
 GEOMETRY_MODES: t.Final = MappingProxyType({
@@ -406,10 +406,10 @@ def get_plotitem_tokens(plotitems: "Sequence[t.Any]") -> tuple[str, ...]:
 
 
 def get_estimator_timesteps(modelpath: Path, estimators: pl.LazyFrame) -> list[int]:
-    """Return the timesteps that the estimators of the run hold.
+    """Return the timesteps that the estimators of the model hold.
 
-    The first parquet cache of each run folder gives its timesteps, thus a large run needs no scan of all its rows. A
-    run with no such cache, e.g. a run of classic ARTIS, reads the timestep column of the estimators.
+    The first parquet cache of each run folder gives its timesteps, thus a large model needs no scan of all its rows. A
+    model with no such cache, e.g. a model of classic ARTIS, reads the timestep column of the estimators.
     """
     # a codecomparison path names a reference file and not a folder, thus it has no run folders
     runfolders: Sequence[Path] = () if path_is_codecomparison(modelpath) else get_runfolders(modelpath)
@@ -455,8 +455,8 @@ def get_single_cell(cells: str) -> int | None:
     return int(cells) if cells.isascii() and cells.isdecimal() else None
 
 
-class RunData(t.NamedTuple):
-    """The data of the run that the controls of the viewer need, which Reload Data reads again."""
+class ModelData(t.NamedTuple):
+    """The data of the model that the controls of the viewer need, which Reload Data reads again."""
 
     batchcaches: "list[EstimatorBatchCache] | None"
     estimatorcolumns: tuple[str, ...]
@@ -468,26 +468,26 @@ class RunData(t.NamedTuple):
 
 
 @on_model_host
-def read_remote_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
-    """Read the data of a remote run on its host, which also converts the stale estimator caches there.
+def read_remote_model_data(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> ModelData:
+    """Read the data of a remote model on its host, which also converts the stale estimator caches there.
 
     The batch caches hold the paths on the host. The window gives them back to the host with each plot, thus the host
     checks no text file for a plot.
     """
-    return read_run(modelpath, args, ntimesteps)
+    return read_model_data(modelpath, args, ntimesteps)
 
 
-def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunData:
-    """Read the data of the run that the controls of the viewer need.
+def read_model_data(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> ModelData:
+    """Read the data of the model that the controls of the viewer need.
 
-    The viewer checks and converts the estimator caches of the run one time. Each plot then reads the caches of its
+    The viewer checks and converts the estimator caches of the model one time. Each plot then reads the caches of its
     own timesteps and cells, as the command does. The function changes no viewer, thus a worker thread can run it.
     """
     if is_remote_path(modelpath):
-        return read_remote_run(modelpath, args, ntimesteps)
+        return read_remote_model_data(modelpath, args, ntimesteps)
 
-    isartisrun = not args.classicartis and not path_is_codecomparison(modelpath)
-    batchcaches = get_batch_caches(modelpath) if isartisrun else None
+    isartismodel = not args.classicartis and not path_is_codecomparison(modelpath)
+    batchcaches = get_batch_caches(modelpath) if isartismodel else None
     estimators, modelmeta = join_cell_modeldata(
         estimators=scan_estimators(modelpath=modelpath, classicartis=args.classicartis, batchcaches=batchcaches),
         modelpath=modelpath,
@@ -506,7 +506,7 @@ def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunD
     )
     cells: list[int] = dfcells["modelgridindex"].to_list()
     defaultplotlist, skippedplotlist = get_model_default_plotlist(estimatorcolumns, modelpath)
-    return RunData(
+    return ModelData(
         batchcaches=batchcaches,
         estimatorcolumns=tuple(estimatorcolumns),
         validtimesteps=validtimesteps,
@@ -521,19 +521,19 @@ def read_run(modelpath: Path, args: argparse.Namespace, ntimesteps: int) -> RunD
     )
 
 
-def reload_run(viewer: "EstimatorViewer", run: RunData) -> None:
-    """Give the viewer the data of the run that it read again, and keep the time range inside the valid timesteps.
+def reload_model_data(viewer: "EstimatorViewer", modeldata: ModelData) -> None:
+    """Give the viewer the data of the model that it read again, and keep the time range inside the valid timesteps.
 
-    A plot against time of the whole run then covers the new timesteps too.
+    A plot against time over all the timesteps then covers the new timesteps too.
     """
-    oldvalidtimesteps = viewer.run.validtimesteps
-    viewer.run = run
-    # the run can hold new data, thus the next plot reads it
+    oldvalidtimesteps = viewer.modeldata.validtimesteps
+    viewer.modeldata = modeldata
+    # the model can hold new data, thus the next plot reads it
     viewer.lastdata = None
     values = viewer.values
-    wholerun = (values.first, values.last) == (oldvalidtimesteps[0], oldvalidtimesteps[-1])
-    if is_evolution(values) and wholerun:
-        viewer.values = viewer.select_timesteps(values, 0, len(viewer.run.validtimesteps))
+    alltimesteps = (values.first, values.last) == (oldvalidtimesteps[0], oldvalidtimesteps[-1])
+    if is_evolution(values) and alltimesteps:
+        viewer.values = viewer.select_timesteps(values, 0, len(viewer.modeldata.validtimesteps))
     else:
         firstpos, lastpos = viewer.get_selection_positions()
         viewer.values = viewer.select_timesteps(values, firstpos, lastpos - firstpos + 1)
@@ -767,7 +767,9 @@ def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: 
         changes["-dimensionreduce"] = ("2",)
     elif mode == "projection":
         changes["-projection"] = oldprojection
-    cells = (values.cells or (str(viewer.run.cells[0]) if viewer.run.cells else "")) if mode == "cells" else ""
+    cells = (
+        (values.cells or (str(viewer.modeldata.cells[0]) if viewer.modeldata.cells else "")) if mode == "cells" else ""
+    )
     newrows = set_row_values(rows, changes)
     newvalues = replace_option_rows(viewer, dc.replace(values, cells=cells), newrows)
     if mode in IMAGE_MODES:
@@ -839,9 +841,9 @@ def cells_apply(values: ControlValues) -> bool:
 
 
 def get_batch_caches(modelpath: Path) -> "list[EstimatorBatchCache]":
-    """Return the current parquet caches of the batches of the run, and convert the stale batches first.
+    """Return the current parquet caches of the batches of the model, and convert the stale batches first.
 
-    A large run has more than 10 GB of estimators. The conversion of 40 batches of a 3D kilonova run kept 5.2 GB of
+    A large model has more than 10 GB of estimators. The conversion of 40 batches of a 3D kilonova model kept 5.2 GB of
     freed memory in the viewer process. A child process gives that memory back to the system when it ends. The
     child process imports artistools again, which took 0.4 s, thus the viewer process reads the caches itself when no
     batch is stale.
@@ -870,8 +872,8 @@ class EstimatorViewer:
     always agrees with the command.
     """
 
-    # the data of the run that the controls need, which read_run reads and Reload Data reads again
-    run: RunData
+    # the data of the model that the controls need, which read_model_data reads and Reload Data reads again
+    modeldata: ModelData
 
     def __init__(self, tokens: "Sequence[str]", fig: mplfig.Figure) -> None:
         """Read the arguments of the user, and take the first values of the controls from them."""
@@ -886,21 +888,21 @@ class EstimatorViewer:
         require_artis_folder(self.modelpath)
         # the working folder needs no token in the command
         self.modeltoken = "" if self.modelpath == Path() else str(args.modelpath)
-        # the arguments of the user, which give the columns of the plot and the format of the run
+        # the arguments of the user, which give the columns of the plot and the format of the model
         self.userargs = args
 
         self.tmids = get_timestep_times(self.modelpath, loc="mid")
         self.tstarts = get_timestep_times(self.modelpath, loc="start")
         self.tends = get_timestep_times(self.modelpath, loc="end")
-        self.run = read_run(self.modelpath, args, len(self.tmids))
-        # the option table does not show the rows of these flags, see RUN_DESTS
-        self.runflags = frozenset(
-            flag for flag, action in get_actions_by_flag(parser).items() if action.dest in RUN_DESTS
+        self.modeldata = read_model_data(self.modelpath, args, len(self.tmids))
+        # the option table does not show the rows of these flags, see MODELFORMAT_DESTS
+        self.modelformatflags = frozenset(
+            flag for flag, action in get_actions_by_flag(parser).items() if action.dest in MODELFORMAT_DESTS
         )
         # the size of the grid, which gives the edges of the cells that a selection of the window reads
         self.modelmeta: dict[str, t.Any] = get_modelmeta(self.modelpath)
         self.dimensions = int(self.modelmeta["dimensions"])
-        # the types of series that the run can plot from its NLTE populations. Only a 1D model gives the width in
+        # the types of series that the model can plot from its NLTE populations. Only a 1D model gives the width in
         # velocity of each shell for the population for each unit of velocity
         self.nltetypes: tuple[str, ...] = (
             ()
@@ -916,7 +918,9 @@ class EstimatorViewer:
         )
         # plotestimators stops when no default subplot applies to the model, thus the window shows a common variable
         subplots = (
-            givensubplots or self.run.defaultsubplots or ((get_first_common_variable(self.run.estimatorcolumns),),)
+            givensubplots
+            or self.modeldata.defaultsubplots
+            or ((get_first_common_variable(self.modeldata.estimatorcolumns),),)
         )
 
         # the default -x of a command depends on its time and its other options, thus each set has one result
@@ -934,16 +938,16 @@ class EstimatorViewer:
             first, last, _, _ = get_time_range(self.modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
             if first < 0:
                 exit_with_error(
-                    f"the time of the command lies outside the run, which goes from {self.tstarts[0]:.1f} to"
-                    f" {self.tends[-1]:.1f} days",
+                    "the time of the command lies outside the time range of the model, which goes from"
+                    f" {self.tstarts[0]:.1f} to {self.tends[-1]:.1f} days",
                     "Give a time inside that range",
                 )
         elif xvariable in TIME_XVARIABLES:
-            first, last = self.run.validtimesteps[0], self.run.validtimesteps[-1]
+            first, last = self.modeldata.validtimesteps[0], self.modeldata.validtimesteps[-1]
         else:
-            first = last = self.run.validtimesteps[len(self.run.validtimesteps) // 2]
+            first = last = self.modeldata.validtimesteps[len(self.modeldata.validtimesteps) // 2]
 
-        subplots, otheroptions = move_poptype_to_subplots(subplots, otheroptions, self.run.estimatorcolumns)
+        subplots, otheroptions = move_poptype_to_subplots(subplots, otheroptions, self.modeldata.estimatorcolumns)
         self.values = ControlValues(
             first=first,
             last=last,
@@ -988,15 +992,15 @@ class EstimatorViewer:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
         key = (timegiven, otheroptions)
         if key not in self.defaultxvariables:
-            timetokens = ["-timestep", str(self.run.validtimesteps[0])] if timegiven else []
+            timetokens = ["-timestep", str(self.modeldata.validtimesteps[0])] if timegiven else []
             self.defaultxvariables[key] = get_default_xvariable([*timetokens, *get_option_row_tokens(otheroptions)])
         return self.defaultxvariables[key]
 
     def get_time_tokens(self, values: ControlValues) -> list[str]:
-        """Return the -timestep option of the values, or no option for a plot against time of the whole run."""
+        """Return the -timestep option of the values, or no option for a plot against time over all the timesteps."""
         if is_evolution(values) and (values.first, values.last) == (
-            self.run.validtimesteps[0],
-            self.run.validtimesteps[-1],
+            self.modeldata.validtimesteps[0],
+            self.modeldata.validtimesteps[-1],
         ):
             return []
         return ["-timestep", str(values.first) if values.first == values.last else f"{values.first}-{values.last}"]
@@ -1014,7 +1018,7 @@ class EstimatorViewer:
             values = self.values
         if modeltoken is None:
             modeltoken = self.modeltoken
-        subplots = [get_command_items(subplot, self.run.estimatorcolumns) for subplot in values.subplots]
+        subplots = [get_command_items(subplot, self.modeldata.estimatorcolumns) for subplot in values.subplots]
         # a first subplot with no item cannot go before the folder, thus it follows -plot as the others do
         firstpositional = bool(subplots and subplots[0])
         tokens = [*(subplots[0] if firstpositional else ()), *([modeltoken] if modeltoken else [])]
@@ -1059,7 +1063,7 @@ class EstimatorViewer:
         """
         firstpos, lastpos = self.get_selection_positions()
         count = lastpos - firstpos + 1
-        validtmids = [self.tmids[timestep] for timestep in self.run.validtimesteps]
+        validtmids = [self.tmids[timestep] for timestep in self.modeldata.validtimesteps]
         return self.select_timesteps(self.values, get_nearest_range_start(validtmids, days, count), count)
 
     def get_cell_text(self) -> str:
@@ -1067,31 +1071,33 @@ class EstimatorViewer:
         if not self.values.cells:
             return "All cells"
         cell = get_single_cell(self.values.cells)
-        if cell is not None and (velocity := self.run.cellvelocities.get(cell)) is not None:
+        if cell is not None and (velocity := self.modeldata.cellvelocities.get(cell)) is not None:
             return f"Cell {self.values.cells} at v_r = {velocity / C_cm_per_s:.3g}c ({velocity / km_to_cm:.4g} km/s)"
         return f"Cells {self.values.cells}"
 
     def select_timesteps(self, values: ControlValues, firstpos: int, count: int) -> ControlValues:
         """Return the values with count valid timesteps from the position firstpos in the valid timesteps."""
-        count = min(max(count, 1), len(self.run.validtimesteps))
-        firstpos = min(max(firstpos, 0), len(self.run.validtimesteps) - count)
+        count = min(max(count, 1), len(self.modeldata.validtimesteps))
+        firstpos = min(max(firstpos, 0), len(self.modeldata.validtimesteps) - count)
         return dc.replace(
-            values, first=self.run.validtimesteps[firstpos], last=self.run.validtimesteps[firstpos + count - 1]
+            values,
+            first=self.modeldata.validtimesteps[firstpos],
+            last=self.modeldata.validtimesteps[firstpos + count - 1],
         )
 
     def get_selection_positions(self, values: ControlValues | None = None) -> tuple[int, int]:
         """Return the positions in the valid timesteps of the first and the last timestep of the time range."""
         values = values or self.values
-        validtimesteps = self.run.validtimesteps
+        validtimesteps = self.modeldata.validtimesteps
         return (
             get_nearest_range_start(validtimesteps, values.first, 1),
             get_nearest_range_start(validtimesteps, values.last, 1),
         )
 
     def step_time(self, step: int) -> ControlValues | None:
-        """Return the values with the time range one timestep later or earlier, or None at the end of the run."""
+        """Return the values with the time range one timestep later or earlier, or None past the valid timesteps."""
         firstpos, lastpos = self.get_selection_positions()
-        if firstpos + step < 0 or lastpos + step >= len(self.run.validtimesteps):
+        if firstpos + step < 0 or lastpos + step >= len(self.modeldata.validtimesteps):
             return None
         return self.select_timesteps(self.values, firstpos + step, lastpos - firstpos + 1)
 
@@ -1101,10 +1107,10 @@ class EstimatorViewer:
         return self.select_timesteps(self.values, firstpos, lastpos - firstpos + 1 + step)
 
     def move_to_end(self, *, last: bool) -> ControlValues:
-        """Return the values with the time range at the start or at the end of the run, and the same width."""
+        """Return the values with the time range at the first or the last timestep, and the same width."""
         firstpos, lastpos = self.get_selection_positions()
         count = lastpos - firstpos + 1
-        return self.select_timesteps(self.values, len(self.run.validtimesteps) - count if last else 0, count)
+        return self.select_timesteps(self.values, len(self.modeldata.validtimesteps) - count if last else 0, count)
 
     def step_cell(self, step: int) -> ControlValues | None:
         """Return the values with the next or the previous cell of the model, or None after the last cell.
@@ -1112,29 +1118,29 @@ class EstimatorViewer:
         A plot of all the cells, or of a list of cells, moves to the first or the last cell. If -cell does not select
         the cells of the plot, e.g. for a plane, the result is None.
         """
-        if not self.run.cells or not cells_apply(self.values):
+        if not self.modeldata.cells or not cells_apply(self.values):
             return None
         cell = get_single_cell(self.values.cells)
-        if cell is not None and cell in self.run.cells:
-            position = self.run.cells.index(cell) + step
-            if not 0 <= position < len(self.run.cells):
+        if cell is not None and cell in self.modeldata.cells:
+            position = self.modeldata.cells.index(cell) + step
+            if not 0 <= position < len(self.modeldata.cells):
                 return None
         else:
-            position = 0 if step > 0 else len(self.run.cells) - 1
-        return dc.replace(self.values, cells=str(self.run.cells[position]))
+            position = 0 if step > 0 else len(self.modeldata.cells) - 1
+        return dc.replace(self.values, cells=str(self.modeldata.cells[position]))
 
     def set_xvariable(self, values: ControlValues, xvariable: str) -> ControlValues:
         """Return the values with a new -x variable.
 
-        A plot against time reads the whole run, and a snapshot reads the valid timestep at the middle of the old time
-        range. The x limits of one variable do not apply to a different variable. A snapshot reads all the cells,
+        A plot against time reads all the timesteps, and a snapshot reads the valid timestep at the middle of the old
+        time range. The x limits of one variable do not apply to a different variable. A snapshot reads all the cells,
         because a snapshot of the one cell of a plot against time has one point.
         """
         if xvariable == values.x:
             return values
         values = dc.replace(values, x=xvariable, xmin="", xmax="")
         if is_evolution(values) and not is_evolution(self.values):
-            return self.select_timesteps(values, 0, len(self.run.validtimesteps))
+            return self.select_timesteps(values, 0, len(self.modeldata.validtimesteps))
         if not is_evolution(values) and is_evolution(self.values):
             firstpos, lastpos = self.get_selection_positions(values)
             return self.select_timesteps(dc.replace(values, cells=""), (firstpos + lastpos) // 2, 1)
@@ -1164,7 +1170,7 @@ class EstimatorViewer:
             lastdata = self.lastdata
             figuresdata = lastdata[1] if lastdata is not None and lastdata[0] == datakey else None
             reuseddata = figuresdata is not None
-            figuresdata = draw_plot(plotargs, fig, self.run.batchcaches, figuresdata)
+            figuresdata = draw_plot(plotargs, fig, self.modeldata.batchcaches, figuresdata)
             self.lastdata = (datakey, figuresdata)
             figuredata = figuresdata[0][0]
             # render_command gives the figure these colours after the draw, see apply_dark_colours
@@ -1306,7 +1312,7 @@ COMMON_VARIABLES: t.Final = ("Te", "TR", "nne", "rho", "heating_dep", "total_dep
 
 
 def get_first_common_variable(estimatorcolumns: "Collection[str]") -> str:
-    """Return the first variable of COMMON_VARIABLES that the run holds, or else Te."""
+    """Return the first variable of COMMON_VARIABLES that the model holds, or else Te."""
     return next((name for name in COMMON_VARIABLES if name in estimatorcolumns), "Te")
 
 
@@ -1335,7 +1341,7 @@ SPECIES_FAMILIES: t.Final = MappingProxyType({
     "initmasses": ("init_X",),
 })
 
-# the types of series that read the NLTE populations of the run, and not the estimators alone
+# the types of series that read the NLTE populations of the model, and not the estimators alone
 NLTE_SERIESTYPES: t.Final = frozenset({"averageexcitation", "levelpopulation", "levelpopulation_dn_on_dvel"})
 
 # the number of suggestions of the card of a subplot, and of the new subplots
@@ -1592,7 +1598,7 @@ def get_subplot_types(estimatorcolumns: "Collection[str]", nltetypes: "Collectio
 
     An ion series is a family of columns with one column for each ion, e.g. gamma_NT_Fe_II. The families of the
     other series types, e.g. nnion for the populations, are not a type of their own. nltetypes gives the types in
-    NLTE_SERIESTYPES that the run can plot, because they need its NLTE populations.
+    NLTE_SERIESTYPES that the model can plot, because they need its NLTE populations.
     """
     columns = tuple(estimatorcolumns)
     speciestypes = [
@@ -1785,27 +1791,31 @@ def get_nearest_cell(viewer: EstimatorViewer, xdata: float) -> int | None:
 
     A 3D model has many cells at one radial velocity, and the function gives one of them.
     """
-    if viewer.values.x not in {"velocity", "beta"} or not viewer.run.cellvelocities:
+    if viewer.values.x not in {"velocity", "beta"} or not viewer.modeldata.cellvelocities:
         return None
     axisisbeta = viewer.values.x == "beta" or viewer.xlimitscale != 1.0
     velocity = xdata * (C_cm_per_s if axisisbeta else km_to_cm)
-    cells = np.fromiter(viewer.run.cellvelocities.keys(), dtype=np.int64, count=len(viewer.run.cellvelocities))
-    velocities = np.fromiter(viewer.run.cellvelocities.values(), dtype=np.float64, count=len(viewer.run.cellvelocities))
+    cells = np.fromiter(
+        viewer.modeldata.cellvelocities.keys(), dtype=np.int64, count=len(viewer.modeldata.cellvelocities)
+    )
+    velocities = np.fromiter(
+        viewer.modeldata.cellvelocities.values(), dtype=np.float64, count=len(viewer.modeldata.cellvelocities)
+    )
     return int(cells[np.argmin(np.abs(velocities - velocity))])
 
 
 def get_evolution_values(viewer: EstimatorViewer, cells: str) -> ControlValues:
-    """Return the values that plot the cells against time over the whole run."""
+    """Return the values that plot the cells against time over all the timesteps."""
     return viewer.set_xvariable(dc.replace(viewer.values, cells=cells), "time")
 
 
 def get_snapshot_values(viewer: EstimatorViewer, xdata: float) -> ControlValues | None:
     """Return the values of a snapshot at a position on a time axis, or None for another axis."""
     if viewer.values.x == "time":
-        validtmids = [viewer.tmids[timestep] for timestep in viewer.run.validtimesteps]
+        validtmids = [viewer.tmids[timestep] for timestep in viewer.modeldata.validtimesteps]
         position = get_nearest_range_start(validtmids, xdata, 1)
     elif viewer.values.x == "timestep":
-        position = get_nearest_range_start(viewer.run.validtimesteps, xdata, 1)
+        position = get_nearest_range_start(viewer.modeldata.validtimesteps, xdata, 1)
     else:
         return None
     snapshotx = viewer.get_default_xvariable(viewer.values.otheroptions, timegiven=True)
@@ -2010,7 +2020,7 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
 KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Left</b>, <b>Right</b>", "Move the time range to the adjacent timestep"),
     ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
-    ("<b>Home</b>, <b>End</b>", "Move the time range to the start or the end of the run"),
+    ("<b>Home</b>, <b>End</b>", "Move the time range to the first or the last timestep"),
     ("<b>Page Up</b>, <b>Page Down</b>", "Select the previous or the next cell"),
     (
         "<b>Space</b>",
@@ -2070,7 +2080,7 @@ def open_window(
                 ),
                 "The number of timesteps of the time range. The Up key and the Down key change it.",
                 (
-                    "Move a snapshot through the timesteps of the run, or move a plot against time through the cells."
+                    "Move a snapshot through the timesteps of the model, or move a plot against time through the cells."
                     " After the last step, Play starts again at the first step (Space)"
                 ),
             ),
@@ -2166,7 +2176,7 @@ def open_window(
     xbox = QtWidgets.QComboBox()
     xbox.setEditable(True)
     xbox.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-    xbox.addItems([*XVARIABLES, *(column for column in viewer.run.estimatorcolumns if column not in XVARIABLES)])
+    xbox.addItems([*XVARIABLES, *(column for column in viewer.modeldata.estimatorcolumns if column not in XVARIABLES)])
     if (completer := xbox.completer()) is not None:
         set_search_completion(completer)
     xbox.setToolTip(helptexts.get("x", ""))
@@ -2305,15 +2315,15 @@ def open_window(
     defaultdpi: int = viewer.parser.get_default("dpi")
     # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
     # each option of the command there. A section and the table show the same rows
-    tablehiddendests = CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | RUN_DESTS
+    tablehiddendests = CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | MODELFORMAT_DESTS
 
     def get_table_rows(rows: OptionRows) -> OptionRows:
-        """Return the rows that the option table shows, which are all the rows except those of RUN_DESTS."""
-        return tuple(row for row in rows if row[0] not in viewer.runflags)
+        """Return the rows that the option table shows, which are all the rows except those of MODELFORMAT_DESTS."""
+        return tuple(row for row in rows if row[0] not in viewer.modelformatflags)
 
     def on_option_rows(rows: OptionRows) -> None:
-        runrows = tuple(row for row in viewer.values.otheroptions if row[0] in viewer.runflags)
-        queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *runrows)))
+        modelformatrows = tuple(row for row in viewer.values.otheroptions if row[0] in viewer.modelformatflags)
+        queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *modelformatrows)))
 
     figuresection, set_option_rows, commandtext, pythontext, (copybutton, pythoncopybutton), statusbar = (
         add_command_sections(
@@ -2349,17 +2359,17 @@ def open_window(
     ]
 
     def set_ranges() -> None:
-        """Give the sliders the number of valid timesteps and the number of cells of the run.
+        """Give the sliders the number of valid timesteps and the number of cells of the model.
 
         A shorter range clamps the value of a slider. The handler of the slider must not change the values of the
         viewer then, and show_values gives each slider its value.
         """
-        nvalid = len(viewer.run.validtimesteps)
+        nvalid = len(viewer.modeldata.validtimesteps)
         blockers = [QtCore.QSignalBlocker(slider) for slider in (timeslider, widthslider, cellslider)]
         try:
             timeslider.setRange(0, nvalid - 1)
             widthslider.setRange(1, nvalid)
-            cellslider.setRange(0, max(len(viewer.run.cells) - 1, 0))
+            cellslider.setRange(0, max(len(viewer.modeldata.cells) - 1, 0))
         finally:
             for blocker in blockers:
                 blocker.unblock()
@@ -2411,7 +2421,7 @@ def open_window(
         The name of the object of a control gives its role. show_subplots gives the focus to the control with the same
         role in a new card.
         """
-        columns = viewer.run.estimatorcolumns
+        columns = viewer.modeldata.estimatorcolumns
         seriestype = get_subplot_seriestype(subplot, columns)
         currenttype = seriestype or VARIABLES_TYPE
         names = get_subplot_names(subplot)
@@ -2684,7 +2694,7 @@ def open_window(
             resetaction=resetaction,
         )
 
-    # the names of the NLTE levels of the run, which get_levelnames reads when a card first needs them
+    # the names of the NLTE levels of the model, which get_levelnames reads when a card first needs them
     levelnamescache: list[list[str]] = []
 
     def get_levelnames(seriestype: str) -> list[str]:
@@ -2693,11 +2703,11 @@ def open_window(
         If get_level_names cannot read the NLTE populations, the terminal shows the error, and the level population
         offers no level.
         """
-        if not seriestype.startswith("levelpopulation") or not viewer.run.cells:
+        if not seriestype.startswith("levelpopulation") or not viewer.modeldata.cells:
             return []
         if not levelnamescache:
             names: list[str] = []
-            timestep, cell = viewer.values.last, viewer.run.cells[0]
+            timestep, cell = viewer.values.last, viewer.modeldata.cells[0]
             run_command_step(lambda: names.extend(get_level_names(viewer.modelpath, timestep, cell)))
             levelnamescache.append(names)
         return levelnamescache[0]
@@ -2710,7 +2720,7 @@ def open_window(
         names = set(get_subplot_names(viewer.values.subplots[row]))
         # a plot that ends while the menu shows can make the card again, and that deletes the children of the card
         menu = QtWidgets.QMenu(window)
-        for title, columns in get_variable_menu_groups(tuple(viewer.run.estimatorcolumns)):
+        for title, columns in get_variable_menu_groups(tuple(viewer.modeldata.estimatorcolumns)):
             if not columns:
                 continue
             # a line separates the groups at the top, and the submenus stay together below them
@@ -2774,7 +2784,7 @@ def open_window(
             if button is not None:
                 remove_widget(newsuggestionslayout, button)
         suggestions = get_new_subplot_suggestions(
-            viewer.values.subplots, viewer.run.defaultsubplots, viewer.run.estimatorcolumns
+            viewer.values.subplots, viewer.modeldata.defaultsubplots, viewer.modeldata.estimatorcolumns
         )
         for subplot in suggestions:
             text = shlex.join(subplot)
@@ -2790,7 +2800,7 @@ def open_window(
         the focus to the control that had it in the old card.
         """
         nonlocal shownnewkey, pendingfocus, shownsubplots
-        subplots, columns = viewer.values.subplots, viewer.run.estimatorcolumns
+        subplots, columns = viewer.values.subplots, viewer.modeldata.estimatorcolumns
         if subplots != shownsubplots:
             for rows in (collapsedrows, openyrows):
                 movedrows = get_moved_rows(shownsubplots, subplots, rows)
@@ -2825,7 +2835,7 @@ def open_window(
             remove_widget(subplotslayout, card.frame)
         del cards[len(subplots) :]
         show_swatches()
-        newkey = (subplots, viewer.run.defaultsubplots, columns)
+        newkey = (subplots, viewer.modeldata.defaultsubplots, columns)
         if newkey != shownnewkey:
             show_new_subplot_suggestions()
             shownnewkey = newkey
@@ -2931,7 +2941,7 @@ def open_window(
         for widget in (timeslider, timeedit, widthlabel, widthslider, widthedit):
             widget.setVisible(not evolution)
         stepbuttons[0].setEnabled(firstpos > 0)
-        stepbuttons[1].setEnabled(lastpos < len(viewer.run.validtimesteps) - 1)
+        stepbuttons[1].setEnabled(lastpos < len(viewer.modeldata.validtimesteps) - 1)
         trangebox.setVisible(evolution)
         set_trange_positions(firstpos, lastpos)
         set_edit_text(tminedit, f"{viewer.tmids[values.first]:.4g}")
@@ -3002,8 +3012,8 @@ def open_window(
         set_edit_text(timeedit, get_time_text(viewer.tmids, values))
         timestepslabel.setText(viewer.get_time_range_text())
         set_edit_text(celledit, values.cells)
-        if (cell := get_single_cell(values.cells)) is not None and cell in viewer.run.cells:
-            cellslider.setValue(viewer.run.cells.index(cell))
+        if (cell := get_single_cell(values.cells)) is not None and cell in viewer.modeldata.cells:
+            cellslider.setValue(viewer.modeldata.cells.index(cell))
         celllabel.setText(viewer.get_cell_text())
         xbox.setCurrentText(values.x)
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
@@ -3029,20 +3039,22 @@ def open_window(
         colorbyionnote = " (on for bins)" if viewer.plotcolorbyion and not values.colorbyion else ""
         colorbyioncheck.setText(FLAG_LABELS["--colorbyion"] + colorbyionnote)
         show_subplots()
-        defaultbutton.setEnabled(values.subplots != viewer.run.defaultsubplots and bool(viewer.run.defaultsubplots))
-        skippedcount = len(viewer.run.skippeddefaults)
+        defaultbutton.setEnabled(
+            values.subplots != viewer.modeldata.defaultsubplots and bool(viewer.modeldata.defaultsubplots)
+        )
+        skippedcount = len(viewer.modeldata.skippeddefaults)
         set_note_text(
             skippeddefaultslabel,
             f"The default subplots leave out {skippedcount} {'plot' if skippedcount == 1 else 'plots'}."
             if skippedcount
             else "",
-            "\n".join(["The default subplots leave out:", *(f"• {note}" for note in viewer.run.skippeddefaults)]),
+            "\n".join(["The default subplots leave out:", *(f"• {note}" for note in viewer.modeldata.skippeddefaults)]),
         )
         set_option_rows(get_table_rows(values.otheroptions))
         set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
         set_command_text(commandtext, viewer.get_command())
         set_command_text(
-            pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.run.estimatorcolumns)
+            pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.modeldata.estimatorcolumns)
         )
 
     def after_draw(message: str | None) -> None:
@@ -3109,7 +3121,7 @@ def open_window(
         except ValueError:
             show_error("Give a number of days for the first and the last time")
             return
-        validtmids = [viewer.tmids[timestep] for timestep in viewer.run.validtimesteps]
+        validtmids = [viewer.tmids[timestep] for timestep in viewer.modeldata.validtimesteps]
         firstpos, lastpos = (get_nearest_range_start(validtmids, days, 1) for days in (firstdays, lastdays))
         if firstpos > lastpos:
             show_error("Give a first time that is before the last time")
@@ -3132,9 +3144,9 @@ def open_window(
         if not is_evolution(viewer.values):
             return viewer.step_time(1) or viewer.move_to_end(last=False)
         # -cell does not select the cells of some plots, e.g. of a plane
-        if not viewer.run.cells or not cells_apply(viewer.values):
+        if not viewer.modeldata.cells or not cells_apply(viewer.values):
             return None
-        return viewer.step_cell(1) or dc.replace(viewer.values, cells=str(viewer.run.cells[0]))
+        return viewer.step_cell(1) or dc.replace(viewer.values, cells=str(viewer.modeldata.cells[0]))
 
     def play_step() -> None:
         if not playbutton.isChecked():
@@ -3151,8 +3163,8 @@ def open_window(
             play_step()
 
     def on_cell(position: int) -> None:
-        if viewer.run.cells:
-            apply(dc.replace(viewer.values, cells=str(viewer.run.cells[position])))
+        if viewer.modeldata.cells:
+            apply(dc.replace(viewer.values, cells=str(viewer.modeldata.cells[position])))
 
     def on_celledit() -> None:
         celledit.setModified(False)
@@ -3257,7 +3269,7 @@ def open_window(
         subplot, and then it goes to each one.
         """
         newsubplots, otheroptions = move_poptype_to_subplots(
-            tuple(subplots), viewer.values.otheroptions, viewer.run.estimatorcolumns
+            tuple(subplots), viewer.values.otheroptions, viewer.modeldata.estimatorcolumns
         )
         apply(dc.replace(viewer.values, subplots=newsubplots, otheroptions=otheroptions))
 
@@ -3273,7 +3285,7 @@ def open_window(
     def on_subplot_type(row: int, seriestype: str) -> None:
         subplot = viewer.values.subplots[row]
         levelnames = get_levelnames(seriestype)
-        set_subplot(row, change_subplot_type(subplot, seriestype, viewer.run.estimatorcolumns, levelnames))
+        set_subplot(row, change_subplot_type(subplot, seriestype, viewer.modeldata.estimatorcolumns, levelnames))
 
     def on_yrange(row: int, yminedit: QtWidgets.QLineEdit, ymaxedit: QtWidgets.QLineEdit) -> None:
         if not is_shown_card(row, yminedit):
@@ -3400,7 +3412,7 @@ def open_window(
 
         A name takes the meaning of the type of its subplot, e.g. Te in a populations subplot is tellurium.
         """
-        subplots, columns = viewer.values.subplots, viewer.run.estimatorcolumns
+        subplots, columns = viewer.values.subplots, viewer.modeldata.estimatorcolumns
         return get_subplot_seriestype(subplots[row], columns) == get_subplot_seriestype(subplots[targetrow], columns)
 
     def on_drag_chip(row: int, position: int, pointer: QtCore.QPoint) -> None:
@@ -3431,7 +3443,7 @@ def open_window(
             move_chip(row, position, *target)
 
     def move_chip(row: int, position: int, targetrow: int, chipindex: int) -> None:
-        subplots, columns = viewer.values.subplots, viewer.run.estimatorcolumns
+        subplots, columns = viewer.values.subplots, viewer.modeldata.estimatorcolumns
         if not is_same_subplot_type(row, targetrow):
             show_error("A series can move only to a subplot of the same type")
             return
@@ -3448,7 +3460,7 @@ def open_window(
         """
         nonlocal pendingfocus
         subplot = viewer.values.subplots[row]
-        chippositions = [chipposition for chipposition, _ in get_chip_items(subplot, viewer.run.estimatorcolumns)]
+        chippositions = [chipposition for chipposition, _ in get_chip_items(subplot, viewer.modeldata.estimatorcolumns)]
         if position not in chippositions or not 0 <= (index := chippositions.index(position) + step) < len(
             chippositions
         ):
@@ -3525,33 +3537,36 @@ def open_window(
 
     def insert_new_subplot(row: int) -> None:
         insert_subplot(
-            row, get_new_subplot(viewer.values.subplots, viewer.run.defaultsubplots, viewer.run.estimatorcolumns)
+            row,
+            get_new_subplot(
+                viewer.values.subplots, viewer.modeldata.defaultsubplots, viewer.modeldata.estimatorcolumns
+            ),
         )
 
     def add_suggested_subplot(subplot: tuple[str, ...]) -> None:
         insert_subplot(len(viewer.values.subplots), subplot)
 
     def on_reload() -> None:
-        """Read the run again in the worker thread, and keep the window responsive.
+        """Read the model again in the worker thread, and keep the window responsive.
 
         A conversion of new text files can take minutes, and the terminal shows the progress. The other viewers keep
         their caches.
         """
         modelpath, args, ntimesteps = viewer.modelpath, viewer.userargs, len(viewer.tmids)
-        reloadedruns: list[RunData] = []
+        reloadedmodeldata: list[ModelData] = []
 
-        def show_reloaded_run() -> None:
-            reload_run(viewer, reloadedruns[0])
+        def show_reloaded_model_data() -> None:
+            reload_model_data(viewer, reloadedmodeldata[0])
             set_ranges()
             queue.redraw()
 
-        reload_runs(
+        reload_models(
             queue,
             [modelpath],
-            show_reloaded_run,
+            show_reloaded_model_data,
             show_error,
             estimatorsonly=True,
-            read_runs=lambda: reloadedruns.append(read_run(modelpath, args, ntimesteps)),
+            read_models=lambda: reloadedmodeldata.append(read_model_data(modelpath, args, ntimesteps)),
         )
 
     def get_frame_readout(event: t.Any, frame: "mplax.Axes") -> str:
@@ -3644,7 +3659,7 @@ def open_window(
         position = next(
             (
                 position
-                for position, item in get_chip_items(subplot, viewer.run.estimatorcolumns)
+                for position, item in get_chip_items(subplot, viewer.modeldata.estimatorcolumns)
                 if get_series_name(item) == seriesname
             ),
             None,
@@ -3709,7 +3724,7 @@ def open_window(
         """
         values = viewer.values
         if is_evolution(values):
-            cells = list(viewer.run.cells)
+            cells = list(viewer.modeldata.cells)
             # -cell does not select the cells of some plots, e.g. of a plane
             if not cells or not cells_apply(values):
                 return 1, lambda _index: viewer.get_plot_tokens(values)
@@ -3717,7 +3732,7 @@ def open_window(
         firstpos, lastpos = viewer.get_selection_positions(values)
         count = lastpos - firstpos + 1
         return (
-            len(viewer.run.validtimesteps) - count + 1,
+            len(viewer.modeldata.validtimesteps) - count + 1,
             lambda index: viewer.get_plot_tokens(viewer.select_timesteps(values, index, count)),
         )
 
@@ -3725,23 +3740,25 @@ def open_window(
         name="plotestimators",
         main=plotestimators_main,
         parser=viewer.parser,
-        get_python_code=lambda: get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.run.estimatorcolumns),
+        get_python_code=lambda: get_python_code(
+            viewer.parser, viewer.get_plot_tokens(), viewer.modeldata.estimatorcolumns
+        ),
     )
 
     def on_export_animation() -> None:
         export_animation(window, queue, command, get_animation_frames(), fpsbox.value())
 
     def on_drop(paths: list[str]) -> None:
-        """Open a new window for each dropped folder of a run."""
+        """Open a new window for each dropped model folder."""
         for path in paths:
             if not Path(path).is_dir():
-                show_error(f"plotestimators reads the folder of an ARTIS run, and {Path(path).name} is a file")
+                show_error(f"plotestimators reads an ARTIS model folder, and {Path(path).name} is a file")
             elif (message := open_model_folder(path, open_window, windows)) is not None:
                 show_error(message)
 
     def on_closed() -> None:
         if queue.task is not None:
-            print("The reload of the run continues to its end, and then the process ends")
+            print("The reload of the model continues to its end, and then the process ends")
         # each kept scan holds the metadata of its file, e.g. 7.6 MB for 3000 columns
         scan_parquet_file.cache_clear()
 
@@ -3805,7 +3822,7 @@ def open_window(
     xbinsedit.editingFinished.connect(on_style)
     markerscheck.toggled.connect(on_style)
     colorbyioncheck.toggled.connect(on_style)
-    defaultbutton.clicked.connect(lambda: apply_subplots(viewer.run.defaultsubplots))
+    defaultbutton.clicked.connect(lambda: apply_subplots(viewer.modeldata.defaultsubplots))
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
         get_frames=lambda: get_plot_frames(viewer.fig),

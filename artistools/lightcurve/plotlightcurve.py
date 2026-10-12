@@ -443,7 +443,7 @@ def plot_energy_rates(
             if particle not in getattr(args, dest):
                 continue
             if (column := columns[particle]) not in depdata.columns:
-                # an older deposition.out has only the gamma columns, and a run with no fission has no fission column
+                # an older deposition.out has only the gamma columns, and a model with no fission has no fission column
                 print_warning(f"{modellogname} gives no {column} in deposition.out, thus the plot has no such curve")
                 continue
             yvalues = convert_lum_lsun_to_plotunits(depdata[column].to_numpy(), lumunit)
@@ -663,7 +663,7 @@ def plot_artis_lightcurve(
             exit_with_error(
                 str(exc),
                 "Give -plotviewingangle with light_curve_res.out, give no -plotviewingangle with light_curve.out, and"
-                " give a file that the run wrote in full",
+                " give a file that ARTIS wrote in full",
             )
         # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
         if -1 in dirbins and -1 not in lcdataframes:

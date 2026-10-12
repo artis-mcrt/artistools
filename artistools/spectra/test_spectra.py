@@ -210,7 +210,7 @@ def test_spectra_get_spectrum() -> None:
         -1
     ].collect()
 
-    # the packets file of the test model holds a part of the packets of the run, thus its flux is
+    # the packets file of the test model holds a part of the packets of the model, thus its flux is
     # below the flux of spec.out. test_spectra_get_flux_contributions compares spec.out with the sum
     # of the emission contributions
     check_spectrum(dfspectrumpkts, expectedmax=1.4601241778685615e-14, expectedmean=3.8221552332231758e-16)
@@ -610,10 +610,10 @@ def test_spectra_sampled_emission_replaces_the_emission_type_and_the_absorption(
             )
 
 
-def test_spectraemissionplot_of_a_run_with_no_sampled_emission_gives_a_message(
+def test_spectraemissionplot_of_a_model_with_no_sampled_emission_gives_a_message(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Stop with a message before the command reads the packets of a run with no sampled emission.
+    """Stop with a message before the command reads the packets of a model with no sampled emission.
 
     Each preset of ARTIS sets SAMPLE_RPKT_EMISSION to false.
     """
@@ -1036,7 +1036,7 @@ def test_spectra_gamma_packets_group_by_emission_velocity(monkeypatch: pytest.Mo
 
 
 def test_spectraemissionplot_gamma_shells_need_an_emission_position(tmp_path: Path) -> None:
-    """A run from before artis-mcrt/artis#637 stops with a message, because its gamma packets have no position.
+    """A model from ARTIS before artis-mcrt/artis#637 stops with a message, because its gamma packets have no position.
 
     Without the message, each packet lay outside every shell and the plot had no series.
     """
@@ -1653,7 +1653,7 @@ def test_reference_spectrum_named_out_is_not_read_as_artis(tmp_path: Path) -> No
     """A user can name reference data with the .out suffix that ARTIS uses for its own output.
 
     path_is_artis_model reads that suffix, thus the predicate sent such a file to the ARTIS reader and
-    the command drew nothing. The folder decides: an ARTIS run holds input.txt beside its output.
+    the command drew nothing. The folder decides: an ARTIS model folder holds input.txt beside its output.
     """
     import shutil
 
@@ -1666,7 +1666,7 @@ def test_reference_spectrum_named_out_is_not_read_as_artis(tmp_path: Path) -> No
     assert path_is_reference_spectrum(tmp_path / "myref.out")
     assert path_is_reference_spectrum(tmp_path / "myref.txt")
 
-    # the output of a real run keeps its own reading, whether the user names the folder or the file
+    # the output of a real ARTIS model keeps its own reading, whether the user names the folder or the file
     assert not path_is_reference_spectrum(modelpath)
     assert not path_is_reference_spectrum(modelpath / "spec.out")
 
@@ -1878,17 +1878,17 @@ def test_plotspectra_notimeclamp_keeps_a_one_sided_bound(tmp_path: Path, capsys:
     assert "Enabling --frompackets, since --notimeclamp was specified" in capsys.readouterr().out
 
 
-def test_plotspectra_skips_a_folder_that_is_not_a_run(tmp_path: Path) -> None:
+def test_plotspectra_skips_a_folder_that_is_not_a_model_folder(tmp_path: Path) -> None:
     """A folder without input.txt gives no timesteps, thus the plot of the other models must still run.
 
     The range resolution of main asked the first folder for its timesteps and stopped before any plot.
     """
-    notarun = tmp_path / "notarun"
-    notarun.mkdir()
+    notamodel = tmp_path / "notamodel"
+    notamodel.mkdir()
     outputfolder = tmp_path / "output"
     outputfolder.mkdir()
 
-    at.spectra.plot(argsraw=["-timedays", "300", str(notarun), str(modelpath), "-outputfile", str(outputfolder)])
+    at.spectra.plot(argsraw=["-timedays", "300", str(notamodel), str(modelpath), "-outputfile", str(outputfolder)])
 
     assert len(list(outputfolder.glob("*.pdf"))) == 1
 
@@ -1918,7 +1918,7 @@ def test_plotspectra_one_sided_bound_that_the_first_model_does_not_reach(tmp_pat
 def test_plotspectra_takes_a_reference_named_out_before_a_model(tmp_path: Path) -> None:
     """A reference spectrum can carry the .out suffix of ARTIS, thus its folder holds no timesteps.
 
-    The time range resolution asked such a folder for the timesteps of a run and raised
+    The time range resolution asked such a folder for the timesteps of a model and raised
     FileNotFoundError before any plot ran.
     """
     import shutil
@@ -2283,7 +2283,7 @@ def test_plotspectra_write_data_names_each_direction_bin(tmp_path: Path) -> None
 def test_get_specpol_data_reads_one_direction_bin() -> None:
     """ARTIS writes one file specpol_res.out that holds a table for each direction bin.
 
-    The reader asked for specpol_res_<dirbin>.out, which no run holds, thus every direction bin
+    The reader asked for specpol_res_<dirbin>.out, which no model folder holds, thus every direction bin
     raised FileNotFoundError.
     """
     dfdirbin = at.spectra.get_specpol_data(dirbin=0, modelpath=modelpath_classic_3d)["I"].collect()
@@ -2737,8 +2737,8 @@ def test_get_spectra_names_the_last_timestep_of_a_run_that_stopped_early(tmp_pat
         at.spectra.get_spectra(earlymodel, 82, 82, directionbins=[-1])
 
 
-def test_get_spectra_reads_specpol_out_of_a_run_without_spec_out() -> None:
-    """A POL_ON run can hold specpol.out and no spec.out. The Stokes I part of specpol.out is the spectrum."""
+def test_get_spectra_reads_specpol_out_of_a_model_without_spec_out() -> None:
+    """A model with POL_ON can hold specpol.out and no spec.out. The Stokes I part of specpol.out is the spectrum."""
     vspecpolmodel = at.get_path("testdata") / "vspecpolmodel"
     assert not (vspecpolmodel / "spec.out").exists()
     timestep = 120
@@ -3226,7 +3226,7 @@ def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pyt
     assert shlex.split(viewer.get_command())[2:4] == ["-t", "300"]
 
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
-    # the second model is the same run, because the other test runs do not cover 300 days
+    # the second model is the same model folder, because the other test models do not cover 300 days
     spectra = (*viewer.values.spectra, str(modelpath), reference)
     assert viewer.change(dc.replace(viewer.values, spectra=spectra)) is None
     assert shlex.split(viewer.get_command())[2:5] == [".", str(modelpath), reference]
@@ -3246,8 +3246,8 @@ def test_interactive_new_first_model_gives_the_time_grid() -> None:
     assert last - first + 1 == 4
     centre = viewer.values.centre
 
-    viewer.values = interactive.set_runs(viewer, [str(classic1dpath), str(modelpath_classic_3d)], "")
-    assert viewer.grid.runfolders[0] == classic1dpath
+    viewer.values = interactive.set_models(viewer, [str(classic1dpath), str(modelpath_classic_3d)], "")
+    assert viewer.grid.modelfolders[0] == classic1dpath
     first, last = interactive.get_grid_selection(viewer.grid, viewer.values)
     assert last - first + 1 == 4
     assert viewer.values.centre == pytest.approx(centre, rel=0.05)
@@ -3257,28 +3257,28 @@ def test_interactive_new_first_model_gives_the_time_grid() -> None:
 def test_interactive_time_grid_of_a_later_model() -> None:
     """A model that is not first can give its timesteps to the time controls, and the valid times apply to all models.
 
-    plotspectra rejects a time outside the timesteps of each run, thus the valid times stay inside both runs.
+    plotspectra rejects a time outside the timesteps of each model, thus the valid times stay inside both models.
     """
     classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
     spectra = [str(modelpath_classic_3d), str(classic1dpath)]
     viewer = make_headless_viewer([*spectra, "-t", "4.5-5", "--interactive"])
-    viewer.values = interactive.set_runs(viewer, spectra, str(classic1dpath))
+    viewer.values = interactive.set_models(viewer, spectra, str(classic1dpath))
     assert viewer.grid.gridfolder == classic1dpath
     assert viewer.values.spectra == tuple(spectra)
     first, last = interactive.get_grid_selection(viewer.grid, viewer.values)
     assert last - first + 1 == 4
-    for runtimes in viewer.grid.runtimes.values():
-        assert runtimes.tstart <= viewer.grid.timebounds[0] < viewer.grid.timebounds[1] <= runtimes.tend
+    for modeltimes in viewer.grid.modeltimes.values():
+        assert modeltimes.tstart <= viewer.grid.timebounds[0] < viewer.grid.timebounds[1] <= modeltimes.tend
 
     # after the removal of the model, the time controls use the timesteps of the first model again
-    viewer.values = interactive.set_runs(viewer, spectra[:1], viewer.values.timegrid)
+    viewer.values = interactive.set_models(viewer, spectra[:1], viewer.values.timegrid)
     assert (viewer.values.timegrid, viewer.grid.gridfolder) == ("", modelpath_classic_3d)
 
 
-def test_interactive_time_fits_the_timestep_of_each_run() -> None:
-    """A time inside the valid times can still give a timestep of a different run that ends outside its valid times.
+def test_interactive_time_fits_the_timestep_of_each_model() -> None:
+    """A time inside the valid times can still give a timestep of a different model that ends outside its valid times.
 
-    plotspectra clamps the time to the timestep of each run, and it then rejects the days of that timestep.
+    plotspectra clamps the time to the timestep of each model, and it then rejects the days of that timestep.
     """
     classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
     tstarts = at.get_timestep_times(classic1dpath, loc="start")
@@ -3286,11 +3286,11 @@ def test_interactive_time_fits_the_timestep_of_each_run() -> None:
     timestep = 25
     # the valid times end in the middle of the timestep
     validend = (tstarts[timestep] + tends[timestep]) / 2.0
-    runtimes = interactive.RunTimes(tstart=tstarts[0], tend=tends[-1], validstart=tstarts[0], validend=validend)
+    modeltimes = interactive.ModelTimes(tstart=tstarts[0], tend=tends[-1], validstart=tstarts[0], validend=validend)
     earlytime = f"{tstarts[timestep] + 0.25 * (tends[timestep] - tstarts[timestep]):.6f}"
     assert float(earlytime) < validend
-    assert not interactive.fits_each_run([(classic1dpath, runtimes)], earlytime)
-    assert interactive.fits_each_run([(classic1dpath, runtimes)], f"{tstarts[timestep - 1] + 0.001:.6f}")
+    assert not interactive.fits_each_model([(classic1dpath, modeltimes)], earlytime)
+    assert interactive.fits_each_model([(classic1dpath, modeltimes)], f"{tstarts[timestep - 1] + 0.001:.6f}")
 
 
 def test_interactive_series_styles_stay_on_their_spectrum() -> None:
@@ -3573,12 +3573,12 @@ def test_fixedionlist_warning_names_only_the_items_that_the_plot_shows(capsys: p
         assert ("did not find" in capsys.readouterr().err) is haswarning
 
 
-def test_interactive_valid_times_of_each_run() -> None:
-    """The time controls stay inside the times that are valid for every run of the command.
+def test_interactive_valid_times_of_each_model() -> None:
+    """The time controls stay inside the times that are valid for every model of the command.
 
-    plotspectra checks the times of each run, and the viewer took the valid times of the first run only.
+    plotspectra checks the times of each model, and the viewer took the valid times of the first model only.
     """
-    # each call of the mock gives the valid range of the next run
+    # each call of the mock gives the valid range of the next model
     ranges = [(None, 260.0, 330.0), (None, 270.0, 320.0)]
     with mock.patch.object(interactive, "get_escaped_arrivalrange", side_effect=ranges):
         viewer = make_headless_viewer([str(modelpath), str(modelpath), "-t", "300", "--interactive"])
@@ -3787,7 +3787,7 @@ def test_interactive_lock_series() -> None:
     assert all(colours[name] == latercolours[name] for name in shared)
 
 
-def test_interactive_time_stays_inside_the_runs_of_the_list(tmp_path: Path) -> None:
+def test_interactive_time_stays_inside_the_models_of_the_list(tmp_path: Path) -> None:
     """A model that the user adds can have a shorter valid time, and the time controls then stay inside it.
 
     The viewer read the valid times of the models of the command only. After Add Model, the first time of the slider
@@ -3806,7 +3806,7 @@ def test_interactive_time_stays_inside_the_runs_of_the_list(tmp_path: Path) -> N
     FigureCanvasAgg(fig)
     viewer = interactive.SpectrumViewer([str(widemodel), "-t", "300", "--interactive"], fig)
     widestart = viewer.grid.timebounds[0]
-    viewer.load_runs((str(widemodel), str(modelpath)))
+    viewer.load_models((str(widemodel), str(modelpath)))
     assert viewer.grid.timebounds[0] > widestart
     firsttime = viewer.move_to_end(last=False)
     assert viewer.change(dc.replace(firsttime, spectra=(str(widemodel), str(modelpath)))) is None
@@ -3815,7 +3815,7 @@ def test_interactive_time_stays_inside_the_runs_of_the_list(tmp_path: Path) -> N
 def test_interactive_spectrum_path_is_the_same_for_each_spelling(monkeypatch: pytest.MonkeyPatch) -> None:
     """Two spellings of one spectrum give the same path, thus the list of spectra does not show it two times.
 
-    A drop of the working folder added it again next to ".", and the plot then drew the same run two times.
+    A drop of the working folder added it again next to ".", and the plot then drew the same model two times.
     """
     monkeypatch.chdir(modelpath)
     assert interactive.get_spectrum_path(".") == interactive.get_spectrum_path(str(modelpath.absolute()))
@@ -3855,33 +3855,34 @@ def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
     assert packetsviewer.change(interactive.set_packet_type(packetsviewer.values, gamma=False)) is None
     assert packetsviewer.values.datasource == "auto"
     assert "--frompackets" not in packetsviewer.get_plot_tokens()
-    # a run with neither file has no gamma-ray spectrum, thus the window disables the gamma packets
+    # a model folder with neither file has no gamma-ray spectrum, thus the window disables the gamma packets
     assert not interactive.has_gamma_spectrum([at.get_path("testdata") / "test-classicmode_1d"])
 
 
-def test_interactive_gamma_spectrum_needs_one_source_for_all_runs(tmp_path: Path) -> None:
-    """The gamma packets need gamma_spec.out in each run, or the packets of each run.
+def test_interactive_gamma_spectrum_needs_one_source_for_all_models(tmp_path: Path) -> None:
+    """The gamma packets need gamma_spec.out in each model folder, or the packets of each model folder.
 
-    plotspectra reads the packets of each run when one run has no gamma_spec.out. A list with gamma_spec.out alone in
-    one run and packets alone in the other run enabled the gamma packets, and the plot then failed.
+    plotspectra reads the packets of each model folder when one model folder has no gamma_spec.out. A list with
+    gamma_spec.out alone in one model folder and packets alone in the other model folder enabled the gamma packets,
+    and the plot then failed.
     """
-    specrun, packetsrun = tmp_path / "specrun", tmp_path / "packetsrun"
-    for runfolder, filename in ((specrun, "gamma_spec.out"), (packetsrun, "packets00_0000.out")):
-        runfolder.mkdir()
-        (runfolder / filename).write_text("", encoding="utf-8")
-    assert interactive.has_gamma_spectrum([specrun])
-    assert interactive.has_gamma_spectrum([packetsrun])
-    assert not interactive.has_gamma_spectrum([specrun, packetsrun])
+    specmodel, packetsmodel = tmp_path / "specmodel", tmp_path / "packetsmodel"
+    for modelfolder, filename in ((specmodel, "gamma_spec.out"), (packetsmodel, "packets00_0000.out")):
+        modelfolder.mkdir()
+        (modelfolder / filename).write_text("", encoding="utf-8")
+    assert interactive.has_gamma_spectrum([specmodel])
+    assert interactive.has_gamma_spectrum([packetsmodel])
+    assert not interactive.has_gamma_spectrum([specmodel, packetsmodel])
 
 
-def test_interactive_direction_kinds_follow_the_first_run() -> None:
-    """The kinds of viewing direction come from the first run of the list, also after a change of the list.
+def test_interactive_direction_kinds_follow_the_first_model() -> None:
+    """The kinds of viewing direction come from the first model of the list, also after a change of the list.
 
-    The kinds came from the first run of the command, thus a new first run with no vpkt.txt kept -plotvspecpol.
+    The kinds came from the first model of the command, thus a new first model with no vpkt.txt kept -plotvspecpol.
     """
     viewer = make_headless_viewer([str(at.get_path("testdata") / "vpktcontrib"), "--interactive"])
     assert "vpkt" in viewer.grid.directionkinds
-    viewer.load_runs([str(modelpath), str(at.get_path("testdata") / "vpktcontrib")])
+    viewer.load_models([str(modelpath), str(at.get_path("testdata") / "vpktcontrib")])
     assert "vpkt" not in viewer.grid.directionkinds
 
 
@@ -3949,13 +3950,13 @@ def test_emission_plot_of_all_directions(mocktitle: mock.MagicMock, averaging: l
     assert any("all directions" in str(callargs.args[1]) for callargs in mocktitle.call_args_list)
 
 
-def test_viewer_keys_the_runs_by_the_tokens_of_the_list() -> None:
-    """A path with a trailing slash must give the run of its row, or the window stops at the start."""
+def test_viewer_keys_the_models_by_the_tokens_of_the_list() -> None:
+    """A path with a trailing slash must give the model of its row, or the window stops at the start."""
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
     viewer = interactive.SpectrumViewer([f"{modelpath}/", "-t", "300"], fig)
-    assert set(viewer.grid.runtimes) == set(viewer.values.spectra)
-    assert viewer.grid.runkey == (viewer.values.spectra, viewer.values.timegrid)
+    assert set(viewer.grid.modeltimes) == set(viewer.values.spectra)
+    assert viewer.grid.loadkey == (viewer.values.spectra, viewer.values.timegrid)
 
 
 def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
@@ -3975,7 +3976,7 @@ def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
         return interactive.SpectrumViewer(tokens, fig)
 
     viewer = make([*models, "-t", "4.5-5"])
-    viewer.values = interactive.set_runs(viewer, viewer.values.spectra, models[1])
+    viewer.values = interactive.set_models(viewer, viewer.values.spectra, models[1])
     command = viewer.get_command()
     reopened = make([*shlex.split(command)[2:], "--interactive"])
     assert reopened.get_command() == command
@@ -4008,8 +4009,8 @@ def test_plotspectra_draws_a_reference_spectrum_with_no_metadata(tmp_path: Path)
     assert np.allclose(np.asarray(refline.get_ydata(), dtype=np.float64), [1.0, 2.0, 3.0, 2.0], rtol=1e-12, atol=0.0)
 
 
-def test_flux_contributions_refuse_a_timestep_outside_the_run() -> None:
-    """A timestep below zero is not in the run.
+def test_flux_contributions_refuse_a_timestep_outside_the_model() -> None:
+    """A timestep below zero is not in the model.
 
     polars takes a negative row index from the end, thus the default timestep of -1 gave the rows of other bins.
     """
@@ -4128,8 +4129,8 @@ def test_plotspectra_ymax_alone_keeps_the_bottom_at_zero(tmp_path: Path) -> None
     assert axis.get_ylim() == (0.0, 2e-12)
 
 
-def test_interactive_command_reads_one_grid_of_the_runs() -> None:
-    """The worker thread makes the command from the timestep grid while the window can load the runs again.
+def test_interactive_command_reads_one_grid_of_the_models() -> None:
+    """The worker thread makes the command from the timestep grid while the window can load the models again.
 
     A new model replaced the grid during a plot, and the worker then read a timestep of the old grid in the new grid.
     The command must read the grid one time, thus a load during the command has no effect on it.
@@ -4139,7 +4140,7 @@ def test_interactive_command_reads_one_grid_of_the_runs() -> None:
     oldgrid = viewer.grid
     get_grid_selection = interactive.get_grid_selection
 
-    def select_then_load(grid: interactive.RunGrid, values: interactive.ControlValues) -> tuple[int, int]:
+    def select_then_load(grid: interactive.TimestepGrid, values: interactive.ControlValues) -> tuple[int, int]:
         viewer.grid = oldgrid._replace(tmids=oldgrid.tmids[:1], tstarts=oldgrid.tstarts[:1], tends=oldgrid.tends[:1])
         return get_grid_selection(grid, values)
 
@@ -4191,29 +4192,29 @@ def test_interactive_reload_reads_the_data_source_again(tmp_path: Path) -> None:
     """
     from artistools.viewertools.window import clear_output_caches
 
-    runfolder = tmp_path / "run"
-    runfolder.mkdir()
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
     for path in modelpath.iterdir():
-        (runfolder / path.name).symlink_to(path)
-    assert not (runfolder / "gamma_spec.out").exists()
-    viewer = interactive.SpectrumViewer([str(runfolder), "-t", "300", "--gamma", "--interactive"], mplfig.Figure())
+        (modelfolder / path.name).symlink_to(path)
+    assert not (modelfolder / "gamma_spec.out").exists()
+    viewer = interactive.SpectrumViewer([str(modelfolder), "-t", "300", "--gamma", "--interactive"], mplfig.Figure())
     assert interactive.get_auto_reason(viewer, viewer.values) == "--gamma with no gamma_spec.out"
-    (runfolder / "gamma_spec.out").write_bytes((modelpath / "spec.out").read_bytes())
-    # Reload Data clears the caches of the files, then it reads the runs again
+    (modelfolder / "gamma_spec.out").write_bytes((modelpath / "spec.out").read_bytes())
+    # Reload Data clears the caches of the files, then it reads the models again
     clear_output_caches()
-    viewer.load_runs(viewer.values.spectra, viewer.values.timegrid)
+    viewer.load_models(viewer.values.spectra, viewer.values.timegrid)
     assert interactive.get_auto_reason(viewer, viewer.values) is None
 
 
 def test_interactive_animation_keeps_the_time_grid_of_its_start() -> None:
-    """The commands of Export Animation come from the time grid at the start, also when the window reads new runs.
+    """The commands of Export Animation come from the time grid at the start, also when the window reads new models.
 
     Add Model during an export gave the later frames the positions of the old grid on the new grid.
     """
     viewer = interactive.SpectrumViewer([str(modelpath), "-t", "300", "--interactive"], mplfig.Figure())
     count, get_frame_tokens = interactive.get_animation_frames(viewer)
     firsttokens, lasttokens = get_frame_tokens(0), get_frame_tokens(count - 1)
-    viewer.load_runs([str(modelpath_classic_3d)])
+    viewer.load_models([str(modelpath_classic_3d)])
     assert len(viewer.grid.validtimesteps) < count
     assert get_frame_tokens(0) == firsttokens
     assert get_frame_tokens(count - 1) == lasttokens

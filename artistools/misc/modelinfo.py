@@ -146,7 +146,7 @@ def get_nu_grid_cached(modelpath: Path) -> npt.NDArray[np.floating]:
 def shorten_middle(text: str, maxlen: int | None) -> str:
     """Return text of no more than maxlen characters, with the middle replaced by an ellipsis.
 
-    The name of a run folder carries the model at the start and the date, the packet count, and the
+    The name of a model folder often carries the name of the model at the start, and the date, the packet count, and the
     machine at the end. Thus a cut of either end alone loses what the reader needs most.
     """
     if maxlen is None or len(text) <= maxlen:
@@ -192,21 +192,21 @@ def print_modelpath(modelpath: Path | str) -> None:
     """Print the folder of the model below a heading, as the other plot commands do.
 
     The name of a model says nothing about the folder that holds it, and a user runs a command over
-    many folders. The full path answers that, because "." says nothing on a run inside the model.
+    many folders. The full path answers that, because "." says nothing when the command runs in the model folder.
     """
     print_detail(f"modelpath: {resolve_modelpath(modelpath)}")
 
 
 def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
-    """Return the text of a file in the copy of the ARTIS source in the artis folder of the run, or None."""
+    """Return the text of a file in the copy of the ARTIS source in the artis folder of the model, or None."""
     sourcepath = Path(modelpath) / "artis" / filename
     return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
 def get_artis_option(modelpath: Path | str, name: str) -> str | None:
-    """Return the value text of a constexpr option of artis/artisoptions.h in the folder of the run, or None.
+    """Return the value text of a constexpr option of artis/artisoptions.h in the model folder, or None.
 
-    A run with no such file, or a file with no such option, gives None. A commented line gives no value.
+    A model with no such file, or a file with no such option, gives None. A commented line gives no value.
     """
     optionstext = get_artis_source_text(modelpath, "artisoptions.h")
     if optionstext is None:
@@ -335,7 +335,7 @@ def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
     return get_runfolder_timesteps_cached(resolve_modelpath(folderpath))
 
 
-# a window checks every run folder for each plot, and a run of many restarts has more than 16 of them
+# a window checks every run folder for each plot, and a model with many restarts has more than 16 of them
 @lru_cache(maxsize=1024)
 def get_runfolder_timesteps_cached(folderpath: Path) -> tuple[int, ...]:
     """Return the timesteps of the run folder at an absolute path."""
@@ -402,7 +402,7 @@ def get_runfolders(
 
     Without a timestep, the list holds each folder whose estimator files give at least one timestep. A restarted run
     repeats the last timestep of the folder before it, and the earlier folder keeps each timestep that two folders
-    hold, as in scan_estimators. A folder with no earlier folder keeps its first timestep, e.g. a run whose first job
+    hold, as in scan_estimators. A folder with no earlier folder keeps its first timestep, e.g. a model whose first run
     folder is gone.
     """
     singletimestep = timestep if timesteps is None and timestep is not None and timestep > -1 else None
@@ -671,7 +671,7 @@ def get_rankassignments(modelpath: Path | str) -> pl.DataFrame | None:
 
 @lru_cache(maxsize=16)
 def get_rankassignments_cached(modelpath: Path) -> pl.DataFrame | None:
-    """Return the assignments of the run, and keep the frame for the next caller.
+    """Return the rank assignments of the model, and keep the frame for the next caller.
 
     get_mpirankofcell asks for one cell at a time, thus a scan that each call collects reads the file
     again for each cell. Do not change the frame that this function returns.

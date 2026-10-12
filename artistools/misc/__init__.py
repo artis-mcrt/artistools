@@ -84,8 +84,8 @@ from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_nu
 from artistools.misc.fileio import find_reference_data_file as find_reference_data_file
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
-from artistools.misc.fileio import folder_is_artis_run as folder_is_artis_run
-from artistools.misc.fileio import get_artis_run_folders as get_artis_run_folders
+from artistools.misc.fileio import folder_is_artis_model as folder_is_artis_model
+from artistools.misc.fileio import get_artis_model_folders as get_artis_model_folders
 from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import get_file_state as get_file_state

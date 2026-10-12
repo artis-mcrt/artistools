@@ -186,7 +186,7 @@ def get_fitted_field(
 
 
 def get_first_nlte_radfield_timestep(modelpath: Path | str) -> int | None:
-    """Return FIRST_NLTE_RADFIELD_TIMESTEP of artis/artisoptions.h in the folder of the run, or None.
+    """Return FIRST_NLTE_RADFIELD_TIMESTEP of artis/artisoptions.h in the model folder, or None.
 
     ARTIS uses the fits of the bins from this timestep. Before it, ARTIS uses the full-spectrum fit for every bin.
     """
@@ -240,7 +240,7 @@ def plot_specout(
     """Plot the ARTIS spectrum.
 
     The caller gives the model path, because a run on a cluster writes spec.out to a subfolder of the
-    model. The parent folder of that file is then the run folder and not the model.
+    model folder. The parent folder of that file is then the run folder and not the model folder.
     """
     dfspectrum = get_spectra(modelpath=modelpath, timestepmin=timestep, directionbins=[-1])[-1].collect()
     label = "Emergent spectrum"
@@ -315,7 +315,7 @@ def plot_celltimestep(
     firstnlteradfieldtimestep = get_first_nlte_radfield_timestep(modelpath)
     if firstnlteradfieldtimestep is None:
         print(
-            "The run holds no FIRST_NLTE_RADFIELD_TIMESTEP in artis/artisoptions.h, thus the radiation field model"
+            "artis/artisoptions.h of the model gives no FIRST_NLTE_RADFIELD_TIMESTEP, thus the radiation field model"
             " takes the fits of the bins. ARTIS takes the full-spectrum fit before that timestep"
         )
     arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
@@ -447,8 +447,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # read_radfield parses a rank file on each call, thus one read of all the cells serves each cell and timestep
     radfielddata_allcells = read_radfield(modelpath, modelgridindex=modelgridindexlist)
 
-    # a run that stopped early holds no radiation field data at the last timestep of the time grid. Thus "last"
-    # is the last timestep that holds data
+    # a model whose last run stopped early has no radiation field data at the last timestep of the time grid. Thus
+    # "last" is the last timestep that holds data
     timesteplast = (
         int(radfielddata_allcells.select(pl.col("timestep").max()).item())
         if not radfielddata_allcells.is_empty()

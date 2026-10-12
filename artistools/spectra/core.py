@@ -209,7 +209,7 @@ def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> n
             )
         else:
             # NU_MAX_R is 5e16 Hz in the kilonova artisoptions.h files of ARTIS and 5e15 Hz in the others. The
-            # default keeps the kilonova value, because most runs with no spec.out are kilonova runs
+            # default keeps the kilonova value, because most models with no spec.out are kilonova models
             nu_min_r = 1e13
             nu_max_r = 5e16
             print(
@@ -693,8 +693,9 @@ def get_from_packets(
 def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
     """Return the names of the files that can hold the spectrum of each timestep, in the order of the search.
 
-    A POL_ON run of ARTIS also writes specpol.out and specpol_res.out. The Stokes I part of these files is the
-    spectrum of spec.out and spec_res.out, thus a run that holds only the polarisation files still gives a spectrum.
+    A model with POL_ON also writes specpol.out and specpol_res.out. The Stokes I part of these files is
+    the spectrum of spec.out and spec_res.out. Thus a model folder with only the polarisation files still gives a
+    spectrum.
     """
     if gamma:
         return ["gamma_spec_res.out"] if directionresolved else ["gamma_spec.out"]
@@ -871,7 +872,8 @@ def get_spectra(
             msg = "ERROR: No spherically averaged gamma spectrum found."
             raise FileNotFoundError(msg) from e
         if not specdata_alltimesteps:
-            # the direction bins of spec_res.out can still give a plot, thus only a run with no spectrum file fails here
+            # the direction bins of spec_res.out can still give a plot. Thus only a model folder with no spectrum file
+            # fails here
             msg = (
                 f"{modelpath} holds no spec.out, no specpol.out, and no spec_res.out"
                 if readsresbins
@@ -1375,7 +1377,7 @@ def get_flux_contributions_cached(
         ntimeblocks = get_emabs_timeblock_count(dfemabs, len(arraynu_full), len(arr_tmid), str(emabsfilename))
 
         if ntimeblocks > len(arr_tmid) and not polarisation_notified:
-            print("This artis run contains polarisation data")
+            print("This ARTIS model contains polarisation data")
             polarisation_notified = True
 
         return dfemabs, ntimeblocks
@@ -1776,7 +1778,7 @@ SAMPLEDCOLUMNS: t.Final[Mapping[str, str]] = MappingProxyType({
 # the help does not name --use_thermalemissiontype, because it also applies to an absorption plot, and an absorption
 # always takes the last interaction
 NO_SAMPLED_EMISSION_HELP: t.Final = (
-    "ARTIS writes the sampled emission only if artisoptions.h of the run sets SAMPLE_RPKT_EMISSION to true"
+    "ARTIS writes the sampled emission only if artisoptions.h of the model sets SAMPLE_RPKT_EMISSION to true"
     " (artis-mcrt/artis#661), and each preset sets it to false. Run the simulation again with that option, or"
     " remove --use_sampledemissiontype"
 )
@@ -1911,14 +1913,14 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
 def check_gamma_emission_record(lzdfpackets: pl.LazyFrame) -> None:
     """Stop if the gamma packets hold no emission position, which a shell and a velocity range need.
 
-    ARTIS records the emission position of a gamma packet since artis-mcrt/artis#637 (2026-09-28). A packet of an
-    older run has no record, thus each packet would lie outside every shell. A newer run gives a record to each
-    gamma packet, thus the first packet shows which type of run it is.
+    ARTIS records the emission position of a gamma packet since artis-mcrt/artis#637 (2026-09-28). A model from an
+    older ARTIS version has no record, thus each packet would lie outside every shell. A model from a newer version
+    gives a record to each gamma packet. Thus the first packet shows the type of the model.
     """
     firstpacket = lzdfpackets.select(has_emission_record_expr("em")).head(1).collect()
     if not firstpacket.is_empty() and not firstpacket.item():
         msg = (
-            "The gamma packets of this run hold no emission position, thus a shell and a velocity range cannot"
+            "The gamma packets of this model hold no emission position, thus a shell and a velocity range cannot"
             " select them. ARTIS records that position since artis-mcrt/artis#637"
         )
         raise ValueError(msg)
@@ -2194,7 +2196,7 @@ def get_flux_contributions_from_packets(
 
         The type is an emission code, an absorption code, or the index of a shell. The Rust function gives the bins of
         the spectrum kernel. The type and its bin then form one Int64 key, because one key groups faster than two.
-        Times for 65 million packets of a 3D kilonova run (polars 1.44 / polars 2.0):
+        Times for 65 million packets of a 3D kilonova model (polars 1.44 / polars 2.0):
 
         - this method: 0.35 s / 0.16 s;
         - a group_by of the code and the bin from cut(): 0.63 s / 0.36 s;

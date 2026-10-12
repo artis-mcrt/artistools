@@ -145,7 +145,7 @@ def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
 
         import zstandard as zstd
 
-    return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]
+    return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]  # ruff:ignore[banned-api]
 
 
 def write_zstd_lines(fileobj: t.IO[bytes], lines: Sequence[str]) -> None:
@@ -601,7 +601,7 @@ def firstexisting_or_none(
 @lru_cache(maxsize=256)
 @on_model_host
 def get_remote_path_kind(path: Path) -> tuple[bool, bool, bool]:
-    """Return whether a remote path is a folder, whether it is a file, and whether it is the folder of an ARTIS run.
+    """Return whether a remote path is a folder, whether it is a file, and whether it is a model folder.
 
     The host gives the three answers in one ssh round trip. The spectrum viewer asks about the same paths at each
     plot, and 10 round trips took 0.33 s of the 0.5 s of a plot. The kind of a model path does not change while the
@@ -672,10 +672,10 @@ def require_reference_data_file(filename: Path | str, bundledsubfolder: str, des
 
 
 def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
-    """Return whether the path names a file of reference data and not the output of an ARTIS run.
+    """Return whether the path names a file of reference data and not the output of an ARTIS model.
 
     A name that ends in .out belongs to ARTIS, e.g. spec.out. A user can give reference data such a
-    name as well, thus the folder decides: an ARTIS run holds input.txt beside its output files. A reader opens a
+    name as well, thus the folder decides: a model folder holds input.txt beside the output files. A reader opens a
     file of reference data on this host, thus a remote path names a model, and the test needs no connection to its
     host.
     """
@@ -686,8 +686,8 @@ def path_is_reference_data(filepath: Path | str, bundledsubfolder: str) -> bool:
     if not path_is_artis_model(path):
         return True
 
-    # a run folder holds the output of ARTIS, and a run of the cluster writes into a subfolder of it
-    return not any(folder_is_artis_run(folder) for folder in (path.parent, path.parent.parent))
+    # a model folder holds the output of ARTIS, and a run on a cluster writes into a subfolder of it
+    return not any(folder_is_artis_model(folder) for folder in (path.parent, path.parent.parent))
 
 
 def get_model_folder(modelpath: str | Path) -> Path:
@@ -708,10 +708,10 @@ def path_is_artis_model(filepath: Path | str) -> bool:
     return filepath.name.endswith((".out", *(f".out{ext}" for ext in COMPRESSED_EXTENSIONS))) or path_is_dir(filepath)
 
 
-def folder_is_artis_run(folder: Path | str) -> bool:
-    """Return whether this folder holds the input of an ARTIS run.
+def folder_is_artis_model(folder: Path | str) -> bool:
+    """Return whether this folder is a model folder.
 
-    An ARTIS run holds input.txt beside its output files. Every reader of a run needs that file, thus
+    A model folder holds input.txt beside the output files. Every reader of a model needs that file, thus
     this function tests for it. The host of a remote path gives the answer.
     """
     folder = Path(folder)
@@ -721,12 +721,15 @@ def folder_is_artis_run(folder: Path | str) -> bool:
     return folder.is_dir() and (folder / "input.txt").is_file()
 
 
-def get_artis_run_folders(modelpaths: Sequence[Path | str]) -> list[Path]:
-    """Return the folder of each ARTIS run in modelpaths. A reference file or a code comparison file gives none."""
+def get_artis_model_folders(modelpaths: Sequence[Path | str]) -> list[Path]:
+    """Return the model folder of each ARTIS model in modelpaths.
+
+    A reference file or a code comparison file gives none.
+    """
     return [
         get_model_folder(path)
         for path in modelpaths
-        if path_is_artis_model(path) and folder_is_artis_run(get_model_folder(path))
+        if path_is_artis_model(path) and folder_is_artis_model(get_model_folder(path))
     ]
 
 
@@ -820,6 +823,7 @@ class ModelpathCache[**P, R]:
 
             return self.callcached(resolve_modelpath(args[0]), *args[1:], **kwargs)
 
+    @t.override
     def __reduce__(self) -> str:
         """Give pickle the name of the module attribute, because pickle cannot copy the cache."""
         return self.name
@@ -1123,7 +1127,7 @@ def rankbatch_parquet_staleness(
 ) -> str | None:
     """Return the reason why the parquet cache is stale, or None when the cache is current.
 
-    The reader of a run and the writer of one batch both ask this. Thus one rule decides whether
+    The reader of all the batches and the writer of one batch both ask this. Thus one rule decides whether
     the code converts the text files again. read_parquet_cache_metadata gives every other reason,
     e.g. a cache that is absent, a cache that is damaged, or a cache of a different format version.
 
@@ -1197,7 +1201,7 @@ def read_parquet_cache_metadata(
     An artistools version before the stamps wrote a cache that holds neither stamp.
     accept_unstamped keeps such a cache: the version counts as the version of the reader, and the
     absent time matches. Only a reader whose text files cost hours to convert takes that option, e.g.
-    the estimators and the packets of an archived run. A cache that a few seconds rebuild, e.g. the
+    the estimators and the packets of an archived model folder. A cache that a few seconds rebuild, e.g. the
     model or the line list, keeps the strict rule, because a stale one there gives wrong numbers for
     no gain.
 

@@ -69,7 +69,7 @@ from artistools.misc import addarg_verbose
 from artistools.misc import artis_subfolders
 from artistools.misc import exit_with_error
 from artistools.misc import flatten_list
-from artistools.misc import folder_is_artis_run
+from artistools.misc import folder_is_artis_model
 from artistools.misc import format_frame_path
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
@@ -572,7 +572,7 @@ def plot_average_ionisation(
 def read_nltepops_of_estimators(modelpath: str | Path, timesteps: Sequence[int], cells: Sequence[int]) -> pl.DataFrame:
     """Return the NLTE populations of the timesteps and the cells of the plot.
 
-    A read of every rank, timestep, and cell needs about 5e9 rows for a 3D run of 1e5 cells and 100 timesteps,
+    A read of every rank, timestep, and cell needs about 5e9 rows for a 3D model of 1e5 cells and 100 timesteps,
     although a snapshot plot uses one timestep. read_nltepops reads one timestep or every timestep.
     """
     dfnltepops = read_nltepops(modelpath, timestep=timesteps[0] if len(timesteps) == 1 else None, modelgridindex=cells)
@@ -1134,7 +1134,7 @@ def get_default_plotitem_skip_reason(
         # averageexcitation reads the NLTE population files, which a model need not have written
         if len(plotitems) == 2 and plotitems[0] == "averageexcitation" and modelpath is not None:
             if not has_nlte_populations(modelpath):
-                return "the run has no NLTE population files (nlte_*.out)"
+                return "the model has no NLTE population files (nlte_*.out)"
             plotitems = plotitems[1]
 
         return next(
@@ -1210,7 +1210,7 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
                 suggest_names(notions[0], estimatorcolumns) or "Run with --listvariables to see the variables",
             )
 
-        # Te and W name an estimator variable and also an element. A run with no estimator files has no such column,
+        # Te and W name an estimator variable and also an element. A model with no estimator files has no such column,
         # and the plot then read tellurium in place of the temperature and drew an empty subplot
         if absentvariables := [
             var for var in plotvars if isinstance(var, str) and var in VARIABLES and var not in estimatorcolumns
@@ -1320,7 +1320,7 @@ def plot_multi_ion_series(
         try:
             compositiondata = get_composition_data(modelpath)
         except FileNotFoundError:
-            # the pass over the estimator columns below drops an ion that this run holds no column for,
+            # the pass over the estimator columns below drops an ion that this model holds no column for,
             # thus the plot still gives the other ions
             print_warning("Could not read an ARTIS compositiondata.txt file to check ion availability")
         else:
@@ -1775,8 +1775,8 @@ def get_subplot_plans(
                 seriestype, ionlist = plotitem
                 # an ion population plot reads best on a log scale, thus that is the default here. A
                 # yscale directive of the plot item wins over it
-                settings.setdefault("yscale", "log")
-                if seriestype == "populations" and len(ionlist) > 2 and settings["yscale"] == "log":
+                yscale = settings.setdefault("yscale", "log")
+                if seriestype == "populations" and len(ionlist) > 2 and yscale == "log":
                     settings["legendncols"] = 2
 
                 plans += plot_multi_ion_series(
@@ -2446,7 +2446,7 @@ def complete_plotitem(prefix: str, **kwargs: t.Any) -> list[str]:
     - the folders.
 
     It reads no estimator file. Such a read prints progress, and the shell takes that text as a name.
-    Such a read can also build the parquet cache of a full run.
+    Such a read can also build the parquet caches of a whole model.
     """
     from argcomplete.completers import DirectoriesCompleter
 
@@ -2532,7 +2532,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--multiplot",
         action="store_true",
         help=(
-            "Make one snapshot for each timestep of the time range, which is the whole run when no time is given."
+            "Make one snapshot for each timestep of the time range, which is all the timesteps when no time is given."
             " The default PDF format puts all the snapshots in one file"
         ),
     )
@@ -2770,8 +2770,8 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     """
     notimegiven = not time_is_given(args)
     framepertimestep = args.makegif or args.multiplot
-    wantswholerun = framepertimestep or args.listvariables or args.listnuclides
-    if notimegiven and (wantswholerun or args.modelgridindex is not None or args.x in {None, *TIME_XVARIABLES}):
+    wantsalltimesteps = framepertimestep or args.listvariables or args.listnuclides
+    if notimegiven and (wantsalltimesteps or args.modelgridindex is not None or args.x in {None, *TIME_XVARIABLES}):
         args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
 
     if args.x is None:
@@ -2804,7 +2804,8 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
         tstarts = get_timestep_times(modelpath, loc="start")
         tends = get_timestep_times(modelpath, loc="end")
         exit_with_error(
-            f"{given} lies outside the run, which goes from {tstarts[0]:.1f} to {tends[-1]:.1f} days",
+            f"{given} lies outside the time range of the model, which goes from {tstarts[0]:.1f} to"
+            f" {tends[-1]:.1f} days",
             "Give a time inside that range",
         )
 
@@ -3179,10 +3180,10 @@ def require_artis_folder(modelpath: Path) -> None:
     The command reads the working folder when the user names no folder. A user can run the command in
     a folder that is not an ARTIS folder. The message then names that folder and not an absent file.
     """
-    if path_is_codecomparison(modelpath) or folder_is_artis_run(modelpath):
+    if path_is_codecomparison(modelpath) or folder_is_artis_model(modelpath):
         return
 
-    # a user often runs the command one level above the runs, thus name the folders that are near
+    # a user often runs the command one level above the model folders, thus name the folders that are near
     nearby = artis_subfolders(modelpath)
     helptext = (
         f"Name one of these subfolders after the variables: {', '.join(nearby)}"
@@ -3225,7 +3226,7 @@ def get_plot_estimators(
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Return the estimators of the selected cells and timesteps with the model data of each cell, and the metadata.
 
-    batchcaches gives the current parquet caches of all the batches of the run, e.g. for a window that draws many
+    batchcaches gives the current parquet caches of all the batches of the model, e.g. for a window that draws many
     plots. The scan then checks and converts no file.
     """
     estimators = scan_estimators(
@@ -3273,8 +3274,8 @@ def get_figures_data(
 
     The host of a remote model runs this function, thus it reads the estimators there and only the data to draw
     comes back. The data code changes some arguments, e.g. -xbins, and the client draws with the new values. A
-    selection with no row gives NoEstimatorRowsError. batchcaches gives the current parquet caches of the run, e.g. for
-    a window that draws many plots.
+    selection with no row gives NoEstimatorRowsError. batchcaches gives the current parquet caches of the model, e.g.
+    for a window that draws many plots.
     """
     import copy
 
@@ -3308,8 +3309,8 @@ def get_figures_data(
         args.multiplot = True
         args.format = "png"
 
-    # each frame reads its timestep from the parquet caches of the run. A copy of the selected timesteps held every
-    # column, and for 10 frames of a 3D run it made the command 16 s and 5.5 GB in place of 5.4 s and 0.85 GB
+    # each frame reads its timestep from the parquet caches of the model. A copy of the selected timesteps held every
+    # column, and for 10 frames of a 3D model it made the command 16 s and 5.5 GB in place of 5.4 s and 0.85 GB
     frames = [[timestep] for timestep in timesteps_included] if args.multiplot else [timesteps_included]
     figures: list[LineFigureData | ImageFigureData] = []
     skippedtimesteps: list[int] = []
@@ -3369,7 +3370,7 @@ def draw_plot(
     """Draw the plot of one frame of the arguments on an empty figure, e.g. for a window that stays open.
 
     The plot reads the estimators as the command does, thus the window draws the plot of the command. batchcaches
-    gives the current parquet caches of the run, and a window keeps them between its plots. The arguments must select
+    gives the current parquet caches of the model, and a window keeps them between its plots. The arguments must select
     one plot. A list of the variables, a gif, and a set of frames each give a different action.
 
     The function returns the data of the plot, which get_figures_data gives. A window can give that data back as

@@ -8,7 +8,6 @@ import itertools
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -91,7 +90,7 @@ def get_grid(
     nohmns: bool,
     notorus: bool,
     no_nu_trapping: bool,
-) -> tuple[Any, ...]:
+) -> tuple[t.Any, ...]:
     """Interpolate the end-to-end tracer particles onto a grid, returning the density, composition, Ye, and heating.
 
     The ejecta components (dynamical, NS-torus, BH-torus, neutrino-trapped) can each be excluded with the
@@ -111,8 +110,8 @@ def get_grid(
     # Step 2) Collect the tracer particle data and account for the particles that the
     # end-to-end (e2e) model splits
 
-    # first re-construct the original post-merger trajectories by merging the
-    # splitted dynamical ejecta trajectories
+    # first, merge the split trajectories of the dynamical ejecta to make the original post-merger
+    # trajectories again
     idx = np.array([round(i) for i in dat.f.idx])  # unique particle ID of all trajectories
     state = np.array([round(i) for i in dat.f.state])  # == -1,0,1 for dynamical, NS-torus, BH-torus
     dyncond = state == -1
@@ -729,7 +728,7 @@ def map_to_artis(
                 pl.when(pl.col("rho") == 0.0).then(0).otherwise(pl.col("Ye")).alias("Ye"),
                 pl.when(pl.col("rho") == 0.0).then(0).otherwise(pl.col("X_Fegroup")).alias("X_Fegroup"),
             ])
-            # write "replaced" ejecta to seperate model files for plotting / consistency check
+            # write the "replaced" ejecta to separate model files for a plot and a consistency check
             # 1) 3D dynamical ejecta weighted but not scaled
             dyn_model = dyn_model.join(
                 dfmodel.select(["inputcellid", "bin_state"]), on="inputcellid", how="left", maintain_order="left"

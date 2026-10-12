@@ -442,7 +442,11 @@ def test_residual_panel_rejects_an_invalid_baseline(seriescount: int, baselinein
     plt.close(fig)
 
 
-@pytest.mark.parametrize("addargs", [at.spectra.plotspectra.addargs, at.lightcurve.plotlightcurve.addargs])
+@pytest.mark.parametrize(
+    "addargs",
+    [at.spectra.plotspectra.addargs, at.lightcurve.plotlightcurve.addargs],
+    ids=["plotspectra", "plotlightcurves"],
+)
 @pytest.mark.parametrize(
     ("tokens", "expected"),
     [
@@ -2186,9 +2190,9 @@ def test_plotopacity_average_cell_takes_the_mean_composition(capsys: pytest.Capt
 def test_excitation_temperature_is_the_temperature_that_artis_used(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """-exctemperature auto takes TJ or Te from LTEPOP_EXCITATION_USE_TJ of the run, and the log names it.
+    """-exctemperature auto takes TJ or Te from LTEPOP_EXCITATION_USE_TJ of the model, and the log names it.
 
-    The kernel took Te before. A classic run sets LTEPOP_EXCITATION_USE_TJ = true, and after the LTE timesteps its Te
+    The kernel took Te before. A classic model sets LTEPOP_EXCITATION_USE_TJ = true, and after the LTE timesteps its Te
     differs from TJ, thus the level populations did not match ARTIS. A commented line does not count.
     """
     get_column = at.ejectaopacity.get_excitation_temperature_column
@@ -4415,18 +4419,20 @@ def test_writecomparisondata_rejects_an_empty_timestep_list(tmp_path: Path) -> N
         at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[])
 
 
-def test_writecomparisondata_of_a_run_with_no_estimators_gives_a_message(
+def test_writecomparisondata_of_a_model_with_no_estimators_gives_a_message(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A run with no estimator files stopped with a raw ColumnNotFoundError for Te."""
-    runpath = tmp_path / "noestimators"
-    runpath.mkdir()
+    """A model with no estimator files stopped with a raw ColumnNotFoundError for Te."""
+    modelfolder = tmp_path / "noestimators"
+    modelfolder.mkdir()
     for sourcefile in modelpath.iterdir():
         if sourcefile.is_file() and not sourcefile.name.startswith("estimators"):
-            (runpath / sourcefile.name).symlink_to(sourcefile.resolve())
+            (modelfolder / sourcefile.name).symlink_to(sourcefile.resolve())
 
     with pytest.raises(SystemExit) as excinfo:
-        at.writecomparisondata.main(argsraw=[], modelpath=runpath, outputpath=tmp_path / "out", selected_timesteps=[50])
+        at.writecomparisondata.main(
+            argsraw=[], modelpath=modelfolder, outputpath=tmp_path / "out", selected_timesteps=[50]
+        )
 
     assert excinfo.value.code == 1
     assert "holds no estimator files" in capsys.readouterr().err
@@ -4532,7 +4538,7 @@ def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> Non
     nextrow = at.scan_estimators(modelpath=modelpath, timestep=(51,)).select("total_dep").collect()
     assert float(datalines[0].split()[1]) == pytest.approx(nextrow.item(), rel=1e-4, abs=0.0)
 
-    # the run wrote no timestep after the last one, thus the file gives zero there and the export goes on
+    # ARTIS wrote no timestep after the last one, thus the file gives zero there and the export goes on
     lasttimestep = len(at.get_timestep_times(modelpath)) - 1
     at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[lasttimestep])
     datalines = [
@@ -5332,7 +5338,7 @@ def make_viewer(kind: str, tokens: "Sequence[str]") -> t.Any:
 def test_viewer_takes_the_model_of_the_path_option(
     kind: str, timetokens: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A viewer must plot the model of -modelpath, and not read the working folder, which is not an ARTIS run."""
+    """A viewer must plot the model of -modelpath, and not read the working folder, which is not a model folder."""
     monkeypatch.chdir(tmp_path)
     viewer = make_viewer(kind, ["-modelpath", str(modelpath), *timetokens, "--interactive"])
     seriespaths = viewer.values.spectra if kind == "spectra" else viewer.values.lightcurves
@@ -5429,11 +5435,11 @@ def test_mathtext_lock_wraps_the_parser_one_time(monkeypatch: pytest.MonkeyPatch
 def test_direction_data_follows_the_files_and_the_data_source() -> None:
     """A direction bin needs a *_res.out file or the packets with --frompackets, and an observer needs vpkt.txt.
 
-    The commands read the packets for a direction bin only with --frompackets. The viewer enabled the bins of a run
-    with only the packets, and the plot then showed all the directions. It disabled the observers of a run with only
+    The commands read the packets for a direction bin only with --frompackets. The viewer enabled the bins of a model
+    with only the packets, and the plot then showed all the directions. It disabled the observers of a model with only
     the vspecpol files.
     """
-    has_data = viewercore.run_has_direction_data
+    has_data = viewercore.model_has_direction_data
     datafolder = at.get_path("testdata")
     lightcurveres = ("light_curve_res.out",)
     # testmodel has the packets files and no light_curve_res.out

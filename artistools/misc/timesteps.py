@@ -19,7 +19,7 @@ from artistools.misc.cliutils import parse_range_list
 from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import get_artis_run_folders
+from artistools.misc.fileio import get_artis_model_folders
 from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
@@ -112,8 +112,8 @@ def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
             .with_columns(pl.col("timestep").cast(pl.Int32))
         )
 
-    # use timesteps.out if possible (allowing arbitrary timestep lengths), compressed or not, so that a run
-    # folder with compressed output does not silently fall back to reconstructing logarithmic timesteps
+    # read timesteps.out if possible, compressed or not. That file permits timesteps of any length. A model folder
+    # with compressed output then keeps its true timesteps, and the code makes no logarithmic grid in their place
     tsfilepath = firstexisting_or_none("timesteps.out", folder=modelpath, tryzipped=True, search_subfolders=False)
     if tsfilepath is not None:
         with polars_source_open(tsfilepath) as source:
@@ -154,8 +154,9 @@ def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "en
     return get_timestep_times_cached(resolve_modelpath(modelpath), loc)
 
 
-# a list holds a few thousand floats at most, and a viewer reads 4 kinds of time for each run in turn. With 16 entries,
-# 6 runs evicted each entry before its next use, and a window read the timesteps more than 1000 times at each change
+# a list holds a few thousand floats at most, and a viewer reads 4 kinds of time for each model in turn. With 16
+# entries, 6 models evicted each entry before its next use, and a window read the timesteps more than 1000 times at
+# each change
 @lru_cache(maxsize=256)
 def get_timestep_times_cached(modelpath: Path, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
     """Return the times in days of each timestep of the model at an absolute path."""
@@ -265,9 +266,9 @@ def apply_time_range_args(
 
     # only a timestep needs the times of a model. A reference light curve holds no such data, thus a
     # command that plots reference data alone still takes a range in days
-    # a path can name a light curve file of a run, and get_time_range reads the folder of the run. A folder
-    # without input.txt is not a run, e.g. reference data named .out, and the plot code skips it with a warning
-    artispaths = get_artis_run_folders(modelpaths)
+    # a path can name a light curve file of a model, and get_time_range reads the model folder. A folder
+    # without input.txt is not a model folder, e.g. reference data named .out, and the plot code skips it with a warning
+    artispaths = get_artis_model_folders(modelpaths)
     if not artispaths:
         if dayrange is None:
             msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"
@@ -378,7 +379,7 @@ def get_time_range(
             )
             raise ValueError(msg)
 
-        # a range that overshoots the end still starts inside the run, thus only the start must be in it
+        # a range that goes past the end still starts at a timestep of the model, thus only the start must be in it
         if timestepmin > lasttimestep or timestepmin < 0:
             msg = get_bad_timestep_message(modelpath, timestepmin)
             raise ValueError(msg)
@@ -503,7 +504,7 @@ def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int |
         # get_deposition() always provides a timestep column, adding a row index if the file has no such column
         nts_last = depdata.select(pl.col("timestep").max()).collect().item()
     except (FileNotFoundError, ValueError) as exc:
-        # only the energy rates need deposition.out, thus a missing file or a file of a different run stops no plot
+        # only the energy rates need deposition.out, thus a missing file or a file of a different model stops no plot
         reason = "No deposition.out file found" if isinstance(exc, FileNotFoundError) else str(exc)
         print_warning(f"{reason}. The plot takes every timestep as complete")
         nts_last = len(t_end) - 1

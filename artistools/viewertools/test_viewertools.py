@@ -221,19 +221,19 @@ def test_session_keeps_a_label_that_names_a_folder(monkeypatch: pytest.MonkeyPat
     The legend and the title of a restored window then showed the full path of the folder.
     """
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "run1").mkdir()
-    tokens = ["run1", "-t", "300", "-label", "run1", "default", "-title", "run1", "-ymin=-1", "run1"]
+    (tmp_path / "model1").mkdir()
+    tokens = ["model1", "-t", "300", "-label", "model1", "default", "-title", "model1", "-ymin=-1", "model1"]
     assert viewerapplication.get_absolute_tokens(tokens) == [
-        str(tmp_path / "run1"),
+        str(tmp_path / "model1"),
         "-t",
         "300",
         "-label",
-        "run1",
+        "model1",
         "default",
         "-title",
-        "run1",
+        "model1",
         "-ymin=-1",
-        str(tmp_path / "run1"),
+        str(tmp_path / "model1"),
     ]
 
 

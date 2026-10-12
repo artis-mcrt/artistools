@@ -131,7 +131,7 @@ def write_edep(
     ARTIS writes the deposition rate of timestep n into the estimators of timestep n + 1, per unit volume of
     timestep n. Thus the value of a selected timestep comes from the next timestep, as in deposition.py.
     """
-    # scan_estimators refuses a request of timesteps that the run did not write, e.g. the one after the last
+    # scan_estimators refuses a request of timesteps that ARTIS did not write, e.g. the one after the last
     writtentimesteps = {
         timestep for folder in get_runfolders(modelpath) for timestep in get_runfolder_timesteps(folder)
     }
@@ -150,7 +150,7 @@ def write_edep(
         )
     if withoutnext := sorted(set(selected_timesteps) - set(dfnext["timestep"].to_list())):
         print_warning(
-            f"The run wrote no timestep after {', '.join(str(ts) for ts in withoutnext)}, thus the deposition file"
+            f"ARTIS wrote no timestep after {', '.join(str(ts) for ts in withoutnext)}, thus the deposition file"
             " gives zero at those times"
         )
 
@@ -175,9 +175,9 @@ def write_edep(
 
 
 def get_column_or_zero(dfestimators: pl.DataFrame, colname: str) -> pl.Expr:
-    """Return the column of the estimators as Float64, or zero when this run holds no such column.
+    """Return the column of the estimators as Float64, or zero when this model holds no such column.
 
-    ARTIS writes a population only for an ion that a cell holds, and a whole run can hold none. The
+    ARTIS writes a population only for an ion that a cell holds, and a whole model can hold none. The
     estimator cache stores a population as Float32, and a ratio of two Float32 values loses precision
     below 1e-38.
     """
@@ -345,15 +345,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if "Te" not in dfestimators.columns:
             exit_with_error(
                 f"{modelpath} holds no estimator files, thus the code comparison data has no temperatures",
-                "Give the folder of a run that wrote estimators_????.out files",
+                "Give a model folder that has estimators_????.out files",
             )
 
-        # a timestep that the run did not write gives an empty block, thus the file promises rows that it has not
+        # a timestep that ARTIS did not write gives an empty block, thus the file promises rows that it has not
         if missingtimesteps := sorted(set(selected_timesteps) - set(dfestimators["timestep"].to_list())):
             exit_with_error(
                 f"{modelpath} holds no estimators for the timesteps"
                 f" {', '.join(str(timestep) for timestep in missingtimesteps)}",
-                "Give -selected_timesteps that the run wrote",
+                "Give -selected_timesteps that the estimator files hold",
             )
 
         try:

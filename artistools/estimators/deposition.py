@@ -45,9 +45,9 @@ def get_deposition_channels(colnames: Sequence[str]) -> list[str]:
 def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] | None) -> pl.Expr:
     """Return the expression that gives the deposition rate of one cell in erg/s/cm3.
 
-    The command needs the rate of each cell, which the deposition_ columns hold. An older run holds
-    total_dep alone, and artistools derives that column from the heating rate. On the classic-mode
-    test model that total is 1400 times below the tally of deposition.out, thus such a model gets an
+    The command needs the rate of each cell, which the deposition_ columns hold. The estimators of a model from an
+    older ARTIS version hold total_dep alone, and artistools derives that column from the heating rate. On the
+    classic-mode test model that total is 1400 times below the tally of deposition.out, thus such a model gets an
     error and no number.
     """
     available = get_deposition_channels(colnames)
@@ -162,7 +162,7 @@ def aggregate_deposition_rates(
     if yerange is not None:
         # join_cell_modeldata puts an init_ prefix on each column of the model snapshot
         if "init_Ye" not in colnames:
-            msg = "The model of this run gives no init_Ye of a cell, thus an init_Ye range selects nothing"
+            msg = "This model gives no init_Ye of a cell, thus an init_Ye range selects nothing"
             raise ValueError(msg)
 
         dfestim = dfestim.filter(pl.col("init_Ye").is_between(yerange[0], yerange[1]))
@@ -305,8 +305,8 @@ def warn_about_gaps(
 ) -> None:
     """Print a warning for each timestep that got no row, and for the cells that gave no rate.
 
-    A run always gives no rate for its last timestep, thus a selection of every timestep asks for the
-    timesteps in front of that one alone. A complete run then gives no warning, and a run that
+    A model always gives no rate for its last timestep, thus a selection of every timestep asks for the
+    timesteps in front of that one alone. A complete model then gives no warning, and a model that
     stopped early still gives one.
     """
     modelname = get_model_logname(modelpath)
@@ -322,7 +322,7 @@ def warn_about_gaps(
         # that rule explains the last timestep alone, thus a gap of a different cause gets no reason
         reason = (
             " The rate of a timestep arrives in the file of the next timestep, "
-            "thus the last timestep of a run gives none."
+            "thus the last timestep of a model gives none."
             if lasttimestep in missing
             else ""
         )

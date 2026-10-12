@@ -2,20 +2,25 @@
 * text=auto
 
 # these files require LF (Unix-style) line-endings
-*.cc text eol=lf
-*.h text eol=lf
+*.cff text eol=lf
 *.md text eol=lf
 *.py text eol=lf
+*.pyi text eol=lf
+*.rs text eol=lf
 *.sh text eol=lf
+*.toml text eol=lf
 *.txt text eol=lf
+*.yaml text eol=lf
 *.yml text eol=lf
-Makefile text eol=lf
-matplotlib text eol=lf
+matplotlibrc text eol=lf
 
 # Denote all files that are truly binary and should not be modified.
-*.png binary
-*.jpg binary
 *.gz binary
-*.xz binary
+*.jpg binary
+*.parquet binary
+*.pdf binary
+*.png binary
 *.tar binary
+*.xz binary
 *.zip binary
+*.zst binary

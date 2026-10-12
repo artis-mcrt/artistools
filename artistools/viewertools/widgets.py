@@ -399,8 +399,8 @@ def add_row(grid: "QtWidgets.QGridLayout", row: int, widgets: "Sequence[QtWidget
     """Put the widgets side by side in one row of the grid, from the left.
 
     A row of one widget puts the widget directly in the grid. The grid gives no height and no spacing to the row of a
-    hidden widget, e.g. the box of the kind of direction for a run with one kind. A layout of make_row_layout keeps its
-    space when its widgets are hidden.
+    hidden widget, e.g. the box of the kind of direction for a model with one kind. A layout of make_row_layout keeps
+    its space when its widgets are hidden.
     """
     from PySide6 import QtCore
 

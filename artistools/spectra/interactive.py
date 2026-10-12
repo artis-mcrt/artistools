@@ -18,7 +18,7 @@ import polars as pl
 
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
-from artistools.misc import get_artis_run_folders
+from artistools.misc import get_artis_model_folders
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_model_name
@@ -62,11 +62,11 @@ from artistools.viewertools.core import get_series_style
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
+from artistools.viewertools.core import model_has_direction_data
 from artistools.viewertools.core import move_series_styles
 from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
 from artistools.viewertools.core import run_command_step
-from artistools.viewertools.core import run_has_direction_data
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import set_figscale_row
 from artistools.viewertools.core import set_series_rows
@@ -114,7 +114,7 @@ from artistools.viewertools.window import finish_viewer_window
 from artistools.viewertools.window import get_line_readouts
 from artistools.viewertools.window import make_readout_tag
 from artistools.viewertools.window import make_timer
-from artistools.viewertools.window import reload_runs
+from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
 from artistools.viewertools.window import start_viewer_window
 
@@ -207,7 +207,7 @@ class ControlValues:
     # - "dlogt" takes the width that gives ln(t_end / t_start) = dlogt, as the logarithmic timesteps of ARTIS do;
     # - "days" keeps the width in days.
     widthmode: t.Literal["dlogt", "days"]
-    # the Δ ln t of the width mode "dlogt". It starts with the Δ ln t of a logarithmic grid of the run
+    # the Δ ln t of the width mode "dlogt". It starts with the Δ ln t of a logarithmic grid of the model
     dlogt: float
     # True for the gamma-ray spectrum of the gamma packets, and False for the UVOIR spectrum of the r-packets
     gamma: bool
@@ -312,7 +312,7 @@ def drop_hidden_emission_event(values: "ControlValues") -> "ControlValues":
     """Return the values with the default emission event if the plot shows no emission and no absorption.
 
     Such a plot reads no emission event, and the window hides the box of the event. If the values keep the sampled
-    emission, plotspectra can reject --showemission and --showabsorption, e.g. for a run with no sampled emission.
+    emission, plotspectra can reject --showemission and --showabsorption, e.g. for a model with no sampled emission.
     The user then cannot change the event.
     """
     if values.showemission or values.showabsorption:
@@ -329,9 +329,9 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
     """Return the values for the spectrum of the r-packets, or of the gamma packets if gamma is True.
 
     The two spectra have different units, x ranges, and series, thus the x unit, the x range, the y range, the
-    grouping, and the locked series return to the defaults of the new spectrum. The data source stays. For a run with
-    no gamma_spec.out, plotspectra reads the packets of a gamma-ray spectrum. A -deltax of a different unit does not
-    apply, as for convert_xunit, and -deltalogx has no unit.
+    grouping, and the locked series return to the defaults of the new spectrum. The data source stays. For a model
+    folder with no gamma_spec.out, plotspectra reads the packets of a gamma-ray spectrum. A -deltax of a different
+    unit does not apply, as for convert_xunit, and -deltalogx has no unit.
     """
     xunit = get_default_xunit(gamma=gamma)
     xmin, xmax = get_default_xlimits(xunit, gamma=gamma)
@@ -350,20 +350,20 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
     )
 
 
-def has_gamma_spectrum(runfolders: "Sequence[Path]") -> bool:
-    """Return True if one type of file gives the gamma-ray spectrum of each run.
+def has_gamma_spectrum(modelfolders: "Sequence[Path]") -> bool:
+    """Return True if one type of file gives the gamma-ray spectrum of each model folder.
 
-    plotspectra reads gamma_spec.out of each run, or the packets of each run when a run has no gamma_spec.out.
-    Thus a run with gamma_spec.out alone and a run with packets alone give no plot. A run can keep only the parquet
-    cache of its packets.
+    plotspectra reads gamma_spec.out of each model folder. If one model folder has no gamma_spec.out, plotspectra
+    reads the packets of all the model folders. Thus a model folder with gamma_spec.out alone and a model folder
+    with packets alone give no plot. A model folder can keep only the parquet cache of its packets.
     """
     return all(
-        firstexisting_or_none("gamma_spec.out", folder=runfolder) is not None for runfolder in runfolders
-    ) or all(has_packets_files(runfolder) for runfolder in runfolders)
+        firstexisting_or_none("gamma_spec.out", folder=modelfolder) is not None for modelfolder in modelfolders
+    ) or all(has_packets_files(modelfolder) for modelfolder in modelfolders)
 
 
-class RunTimes(t.NamedTuple):
-    """The times of the timesteps of a run [d], and the times that plotspectra accepts for the run [d]."""
+class ModelTimes(t.NamedTuple):
+    """The times of the timesteps of a model [d], and the times that plotspectra accepts for the model [d]."""
 
     tstart: float
     tend: float
@@ -371,15 +371,15 @@ class RunTimes(t.NamedTuple):
     validend: float
 
 
-class RunGrid(t.NamedTuple):
-    """The runs of the list of spectra and the timestep grid of the time controls, which load_runs reads.
+class TimestepGrid(t.NamedTuple):
+    """The models of the list of spectra and the timestep grid of the time controls, which read_timestep_grid reads.
 
     The viewer replaces the whole object, thus a worker thread that reads it one time sees the grid of one load.
     """
 
-    # the times of each spectrum that names a run, keyed by the token of the spectrum
-    runtimes: "Mapping[str, RunTimes]"
-    runfolders: tuple[Path, ...]
+    # the times of each spectrum that names an ARTIS model, keyed by the token of the spectrum
+    modeltimes: "Mapping[str, ModelTimes]"
+    modelfolders: tuple[Path, ...]
     gridfolder: Path
     tmids: tuple[float, ...]
     tstarts: tuple[float, ...]
@@ -387,16 +387,16 @@ class RunGrid(t.NamedTuple):
     twidths: tuple[float, ...]
     # the Δ ln t of a logarithmic grid with the same start, end, and count of timesteps
     dlogt: float
-    # the times that are valid for all the runs [d]
+    # the times that are valid for all the models [d]
     timebounds: tuple[float, float]
     validtimesteps: tuple[int, ...]
     hasgammaspectrum: bool
     directionkinds: tuple[str, ...]
     # the spectra and the time grid of the load
-    runkey: tuple[tuple[str, ...], str]
+    loadkey: tuple[tuple[str, ...], str]
 
 
-def get_grid_selection(grid: RunGrid, values: ControlValues) -> tuple[int, int]:
+def get_grid_selection(grid: TimestepGrid, values: ControlValues) -> tuple[int, int]:
     """Return the first and the last valid timestep of the grid with a middle in the time range of the values.
 
     This is the rule of get_time_range for a clamped range. A range that holds no middle gives the valid timestep
@@ -411,45 +411,47 @@ def get_grid_selection(grid: RunGrid, values: ControlValues) -> tuple[int, int]:
     return nearest, nearest
 
 
-def get_run_times(runfolder: Path, *, plotinvalidpart: bool) -> RunTimes:
-    """Return the times of the timesteps of a run, and the times inside them that plotspectra accepts.
+def get_model_times(modelfolder: Path, *, plotinvalidpart: bool) -> ModelTimes:
+    """Return the times of the timesteps of a model, and the times inside them that plotspectra accepts.
 
     plotspectra accepts only the arrival times at which light from the whole model reaches the observer, unless the
     command gives --plotinvalidpart.
     """
-    tstart = get_timestep_times(runfolder, loc="start")[0]
-    tend = get_timestep_times(runfolder, loc="end")[-1]
+    tstart = get_timestep_times(modelfolder, loc="start")[0]
+    tend = get_timestep_times(modelfolder, loc="end")[-1]
     validstart, validend = tstart, tend
     if not plotinvalidpart:
         with contextlib.suppress(FileNotFoundError):
-            _, arrivalstart, arrivalend = get_escaped_arrivalrange(runfolder)
+            _, arrivalstart, arrivalend = get_escaped_arrivalrange(modelfolder)
             if arrivalstart is not None:
                 validstart = max(validstart, float(arrivalstart))
             if arrivalend is not None:
                 validend = min(validend, float(arrivalend))
-    return RunTimes(tstart=tstart, tend=tend, validstart=validstart, validend=validend)
+    return ModelTimes(tstart=tstart, tend=tend, validstart=validstart, validend=validend)
 
 
-def fits_each_run(runfoldertimes: "Sequence[tuple[Path, RunTimes]]", timedays: str) -> bool:
-    """Return True if each run clamps the -timedays value to timesteps inside the valid times of the run.
+def fits_each_model(modelfoldertimes: "Sequence[tuple[Path, ModelTimes]]", timedays: str) -> bool:
+    """Return True if each model clamps the -timedays value to timesteps inside the valid times of the model.
 
-    plotspectra clamps the time to the timesteps of each run, and then it rejects days outside the valid times.
+    plotspectra clamps the time to the timesteps of each model, and then it rejects days outside the valid times.
     """
-    for runfolder, runtimes in runfoldertimes:
+    for modelfolder, modeltimes in modelfoldertimes:
         try:
-            _, _, daysmin, daysmax = get_time_range(runfolder, timedays_range_str=timedays, clamp_to_timesteps=True)
+            _, _, daysmin, daysmax = get_time_range(modelfolder, timedays_range_str=timedays, clamp_to_timesteps=True)
         except ValueError:
             return False
-        if daysmin < runtimes.validstart or daysmax > runtimes.validend:
+        if daysmin < modeltimes.validstart or daysmax > modeltimes.validend:
             return False
     return True
 
 
-def get_run_times_text(runtimes: RunTimes) -> str:
-    """Return the times of a run for the tooltip of its row in the list of spectra."""
-    text = f"Timesteps from {runtimes.tstart:.4g} to {runtimes.tend:.4g} d."
-    if (runtimes.validstart, runtimes.validend) != (runtimes.tstart, runtimes.tend):
-        text += f" The escaped packets give valid times from {runtimes.validstart:.4g} to {runtimes.validend:.4g} d."
+def get_model_times_text(modeltimes: ModelTimes) -> str:
+    """Return the times of a model for the tooltip of its row in the list of spectra."""
+    text = f"Timesteps from {modeltimes.tstart:.4g} to {modeltimes.tend:.4g} d."
+    if (modeltimes.validstart, modeltimes.validend) != (modeltimes.tstart, modeltimes.tend):
+        text += (
+            f" The escaped packets give valid times from {modeltimes.validstart:.4g} to {modeltimes.validend:.4g} d."
+        )
     return text
 
 
@@ -477,7 +479,7 @@ def get_timedays_argument(centre: float, width: float, bounds: tuple[float, floa
     """Return the -timedays value of a continuous time range of this width around the middle time.
 
     A width of zero gives the middle time alone, and plotspectra then reads the timestep that holds it. The range
-    stays inside the bounds, which are the valid times of the first run.
+    stays inside the bounds, which are the valid times of the first model.
     """
     if width > 0.0:
         lowtext = format_days_inside(centre - width / 2.0, bounds)
@@ -632,6 +634,58 @@ def check_viewer_args(args: argparse.Namespace) -> None:
     )
 
 
+def read_timestep_grid(spectra: "Sequence[str | Path]", timegrid: str, *, plotinvalidpart: bool) -> TimestepGrid:
+    """Read the timesteps of the ARTIS models of the spectra, and the times that are valid for all the models.
+
+    The time controls take the timesteps of the model of timegrid, or of the first model if timegrid names no
+    model. plotspectra rejects a time outside the timesteps of a model, and a time outside the arrival times of the
+    escaped packets of a model. Thus the controls stay inside the times that are valid for all the models. With
+    --plotinvalidpart, plotspectra accepts all the arrival times. A reference spectrum has no timesteps.
+    """
+    modelfolders = get_artis_model_folders([Path(path) for path in spectra])
+    gridfolder = next(iter(get_artis_model_folders([Path(timegrid)] if timegrid else [])), modelfolders[0])
+    tmids = get_timestep_times(gridfolder, loc="mid")
+    tstarts = get_timestep_times(gridfolder, loc="start")
+    tends = get_timestep_times(gridfolder, loc="end")
+    timebounds = [tstarts[0], tends[-1]]
+    modeltimes_of_path: dict[str, ModelTimes] = {}
+    modelfoldertimes: list[tuple[Path, ModelTimes]] = []
+    for path in spectra:
+        for modelfolder in get_artis_model_folders([Path(path)]):
+            modeltimes = get_model_times(modelfolder, plotinvalidpart=plotinvalidpart)
+            modeltimes_of_path[str(path)] = modeltimes
+            modelfoldertimes.append((modelfolder, modeltimes))
+            timebounds = [max(timebounds[0], modeltimes.validstart), min(timebounds[1], modeltimes.validend)]
+    twidths = get_timestep_times(gridfolder, loc="delta")
+    # a different model clamps the time of a timestep to its own timestep, which can be longer and can end
+    # outside the valid times of that model. Thus each model tests the time of each timestep
+    validtimesteps = [
+        timestep
+        for timestep in range(len(tmids))
+        if tstarts[timestep] >= timebounds[0]
+        and tends[timestep] <= timebounds[1]
+        and fits_each_model(modelfoldertimes, get_snapped_timedays_argument(tmids, tstarts, tends, timestep, timestep))
+    ] or list(range(len(tmids)))
+    return TimestepGrid(
+        modeltimes=MappingProxyType(modeltimes_of_path),
+        modelfolders=tuple(modelfolders),
+        gridfolder=gridfolder,
+        tmids=tuple(tmids),
+        tstarts=tuple(tstarts),
+        tends=tuple(tends),
+        twidths=tuple(twidths),
+        # a constant grid or a hybrid grid of ARTIS has a different Δ ln t in each timestep, and the width mode
+        # "dlogt" starts with this value
+        dlogt=float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}"),
+        timebounds=(timebounds[0], timebounds[1]),
+        validtimesteps=tuple(validtimesteps),
+        hasgammaspectrum=has_gamma_spectrum(modelfolders),
+        # the direction controls read the first model, e.g. for the observers of -plotvspecpol
+        directionkinds=tuple(get_direction_kinds(modelfolders[0])),
+        loadkey=(tuple(str(path) for path in spectra), timegrid),
+    )
+
+
 class SpectrumViewer:
     """The plot of the viewer and the values of its controls.
 
@@ -656,24 +710,27 @@ class SpectrumViewer:
         resolve_plot_args(args)
         check_viewer_args(args)
         self.args = args
-        # the results of the tests of the choices of the controls, which load_runs clears. See get_choice_rejections
+        # the results of the tests of the choices of the controls, which load_models clears. See get_choice_rejections
         self.rejections: dict[ControlValues, tuple[list[str | None], list[str | None], str | None, str | None]] = {}
         # the option that makes Auto read the packets files, for the values without the time. See get_auto_reason
         self.autoreasons: dict[ControlValues, str | None] = {}
 
-        if not get_artis_run_folders(args.modelspecpaths):
+        if not get_artis_model_folders(args.modelspecpaths):
             exit_with_error(
-                "--interactive takes the time range from the timesteps of an ARTIS run, and no path names a run",
-                "Give the folder of an ARTIS run, e.g. plotspectra mymodel --interactive",
+                "--interactive takes the time range from the timesteps of an ARTIS model, and no path names a model",
+                "Give a model folder, e.g. plotspectra mymodel --interactive",
             )
-        # the keys of the runs are the tokens of the list of spectra. A normalised path, e.g. of "mymodel/", is a
-        # different key, and the window then found no run for a row
-        self.load_runs(tuple(startpaths) or DEFAULT_SPECTRA)
+        # the keys of the models are the tokens of the list of spectra. A normalised path, e.g. of "mymodel/", is a
+        # different key, and the window then found no model for a row
+        self.grid = read_timestep_grid(
+            tuple(startpaths) or DEFAULT_SPECTRA, "", plotinvalidpart=bool(args.plotinvalidpart)
+        )
 
         self.modelpathtokens = [path for path in startpaths if not path_is_reference_spectrum(path)]
         self.parser = parser
 
-        # a range of one timestep is a single time, and a plot with no time starts in the middle of the run
+        # a range of one timestep is a single time. A plot with no time starts at the middle of the time range of the
+        # model
         grid = self.grid
         if args.timemin is not None and args.timemax is not None:
             centre = (args.timemin + args.timemax) / 2.0
@@ -759,63 +816,17 @@ class SpectrumViewer:
         self.drawndeltalogx: float | None = None
         self.deltalogxnote = ""
 
-    def load_runs(self, spectra: "Sequence[str | Path]", timegrid: str = "") -> None:
-        """Read the timesteps of the ARTIS runs of the spectra, and the times that are valid for all the runs.
+    def load_models(self, spectra: "Sequence[str | Path]", timegrid: str = "") -> None:
+        """Read the ARTIS models of the spectra again, and clear the results of the tests of the choices.
 
-        The time controls take the timesteps of the run of timegrid, or of the first run if timegrid names no model.
-        plotspectra rejects a time outside the timesteps of a run, and a time outside the arrival times of the escaped
-        packets of a run. Thus the controls stay inside the times that are valid for all the runs. With
-        --plotinvalidpart, plotspectra accepts all the arrival times. A reference spectrum has no run.
-
-        The files of the runs give the results of the tests of the choices, e.g. a new gamma_spec.out after Reload
-        Data. Thus each read of the runs clears those results.
+        The files of the model folders give the results of the tests of the choices, e.g. a new gamma_spec.out
+        after Reload Data. Thus each read of the model folders clears those results.
         """
         self.rejections.clear()
         self.autoreasons.clear()
-        runfolders = get_artis_run_folders([Path(path) for path in spectra])
-        gridfolder = next(iter(get_artis_run_folders([Path(timegrid)] if timegrid else [])), runfolders[0])
-        tmids = get_timestep_times(gridfolder, loc="mid")
-        tstarts = get_timestep_times(gridfolder, loc="start")
-        tends = get_timestep_times(gridfolder, loc="end")
-        timebounds = [tstarts[0], tends[-1]]
-        runtimes_of_path: dict[str, RunTimes] = {}
-        runfoldertimes: list[tuple[Path, RunTimes]] = []
-        for path in spectra:
-            for runfolder in get_artis_run_folders([Path(path)]):
-                runtimes = get_run_times(runfolder, plotinvalidpart=bool(self.args.plotinvalidpart))
-                runtimes_of_path[str(path)] = runtimes
-                runfoldertimes.append((runfolder, runtimes))
-                timebounds = [max(timebounds[0], runtimes.validstart), min(timebounds[1], runtimes.validend)]
-        twidths = get_timestep_times(gridfolder, loc="delta")
-        # a different run clamps the time of a timestep to its own timestep, which can be longer and can end outside
-        # the valid times of that run. Thus each run tests the time of each timestep
-        validtimesteps = [
-            timestep
-            for timestep in range(len(tmids))
-            if tstarts[timestep] >= timebounds[0]
-            and tends[timestep] <= timebounds[1]
-            and fits_each_run(runfoldertimes, get_snapped_timedays_argument(tmids, tstarts, tends, timestep, timestep))
-        ] or list(range(len(tmids)))
-        # the worker thread makes the command from the grid while the window reads the runs again, e.g. for a new
+        # the worker thread makes the command from the grid while the window reads the models again, e.g. for a new
         # model. One assignment of the complete grid keeps the grid of one load together
-        self.grid = RunGrid(
-            runtimes=MappingProxyType(runtimes_of_path),
-            runfolders=tuple(runfolders),
-            gridfolder=gridfolder,
-            tmids=tuple(tmids),
-            tstarts=tuple(tstarts),
-            tends=tuple(tends),
-            twidths=tuple(twidths),
-            # a constant grid or a hybrid grid of ARTIS has a different Δ ln t in each timestep, and the width mode
-            # "dlogt" starts with this value
-            dlogt=float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}"),
-            timebounds=(timebounds[0], timebounds[1]),
-            validtimesteps=tuple(validtimesteps),
-            hasgammaspectrum=has_gamma_spectrum(runfolders),
-            # the direction controls read the first run, e.g. for the observers of -plotvspecpol
-            directionkinds=tuple(get_direction_kinds(runfolders[0])),
-            runkey=(tuple(str(path) for path in spectra), timegrid),
-        )
+        self.grid = read_timestep_grid(spectra, timegrid, plotinvalidpart=bool(self.args.plotinvalidpart))
 
     def snap(self, values: ControlValues, first: int, last: int) -> ControlValues:
         """Return the values for a time range from the middle of the first timestep to the middle of the last."""
@@ -1182,8 +1193,8 @@ def get_auto_reason(viewer: "SpectrumViewer", values: ControlValues) -> str | No
 def get_animation_frames(viewer: "SpectrumViewer") -> "tuple[int, Callable[[int], list[str]]]":
     """Return the count of the steps of Play, from the first valid timestep to the last, and the command of each.
 
-    The window can read new runs during the export, e.g. after Add Model. The frames then mixed the timesteps of two
-    grids, thus each command comes from the grid of this call. A run has a few hundred timesteps, thus the list is
+    The window can read new models during the export, e.g. after Add Model. The frames then mixed the timesteps of two
+    grids, thus each command comes from the grid of this call. A model has a few hundred timesteps, thus the list is
     short.
     """
     values, grid = viewer.values, viewer.grid
@@ -1246,15 +1257,15 @@ def get_timedays_token(viewer: SpectrumViewer, values: ControlValues) -> str:
 def find_time_grid(viewer: SpectrumViewer, values: ControlValues, giventimedays: str) -> ControlValues:
     """Return the values on the time grid of the first model whose timesteps give the -timedays of the command.
 
-    The command holds no choice of "Timesteps of", and plotspectra clamps the time to the timesteps of each run.
+    The command holds no choice of "Timesteps of", and plotspectra clamps the time to the timesteps of each model.
     Thus a command from the grid of a later model gave a different time on the grid of the first model.
     """
     if get_timedays_token(viewer, values) == giventimedays:
         return values
     for path in values.spectra[1:]:
-        if path not in viewer.grid.runtimes:
+        if path not in viewer.grid.modeltimes:
             continue
-        viewer.load_runs(values.spectra, path)
+        viewer.load_models(values.spectra, path)
         grid = viewer.grid
         try:
             _, _, daysmin, daysmax = get_time_range(
@@ -1269,12 +1280,12 @@ def find_time_grid(viewer: SpectrumViewer, values: ControlValues, giventimedays:
         candidate = viewer.snap(candidate, *get_grid_selection(viewer.grid, candidate))
         if get_timedays_token(viewer, candidate) == giventimedays:
             return candidate
-    viewer.load_runs(values.spectra)
+    viewer.load_models(values.spectra)
     return values
 
 
-def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) -> ControlValues:
-    """Read the runs of a list of spectra, and return the values of the list with a time that the runs have.
+def set_models(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) -> ControlValues:
+    """Read the models of a list of spectra, and return the values of the list with a time that the models have.
 
     timegrid names the model that gives the timesteps of the time controls, or "" for the first model. A new time
     grid, e.g. after a change of the order, keeps the middle and the count of timesteps of a snapped range. A
@@ -1283,7 +1294,7 @@ def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) ->
     first, last = get_grid_selection(viewer.grid, viewer.values)
     if timegrid not in spectra:
         timegrid = ""
-    viewer.load_runs(spectra, timegrid)
+    viewer.load_models(spectra, timegrid)
     grid = viewer.grid
     values = dc.replace(
         viewer.values,
@@ -1291,7 +1302,7 @@ def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) ->
         timegrid=timegrid,
         otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.spectra, spectra),
     )
-    # a new first run can have no observers of the virtual packets, thus the kind of viewing direction can go
+    # a new first model can have no observers of the virtual packets, thus the kind of viewing direction can go
     if values.directionkind not in grid.directionkinds:
         values = dc.replace(values, directionkind="", directionbins=())
     if values.notimeclamp:
@@ -1301,7 +1312,7 @@ def set_runs(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) ->
     return viewer.snap(values, grid.validtimesteps[start], grid.validtimesteps[start + count - 1])
 
 
-def get_time_slider_ranges(grid: RunGrid, values: ControlValues) -> tuple[tuple[float, float], float, float, int]:
+def get_time_slider_ranges(grid: TimestepGrid, values: ControlValues) -> tuple[tuple[float, float], float, float, int]:
     """Return the ranges of the time sliders: log10 of the valid times, the widths in days and in Δ ln t, and the count.
 
     The upper limit of a width is a quarter of the valid times, or the width of the values if that is larger.
@@ -1362,10 +1373,10 @@ def open_window(
     viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens) if newwindow else tokens, mplfig.Figure())
     # a command with no path reads the model of the working folder
     modelnames = [resolve_modelpath(path).name for path in viewer.modelpathtokens] or [
-        resolve_modelpath(viewer.grid.runfolders[0]).name
+        resolve_modelpath(viewer.grid.modelfolders[0]).name
     ]
     viewerwindow = start_viewer_window(
-        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.grid.runfolders[0], ", ".join(modelnames))
+        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.grid.modelfolders[0], ", ".join(modelnames))
     )
     if isinstance(viewerwindow, str):
         return viewerwindow
@@ -1403,7 +1414,7 @@ def open_window(
             "Δ ln t",
             (
                 "The range has ln(t_end / t_start) = Δ ln t, as the logarithmic timesteps of ARTIS do. The field gives"
-                " Δ ln t, and it starts with the Δ ln t of a logarithmic grid with the timesteps of the run"
+                " Δ ln t, and it starts with the Δ ln t of a logarithmic grid with the timesteps of the model"
             ),
         ),
         ("days", "Δt", "Δt is a width in days. The field gives the width"),
@@ -1424,7 +1435,7 @@ def open_window(
                 " continuous range takes the rule of the box on the left: a width Δ ln t in ln t, or a width Δt in"
                 " days. The Up key and the Down key change the width by one timestep."
             ),
-            "Move the time through the valid timesteps of the run, and start again after the last timestep (Space)",
+            "Move the time through the valid timesteps of the model, and start again after the last timestep (Space)",
         ),
     )
     timeslider, timeedit, widthlabel, widthslider, widthedit, timestepslabel, stepbuttons, fpsbox, playbutton = (
@@ -1602,15 +1613,15 @@ def open_window(
     emissiongrid.addWidget(emissionoptions, 1, 0, 1, -1)
 
     # the handlers come later in this function, thus the lambdas read them at the time of a change
-    show_direction, set_direction_run = add_direction_section(
+    show_direction, set_direction_model = add_direction_section(
         panellayout,
         helptexts,
-        viewer.grid.runfolders[0],
+        viewer.grid.modelfolders[0],
         lambda: get_direction_choice(viewer.values),
         lambda choice: on_direction(choice),  # ruff:ignore[unnecessary-lambda]
         lambda message: show_error(message),  # ruff:ignore[unnecessary-lambda]
-        lambda runfolder, kind: run_has_direction_data(
-            Path(runfolder),
+        lambda modelfolder, kind: model_has_direction_data(
+            Path(modelfolder),
             kind,
             ("spec_res.out", "specpol_res.out"),
             "vspecpol*",
@@ -1739,30 +1750,30 @@ def open_window(
 
     # the time sliders have one position for each valid timestep, or SLIDER_STEPS positions for a continuous time
     slidermode: bool | None = None
-    # the spectra and the time grid of the runs that give the ranges of the time controls
-    shownruns: tuple[tuple[str, ...], str] | None = None
+    # the spectra and the time grid of the models that give the ranges of the time controls
+    shownmodels: tuple[tuple[str, ...], str] | None = None
 
-    def show_run_ranges() -> None:
-        """Set the ranges of the time controls and the direction bins from the runs of the plot, e.g. after Add Model.
+    def show_model_ranges() -> None:
+        """Set the ranges of the time controls and the direction bins from the models of the plot, e.g. after Add Model.
 
         The ranges of the sliders and the direction bins came from the models of the command only.
         """
-        nonlocal logtrange, widthmax, dlogtmax, nvalid, slidermode, shownruns
+        nonlocal logtrange, widthmax, dlogtmax, nvalid, slidermode, shownmodels
         grid = viewer.grid
         logtrange, widthmax, dlogtmax, nvalid = get_time_slider_ranges(grid, viewer.values)
-        # show_values sets the ranges of the sliders again, and the direction bins come from the new first run
+        # show_values sets the ranges of the sliders again, and the direction bins come from the new first model
         slidermode = None
-        set_direction_run(grid.runfolders[0])
-        shownruns = grid.runkey
+        set_direction_model(grid.modelfolders[0])
+        shownmodels = grid.loadkey
         # Reload Data calls this function outside show_values, and a clear of the box without the blocker selected a
         # time grid with no model
         with QtCore.QSignalBlocker(timegridbox):
             timegridbox.clear()
             # two models can have one name, thus each choice gives the place of the model in the list of spectra
-            for path, runtimes in grid.runtimes.items():
+            for path, modeltimes in grid.modeltimes.items():
                 timegridbox.addItem(f"{viewer.values.spectra.index(path) + 1}. {get_model_name(path)}", path)
                 timegridbox.setItemData(
-                    timegridbox.count() - 1, get_run_times_text(runtimes), QtCore.Qt.ItemDataRole.ToolTipRole
+                    timegridbox.count() - 1, get_model_times_text(modeltimes), QtCore.Qt.ItemDataRole.ToolTipRole
                 )
         low, high = grid.timebounds
         validtimeslabel.setText(f"valid {low:.4g} to {high:.4g} d")
@@ -1836,8 +1847,8 @@ def open_window(
 
     def make_spectrum_rows(values: ControlValues) -> list[SeriesRow]:
         """Return a row for each spectrum. The model that gives the timesteps of the time controls has a mark."""
-        runtimes = viewer.grid.runtimes
-        models = list(runtimes)
+        modeltimes = viewer.grid.modeltimes
+        models = list(modeltimes)
         gridpath = get_timegrid_path(values)
         colours = get_series_colours(values.spectra, values.otheroptions)
         rows: list[SeriesRow] = []
@@ -1850,7 +1861,9 @@ def open_window(
                     name=style["-label"] or get_series_name(path),
                     labelled=style["-label"] is not None,
                     itemtext=itemtext,
-                    tooltip=(f"{itemtext}\n{get_run_times_text(runtimes[path])}" if path in runtimes else itemtext),
+                    tooltip=(
+                        f"{itemtext}\n{get_model_times_text(modeltimes[path])}" if path in modeltimes else itemtext
+                    ),
                     swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
                     removereason=(
                         "The plot needs one ARTIS model at least. Add a different model first"
@@ -1871,7 +1884,7 @@ def open_window(
                     extraactions=(
                         (
                             "Use for the Time Controls",
-                            path in runtimes and path != gridpath,
+                            path in modeltimes and path != gridpath,
                             partial(on_use_timegrid, path),
                         ),
                     ),
@@ -1885,12 +1898,12 @@ def open_window(
         # an error in a widget value, e.g. a bad colour of the option table, must not leave the signals blocked
         try:
             values = viewer.values
-            # Undo or a rejected change can give a different list of spectra, and its runs have different times
-            if (values.spectra, values.timegrid) != viewer.grid.runkey:
-                viewer.load_runs(values.spectra, values.timegrid)
+            # Undo or a rejected change can give a different list of spectra, and its models have different times
+            if (values.spectra, values.timegrid) != viewer.grid.loadkey:
+                viewer.load_models(values.spectra, values.timegrid)
             grid = viewer.grid
-            if grid.runkey != shownruns:
-                show_run_ranges()
+            if grid.loadkey != shownmodels:
+                show_model_ranges()
             if (values.xunit, values.gamma) != rangesunit:
                 set_xunit_ranges()
             if values.notimeclamp != slidermode:
@@ -1902,7 +1915,7 @@ def open_window(
             if gammaitem.isEnabled() != (gammaavailable := grid.hasgammaspectrum or values.gamma):
                 gammaitem.setEnabled(gammaavailable)
                 gammaitem.setToolTip(
-                    gammatooltip if gammaavailable else "A run has no gamma_spec.out and no packet files"
+                    gammatooltip if gammaavailable else "A model folder has no gamma_spec.out and no packet files"
                 )
             stepbuttons[0].setEnabled(viewer.step_time(-1) is not None)
             stepbuttons[1].setEnabled(viewer.step_time(1) is not None)
@@ -1999,7 +2012,7 @@ def open_window(
     show_error = queue.show_error
 
     def apply(values: ControlValues, *, undoable: bool = True) -> None:
-        """Give the queue the new values, with a time that the runs have."""
+        """Give the queue the new values, with a time that the models have."""
         queue.apply(viewer.clamp_time(values), undoable=undoable)
 
     def on_packet_type(index: int) -> None:
@@ -2027,17 +2040,17 @@ def open_window(
 
     def get_timegrid_path(values: ControlValues) -> str:
         """Return the path of the model that gives the timesteps, which is the first model for the value ""."""
-        return values.timegrid or next(iter(viewer.grid.runtimes), "")
+        return values.timegrid or next(iter(viewer.grid.modeltimes), "")
 
     def on_timegrid() -> None:
         timegridpath: str = timegridbox.currentData()
         if timegridpath != get_timegrid_path(viewer.values):
-            apply(set_runs(viewer, viewer.values.spectra, timegridpath))
+            apply(set_models(viewer, viewer.values.spectra, timegridpath))
 
     def on_widthmode() -> None:
         values = viewer.values
         widthmode: t.Literal["dlogt", "days"] = widthmodebox.currentData()
-        # Δ ln t keeps its last value, which starts as the Δ ln t of a logarithmic grid of the run
+        # Δ ln t keeps its last value, which starts as the Δ ln t of a logarithmic grid of the model
         apply(dc.replace(values, widthmode=widthmode))
 
     def on_width(position: int) -> None:
@@ -2276,14 +2289,14 @@ def open_window(
         apply(dc.replace(viewer.values, fixedionlist=series))
 
     def apply_spectra(spectra: "Sequence[str]") -> None:
-        """Read the runs of a new list of spectra, and apply the list with a time that the runs have.
+        """Read the models of a new list of spectra, and apply the list with a time that the models have.
 
-        The runs of the new list can cover a shorter time, e.g. after Add Model, thus the time moves inside it.
+        The models of the new list can cover a shorter time, e.g. after Add Model, thus the time moves inside it.
         """
-        apply(set_runs(viewer, spectra, viewer.values.timegrid))
+        apply(set_models(viewer, spectra, viewer.values.timegrid))
 
     def on_use_timegrid(path: str) -> None:
-        apply(set_runs(viewer, viewer.values.spectra, path))
+        apply(set_models(viewer, viewer.values.spectra, path))
 
     def on_edit_properties(path: str) -> None:
         """Ask for the label, the colour, the line style, the width, and the opacity of the line of a spectrum."""
@@ -2321,8 +2334,8 @@ def open_window(
     def on_export_animation() -> None:
         export_animation(window, queue, command, get_animation_frames(viewer), fpsbox.value())
 
-    def is_run_folder(path: str) -> bool:
-        return bool(get_artis_run_folders([Path(path)]))
+    def is_model_folder(path: str) -> bool:
+        return bool(get_artis_model_folders([Path(path)]))
 
     show_series_rows = add_series_list(
         spectragrid,
@@ -2343,20 +2356,20 @@ def open_window(
             apply_paths=apply_spectra,
             edit_properties=on_edit_properties,
             get_full_path=get_spectrum_path,
-            is_run=is_run_folder,
+            is_model=is_model_folder,
             show_error=show_error,
         ),
     )
 
     def on_reload() -> None:
-        """Read the runs again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
+        """Read the models again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
 
-        def show_reloaded_runs() -> None:
-            viewer.load_runs(viewer.values.spectra, viewer.values.timegrid)
-            show_run_ranges()
+        def show_reloaded_models() -> None:
+            viewer.load_models(viewer.values.spectra, viewer.values.timegrid)
+            show_model_ranges()
             queue.redraw()
 
-        reload_runs(queue, viewer.grid.runfolders, show_reloaded_runs, show_error)
+        reload_models(queue, viewer.grid.modelfolders, show_reloaded_models, show_error)
 
     add_figure_actions = add_window_actions(
         window,

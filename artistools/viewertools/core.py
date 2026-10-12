@@ -230,16 +230,16 @@ def fix_title_position(axis: "mplax.Axes") -> None:
         axis.set_title(axis.get_title(), y=1.0)
 
 
-def get_direction_kinds(runfolder: Path) -> list[str]:
-    """Return the kinds of viewing direction of the run. A run with a configuration of virtual packets has observers."""
-    return ["", "bin", "phi", "theta", *(["vpkt"] if path_is_file(runfolder / "vpkt.txt") else [])]
+def get_direction_kinds(modelfolder: Path) -> list[str]:
+    """Return the kinds of viewing direction of the model. A model with virtual packets has observers."""
+    return ["", "bin", "phi", "theta", *(["vpkt"] if path_is_file(modelfolder / "vpkt.txt") else [])]
 
 
 @lru_cache(maxsize=64)
-def run_has_direction_data(
-    runfolder: Path, kind: str, resfilenames: tuple[str, ...], vpktpattern: str, *, frompackets: bool
+def model_has_direction_data(
+    modelfolder: Path, kind: str, resfilenames: tuple[str, ...], vpktpattern: str, *, frompackets: bool
 ) -> bool:
-    """Return True if a run gives the plot of a direction bin of a kind, "bin" or "vpkt", with its data source.
+    """Return True if a model gives the plot of a direction bin of a kind, "bin" or "vpkt", with its data source.
 
     A direction bin comes from a file of resfilenames, e.g. spec_res.out, or from the packets files with --frompackets.
     The commands read the packets for a direction bin only with --frompackets. An observer of the virtual packets needs
@@ -252,15 +252,15 @@ def run_has_direction_data(
     from artistools.packets.core import has_packets_files
 
     if kind == "vpkt":
-        if not path_is_file(runfolder / "vpkt.txt"):
+        if not path_is_file(modelfolder / "vpkt.txt"):
             return False
-        if vpktpattern and folder_holds_match(runfolder, vpktpattern):
+        if vpktpattern and folder_holds_match(modelfolder, vpktpattern):
             return True
-        virtualfile = firstexisting_or_none(get_packets_textfilename(0, virtual=True), folder=runfolder)
-        return frompackets and (virtualfile is not None or folder_holds_match(runfolder, "vpackets*"))
-    if firstexisting_or_none(list(resfilenames), folder=runfolder, tryzipped=True) is not None:
+        virtualfile = firstexisting_or_none(get_packets_textfilename(0, virtual=True), folder=modelfolder)
+        return frompackets and (virtualfile is not None or folder_holds_match(modelfolder, "vpackets*"))
+    if firstexisting_or_none(list(resfilenames), folder=modelfolder, tryzipped=True) is not None:
         return True
-    return frompackets and has_packets_files(runfolder)
+    return frompackets and has_packets_files(modelfolder)
 
 
 def get_direction_kind(args: argparse.Namespace) -> str:
@@ -274,14 +274,14 @@ def get_direction_kind(args: argparse.Namespace) -> str:
     return "theta" if args.average_over_theta_angle else "bin"
 
 
-def get_direction_choices(runfolder: Path, directionkind: str, *, usedegrees: bool) -> list[tuple[int, str]]:
+def get_direction_choices(modelfolder: Path, directionkind: str, *, usedegrees: bool) -> list[tuple[int, str]]:
     """Return each bin of a kind of viewing direction with its label.
 
     An average over the phi angle or the theta angle takes the first bin of each group, as get_dirbins gives it.
     """
     averagephi, averagetheta = directionkind == "phi", directionkind == "theta"
     labels = get_dirbin_definitions(
-        runfolder,
+        modelfolder,
         get_dirbins(average_over_phi=averagephi, average_over_theta=averagetheta),
         vpkt_observers=directionkind == "vpkt",
         average_over_phi=averagephi,

@@ -55,7 +55,7 @@ def get_wij() -> npt.NDArray[np.float64]:
 
 def kernelvals2(
     rij2: npt.NDArray[np.float64], hmean: float, wij: npt.NDArray[np.float64]
-) -> npt.NDArray[np.float64]:  # ist schnell berechnet aber keine Gradienten
+) -> npt.NDArray[np.float64]:  # the calculation is fast, but it gives no gradients
     """Return the kernel values for the pair separations rij2 and a mean smoothing length, interpolated from wij."""
     hmean21 = 1.0 / hmean**2
     hmean31 = hmean21 / hmean
