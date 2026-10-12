@@ -10,6 +10,7 @@ import pytest
 
 import artistools as at
 from artistools.atomic.core import read_transitiondata
+from artistools.atomic.core import vacuum_to_air_angstroms
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -681,3 +682,26 @@ def test_get_levels_of_atomic_data_numbered_from_zero(tmp_path: Path) -> None:
             assert (zerovalue is None) == (onevalue is None)
             if zerovalue is not None:
                 assert zerovalue.tolist() == onevalue.tolist()
+
+
+def test_vacuum_to_air_angstroms_agrees_with_nist() -> None:
+    """The air wavelengths agree with the Ritz wavelengths of Sr II in the NIST Atomic Spectra Database.
+
+    Outside 2000-20000 Å, the function gives the vacuum wavelength, as NIST does.
+    """
+    nist_vacuum_and_air_angstroms = [
+        (2153.528, 2152.850),
+        (4078.8607, 4077.7094),
+        (4216.7067, 4215.5193),
+        (10039.405, 10036.653),
+        (10917.877, 10914.887),
+        (1500.0, 1500.0),
+        (25000.0, 25000.0),
+    ]
+    dfwavelengths = pl.DataFrame(
+        nist_vacuum_and_air_angstroms, schema=["lambda_vacuum_angstroms", "nist_lambda_air_angstroms"], orient="row"
+    ).with_columns(lambda_air_angstroms=vacuum_to_air_angstroms(pl.col("lambda_vacuum_angstroms")))
+
+    assert np.allclose(
+        dfwavelengths["lambda_air_angstroms"], dfwavelengths["nist_lambda_air_angstroms"], rtol=0.0, atol=2e-3
+    )

@@ -1170,6 +1170,28 @@ def read_linestatfile(
     return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
+def vacuum_to_air_angstroms(lambda_vacuum_angstroms: pl.Expr) -> pl.Expr:
+    """Return the air wavelength between 2000 and 20000 Å, and the vacuum wavelength outside this range.
+
+    The refractive index of standard air comes from the five-parameter formula of Peck & Reeder (1972),
+    J. Opt. Soc. Am., 62, 958, doi:10.1364/JOSA.62.000958. The NIST Atomic Spectra Database uses the same
+    formula and the same wavelength range. Thus a line label agrees with the NIST air wavelength.
+    """
+    lambda_vacuum_angstroms = lambda_vacuum_angstroms.cast(pl.Float64)
+    wavenumber_sq_per_micron_sq = (1e4 / lambda_vacuum_angstroms) ** 2
+    refractive_index_air = 1.0 + 1e-8 * (
+        8060.51
+        + 2480990.0 / (132.274 - wavenumber_sq_per_micron_sq)
+        + 17455.7 / (39.32957 - wavenumber_sq_per_micron_sq)
+    )
+    return (
+        pl
+        .when(lambda_vacuum_angstroms.is_between(2000, 20000))
+        .then(lambda_vacuum_angstroms / refractive_index_air)
+        .otherwise(lambda_vacuum_angstroms)
+    )
+
+
 def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     """Return the transition list. Each row is one line. The rows are in lineindex order.
 
@@ -1226,11 +1248,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         pl
         .scan_parquet(parquetfile)
         .with_columns(
-            pl
-            .when(pl.col("lambda_angstroms").is_between(2000, 20000))
-            .then(pl.col("lambda_angstroms") / 1.0003)
-            .otherwise(pl.col("lambda_angstroms"))
-            .alias("lambda_angstroms_air"),
+            vacuum_to_air_angstroms(pl.col("lambda_angstroms")).cast(pl.Float32).alias("lambda_angstroms_air"),
             pl.col(pl.UInt32).cast(pl.Int32),
             pl.col(pl.Int64).cast(pl.Int32),
             pl.col(pl.Float64).cast(pl.Float32),
