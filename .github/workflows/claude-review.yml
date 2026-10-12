@@ -42,22 +42,6 @@ jobs:
             # an issue_comment event has no pull_request object, thus the URL comes from the number of the issue
             PRURL: ${{ format('{0}/{1}/pull/{2}', github.server_url, github.repository, github.event.pull_request.number || github.event.issue.number) }}
         steps:
-            # TEMPORARY: the API accepts a direct request but refuses the request of Claude Code. A later commit removes this
-            - name: Check Claude Code with the API key
-              continue-on-error: true
-              env:
-                  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-              run: |
-                  curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.296 > /dev/null
-                  export PATH="$HOME/.local/bin:$PATH"
-                  cd "$RUNNER_TEMP"
-                  for model in claude-haiku-5-5 claude-sonnet-5-5 claude-opus-5-5; do
-                      echo "model=$model $(claude -p 'Reply with one word.' --model "$model" --output-format json | jq -c '{is_error, result, api_error_status}')"
-                  done
-                  ANTHROPIC_LOG=debug claude -p 'Reply with one word.' --model claude-opus-5-5 --output-format json > debug.out 2> debug.err || true
-                  jq -c '{is_error, result}' debug.out
-                  grep -iE 'max_tokens|anthropic-beta|"speed"|service_tier|inference_geo|"thinking"|"effort"|"model"|status|credit|/v1/' debug.err | cut -c1-400 | head -60
-
             # the event of a comment does not show the repository of the pull request. The review runs the code of
             # the pull request in a job that holds the API key, thus it must not review a fork
             - name: Refuse a pull request from a fork
@@ -135,3 +119,32 @@ jobs:
                       --model claude-opus-5-5
                       --append-system-prompt "To confirm a finding, you can run the code of the pull request with uv run, e.g. 'uv run -- python -m pytest artistools/spectra/test_spectra.py::test_name' or a short script. Run single tests. Do not run the full test suite, because CI runs it."
                       --allowedTools "Skill,Agent,Bash(uv run:*),Read,Grep,Glob,WebFetch,WebSearch,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(gh pr checks:*),Bash(gh run view:*),mcp__github_inline_comment__create_inline_comment,Bash(gh api:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
+
+    # TEMPORARY: find the setting of the action that makes the API refuse the request. A later commit removes this job
+    debugaction:
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 15
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: write
+        strategy:
+            fail-fast: false
+            matrix:
+                variant: [base, scrub, tools]
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+            - uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+              env:
+                  CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: ${{ matrix.variant != 'base' && '1' || '' }}
+              with:
+                  anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+                  github_token: ${{ github.token }}
+                  show_full_output: true
+                  prompt: Reply with one word.
+                  claude_args: ${{ matrix.variant == 'tools' && '--model claude-opus-5-5 --append-system-prompt "Reply briefly." --allowedTools "Skill,Agent,Bash(uv
+                      run:*),Read,Grep,Glob,WebFetch,WebSearch,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git blame:*),Bash(gh pr checks:*),Bash(gh
+                      run view:*),mcp__github_inline_comment__create_inline_comment,Bash(gh api:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*),Bash(gh
+                      pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"' || '--model claude-opus-5-5' }}
