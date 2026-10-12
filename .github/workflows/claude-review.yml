@@ -42,6 +42,21 @@ jobs:
             # an issue_comment event has no pull_request object, thus the URL comes from the number of the issue
             PRURL: ${{ format('{0}/{1}/pull/{2}', github.server_url, github.repository, github.event.pull_request.number || github.event.issue.number) }}
         steps:
+            # TEMPORARY: compare the API answer for small and large values of max_tokens. A later commit removes this
+            - name: Check the API key with different max_tokens
+              continue-on-error: true
+              env:
+                  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+              run: |
+                  for maxtokens in 1 4096 16000 32000 64000 128000; do
+                      body=$(jq -nc --argjson m "$maxtokens" '{model: "claude-opus-5-5", max_tokens: $m, messages: [{role: "user", content: "Reply with one word."}]}')
+                      status=$(curl -sS https://api.anthropic.com/v1/messages -H "x-api-key: $ANTHROPIC_API_KEY" \
+                          -H "anthropic-version: 2023-06-01" -H "content-type: application/json" -o response.json \
+                          -w "%{http_code}" -d "$body")
+                      echo "max_tokens=$maxtokens HTTP $status $(jq -c '{type, error: .error.message, output_tokens: .usage.output_tokens}' response.json)"
+                  done
+                  rm -f response.json
+
             # the event of a comment does not show the repository of the pull request. The review runs the code of
             # the pull request in a job that holds the API key, thus it must not review a fork
             - name: Refuse a pull request from a fork
