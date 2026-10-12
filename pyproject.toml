@@ -267,6 +267,8 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = ["ALL"]
+# the pep257 convention switches off these two rules. An explicit selection switches them on again
+extend-select = ["docstring-starts-with-this", "multi-line-summary-first-line"]
 ignore = [
     "any-type",
     "complex-structure",
@@ -305,11 +307,13 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Test names describe the case already; a docstring restating them is noise.
+# Test names describe the case already; a docstring restating them is noise. A test can write compressed
+# files and start processes, because it tests the readers of such files and the work in several processes
 "**/test_*.py" = [
     "undocumented-public-module",
     "undocumented-public-class",
     "undocumented-public-function",
+    "banned-api",
 ]
 "**/conftest.py" = ["undocumented-public-module", "undocumented-public-function"]
 "tests/__init__.py" = ["undocumented-public-package"]
@@ -331,9 +335,23 @@ unfixable = [
 "pynonthermal" = "pynt"
 "typing" = "t"
 
+[tool.ruff.lint.flake8-import-conventions]
+# the code reads these modules through their aliases, e.g. `t.Any`
+banned-from = ["matplotlib.pyplot", "numpy", "typing"]
+
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 require-lazy = "all"
+# the CLI must start quickly, thus the function that uses one of these dependencies imports it
+banned-module-level-imports = ["argcomplete", "imageio", "plotly", "pynonthermal", "pyvista"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"bz2.open".msg = "Use at.zopen or polars_source, which select the decompression from the file extension"
+"concurrent.futures.ProcessPoolExecutor".msg = "Use parallel_map, which selects threads or processes"
+"gzip.open".msg = "Use at.zopen or polars_source, which select the decompression from the file extension"
+"lzma.open".msg = "Use at.zopen or polars_source, which select the decompression from the file extension"
+"multiprocessing.Pool".msg = "Use parallel_map, which selects threads or processes"
+"pandas".msg = "Use polars. artistools has no pandas dependency"
 
 [tool.ruff.lint.flake8-type-checking]
 # imports used only in annotations belong in a `if t.TYPE_CHECKING:` block, which keeps them out

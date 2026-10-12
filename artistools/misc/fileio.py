@@ -145,7 +145,7 @@ def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
 
         import zstandard as zstd
 
-    return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]
+    return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]  # ruff:ignore[banned-api]
 
 
 def write_zstd_lines(fileobj: t.IO[bytes], lines: Sequence[str]) -> None:

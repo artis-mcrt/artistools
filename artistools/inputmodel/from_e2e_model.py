@@ -8,7 +8,6 @@ import itertools
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -91,7 +90,7 @@ def get_grid(
     nohmns: bool,
     notorus: bool,
     no_nu_trapping: bool,
-) -> tuple[Any, ...]:
+) -> tuple[t.Any, ...]:
     """Interpolate the end-to-end tracer particles onto a grid, returning the density, composition, Ye, and heating.
 
     The ejecta components (dynamical, NS-torus, BH-torus, neutrino-trapped) can each be excluded with the
