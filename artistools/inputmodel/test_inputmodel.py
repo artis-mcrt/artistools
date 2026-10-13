@@ -231,7 +231,7 @@ def test_trajectory_cache_write_is_atomic(tmp_path: Path) -> None:
     nworkers = 16
     traj_root = tmp_path / "trajectories"
     # a group that can write the trajectory root must be able to add a cache, thus the cache folder takes this mode
-    traj_root.mkdir(mode=0o775)
+    traj_root.mkdir()
     traj_root.chmod(0o775)
     shutil.copy(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", traj_root)
     nrows = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(traj_root / "114511.tar.xz").height
@@ -274,9 +274,10 @@ def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_pa
 
     dftrajectory = scan_trajectory_network_data(traj_root, 114511).collect()
     assert dftrajectory.height > 300
-    assert pl.read_parquet_metadata(parquetpath)["cacheversion"] == str(TRAJECTORY_CACHEVERSION)
+    pqmetadata = pl.read_parquet_metadata(parquetpath)
+    assert pqmetadata["cacheversion"] == str(TRAJECTORY_CACHEVERSION)
 
-    assert pl.read_parquet_metadata(parquetpath)["textsource"] == "114511.tar.xz"
+    assert pqmetadata["textsource"] == "114511.tar.xz"
 
     # a copy with cp -p keeps the modification time, thus the size of the archive shows the change
     import os
@@ -815,7 +816,8 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
     assert dftrajectory["nstep"].to_list() == [1, 2, 3, None]
     assert dftrajectory["abundancefile"].to_list() == [None, "nz-plane00002", None, "tday_nz-plane"]
     # timestep 3 takes its time from heating.dat, because energy_thermo.dat does not have timestep 3
-    assert dftrajectory["time_s"].to_list() == [1.0, 9.0e4, 1.0e5, None]
+    # the named file has no timestep, and its time comes from its header
+    assert dftrajectory["time_s"].to_list() == [1.0, 9.0e4, 1.0e5, 8.64e4]
     assert dftrajectory["abundancetime_s"].to_list() == [None, 9.0e4, None, 8.64e4]
     # the Fortran exponent of hbeta has no "e", and the later row of timestep 2 replaces the earlier row
     assert dftrajectory["hbeta"].to_list()[:3] == pytest.approx([1.842623e-281, 4.0e9, 6.0e9])
@@ -865,10 +867,12 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
     assert timesecs == [1.0]
     assert "heating.dat in 5.tar.xz" in capsys.readouterr().err
     assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 5)["nstep"].to_list() == [1]
-    # a Fortran overflow token in a column that no reader uses gives null, and the table stays readable
+    # a Fortran overflow token in a column that no reader uses does no harm, because the cache holds the columns of
+    # the readers alone
     dfthermo = at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Qdot",))
     assert dfthermo["Qdot"].to_list() == pytest.approx([1.5e21])
-    assert at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Ye",)).height == 0
+    with pytest.raises(FileNotFoundError, match="no column Ye"):
+        at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Ye",))
     with pytest.raises(FileNotFoundError, match="no column hbeta"):
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("hbeta",))
 

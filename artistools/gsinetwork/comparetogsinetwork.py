@@ -26,8 +26,8 @@ from artistools.inputmodel.rprocess_from_trajectory import check_traj_time_match
 from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps_table
+from artistools.inputmodel.rprocess_from_trajectory import get_traj_network_timesteps
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
-from artistools.inputmodel.rprocess_from_trajectory import scan_trajectory_network_data
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -465,16 +465,6 @@ def get_particledata(
         heatcols = ["hbeta", "halpha", "hspof"]
         dfheating = get_network_timesteps_table(Path(traj_root), particleid, tuple(heatcols))
 
-        # the closest timesteps come from the timesteps with an abundance file, which a heating row can lack
-        # the time of a timestep that the .dat files do not hold comes from the header of the abundance file
-        nstep_timesec: dict[int, float] = dict(
-            scan_trajectory_network_data(Path(traj_root), particleid)
-            .filter(pl.col("nstep").is_not_null() & pl.col("abundancefile").is_not_null())
-            .select("nstep", pl.coalesce("time_s", "abundancetime_s"))
-            .collect()
-            .iter_rows()
-        )
-
         particledata = particledata.with_columns(
             pl.Series(
                 # np.interp holds the end value outside the range. These curves are summed over the
@@ -486,6 +476,8 @@ def get_particledata(
         )
 
         if arr_strnuc_z_n:
+            # the closest timesteps come from the timesteps with an abundance file, which a heating row can lack
+            nstep_timesec: dict[int, float] = dict(get_traj_network_timesteps(traj_root, particleid).iter_rows())
             # the bracket includes a step at the exact time. Then a time at the first or the last step reads
             # that step, and a time at an inner step reads no neighbour step
             ntslowers = get_closest_network_timesteps(

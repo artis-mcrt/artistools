@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import sys
+import time
 import typing as t
 from collections.abc import Callable
 from collections.abc import Generator
@@ -1340,6 +1341,32 @@ def is_readonly_error(exc: OSError) -> bool:
     A read-only mount gives errno EROFS, which Python raises as a plain OSError and not as a PermissionError.
     """
     return isinstance(exc, PermissionError) or exc.errno == errno.EROFS
+
+
+def make_cache_folder(folder: Path, parentfolder: Path) -> None:
+    """Make a cache folder with the access mode of its parent folder, if it does not exist.
+
+    The folder takes the access mode of parentfolder, with its setgid bit, thus a group that can write the parent
+    folder can add a cache. A mkdir alone applies the umask of the process, which removes the group write bit.
+    A different process can make the folder at the same time, and only its owner can change the mode. That
+    process applies the mode after its mkdir, thus a process of a different user waits until the folder is
+    writable. A read-only parent folder gives a PermissionError with a readable message.
+    """
+    try:
+        folder.mkdir()
+    except FileExistsError:
+        for _ in range(50):
+            if os.access(folder, os.W_OK):
+                break
+            time.sleep(0.1)
+    except OSError as exc:
+        # a read-only mount gives EROFS and not PermissionError
+        if not is_readonly_error(exc):
+            raise
+        msg = f"artistools cannot make its cache folder {folder}, because the folder {parentfolder} is read-only"
+        raise PermissionError(msg) from exc
+    else:
+        folder.chmod(parentfolder.stat().st_mode & 0o7777)
 
 
 def get_readonly_cache_error(parquetfilepath: Path) -> PermissionError:

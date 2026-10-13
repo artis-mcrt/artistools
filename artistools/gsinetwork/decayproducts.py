@@ -21,8 +21,8 @@ from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
-from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps_table
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
+from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timesteps
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
@@ -205,8 +205,8 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
 
 def get_nearest_network_timesteps(
     traj_root: Path, traj_ID: int, arr_t_day: npt.NDArray[np.floating]
-) -> tuple[pl.DataFrame, npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64]]:
-    """Return the heating rows of a trajectory, and the row, the timestep, and the abundance timestep of each plot time.
+) -> tuple[pl.DataFrame, npt.NDArray[np.int64], npt.NDArray[np.int64]]:
+    """Return the heating rows of a trajectory, and the heating row and the abundance timestep of each plot time.
 
     The rows are those of heating.dat, with the Qdot of energy_thermo.dat where that file has the timestep. A
     plot time after the last network time gets the row -1 and the timestep -1. The abundances come from the
@@ -214,21 +214,20 @@ def get_nearest_network_timesteps(
     holds the file of one timestep alone. A trajectory with no heating row raises FileNotFoundError, as a
     trajectory with no network data does.
     """
-    dfheatingthermo = (
-        get_network_timesteps_table(traj_root, traj_ID, ("hbeta", "htot"))
-        .join(
-            get_network_timesteps_table(traj_root, traj_ID, ("Qdot",)).select("nstep", "Qdot"),
-            on="nstep",
-            how="left",
-            maintain_order="left",
-        )
-        .rename({"time_s": "timesec"})
-    )
+    dftimesteps = get_trajectory_timesteps(traj_root, traj_ID)
+    missingcol = next((col for col in ("hbeta", "htot", "Qdot") if col not in dftimesteps.columns), None)
+    if missingcol is not None:
+        msg = f"The network data of particle {traj_ID} in {traj_root} has no column {missingcol}"
+        raise FileNotFoundError(msg)
+    dfheatingthermo = dftimesteps.filter(
+        pl.all_horizontal(pl.col("nstep", "time_s", "hbeta", "htot").is_not_null())
+    ).select("nstep", "time_s", "hbeta", "htot", "Qdot")
     if dfheatingthermo.is_empty():
         msg = f"The trajectory of particle {traj_ID} has no timestep with heating values"
         raise FileNotFoundError(msg)
 
-    arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / day_to_s
+    arr_networktime_s = dfheatingthermo["time_s"].to_numpy()
+    arr_networktimedays = arr_networktime_s / day_to_s
     arr_heatingrow = np.array(
         [
             int(np.abs(arr_networktimedays - plottimedays).argmin()) if plottimedays < arr_networktimedays[-1] else -1
@@ -237,25 +236,39 @@ def get_nearest_network_timesteps(
         dtype=np.int64,
     )
     hasnetworkstep = arr_heatingrow >= 0
-    arr_networktimestepindex = np.where(
+    arr_nstep = np.where(
         hasnetworkstep, dfheatingthermo["nstep"].to_numpy()[np.where(hasnetworkstep, arr_heatingrow, 0)], -1
     )
-    arr_abundancestep = arr_networktimestepindex.copy()
+    arr_abundancestep = arr_nstep.copy()
     if hasnetworkstep.any():
         arr_abundancestep[hasnetworkstep] = get_closest_network_timesteps(
-            traj_root, traj_ID, dfheatingthermo["timesec"].to_numpy()[arr_heatingrow[hasnetworkstep]]
+            traj_root, traj_ID, arr_networktime_s[arr_heatingrow[hasnetworkstep]]
         )
 
     # a null Qdot would make the sum over the trajectories NaN with no sign of the cause
-    usedrows = dfheatingthermo[arr_heatingrow[hasnetworkstep].tolist()]
-    if usedrows["Qdot"].null_count() > 0:
-        badsteps = usedrows.filter(pl.col("Qdot").is_null())["nstep"].to_list()
+    badsteps = (
+        dfheatingthermo[arr_heatingrow[hasnetworkstep].tolist()].filter(pl.col("Qdot").is_null())["nstep"].to_list()
+    )
+    if badsteps:
         msg = (
             f"The trajectory of particle {traj_ID} has no Qdot value at timestep {badsteps[0]}, which a plot time uses"
         )
         raise ValueError(msg)
 
-    return dfheatingthermo, arr_heatingrow, arr_networktimestepindex, arr_abundancestep
+    substitutions = sorted({
+        (int(nstep), int(abundancestep))
+        for nstep, abundancestep in zip(arr_nstep, arr_abundancestep, strict=True)
+        if nstep != abundancestep
+    })
+    if substitutions:
+        # the user must see a change of the data source, because the substitute can be far from the timestep
+        substitutiontext = ", ".join(f"{nstep} come from timestep {sub}" for nstep, sub in substitutions[:5])
+        print_warning(
+            f"trajectory {traj_ID}: the abundances of timestep {substitutiontext}"
+            f"{', ...' if len(substitutions) > 5 else ''}, because the timestep has no abundance file"
+        )
+
+    return dfheatingthermo, arr_heatingrow, arr_abundancestep
 
 
 def process_trajectory(
@@ -274,7 +287,7 @@ def process_trajectory(
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
     try:
-        dfheatingthermo, arr_heatingrow, arr_networktimestepindex, arr_abundancestep = get_nearest_network_timesteps(
+        dfheatingthermo, arr_heatingrow, arr_abundancestep = get_nearest_network_timesteps(
             traj_root, traj_ID, arr_t_day
         )
     except FileNotFoundError as exc:
@@ -284,19 +297,6 @@ def process_trajectory(
     hasnetworkstep = arr_heatingrow >= 0
     # Python evaluates both arguments of np.where before the mask, thus a plot time with no network step reads row 0
     arr_safeheatingrow = np.where(hasnetworkstep, arr_heatingrow, 0)
-
-    substitutions = sorted({
-        (int(nstep), int(abundancestep))
-        for nstep, abundancestep in zip(arr_networktimestepindex, arr_abundancestep, strict=True)
-        if nstep != abundancestep
-    })
-    if substitutions:
-        # the user must see a change of the data source, because the substitute can be far from the timestep
-        substitutiontext = ", ".join(f"{nstep} come from timestep {sub}" for nstep, sub in substitutions[:5])
-        print_warning(
-            f"trajectory {traj_ID}: the abundances of timestep {substitutiontext}"
-            f"{', ...' if len(substitutions) > 5 else ''}, because the timestep has no abundance file"
-        )
 
     decay_powers: dict[str, npt.NDArray[np.floating]]
     decay_powers = {
