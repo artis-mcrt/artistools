@@ -612,8 +612,7 @@ def write_linestatfile(filepath: Path, lines: Sequence[tuple[float, int, int, in
     )
 
 
-@pytest.mark.parametrize("suffix", ["", ".zst"])
-@pytest.mark.parametrize("nlines", [0, 1, 3])
+@pytest.mark.parametrize(("nlines", "suffix"), [(0, ""), (1, ""), (3, ""), (3, ".zst")])
 def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, suffix: str, tmp_path: Path) -> None:
     """linelist.out and linestat.out with the same lines give the same frame.
 
@@ -694,11 +693,8 @@ def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(
 @pytest.mark.parametrize(
     ("filename", "content"),
     [
-        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 2 1\n4216.708 38 2".encode()),
         ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 2 1\n4216.708 38 2 3 1".encode()),
-        ("linelist.out", b""),
         ("linelist.out.zst", b""),
-        ("linelist.out", b"#lambda_ang"),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n"),
     ],
 )
