@@ -1249,15 +1249,31 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
                 " different format"
             )
             raise ValueError(msg)
-        dflines = (
-            lflines
-            # ARTIS writes no row without values. Such a row, e.g. an empty line or a line of spaces from an edit,
-            # gives only nulls and holds no line
-            .filter(~pl.all_horizontal(pl.all().is_null()))
-            .select([pl.col(columnname).cast(dtype) for columnname, dtype in LINELIST_SCHEMA.items()])
-            .collect(engine="streaming")
-        )
+        try:
+            dflines = (
+                lflines
+                # ARTIS writes no row without values. Such a row, e.g. an empty line from an edit, gives only nulls
+                # and holds no line
+                .filter(~pl.all_horizontal(pl.all().is_null()))
+                .select(
+                    *[pl.col(columnname).cast(dtype) for columnname, dtype in LINELIST_SCHEMA.items()],
+                    # a missing value in a column that the reader does not select also shows a row that is not complete
+                    pl
+                    .when(pl.any_horizontal(pl.all().is_null()))
+                    .then(None)
+                    .otherwise(pl.lit(value=True))
+                    .alias("rowiscomplete"),
+                )
+                .collect(engine="streaming")
+            )
+        except pl.exceptions.InvalidOperationError as exc:
+            msg = (
+                f"The file {filepath} has a value that does not agree with the type of its column, e.g. a fraction in a"
+                " column of integers. Possibly the file has a different format"
+            )
+            raise ValueError(msg) from exc
     raise_if_cut_line(dflines, filepath)
+    dflines = dflines.drop("rowiscomplete")
     raise_if_line_value_not_possible(dflines, filepath)
     return dflines
 
@@ -1303,8 +1319,9 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
             "plotspectra --emissionabsorption."
         ),
     )
-    # the path, with the compression extension, identifies the text source of the cache
-    textsource = textfile.relative_to(modelpath).as_posix()
+    # the path identifies the text source of the cache. A compression of the text keeps its modification time, thus
+    # the path has no compression extension
+    textsource = without_compressed_extension(textfile).relative_to(modelpath).as_posix()
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     textsource_mtime = textfile.stat().st_mtime

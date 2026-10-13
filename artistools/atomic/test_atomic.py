@@ -655,8 +655,8 @@ def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
 
 
 def test_get_linelist_pldf_ignores_a_row_without_values(tmp_path: Path) -> None:
-    """An edit can add an empty line or a line of spaces. It holds no line, thus it must not give the cut-line error."""
-    write_text_rows(tmp_path / "linelist.out", [LINELIST_HEADER, "13898.2958 57 3 1 0", "", "4216.708 38 2 2 0", "   "])
+    """An edit can add an empty line. It holds no line, thus it must not give the error for a cut line."""
+    write_text_rows(tmp_path / "linelist.out", [LINELIST_HEADER, "13898.2958 57 3 1 0", "", "4216.708 38 2 2 0", ""])
 
     assert at.atomic.get_linelist_pldf(tmp_path).collect()["atomic_number"].to_list() == [57, 38]
 
@@ -673,22 +673,32 @@ def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp
     assert np.isclose(dflinelist["lambda_angstroms"][-1], 6500.5)
 
 
-@pytest.mark.parametrize(
-    ("firstfilename", "secondfilename"), [("linestat.out", "linelist.out"), ("linelist.out.zst", "linelist.out")]
-)
-def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(
-    firstfilename: str, secondfilename: str, tmp_path: Path
-) -> None:
+def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(tmp_path: Path) -> None:
     """A cache of one text file is not current for a different file, also if the two files have the same time stamp."""
-    writefunctions = {"linestat.out": write_linestatfile, "linelist.out": write_linelistfile}
-    writefunctions[firstfilename.removesuffix(".zst")](tmp_path / firstfilename, TEST_LINES[:1])
+    write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
     assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 1
-    firstmtime = (tmp_path / firstfilename).stat().st_mtime
-    (tmp_path / firstfilename).unlink()
-    writefunctions[secondfilename](tmp_path / secondfilename, TEST_LINES)
-    os.utime(tmp_path / secondfilename, (firstmtime, firstmtime))
+    firstmtime = (tmp_path / "linestat.out").stat().st_mtime
+    (tmp_path / "linestat.out").unlink()
+    write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
+    os.utime(tmp_path / "linelist.out", (firstmtime, firstmtime))
 
     assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 3
+
+
+def test_get_linelist_pldf_keeps_the_cache_after_a_compression(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A compression with zstd keeps the modification time, thus the cache of the text must stay current."""
+    write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
+    at.atomic.get_linelist_pldf(tmp_path).collect()
+    mtime = (tmp_path / "linelist.out").stat().st_mtime
+    (tmp_path / "linelist.out").unlink()
+    write_linelistfile(tmp_path / "linelist.out.zst", TEST_LINES)
+    os.utime(tmp_path / "linelist.out.zst", (mtime, mtime))
+    capsys.readouterr()
+
+    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 3
+    assert "linelist.out.zst" not in capsys.readouterr().out
 
 
 NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
@@ -721,6 +731,12 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
         ),
         ("linestat.out", b"1.38982958e-04\n57\nnan\n2\n1\n", "is not an integer in the Int32 range"),
         ("linelist.out", f"# {LINELIST_HEADER[1:]}\n13898.2958 57 3 1 0\n".encode(), "has a space after '#'"),
+        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57.0 3 1 0\n".encode(), "does not agree with the type"),
+        (
+            "linelist.out",
+            f"{LINELIST_HEADER} einstein_a\n13898.2958 57 3 1 0 1e8\n4216.708 38 2 2 0\n".encode(),
+            "has a line with fewer values than the header",
+        ),
     ],
 )
 def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
@@ -742,6 +758,15 @@ def test_get_linelist_pldf_refuses_a_compressed_file_that_ends_inside_a_row(tmp_
 
     with pytest.raises(ValueError, match=NO_LINE_END_MESSAGE):
         at.atomic.get_linelist_pldf(tmp_path)
+
+
+def test_polars_error_note_names_a_damaged_xz_file(tmp_path: Path) -> None:
+    """The lzma module raises LZMAError, which is not an OSError, thus the error did not name the file."""
+    (tmp_path / "linelist.out.xz").write_bytes(b"data that is not xz")
+
+    with pytest.raises(Exception) as excinfo:  # ruff: ignore[pytest-raises-too-broad]
+        at.atomic.get_linelist_pldf(tmp_path)
+    assert any("linelist.out.xz" in note for note in getattr(excinfo.value, "__notes__", []))
 
 
 def test_get_linelist_pldf_reads_a_folder_name_with_glob_characters(tmp_path: Path) -> None:

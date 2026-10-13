@@ -225,17 +225,30 @@ def zopenpl(filename: Path | str) -> t.IO[bytes] | Path:
     return polars_source(filepath)
 
 
+def get_decompress_errors() -> tuple[type[Exception], ...]:
+    """Return the error types that the .xz and .zst modules raise for damaged data. They are not an OSError."""
+    import lzma
+
+    if sys.version_info >= (3, 14):
+        from compression.zstd import ZstdError
+    else:
+        from zstandard import ZstdError
+
+    return (lzma.LZMAError, ZstdError)
+
+
 @contextlib.contextmanager
 def polars_error_note(filepath: Path) -> Generator[None]:
     """Name the file in a read error, because the parser sees a path or in-memory bytes only.
 
-    A cut compressed file gives one of three errors. polars gives an OSError for a .gz file that it reads itself. A
-    Python reader gives an EOFError, and polars gives a panic when it reads from that reader. The dispatcher reports
-    an OSError with no traceback, thus an EOFError becomes an OSError.
+    A damaged .xz or .zst file gives the error type of its module. A cut compressed file gives one of three errors.
+    polars gives an OSError for a .gz file that it reads itself. A Python reader gives an EOFError, and polars gives a
+    panic when it reads from that reader. The dispatcher reports an OSError with no traceback, thus an EOFError
+    becomes an OSError.
     """
     try:
         yield
-    except (pl.exceptions.PolarsError, pl.exceptions.PanicException, OSError) as exc:
+    except (pl.exceptions.PolarsError, pl.exceptions.PanicException, OSError, *get_decompress_errors()) as exc:
         exc.add_note(f"while reading {filepath}")
         raise
     except EOFError as exc:
