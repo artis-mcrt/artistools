@@ -1252,10 +1252,10 @@ def read_parquet_cache_metadata(
     model or the line list, keeps the strict rule, because a stale one there gives wrong numbers for
     no gain.
 
-    A writer that can read more than one text file stamps the path of the text file as "textsource". The path must
-    include the subfolder and must not include the compression extension, e.g. "123.slurm/linelist.out", because a
-    compression keeps the modification time. Give the same path to such a reader, because two files can have the
-    same modification time. A cache without the stamp is then stale.
+    A writer that can read more than one text file stamps the path of the text file as "textsource". The path is
+    relative to the model folder and has no compression extension, e.g. "linelist.out", because a compression keeps
+    the modification time. Give the same path to such a reader, because two files can have the same modification
+    time. A cache without the stamp is then stale.
 
     A textsource_mtime of None shows that the text source is absent. The function then compares no
     modification times, but the cache format version and the state of the file still apply.
