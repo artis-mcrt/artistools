@@ -130,11 +130,11 @@ def parse_network_steps_table(text: str, sourcename: str) -> pl.DataFrame:
             ),
         )
     )
-    isshort = (dflines["fieldcount"] != len(colnames)).to_list()
-    if any(isshort[:-1]):
+    hasbadfieldcount = (dflines["fieldcount"] != len(colnames)).to_list()
+    if any(hasbadfieldcount[:-1]):
         msg = f"a line has a different number of fields than the header, which has {len(colnames)} fields"
         raise ValueError(msg)
-    if isshort and isshort[-1]:
+    if hasbadfieldcount and hasbadfieldcount[-1]:
         print_warning(f"The last line of {sourcename} is incomplete. The cache leaves out that line.")
         dflines = dflines.head(-1)
 
@@ -242,7 +242,8 @@ def read_network_texts(archivepath: Path) -> dict[str, str]:
     ):
         for member in tarfilehandle:
             folder, filename = posixpath.split(member.name)
-            if member.isfile() and posixpath.basename(folder) == "Run_rprocess" and is_network_data_file(filename):
+            # the files are in the Run_rprocess folder at the top of the archive, and not in a nested copy of it
+            if member.isfile() and posixpath.normpath(folder) == "Run_rprocess" and is_network_data_file(filename):
                 memberfile = tarfilehandle.extractfile(member)
                 assert memberfile is not None
                 # a corrupt byte gives a corrupt token, which the parse reports, and not an unreadable trajectory
@@ -259,9 +260,11 @@ def read_trajectory_network_data(archivepath: Path) -> tuple[pl.DataFrame, list[
     from energy_thermo.dat, or from heating.dat, or from the header of the abundance file. A named abundance
     file, e.g. tday_nz-plane, is a row with no timestep. The columns nstep and time_s always exist. A column of
     a file that the archive does not hold is absent, e.g. a test archive with the abundance files alone has no
-    "Qdot" column. The function leaves out a table or an abundance file with a corrupt value and gives a
-    warning, thus a reader of a different file of the trajectory can continue. The second result names the
-    files that the function left out.
+    "Qdot" column.
+
+    The function leaves out a table or an abundance file with a corrupt value and gives a warning, thus a
+    reader of a different file of the trajectory can continue. The second result names the files that the
+    function left out.
     """
     texts = read_network_texts(archivepath)
     if not texts:
@@ -376,6 +379,19 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
         },
         row_group_size=64,
     )
+    # a rival process can install a cache of an older archive first, and the write then keeps that file. The
+    # table in memory is the current one, thus a cache that fails the check serves from memory for this call
+    pqmetadata, reason = read_parquet_cache_metadata(
+        parquetpath,
+        TRAJECTORY_CACHEVERSION,
+        textsource_mtime,
+        textsource=archivepath.name,
+        textsource_size=archivestat.st_size,
+    )
+    if pqmetadata is None:
+        print(f"{parquetpath} is stale after the write, because {reason}. This call reads the table in memory.")
+        return dftrajectory.lazy()
+
     return pl.scan_parquet(parquetpath)
 
 

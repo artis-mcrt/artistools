@@ -1346,21 +1346,23 @@ def is_readonly_error(exc: OSError) -> bool:
 def make_cache_folder(folder: Path, parentfolder: Path) -> None:
     """Make a cache folder with the access mode of its parent folder, if it does not exist.
 
-    The folder takes the group and the access mode of parentfolder, with its setgid bit, thus a group that can
-    write the parent folder can add a cache. A mkdir alone applies the umask of the process, which removes the
-    group write bit. A different process can make the folder at the same time, and only its owner can change
-    the mode. That process applies the mode after its mkdir, thus a process of a different user waits until a
-    new folder is writable. A folder that exists and stays read-only passes, because a read of the caches in it
-    needs no write, and a write then gives the error. A read-only parent folder gives a PermissionError with a
-    readable message.
+    The folder takes the group and the access mode of parentfolder, with its setgid and sticky bits, thus a
+    group that can write the parent folder can add a cache. A mkdir alone applies the umask of the process,
+    which removes the group write bit. A different process can make the folder at the same time, and only its
+    owner can change the mode. That process applies the mode after its mkdir, thus a process of a different
+    user waits until a new folder is writable.
+
+    A folder that exists and stays read-only passes, because a read of the caches in it needs no write, and a
+    write then gives the error. A read-only parent folder gives a PermissionError with a readable message.
     """
     try:
         folder.mkdir()
     except FileExistsError:
-        # a folder that stays read-only gives the error at the first write, which stops the command, thus the
-        # wait costs at most five seconds for one command
-        for _ in range(50):
-            if os.access(folder, os.W_OK):
+        # the process that made the folder applies the mode a few microseconds after its mkdir, thus a folder that
+        # is not writable gets a short wait when it is new. A folder that stays read-only passes at once, e.g. a
+        # shared model whose caches are current, and a write then gives the error
+        for _ in range(20):
+            if os.access(folder, os.W_OK) or time.time() - folder.stat().st_mtime > 2.0:
                 break
             time.sleep(0.1)
         return
@@ -1386,7 +1388,9 @@ def make_cache_folder(folder: Path, parentfolder: Path) -> None:
         with contextlib.suppress(OSError):
             os.fchown(folderfd, -1, parentstat.st_gid)
         with contextlib.suppress(OSError):
-            os.fchmod(folderfd, parentstat.st_mode & 0o2777)
+            # the setgid bit and the sticky bit of the parent folder apply to the caches too: a sticky folder keeps
+            # the cache of one user safe from a different user
+            os.fchmod(folderfd, parentstat.st_mode & 0o3777)
     finally:
         os.close(folderfd)
 
