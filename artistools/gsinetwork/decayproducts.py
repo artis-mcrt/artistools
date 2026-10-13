@@ -222,6 +222,10 @@ def get_nearest_network_timesteps(
     dfheatingthermo = dftimesteps.filter(
         pl.all_horizontal(pl.col("nstep", "time_s", "hbeta", "htot").is_not_null())
     ).select("nstep", "time_s", "hbeta", "htot", "Qdot")
+    if dfheatingthermo.is_empty():
+        msg = f"The trajectory of particle {traj_ID} has no timestep with heating values"
+        raise FileNotFoundError(msg)
+
     arr_networktime_s = dfheatingthermo["time_s"].to_numpy()
     arr_networktimedays = arr_networktime_s / day_to_s
     arr_heatingrow = np.array(

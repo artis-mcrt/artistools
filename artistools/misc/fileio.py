@@ -1346,12 +1346,13 @@ def is_readonly_error(exc: OSError) -> bool:
 def make_cache_folder(folder: Path, parentfolder: Path) -> None:
     """Make a cache folder with the access mode of its parent folder, if it does not exist.
 
-    The folder takes the access mode of parentfolder, with its setgid bit, thus a group that can write the parent
-    folder can add a cache. A mkdir alone applies the umask of the process, which removes the group write bit.
-    A different process can make the folder at the same time, and only its owner can change the mode. That
-    process applies the mode after its mkdir, thus a process of a different user waits until a new folder is
-    writable. A folder that is not writable after that gives a PermissionError with a readable message, as a
-    read-only parent folder does.
+    The folder takes the group and the access mode of parentfolder, with its setgid bit, thus a group that can
+    write the parent folder can add a cache. A mkdir alone applies the umask of the process, which removes the
+    group write bit. A different process can make the folder at the same time, and only its owner can change
+    the mode. That process applies the mode after its mkdir, thus a process of a different user waits until a
+    new folder is writable. A folder that exists and stays read-only passes, because a read of the caches in it
+    needs no write, and a write then gives the error. A read-only parent folder gives a PermissionError with a
+    readable message.
     """
     try:
         folder.mkdir()
@@ -1361,22 +1362,29 @@ def make_cache_folder(folder: Path, parentfolder: Path) -> None:
             if os.access(folder, os.W_OK) or time.time() - folder.stat().st_ctime > 5.0:
                 break
             time.sleep(0.1)
-        if not os.access(folder, os.W_OK):
-            msg = f"artistools cannot write its cache folder {folder}, because a different user made it read-only"
-            raise PermissionError(msg) from None
+        return
     except OSError as exc:
         # a read-only mount gives EROFS and not PermissionError
         if not is_readonly_error(exc):
             raise
         msg = f"artistools cannot make its cache folder {folder}, because the folder {parentfolder} is read-only"
         raise PermissionError(msg) from exc
-    else:
-        parentstat = parentfolder.stat()
+
+    parentstat = parentfolder.stat()
+    # the descriptor of the new folder, and not its path, gets the group and the mode, thus a different user who
+    # can write the parent folder cannot replace the folder by a symbolic link to a file between the calls
+    folderfd = os.open(folder, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_DIRECTORY", 0))
+    try:
         # a mkdir gives the folder the primary group of the user, where the parent folder can belong to a project
-        # group. Only a member of the group can give it, thus a failure keeps the group of the user
+        # group. Only a member of the group can give it, and some file systems reject a chmod, thus a failure keeps
+        # the group and the mode of the mkdir
+        if hasattr(os, "fchown"):
+            with contextlib.suppress(OSError):
+                os.fchown(folderfd, -1, parentstat.st_gid)
         with contextlib.suppress(OSError):
-            os.chown(folder, -1, parentstat.st_gid)
-        folder.chmod(parentstat.st_mode & 0o7777)
+            os.fchmod(folderfd, parentstat.st_mode & 0o2777)
+    finally:
+        os.close(folderfd)
 
 
 def get_readonly_cache_error(parquetfilepath: Path) -> PermissionError:

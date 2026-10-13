@@ -856,7 +856,10 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
         tmp_path,
         5,
         {
-            "energy_thermo.dat": "#count time/s Qdot Ye\n     1  1.000000E+00  1.500000E+21  **********\n",
+            # the last line of energy_thermo.dat is incomplete, as a network run that stopped during a write leaves it
+            "energy_thermo.dat": (
+                "#count time/s Qdot Ye\n     1  1.000000E+00  1.500000E+21  **********\n     2  2.000000E+00  1.5\n"
+            ),
             "heating.dat": "#count time/s hbeta\n     1  corrupt  2.000000E+09\n",
             "nz-plane00001": "  1  1.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
         },
@@ -865,7 +868,9 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
         tmp_path, 5, ["nz-plane00001"]
     )
     assert timesecs == [1.0]
-    assert "heating.dat in 5.tar.xz" in capsys.readouterr().err
+    warnings = capsys.readouterr().err
+    assert "heating.dat in 5.tar.xz" in warnings
+    assert "The last line of energy_thermo.dat in 5.tar.xz is incomplete" in warnings
     assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 5)["nstep"].to_list() == [1]
     # a Fortran overflow token in a column that no reader uses does no harm, because the cache holds the columns of
     # the readers alone

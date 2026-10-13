@@ -101,7 +101,7 @@ def fix_fortran_exponents(dtype: pl.DataType | type[pl.DataType]) -> pl.Expr:
     return cs.by_dtype(pl.String).str.replace(r"(\d)([+-])(\d{3})$", "${1}e${2}${3}").cast(dtype)
 
 
-def parse_network_steps_table(text: str) -> pl.DataFrame:
+def parse_network_steps_table(text: str, sourcename: str) -> pl.DataFrame:
     """Parse a table of the network timesteps, e.g. energy_thermo.dat, whose first line names the columns.
 
     The timestep column "#count" becomes "nstep", and "time/s" becomes "time_s". The result holds the columns
@@ -109,7 +109,9 @@ def parse_network_steps_table(text: str) -> pl.DataFrame:
     that starts with "#" is a comment or a second header, e.g. after a restart of the network, and the parse
     skips it. A restart can also write a timestep again, and the later row then replaces the earlier row. A
     corrupt value, e.g. a Fortran overflow token of asterisks, or a line with a different number of fields
-    than the header, makes the table corrupt, because a reader must not get a null in place of a value.
+    than the header, makes the table corrupt, because a reader must not get a null in place of a value. An
+    incomplete last line alone, from a network run that stopped during a write, is left out with a warning
+    that names sourcename.
     """
     headerline, _, body = text.partition("\n")
     colnames = [{"#count": "nstep", "time/s": "time_s"}.get(colname, colname) for colname in headerline.split()]
@@ -128,9 +130,13 @@ def parse_network_steps_table(text: str) -> pl.DataFrame:
             ),
         )
     )
-    if dflines.filter(pl.col("fieldcount") != len(colnames)).height > 0:
+    isshort = (dflines["fieldcount"] != len(colnames)).to_list()
+    if any(isshort[:-1]):
         msg = f"a line has a different number of fields than the header, which has {len(colnames)} fields"
         raise ValueError(msg)
+    if isshort and isshort[-1]:
+        print_warning(f"The last line of {sourcename} is incomplete. The cache leaves out that line.")
+        dflines = dflines.head(-1)
 
     return (
         dflines
@@ -266,7 +272,7 @@ def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
         if filename not in texts:
             continue
         try:
-            frames.append(parse_network_steps_table(texts[filename]))
+            frames.append(parse_network_steps_table(texts[filename], f"{filename} in {archivepath.name}"))
         except (pl.exceptions.PolarsError, ValueError) as exc:
             # a reader of the abundance files must not stop for a corrupt value in a table that it does not read
             print_warning(f"Cannot read {filename} in {archivepath.name} ({exc}). The cache leaves out this file.")
@@ -292,9 +298,12 @@ def get_trajectory_archive_path(traj_root: Path, particleid: int) -> Path | None
     COMPRESSED_EXTENSIONS, which puts the .tar.zst before the .tar.xz. A .tar.zst decompresses five times
     faster than a .tar.xz.
     """
-    return firstexisting_or_none(
-        [f"{particleid}.tar", f"{particleid:05d}.tar"], folder=traj_root, tryzipped=True, search_subfolders=False
-    )
+    plainnames = [f"{particleid}.tar", f"{particleid:05d}.tar"]
+    plainpath = firstexisting_or_none(plainnames, folder=traj_root, tryzipped=False, search_subfolders=False)
+    if plainpath is not None:
+        return plainpath
+
+    return firstexisting_or_none(plainnames, folder=traj_root, tryzipped=True, search_subfolders=False)
 
 
 def get_trajectory_cache_path(traj_root: Path, particleid: int) -> Path:
@@ -405,7 +414,7 @@ def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple
         "nstep", "time_s", *columns
     )
     if dftable.is_empty():
-        # a reader of these columns has no network data, e.g. a heating.dat whose rows are all short
+        # a reader of these columns has no network data, e.g. a heating.dat with a header alone
         msg = f"The network data of particle {particleid} in {traj_root} has no timestep with a value in {columns}"
         raise FileNotFoundError(msg)
 
@@ -549,7 +558,9 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     dfrange = dftimesteps.filter((pl.col("time_s") >= 1.0) & (pl.col("nstep") <= nts_max))
     dfthermo = dfrange.filter(pl.col("Qdot").is_not_null())
     nsteps = dfthermo["nstep"].to_list()
-    hasgap = nsteps != list(range(nsteps[0], nts_max + 1)) if nsteps else dfrange.height > 0
+    # the range starts at the first timestep at or after one second, which can have no Qdot value
+    firststep = dfrange["nstep"].to_list()[0] if nsteps else 0
+    hasgap = nsteps != list(range(firststep, nts_max + 1)) if nsteps else dfrange.height > 0
     if hasgap:
         msg = f"The energy_thermo.dat of particle {particleid} has no Qdot value at each timestep up to {nts_max}"
         raise ValueError(msg)

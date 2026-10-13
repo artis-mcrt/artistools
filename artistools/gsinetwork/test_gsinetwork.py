@@ -116,6 +116,21 @@ def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(tmp_path
     assert decay_powers["htot"].tolist() == pytest.approx([400.0])
     assert decay_powers["Qdot"].tolist() == pytest.approx([4.0])
 
+    # a heating.dat with a header alone gives no heating row, and the sums leave out the trajectory
+    write_trajectory_archive(tmp_path, 10, members | {"heating.dat": "#count time/s hbeta htot\n"})
+    assert (
+        at.gsinetwork.decayproducts.process_trajectory(
+            nuc_data=at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka"),
+            traj_root=tmp_path,
+            traj_masses_g={10: 1.0},
+            arr_t_day=np.array([3.9e4 / day_to_s]),
+            nuclide_contrib=False,
+            traj_parquet_dir=None,
+            traj_ID=10,
+        )
+        is None
+    )
+
 
 def test_decayproducts_process_trajectory_takes_no_plot_times(trajectory_copy: Path) -> None:
     """An empty list of plot times gives empty arrays. The index array of the heating rows was a float array."""
