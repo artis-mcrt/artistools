@@ -351,22 +351,20 @@ def raise_if_cut_line(df: pl.DataFrame, textfilepath: Path | str) -> None:
         raise ValueError(msg)
 
 
-def complete_text_source(filepath: Path) -> Path | bytes:
-    """Return the source of an ARTIS text file for a reader. Stop if the file is empty or has no final line end.
+def raise_if_no_final_line_end(filepath: Path) -> None:
+    """Stop if an ARTIS text file is empty or does not end with a line end.
 
     ARTIS ends each row with a line end. A cut inside the last value gives a valid number, thus only the missing line
-    end shows the cut. A plain file gives its path, and the check reads only the last byte. A compressed file gives
-    its decompressed bytes, thus the check and the reader decompress the file one time only. The check uses all the
-    bytes, because a file of more than one frame that is cut at the end of a frame decompresses with no error.
+    end shows the cut. A compressed file of more than one frame that is cut at the end of a frame decompresses with no
+    error, thus the function decompresses all of a compressed file. It reads the file in chunks and keeps only the
+    last byte, because a line list can have tens of millions of lines. The reader then decompresses the file again.
     """
+    lastbyte = b""
     if filepath.suffix in COMPRESSED_EXTENSIONS:
-        with polars_error_note(filepath):
-            data = read_decompressed_bytes(filepath)
-        source: Path | bytes = data
-        lastbyte = data[-1:]
+        with polars_error_note(filepath), get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+            while chunk := fin.read(1 << 24):
+                lastbyte = chunk[-1:]
     else:
-        source = filepath
-        lastbyte = b""
         with filepath.open("rb") as fin:
             if fin.seek(0, os.SEEK_END) > 0:
                 fin.seek(-1, os.SEEK_END)
@@ -378,8 +376,6 @@ def complete_text_source(filepath: Path) -> Path | bytes:
             " file, or the end of the file is missing"
         )
         raise ValueError(msg)
-
-    return source
 
 
 def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> bool:

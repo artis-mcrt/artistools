@@ -1,6 +1,5 @@
 """Read the ARTIS atomic data files, and convert between the names of elements, ions, and nuclides."""
 
-import io
 import math
 import operator
 import re
@@ -29,13 +28,13 @@ from artistools.constants import K_B_ev_per_K
 from artistools.constants import peck_reeder_air_coefficients
 from artistools.misc import firstexisting_or_none
 from artistools.misc import polars_source
-from artistools.misc.fileio import complete_text_source
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import raise_if_cut_line
+from artistools.misc.fileio import raise_if_no_final_line_end
 from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
@@ -1149,10 +1148,11 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
     """
     print(f"Reading {filepath}")
     # ARTIS writes five rows also for a model with no lines, thus an empty file is not complete
-    source = complete_text_source(filepath)
+    raise_if_no_final_line_end(filepath)
 
     # a file of one line gives a one-dimensional array without ndmin, and a file of no line gives no row
-    data = np.loadtxt(io.BytesIO(source) if isinstance(source, bytes) else source, ndmin=2)
+    with zopen(filepath) as linestatfile:
+        data = np.loadtxt(linestatfile, ndmin=2)
     if data.shape[0] == 0:
         data = np.zeros((len(LINELIST_SCHEMA), 0))
     elif data.shape[0] != len(LINELIST_SCHEMA):
@@ -1176,8 +1176,9 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
     print(f"Reading {filepath}")
     # ARTIS writes the values with one space between them and no space at the end of a row. A different
     # separator gives an error and not incorrect values, because each row then has more fields than the header
-    source = complete_text_source(filepath)
-    with polars_error_note(filepath):
+    raise_if_no_final_line_end(filepath)
+    # polars reads a .zst or a .gz file from the path, and it needs less memory than for the decompressed bytes
+    with polars_error_note(filepath), polars_source_open(filepath) as source:
         dflines = (
             pl
             .scan_csv(source, separator=" ", glob=False, infer_schema=False)
