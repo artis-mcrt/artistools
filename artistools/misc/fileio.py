@@ -351,6 +351,32 @@ def raise_if_cut_line(df: pl.DataFrame, textfilepath: Path | str) -> None:
         raise ValueError(msg)
 
 
+def raise_if_no_final_line_end(filepath: Path) -> None:
+    """Stop if an ARTIS text file is empty or does not end with a line end.
+
+    ARTIS ends each row with a line end. A cut inside the last value gives a valid number, thus only the missing line
+    end shows the cut. A compressed file of more than one frame that is cut at the end of a frame decompresses with no
+    error. Thus the function reads all the decompressed bytes of a compressed file, in chunks.
+    """
+    lastbyte = b""
+    if filepath.suffix in COMPRESSED_EXTENSIONS:
+        with polars_error_note(filepath), get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+            while chunk := fin.read(1 << 24):
+                lastbyte = chunk[-1:]
+    else:
+        with filepath.open("rb") as fin:
+            if fin.seek(0, os.SEEK_END) > 0:
+                fin.seek(-1, os.SEEK_END)
+                lastbyte = fin.read(1)
+
+    if lastbyte != b"\n":
+        msg = (
+            f"The file {filepath} is empty or does not end with a line end. Possibly ARTIS or a copy still writes the"
+            " file, or the end of the file is missing"
+        )
+        raise ValueError(msg)
+
+
 def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> bool:
     """Return True if each byte that no comment holds is valid UTF-8.
 
@@ -1210,8 +1236,9 @@ def read_parquet_cache_metadata(
     model or the line list, keeps the strict rule, because a stale one there gives wrong numbers for
     no gain.
 
-    A writer that can read more than one text file stamps the name of the file as "textsource". Give textsource
-    to such a reader, because two files can have the same modification time. A cache without the stamp is then stale.
+    A writer that can read more than one text file stamps the path of the text file as "textsource". The path must
+    include the subfolder and the compression extension, e.g. "123.slurm/linelist.out.zst". Give the same path to
+    such a reader, because two files can have the same modification time. A cache without the stamp is then stale.
 
     A textsource_mtime of None shows that the text source is absent. The function then compares no
     modification times, but the cache format version and the state of the file still apply.

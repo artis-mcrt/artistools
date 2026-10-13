@@ -14,6 +14,7 @@ import artistools as at
 from artistools.atomic.core import read_transitiondata
 from artistools.atomic.core import vacuum_to_air_angstroms
 from artistools.constants import angstroms_per_cm
+from artistools.misc.fileio import get_decompress_open
 from artistools.misc.fileio import write_zstd_lines
 
 modelpath = at.get_path("testdata") / "testmodel"
@@ -663,16 +664,16 @@ def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp
     assert np.isclose(dflinelist["lambda_angstroms"][-1], 6500.5)
 
 
-@pytest.mark.parametrize("newerfilename", ["linelist.out", "linestat.out"])
-def test_get_linelist_pldf_reads_the_newer_file(newerfilename: str, tmp_path: Path) -> None:
-    """An older ARTIS does not delete the file of an earlier run, thus the newer file of the two is the current one."""
-    write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
-    write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
-    olderfilename = "linestat.out" if newerfilename == "linelist.out" else "linelist.out"
-    oldermtime = (tmp_path / newerfilename).stat().st_mtime - 3600
-    os.utime(tmp_path / olderfilename, (oldermtime, oldermtime))
+def test_get_linelist_pldf_refuses_a_folder_with_both_files(tmp_path: Path) -> None:
+    """An older ARTIS does not delete the file of an earlier run. A copy can change the modification times.
 
-    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == (3 if newerfilename == "linelist.out" else 1)
+    Thus only the user can tell which of the two files belongs to the latest run.
+    """
+    write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
+    write_linestatfile(tmp_path / "linestat.out.zst", TEST_LINES[:1])
+
+    with pytest.raises(FileExistsError, match=r"has both linelist\.out and linestat\.out\.zst"):
+        at.atomic.get_linelist_pldf(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -698,7 +699,9 @@ def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(
     [
         ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 1 0\n4216.708 38 2 11 1".encode()),
         ("linelist.out.zst", b""),
+        ("linestat.out", b""),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n"),
+        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1"),
     ],
 )
 def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(filename: str, content: bytes, tmp_path: Path) -> None:
@@ -708,9 +711,20 @@ def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(filename: str, co
     """
     (tmp_path / filename).write_bytes(content)
 
-    with pytest.raises((ValueError, pl.exceptions.PolarsError)):
+    # an empty or cut compressed file fails to decompress, which gives an OSError
+    with pytest.raises((ValueError, OSError, pl.exceptions.PolarsError)):
         at.atomic.get_linelist_pldf(tmp_path)
     assert not (tmp_path / "linelist.out.parquet.tmp").exists()
+
+
+def test_get_linelist_pldf_refuses_a_compressed_file_that_ends_inside_a_row(tmp_path: Path) -> None:
+    """A zstd file of two frames decompresses with no error, also if the second frame ends inside a row."""
+    write_linelistfile(tmp_path / "linelist.out.zst", TEST_LINES[:1])
+    with get_decompress_open(".zst")(tmp_path / "linelist.out.zst", mode="ab") as fout:
+        fout.write(b"4216.708 38 2 2 0")
+
+    with pytest.raises(ValueError, match="does not end with a line end"):
+        at.atomic.get_linelist_pldf(tmp_path)
 
 
 def test_get_linelist_pldf_reads_a_folder_name_with_glob_characters(tmp_path: Path) -> None:

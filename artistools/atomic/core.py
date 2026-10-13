@@ -2,7 +2,6 @@
 
 import math
 import operator
-import os
 import re
 import string
 import time
@@ -29,14 +28,13 @@ from artistools.constants import K_B_ev_per_K
 from artistools.constants import peck_reeder_air_coefficients
 from artistools.misc import firstexisting_or_none
 from artistools.misc import polars_source
-from artistools.misc.cliutils import print_warning
-from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import raise_if_cut_line
+from artistools.misc.fileio import raise_if_no_final_line_end
 from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
@@ -1149,6 +1147,8 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
     The file gives the levels as one-based level numbers. The frame gives zero-based level indices, as linelist.out.
     """
     print(f"Reading {filepath}")
+    # ARTIS writes five rows also for a model with no lines, thus an empty file is not complete
+    raise_if_no_final_line_end(filepath)
 
     # a file of one line gives a one-dimensional array without ndmin, and a file of no line gives no row
     with zopen(filepath) as linestatfile:
@@ -1174,6 +1174,9 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
     wavelength is the vacuum wavelength in Å. The level indices start at 0 in each ion.
     """
     print(f"Reading {filepath}")
+    # ARTIS writes the values with one space between them and no space at the end of a row. A different
+    # separator gives an error and not incorrect values, because each row then has more fields than the header
+    raise_if_no_final_line_end(filepath)
     with polars_error_note(filepath), polars_source_open(filepath) as source:
         dflines = (
             pl
@@ -1183,17 +1186,6 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
             .collect(engine="streaming")
         )
     raise_if_cut_line(dflines, filepath)
-    # a cut inside the last value gives a valid number, thus only the missing line end shows the cut. A cut compressed
-    # file fails to decompress, thus the check reads only the last byte of a plain file
-    if filepath.suffix not in COMPRESSED_EXTENSIONS and filepath.stat().st_size > 0:
-        with filepath.open("rb") as linelistfile:
-            linelistfile.seek(-1, os.SEEK_END)
-            if linelistfile.read(1) != b"\n":
-                msg = (
-                    f"The file {filepath} does not end with a line end. Possibly ARTIS or a copy still writes the"
-                    " file, or the end of the file is missing"
-                )
-                raise ValueError(msg)
     return dflines
 
 
@@ -1226,9 +1218,8 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     The emission and the absorption type codes of a packet are lineindex values.
     Do not add a sort operation, a filter operation, or a unique operation to this function.
     """
-    textfilenames = ["linelist.out", "linestat.out"]
     textfile = firstexisting(
-        textfilenames,
+        ["linelist.out", "linestat.out"],
         folder=modelpath,
         purpose=(
             "linelist.out (linestat.out from an older ARTIS version) gives the wavelength, the element, the ion, "
@@ -1236,18 +1227,19 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
             "plotspectra --emissionabsorption."
         ),
     )
-    othertextfilename = next(
-        textfilename for textfilename in textfilenames if textfilename != without_compressed_extension(textfile).name
-    )
-    if (othertextfile := firstexisting_or_none(othertextfilename, folder=modelpath)) is not None:
-        # an older ARTIS does not delete the file of an earlier run in the same folder, thus the newer file belongs
-        # to the latest run
-        newertextfile = max(textfile, othertextfile, key=lambda foundfile: foundfile.stat().st_mtime)
-        print_warning(
-            f"The model has both {textfile} and {othertextfile}. artistools reads the newer file {newertextfile}"
-        )
-        textfile = newertextfile
     textsourcename = without_compressed_extension(textfile).name
+    # an older ARTIS does not delete the file of an earlier run in the same folder. A copy can change the modification
+    # times, thus only the user can tell which file belongs to the latest run. Each run folder holds its own line list,
+    # thus the search for the other file includes only the folder of the first file
+    othertextfilename = "linestat.out" if textsourcename == "linelist.out" else "linelist.out"
+    if (
+        othertextfile := firstexisting_or_none(othertextfilename, folder=textfile.parent, search_subfolders=False)
+    ) is not None:
+        msg = (
+            f"The folder {textfile.parent} has both {textfile.name} and {othertextfile.name}, and only one of them"
+            " belongs to the latest run. Delete or move the file of the earlier run"
+        )
+        raise FileExistsError(msg)
     # the path, with the compression extension, identifies the text source of the cache
     textsource = str(textfile.relative_to(modelpath)) if textfile.is_relative_to(modelpath) else str(textfile)
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
