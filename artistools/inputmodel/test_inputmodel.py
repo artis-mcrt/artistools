@@ -747,6 +747,30 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
         at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(tmp_path, 7, ["nz-plane00003"])
 
 
+def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A corrupt value in heating.dat must not stop a read of the abundance files, which do not need that table."""
+    nuclidelines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n"
+    write_trajectory_archive(
+        tmp_path,
+        5,
+        {
+            "energy_thermo.dat": "#count time/s Qdot\n     1  1.000000E+00  1.500000E+21\n",
+            "heating.dat": "#count time/s hbeta\n     1  1.000000E+00  corrupt\n",
+            "nz-plane00001": "  1  1.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
+        },
+    )
+    _, timesecs = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
+        tmp_path, 5, ["nz-plane00001"]
+    )
+    assert timesecs == [1.0]
+    assert "heating.dat in 5.tar.xz" in capsys.readouterr().err
+    assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 5)["nstep"].to_list() == [1]
+    with pytest.raises(ValueError, match="no column hbeta"):
+        at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("hbeta",))
+
+
 def test_trajectory_archive_without_network_files_raises(tmp_path: Path) -> None:
     """An archive with no file that artistools reads gives an error that names the archive."""
     archivepath = write_trajectory_archive(tmp_path, 8, {"evol.dat": "1 2\n"})

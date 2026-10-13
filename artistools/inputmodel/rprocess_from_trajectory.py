@@ -235,18 +235,23 @@ def read_trajectory_network_data(sourcepath: Path) -> pl.DataFrame:
     not have. A
     named abundance file, e.g. tday_nz-plane, is a row with no timestep. The columns nstep and time_s always
     exist. A column of a file that the source does not hold is absent, e.g. a test archive with the abundance
-    files alone has no "Qdot" column.
+    files alone has no "Qdot" column. A table with a corrupt value is left out with a warning, thus a reader
+    of a different file of the trajectory can continue.
     """
     texts = read_network_texts(sourcepath)
     if not texts:
         msg = f"{sourcepath} holds no energy_thermo.dat, heating.dat, or nz-plane file in a Run_rprocess folder"
         raise FileNotFoundError(msg)
 
-    frames = [
-        parse_network_steps_table(texts[filename])
-        for filename in ("energy_thermo.dat", "heating.dat")
-        if filename in texts
-    ]
+    frames = []
+    for filename in ("energy_thermo.dat", "heating.dat"):
+        if filename not in texts:
+            continue
+        try:
+            frames.append(parse_network_steps_table(texts[filename]))
+        except pl.exceptions.PolarsError as exc:
+            # a reader of the abundance files must not stop for a corrupt value in a table that it does not read
+            print_warning(f"Cannot read {filename} in {sourcepath.name} ({exc}). The cache leaves out this file.")
     frames.append(
         parse_abundance_files({name: text for name, text in texts.items() if "nz-plane" in name}, sourcepath.name)
     )
