@@ -93,20 +93,77 @@ def get_derived_modeldata(modelpath: Path, **kwargs: t.Any) -> tuple[pl.LazyFram
     return at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta), modelmeta
 
 
-def write_trajectory_archive(traj_root: Path, particleid: int, members: dict[str, str]) -> Path:
+def write_trajectory_archive(
+    traj_root: Path, particleid: int, members: dict[str, str], suffix: str = ".tar.xz"
+) -> Path:
     """Write a small trajectory archive {particleid}.tar.xz whose members are the files of its Run_rprocess folder."""
     import io
 
+    from artistools.misc.fileio import get_decompress_open
+
     traj_root.mkdir(parents=True, exist_ok=True)
-    archivepath = traj_root / f"{particleid}.tar.xz"
-    with tarfile.open(archivepath, "w:xz") as tarfilehandle:
+    archivepath = traj_root / f"{particleid}{suffix}"
+    tarbytes = io.BytesIO()
+    with tarfile.open(fileobj=tarbytes, mode="w") as tarfilehandle:
         for filename, text in members.items():
             data = text.encode("utf-8")
             tarinfo = tarfile.TarInfo(name=f"./Run_rprocess/{filename}")
             tarinfo.size = len(data)
             tarfilehandle.addfile(tarinfo, io.BytesIO(data))
 
+    if suffix == ".tar":
+        archivepath.write_bytes(tarbytes.getvalue())
+    else:
+        with get_decompress_open(archivepath.suffix)(archivepath, "wb") as archivefile:
+            archivefile.write(tarbytes.getvalue())
+
     return archivepath
+
+
+def test_trajectory_archive_formats_give_the_same_table(tmp_path: Path) -> None:
+    """A .tar.zst, a .tar.xz, and a .tar give the same table, and a .tar.zst comes before a .tar.xz."""
+    members = {
+        "energy_thermo.dat": "#count time/s Qdot\n     1  1.000000E+00  1.500000E+21\n",
+        "nz-plane00001": "  1  1.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n  2   2 -1.27404E+00  0.0  0.0\n",
+    }
+    tables = {
+        suffix: at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(
+            write_trajectory_archive(tmp_path / suffix.lstrip("."), 3, members, suffix)
+        )
+        for suffix in (".tar", ".tar.zst", ".tar.xz")
+    }
+    pltest.assert_frame_equal(tables[".tar.zst"], tables[".tar.xz"])
+    pltest.assert_frame_equal(tables[".tar"], tables[".tar.xz"])
+
+    write_trajectory_archive(tmp_path / "both", 3, members, ".tar.xz")
+    write_trajectory_archive(tmp_path / "both", 3, members, ".tar.zst")
+    archivepath = at.inputmodel.rprocess_from_trajectory.get_trajectory_archive_path(tmp_path / "both", 3)
+    assert archivepath is not None
+    assert archivepath.name == "3.tar.zst"
+
+
+def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> None:
+    """A last timestep before one second gives a zero integral, because the integration starts at one second.
+
+    The filter on the last timestep came before the check for a time of one second or more, thus the check
+    failed with an incorrect message.
+    """
+    write_trajectory_archive(
+        tmp_path,
+        6,
+        {
+            "energy_thermo.dat": (
+                "#count time/s Qdot\n"
+                "     1  5.000000E-01  1.000000E+20\n"
+                "     2  2.000000E+00  2.000000E+10\n"
+                "     3  4.000000E+00  1.000000E+10\n"
+            )
+        },
+    )
+    qdotintegral = at.inputmodel.rprocess_from_trajectory.get_trajectory_qdotintegral
+    assert qdotintegral(6, tmp_path, nts_max=1, t_model_s=4.0) == 0.0
+    # Qdot * t / t_model is 1e10 at both timesteps, thus the trapezoid over two seconds gives 2e10
+    assert qdotintegral(6, tmp_path, nts_max=3, t_model_s=4.0) == pytest.approx(2.0e10)
 
 
 def trajectory_step_count(traj_root: Path, _worker: int) -> int:
@@ -723,7 +780,7 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
     # the search for the closest timestep sees timestep 2 alone, because the other timesteps have no abundance file
     assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 7)["nstep"].to_list() == [2]
     assert at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(tmp_path, 7, [1.0, 1.0e5]) == [2, 2]
-    with pytest.raises(ValueError, match="no column halpha"):
+    with pytest.raises(FileNotFoundError, match="no column halpha"):
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 7, ("halpha",))
 
     dfnucabund, timesecs = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
@@ -761,7 +818,7 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
     dfthermo = at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Qdot",))
     assert dfthermo["Qdot"].to_list() == pytest.approx([1.5e21])
     assert at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Ye",)).height == 0
-    with pytest.raises(ValueError, match="no column hbeta"):
+    with pytest.raises(FileNotFoundError, match="no column hbeta"):
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("hbeta",))
 
 

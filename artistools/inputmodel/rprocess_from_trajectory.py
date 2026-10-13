@@ -41,6 +41,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import write_parquet_atomic
+from artistools.misc.fileio import get_decompress_open
 
 TRAJECTORY_CACHEVERSION = 1
 
@@ -202,6 +203,24 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
     )
 
 
+def warn_about_corrupt_values(dfsteps: pl.DataFrame, filename: str, archivename: str) -> None:
+    """Print a warning for each column of a timestep table that holds a null value, with the timesteps.
+
+    A corrupt value, e.g. a Fortran overflow token of asterisks, gives null, and a reader of that column then
+    leaves out the timestep. The user must see that change of the data.
+    """
+    for colname in dfsteps.columns:
+        if colname in {"nstep", "time_s"}:
+            continue
+        nsteps = dfsteps.filter(pl.col(colname).is_null())["nstep"].to_list()
+        if nsteps:
+            print_warning(
+                f"The column {colname} of {filename} in {archivename} has a corrupt value at timestep"
+                f" {', '.join(str(nstep) for nstep in nsteps[:10])}{', ...' if len(nsteps) > 10 else ''}."
+                " The cache holds null there."
+            )
+
+
 def is_network_data_file(filename: str) -> bool:
     """Return True for a file of the Run_rprocess folder that artistools reads.
 
@@ -211,15 +230,29 @@ def is_network_data_file(filename: str) -> bool:
     return iswanted and not filename.startswith(".")
 
 
+def open_archive_stream(archivepath: Path) -> t.IO[bytes]:
+    """Open a trajectory archive as a stream of tar bytes, and decompress a .tar.zst, .tar.xz, or .tar.gz on the way.
+
+    The decompressor of the repository reads a .zst on each Python version, where tarfile needs Python 3.14.
+    """
+    if archivepath.suffix in {".zst", ".xz", ".gz"}:
+        return get_decompress_open(archivepath.suffix)(archivepath, "rb")
+
+    return archivepath.open("rb")
+
+
 def read_network_texts(archivepath: Path) -> dict[str, str]:
     """Return the text of each file that artistools reads from a trajectory archive.
 
     The archive holds approximately 1000 files, and artistools reads the energy_thermo.dat, the heating.dat,
-    and the nz-plane files of the Run_rprocess folder. The .tar.xz file has one xz block, thus a read of one
-    member also decompresses the full archive. A stream read decompresses the archive one time only.
+    and the nz-plane files of the Run_rprocess folder. A .tar.xz has one xz block, thus a read of one member
+    also decompresses the full archive. A stream read decompresses the archive one time only.
     """
     texts: dict[str, str] = {}
-    with tarfile.open(archivepath, "r|*") as tarfilehandle:
+    with (
+        open_archive_stream(archivepath) as archivestream,
+        tarfile.open(fileobj=archivestream, mode="r|") as tarfilehandle,
+    ):
         for member in tarfilehandle:
             folder, filename = posixpath.split(member.name)
             if member.isfile() and posixpath.basename(folder) == "Run_rprocess" and is_network_data_file(filename):
@@ -251,7 +284,9 @@ def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
         if filename not in texts:
             continue
         try:
-            frames.append(parse_network_steps_table(texts[filename]))
+            dfsteps = parse_network_steps_table(texts[filename])
+            warn_about_corrupt_values(dfsteps, filename, archivepath.name)
+            frames.append(dfsteps)
         except pl.exceptions.PolarsError as exc:
             # a reader of the abundance files must not stop for a corrupt value in a table that it does not read
             print_warning(f"Cannot read {filename} in {archivepath.name} ({exc}). The cache leaves out this file.")
@@ -275,9 +310,10 @@ def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
 def get_trajectory_archive_path(traj_root: Path, particleid: int) -> Path | None:
     """Return the archive of a trajectory, e.g. {particleid}.tar.xz, or None if the folder holds none.
 
-    A .tar comes before a .tar.xz, because its read needs no decompression.
+    A .tar comes first, because its read needs no decompression, then a .tar.zst, which decompresses five
+    times faster than a .tar.xz.
     """
-    filenames = (f"{particleid}.tar", f"{particleid:05d}.tar", f"{particleid}.tar.xz", f"{particleid:05d}.tar.xz")
+    filenames = tuple(f"{particleid:{width}}.tar{suffix}" for suffix in ("", ".zst", ".xz") for width in ("d", "05d"))
     return next((path for filename in filenames if (path := traj_root / filename).is_file()), None)
 
 
@@ -360,8 +396,10 @@ def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple
     lztrajectory = scan_trajectory_network_data(traj_root, particleid)
     missingcols = [col for col in columns if col not in lztrajectory.collect_schema().names()]
     if missingcols:
+        # the callers leave out a trajectory with no network data, and a table that is absent or corrupt is
+        # the same case for a reader of its columns
         msg = f"The network data of particle {particleid} in {traj_root} has no column {missingcols[0]}"
-        raise ValueError(msg)
+        raise FileNotFoundError(msg)
 
     return (
         lztrajectory
@@ -415,8 +453,8 @@ def get_closest_network_timesteps(
 
     if cond == "nearest":
         if not arrnstep:
-            msg = f"The trajectory of particle {particleid} has no network timesteps"
-            raise ValueError(msg)
+            msg = f"The trajectory of particle {particleid} has no network timestep with an abundance file"
+            raise FileNotFoundError(msg)
         upper = np.clip(np.searchsorted(arrtimesec, arrtime_wanted, side="left"), 0, len(arrnstep) - 1)
         lower = np.clip(upper - 1, 0, len(arrnstep) - 1)
         islowercloser = np.abs(arrtime_wanted - arrtimesec[lower]) <= np.abs(arrtimesec[upper] - arrtime_wanted)

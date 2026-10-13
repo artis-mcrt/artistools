@@ -76,6 +76,46 @@ def test_decayproducts_parquet_output(tmp_path: Path, trajectory_copy: Path, mon
     assert not (cwd / "parquet").exists(), "parquet files must not be written relative to the working directory"
 
 
+def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(tmp_path: Path) -> None:
+    """A gap in the timesteps must not move the heating values, because the row index is not the timestep minus one.
+
+    The old code read row nstep - 1, which an archive with a gap or a left-out timestep does not have.
+    """
+    from artistools.inputmodel.test_inputmodel import write_trajectory_archive
+
+    # the reader asserts more than 100 nuclides in a file
+    nuclidelines = "".join(f"{nneutrons:4d}{1:4d}{-20.0:13.5E}  0.00000E+00  0.00000E+00\n" for nneutrons in range(120))
+    steps = {1: 1.0e4, 2: 2.0e4, 4: 4.0e4}
+    members = {
+        "energy_thermo.dat": "#count time/s Qdot\n"
+        + "".join(f"{nstep:6d}  {time_s:.6E}  {nstep:.6E}\n" for nstep, time_s in steps.items()),
+        "heating.dat": "#count time/s hbeta htot\n"
+        + "".join(
+            f"{nstep:6d}  {time_s:.6E}  {10.0 * nstep:.6E}  {100.0 * nstep:.6E}\n" for nstep, time_s in steps.items()
+        ),
+    } | {
+        f"nz-plane{nstep:05d}": f"  {nstep}  {time_s:.6E}   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines
+        for nstep, time_s in steps.items()
+    }
+    write_trajectory_archive(tmp_path, 9, members)
+
+    decay_powers = at.gsinetwork.decayproducts.process_trajectory(
+        nuc_data=at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka"),
+        traj_root=tmp_path,
+        traj_masses_g={9: 1.0},
+        # a time between the timesteps 2 and 4, and nearer to 4
+        arr_t_day=np.array([3.9e4 / 86400.0]),
+        nuclide_contrib=False,
+        traj_parquet_dir=None,
+        traj_ID=9,
+    )
+
+    assert decay_powers is not None
+    assert decay_powers["hbeta"].tolist() == pytest.approx([40.0])
+    assert decay_powers["htot"].tolist() == pytest.approx([400.0])
+    assert decay_powers["Qdot"].tolist() == pytest.approx([4.0])
+
+
 def test_decayproducts_process_trajectory_takes_no_plot_times(trajectory_copy: Path) -> None:
     """An empty list of plot times gives empty arrays. The index array of the heating rows was a float array."""
     nuc_data = at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka")

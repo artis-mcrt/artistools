@@ -20,6 +20,7 @@ from artistools.constants import amu_g
 from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
 from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps_table
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
 from artistools.misc import addarg_darkmode
@@ -238,6 +239,13 @@ def process_trajectory(
     # Python evaluates both arguments of np.where before the mask, thus a plot time with no network step reads row 0
     arr_safeheatingrow = np.where(hasnetworkstep, arr_heatingrow, 0)
     arr_networktimestepindex = np.where(hasnetworkstep, dfheatingthermo["nstep"].to_numpy()[arr_safeheatingrow], -1)
+    # the abundances come from the nearest timestep that has an abundance file, because the cache leaves out a
+    # corrupt file, and a test archive holds the file of one timestep alone
+    arr_abundancestep = arr_networktimestepindex.copy()
+    if hasnetworkstep.any():
+        arr_abundancestep[hasnetworkstep] = get_closest_network_timesteps(
+            traj_root, traj_ID, dfheatingthermo["timesec"].to_numpy()[arr_heatingrow[hasnetworkstep]]
+        )
 
     decay_powers: dict[str, npt.NDArray[np.floating]]
     decay_powers = {
@@ -265,7 +273,7 @@ def process_trajectory(
             decay_powers[f"({A},{Z})_nu"] = np.zeros(len(arr_t_day))
 
     # two plot times can use the same network step, thus the code reads each file one time
-    networksteps = sorted({int(nts) for nts in arr_networktimestepindex[hasnetworkstep]})
+    networksteps = sorted({int(nts) for nts in arr_abundancestep[hasnetworkstep]})
     if networksteps:
         dftrajnucabund, _networktimes = get_trajectory_timestepfiles_nuc_abund(
             traj_root=traj_root, particleid=traj_ID, abundancefiles=[f"nz-plane{nts:05d}" for nts in networksteps]
@@ -306,7 +314,7 @@ def process_trajectory(
                 abundweighted_Qdot=pl.sum("eps_tot"),
             )
             .join(
-                pl.DataFrame({"nstep": arr_networktimestepindex[hasnetworkstep]}, schema={"nstep": pl.Int64}),
+                pl.DataFrame({"nstep": arr_abundancestep[hasnetworkstep]}, schema={"nstep": pl.Int64}),
                 on="nstep",
                 how="right",
                 maintain_order="right",
@@ -320,7 +328,7 @@ def process_trajectory(
             # store all nuclide contributions in detail
             plottimesteps_of_nstep: dict[int, list[int]] = {}
             for plottimestep in plottimesteps_with_network.tolist():
-                plottimesteps_of_nstep.setdefault(int(arr_networktimestepindex[plottimestep]), []).append(plottimestep)
+                plottimesteps_of_nstep.setdefault(int(arr_abundancestep[plottimestep]), []).append(plottimestep)
             grouped = pldf_all.group_by("nstep", "A", "Z").agg(
                 pl.sum("eps_elec").alias("eps_elec"),
                 pl.sum("eps_gamma").alias("eps_gamma"),

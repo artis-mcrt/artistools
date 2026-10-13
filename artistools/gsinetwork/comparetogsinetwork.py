@@ -464,7 +464,12 @@ def get_particledata(
         heatcols = ["hbeta", "halpha", "hspof"]
         dfheating = get_network_timesteps_table(Path(traj_root), particleid, tuple(heatcols))
 
-        nstep_timesec: dict[int, float] = dict(dfheating.select("nstep", "time_s").iter_rows())
+        # the closest timesteps come from the timesteps with an abundance file, which a heating row can lack
+        nstep_timesec: dict[int, float] = dict(
+            get_network_timesteps_table(Path(traj_root), particleid, ("abundancefile",))
+            .select("nstep", "time_s")
+            .iter_rows()
+        )
 
         particledata = particledata.with_columns(
             pl.Series(
