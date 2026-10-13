@@ -225,16 +225,30 @@ def zopenpl(filename: Path | str) -> t.IO[bytes] | Path:
     return polars_source(filepath)
 
 
+@cache
 def get_decompress_errors() -> tuple[type[Exception], ...]:
-    """Return the error types that the .xz and .zst modules raise for damaged data. They are not an OSError."""
-    import lzma
+    """Return the error types that the .xz and .zst modules raise for damaged data. They are not an OSError.
 
-    if sys.version_info >= (3, 14):
-        from compression.zstd import ZstdError
-    else:
-        from zstandard import ZstdError
+    A Python build can lack a module. The caller evaluates this in an except clause, thus an ImportError here would
+    replace the original error. The function leaves out the type of a module that is not available.
+    """
+    errors: list[type[Exception]] = []
+    try:
+        import lzma
 
-    return (lzma.LZMAError, ZstdError)
+        errors.append(lzma.LZMAError)
+    except ImportError:
+        pass
+    try:
+        if sys.version_info >= (3, 14):
+            from compression.zstd import ZstdError
+        else:
+            from zstandard import ZstdError
+
+        errors.append(ZstdError)
+    except ImportError:
+        pass
+    return tuple(errors)
 
 
 @contextlib.contextmanager

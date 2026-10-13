@@ -662,6 +662,19 @@ def test_get_linelist_pldf_ignores_a_row_without_values(tmp_path: Path) -> None:
     assert at.atomic.get_linelist_pldf(tmp_path).collect()["atomic_number"].to_list() == [57, 38]
 
 
+@pytest.mark.parametrize("nlines", [0, 3])
+# numpy warns for the empty rows of linestat.out with no lines
+@pytest.mark.filterwarnings("error::UserWarning")
+def test_get_linelist_pldf_reads_linestat_with_rows_of_counts(nlines: int, tmp_path: Path) -> None:
+    """An ARTIS before March 2026 with RECORD_LINESTAT adds two rows of counts at each timestep after the five rows."""
+    write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:nlines])
+    with (tmp_path / "linestat.out").open("a", encoding="utf-8") as linestatfile:
+        linestatfile.write(("".join(f"{count} " for count in range(nlines)) + "\n") * 4)
+
+    dflinelist = at.atomic.get_linelist_pldf(tmp_path).collect()
+    assert dflinelist["upperlevelindex"].to_list() == [line[3] for line in TEST_LINES[:nlines]]
+
+
 def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp_path: Path) -> None:
     """ARTIS writes a wavelength such as 6500 Angstroms with no decimal point.
 
@@ -728,7 +741,7 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
         # zstd with worker threads writes no byte of a small file until the file closes
         ("linelist.out.zst", b"", NO_LINE_END_MESSAGE),
         ("linestat.out", b"", NO_LINE_END_MESSAGE),
-        ("linestat.out", b"\n\n", "it does not have 5 empty rows"),
+        ("linestat.out", b"\n\n", "has 2 rows and not 5"),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n", "has 3 rows and not 5"),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1", NO_LINE_END_MESSAGE),
         # the wavelength row is not first, thus the atomic numbers have a fraction

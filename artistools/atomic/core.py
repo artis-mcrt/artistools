@@ -1151,34 +1151,34 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
     # ARTIS writes five rows also for a model with no lines, thus an empty file is not complete
     raise_if_no_final_line_end(filepath)
 
-    # np.loadtxt warns for a file with no values, and a change of the warning filters is not thread-safe. A parse of
-    # each row as one string needs approximately 12 per cent more memory, thus the reader opens the file again
+    # a model with no lines gives empty rows, and np.loadtxt warns for a file with no values. A change of the warning
+    # filters is not thread-safe, thus the reader first looks for a value
+    nemptyrows = 0
     with zopen(filepath) as linestatfile:
-        head = linestatfile.read(64)
-    if len(head) < 64 and not head.strip():
-        # a model with no lines gives five empty rows, and the head then holds all of the file
-        if head != "\n" * nrows:
-            msg = (
-                f"The file {filepath} has no values, and it does not have {nrows} empty rows. Possibly ARTIS or a"
-                " copy still writes the file, or the end of the file is missing"
-            )
-            raise ValueError(msg)
-        data = np.zeros((nrows, 0))
+        while chunk := linestatfile.read(1 << 16):
+            if chunk.strip():
+                nemptyrows = -1
+                break
+            nemptyrows += chunk.count("\n")
+    if nemptyrows >= 0:
+        data = np.zeros((nemptyrows, 0))
     else:
-        # a file of one line gives a one-dimensional array without ndmin
+        # an ARTIS before March 2026 with RECORD_LINESTAT adds two rows of counts at each timestep, thus the reader
+        # reads only the rows of the line list. A file of one line gives a one-dimensional array without ndmin
         try:
             with zopen(filepath) as linestatfile:
-                data = np.loadtxt(linestatfile, ndmin=2)
+                data = np.loadtxt(linestatfile, ndmin=2, max_rows=nrows)
         except ValueError as exc:
             exc.add_note(f"while reading {filepath}")
             raise
 
-    if data.shape[0] != nrows:
+    if data.shape[0] < nrows:
         msg = (
             f"The file {filepath} has {data.shape[0]} rows and not {nrows}. Possibly ARTIS or a copy"
             " still writes the file, the end of the file is missing, or the file has a different format"
         )
         raise ValueError(msg)
+    data = data[:nrows]
     # the cast to Int32 truncates a fraction with no error and has a limited range, thus a file with a different
     # order of the rows would give incorrect atomic numbers, ion stages, or levels
     integerrows = data[1:]
