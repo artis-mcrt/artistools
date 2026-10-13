@@ -1234,7 +1234,16 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
         lflines = pl.scan_csv(source, separator=" ", glob=False, infer_schema=False).rename(
             lambda columnname: columnname.removeprefix("#")
         )
-        if missingcolumns := [name for name in LINELIST_SCHEMA if name not in lflines.collect_schema().names()]:
+        columnnames = lflines.collect_schema().names()
+        # ARTIS writes "#lambda_angstroms". A space after "#" gives a column with no name, and each name then moves
+        # one column to the right of its values
+        if "" in columnnames:
+            msg = (
+                f"The header row of {filepath} has a space after '#'. ARTIS writes '#lambda_angstroms'. Possibly the"
+                " file has a different format"
+            )
+            raise ValueError(msg)
+        if missingcolumns := [name for name in LINELIST_SCHEMA if name not in columnnames]:
             msg = (
                 f"The header row of {filepath} has no column {', '.join(missingcolumns)}. Possibly the file has a"
                 " different format"
@@ -1242,7 +1251,8 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
             raise ValueError(msg)
         dflines = (
             lflines
-            # ARTIS writes no empty line. An empty line, e.g. from an edit, gives a row of nulls and holds no line
+            # ARTIS writes no row without values. Such a row, e.g. an empty line or a line of spaces from an edit,
+            # gives only nulls and holds no line
             .filter(~pl.all_horizontal(pl.all().is_null()))
             .select([pl.col(columnname).cast(dtype) for columnname, dtype in LINELIST_SCHEMA.items()])
             .collect(engine="streaming")

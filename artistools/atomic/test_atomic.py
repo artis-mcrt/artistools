@@ -654,9 +654,9 @@ def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
     assert dflinelist.select("atomic_number", "upperlevelindex", "lowerlevelindex").row(0) == (57, 1, 0)
 
 
-def test_get_linelist_pldf_ignores_an_empty_line(tmp_path: Path) -> None:
-    """An edit can add an empty line. It holds no line, thus it must not give the error for a cut line."""
-    write_text_rows(tmp_path / "linelist.out", [LINELIST_HEADER, "13898.2958 57 3 1 0", "", "4216.708 38 2 2 0", ""])
+def test_get_linelist_pldf_ignores_a_row_without_values(tmp_path: Path) -> None:
+    """An edit can add an empty line or a line of spaces. It holds no line, thus it must not give the cut-line error."""
+    write_text_rows(tmp_path / "linelist.out", [LINELIST_HEADER, "13898.2958 57 3 1 0", "", "4216.708 38 2 2 0", "   "])
 
     assert at.atomic.get_linelist_pldf(tmp_path).collect()["atomic_number"].to_list() == [57, 38]
 
@@ -720,6 +720,7 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
             "has no column upperlevelindex, lowerlevelindex",
         ),
         ("linestat.out", b"1.38982958e-04\n57\nnan\n2\n1\n", "is not an integer in the Int32 range"),
+        ("linelist.out", f"# {LINELIST_HEADER[1:]}\n13898.2958 57 3 1 0\n".encode(), "has a space after '#'"),
     ],
 )
 def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
