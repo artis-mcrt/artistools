@@ -9,6 +9,7 @@ import polars as pl
 import pytest
 
 import artistools as at
+from artistools.constants import day_to_s
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -104,7 +105,7 @@ def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(tmp_path
         traj_root=tmp_path,
         traj_masses_g={9: 1.0},
         # a time between the timesteps 2 and 4, and nearer to 4
-        arr_t_day=np.array([3.9e4 / 86400.0]),
+        arr_t_day=np.array([3.9e4 / day_to_s]),
         nuclide_contrib=False,
         traj_parquet_dir=None,
         traj_ID=9,

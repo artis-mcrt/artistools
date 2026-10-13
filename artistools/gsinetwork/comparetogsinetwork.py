@@ -477,7 +477,8 @@ def get_particledata(
 
         if arr_strnuc_z_n:
             # the closest timesteps come from the timesteps with an abundance file, which a heating row can lack
-            nstep_timesec: dict[int, float] = dict(get_traj_network_timesteps(traj_root, particleid).iter_rows())
+            dftimesteps = get_traj_network_timesteps(traj_root, particleid)
+            nstep_timesec: dict[int, float] = dict(zip(dftimesteps["nstep"], dftimesteps["timesec"], strict=True))
             # the bracket includes a step at the exact time. Then a time at the first or the last step reads
             # that step, and a time at an inner step reads no neighbour step
             ntslowers = get_closest_network_timesteps(

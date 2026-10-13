@@ -1349,16 +1349,21 @@ def make_cache_folder(folder: Path, parentfolder: Path) -> None:
     The folder takes the access mode of parentfolder, with its setgid bit, thus a group that can write the parent
     folder can add a cache. A mkdir alone applies the umask of the process, which removes the group write bit.
     A different process can make the folder at the same time, and only its owner can change the mode. That
-    process applies the mode after its mkdir, thus a process of a different user waits until the folder is
-    writable. A read-only parent folder gives a PermissionError with a readable message.
+    process applies the mode after its mkdir, thus a process of a different user waits until a new folder is
+    writable. A folder that is not writable after that gives a PermissionError with a readable message, as a
+    read-only parent folder does.
     """
     try:
         folder.mkdir()
     except FileExistsError:
+        # a folder older than the wait has its final mode, thus only a new folder gets the wait
         for _ in range(50):
-            if os.access(folder, os.W_OK):
+            if os.access(folder, os.W_OK) or time.time() - folder.stat().st_ctime > 5.0:
                 break
             time.sleep(0.1)
+        if not os.access(folder, os.W_OK):
+            msg = f"artistools cannot write its cache folder {folder}, because a different user made it read-only"
+            raise PermissionError(msg) from None
     except OSError as exc:
         # a read-only mount gives EROFS and not PermissionError
         if not is_readonly_error(exc):
@@ -1366,7 +1371,12 @@ def make_cache_folder(folder: Path, parentfolder: Path) -> None:
         msg = f"artistools cannot make its cache folder {folder}, because the folder {parentfolder} is read-only"
         raise PermissionError(msg) from exc
     else:
-        folder.chmod(parentfolder.stat().st_mode & 0o7777)
+        parentstat = parentfolder.stat()
+        # a mkdir gives the folder the primary group of the user, where the parent folder can belong to a project
+        # group. Only a member of the group can give it, thus a failure keeps the group of the user
+        with contextlib.suppress(OSError):
+            os.chown(folder, -1, parentstat.st_gid)
+        folder.chmod(parentstat.st_mode & 0o7777)
 
 
 def get_readonly_cache_error(parquetfilepath: Path) -> PermissionError:

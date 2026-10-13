@@ -386,7 +386,9 @@ def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple
     """Return the network timesteps of a trajectory that hold a value in each of the given columns.
 
     The table holds nstep, time_s, and the given columns, in the order of nstep. A column of heating.dat, e.g.
-    "hbeta", keeps the rows of that file, as a read of the file alone did.
+    "hbeta", keeps the rows of that file, as a read of the file alone did. A table with no row, or with no
+    column of the given ones, raises FileNotFoundError, because the callers leave out a trajectory with no
+    network data.
     """
     dftimesteps = get_trajectory_timesteps(traj_root, particleid)
     missingcol = next((col for col in columns if col not in dftimesteps.columns), None)
@@ -399,9 +401,15 @@ def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple
         )
         raise FileNotFoundError(msg)
 
-    return dftimesteps.filter(pl.all_horizontal(pl.col("nstep", "time_s", *columns).is_not_null())).select(
+    dftable = dftimesteps.filter(pl.all_horizontal(pl.col("nstep", "time_s", *columns).is_not_null())).select(
         "nstep", "time_s", *columns
     )
+    if dftable.is_empty():
+        # a reader of these columns has no network data, e.g. a heating.dat whose rows are all short
+        msg = f"The network data of particle {particleid} in {traj_root} has no timestep with a value in {columns}"
+        raise FileNotFoundError(msg)
+
+    return dftable
 
 
 def get_traj_network_timesteps(traj_root: Path | str, particleid: int) -> pl.DataFrame:
