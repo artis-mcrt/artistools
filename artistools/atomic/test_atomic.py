@@ -649,6 +649,18 @@ def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
     assert dflinelist.select("atomic_number", "upperlevelindex", "lowerlevelindex").row(0) == (57, 1, 0)
 
 
+def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp_path: Path) -> None:
+    """ARTIS writes a wavelength such as 6500 Angstroms with no decimal point.
+
+    polars infers the type of a column from the first rows, thus a column of integers stopped the read at 6500.5.
+    """
+    write_linelistfile(tmp_path / "linelist.out", [*([(6500, 26, 2, 5, 1)] * 200), (6500.5, 26, 2, 5, 1)])
+
+    dflinelist = at.atomic.get_linelist_pldf(tmp_path).collect()
+    assert dflinelist.height == 201
+    assert np.isclose(dflinelist["lambda_angstroms"][-1], 6500.5)
+
+
 @pytest.mark.parametrize("newerfilename", ["linelist.out", "linestat.out"])
 def test_get_linelist_pldf_reads_the_newer_file(newerfilename: str, tmp_path: Path) -> None:
     """An older ARTIS does not delete the file of an earlier run, thus the newer file of the two is the current one."""

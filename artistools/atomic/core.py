@@ -29,6 +29,7 @@ from artistools.constants import K_B_ev_per_K
 from artistools.constants import peck_reeder_air_coefficients
 from artistools.misc import firstexisting_or_none
 from artistools.misc import polars_source
+from artistools.misc.cliutils import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
@@ -1149,10 +1150,10 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
         data = np.loadtxt(linestatfile, ndmin=2)
     if data.shape[0] == 0:
         data = np.zeros((len(LINELIST_SCHEMA), 0))
-    elif data.shape[0] < len(LINELIST_SCHEMA):
+    elif data.shape[0] != len(LINELIST_SCHEMA):
         msg = (
-            f"The file {filepath} has {data.shape[0]} of the {len(LINELIST_SCHEMA)} rows. Possibly ARTIS or a copy"
-            " still writes the file, or the end of the file is missing"
+            f"The file {filepath} has {data.shape[0]} rows and not {len(LINELIST_SCHEMA)}. Possibly ARTIS or a copy"
+            " still writes the file, the end of the file is missing, or the file has a different format"
         )
         raise ValueError(msg)
     # the file gives the wavelength in cm
@@ -1170,7 +1171,7 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
     with polars_error_note(filepath), polars_source_open(filepath) as source:
         dflines = (
             pl
-            .scan_csv(source, separator=" ", glob=False)
+            .scan_csv(source, separator=" ", glob=False, infer_schema=False)
             .rename(lambda columnname: columnname.removeprefix("#"))
             .select([pl.col(columnname).cast(dtype) for columnname, dtype in LINELIST_SCHEMA.items()])
             .collect(engine="streaming")
@@ -1220,31 +1221,26 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     Do not add a sort operation, a filter operation, or a unique operation to this function.
     """
     textfilenames = ["linelist.out", "linestat.out"]
-    # an older ARTIS does not delete the file of an earlier run in the same folder, thus the newer file belongs to
-    # the latest run
-    foundtextfiles = [
-        foundfile
-        for textfilename in textfilenames
-        if (foundfile := firstexisting_or_none(textfilename, folder=modelpath)) is not None
-    ]
-    textfile = (
-        max(foundtextfiles, key=lambda foundfile: foundfile.stat().st_mtime)
-        if foundtextfiles
-        else firstexisting(
-            textfilenames,
-            folder=modelpath,
-            purpose=(
-                "linelist.out (linestat.out from an older ARTIS version) gives the wavelength, the element, the "
-                "ion, and the levels of each line. The commands that identify a line read it, e.g. plotlinefluxes "
-                "and plotspectra --emissionabsorption."
-            ),
-        )
+    textfile = firstexisting(
+        textfilenames,
+        folder=modelpath,
+        purpose=(
+            "linelist.out (linestat.out from an older ARTIS version) gives the wavelength, the element, the ion, "
+            "and the levels of each line. The commands that identify a line read it, e.g. plotlinefluxes and "
+            "plotspectra --emissionabsorption."
+        ),
     )
-    if len(foundtextfiles) > 1:
-        print(
-            f"Warning: {modelpath} has both {' and '.join(str(foundfile) for foundfile in foundtextfiles)}."
-            f" artistools reads the newer file {textfile}"
+    othertextfilename = next(
+        textfilename for textfilename in textfilenames if textfilename != without_compressed_extension(textfile).name
+    )
+    if (othertextfile := firstexisting_or_none(othertextfilename, folder=modelpath)) is not None:
+        # an older ARTIS does not delete the file of an earlier run in the same folder, thus the newer file belongs
+        # to the latest run
+        newertextfile = max(textfile, othertextfile, key=lambda foundfile: foundfile.stat().st_mtime)
+        print_warning(
+            f"The model has both {textfile} and {othertextfile}. artistools reads the newer file {newertextfile}"
         )
+        textfile = newertextfile
     textsourcename = without_compressed_extension(textfile).name
     # the path, with the compression extension, identifies the text source of the cache
     textsource = str(textfile.relative_to(modelpath)) if textfile.is_relative_to(modelpath) else str(textfile)
@@ -1255,13 +1251,9 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     # identity comes from before the check below, thus a fresh file that a rival process installs after
     # the check keeps its place and only the file that the check saw is replaced
     outdatedparquet = get_file_identity(parquetfile)
-    pqmetadata, stalereason = read_parquet_cache_metadata(parquetfile, LINELIST_CACHEVERSION, textsource_mtime)
-    if pqmetadata is not None and (cachetextsource := pqmetadata.get("textsource")) != textsource:
-        stalereason = (
-            f"the cache is from {cachetextsource}, but the text source is now {textsource}"
-            if cachetextsource is not None
-            else "the cache has no record of its text source"
-        )
+    _, stalereason = read_parquet_cache_metadata(
+        parquetfile, LINELIST_CACHEVERSION, textsource_mtime, textsource=textsource
+    )
     if stalereason is not None:
         if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
@@ -1287,10 +1279,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         pl
         .scan_parquet(parquetfile, glob=False)
         .with_columns(
-            vacuum_to_air_angstroms(pl.col("lambda_angstroms")).cast(pl.Float32).alias("lambda_angstroms_air"),
-            pl.col(pl.UInt32).cast(pl.Int32),
-            pl.col(pl.Int64).cast(pl.Int32),
-            pl.col(pl.Float64).cast(pl.Float32),
+            vacuum_to_air_angstroms(pl.col("lambda_angstroms")).cast(pl.Float32).alias("lambda_angstroms_air")
         )
         .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
         .drop(["upper_level", "lower_level"])

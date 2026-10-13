@@ -1183,7 +1183,12 @@ def parquet_is_readable(parquetfilepath: Path) -> bool:
 
 
 def read_parquet_cache_metadata(
-    parquetfilepath: Path, cacheversion: int, textsource_mtime: float | None, *, accept_unstamped: bool = False
+    parquetfilepath: Path,
+    cacheversion: int,
+    textsource_mtime: float | None,
+    *,
+    accept_unstamped: bool = False,
+    textsource: str | None = None,
 ) -> tuple[dict[str, str] | None, str | None]:
     """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
@@ -1204,6 +1209,9 @@ def read_parquet_cache_metadata(
     the estimators and the packets of an archived model folder. A cache that a few seconds rebuild, e.g. the
     model or the line list, keeps the strict rule, because a stale one there gives wrong numbers for
     no gain.
+
+    A writer that can read more than one text file stamps the name of the file as "textsource". Give textsource
+    to such a reader, because two files can have the same modification time. A cache without the stamp is then stale.
 
     A textsource_mtime of None shows that the text source is absent. The function then compares no
     modification times, but the cache format version and the state of the file still apply.
@@ -1231,6 +1239,13 @@ def read_parquet_cache_metadata(
         return None, (
             f"the text source changed: the cache stamp is {format_mtime(foundmtime)},"
             f" but the text file now has {format_mtime(textsource_mtime)}"
+        )
+
+    if textsource is not None and (foundtextsource := pqmetadata.get("textsource")) != textsource:
+        return None, (
+            f"the cache is from {foundtextsource}, but the text source is now {textsource}"
+            if foundtextsource is not None
+            else "the cache has no record of its text source"
         )
 
     return pqmetadata, None
