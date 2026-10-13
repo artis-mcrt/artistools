@@ -246,6 +246,15 @@ def get_nearest_network_timesteps(
             traj_root, traj_ID, dfheatingthermo["timesec"].to_numpy()[arr_heatingrow[hasnetworkstep]]
         )
 
+    # a null Qdot would make the sum over the trajectories NaN with no sign of the cause
+    usedrows = dfheatingthermo[arr_heatingrow[hasnetworkstep].tolist()]
+    if usedrows["Qdot"].null_count() > 0:
+        badsteps = usedrows.filter(pl.col("Qdot").is_null())["nstep"].to_list()
+        msg = (
+            f"The trajectory of particle {traj_ID} has no Qdot value at timestep {badsteps[0]}, which a plot time uses"
+        )
+        raise ValueError(msg)
+
     return dfheatingthermo, arr_heatingrow, arr_networktimestepindex, arr_abundancestep
 
 

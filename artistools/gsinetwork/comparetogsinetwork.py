@@ -27,6 +27,7 @@ from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_t
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps_table
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
+from artistools.inputmodel.rprocess_from_trajectory import scan_trajectory_network_data
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -465,9 +466,12 @@ def get_particledata(
         dfheating = get_network_timesteps_table(Path(traj_root), particleid, tuple(heatcols))
 
         # the closest timesteps come from the timesteps with an abundance file, which a heating row can lack
+        # the time of a timestep that the .dat files do not hold comes from the header of the abundance file
         nstep_timesec: dict[int, float] = dict(
-            get_network_timesteps_table(Path(traj_root), particleid, ("abundancefile",))
-            .select("nstep", "time_s")
+            scan_trajectory_network_data(Path(traj_root), particleid)
+            .filter(pl.col("nstep").is_not_null() & pl.col("abundancefile").is_not_null())
+            .select("nstep", pl.coalesce("time_s", "abundancetime_s"))
+            .collect()
             .iter_rows()
         )
 

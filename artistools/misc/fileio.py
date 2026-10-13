@@ -158,7 +158,21 @@ def write_zstd_lines(fileobj: t.IO[bytes], lines: Sequence[str]) -> None:
     )
 
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None) -> t.IO[str]:
+@t.overload
+def zopen(
+    filename: Path | str, mode: t.Literal["rb"], encoding: str | None = None, errors: str | None = None
+) -> t.IO[bytes]: ...
+
+
+@t.overload
+def zopen(
+    filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None
+) -> t.IO[str]: ...
+
+
+def zopen(
+    filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None
+) -> t.IO[str] | t.IO[bytes]:
     """Open filename, falling back to filename.zst, filename.gz or filename.xz.
 
     The named file wins, thus a stale compressed copy never shadows a file that a run has just written.

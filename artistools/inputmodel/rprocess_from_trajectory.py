@@ -41,7 +41,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import write_parquet_atomic
-from artistools.misc.fileio import get_decompress_open
+from artistools.misc import zopen
 from artistools.misc.fileio import get_readonly_cache_error
 
 TRAJECTORY_CACHEVERSION = 1
@@ -231,17 +231,6 @@ def is_network_data_file(filename: str) -> bool:
     return iswanted and not filename.startswith(".")
 
 
-def open_archive_stream(archivepath: Path) -> t.IO[bytes]:
-    """Open a trajectory archive as a stream of tar bytes, and decompress a .tar.zst or a .tar.xz on the way.
-
-    The decompressor of the repository reads a .zst on each Python version, where tarfile needs Python 3.14.
-    """
-    if archivepath.suffix in {".zst", ".xz"}:
-        return get_decompress_open(archivepath.suffix)(archivepath, "rb")
-
-    return archivepath.open("rb")
-
-
 def read_network_texts(archivepath: Path) -> dict[str, str]:
     """Return the text of each file that artistools reads from a trajectory archive.
 
@@ -251,7 +240,8 @@ def read_network_texts(archivepath: Path) -> dict[str, str]:
     """
     texts: dict[str, str] = {}
     with (
-        open_archive_stream(archivepath) as archivestream,
+        # zopen decompresses a .tar.zst or a .tar.xz on each Python version, where tarfile reads a .zst from 3.14
+        zopen(archivepath, mode="rb") as archivestream,
         tarfile.open(fileobj=archivestream, mode="r|") as tarfilehandle,
     ):
         for member in tarfilehandle:
@@ -259,7 +249,8 @@ def read_network_texts(archivepath: Path) -> dict[str, str]:
             if member.isfile() and posixpath.basename(folder) == "Run_rprocess" and is_network_data_file(filename):
                 memberfile = tarfilehandle.extractfile(member)
                 assert memberfile is not None
-                texts[filename] = memberfile.read().decode("utf-8")
+                # a corrupt byte gives a corrupt token, which the parse reports, and not an unreadable trajectory
+                texts[filename] = memberfile.read().decode("utf-8", errors="replace")
 
     return texts
 
@@ -537,10 +528,10 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
         msg = f"The network data of particle {particleid} in {traj_root} has no column Qdot"
         raise FileNotFoundError(msg)
 
-    # the integration starts at one second
+    # the integration starts at one second, and the rows with a Qdot value are the timesteps of energy_thermo.dat
     dfthermo = (
         lztrajectory
-        .filter(pl.col("nstep").is_not_null() & (pl.col("time_s") >= 1.0))
+        .filter(pl.col("Qdot").is_not_null() & (pl.col("time_s") >= 1.0))
         .sort("nstep")
         .select("nstep", "time_s", "Qdot")
         .collect()
@@ -549,7 +540,8 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     # nts_max is the one-based #count of the last network timestep. A nts_max before one second gives no row,
     # and the integral is then zero
     dfthermo = dfthermo.filter(pl.col("nstep") <= nts_max)
-    if dfthermo["Qdot"].null_count() > 0:
+    nsteps = dfthermo["nstep"].to_list()
+    if nsteps and nsteps[-1] - nsteps[0] + 1 != len(nsteps):
         # a trapezoid across a missing timestep would give an integral with no sign of the problem
         msg = f"The energy_thermo.dat of particle {particleid} has no Qdot value at each timestep up to {nts_max}"
         raise ValueError(msg)
@@ -590,10 +582,13 @@ def get_trajectory_abund_q(particleid: int, traj_root: Path, t_model_s: float) -
         (Z, N): massfrac / massfractotal for Z, N, massfrac in dftrajnucabund[["Z", "N", "massfrac"]].iter_rows()
     }
 
-    # set the cell energy at model time [erg/g]
-    dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(
-        particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s
-    )
+    # set the cell energy at model time [erg/g]. A particle with no usable energy_thermo.dat has no network data
+    try:
+        dict_traj_nuc_abund["q"] = get_trajectory_qdotintegral(
+            particleid=particleid, traj_root=traj_root, nts_max=nts, t_model_s=t_model_s
+        )
+    except FileNotFoundError:
+        return {}
 
     return dict_traj_nuc_abund
 
