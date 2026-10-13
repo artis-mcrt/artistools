@@ -1,3 +1,4 @@
+import lzma
 import math
 import os
 import shutil
@@ -730,8 +731,9 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
             "has no column upperlevelindex, lowerlevelindex",
         ),
         ("linestat.out", b"1.38982958e-04\n57\nnan\n2\n1\n", "is not an integer in the Int32 range"),
-        ("linelist.out", f"# {LINELIST_HEADER[1:]}\n13898.2958 57 3 1 0\n".encode(), "has a space after '#'"),
+        ("linelist.out", f"# {LINELIST_HEADER[1:]}\n13898.2958 57 3 1 0\n".encode(), "has a column with no name"),
         ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57.0 3 1 0\n".encode(), "does not agree with the type"),
+        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 1 0 \n".encode(), "has a row with more values"),
         (
             "linelist.out",
             f"{LINELIST_HEADER} einstein_a\n13898.2958 57 3 1 0 1e8\n4216.708 38 2 2 0\n".encode(),
@@ -764,9 +766,9 @@ def test_polars_error_note_names_a_damaged_xz_file(tmp_path: Path) -> None:
     """The lzma module raises LZMAError, which is not an OSError, thus the error did not name the file."""
     (tmp_path / "linelist.out.xz").write_bytes(b"data that is not xz")
 
-    with pytest.raises(Exception) as excinfo:  # ruff: ignore[pytest-raises-too-broad]
+    with pytest.raises(lzma.LZMAError) as excinfo:
         at.atomic.get_linelist_pldf(tmp_path)
-    assert any("linelist.out.xz" in note for note in getattr(excinfo.value, "__notes__", []))
+    assert any("linelist.out.xz" in note for note in excinfo.value.__notes__)
 
 
 def test_get_linelist_pldf_reads_a_folder_name_with_glob_characters(tmp_path: Path) -> None:

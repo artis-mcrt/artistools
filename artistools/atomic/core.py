@@ -1155,8 +1155,8 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
     # each row as one string needs approximately 12 per cent more memory, thus the reader opens the file again
     with zopen(filepath) as linestatfile:
         head = linestatfile.read(64)
-    if not head.strip():
-        # a model with no lines gives five empty rows
+    if len(head) < 64 and not head.strip():
+        # a model with no lines gives five empty rows, and the head then holds all of the file
         if head != "\n" * nrows:
             msg = (
                 f"The file {filepath} has no values, and it does not have {nrows} empty rows. Possibly ARTIS or a"
@@ -1235,12 +1235,11 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
             lambda columnname: columnname.removeprefix("#")
         )
         columnnames = lflines.collect_schema().names()
-        # ARTIS writes "#lambda_angstroms". A space after "#" gives a column with no name, and each name then moves
-        # one column to the right of its values
+        # a column with no name moves the names away from their values
         if "" in columnnames:
             msg = (
-                f"The header row of {filepath} has a space after '#'. ARTIS writes '#lambda_angstroms'. Possibly the"
-                " file has a different format"
+                f"The header row of {filepath} has a column with no name: a space after '#', two spaces together, or"
+                " a space at the end. ARTIS writes '#lambda_angstroms' and one space between two names"
             )
             raise ValueError(msg)
         if missingcolumns := [name for name in LINELIST_SCHEMA if name not in columnnames]:
@@ -1269,7 +1268,15 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
         except pl.exceptions.InvalidOperationError as exc:
             msg = (
                 f"The file {filepath} has a value that does not agree with the type of its column, e.g. a fraction in a"
-                " column of integers. Possibly the file has a different format"
+                " column of integers, or a carriage return at the end of a row. Possibly the file has another format"
+            )
+            raise ValueError(msg) from exc
+        except pl.exceptions.ComputeError as exc:
+            if "more fields than defined" not in str(exc):
+                raise
+            msg = (
+                f"The file {filepath} has a row with more values than the header, e.g. from two spaces together or a"
+                " space at the end of a row. ARTIS writes one space between two values"
             )
             raise ValueError(msg) from exc
     raise_if_cut_line(dflines, filepath)
