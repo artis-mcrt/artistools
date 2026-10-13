@@ -186,6 +186,22 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
         qdotintegral(6, tmp_path / "gap", nts_max=2, t_model_s=4.0)
     assert qdotintegral(6, tmp_path / "gap", nts_max=1, t_model_s=4.0) == pytest.approx(0.0)
 
+    # the last timestep has an abundance file and no row in energy_thermo.dat, thus the integral would stop early
+    write_trajectory_archive(
+        tmp_path / "short",
+        6,
+        {
+            "energy_thermo.dat": (
+                "#count time/s Qdot\n     1  2.000000E+00  2.000000E+10\n     2  3.000000E+00  2.000000E+10\n"
+            ),
+            "nz-plane00003": (
+                "  3  4.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n  2   2 -1.27404E+00  0.0  0.0\n"
+            ),
+        },
+    )
+    with pytest.raises(ValueError, match="no Qdot value at each timestep up to 3"):
+        qdotintegral(6, tmp_path / "short", nts_max=3, t_model_s=4.0)
+
 
 def trajectory_step_count(traj_root: Path, _worker: int) -> int:
     """Return the number of rows that one process reads for a trajectory, after it builds the cache if necessary."""

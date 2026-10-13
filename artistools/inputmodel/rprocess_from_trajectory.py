@@ -544,11 +544,19 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     # and the integral is then zero
     dfthermo = dfthermo.filter(pl.col("nstep") <= nts_max)
     nsteps = dfthermo["nstep"].to_list()
-    # a corrupt Qdot at nts_max is not in dfthermo, thus the row of that timestep shows it
-    lastrow = lztrajectory.filter(pl.col("nstep") == nts_max).select("time_s", "Qdot").collect()
+    # a corrupt Qdot at nts_max is not in dfthermo, thus the row of that timestep shows it. A row of an abundance
+    # file alone has its time in abundancetime_s
+    lastrow = (
+        lztrajectory
+        .filter(pl.col("nstep") == nts_max)
+        .select(pl.coalesce("time_s", "abundancetime_s").alias("time_s"), "Qdot")
+        .collect()
+    )
     lastrowiscorrupt = lastrow.height > 0 and (lastrow["time_s"][0] or 0.0) >= 1.0 and lastrow["Qdot"][0] is None
-    if lastrowiscorrupt or (nsteps and nsteps[-1] - nsteps[0] + 1 != len(nsteps)):
-        # a trapezoid across a missing timestep would give an integral with no sign of the problem
+    hasgap = bool(nsteps) and (nsteps[-1] != nts_max or nsteps[-1] - nsteps[0] + 1 != len(nsteps))
+    if lastrowiscorrupt or hasgap:
+        # a trapezoid across a missing timestep, or one that stops before nts_max, would give an integral with
+        # no sign of the problem
         msg = f"The energy_thermo.dat of particle {particleid} has no Qdot value at each timestep up to {nts_max}"
         raise ValueError(msg)
     assert all(dfthermo["Qdot"] >= 0.0)
