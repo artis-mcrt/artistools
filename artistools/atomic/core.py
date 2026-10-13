@@ -1172,6 +1172,29 @@ def read_linestatfile(
     return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
 
 
+def read_linelistfile(filepath: Path | str) -> pl.DataFrame:
+    """Return the lines of linelist.out. Each row is one line, with the vacuum wavelength in Å.
+
+    A newer ARTIS writes linelist.out in place of linestat.out. The header line starts with "#". The schema
+    gives the column names, thus the reader does not depend on the text of the header.
+    """
+    print(f"Reading {filepath}")
+    with polars_source_open(filepath) as source:
+        return pl.read_csv(
+            source,
+            separator=" ",
+            has_header=False,
+            comment_prefix="#",
+            schema={
+                "lambda_angstroms": pl.Float64,
+                "atomic_number": pl.Int32,
+                "ion_stage": pl.Int32,
+                "upper_level": pl.Int32,
+                "lower_level": pl.Int32,
+            },
+        )
+
+
 def vacuum_to_air_angstroms(lambda_vacuum_angstroms: pl.Expr) -> pl.Expr:
     """Return the air wavelength between 2000 and 20000 Å, and the vacuum wavelength at and outside these limits.
 
@@ -1202,11 +1225,11 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     Do not add a sort operation, a filter operation, or a unique operation to this function.
     """
     textfile = firstexisting(
-        "linestat.out",
+        ["linelist.out", "linestat.out"],
         folder=modelpath,
         purpose=(
-            "linestat.out gives the wavelength, the element, the ion, and the levels of each line. "
-            "The commands that identify a line read it, e.g. plotlinefluxes and "
+            "linelist.out (linestat.out from an older ARTIS version) gives the wavelength, the element, the ion, "
+            "and the levels of each line. The commands that identify a line read it, e.g. plotlinefluxes and "
             "plotspectra --emissionabsorption."
         ),
     )
@@ -1222,19 +1245,20 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
 
-        lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
-
-        pldf = (
-            pl
-            .DataFrame({
+        if textfile.name.startswith("linelist.out"):
+            dflines = read_linelistfile(textfile)
+        else:
+            lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
+            dflines = pl.DataFrame({
                 "lambda_angstroms": lambda_angstroms,
                 "atomic_number": atomic_numbers,
                 "ion_stage": ion_stages,
                 "upper_level": upper_levels,
                 "lower_level": lower_levels,
             })
-            .with_row_index(name="lineindex")
-            .with_columns(cs.integer().cast(pl.Int32), cs.float().cast(pl.Float32))
+
+        pldf = dflines.with_row_index(name="lineindex").with_columns(
+            cs.integer().cast(pl.Int32), cs.float().cast(pl.Float32)
         )
         write_parquet_atomic(
             pldf,

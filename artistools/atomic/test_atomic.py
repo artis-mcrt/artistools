@@ -597,6 +597,41 @@ def test_read_linestatfile_of_few_lines(nlines: int, tmp_path: Path) -> None:
     assert len(upper_levels) == len(lower_levels) == nlines
 
 
+@pytest.mark.parametrize("nlines", [0, 1, 3])
+def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, tmp_path: Path) -> None:
+    """linelist.out (one row for each line, in Å) and linestat.out (one row for each quantity, in cm) give one frame.
+
+    A folder with both files gives the frame of linelist.out, because a newer ARTIS writes only that file.
+    """
+    lines = [(13898.2958, 57, 3, 2, 1), (4216.708, 38, 2, 3, 1), (6500.0, 26, 2, 5, 1)][:nlines]
+    linelisttext = "#lambda_angstroms atomic_number ion_stage upper_level lower_level\n" + "".join(
+        " ".join(str(value) for value in line) + "\n" for line in lines
+    )
+    linestattext = "".join(
+        " ".join(f"{line[0] * 1e-8:.8e}" if column == 0 else str(line[column]) for line in lines) + "\n"
+        for column in range(5)
+    )
+
+    linelistfolder = tmp_path / "linelist"
+    linelistfolder.mkdir()
+    (linelistfolder / "linelist.out").write_text(linelisttext, encoding="utf-8")
+    linestatfolder = tmp_path / "linestat"
+    linestatfolder.mkdir()
+    (linestatfolder / "linestat.out").write_text(linestattext, encoding="utf-8")
+    bothfolder = tmp_path / "both"
+    bothfolder.mkdir()
+    (bothfolder / "linelist.out").write_text(linelisttext, encoding="utf-8")
+    (bothfolder / "linestat.out").write_text(linestattext.replace("57", "58"), encoding="utf-8")
+
+    dflinelist = at.atomic.get_linelist_pldf(linelistfolder).collect()
+    assert dflinelist.height == nlines
+    assert np.allclose(dflinelist["lambda_angstroms"], [line[0] for line in lines])
+    assert dflinelist["atomic_number"].to_list() == [line[1] for line in lines]
+    assert dflinelist["upperlevelindex"].to_list() == [line[3] - 1 for line in lines]
+    pltest.assert_frame_equal(dflinelist, at.atomic.get_linelist_pldf(linestatfolder).collect())
+    pltest.assert_frame_equal(dflinelist, at.atomic.get_linelist_pldf(bothfolder).collect())
+
+
 def make_zero_based_atomic_data(folder: Path, atomic_number: int, ion_stage: int) -> None:
     """Write a copy of the atomic data of one ion of the test model, with level numbers that start at 0."""
     import lzma
