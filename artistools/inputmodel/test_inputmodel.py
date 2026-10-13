@@ -93,54 +93,84 @@ def get_derived_modeldata(modelpath: Path, **kwargs: t.Any) -> tuple[pl.LazyFram
     return at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta), modelmeta
 
 
-def trajectory_member_size(traj_root: Path, memberfilename: str, _worker: int) -> int:
-    """Return the byte count one process sees for a trajectory tar member, extracting it if needed."""
-    filepath = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
-        traj_root=traj_root, particleid=114511, memberfilename=memberfilename
-    )
-    return len(filepath.read_bytes())
+def write_trajectory_archive(traj_root: Path, particleid: int, members: dict[str, str]) -> Path:
+    """Write a small trajectory archive {particleid}.tar.xz whose members are the files of its Run_rprocess folder."""
+    import io
+
+    traj_root.mkdir(parents=True, exist_ok=True)
+    archivepath = traj_root / f"{particleid}.tar.xz"
+    with tarfile.open(archivepath, "w:xz") as tarfilehandle:
+        for filename, text in members.items():
+            data = text.encode("utf-8")
+            tarinfo = tarfile.TarInfo(name=f"./Run_rprocess/{filename}")
+            tarinfo.size = len(data)
+            tarfilehandle.addfile(tarinfo, io.BytesIO(data))
+
+    return archivepath
 
 
-def test_tar_member_extraction_is_atomic(tmp_path: Path) -> None:
-    """Processes extracting the same trajectory member at once must never see a half-written file.
+def trajectory_step_count(traj_root: Path, _worker: int) -> int:
+    """Return the number of rows that one process reads for a trajectory, after it builds the cache if necessary."""
+    reader = at.inputmodel.rprocess_from_trajectory.scan_trajectory_network_data
+    # a worker that keeps the scan of the previous trial does not write the cache again, thus it tests no race
+    reader.cache_clear()
+    return reader(traj_root, 114511).collect().height
 
-    Extracting straight to the destination let one process read what another was still writing, which failed
-    runs at random on a truncated file.
+
+def test_trajectory_cache_write_is_atomic(tmp_path: Path) -> None:
+    """Processes that build the cache of the same trajectory at the same time must all read a complete table.
+
+    The write goes through a temporary file, thus a reader sees either no cache or a complete one. If a different
+    process wrote a complete cache first, the function keeps that cache.
     """
     nworkers = 16
-    memberfilename = "./Run_rprocess/heating.dat"  # the largest member, so the widest window to catch a partial read
     traj_root = tmp_path / "trajectories"
     traj_root.mkdir()
     shutil.copy(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", traj_root)
-    with tarfile.open(traj_root / "114511.tar.xz", "r:*") as tarfilehandle:
-        membersize = tarfilehandle.getmember(memberfilename).size
+    nrows = at.inputmodel.rprocess_from_trajectory.read_trajectory_archive(traj_root / "114511.tar.xz").height
 
-    readsize = partial(trajectory_member_size, traj_root, memberfilename)
+    readrows = partial(trajectory_step_count, traj_root)
     # at.misc.parallel_map would give a thread pool on free-threaded builds, and only separate processes can race on
     # the filesystem. Spawn for the same reason parallel_map does: forking with polars/rayon threads live is unsafe.
     with ProcessPoolExecutor(max_workers=nworkers, mp_context=multiprocessing.get_context("spawn")) as executor:
-        # start the workers up front so that each trial races on the extraction rather than on process startup
+        # start the workers before the trials, because then each trial tests the cache write and not the process start
         list(executor.map(time.sleep, [0.0] * nworkers))
 
         for _trial in range(20):
-            shutil.rmtree(traj_root / "114511", ignore_errors=True)
-            assert list(executor.map(readsize, range(nworkers), chunksize=1)) == [membersize] * nworkers
+            shutil.rmtree(traj_root / "parquetcaches", ignore_errors=True)
+            assert list(executor.map(readrows, range(nworkers), chunksize=1)) == [nrows] * nworkers
+
+    assert (traj_root / "parquetcaches" / "114511.parquet").is_file()
 
 
-def test_tar_member_empty_leftover_without_archive_raises(tmp_path: Path) -> None:
-    """An empty leftover from an interrupted run is not usable data when there is no archive to re-extract from."""
-    memberfilename = "./Run_rprocess/nz-plane00223"
+def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_path: Path) -> None:
+    """The read rebuilds a cache from a different artistools version, and it uses a cache whose archive is absent.
+
+    A user can delete the archives after artistools reads them one time, because the cache then holds all the data
+    that artistools reads.
+    """
+    from artistools.inputmodel.rprocess_from_trajectory import scan_trajectory_network_data
+    from artistools.inputmodel.rprocess_from_trajectory import TRAJECTORY_CACHEVERSION
+
     traj_root = tmp_path / "trajectories"
-    path_extracted_file = traj_root / "114511" / "Run_rprocess" / "nz-plane00223"
-    path_extracted_file.parent.mkdir(parents=True)
-    path_extracted_file.touch()
+    traj_root.mkdir()
+    with pytest.raises(FileNotFoundError, match="114511"):
+        scan_trajectory_network_data(traj_root, 114511)
 
-    with pytest.raises(FileNotFoundError):
-        at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
-            traj_root=traj_root, particleid=114511, memberfilename=memberfilename
-        )
+    archivepath = shutil.copy(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", traj_root)
+    parquetpath = traj_root / "parquetcaches" / "114511.parquet"
+    parquetpath.parent.mkdir()
+    pl.DataFrame({"nstep": [1]}).write_parquet(
+        parquetpath, metadata={"cacheversion": "0", "textsource_mtime": str(Path(archivepath).stat().st_mtime)}
+    )
 
-    assert not path_extracted_file.exists()
+    dftrajectory = scan_trajectory_network_data(traj_root, 114511).collect()
+    assert dftrajectory.height > 300
+    assert pl.read_parquet_metadata(parquetpath)["cacheversion"] == str(TRAJECTORY_CACHEVERSION)
+
+    Path(archivepath).unlink()
+    scan_trajectory_network_data.cache_clear()
+    pltest.assert_frame_equal(scan_trajectory_network_data(traj_root, 114511).collect(), dftrajectory)
 
 
 def test_describeinputmodel(capsys: pytest.CaptureFixture[str]) -> None:
@@ -632,22 +662,20 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) ->
     """A timestep file whose first line is blank gives no time, thus the read must stop and name that file.
 
     A blank line gave a null field count, which the check for six fields passed. The reader then returned None
-    for the time.
+    for the time. The check runs when artistools builds the cache, thus a read of a different file of the archive
+    also finds the problem.
     """
-    rundir = tmp_path / "1" / "Run_rprocess"
-    rundir.mkdir(parents=True)
     abundlines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n  2   2 -1.27404E+00  2.05770E+01  0.00000E+00\n"
-    (rundir / "nz-plane00001").write_text(
-        "  1  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n" + abundlines
-    )
-    (rundir / "nz-plane00002").write_text("\n" + abundlines)
-
+    goodfile = "  1  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n" + abundlines
     reader = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund
-    _, timesecs = reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001"])
+
+    write_trajectory_archive(tmp_path / "good", 1, {"nz-plane00001": goodfile})
+    _, timesecs = reader(tmp_path / "good", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
 
+    write_trajectory_archive(tmp_path / "bad", 1, {"nz-plane00001": goodfile, "nz-plane00002": "\n" + abundlines})
     with pytest.raises(ValueError, match="nz-plane00002"):
-        reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001", "./Run_rprocess/nz-plane00002"])
+        reader(tmp_path / "bad", 1, ["nz-plane00001"])
 
 
 def test_get_trajectory_abund_q(trajectory_copy: Path) -> None:
@@ -2242,9 +2270,11 @@ def test_rprocess_const_and_powerlaw() -> None:
 
 def test_energyfiles_from_trajectory(trajectory_copy: Path) -> None:
     """Integrating a trajectory's heating rate must give a positive total energy."""
-    thermofile = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
-        traj_root=trajectory_copy, particleid=109215, memberfilename="./Run_rprocess/energy_thermo.dat"
-    )
+    thermofile = trajectory_copy / "energy_thermo.dat"
+    with tarfile.open(trajectory_copy / "109215.tar.xz", "r:*") as tarfilehandle:
+        memberfile = tarfilehandle.extractfile("./Run_rprocess/energy_thermo.dat")
+        assert memberfile is not None
+        thermofile.write_bytes(memberfile.read())
     dfthermo = at.inputmodel.energyinputfiles.read_trajectory_thermo(thermofile)
     assert dfthermo["time/s"].to_numpy().min() >= 1.0, "the unphysical sub-second Qdot values must be dropped"
 
@@ -4044,14 +4074,17 @@ def test_make1dslicefrom3dmodel(tmp_path: Path) -> None:
 def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The command takes the trajectory folder and the particle id as arguments, and it writes a one-cell model."""
     particleid = 42
-    rundir = tmp_path / "trajectories" / str(particleid) / "Run_rprocess"
-    rundir.mkdir(parents=True)
     # N, Z, and the log10 of the number abundance: He4 and Ni56 have a mass fraction of 0.5 each
     nuclidelines = [f"{2:4d}{2:4d}{math.log10(0.5 / 4):13.5E}", f"{28:4d}{28:4d}{math.log10(0.5 / 56):13.5E}"]
     timeseconds = 86400.0
-    (rundir / "tday_nz-plane").write_text(
-        f"  1  {timeseconds:.6E}   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n" + "\n".join(nuclidelines) + "\n",
-        encoding="utf-8",
+    write_trajectory_archive(
+        tmp_path / "trajectories",
+        particleid,
+        {
+            "tday_nz-plane": f"  1  {timeseconds:.6E}   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n"
+            + "\n".join(nuclidelines)
+            + "\n"
+        },
     )
     # the command reads a density profile from the working folder if one exists
     monkeypatch.chdir(tmp_path)

@@ -178,7 +178,7 @@ def test_particledata_reads_the_exact_step_at_the_time_of_a_network_step(tmp_pat
 
     particledata = comparetogsinetwork.get_particledata([step_time_s], [("Sr", 38, None)], tmp_path, 114511)
 
-    dfnucabund, _ = get_trajectory_timestepfile_nuc_abund(tmp_path, 114511, "./Run_rprocess/nz-plane00223")
+    dfnucabund, _ = get_trajectory_timestepfile_nuc_abund(tmp_path, 114511, "nz-plane00223")
     expected_sr = float(dfnucabund.filter(pl.col("Z") == 38)["massfrac"].sum())
     assert expected_sr > 0.0
     assert np.isclose(particledata["Sr"][0][0], expected_sr, rtol=1e-6, atol=0.0)

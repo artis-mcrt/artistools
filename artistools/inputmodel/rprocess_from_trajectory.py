@@ -1,7 +1,6 @@
 """Build ARTIS model abundances from r-process nucleosynthesis trajectory calculations."""
 
 import argparse
-import contextlib
 import gc
 import math
 import string
@@ -34,10 +33,15 @@ from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_file_identity
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import polars_source
+from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
+from artistools.misc import write_parquet_atomic
+
+TRAJECTORY_CACHEVERSION = 1
 
 
 def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
@@ -80,35 +84,6 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
     return dfelabundances
 
 
-def extracted_file_is_complete(path_extracted_file: Path) -> bool:
-    """Report whether a previously extracted member is present and non-empty."""
-    if not path_extracted_file.is_file() or path_extracted_file.stat().st_size == 0:
-        return False
-
-    with contextlib.suppress(OSError), path_extracted_file.open(encoding="utf-8") as f:
-        return bool(f.read(1))
-
-    return False
-
-
-def extract_tar_member_atomic(tarfilepath: Path, memberfilename: str, path_extracted_file: Path) -> None:
-    """Extract one tar member into place through a temporary file and an atomic replace.
-
-    Several processes routinely want the same trajectory member at once. Extracting straight to the destination
-    lets a reader open a file that another process is still writing, so unpack into a private directory and move
-    the result into place: a reader then sees either no file or a complete one, never a half-written one.
-    """
-    import tempfile
-
-    path_extracted_file.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=path_extracted_file.parent, prefix=".partial") as tempdir:
-        with tarfile.open(tarfilepath, "r:*") as tarfilehandle:
-            tarfilehandle.extract(path=tempdir, member=memberfilename, filter="data")
-
-        # a concurrent process may have extracted the same member first, but the contents are identical
-        Path(tempdir, memberfilename).replace(path_extracted_file)
-
-
 def fix_fortran_exponents(dtype: pl.DataType | type[pl.DataType]) -> pl.Expr:
     """Return an expression that repairs Fortran triple-digit exponents, then casts to dtype.
 
@@ -119,60 +94,186 @@ def fix_fortran_exponents(dtype: pl.DataType | type[pl.DataType]) -> pl.Expr:
     return cs.by_dtype(pl.String).str.replace(r"(\d)([+-])(\d{3})$", "${1}e${2}${3}").cast(dtype)
 
 
-def get_tar_member_extracted_path(traj_root: Path | str, particleid: int, memberfilename: str) -> Path:
-    """Return the path of a member file of a trajectory, and prefer a form of the file that is fast to read.
+def parse_network_steps_table(text: str) -> pl.DataFrame:
+    """Parse a table of the network timesteps, e.g. energy_thermo.dat, whose first line names the columns.
 
-    A trajectory is usually in the file {particleid}.tar.xz, which is slow to read. Thus the function first looks
-    for an extracted file or for a decompressed .tar file, because these are much faster to read.
-
-    memberfilename: file path within the trajectory tarfile, eg. ./Run_rprocess/energy_thermo.dat
+    The timestep column "#count" becomes "nstep", "time/s" becomes "time_s", and "rho(g/cc)" becomes "rho".
+    The other columns keep the names of the file, e.g. "Qdot" and "hbeta".
     """
-    path_extracted_file = Path(traj_root, str(particleid), memberfilename)
-    if extracted_file_is_complete(path_extracted_file):
-        return path_extracted_file
-
-    tarfilepaths = [
-        Path(traj_root, filename)
-        for filename in (
-            f"{particleid}.tar",
-            f"{particleid:05d}.tar",
-            f"{particleid}.tar.xz",
-            f"{particleid:05d}.tar.xz",
-        )
+    headerline, _, body = text.partition("\n")
+    colnames = [
+        {"#count": "nstep", "time/s": "time_s", "rho(g/cc)": "rho"}.get(colname, colname)
+        for colname in headerline.split()
     ]
-    tarfilepath = next((tarfilepath for tarfilepath in tarfilepaths if tarfilepath.is_file()), None)
+    fields = pl.col("line").str.extract_all(r"\S+")
+    return (
+        pl
+        .DataFrame({"line": body.splitlines()})
+        .filter(pl.col("line").str.strip_chars().str.len_chars() > 0)
+        .select(fields.list.get(index, null_on_oob=True).alias(colname) for index, colname in enumerate(colnames))
+        .with_columns(fix_fortran_exponents(pl.Float64))
+        .with_columns(pl.col("nstep").cast(pl.Int32))
+    )
 
-    if tarfilepath is None:
-        # an incomplete leftover is unusable and there is no archive to replace it from, so clear it out
-        path_extracted_file.unlink(missing_ok=True)
-        msg = f"  No network data found for particle {particleid} (so can't access {memberfilename})"
-        raise FileNotFoundError(msg)
 
-    # and memberfilename.endswith(".dat")
-    try:
-        extract_tar_member_atomic(tarfilepath, memberfilename, path_extracted_file)
-    except OSError:
-        print(f"Problem extracting file {memberfilename} from {tarfilepath}")
-        raise
-    except KeyError:
-        print(f"File {memberfilename} not found in {tarfilepath}")
-        raise
+def parse_abundance_files(abundancetexts: dict[str, str]) -> pl.DataFrame:
+    """Return one row for each abundance file, e.g. nz-plane00200, with its header time and its nuclide lists.
 
-    if path_extracted_file.is_file():
-        return path_extracted_file
+    The first line of a file gives the timestep and the time. The other lines have a fixed width, thus each line
+    goes to str.slice and not to a parser. One query reads all the files, because the fixed cost of a query is
+    larger than the time to parse one file of 400 lines. The file nz-plane00200 is timestep 200. A named file,
+    e.g. tday_nz-plane, has no timestep, because its time differs from the time of the timestep in its header.
+    """
+    filenames: list[str] = []
+    lines: list[str] = []
+    for filename, text in abundancetexts.items():
+        filelines = text.splitlines()
+        filenames.extend([filename] * len(filelines))
+        lines.extend(filelines)
 
-    print(f"Member {memberfilename} not found in {tarfilepath}")
-    raise AssertionError
+    lzlines = (
+        pl
+        .DataFrame({"abundancefile": filenames, "line": lines})
+        .lazy()
+        .with_columns(linenumber=pl.int_range(pl.len()).over("abundancefile"))
+    )
+    headerfields = pl.col("line").str.extract_all(r"\S+")
+    dfheaders, dfnuclides = pl.collect_all([
+        lzlines.filter(pl.col("linenumber") == 0).select(
+            "abundancefile",
+            fieldcount=headerfields.list.len(),
+            abundancetime_s=headerfields.list.get(1, null_on_oob=True).cast(pl.Float64, strict=False),
+        ),
+        lzlines
+        .filter((pl.col("linenumber") > 0) & (pl.col("line").str.strip_chars().str.len_chars() > 0))
+        .group_by("abundancefile", maintain_order=True)
+        .agg(
+            pl.col("line").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
+            pl.col("line").str.slice(4, 4).str.strip_chars().cast(pl.Int32).alias("Z"),
+            pl.col("line").str.slice(8, 13).str.strip_chars().cast(pl.Float64).alias("log10abund"),
+        ),
+    ])
+
+    # a blank header line gives no fields, and a file without lines gives no header row
+    badfile = next(
+        (
+            filename
+            for filename in abundancetexts
+            if filename not in dfheaders.filter(pl.col("fieldcount") == 6)["abundancefile"]
+        ),
+        None,
+    )
+    if badfile is not None:
+        msg = f"Cannot read the header line of {badfile}"
+        raise ValueError(msg)
+
+    return (
+        dfheaders
+        .drop("fieldcount")
+        .join(dfnuclides, on="abundancefile", how="left", maintain_order="left")
+        .with_columns(
+            nstep=pl.col("abundancefile").str.extract(r"^nz-plane(\d+)$").cast(pl.Int32),
+            N=pl.col("N").fill_null(pl.lit([], dtype=pl.List(pl.Int32))),
+            Z=pl.col("Z").fill_null(pl.lit([], dtype=pl.List(pl.Int32))),
+            log10abund=pl.col("log10abund").fill_null(pl.lit([], dtype=pl.List(pl.Float64))),
+        )
+    )
+
+
+def read_trajectory_archive(archivepath: Path) -> pl.DataFrame:
+    """Read the network data of one trajectory from its archive in one pass, and return one row for each timestep.
+
+    The archive holds approximately 1000 files, and artistools reads the energy_thermo.dat, the heating.dat,
+    and the nz-plane files of the Run_rprocess folder. The .tar.xz file has one xz block, thus a read of one
+    member also decompresses the full archive. A stream read decompresses the archive one time only.
+
+    A row holds the columns of energy_thermo.dat and heating.dat for its timestep, and the lists N, Z, and
+    log10abund of its abundance file, if the timestep has one. A named abundance file, e.g. tday_nz-plane, is a
+    row with no timestep. A column of a file that the archive does not hold is absent, e.g. a test archive with the
+    abundance files alone has no "Qdot" column.
+    """
+    import posixpath
+
+    texts: dict[str, str] = {}
+    with tarfile.open(archivepath, "r|*") as tarfilehandle:
+        for member in tarfilehandle:
+            folder, filename = posixpath.split(member.name)
+            # an archive from macOS can hold a resource fork ._name beside each file
+            iswanted = filename in {"energy_thermo.dat", "heating.dat"} or "nz-plane" in filename
+            ishidden = filename.startswith(".")
+            if member.isfile() and posixpath.basename(folder) == "Run_rprocess" and iswanted and not ishidden:
+                memberfile = tarfilehandle.extractfile(member)
+                assert memberfile is not None
+                texts[filename] = memberfile.read().decode("utf-8")
+
+    frames = [
+        parse_network_steps_table(texts[filename])
+        for filename in ("energy_thermo.dat", "heating.dat")
+        if filename in texts
+    ]
+    frames.append(parse_abundance_files({name: text for name, text in texts.items() if "nz-plane" in name}))
+    dftrajectory = frames[0]
+    for dfnext in frames[1:]:
+        # a column that two files hold, e.g. time_s, keeps the value of the first file
+        newcols = [col for col in dfnext.columns if col not in dftrajectory.columns]
+        dftrajectory = dftrajectory.join(dfnext.select("nstep", *newcols), on="nstep", how="full", coalesce=True)
+
+    return dftrajectory.sort("nstep", "abundancefile", nulls_last=True)
+
+
+def get_trajectory_archive_path(traj_root: Path, particleid: int) -> Path | None:
+    """Return the archive of a trajectory, e.g. {particleid}.tar.xz, or None if the folder holds none."""
+    filenames = (f"{particleid}.tar.xz", f"{particleid:05d}.tar.xz", f"{particleid}.tar", f"{particleid:05d}.tar")
+    return next((path for filename in filenames if (path := traj_root / filename).is_file()), None)
 
 
 @lru_cache(maxsize=16)
-def get_traj_network_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
-    """Return the network step numbers and times [s] of one trajectory's energy_thermo.dat."""
-    filepath = get_tar_member_extracted_path(
-        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
+def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFrame:
+    """Scan the network data of a trajectory from its parquet cache, see read_trajectory_archive.
+
+    The first read of a trajectory reads its archive and writes parquetcaches/{particleid}.parquet in the
+    trajectory folder. A later read scans the parquet file. The row groups of the file hold 64 rows, thus a
+    filter on one abundance file reads a small part of the nuclide lists. A cache from a different artistools
+    version or from a different archive is stale, and the read of the archive replaces it. A cache whose archive
+    is absent stays in use. Several processes can read the same trajectory at the same time, thus the write is
+    atomic. If a different process wrote a complete cache first, the function keeps that cache.
+    """
+    parquetpath = traj_root / "parquetcaches" / f"{particleid}.parquet"
+    archivepath = get_trajectory_archive_path(traj_root, particleid)
+    textsource_mtime = archivepath.stat().st_mtime if archivepath is not None else None
+    # the identity of the cache that a rewrite replaces, from the same moment as the staleness check
+    outdatedparquet = get_file_identity(parquetpath)
+    pqmetadata, reason = read_parquet_cache_metadata(parquetpath, TRAJECTORY_CACHEVERSION, textsource_mtime)
+    if pqmetadata is not None:
+        return pl.scan_parquet(parquetpath)
+
+    if archivepath is None:
+        msg = f"{traj_root} holds no network data for particle {particleid}"
+        if outdatedparquet is not None:
+            msg += f" ({parquetpath.name} is stale, because {reason}, and there is no archive to replace it)"
+        raise FileNotFoundError(msg)
+
+    if outdatedparquet is not None:
+        print(f"{parquetpath} is stale, because {reason}. artistools reads {archivepath.name} again.")
+
+    parquetpath.parent.mkdir(exist_ok=True)
+    write_parquet_atomic(
+        read_trajectory_archive(archivepath),
+        parquetpath,
+        replaces=outdatedparquet,
+        metadata={"cacheversion": str(TRAJECTORY_CACHEVERSION), "textsource_mtime": str(textsource_mtime)},
+        row_group_size=64,
     )
-    return read_wsv(filepath, has_header=False, comment_prefix="#").select(
-        cs.by_index(0).cast(pl.Int32).alias("nstep"), cs.by_index(1).cast(pl.Float32).alias("timesec")
+    return pl.scan_parquet(parquetpath)
+
+
+def get_traj_network_timesteps(traj_root: Path | str, particleid: int) -> pl.DataFrame:
+    """Return the network timestep numbers and times [s] of one trajectory's energy_thermo.dat."""
+    return (
+        scan_trajectory_network_data(Path(traj_root), particleid)
+        .filter(pl.col("time_s").is_not_null())
+        .select(pl.col("nstep"), pl.col("time_s").cast(pl.Float32).alias("timesec"))
+        .collect()
     )
 
 
@@ -234,84 +335,65 @@ def check_traj_time_matches(
 
 
 def get_trajectory_timestepfiles_nuc_abund(
-    traj_root: Path, particleid: int, memberfilenames: Sequence[str]
+    traj_root: Path | str, particleid: int, abundancefiles: Sequence[str]
 ) -> tuple[pl.DataFrame, list[float]]:
-    """Get the nuclear abundances and the time of several timestep files of one trajectory.
+    """Get the nuclear abundances and the time of several abundance files of one trajectory.
 
-    The column "fileindex" gives the position of the file of each row in memberfilenames. One query reads
-    all the files, because the fixed cost of a query is larger than the time to parse one file of 400 lines.
+    abundancefiles names the files, e.g. "nz-plane00200" or "tday_nz-plane". The column "fileindex" gives the
+    position of the file of each row in abundancefiles.
     """
-    trajpaths = [
-        get_tar_member_extracted_path(traj_root=traj_root, particleid=particleid, memberfilename=memberfilename)
-        for memberfilename in memberfilenames
-    ]
-    # an extracted member is never compressed, thus polars reads the paths directly
-    lzlines = pl.scan_csv(
-        trajpaths,
-        separator="\x1f",
-        has_header=False,
-        quote_char=None,
-        new_columns=["line"],
-        infer_schema_length=0,
-        include_file_paths="path",
-    ).with_columns(
-        fileindex=pl.col("path").replace_strict(
-            [str(trajpath) for trajpath in trajpaths], range(len(trajpaths)), return_dtype=pl.UInt32
-        ),
-        linenumber=pl.int_range(pl.len()).over("path"),
+    dfrows = pl.DataFrame(
+        {"abundancefile": list(abundancefiles), "fileindex": range(len(abundancefiles))},
+        schema={"abundancefile": pl.String, "fileindex": pl.UInt32},
+    ).join(
+        scan_trajectory_network_data(Path(traj_root), particleid)
+        .filter(pl.col("abundancefile").is_in(list(abundancefiles)))
+        .select("abundancefile", "abundancetime_s", "N", "Z", "log10abund")
+        .collect(),
+        on="abundancefile",
+        how="left",
+        maintain_order="left",
+    )
+    missingfiles = dfrows.filter(pl.col("abundancetime_s").is_null())["abundancefile"].to_list()
+    if missingfiles:
+        msg = f"The trajectory of particle {particleid} has no abundance file {missingfiles[0]}"
+        raise KeyError(msg)
+
+    dfnucabund = (
+        dfrows
+        .select("fileindex", "N", "Z", "log10abund")
+        .explode("N", "Z", "log10abund")
+        .with_columns(massfrac=(pl.col("N") + pl.col("Z")) * (10 ** pl.col("log10abund")))
+        .drop("log10abund")
     )
 
-    headerfields = pl.col("line").str.extract_all(r"\S+")
-    dfheaders, dfnucabund = pl.collect_all([
-        lzlines.filter(pl.col("linenumber") == 0).select(
-            "fileindex", fieldcount=headerfields.list.len(), timesec=headerfields.list.get(1, null_on_oob=True)
-        ),
-        # the columns of this file have a fixed width, thus each line goes to str.slice and not to a parser
-        lzlines
-        .filter(pl.col("linenumber") > 0)
-        .select(
-            "fileindex",
-            pl.col("line").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
-            pl.col("line").str.slice(4, 4).str.strip_chars().cast(pl.Int32).alias("Z"),
-            pl.col("line").str.slice(8, 13).str.strip_chars().cast(pl.Float64).alias("log10abund"),
-        )
-        .with_columns(massfrac=(pl.col("N") + pl.col("Z")) * (10 ** pl.col("log10abund")))
-        .drop("log10abund"),
-    ])
-
-    # a blank header line gives a null field count, and a file without lines gives no header row
-    dfheaders = dfheaders.filter(pl.col("fieldcount") == 6).sort("fileindex")
-    goodfileindices = set(dfheaders["fileindex"].to_list())
-    badfileindex = next((index for index in range(len(trajpaths)) if index not in goodfileindices), None)
-    if badfileindex is not None:
-        msg = f"Cannot read the header line of {memberfilenames[badfileindex]} for trajectory {particleid}"
-        print(msg)
-        raise ValueError(msg)
-
-    return dfnucabund, dfheaders["timesec"].cast(pl.Float64).to_list()
+    return dfnucabund, dfrows["abundancetime_s"].to_list()
 
 
 def get_trajectory_timestepfile_nuc_abund(
-    traj_root: Path, particleid: int, memberfilename: str
+    traj_root: Path | str, particleid: int, abundancefile: str
 ) -> tuple[pl.DataFrame, float]:
     """Return the nuclear abundances of a trajectory at one time, and that time in seconds.
 
-    memberfilename names the file of that time in the trajectory, e.g. "./Run_rprocess/tday_nz-plane".
+    abundancefile names the file of that time in the trajectory, e.g. "tday_nz-plane".
     """
-    dfnucabund, timesecs = get_trajectory_timestepfiles_nuc_abund(traj_root, particleid, [memberfilename])
+    dfnucabund, timesecs = get_trajectory_timestepfiles_nuc_abund(traj_root, particleid, [abundancefile])
     return dfnucabund.drop("fileindex"), timesecs[0]
 
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
-    enthermofilepath = get_tar_member_extracted_path(
-        traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/energy_thermo.dat"
+    dfthermo = (
+        scan_trajectory_network_data(Path(traj_root), particleid)
+        .filter(pl.col("time_s").is_not_null())
+        .sort("nstep")
+        .select("time_s", "Qdot")
+        .collect()
     )
-    dfthermo = read_wsv(enthermofilepath).select("time/s", "Qdot").rename({"time/s": "time_s"})
     # the integration starts at one second. np.argmax would return 0 for a file that reaches no
     # such time, which names the first row rather than showing that no row matches
     rows_from_1s = (dfthermo["time_s"] >= 1).to_numpy().nonzero()[0]
-    assert rows_from_1s.size > 0, f"{enthermofilepath} holds no time of one second or more"
+    assert rows_from_1s.size > 0, f"The energy_thermo.dat of particle {particleid} holds no time of one second or more"
     startindex = int(rows_from_1s[0])
 
     # nts_max is the one-based #count of the network step, thus its row index is nts_max - 1.
@@ -337,10 +419,10 @@ def get_trajectory_abund_q(particleid: int, traj_root: Path, t_model_s: float) -
         return {}
     # the nearest timestep always exists, thus only "lessorequal" and "greaterorequal" can give None
     assert nts is not None
-    memberfilename = f"./Run_rprocess/nz-plane{nts:05d}"
+    abundancefile = f"nz-plane{nts:05d}"
 
     try:
-        dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, memberfilename)
+        dftrajnucabund, traj_time_s = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, abundancefile)
 
     except FileNotFoundError:
         return {}
@@ -604,9 +686,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     traj_root = Path(args.trajectoryroot)
     particleid = args.particleid
     print(f"trajectory particle id {particleid}")
-    dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(
-        traj_root, particleid, "./Run_rprocess/tday_nz-plane"
-    )
+    dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, "tday_nz-plane")
     dfnucabund = dfnucabund.filter(pl.col("Z") >= 1).with_columns(radioactive=pl.lit(value=True))
 
     t_model_init_days = t_model_init_seconds / (24 * 60 * 60)

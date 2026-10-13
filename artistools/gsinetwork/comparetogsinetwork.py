@@ -23,11 +23,10 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.inputmodel.modelfromhydro import get_merger_time_geomunits
 from artistools.inputmodel.rprocess_from_trajectory import check_traj_time_matches
-from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
 from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
-from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
+from artistools.inputmodel.rprocess_from_trajectory import scan_trajectory_network_data
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -42,7 +41,6 @@ from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc import read_wsv
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -463,20 +461,22 @@ def get_particledata(
             )
 
         particledata = pl.DataFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})
-        heatingfilepath = get_tar_member_extracted_path(
-            traj_root=traj_root, particleid=particleid, memberfilename="./Run_rprocess/heating.dat"
-        )
         heatcols = ["hbeta", "halpha", "hspof"]
-        dfheating = read_wsv(heatingfilepath).select("#count", "time/s", *heatcols)
-        dfheating = dfheating.with_columns(fix_fortran_exponents(pl.Float64))
+        dfheating = (
+            scan_trajectory_network_data(Path(traj_root), particleid)
+            .filter(pl.col("time_s").is_not_null())
+            .sort("nstep")
+            .select("nstep", "time_s", *heatcols)
+            .collect()
+        )
 
-        nstep_timesec: dict[int, float] = dict(dfheating.select("#count", "time/s").iter_rows())
+        nstep_timesec: dict[int, float] = dict(dfheating.select("nstep", "time_s").iter_rows())
 
         particledata = particledata.with_columns(
             pl.Series(
                 # np.interp holds the end value outside the range. These curves are summed over the
                 # trajectories, thus a NaN here would make the whole population sum NaN.
-                [np.interp(arr_time_s_incpremerger, dfheating["time/s"], dfheating[col])],
+                [np.interp(arr_time_s_incpremerger, dfheating["time_s"], dfheating[col])],
                 dtype=pl.Array(pl.Float32, len(arr_time_s_incpremerger)),
             ).alias(col)
             for col in heatcols
@@ -495,7 +495,7 @@ def get_particledata(
             # np.interp then holds the end value, as it does for the heating rates above
             nts_list = sorted({nts for nts in ntslowers + ntsuppers if nts is not None})
             dftrajnucabund, traj_times_s = get_trajectory_timestepfiles_nuc_abund(
-                traj_root, particleid, [f"./Run_rprocess/nz-plane{nts:05d}" for nts in nts_list]
+                traj_root, particleid, [f"nz-plane{nts:05d}" for nts in nts_list]
             )
             for nts, traj_time_s in zip(nts_list, traj_times_s, strict=True):
                 # nts is the exact network step, thus these two times come from the same step and

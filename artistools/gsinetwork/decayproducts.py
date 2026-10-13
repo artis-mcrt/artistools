@@ -20,9 +20,8 @@ from artistools.constants import amu_g
 from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
-from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
-from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
+from artistools.inputmodel.rprocess_from_trajectory import scan_trajectory_network_data
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
@@ -219,28 +218,17 @@ def process_trajectory(
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
     try:
-        heatingpath = get_tar_member_extracted_path(
-            traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
-        )
+        lztrajectory = scan_trajectory_network_data(traj_root, traj_ID)
     except FileNotFoundError:
         print_warning(f"trajectory {traj_ID} has no network data, thus the sums leave it out")
         return None
 
     dfheatingthermo = (
-        read_wsv(heatingpath)
-        .select("#count", "hbeta", "htot")
-        .with_columns(fix_fortran_exponents(pl.Float64))
-        .join(
-            read_wsv(
-                get_tar_member_extracted_path(
-                    traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/energy_thermo.dat"
-                )
-            ).select("#count", "time/s", "Qdot"),
-            on="#count",
-            how="left",
-            maintain_order="left",
-        )
-        .rename({"#count": "nstep", "time/s": "timesec"})
+        lztrajectory
+        .filter(pl.col("time_s").is_not_null())
+        .sort("nstep")
+        .select("nstep", pl.col("time_s").alias("timesec"), "hbeta", "htot", "Qdot")
+        .collect()
     )
 
     # get nearest network time to each plotted time
@@ -285,9 +273,7 @@ def process_trajectory(
     networksteps = sorted({int(nts) for nts in arr_networktimestepindex[hasnetworkstep]})
     if networksteps:
         dftrajnucabund, _networktimes = get_trajectory_timestepfiles_nuc_abund(
-            traj_root=traj_root,
-            particleid=traj_ID,
-            memberfilenames=[f"./Run_rprocess/nz-plane{nts:05d}" for nts in networksteps],
+            traj_root=traj_root, particleid=traj_ID, abundancefiles=[f"nz-plane{nts:05d}" for nts in networksteps]
         )
 
         assert np.bincount(dftrajnucabund["fileindex"].to_numpy(), minlength=len(networksteps)).min() > 100

@@ -1280,6 +1280,7 @@ def write_parquet_atomic(
     metadata: dict[str, str] | None = None,
     replaces: tuple[int, int] | None = None,
     compression_level: int = 13,
+    row_group_size: int | None = None,
 ) -> None:
     """Write a parquet file with zstd compression through a temporary file, thus no reader sees a partial file.
 
@@ -1322,7 +1323,11 @@ def write_parquet_atomic(
     partialfilepath.chmod(destmode & 0o777)
     try:
         pldf.lazy().sink_parquet(
-            partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata
+            partialfilepath,
+            compression="zstd",
+            compression_level=compression_level,
+            metadata=metadata,
+            row_group_size=row_group_size,
         )
         try:
             # gives the file a second name, and fails if that name is taken, thus the destination appears

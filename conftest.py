@@ -45,8 +45,8 @@ def pytest_configure(config: t.Any) -> None:
 def trajectory_copy(tmp_path: Path) -> Path:
     """Return a copy of the folder of the test trajectories.
 
-    A read of a trajectory extracts the members of its archive beside the archive. A copy keeps the extracted files
-    out of tests/data, and each run then tests the extraction too.
+    A read of a trajectory writes its parquet cache beside the archive. A copy keeps the caches out of tests/data,
+    and each test session then also tests the read of the archive.
     """
     import shutil
 
