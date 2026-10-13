@@ -50,14 +50,16 @@ if t.TYPE_CHECKING:
 
 # The version of the line list parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type.
-LINELIST_CACHEVERSION = 1
-# The columns of the line list, in the order of linestat.out and linelist.out
+# Version 2 stores the zero-based upperlevelindex and lowerlevelindex in place of the one-based level numbers.
+LINELIST_CACHEVERSION = 2
+# The columns of the line list, in the order of linestat.out and linelist.out. The level indices start at 0 in each
+# ion, as the level indices of ARTIS and of get_levels.
 LINELIST_SCHEMA: t.Final = MappingProxyType({
     "lambda_angstroms": pl.Float32,
     "atomic_number": pl.Int32,
     "ion_stage": pl.Int32,
-    "upper_level": pl.Int32,
-    "lower_level": pl.Int32,
+    "upperlevelindex": pl.Int32,
+    "lowerlevelindex": pl.Int32,
 })
 
 
@@ -1142,7 +1144,10 @@ def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
 
 
 def read_linestatfile(filepath: Path) -> pl.DataFrame:
-    """Return the line list of linestat.out from an older ARTIS. Each row of the file is one column of the list."""
+    """Return the line list of linestat.out from an older ARTIS. Each row of the file is one column of the list.
+
+    The file gives the levels as one-based level numbers. The frame gives zero-based level indices, as linelist.out.
+    """
     print(f"Reading {filepath}")
 
     # a file of one line gives a one-dimensional array without ndmin, and a file of no line gives no row
@@ -1156,8 +1161,9 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
             " still writes the file, the end of the file is missing, or the file has a different format"
         )
         raise ValueError(msg)
-    # the file gives the wavelength in cm
+    # the file gives the wavelength in cm, and level numbers that start at 1 in each ion
     data[0] *= angstroms_per_cm
+    data[3:5] -= 1
     return pl.DataFrame(dict(zip(LINELIST_SCHEMA, data, strict=True)), schema=dict(LINELIST_SCHEMA))
 
 
@@ -1165,7 +1171,7 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
     """Return the line list of linelist.out. Each row after the header row holds one line.
 
     The reader selects the columns by the names in the header row, thus a later ARTIS can add a column. The
-    wavelength is the vacuum wavelength in Å.
+    wavelength is the vacuum wavelength in Å. The level indices start at 0 in each ion.
     """
     print(f"Reading {filepath}")
     with polars_error_note(filepath), polars_source_open(filepath) as source:
@@ -1275,14 +1281,8 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     else:
         print(f"Reading {parquetfile}")
 
-    return (
-        pl
-        .scan_parquet(parquetfile, glob=False)
-        .with_columns(
-            vacuum_to_air_angstroms(pl.col("lambda_angstroms")).cast(pl.Float32).alias("lambda_angstroms_air")
-        )
-        .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
-        .drop(["upper_level", "lower_level"])
+    return pl.scan_parquet(parquetfile, glob=False).with_columns(
+        vacuum_to_air_angstroms(pl.col("lambda_angstroms")).cast(pl.Float32).alias("lambda_angstroms_air")
     )
 
 

@@ -581,10 +581,10 @@ def test_get_composition_data_from_outputfile_refuses_a_log_with_no_list(tmp_pat
         at.atomic.get_composition_data_from_outputfile(tmp_path)
 
 
-LINELIST_HEADER = "#lambda_angstroms atomic_number ion_stage upper_level lower_level"
-# each tuple is one line: the vacuum wavelength [Angstrom], the atomic number, the ion stage, the upper level, and the
-# lower level, in the order of the columns of linelist.out
-TEST_LINES = ((13898.2958, 57, 3, 2, 1), (4216.708, 38, 2, 3, 1), (6500.0, 26, 2, 5, 1))
+LINELIST_HEADER = "#lambda_angstroms atomic_number ion_stage upperlevelindex lowerlevelindex"
+# each tuple is one line: the vacuum wavelength [Angstrom], the atomic number, the ion stage, the zero-based upper
+# level index, and the zero-based lower level index, in the order of the columns of linelist.out
+TEST_LINES = ((13898.2958, 57, 3, 1, 0), (4216.708, 38, 2, 2, 0), (6500.0, 26, 2, 4, 0))
 
 
 def write_text_rows(filepath: Path, rows: Sequence[str]) -> None:
@@ -602,14 +602,16 @@ def write_linelistfile(filepath: Path, lines: Sequence[tuple[float, int, int, in
 
 
 def write_linestatfile(filepath: Path, lines: Sequence[tuple[float, int, int, int, int]]) -> None:
-    """Write the lines as an older ARTIS writes linestat.out: one row for each column, with the wavelength in cm."""
-    write_text_rows(
-        filepath,
-        [
-            " ".join(f"{line[0] / angstroms_per_cm:.8e}" if column == 0 else str(line[column]) for line in lines)
-            for column in range(5)
-        ],
-    )
+    """Write the lines as an older ARTIS writes linestat.out: one row for each column, with the wavelength in cm.
+
+    linestat.out gives one-based level numbers, thus the function adds 1 to each zero-based level index.
+    """
+    columns = [
+        [f"{line[0] / angstroms_per_cm:.8e}" for line in lines],
+        *([str(line[column]) for line in lines] for column in (1, 2)),
+        *([str(line[column] + 1) for line in lines] for column in (3, 4)),
+    ]
+    write_text_rows(filepath, [" ".join(column) for column in columns])
 
 
 @pytest.mark.parametrize(("nlines", "suffix"), [(0, ""), (1, ""), (3, ""), (3, ".zst")])
@@ -632,15 +634,16 @@ def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, suffix: str,
     assert np.allclose(dflinelist["lambda_angstroms"], [line[0] for line in lines], rtol=0.0, atol=1e-3)
     assert dflinelist["atomic_number"].to_list() == [line[1] for line in lines]
     assert dflinelist["ion_stage"].to_list() == [line[2] for line in lines]
-    assert dflinelist["upperlevelindex"].to_list() == [line[3] - 1 for line in lines]
-    assert dflinelist["lowerlevelindex"].to_list() == [line[4] - 1 for line in lines]
+    assert dflinelist["upperlevelindex"].to_list() == [line[3] for line in lines]
+    assert dflinelist["lowerlevelindex"].to_list() == [line[4] for line in lines]
     pltest.assert_frame_equal(dflinelist, at.atomic.get_linelist_pldf(tmp_path / "linestat").collect())
 
 
 def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
     """The header row gives the order of the columns, and the reader ignores a column that it does not know."""
     (tmp_path / "linelist.out").write_text(
-        "#lambda_angstroms atomic_number ion_stage lower_level upper_level einstein_a\n13898.2958 57 3 1 2 1e8\n",
+        "#lambda_angstroms atomic_number ion_stage lowerlevelindex upperlevelindex einstein_a\n"
+        "13898.2958 57 3 0 1 1e8\n",
         encoding="utf-8",
     )
 
@@ -653,7 +656,7 @@ def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp
 
     polars infers the type of a column from the first rows, thus a column of integers stopped the read at 6500.5.
     """
-    write_linelistfile(tmp_path / "linelist.out", [*([(6500, 26, 2, 5, 1)] * 200), (6500.5, 26, 2, 5, 1)])
+    write_linelistfile(tmp_path / "linelist.out", [*([(6500, 26, 2, 4, 0)] * 200), (6500.5, 26, 2, 4, 0)])
 
     dflinelist = at.atomic.get_linelist_pldf(tmp_path).collect()
     assert dflinelist.height == 201
@@ -693,7 +696,7 @@ def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(
 @pytest.mark.parametrize(
     ("filename", "content"),
     [
-        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 2 1\n4216.708 38 2 3 1".encode()),
+        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 1 0\n4216.708 38 2 11 1".encode()),
         ("linelist.out.zst", b""),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n"),
     ],
