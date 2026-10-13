@@ -1147,15 +1147,23 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
     The file gives the levels as one-based level numbers. The frame gives zero-based level indices, as linelist.out.
     """
     print(f"Reading {filepath}")
+    nrows = len(LINELIST_SCHEMA)
     # ARTIS writes five rows also for a model with no lines, thus an empty file is not complete
     raise_if_no_final_line_end(filepath)
 
-    # a model with no lines gives five empty rows. np.loadtxt warns for a file with no values, and a change of the
-    # warning filters is not thread-safe, thus the reader does not give such a file to np.loadtxt
+    # np.loadtxt warns for a file with no values, and a change of the warning filters is not thread-safe. A parse of
+    # each row as one string needs approximately 12 per cent more memory, thus the reader opens the file again
     with zopen(filepath) as linestatfile:
         head = linestatfile.read(64)
-    if not head.strip() and len(head) < 64:
-        data = np.zeros((len(LINELIST_SCHEMA), 0))
+    if not head.strip():
+        # a model with no lines gives five empty rows
+        if head != "\n" * nrows:
+            msg = (
+                f"The file {filepath} has no values, and it does not have {nrows} empty rows. Possibly ARTIS or a"
+                " copy still writes the file, or the end of the file is missing"
+            )
+            raise ValueError(msg)
+        data = np.zeros((nrows, 0))
     else:
         # a file of one line gives a one-dimensional array without ndmin
         try:
@@ -1164,16 +1172,25 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
         except ValueError as exc:
             exc.add_note(f"while reading {filepath}")
             raise
-    if data.shape[0] != len(LINELIST_SCHEMA):
+
+    if data.shape[0] != nrows:
         msg = (
-            f"The file {filepath} has {data.shape[0]} rows and not {len(LINELIST_SCHEMA)}. Possibly ARTIS or a copy"
+            f"The file {filepath} has {data.shape[0]} rows and not {nrows}. Possibly ARTIS or a copy"
             " still writes the file, the end of the file is missing, or the file has a different format"
         )
         raise ValueError(msg)
-    # the cast to Int32 truncates a fraction with no error, thus a file with a different order of the rows would give
-    # incorrect atomic numbers, ion stages, or levels
-    if not np.array_equal(data[1:], np.round(data[1:])):
-        msg = f"The file {filepath} has a value with a fraction in rows 2 to 5. Possibly the file has another format"
+    # the cast to Int32 truncates a fraction with no error and has a limited range, thus a file with a different
+    # order of the rows would give incorrect atomic numbers, ion stages, or levels
+    integerrows = data[1:]
+    if not (
+        np.all(np.isfinite(integerrows))
+        and np.array_equal(integerrows, np.round(integerrows))
+        and np.all(np.abs(integerrows) <= np.iinfo(np.int32).max)
+    ):
+        msg = (
+            f"The file {filepath} has a value in rows 2 to 5 that is not an integer in the Int32 range. Possibly the"
+            " file has a different format"
+        )
         raise ValueError(msg)
     # the file gives the wavelength in cm, and level numbers that start at 1 in each ion
     data[0] *= angstroms_per_cm
@@ -1214,10 +1231,17 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
     raise_if_no_final_line_end(filepath)
     # polars reads a .zst or a .gz file from the path, and it needs less memory than for the decompressed bytes
     with polars_error_note(filepath), polars_source_open(filepath) as source:
+        lflines = pl.scan_csv(source, separator=" ", glob=False, infer_schema=False).rename(
+            lambda columnname: columnname.removeprefix("#")
+        )
+        if missingcolumns := [name for name in LINELIST_SCHEMA if name not in lflines.collect_schema().names()]:
+            msg = (
+                f"The header row of {filepath} has no column {', '.join(missingcolumns)}. Possibly the file has a"
+                " different format"
+            )
+            raise ValueError(msg)
         dflines = (
-            pl
-            .scan_csv(source, separator=" ", glob=False, infer_schema=False)
-            .rename(lambda columnname: columnname.removeprefix("#"))
+            lflines
             # ARTIS writes no empty line. An empty line, e.g. from an edit, gives a row of nulls and holds no line
             .filter(~pl.all_horizontal(pl.all().is_null()))
             .select([pl.col(columnname).cast(dtype) for columnname, dtype in LINELIST_SCHEMA.items()])

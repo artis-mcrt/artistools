@@ -706,13 +706,20 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
         # zstd with worker threads writes no byte of a small file until the file closes
         ("linelist.out.zst", b"", NO_LINE_END_MESSAGE),
         ("linestat.out", b"", NO_LINE_END_MESSAGE),
+        ("linestat.out", b"\n\n", "it does not have 5 empty rows"),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n", "has 3 rows and not 5"),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1", NO_LINE_END_MESSAGE),
         # the wavelength row is not first, thus the atomic numbers have a fraction
-        ("linestat.out", b"57 38\n1.38982958e-04 4.21670800e-05\n3 2\n2 3\n1 1\n", "has a value with a fraction"),
+        ("linestat.out", b"57 38\n1.38982958e-04 4.21670800e-05\n3 2\n2 3\n1 1\n", "is not an integer in the Int32"),
         # a level number of 0 gives the level index -1
         ("linestat.out", b"1.38982958e-04\n57\n3\n2\n0\n", "a level index below 0"),
         ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 1 -1\n".encode(), "a level index below 0"),
+        (
+            "linelist.out",
+            b"#lambda_angstroms atomic_number ion_stage upper_level lower_level\n13898.2958 57 3 2 1\n",
+            "has no column upperlevelindex, lowerlevelindex",
+        ),
+        ("linestat.out", b"1.38982958e-04\n57\nnan\n2\n1\n", "is not an integer in the Int32 range"),
     ],
 )
 def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
