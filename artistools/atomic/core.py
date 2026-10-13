@@ -1151,14 +1151,26 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
     raise_if_no_final_line_end(filepath)
 
     # a file of one line gives a one-dimensional array without ndmin, and a file of no line gives no row
-    with zopen(filepath) as linestatfile:
-        data = np.loadtxt(linestatfile, ndmin=2)
+    try:
+        with zopen(filepath) as linestatfile:
+            data = np.loadtxt(linestatfile, ndmin=2)
+    except ValueError as exc:
+        exc.add_note(f"while reading {filepath}")
+        raise
     if data.shape[0] == 0:
         data = np.zeros((len(LINELIST_SCHEMA), 0))
     elif data.shape[0] != len(LINELIST_SCHEMA):
         msg = (
             f"The file {filepath} has {data.shape[0]} rows and not {len(LINELIST_SCHEMA)}. Possibly ARTIS or a copy"
             " still writes the file, the end of the file is missing, or the file has a different format"
+        )
+        raise ValueError(msg)
+    # the cast to Int32 truncates a fraction with no error, thus a file with a different order of the rows would give
+    # incorrect atomic numbers, ion stages, or levels
+    if not np.array_equal(data[1:], np.round(data[1:])):
+        msg = (
+            f"The file {filepath} has a value with a fraction in rows 2 to 5, which hold integers. Possibly the file"
+            " has a different format"
         )
         raise ValueError(msg)
     # the file gives the wavelength in cm, and level numbers that start at 1 in each ion
@@ -1183,6 +1195,8 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
             pl
             .scan_csv(source, separator=" ", glob=False, infer_schema=False)
             .rename(lambda columnname: columnname.removeprefix("#"))
+            # ARTIS writes no empty line. An empty line, e.g. from an edit, gives a row of nulls and holds no line
+            .filter(~pl.all_horizontal(pl.all().is_null()))
             .select([pl.col(columnname).cast(dtype) for columnname, dtype in LINELIST_SCHEMA.items()])
             .collect(engine="streaming")
         )
@@ -1229,16 +1243,6 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         ),
     )
     textsourcename = without_compressed_extension(textfile).name
-    # an older ARTIS does not delete the file of an earlier run. A copy can change the modification times, thus only
-    # the user can tell which file belongs to the latest run. firstexisting searches the model folder before the run
-    # subfolders, thus the search for the other file includes both
-    othertextfilename = "linestat.out" if textsourcename == "linelist.out" else "linelist.out"
-    if (othertextfile := firstexisting_or_none(othertextfilename, folder=modelpath)) is not None:
-        msg = (
-            f"The model {modelpath} has both {textfile} and {othertextfile}, and only one of them belongs to the"
-            " latest run. Delete or move the file of the earlier run"
-        )
-        raise FileExistsError(msg)
     # the path, with the compression extension, identifies the text source of the cache
     textsource = str(textfile.relative_to(modelpath)) if textfile.is_relative_to(modelpath) else str(textfile)
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
@@ -1254,6 +1258,19 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     if stalereason is not None:
         if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
+
+        # an older ARTIS does not delete the file of an earlier run. A copy can change the modification times, thus
+        # only the user can tell which file belongs to the latest run. firstexisting searches the model folder before
+        # the run subfolders, thus the search for the other file includes both. The search globs the run subfolders,
+        # thus it runs only for a new cache. Limit: if the other file appears after the cache in a folder that
+        # firstexisting searches later, the cache stays current and the check does not run
+        othertextfilename = "linestat.out" if textsourcename == "linelist.out" else "linelist.out"
+        if (othertextfile := firstexisting_or_none(othertextfilename, folder=modelpath)) is not None:
+            msg = (
+                f"The model {modelpath} has both {textfile} and {othertextfile}, and only one of them belongs to the"
+                " latest run. Delete or move the file of the earlier run"
+            )
+            raise FileExistsError(msg)
 
         dflines = read_linelistfile(textfile) if textsourcename == "linelist.out" else read_linestatfile(textfile)
 

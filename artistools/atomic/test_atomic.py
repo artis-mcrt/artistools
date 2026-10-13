@@ -652,6 +652,13 @@ def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
     assert dflinelist.select("atomic_number", "upperlevelindex", "lowerlevelindex").row(0) == (57, 1, 0)
 
 
+def test_get_linelist_pldf_ignores_an_empty_line(tmp_path: Path) -> None:
+    """An edit can add an empty line. It holds no line, thus it must not give the error for a cut line."""
+    write_text_rows(tmp_path / "linelist.out", [LINELIST_HEADER, "13898.2958 57 3 1 0", "", "4216.708 38 2 2 0", ""])
+
+    assert at.atomic.get_linelist_pldf(tmp_path).collect()["atomic_number"].to_list() == [57, 38]
+
+
 def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp_path: Path) -> None:
     """ARTIS writes a wavelength such as 6500 Angstroms with no decimal point.
 
@@ -720,6 +727,13 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
         ("linestat.out", b"", ValueError, NO_LINE_END_MESSAGE),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n", ValueError, "has 3 rows and not 5"),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1", ValueError, NO_LINE_END_MESSAGE),
+        # the wavelength row is not first, thus the atomic numbers have a fraction
+        (
+            "linestat.out",
+            b"57 38\n1.38982958e-04 4.21670800e-05\n3 2\n2 3\n1 1\n",
+            ValueError,
+            "has a value with a fraction",
+        ),
     ],
 )
 def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
