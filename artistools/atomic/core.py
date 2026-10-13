@@ -18,10 +18,10 @@ from types import MappingProxyType
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-from polars import selectors as cs
 
 from artistools import misc
 from artistools.commands import get_path
+from artistools.constants import angstroms_per_cm
 from artistools.constants import angstroms_per_micron
 from artistools.constants import hc_in_ev_angstrom
 from artistools.constants import K_B_ev_per_K
@@ -31,10 +31,14 @@ from artistools.misc import polars_source
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import modelpath_cache
+from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import polars_source_open
+from artistools.misc.fileio import raise_if_cut_line
+from artistools.misc.fileio import raise_if_no_final_line_end
 from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
 from artistools.misc.remote import on_model_host
@@ -44,7 +48,17 @@ if t.TYPE_CHECKING:
 
 # The version of the line list parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type.
-LINELIST_CACHEVERSION = 1
+# Version 2 stores the zero-based upperlevelindex and lowerlevelindex in place of the one-based level numbers.
+LINELIST_CACHEVERSION = 2
+# The columns of the line list, in the order of linestat.out and linelist.out. The level indices start at 0 in each
+# ion, as the level indices of ARTIS and of get_levels.
+LINELIST_SCHEMA: t.Final = MappingProxyType({
+    "lambda_angstroms": pl.Float32,
+    "atomic_number": pl.Int32,
+    "ion_stage": pl.Int32,
+    "upperlevelindex": pl.Int32,
+    "lowerlevelindex": pl.Int32,
+})
 
 
 def parse_adata(
@@ -1127,49 +1141,148 @@ def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
     return add_ion_str_column(dfboundfree.drop(["elementindex", "ionindex"]))
 
 
-def read_linestatfile(
-    filepath: Path | str,
-) -> tuple[
-    npt.NDArray[np.floating], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32]
-]:
-    """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
-    if Path(filepath).is_dir():
-        filepath = firstexisting(
-            "linestat.out",
-            folder=filepath,
-            tryzipped=True,
-            purpose=(
-                "linestat.out gives the wavelength, the element, the ion, and the levels of each line. "
-                "The commands that identify a line read it, e.g. plotlinefluxes and "
-                "plotspectra --emissionabsorption."
-            ),
-        )
+def read_linestatfile(filepath: Path) -> pl.DataFrame:
+    """Return the line list of linestat.out from an older ARTIS. Each row of the file is one column of the list.
 
+    The file gives the levels as one-based level numbers. The frame gives zero-based level indices, as linelist.out.
+    """
     print(f"Reading {filepath}")
+    nrows = len(LINELIST_SCHEMA)
+    # ARTIS writes five rows also for a model with no lines, thus an empty file is not complete
+    raise_if_no_final_line_end(filepath)
 
-    # each of the five rows holds one value for each line. A file of one line gives a one-dimensional array without
-    # ndmin, and a file of no line gives no row
+    # a model with no lines gives empty rows, and np.loadtxt warns for a file with no values. A change of the warning
+    # filters is not thread-safe, thus the reader first looks for a value
+    nemptyrows = 0
     with zopen(filepath) as linestatfile:
-        data = np.loadtxt(linestatfile, ndmin=2)
-    if data.shape[0] < 5:
-        data = np.zeros((5, 0))
-    lambda_angstroms = data[0] * 1e8
-    nlines = len(lambda_angstroms)
+        while chunk := linestatfile.read(1 << 16):
+            if chunk.strip():
+                nemptyrows = -1
+                break
+            nemptyrows += chunk.count("\n")
+    if nemptyrows >= 0:
+        data = np.zeros((nemptyrows, 0))
+    else:
+        # an ARTIS before March 2026 with RECORD_LINESTAT adds two rows of counts at each timestep, thus the reader
+        # reads only the rows of the line list. A file of one line gives a one-dimensional array without ndmin
+        try:
+            with zopen(filepath) as linestatfile:
+                data = np.loadtxt(linestatfile, ndmin=2, max_rows=nrows)
+        except ValueError as exc:
+            exc.add_note(f"while reading {filepath}")
+            raise
 
-    atomic_numbers = data[1].astype(np.int32)
-    assert len(atomic_numbers) == nlines
+    if data.shape[0] < nrows:
+        msg = (
+            f"The file {filepath} has {data.shape[0]} rows and not {nrows}. Possibly ARTIS or a copy"
+            " still writes the file, the end of the file is missing, or the file has a different format"
+        )
+        raise ValueError(msg)
+    data = data[:nrows]
+    # the cast to Int32 truncates a fraction with no error and has a limited range, thus a file with a different
+    # order of the rows would give incorrect atomic numbers, ion stages, or levels
+    integerrows = data[1:]
+    if not (
+        np.all(np.isfinite(integerrows))
+        and np.array_equal(integerrows, np.round(integerrows))
+        and np.all(np.abs(integerrows) <= np.iinfo(np.int32).max)
+    ):
+        msg = (
+            f"The file {filepath} has a value in rows 2 to 5 that is not an integer in the Int32 range. Possibly the"
+            " file has a different format"
+        )
+        raise ValueError(msg)
+    # the file gives the wavelength in cm, and level numbers that start at 1 in each ion
+    data[0] *= angstroms_per_cm
+    data[3:5] -= 1
+    dflines = pl.DataFrame(dict(zip(LINELIST_SCHEMA, data, strict=True)), schema=dict(LINELIST_SCHEMA))
+    raise_if_line_value_not_possible(dflines, filepath)
+    return dflines
 
-    ion_stages = data[2].astype(np.int32)
-    assert len(ion_stages) == nlines
 
-    # the file adds one to the levelindex, i.e. lowest level is 1
-    upper_levels = data[3].astype(np.int32)
-    assert len(upper_levels) == nlines
+def raise_if_line_value_not_possible(dflines: pl.DataFrame, filepath: Path) -> None:
+    """Stop if a line has a value that no line can have. A file with a different format or an edit can give one."""
+    lambda_angstroms = pl.col("lambda_angstroms")
+    if dflines.select(
+        pl.any_horizontal(
+            ~lambda_angstroms.is_finite() | (lambda_angstroms <= 0),
+            pl.col("atomic_number") < 1,
+            pl.col("ion_stage") < 1,
+            pl.col("upperlevelindex") < 0,
+            pl.col("lowerlevelindex") < 0,
+        ).any()
+    ).item():
+        msg = (
+            f"The file {filepath} has a line with a wavelength that is not a number above 0, an atomic number or an"
+            " ion stage below 1, or a level index below 0. Possibly the file has a different format"
+        )
+        raise ValueError(msg)
 
-    lower_levels = data[4].astype(np.int32)
-    assert len(lower_levels) == nlines
 
-    return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+def read_linelistfile(filepath: Path) -> pl.DataFrame:
+    """Return the line list of linelist.out. Each row after the header row holds one line.
+
+    The reader selects the columns by the names in the header row, thus a later ARTIS can add a column. The
+    wavelength is the vacuum wavelength in Å. The level indices start at 0 in each ion.
+    """
+    print(f"Reading {filepath}")
+    # ARTIS writes the values with one space between them and no space at the end of a row. A different
+    # separator gives an error and not incorrect values, because each row then has more fields than the header
+    raise_if_no_final_line_end(filepath)
+    # polars reads a .zst or a .gz file from the path, and it needs less memory than for the decompressed bytes
+    with polars_error_note(filepath), polars_source_open(filepath) as source:
+        lflines = pl.scan_csv(source, separator=" ", glob=False, infer_schema=False).rename(
+            lambda columnname: columnname.removeprefix("#")
+        )
+        columnnames = lflines.collect_schema().names()
+        # a column with no name moves the names away from their values
+        if "" in columnnames:
+            msg = (
+                f"The header row of {filepath} has a column with no name: a space after '#', two spaces together, or"
+                " a space at the end. ARTIS writes '#lambda_angstroms' and one space between two names"
+            )
+            raise ValueError(msg)
+        if missingcolumns := [name for name in LINELIST_SCHEMA if name not in columnnames]:
+            msg = (
+                f"The header row of {filepath} has no column {', '.join(missingcolumns)}. Possibly the file has a"
+                " different format"
+            )
+            raise ValueError(msg)
+        try:
+            dflines = (
+                lflines
+                # ARTIS writes no row without values. Such a row, e.g. an empty line from an edit, gives only nulls
+                # and holds no line
+                .filter(~pl.all_horizontal(pl.all().is_null()))
+                .select(
+                    *[pl.col(columnname).cast(dtype) for columnname, dtype in LINELIST_SCHEMA.items()],
+                    # a missing value in a column that the reader does not select also shows a row that is not complete
+                    pl
+                    .when(pl.any_horizontal(pl.all().is_null()))
+                    .then(None)
+                    .otherwise(pl.lit(value=True))
+                    .alias("rowiscomplete"),
+                )
+                .collect(engine="streaming")
+            )
+        except pl.exceptions.InvalidOperationError as exc:
+            msg = (
+                f"The file {filepath} has a value that does not agree with the type of its column, e.g. a fraction in a"
+                " column of integers, or a carriage return at the end of a row. Possibly the file has another format"
+            )
+            raise ValueError(msg) from exc
+        except pl.exceptions.ComputeError as exc:
+            if "more fields than defined" not in str(exc):
+                raise
+            msg = (
+                f"The file {filepath} has a row with more values than the header, e.g. from two spaces together or a"
+                " space at the end of a row. ARTIS writes one space between two values"
+            )
+            raise ValueError(msg) from exc
+    raise_if_cut_line(dflines, filepath)
+    dflines = dflines.drop("rowiscomplete")
+    raise_if_line_value_not_possible(dflines, filepath)
+    return dflines
 
 
 def vacuum_to_air_angstroms(lambda_vacuum_angstroms: pl.Expr) -> pl.Expr:
@@ -1200,16 +1313,24 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     Keep the rows in lineindex order. A caller finds a line by its row position in this frame.
     The emission and the absorption type codes of a packet are lineindex values.
     Do not add a sort operation, a filter operation, or a unique operation to this function.
+
+    ARTIS writes linelist.out, and an older ARTIS writes linestat.out, into the model folder only. Thus the search
+    includes no run folder.
     """
+    readers = {"linelist.out": read_linelistfile, "linestat.out": read_linestatfile}
     textfile = firstexisting(
-        "linestat.out",
+        list(readers),
         folder=modelpath,
+        search_subfolders=False,
         purpose=(
-            "linestat.out gives the wavelength, the element, the ion, and the levels of each line. "
-            "The commands that identify a line read it, e.g. plotlinefluxes and "
-            "plotspectra --emissionabsorption."
+            "linelist.out (linestat.out from an older ARTIS version) in the model folder gives the wavelength, the "
+            "element, the ion, and the levels of each line. The commands that identify a line read it, e.g. "
+            "plotlinefluxes and plotspectra --emissionabsorption."
         ),
     )
+    # the path identifies the text source of the cache. A compression of the text keeps its modification time, thus
+    # the path has no compression extension
+    textsource = without_compressed_extension(textfile).relative_to(modelpath).as_posix()
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     textsource_mtime = textfile.stat().st_mtime
@@ -1217,46 +1338,32 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     # identity comes from before the check below, thus a fresh file that a rival process installs after
     # the check keeps its place and only the file that the check saw is replaced
     outdatedparquet = get_file_identity(parquetfile)
-    _, stalereason = read_parquet_cache_metadata(parquetfile, LINELIST_CACHEVERSION, textsource_mtime)
+    _, stalereason = read_parquet_cache_metadata(
+        parquetfile, LINELIST_CACHEVERSION, textsource_mtime, textsource=textsource
+    )
     if stalereason is not None:
         if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
 
-        lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
+        dflines = readers[without_compressed_extension(textfile).name](textfile)
 
-        pldf = (
-            pl
-            .DataFrame({
-                "lambda_angstroms": lambda_angstroms,
-                "atomic_number": atomic_numbers,
-                "ion_stage": ion_stages,
-                "upper_level": upper_levels,
-                "lower_level": lower_levels,
-            })
-            .with_row_index(name="lineindex")
-            .with_columns(cs.integer().cast(pl.Int32), cs.float().cast(pl.Float32))
-        )
+        pldf = dflines.with_row_index(name="lineindex").with_columns(pl.col("lineindex").cast(pl.Int32))
         write_parquet_atomic(
             pldf,
             parquetfile,
-            metadata={"cacheversion": str(LINELIST_CACHEVERSION), "textsource_mtime": str(textsource_mtime)},
+            metadata={
+                "cacheversion": str(LINELIST_CACHEVERSION),
+                "textsource": textsource,
+                "textsource_mtime": str(textsource_mtime),
+            },
             replaces=outdatedparquet,
         )
         print(f"Wrote {parquetfile}")
     else:
         print(f"Reading {parquetfile}")
 
-    return (
-        pl
-        .scan_parquet(parquetfile)
-        .with_columns(
-            vacuum_to_air_angstroms(pl.col("lambda_angstroms")).cast(pl.Float32).alias("lambda_angstroms_air"),
-            pl.col(pl.UInt32).cast(pl.Int32),
-            pl.col(pl.Int64).cast(pl.Int32),
-            pl.col(pl.Float64).cast(pl.Float32),
-        )
-        .with_columns(upperlevelindex=pl.col("upper_level") - 1, lowerlevelindex=pl.col("lower_level") - 1)
-        .drop(["upper_level", "lower_level"])
+    return pl.scan_parquet(parquetfile, glob=False).with_columns(
+        vacuum_to_air_angstroms(pl.col("lambda_angstroms")).cast(pl.Float32).alias("lambda_angstroms_air")
     )
 
 

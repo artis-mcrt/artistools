@@ -225,17 +225,44 @@ def zopenpl(filename: Path | str) -> t.IO[bytes] | Path:
     return polars_source(filepath)
 
 
+@cache
+def get_decompress_errors() -> tuple[type[Exception], ...]:
+    """Return the error types that the .xz and .zst modules raise for damaged data. They are not an OSError.
+
+    A Python build can lack a module. The caller evaluates this in an except clause, thus an ImportError here would
+    replace the original error. The function leaves out the type of a module that is not available.
+    """
+    errors: list[type[Exception]] = []
+    try:
+        import lzma
+
+        errors.append(lzma.LZMAError)
+    except ImportError:
+        pass
+    try:
+        if sys.version_info >= (3, 14):
+            from compression.zstd import ZstdError
+        else:
+            from zstandard import ZstdError
+
+        errors.append(ZstdError)
+    except ImportError:
+        pass
+    return tuple(errors)
+
+
 @contextlib.contextmanager
 def polars_error_note(filepath: Path) -> Generator[None]:
     """Name the file in a read error, because the parser sees a path or in-memory bytes only.
 
-    A cut compressed file gives one of three errors. polars gives an OSError for a .gz file that it reads itself. A
-    Python reader gives an EOFError, and polars gives a panic when it reads from that reader. The dispatcher reports
-    an OSError with no traceback, thus an EOFError becomes an OSError.
+    A damaged .xz or .zst file gives the error type of its module. A cut compressed file gives one of three errors.
+    polars gives an OSError for a .gz file that it reads itself. A Python reader gives an EOFError, and polars gives a
+    panic when it reads from that reader. The dispatcher reports an OSError with no traceback, thus an EOFError
+    becomes an OSError.
     """
     try:
         yield
-    except (pl.exceptions.PolarsError, pl.exceptions.PanicException, OSError) as exc:
+    except (pl.exceptions.PolarsError, pl.exceptions.PanicException, OSError, *get_decompress_errors()) as exc:
         exc.add_note(f"while reading {filepath}")
         raise
     except EOFError as exc:
@@ -347,6 +374,35 @@ def raise_if_cut_line(df: pl.DataFrame, textfilepath: Path | str) -> None:
         msg = (
             f"The file {textfilepath} has a line with fewer values than the header. Possibly ARTIS or a copy"
             " still writes the file, or the end of the file is missing"
+        )
+        raise ValueError(msg)
+
+
+def raise_if_no_final_line_end(filepath: Path) -> None:
+    """Stop if an ARTIS text file is empty or does not end with a line end.
+
+    ARTIS ends each row with a line end. A cut inside the last value gives a valid number, thus only the missing line
+    end shows the cut. A compressed file of more than one frame that is cut at the end of a frame decompresses with no
+    error, thus the function decompresses all of a compressed file. It reads the file in chunks and keeps only the
+    last byte, because a line list can have tens of millions of lines. The reader then decompresses the file again.
+    """
+    lastbyte = b""
+    # zstandard reads an empty .zst file as no data, but compression.zstd of Python 3.14 raises an EOFError. Thus the
+    # function does not open an empty file, and all versions give the same error
+    if filepath.stat().st_size > 0:
+        if filepath.suffix in COMPRESSED_EXTENSIONS:
+            with polars_error_note(filepath), get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+                while chunk := fin.read(1 << 24):
+                    lastbyte = chunk[-1:]
+        else:
+            with filepath.open("rb") as fin:
+                fin.seek(-1, os.SEEK_END)
+                lastbyte = fin.read(1)
+
+    if lastbyte != b"\n":
+        msg = (
+            f"The file {filepath} is empty or does not end with a line end. Possibly ARTIS or a copy still writes the"
+            " file, or the end of the file is missing"
         )
         raise ValueError(msg)
 
@@ -1183,7 +1239,12 @@ def parquet_is_readable(parquetfilepath: Path) -> bool:
 
 
 def read_parquet_cache_metadata(
-    parquetfilepath: Path, cacheversion: int, textsource_mtime: float | None, *, accept_unstamped: bool = False
+    parquetfilepath: Path,
+    cacheversion: int,
+    textsource_mtime: float | None,
+    *,
+    accept_unstamped: bool = False,
+    textsource: str | None = None,
 ) -> tuple[dict[str, str] | None, str | None]:
     """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
@@ -1205,6 +1266,11 @@ def read_parquet_cache_metadata(
     model or the line list, keeps the strict rule, because a stale one there gives wrong numbers for
     no gain.
 
+    A writer that can read more than one text file stamps the path of the text file as "textsource". The path is
+    relative to the model folder and has no compression extension, e.g. "linelist.out", because a compression keeps
+    the modification time. Give the same path to such a reader, because two files can have the same modification
+    time. A cache without the stamp is then stale.
+
     A textsource_mtime of None shows that the text source is absent. The function then compares no
     modification times, but the cache format version and the state of the file still apply.
     """
@@ -1221,6 +1287,15 @@ def read_parquet_cache_metadata(
             f"the cache format version is {foundversion}, but this artistools version writes {cacheversion}"
             if foundversion is not None
             else "the file has no cacheversion stamp, thus an artistools version before the stamp wrote it"
+        )
+
+    # accept_unstamped does not apply to the text source, thus this check comes before the return for an unstamped
+    # cache
+    if textsource is not None and (foundtextsource := pqmetadata.get("textsource")) != textsource:
+        return None, (
+            f"the cache is from {foundtextsource}, but the text source is now {textsource}"
+            if foundtextsource is not None
+            else "the cache has no record of its text source"
         )
 
     foundmtime = pqmetadata.get("textsource_mtime")

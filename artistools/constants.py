@@ -26,6 +26,7 @@ Mbol_sun = 4.74  # Absolute bolometric magnitude of the Sun
 
 day_to_s = 86400.0  # Day [s]
 
+angstroms_per_cm = 1e8  # Centimetre [Angstrom]
 angstroms_per_micron = 1e4  # Micrometre [Angstrom]
 
 # The refractive index of standard air is (n - 1) * 1e8 = A + B / (C - sigma^2) + D / (E - sigma^2). The vacuum
