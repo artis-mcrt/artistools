@@ -1167,9 +1167,9 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
         raise ValueError(msg)
     # the cast to Int32 truncates a fraction with no error, thus a file with a different order of the rows would give
     # incorrect atomic numbers, ion stages, or levels
-    if not np.array_equal(data[1:], np.round(data[1:])):
+    if not (np.array_equal(data[1:], np.round(data[1:])) and np.all(data[1:] >= 1)):
         msg = (
-            f"The file {filepath} has a value with a fraction in rows 2 to 5, which hold integers. Possibly the file"
+            f"The file {filepath} has a value in rows 2 to 5 that is not an integer of 1 or more. Possibly the file"
             " has a different format"
         )
         raise ValueError(msg)
@@ -1232,6 +1232,10 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     Keep the rows in lineindex order. A caller finds a line by its row position in this frame.
     The emission and the absorption type codes of a packet are lineindex values.
     Do not add a sort operation, a filter operation, or a unique operation to this function.
+
+    The function stops if the model has both linelist.out and linestat.out. A current cache needs no glob of the run
+    subfolders, thus the check then includes only the model folder and the folder of the file. If a run subfolder
+    gets the other file after the cache, the function does not find it.
     """
     textfile = firstexisting(
         ["linelist.out", "linestat.out"],
@@ -1244,7 +1248,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     )
     textsourcename = without_compressed_extension(textfile).name
     # the path, with the compression extension, identifies the text source of the cache
-    textsource = str(textfile.relative_to(modelpath)) if textfile.is_relative_to(modelpath) else str(textfile)
+    textsource = (textfile.relative_to(modelpath) if textfile.is_relative_to(modelpath) else textfile).as_posix()
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     textsource_mtime = textfile.stat().st_mtime
@@ -1255,22 +1259,21 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     _, stalereason = read_parquet_cache_metadata(
         parquetfile, LINELIST_CACHEVERSION, textsource_mtime, textsource=textsource
     )
-    if stalereason is not None:
-        if outdatedparquet is not None:
-            print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
-
-        # an older ARTIS does not delete the file of an earlier run. A copy can change the modification times, thus
-        # only the user can tell which file belongs to the latest run. firstexisting searches the model folder before
-        # the run subfolders, thus the search for the other file includes both. The search globs the run subfolders,
-        # thus it runs only for a new cache. Limit: if the other file appears after the cache in a folder that
-        # firstexisting searches later, the cache stays current and the check does not run
-        othertextfilename = "linestat.out" if textsourcename == "linelist.out" else "linelist.out"
-        if (othertextfile := firstexisting_or_none(othertextfilename, folder=modelpath)) is not None:
+    # an older ARTIS does not delete the file of an earlier run, and only the user can tell which file is current
+    othertextfilename = "linestat.out" if textsourcename == "linelist.out" else "linelist.out"
+    searchsubfolders = stalereason is not None
+    for folder in [Path(modelpath)] if searchsubfolders else dict.fromkeys([Path(modelpath), textfile.parent]):
+        othertextfile = firstexisting_or_none(othertextfilename, folder=folder, search_subfolders=searchsubfolders)
+        if othertextfile is not None:
             msg = (
                 f"The model {modelpath} has both {textfile} and {othertextfile}, and only one of them belongs to the"
                 " latest run. Delete or move the file of the earlier run"
             )
             raise FileExistsError(msg)
+
+    if stalereason is not None:
+        if outdatedparquet is not None:
+            print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
 
         dflines = read_linelistfile(textfile) if textsourcename == "linelist.out" else read_linestatfile(textfile)
 

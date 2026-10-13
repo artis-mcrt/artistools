@@ -723,7 +723,7 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
             "has a line with fewer values than the header",
         ),
         # zstd with worker threads writes no byte of a small file until the file closes
-        ("linelist.out.zst", b"", OSError, "ends before the end of its compressed data"),
+        ("linelist.out.zst", b"", ValueError, NO_LINE_END_MESSAGE),
         ("linestat.out", b"", ValueError, NO_LINE_END_MESSAGE),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n", ValueError, "has 3 rows and not 5"),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1", ValueError, NO_LINE_END_MESSAGE),
@@ -732,8 +732,10 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
             "linestat.out",
             b"57 38\n1.38982958e-04 4.21670800e-05\n3 2\n2 3\n1 1\n",
             ValueError,
-            "has a value with a fraction",
+            "is not an integer of 1 or more",
         ),
+        # a level number of 0 gives the level index -1
+        ("linestat.out", b"1.38982958e-04\n57\n3\n2\n0\n", ValueError, "is not an integer of 1 or more"),
     ],
 )
 def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(

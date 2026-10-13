@@ -360,13 +360,15 @@ def raise_if_no_final_line_end(filepath: Path) -> None:
     last byte, because a line list can have tens of millions of lines. The reader then decompresses the file again.
     """
     lastbyte = b""
-    if filepath.suffix in COMPRESSED_EXTENSIONS:
-        with polars_error_note(filepath), get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
-            while chunk := fin.read(1 << 24):
-                lastbyte = chunk[-1:]
-    else:
-        with filepath.open("rb") as fin:
-            if fin.seek(0, os.SEEK_END) > 0:
+    # zstandard reads an empty .zst file as no data, but compression.zstd of Python 3.14 raises an EOFError. Thus the
+    # function does not open an empty file, and all versions give the same error
+    if filepath.stat().st_size > 0:
+        if filepath.suffix in COMPRESSED_EXTENSIONS:
+            with polars_error_note(filepath), get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
+                while chunk := fin.read(1 << 24):
+                    lastbyte = chunk[-1:]
+        else:
+            with filepath.open("rb") as fin:
                 fin.seek(-1, os.SEEK_END)
                 lastbyte = fin.read(1)
 
