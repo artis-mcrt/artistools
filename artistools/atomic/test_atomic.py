@@ -661,14 +661,20 @@ def test_get_linelist_pldf_reads_the_newer_file(newerfilename: str, tmp_path: Pa
     assert at.atomic.get_linelist_pldf(tmp_path).collect().height == (3 if newerfilename == "linelist.out" else 1)
 
 
-def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(tmp_path: Path) -> None:
-    """A cache of linestat.out is not current for a linelist.out, also if the two files have the same time stamp."""
-    write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
+@pytest.mark.parametrize(
+    ("firstfilename", "secondfilename"), [("linestat.out", "linelist.out"), ("linelist.out.zst", "linelist.out")]
+)
+def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(
+    firstfilename: str, secondfilename: str, tmp_path: Path
+) -> None:
+    """A cache of one text file is not current for a different file, also if the two files have the same time stamp."""
+    writefunctions = {"linestat.out": write_linestatfile, "linelist.out": write_linelistfile}
+    writefunctions[firstfilename.removesuffix(".zst")](tmp_path / firstfilename, TEST_LINES[:1])
     assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 1
-    linestatmtime = (tmp_path / "linestat.out").stat().st_mtime
-    (tmp_path / "linestat.out").unlink()
-    write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
-    os.utime(tmp_path / "linelist.out", (linestatmtime, linestatmtime))
+    firstmtime = (tmp_path / firstfilename).stat().st_mtime
+    (tmp_path / firstfilename).unlink()
+    writefunctions[secondfilename](tmp_path / secondfilename, TEST_LINES)
+    os.utime(tmp_path / secondfilename, (firstmtime, firstmtime))
 
     assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 3
 
@@ -680,6 +686,7 @@ def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(tmp_path: Path) -
         ("linelist.out", b""),
         ("linelist.out.zst", b""),
         ("linelist.out", b"#lambda_ang"),
+        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n"),
     ],
 )
 def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(filename: str, content: bytes, tmp_path: Path) -> None:

@@ -18,7 +18,6 @@ from types import MappingProxyType
 import numpy as np
 import numpy.typing as npt
 import polars as pl
-from polars import selectors as cs
 
 from artistools import misc
 from artistools.commands import get_path
@@ -1146,8 +1145,14 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
     # a file of one line gives a one-dimensional array without ndmin, and a file of no line gives no row
     with zopen(filepath) as linestatfile:
         data = np.loadtxt(linestatfile, ndmin=2)
-    if data.shape[0] < len(LINELIST_SCHEMA):
+    if data.shape[0] == 0:
         data = np.zeros((len(LINELIST_SCHEMA), 0))
+    elif data.shape[0] < len(LINELIST_SCHEMA):
+        msg = (
+            f"The file {filepath} has {data.shape[0]} of the {len(LINELIST_SCHEMA)} rows. Possibly ARTIS or a copy"
+            " still writes the file, or the end of the file is missing"
+        )
+        raise ValueError(msg)
     # the file gives the wavelength in cm
     data[0] *= angstroms_per_cm
     return pl.DataFrame(dict(zip(LINELIST_SCHEMA, data, strict=True)), schema=dict(LINELIST_SCHEMA))
@@ -1222,7 +1227,14 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
             ),
         )
     )
+    if len(foundtextfiles) > 1:
+        print(
+            f"Warning: {modelpath} has both {' and '.join(str(foundfile) for foundfile in foundtextfiles)}."
+            f" artistools reads the newer file {textfile}"
+        )
     textsourcename = without_compressed_extension(textfile).name
+    # the path, with the compression extension, identifies the text source of the cache
+    textsource = str(textfile.relative_to(modelpath)) if textfile.is_relative_to(modelpath) else str(textfile)
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     textsource_mtime = textfile.stat().st_mtime
@@ -1231,24 +1243,25 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     # the check keeps its place and only the file that the check saw is replaced
     outdatedparquet = get_file_identity(parquetfile)
     pqmetadata, stalereason = read_parquet_cache_metadata(parquetfile, LINELIST_CACHEVERSION, textsource_mtime)
-    # an artistools version before linelist.out read only linestat.out, thus a cache without the name is from it
-    if pqmetadata is not None and (cachetextsource := pqmetadata.get("textsource", "linestat.out")) != textsourcename:
-        stalereason = f"the cache is from {cachetextsource}, but the text source is now {textsourcename}"
+    if pqmetadata is not None and (cachetextsource := pqmetadata.get("textsource")) != textsource:
+        stalereason = (
+            f"the cache is from {cachetextsource}, but the text source is now {textsource}"
+            if cachetextsource is not None
+            else "the cache has no record of its text source"
+        )
     if stalereason is not None:
         if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
 
         dflines = read_linelistfile(textfile) if textsourcename == "linelist.out" else read_linestatfile(textfile)
 
-        pldf = dflines.with_row_index(name="lineindex").with_columns(
-            cs.integer().cast(pl.Int32), cs.float().cast(pl.Float32)
-        )
+        pldf = dflines.with_row_index(name="lineindex").with_columns(pl.col("lineindex").cast(pl.Int32))
         write_parquet_atomic(
             pldf,
             parquetfile,
             metadata={
                 "cacheversion": str(LINELIST_CACHEVERSION),
-                "textsource": textsourcename,
+                "textsource": textsource,
                 "textsource_mtime": str(textsource_mtime),
             },
             replaces=outdatedparquet,
