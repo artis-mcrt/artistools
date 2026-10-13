@@ -20,8 +20,8 @@ from artistools.constants import amu_g
 from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
+from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps_table
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
-from artistools.inputmodel.rprocess_from_trajectory import scan_trajectory_network_data
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
@@ -218,27 +218,25 @@ def process_trajectory(
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
     try:
-        lztrajectory = scan_trajectory_network_data(traj_root, traj_ID)
+        dfheatingthermo = get_network_timesteps_table(traj_root, traj_ID, ("hbeta", "htot", "Qdot")).rename({
+            "time_s": "timesec"
+        })
     except FileNotFoundError:
         print_warning(f"trajectory {traj_ID} has no network data, thus the sums leave it out")
         return None
 
-    dfheatingthermo = (
-        lztrajectory
-        .filter(pl.col("time_s").is_not_null())
-        .sort("nstep")
-        .select("nstep", pl.col("time_s").alias("timesec"), "hbeta", "htot", "Qdot")
-        .collect()
-    )
-
-    # get nearest network time to each plotted time
+    # get nearest network time to each plotted time. A plot time after the last network time has no row
     arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / day_to_s
-    networktimestepindices = [
-        int(dfheatingthermo["nstep"].item(int(np.abs(arr_networktimedays - plottimedays).argmin())))
-        if plottimedays < arr_networktimedays[-1]
-        else -1
-        for plottimedays in arr_t_day
-    ]
+    arr_heatingrow = np.array(
+        [
+            int(np.abs(arr_networktimedays - plottimedays).argmin()) if plottimedays < arr_networktimedays[-1] else -1
+            for plottimedays in arr_t_day
+        ],
+        dtype=np.int64,
+    )
+    hasnetworkstep = arr_heatingrow >= 0
+    arr_nstep = dfheatingthermo["nstep"].to_numpy()
+    arr_networktimestepindex = np.where(hasnetworkstep, arr_nstep[np.where(hasnetworkstep, arr_heatingrow, 0)], -1)
 
     decay_powers: dict[str, npt.NDArray[np.floating]]
     decay_powers = {
@@ -253,10 +251,8 @@ def process_trajectory(
             "abundweighted_Qdot",
         )
     }
-    arr_networktimestepindex = np.array(networktimestepindices, dtype=np.int64)
-    hasnetworkstep = arr_networktimestepindex >= 1
     # Python evaluates both arguments of np.where before the mask, thus a plot time with no network step reads row 0
-    arr_heatingrow = np.where(hasnetworkstep, arr_networktimestepindex - 1, 0)
+    arr_heatingrow = np.where(hasnetworkstep, arr_heatingrow, 0)
     decay_powers |= {
         col: np.where(hasnetworkstep, dfheatingthermo[col].to_numpy()[arr_heatingrow], 0.0) * traj_mass_grams
         for col in ("hbeta", "htot", "Qdot")
@@ -325,7 +321,7 @@ def process_trajectory(
             # store all nuclide contributions in detail
             plottimesteps_of_nstep: dict[int, list[int]] = {}
             for plottimestep in plottimesteps_with_network.tolist():
-                plottimesteps_of_nstep.setdefault(networktimestepindices[plottimestep], []).append(plottimestep)
+                plottimesteps_of_nstep.setdefault(int(arr_networktimestepindex[plottimestep]), []).append(plottimestep)
             grouped = pldf_all.group_by("nstep", "A", "Z").agg(
                 pl.sum("eps_elec").alias("eps_elec"),
                 pl.sum("eps_gamma").alias("eps_gamma"),

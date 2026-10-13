@@ -25,8 +25,8 @@ from artistools.inputmodel.modelfromhydro import get_merger_time_geomunits
 from artistools.inputmodel.rprocess_from_trajectory import check_traj_time_matches
 from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
+from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps_table
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
-from artistools.inputmodel.rprocess_from_trajectory import scan_trajectory_network_data
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -462,13 +462,7 @@ def get_particledata(
 
         particledata = pl.DataFrame({"particleid": [particleid]}, schema={"particleid": pl.Int32})
         heatcols = ["hbeta", "halpha", "hspof"]
-        dfheating = (
-            scan_trajectory_network_data(Path(traj_root), particleid)
-            .filter(pl.col("time_s").is_not_null())
-            .sort("nstep")
-            .select("nstep", "time_s", *heatcols)
-            .collect()
-        )
+        dfheating = get_network_timesteps_table(Path(traj_root), particleid, tuple(heatcols))
 
         nstep_timesec: dict[int, float] = dict(dfheating.select("nstep", "time_s").iter_rows())
 
