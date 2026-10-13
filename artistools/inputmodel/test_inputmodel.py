@@ -181,6 +181,18 @@ def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_pa
     pltest.assert_frame_equal(scan_trajectory_network_data(traj_root, 114511).collect(), dftrajectory)
     assert pl.read_parquet_metadata(parquetpath)["textsource"] == "114511"
 
+    # a change of a file in the folder does not change the time of the folder, but it makes the cache stale
+    import os
+
+    heatingpath = folder / "heating.dat"
+    with heatingpath.open("a", encoding="utf-8") as heatingfile:
+        heatingfile.write("   999  1.000000E+19  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0\n")
+    latertime = heatingpath.stat().st_mtime + 100.0
+    os.utime(heatingpath, (latertime, latertime))
+    dfchanged = scan_trajectory_network_data(traj_root, 114511).collect()
+    assert dfchanged.height == dftrajectory.height + 1
+    assert dfchanged["nstep"].to_list()[-1] == 999
+
 
 def test_describeinputmodel(capsys: pytest.CaptureFixture[str]) -> None:
     at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[modelpath], isotopes=True)
@@ -718,6 +730,9 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
     assert dfheating["nstep"].to_list() == [1, 2, 3]
     dfthermo = at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 7, ("Qdot",))
     assert dfthermo["nstep"].to_list() == [1, 2]
+    # the search for the closest timestep must not see timestep 3, because it has no abundance file
+    assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 7)["nstep"].to_list() == [1, 2]
+    assert at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(tmp_path, 7, [1.0e5]) == [2]
     with pytest.raises(ValueError, match="no column halpha"):
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 7, ("halpha",))
 
@@ -756,12 +771,21 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(
     _, timesecs = reader(tmp_path / "good", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
 
-    write_trajectory_archive(tmp_path / "bad", 1, {"nz-plane00001": goodfile, "nz-plane00002": "\n" + abundlines})
+    # a network run that stopped can leave a file with no header, and a file with a cut nuclide line
+    write_trajectory_archive(
+        tmp_path / "bad",
+        1,
+        {"nz-plane00001": goodfile, "nz-plane00002": "\n" + abundlines, "nz-plane00003": goodfile + "  3   4 -1.2E+"},
+    )
     _, timesecs = reader(tmp_path / "bad", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
-    assert "nz-plane00002 in 1.tar.xz" in capsys.readouterr().err
+    warnings = capsys.readouterr().err
+    assert "nz-plane00002 in 1.tar.xz" in warnings
+    assert "nz-plane00003 in 1.tar.xz" in warnings
     with pytest.raises(KeyError, match="nz-plane00002"):
         reader(tmp_path / "bad", 1, ["nz-plane00001", "nz-plane00002"])
+    with pytest.raises(KeyError, match="nz-plane00003"):
+        reader(tmp_path / "bad", 1, ["nz-plane00003"])
 
 
 def test_get_trajectory_abund_q(trajectory_copy: Path) -> None:

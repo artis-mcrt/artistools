@@ -130,8 +130,8 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
     larger than the time to parse one file of 400 lines. The file nz-plane00200 is timestep 200. A named file,
     e.g. tday_nz-plane, has no timestep, because its time differs from the time of the timestep in its header.
 
-    The function leaves out a file with a bad header line, e.g. a blank line from a network run that stopped. A
-    warning names the file and sourcename. The other files of the trajectory stay readable.
+    The function leaves out a file with a bad header line or a corrupt nuclide line, e.g. from a network run
+    that stopped. A warning names the file and sourcename. The other files of the trajectory stay readable.
     """
     filenames: list[str] = []
     lines: list[str] = []
@@ -155,22 +155,35 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
         ),
         lzlines
         .filter((pl.col("linenumber") > 0) & (pl.col("line").str.strip_chars().str.len_chars() > 0))
+        .with_columns(
+            pl.col("line").str.slice(0, 4).str.strip_chars().cast(pl.Int32, strict=False).alias("N"),
+            pl.col("line").str.slice(4, 4).str.strip_chars().cast(pl.Int32, strict=False).alias("Z"),
+            pl.col("line").str.slice(8, 13).str.strip_chars().cast(pl.Float64, strict=False).alias("log10abund"),
+        )
         .group_by("abundancefile", maintain_order=True)
         .agg(
-            pl.col("line").str.slice(0, 4).str.strip_chars().cast(pl.Int32).alias("N"),
-            pl.col("line").str.slice(4, 4).str.strip_chars().cast(pl.Int32).alias("Z"),
-            pl.col("line").str.slice(8, 13).str.strip_chars().cast(pl.Float64).alias("log10abund"),
+            pl.col("N"),
+            pl.col("Z"),
+            pl.col("log10abund"),
+            hascorruptline=pl.any_horizontal(pl.col("N", "Z", "log10abund").is_null()).any(),
         ),
     ])
 
     # a blank header line gives no fields, and a file without lines gives no header row
-    dfheaders = dfheaders.filter(pl.col("fieldcount") == 6).drop("fieldcount")
+    dfheaders = (
+        dfheaders
+        .join(dfnuclides.select("abundancefile", "hascorruptline"), on="abundancefile", how="left")
+        .filter((pl.col("fieldcount") == 6) & ~pl.col("hascorruptline").fill_null(value=False))
+        .drop("fieldcount", "hascorruptline")
+    )
     goodfiles = set(dfheaders["abundancefile"].to_list())
     for filename in abundancetexts:
         if filename not in goodfiles:
-            print_warning(f"Cannot read the header line of {filename} in {sourcename}. The cache leaves out this file.")
+            print_warning(f"Cannot read {filename} in {sourcename}. The cache leaves out this file.")
 
-    return dfheaders.join(dfnuclides, on="abundancefile", how="left", maintain_order="left").with_columns(
+    return (
+        dfheaders.join(dfnuclides.drop("hascorruptline"), on="abundancefile", how="left", maintain_order="left")
+    ).with_columns(
         nstep=pl.col("abundancefile").str.extract(r"^nz-plane(\d+)$").cast(pl.Int32),
         N=pl.col("N").fill_null(pl.lit([], dtype=pl.List(pl.Int32))),
         Z=pl.col("Z").fill_null(pl.lit([], dtype=pl.List(pl.Int32))),
@@ -266,6 +279,19 @@ def get_trajectory_source_path(traj_root: Path, particleid: int) -> Path | None:
     return next((folder for folder in folders if (folder / "Run_rprocess").is_dir()), None)
 
 
+def get_trajectory_source_mtime(sourcepath: Path) -> float:
+    """Return the modification time of an archive, or the latest time of an extracted folder and its files.
+
+    A change of a file in the folder does not change the time of the folder, and a new file does not change the
+    time of the other files. Thus the latest of all these times shows both.
+    """
+    if not sourcepath.is_dir():
+        return sourcepath.stat().st_mtime
+
+    folder = sourcepath / "Run_rprocess"
+    return max(path.stat().st_mtime for path in (folder, *folder.iterdir()) if path.is_dir() or path.is_file())
+
+
 def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFrame:
     """Scan the network data of a trajectory from its parquet cache, see read_trajectory_network_data.
 
@@ -283,12 +309,7 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
     """
     parquetpath = traj_root / "parquetcaches" / f"{particleid}.networktimesteps.parquet"
     sourcepath = get_trajectory_source_path(traj_root, particleid)
-    # the modification time of an extracted folder changes when a process adds a file to it
-    textsource_mtime = (
-        (sourcepath / "Run_rprocess" if sourcepath.is_dir() else sourcepath).stat().st_mtime
-        if sourcepath is not None
-        else None
-    )
+    textsource_mtime = get_trajectory_source_mtime(sourcepath) if sourcepath is not None else None
     # the identity of the cache that a rewrite replaces, from the same moment as the staleness check
     outdatedparquet = get_file_identity(parquetpath)
     pqmetadata, reason = read_parquet_cache_metadata(
@@ -348,8 +369,12 @@ def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple
 
 
 def get_traj_network_timesteps(traj_root: Path | str, particleid: int) -> pl.DataFrame:
-    """Return the network timestep numbers and times [s] of one trajectory's energy_thermo.dat."""
-    return get_network_timesteps_table(Path(traj_root), particleid, ()).select(
+    """Return the network timestep numbers and times [s] of one trajectory's energy_thermo.dat.
+
+    A timestep that heating.dat alone holds has no abundance file, thus the search for the closest timestep
+    must not see it. The column Qdot shows a timestep of energy_thermo.dat.
+    """
+    return get_network_timesteps_table(Path(traj_root), particleid, ("Qdot",)).select(
         pl.col("nstep"), pl.col("time_s").cast(pl.Float32).alias("timesec")
     )
 
