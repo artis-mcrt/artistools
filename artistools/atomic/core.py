@@ -22,6 +22,7 @@ from polars import selectors as cs
 
 from artistools import misc
 from artistools.commands import get_path
+from artistools.constants import angstroms_per_cm
 from artistools.constants import angstroms_per_micron
 from artistools.constants import hc_in_ev_angstrom
 from artistools.constants import K_B_ev_per_K
@@ -31,10 +32,13 @@ from artistools.misc import polars_source
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import modelpath_cache
+from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import polars_source_open
+from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
 from artistools.misc.remote import on_model_host
@@ -45,6 +49,14 @@ if t.TYPE_CHECKING:
 # The version of the line list parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type.
 LINELIST_CACHEVERSION = 1
+# The columns of the line list, in the order of linestat.out and linelist.out
+LINELIST_SCHEMA: t.Final = MappingProxyType({
+    "lambda_angstroms": pl.Float32,
+    "atomic_number": pl.Int32,
+    "ion_stage": pl.Int32,
+    "upper_level": pl.Int32,
+    "lower_level": pl.Int32,
+})
 
 
 def parse_adata(
@@ -1127,72 +1139,37 @@ def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
     return add_ion_str_column(dfboundfree.drop(["elementindex", "ionindex"]))
 
 
-def read_linestatfile(
-    filepath: Path | str,
-) -> tuple[
-    npt.NDArray[np.floating], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32], npt.NDArray[np.int32]
-]:
-    """Load linestat.out containing transitions wavelength, element, ion, upper and lower levels."""
-    if Path(filepath).is_dir():
-        filepath = firstexisting(
-            "linestat.out",
-            folder=filepath,
-            tryzipped=True,
-            purpose=(
-                "linestat.out gives the wavelength, the element, the ion, and the levels of each line. "
-                "The commands that identify a line read it, e.g. plotlinefluxes and "
-                "plotspectra --emissionabsorption."
-            ),
-        )
-
+def read_linestatfile(filepath: Path) -> pl.DataFrame:
+    """Return the line list of linestat.out from an older ARTIS. Each row of the file is one column of the list."""
     print(f"Reading {filepath}")
 
-    # each of the five rows holds one value for each line. A file of one line gives a one-dimensional array without
-    # ndmin, and a file of no line gives no row
+    # a file of one line gives a one-dimensional array without ndmin, and a file of no line gives no row
     with zopen(filepath) as linestatfile:
         data = np.loadtxt(linestatfile, ndmin=2)
-    if data.shape[0] < 5:
-        data = np.zeros((5, 0))
-    lambda_angstroms = data[0] * 1e8
-    nlines = len(lambda_angstroms)
-
-    atomic_numbers = data[1].astype(np.int32)
-    assert len(atomic_numbers) == nlines
-
-    ion_stages = data[2].astype(np.int32)
-    assert len(ion_stages) == nlines
-
-    # the file adds one to the levelindex, i.e. lowest level is 1
-    upper_levels = data[3].astype(np.int32)
-    assert len(upper_levels) == nlines
-
-    lower_levels = data[4].astype(np.int32)
-    assert len(lower_levels) == nlines
-
-    return lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels
+    if data.shape[0] < len(LINELIST_SCHEMA):
+        data = np.zeros((len(LINELIST_SCHEMA), 0))
+    # the file gives the wavelength in cm
+    data[0] *= angstroms_per_cm
+    return pl.DataFrame(dict(zip(LINELIST_SCHEMA, data, strict=True)), schema=dict(LINELIST_SCHEMA))
 
 
-def read_linelistfile(filepath: Path | str) -> pl.DataFrame:
-    """Return the lines of linelist.out. Each row is one line, with the vacuum wavelength in Å.
+def read_linelistfile(filepath: Path) -> pl.DataFrame:
+    """Return the line list of linelist.out. Each row after the header row holds one line.
 
-    A newer ARTIS writes linelist.out in place of linestat.out. The header line starts with "#". The schema
-    gives the column names, thus the reader does not depend on the text of the header.
+    The reader selects the columns by the names in the header row, thus a later ARTIS can add a column. The
+    wavelength is the vacuum wavelength in Å.
     """
     print(f"Reading {filepath}")
-    with polars_source_open(filepath) as source:
-        return pl.read_csv(
-            source,
-            separator=" ",
-            has_header=False,
-            comment_prefix="#",
-            schema={
-                "lambda_angstroms": pl.Float64,
-                "atomic_number": pl.Int32,
-                "ion_stage": pl.Int32,
-                "upper_level": pl.Int32,
-                "lower_level": pl.Int32,
-            },
+    with polars_error_note(filepath), polars_source_open(filepath) as source:
+        dflines = (
+            pl
+            .scan_csv(source, separator=" ", glob=False)
+            .rename(lambda columnname: columnname.removeprefix("#"))
+            .select([pl.col(columnname).cast(dtype) for columnname, dtype in LINELIST_SCHEMA.items()])
+            .collect(engine="streaming")
         )
+    raise_if_cut_line(dflines, filepath)
+    return dflines
 
 
 def vacuum_to_air_angstroms(lambda_vacuum_angstroms: pl.Expr) -> pl.Expr:
@@ -1224,15 +1201,28 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     The emission and the absorption type codes of a packet are lineindex values.
     Do not add a sort operation, a filter operation, or a unique operation to this function.
     """
-    textfile = firstexisting(
-        ["linelist.out", "linestat.out"],
-        folder=modelpath,
-        purpose=(
-            "linelist.out (linestat.out from an older ARTIS version) gives the wavelength, the element, the ion, "
-            "and the levels of each line. The commands that identify a line read it, e.g. plotlinefluxes and "
-            "plotspectra --emissionabsorption."
-        ),
+    textfilenames = ["linelist.out", "linestat.out"]
+    # an older ARTIS does not delete the file of an earlier run in the same folder, thus the newer file belongs to
+    # the latest run
+    foundtextfiles = [
+        foundfile
+        for textfilename in textfilenames
+        if (foundfile := firstexisting_or_none(textfilename, folder=modelpath)) is not None
+    ]
+    textfile = (
+        max(foundtextfiles, key=lambda foundfile: foundfile.stat().st_mtime)
+        if foundtextfiles
+        else firstexisting(
+            textfilenames,
+            folder=modelpath,
+            purpose=(
+                "linelist.out (linestat.out from an older ARTIS version) gives the wavelength, the element, the "
+                "ion, and the levels of each line. The commands that identify a line read it, e.g. plotlinefluxes "
+                "and plotspectra --emissionabsorption."
+            ),
+        )
     )
+    textsourcename = without_compressed_extension(textfile).name
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     textsource_mtime = textfile.stat().st_mtime
@@ -1240,22 +1230,15 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     # identity comes from before the check below, thus a fresh file that a rival process installs after
     # the check keeps its place and only the file that the check saw is replaced
     outdatedparquet = get_file_identity(parquetfile)
-    _, stalereason = read_parquet_cache_metadata(parquetfile, LINELIST_CACHEVERSION, textsource_mtime)
+    pqmetadata, stalereason = read_parquet_cache_metadata(parquetfile, LINELIST_CACHEVERSION, textsource_mtime)
+    # an artistools version before linelist.out read only linestat.out, thus a cache without the name is from it
+    if pqmetadata is not None and (cachetextsource := pqmetadata.get("textsource", "linestat.out")) != textsourcename:
+        stalereason = f"the cache is from {cachetextsource}, but the text source is now {textsourcename}"
     if stalereason is not None:
         if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
 
-        if textfile.name.startswith("linelist.out"):
-            dflines = read_linelistfile(textfile)
-        else:
-            lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(textfile)
-            dflines = pl.DataFrame({
-                "lambda_angstroms": lambda_angstroms,
-                "atomic_number": atomic_numbers,
-                "ion_stage": ion_stages,
-                "upper_level": upper_levels,
-                "lower_level": lower_levels,
-            })
+        dflines = read_linelistfile(textfile) if textsourcename == "linelist.out" else read_linestatfile(textfile)
 
         pldf = dflines.with_row_index(name="lineindex").with_columns(
             cs.integer().cast(pl.Int32), cs.float().cast(pl.Float32)
@@ -1263,7 +1246,11 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         write_parquet_atomic(
             pldf,
             parquetfile,
-            metadata={"cacheversion": str(LINELIST_CACHEVERSION), "textsource_mtime": str(textsource_mtime)},
+            metadata={
+                "cacheversion": str(LINELIST_CACHEVERSION),
+                "textsource": textsourcename,
+                "textsource_mtime": str(textsource_mtime),
+            },
             replaces=outdatedparquet,
         )
         print(f"Wrote {parquetfile}")
@@ -1272,7 +1259,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
 
     return (
         pl
-        .scan_parquet(parquetfile)
+        .scan_parquet(parquetfile, glob=False)
         .with_columns(
             vacuum_to_air_angstroms(pl.col("lambda_angstroms")).cast(pl.Float32).alias("lambda_angstroms_air"),
             pl.col(pl.UInt32).cast(pl.Int32),

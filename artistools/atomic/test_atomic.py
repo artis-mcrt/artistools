@@ -1,6 +1,8 @@
 import math
+import os
 import shutil
 from collections.abc import Callable
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +13,8 @@ import pytest
 import artistools as at
 from artistools.atomic.core import read_transitiondata
 from artistools.atomic.core import vacuum_to_air_angstroms
+from artistools.constants import angstroms_per_cm
+from artistools.misc.fileio import write_zstd_lines
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -577,59 +581,129 @@ def test_get_composition_data_from_outputfile_refuses_a_log_with_no_list(tmp_pat
         at.atomic.get_composition_data_from_outputfile(tmp_path)
 
 
-@pytest.mark.parametrize("nlines", [0, 1, 2])
-def test_read_linestatfile_of_few_lines(nlines: int, tmp_path: Path) -> None:
-    """linestat.out holds one column for each line, thus a file of one line gave a one-dimensional array.
+LINELIST_HEADER = "#lambda_angstroms atomic_number ion_stage upper_level lower_level"
+# each tuple is one line: the vacuum wavelength [Angstrom], the atomic number, the ion stage, the upper level, and the
+# lower level, in the order of the columns of linelist.out
+TEST_LINES = ((13898.2958, 57, 3, 2, 1), (4216.708, 38, 2, 3, 1), (6500.0, 26, 2, 5, 1))
 
-    The reader then stopped with a TypeError, and a file of no line stopped it with an IndexError.
-    """
-    from artistools.atomic.core import read_linestatfile
 
-    rows = [[6.5e-5] * nlines, [26] * nlines, [2] * nlines, [5] * nlines, [1] * nlines]
-    (tmp_path / "linestat.out").write_text(
-        "".join(" ".join(str(value) for value in row) + "\n" for row in rows), encoding="utf-8"
+def write_text_rows(filepath: Path, rows: Sequence[str]) -> None:
+    """Write the rows to a text file, or to a zstd file if the name ends with .zst."""
+    if filepath.suffix == ".zst":
+        with filepath.open("wb") as fileobj:
+            write_zstd_lines(fileobj, rows)
+    else:
+        filepath.write_text("".join(f"{row}\n" for row in rows), encoding="utf-8")
+
+
+def write_linelistfile(filepath: Path, lines: Sequence[tuple[float, int, int, int, int]]) -> None:
+    """Write the lines as ARTIS writes linelist.out: a header row, then one row for each line."""
+    write_text_rows(filepath, [LINELIST_HEADER, *(" ".join(str(value) for value in line) for line in lines)])
+
+
+def write_linestatfile(filepath: Path, lines: Sequence[tuple[float, int, int, int, int]]) -> None:
+    """Write the lines as an older ARTIS writes linestat.out: one row for each column, with the wavelength in cm."""
+    write_text_rows(
+        filepath,
+        [
+            " ".join(f"{line[0] / angstroms_per_cm:.8e}" if column == 0 else str(line[column]) for line in lines)
+            for column in range(5)
+        ],
     )
 
-    lambda_angstroms, atomic_numbers, ion_stages, upper_levels, lower_levels = read_linestatfile(tmp_path)
-    assert np.allclose(lambda_angstroms, [6500.0] * nlines)
-    assert atomic_numbers.tolist() == [26] * nlines
-    assert ion_stages.tolist() == [2] * nlines
-    assert len(upper_levels) == len(lower_levels) == nlines
 
-
+@pytest.mark.parametrize("suffix", ["", ".zst"])
 @pytest.mark.parametrize("nlines", [0, 1, 3])
-def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, tmp_path: Path) -> None:
-    """linelist.out (one row for each line, in Å) and linestat.out (one row for each quantity, in cm) give one frame.
+def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, suffix: str, tmp_path: Path) -> None:
+    """linelist.out and linestat.out with the same lines give the same frame.
 
-    A folder with both files gives the frame of linelist.out, because a newer ARTIS writes only that file.
+    linestat.out holds one column for each line, thus a file of one line gave a one-dimensional array. The reader then
+    stopped with a TypeError, and a file of no line stopped it with an IndexError.
     """
-    lines = [(13898.2958, 57, 3, 2, 1), (4216.708, 38, 2, 3, 1), (6500.0, 26, 2, 5, 1)][:nlines]
-    linelisttext = "#lambda_angstroms atomic_number ion_stage upper_level lower_level\n" + "".join(
-        " ".join(str(value) for value in line) + "\n" for line in lines
-    )
-    linestattext = "".join(
-        " ".join(f"{line[0] * 1e-8:.8e}" if column == 0 else str(line[column]) for line in lines) + "\n"
-        for column in range(5)
-    )
+    lines = TEST_LINES[:nlines]
+    (tmp_path / "linelist").mkdir()
+    write_linelistfile(tmp_path / "linelist" / f"linelist.out{suffix}", lines)
+    (tmp_path / "linestat").mkdir()
+    write_linestatfile(tmp_path / "linestat" / f"linestat.out{suffix}", lines)
 
-    linelistfolder = tmp_path / "linelist"
-    linelistfolder.mkdir()
-    (linelistfolder / "linelist.out").write_text(linelisttext, encoding="utf-8")
-    linestatfolder = tmp_path / "linestat"
-    linestatfolder.mkdir()
-    (linestatfolder / "linestat.out").write_text(linestattext, encoding="utf-8")
-    bothfolder = tmp_path / "both"
-    bothfolder.mkdir()
-    (bothfolder / "linelist.out").write_text(linelisttext, encoding="utf-8")
-    (bothfolder / "linestat.out").write_text(linestattext.replace("57", "58"), encoding="utf-8")
-
-    dflinelist = at.atomic.get_linelist_pldf(linelistfolder).collect()
+    dflinelist = at.atomic.get_linelist_pldf(tmp_path / "linelist").collect()
     assert dflinelist.height == nlines
-    assert np.allclose(dflinelist["lambda_angstroms"], [line[0] for line in lines])
+    # the float32 step is approximately 0.001 Angstroms at 14000 Angstroms. 6 significant digits gave errors of up to
+    # 0.05 Angstroms
+    assert np.allclose(dflinelist["lambda_angstroms"], [line[0] for line in lines], rtol=0.0, atol=1e-3)
     assert dflinelist["atomic_number"].to_list() == [line[1] for line in lines]
+    assert dflinelist["ion_stage"].to_list() == [line[2] for line in lines]
     assert dflinelist["upperlevelindex"].to_list() == [line[3] - 1 for line in lines]
-    pltest.assert_frame_equal(dflinelist, at.atomic.get_linelist_pldf(linestatfolder).collect())
-    pltest.assert_frame_equal(dflinelist, at.atomic.get_linelist_pldf(bothfolder).collect())
+    assert dflinelist["lowerlevelindex"].to_list() == [line[4] - 1 for line in lines]
+    pltest.assert_frame_equal(dflinelist, at.atomic.get_linelist_pldf(tmp_path / "linestat").collect())
+
+
+def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
+    """The header row gives the order of the columns, and the reader ignores a column that it does not know."""
+    (tmp_path / "linelist.out").write_text(
+        "#lambda_angstroms atomic_number ion_stage lower_level upper_level einstein_a\n13898.2958 57 3 1 2 1e8\n",
+        encoding="utf-8",
+    )
+
+    dflinelist = at.atomic.get_linelist_pldf(tmp_path).collect()
+    assert dflinelist.select("atomic_number", "upperlevelindex", "lowerlevelindex").row(0) == (57, 1, 0)
+
+
+@pytest.mark.parametrize("newerfilename", ["linelist.out", "linestat.out"])
+def test_get_linelist_pldf_reads_the_newer_file(newerfilename: str, tmp_path: Path) -> None:
+    """An older ARTIS does not delete the file of an earlier run, thus the newer file of the two is the current one."""
+    write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
+    write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
+    olderfilename = "linestat.out" if newerfilename == "linelist.out" else "linelist.out"
+    oldermtime = (tmp_path / newerfilename).stat().st_mtime - 3600
+    os.utime(tmp_path / olderfilename, (oldermtime, oldermtime))
+
+    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == (3 if newerfilename == "linelist.out" else 1)
+
+
+def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(tmp_path: Path) -> None:
+    """A cache of linestat.out is not current for a linelist.out, also if the two files have the same time stamp."""
+    write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
+    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 1
+    linestatmtime = (tmp_path / "linestat.out").stat().st_mtime
+    (tmp_path / "linestat.out").unlink()
+    write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
+    os.utime(tmp_path / "linelist.out", (linestatmtime, linestatmtime))
+
+    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 3
+
+
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [
+        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 2 1\n4216.708 38 2".encode()),
+        ("linelist.out", b""),
+        ("linelist.out.zst", b""),
+        ("linelist.out", b"#lambda_ang"),
+    ],
+)
+def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(filename: str, content: bytes, tmp_path: Path) -> None:
+    """ARTIS or a copy can still write the file. A cache of the partial file stays current after the write ends.
+
+    zstd with worker threads writes no byte of a small file until the file closes, thus an empty .zst file can occur.
+    """
+    (tmp_path / filename).write_bytes(content)
+
+    with pytest.raises((ValueError, pl.exceptions.PolarsError)):
+        at.atomic.get_linelist_pldf(tmp_path)
+    assert not (tmp_path / "linelist.out.parquet.tmp").exists()
+
+
+def test_get_linelist_pldf_reads_a_folder_name_with_glob_characters(tmp_path: Path) -> None:
+    """Polars reads a path as a glob pattern by default, thus the folder model[1] gave the lines of model1."""
+    (tmp_path / "model[1]").mkdir()
+    write_linelistfile(tmp_path / "model[1]" / "linelist.out", TEST_LINES)
+    (tmp_path / "model1").mkdir()
+    write_linelistfile(tmp_path / "model1" / "linelist.out", TEST_LINES[:1])
+
+    for _ in range(2):
+        # the first call writes the cache, and the second call reads it
+        assert at.atomic.get_linelist_pldf(tmp_path / "model[1]").collect().height == 3
 
 
 def make_zero_based_atomic_data(folder: Path, atomic_number: int, ion_stage: int) -> None:
