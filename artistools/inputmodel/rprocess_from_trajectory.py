@@ -200,22 +200,15 @@ def is_network_data_file(filename: str) -> bool:
     return iswanted and not filename.startswith(".")
 
 
-def read_network_texts(sourcepath: Path) -> dict[str, str]:
-    """Return the text of each file that artistools reads from a trajectory archive or from an extracted folder.
+def read_network_texts(archivepath: Path) -> dict[str, str]:
+    """Return the text of each file that artistools reads from a trajectory archive.
 
     The archive holds approximately 1000 files, and artistools reads the energy_thermo.dat, the heating.dat,
     and the nz-plane files of the Run_rprocess folder. The .tar.xz file has one xz block, thus a read of one
-    member also decompresses the full archive. A stream read decompresses the archive one time only. An
-    extracted folder, e.g. {particleid}/Run_rprocess, is the layout that an older artistools wrote.
+    member also decompresses the full archive. A stream read decompresses the archive one time only.
     """
     texts: dict[str, str] = {}
-    if sourcepath.is_dir():
-        for filepath in sorted((sourcepath / "Run_rprocess").iterdir()):
-            if filepath.is_file() and is_network_data_file(filepath.name):
-                texts[filepath.name] = filepath.read_text(encoding="utf-8")
-        return texts
-
-    with tarfile.open(sourcepath, "r|*") as tarfilehandle:
+    with tarfile.open(archivepath, "r|*") as tarfilehandle:
         for member in tarfilehandle:
             folder, filename = posixpath.split(member.name)
             if member.isfile() and posixpath.basename(folder) == "Run_rprocess" and is_network_data_file(filename):
@@ -226,21 +219,21 @@ def read_network_texts(sourcepath: Path) -> dict[str, str]:
     return texts
 
 
-def read_trajectory_network_data(sourcepath: Path) -> pl.DataFrame:
-    """Read the network data of one trajectory from its archive or its folder, and return one row for each timestep.
+def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
+    """Read the network data of one trajectory from its archive, and return one row for each timestep.
 
     A row holds the columns of energy_thermo.dat and heating.dat for its timestep, and the lists N, Z, and
     log10abund of its abundance file, if the timestep has one. A column that both files hold, e.g. time_s,
     takes the value of energy_thermo.dat, or the value of heating.dat for a timestep that energy_thermo.dat does
     not have. A
     named abundance file, e.g. tday_nz-plane, is a row with no timestep. The columns nstep and time_s always
-    exist. A column of a file that the source does not hold is absent, e.g. a test archive with the abundance
+    exist. A column of a file that the archive does not hold is absent, e.g. a test archive with the abundance
     files alone has no "Qdot" column. A table with a corrupt value is left out with a warning, thus a reader
     of a different file of the trajectory can continue.
     """
-    texts = read_network_texts(sourcepath)
+    texts = read_network_texts(archivepath)
     if not texts:
-        msg = f"{sourcepath} holds no energy_thermo.dat, heating.dat, or nz-plane file in a Run_rprocess folder"
+        msg = f"{archivepath} holds no energy_thermo.dat, heating.dat, or nz-plane file in a Run_rprocess folder"
         raise FileNotFoundError(msg)
 
     frames = []
@@ -251,9 +244,9 @@ def read_trajectory_network_data(sourcepath: Path) -> pl.DataFrame:
             frames.append(parse_network_steps_table(texts[filename]))
         except pl.exceptions.PolarsError as exc:
             # a reader of the abundance files must not stop for a corrupt value in a table that it does not read
-            print_warning(f"Cannot read {filename} in {sourcepath.name} ({exc}). The cache leaves out this file.")
+            print_warning(f"Cannot read {filename} in {archivepath.name} ({exc}). The cache leaves out this file.")
     frames.append(
-        parse_abundance_files({name: text for name, text in texts.items() if "nz-plane" in name}, sourcepath.name)
+        parse_abundance_files({name: text for name, text in texts.items() if "nz-plane" in name}, archivepath.name)
     )
     dftrajectory = frames[0]
     for dfnext in frames[1:]:
@@ -269,80 +262,61 @@ def read_trajectory_network_data(sourcepath: Path) -> pl.DataFrame:
     return dftrajectory.sort("nstep", "abundancefile", nulls_last=True)
 
 
-def get_trajectory_source_path(traj_root: Path, particleid: int) -> Path | None:
-    """Return the archive of a trajectory, e.g. {particleid}.tar.xz, or its extracted folder, or None.
+def get_trajectory_archive_path(traj_root: Path, particleid: int) -> Path | None:
+    """Return the archive of a trajectory, e.g. {particleid}.tar.xz, or None if the folder holds none.
 
-    A .tar comes before a .tar.xz, because its read needs no decompression. An extracted folder comes last,
-    because an older artistools wrote only the files that it read into that folder.
+    A .tar comes before a .tar.xz, because its read needs no decompression.
     """
     filenames = (f"{particleid}.tar", f"{particleid:05d}.tar", f"{particleid}.tar.xz", f"{particleid:05d}.tar.xz")
-    archivepath = next((path for filename in filenames if (path := traj_root / filename).is_file()), None)
-    if archivepath is not None:
-        return archivepath
-
-    folders = (traj_root / str(particleid), traj_root / f"{particleid:05d}")
-    return next((folder for folder in folders if (folder / "Run_rprocess").is_dir()), None)
-
-
-def get_trajectory_source_mtime(sourcepath: Path) -> float:
-    """Return the modification time of an archive, or the latest time of an extracted folder and its files.
-
-    A change of a file in the folder does not change the time of the folder, and a new file does not change the
-    time of the other files. Thus the latest of all these times shows both.
-    """
-    if not sourcepath.is_dir():
-        return sourcepath.stat().st_mtime
-
-    folder = sourcepath / "Run_rprocess"
-    return max(path.stat().st_mtime for path in (folder, *folder.iterdir()) if path.is_dir() or path.is_file())
+    return next((path for filename in filenames if (path := traj_root / filename).is_file()), None)
 
 
 def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFrame:
     """Scan the network data of a trajectory from its parquet cache, see read_trajectory_network_data.
 
-    The first read of a trajectory reads its archive or its folder, and writes the cache
+    The first read of a trajectory reads its archive, and writes the cache
     parquetcaches/{particleid}.parquet in the trajectory folder. A later read scans the parquet
     file. The row groups of the file hold 64 rows, thus a filter on one abundance file reads a small part of the
     nuclide lists.
 
-    A cache from a different artistools version or from a different source is stale, and a new read of the
-    source replaces it. A cache whose source is absent stays in use. The function checks the cache on each
+    A cache from a different artistools version or from a different archive is stale, and a new read of the
+    archive replaces it. A cache whose archive is absent stays in use. The function checks the cache on each
     call, thus a long process reads a replaced archive again.
 
     Several processes can read the same trajectory at the same time, thus the write is atomic. If a different
     process wrote a complete cache first, the function keeps that cache.
     """
     parquetpath = traj_root / "parquetcaches" / f"{particleid}.parquet"
-    sourcepath = get_trajectory_source_path(traj_root, particleid)
-    textsource_mtime = get_trajectory_source_mtime(sourcepath) if sourcepath is not None else None
+    archivepath = get_trajectory_archive_path(traj_root, particleid)
+    textsource_mtime = archivepath.stat().st_mtime if archivepath is not None else None
     # the identity of the cache that a rewrite replaces, from the same moment as the staleness check
     outdatedparquet = get_file_identity(parquetpath)
     pqmetadata, reason = read_parquet_cache_metadata(
         parquetpath,
         TRAJECTORY_CACHEVERSION,
         textsource_mtime,
-        textsource=sourcepath.name if sourcepath is not None else None,
+        textsource=archivepath.name if archivepath is not None else None,
     )
     if pqmetadata is not None:
         return pl.scan_parquet(parquetpath)
 
-    if sourcepath is None:
+    if archivepath is None:
         msg = f"{traj_root} holds no network data for particle {particleid}"
         if outdatedparquet is not None:
             msg += f" ({parquetpath.name} is stale, because {reason}, and there is no archive to replace it)"
         raise FileNotFoundError(msg)
 
     if outdatedparquet is not None:
-        print(f"{parquetpath} is stale, because {reason}. artistools reads {sourcepath.name} again.")
+        print(f"{parquetpath} is stale, because {reason}. artistools reads {archivepath.name} again.")
 
     parquetpath.parent.mkdir(exist_ok=True)
     write_parquet_atomic(
-        read_trajectory_network_data(sourcepath),
+        read_trajectory_network_data(archivepath),
         parquetpath,
         replaces=outdatedparquet,
         metadata={
             "cacheversion": str(TRAJECTORY_CACHEVERSION),
-            "textsource": sourcepath.name,
+            "textsource": archivepath.name,
             "textsource_mtime": str(textsource_mtime),
         },
         row_group_size=64,

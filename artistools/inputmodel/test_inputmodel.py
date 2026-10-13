@@ -165,33 +165,10 @@ def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_pa
     assert dftrajectory.height > 300
     assert pl.read_parquet_metadata(parquetpath)["cacheversion"] == str(TRAJECTORY_CACHEVERSION)
 
+    assert pl.read_parquet_metadata(parquetpath)["textsource"] == "114511.tar.xz"
+
     Path(archivepath).unlink()
     pltest.assert_frame_equal(scan_trajectory_network_data(traj_root, 114511).collect(), dftrajectory)
-
-    # an extracted folder of an older artistools is a source too, but an archive comes first
-    folder = traj_root / "114511" / "Run_rprocess"
-    folder.mkdir(parents=True)
-    with tarfile.open(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", "r:*") as tarfilehandle:
-        for member in tarfilehandle.getmembers():
-            if member.isfile() and member.name.startswith("./Run_rprocess/") and "._" not in member.name:
-                memberfile = tarfilehandle.extractfile(member)
-                assert memberfile is not None
-                (folder / Path(member.name).name).write_bytes(memberfile.read())
-    shutil.rmtree(traj_root / "parquetcaches")
-    pltest.assert_frame_equal(scan_trajectory_network_data(traj_root, 114511).collect(), dftrajectory)
-    assert pl.read_parquet_metadata(parquetpath)["textsource"] == "114511"
-
-    # a change of a file in the folder does not change the time of the folder, but it makes the cache stale
-    import os
-
-    heatingpath = folder / "heating.dat"
-    with heatingpath.open("a", encoding="utf-8") as heatingfile:
-        heatingfile.write("   999  1.000000E+19  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0\n")
-    latertime = heatingpath.stat().st_mtime + 100.0
-    os.utime(heatingpath, (latertime, latertime))
-    dfchanged = scan_trajectory_network_data(traj_root, 114511).collect()
-    assert dfchanged.height == dftrajectory.height + 1
-    assert dfchanged["nstep"].to_list()[-1] == 999
 
 
 def test_describeinputmodel(capsys: pytest.CaptureFixture[str]) -> None:
