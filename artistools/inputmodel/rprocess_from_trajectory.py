@@ -124,7 +124,7 @@ def parse_network_steps_table(text: str, sourcename: str) -> pl.DataFrame:
         .select(
             fields.list.len().alias("fieldcount"),
             *(
-                fields.list.get(index).alias(colname)
+                fields.list.get(index, null_on_oob=True).alias(colname)
                 for index, colname in enumerate(colnames)
                 if colname in READER_COLUMNS
             ),
@@ -251,7 +251,7 @@ def read_network_texts(archivepath: Path) -> dict[str, str]:
     return texts
 
 
-def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
+def read_trajectory_network_data(archivepath: Path) -> tuple[pl.DataFrame, list[str]]:
     """Read the network data of one trajectory from its archive, and return one row for each timestep.
 
     A row holds the columns of READER_COLUMNS from energy_thermo.dat and heating.dat for its timestep, and the
@@ -259,8 +259,9 @@ def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
     from energy_thermo.dat, or from heating.dat, or from the header of the abundance file. A named abundance
     file, e.g. tday_nz-plane, is a row with no timestep. The columns nstep and time_s always exist. A column of
     a file that the archive does not hold is absent, e.g. a test archive with the abundance files alone has no
-    "Qdot" column. The function leaves out a table with a corrupt value and gives a warning, thus a reader of
-    a different file of the trajectory can continue.
+    "Qdot" column. The function leaves out a table or an abundance file with a corrupt value and gives a
+    warning, thus a reader of a different file of the trajectory can continue. The second result names the
+    files that the function left out.
     """
     texts = read_network_texts(archivepath)
     if not texts:
@@ -268,6 +269,7 @@ def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
         raise FileNotFoundError(msg)
 
     frames = []
+    leftoutfiles = []
     for filename in ("energy_thermo.dat", "heating.dat"):
         if filename not in texts:
             continue
@@ -276,9 +278,12 @@ def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
         except (pl.exceptions.PolarsError, ValueError) as exc:
             # a reader of the abundance files must not stop for a corrupt value in a table that it does not read
             print_warning(f"Cannot read {filename} in {archivepath.name} ({exc}). The cache leaves out this file.")
-    frames.append(
-        parse_abundance_files({name: text for name, text in texts.items() if "nz-plane" in name}, archivepath.name)
-    )
+            leftoutfiles.append(filename)
+    abundancetexts = {name: text for name, text in texts.items() if "nz-plane" in name}
+    dfabundances = parse_abundance_files(abundancetexts, archivepath.name)
+    leftoutfiles.extend(name for name in abundancetexts if name not in set(dfabundances["abundancefile"].to_list()))
+    frames.append(dfabundances)
+
     dftrajectory = frames[0]
     for dfnext in frames[1:]:
         sharedcols = [col for col in dfnext.columns if col in dftrajectory.columns and col != "nstep"]
@@ -288,7 +293,10 @@ def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
         dftrajectory = dftrajectory.drop(f"{col}_next" for col in sharedcols)
 
     timecols = ["time_s", "abundancetime_s"] if "time_s" in dftrajectory.columns else ["abundancetime_s"]
-    return dftrajectory.with_columns(time_s=pl.coalesce(timecols)).sort("nstep", "abundancefile", nulls_last=True)
+    dftrajectory = dftrajectory.with_columns(time_s=pl.coalesce(timecols)).sort(
+        "nstep", "abundancefile", nulls_last=True
+    )
+    return dftrajectory, leftoutfiles
 
 
 def get_trajectory_archive_path(traj_root: Path, particleid: int) -> Path | None:
@@ -353,8 +361,9 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
         print(f"{parquetpath} is stale, because {reason}. artistools reads {archivepath.name} again.")
 
     make_cache_folder(parquetpath.parent, traj_root)
+    dftrajectory, leftoutfiles = read_trajectory_network_data(archivepath)
     write_parquet_atomic(
-        read_trajectory_network_data(archivepath),
+        dftrajectory,
         parquetpath,
         replaces=outdatedparquet,
         metadata={
@@ -362,6 +371,8 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
             "textsource": archivepath.name,
             "textsource_mtime": str(textsource_mtime),
             "textsource_size": str(archivestat.st_size),
+            # a later run must name the files that the cache left out as corrupt, see describe_leftout_files
+            "leftoutfiles": ", ".join(leftoutfiles),
         },
         row_group_size=64,
     )
@@ -373,22 +384,35 @@ def get_trajectory_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
 
     A row holds nstep, time_s, abundancefile, abundancetime_s, and the columns of READER_COLUMNS that the
     archive has, in the order of nstep. The readers of one trajectory call this function several times, thus
-    an lru_cache holds the result for each state of the archive and of the parquet file. A call then costs
-    two stats, and a change of a file gives a new read, as the check of the parquet cache on each call needs.
+    an lru_cache holds the result for each state of the archive. A call then costs a stat, and a changed
+    archive gives a new read, as the check of the parquet cache on each call needs. A parquet cache of the
+    same archive has the same content, thus its state is not part of the key, unless the archive is absent.
     Do not change the dataframe that the function returns.
     """
-    paths = (get_trajectory_archive_path(traj_root, particleid), get_trajectory_cache_path(traj_root, particleid))
-    filestates = tuple(get_file_state(path) if path is not None and path.is_file() else None for path in paths)
-    return collect_trajectory_timesteps(traj_root, particleid, filestates)
+    archivepath = get_trajectory_archive_path(traj_root, particleid)
+    statepath = archivepath if archivepath is not None else get_trajectory_cache_path(traj_root, particleid)
+    filestate = get_file_state(statepath) if statepath.is_file() else None
+    return collect_trajectory_timesteps(traj_root, particleid, filestate)
 
 
 @lru_cache(maxsize=64)
 def collect_trajectory_timesteps(
-    traj_root: Path, particleid: int, filestates: tuple[tuple[int, int, int, int] | None, ...]
+    traj_root: Path, particleid: int, filestate: tuple[int, int, int, int] | None
 ) -> pl.DataFrame:
-    """Collect the timesteps for get_trajectory_timesteps. filestates is the key of the cache, see there."""
-    del filestates
+    """Collect the timesteps for get_trajectory_timesteps. filestate is the key of the cache, see there."""
+    del filestate
     return scan_trajectory_network_data(traj_root, particleid).select(cs.exclude("N", "Z", "log10abund")).collect()
+
+
+def describe_leftout_files(traj_root: Path, particleid: int) -> str:
+    """Return a sentence that names the files that the cache of a trajectory left out as corrupt, for an error."""
+    try:
+        leftoutfiles = pl.read_parquet_metadata(get_trajectory_cache_path(traj_root, particleid)).get("leftoutfiles")
+    except (FileNotFoundError, pl.exceptions.PolarsError, OSError):
+        leftoutfiles = None
+    if leftoutfiles:
+        return f"The cache left out these files of the archive as corrupt: {leftoutfiles}."
+    return "The archive has no file with it."
 
 
 def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple[str, ...]) -> pl.DataFrame:
@@ -405,8 +429,8 @@ def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple
         # the callers leave out a trajectory with no network data, and a table that is absent, or that the cache
         # left out as corrupt, is the same case for a reader of its columns
         msg = (
-            f"The network data of particle {particleid} in {traj_root} has no column {missingcol}. The archive"
-            " has no file with it, or the cache left out that file as corrupt"
+            f"The network data of particle {particleid} in {traj_root} has no column {missingcol}."
+            f" {describe_leftout_files(traj_root, particleid)}"
         )
         raise FileNotFoundError(msg)
 
@@ -514,7 +538,10 @@ def get_trajectory_timestepfiles_nuc_abund(
     )
     missingfiles = dfrows.filter(pl.col("abundancetime_s").is_null())["abundancefile"].to_list()
     if missingfiles:
-        msg = f"The trajectory of particle {particleid} has no abundance file {missingfiles[0]}"
+        msg = (
+            f"The trajectory of particle {particleid} has no abundance file {missingfiles[0]}."
+            f" {describe_leftout_files(Path(traj_root), particleid)}"
+        )
         raise KeyError(msg)
 
     dfnucabund = (
@@ -543,25 +570,34 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done).
 
     nts_max is the one-based #count of the last network timestep. The integration starts at one second, thus
-    a nts_max before one second gives zero. Each timestep from the first one at or after one second up to
-    nts_max must have a Qdot value, because a trapezoid across a missing timestep, or one that stops before
-    nts_max, would give an integral with no sign of the problem.
+    a nts_max before one second gives zero. An energy_thermo.dat that ends before nts_max gives
+    FileNotFoundError, because the trajectory has no network data at nts_max. Each timestep from the first
+    one at or after one second up to nts_max must have a Qdot value, because a trapezoid across a missing
+    timestep would give an integral with no sign of the problem.
     """
     dftimesteps = get_trajectory_timesteps(Path(traj_root), particleid).filter(pl.col("nstep").is_not_null())
     if "Qdot" not in dftimesteps.columns:
-        msg = f"The network data of particle {particleid} in {traj_root} has no column Qdot"
+        msg = (
+            f"The network data of particle {particleid} in {traj_root} has no column Qdot."
+            f" {describe_leftout_files(Path(traj_root), particleid)}"
+        )
         raise FileNotFoundError(msg)
-    assert (dftimesteps["time_s"] >= 1.0).any(), (
-        f"The energy_thermo.dat of particle {particleid} holds no time of one second or more"
-    )
 
     dfrange = dftimesteps.filter((pl.col("time_s") >= 1.0) & (pl.col("nstep") <= nts_max))
+    if dfrange.is_empty():
+        return 0.0
+
+    qdotsteps = dftimesteps.filter(pl.col("Qdot").is_not_null())["nstep"].to_list()
+    lastqdotstep = qdotsteps[-1] if qdotsteps else None
+    if lastqdotstep is None or lastqdotstep < nts_max:
+        msg = (
+            f"The energy_thermo.dat of particle {particleid} ends at timestep {lastqdotstep} before timestep {nts_max}"
+        )
+        raise FileNotFoundError(msg)
+
     dfthermo = dfrange.filter(pl.col("Qdot").is_not_null())
-    nsteps = dfthermo["nstep"].to_list()
     # the range starts at the first timestep at or after one second, which can have no Qdot value
-    firststep = dfrange["nstep"].to_list()[0] if nsteps else 0
-    hasgap = nsteps != list(range(firststep, nts_max + 1)) if nsteps else dfrange.height > 0
-    if hasgap:
+    if dfthermo["nstep"].to_list() != list(range(dfrange["nstep"].to_list()[0], nts_max + 1)):
         msg = f"The energy_thermo.dat of particle {particleid} has no Qdot value at each timestep up to {nts_max}"
         raise ValueError(msg)
     assert all(dfthermo["Qdot"] >= 0.0)

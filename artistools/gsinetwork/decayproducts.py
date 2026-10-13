@@ -21,6 +21,7 @@ from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
+from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps_table
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timesteps
 from artistools.misc import addarg_darkmode
@@ -215,16 +216,13 @@ def get_nearest_network_timesteps(
     trajectory with no network data does.
     """
     dftimesteps = get_trajectory_timesteps(traj_root, traj_ID)
-    missingcol = next((col for col in ("hbeta", "htot", "Qdot") if col not in dftimesteps.columns), None)
-    if missingcol is not None:
-        msg = f"The network data of particle {traj_ID} in {traj_root} has no column {missingcol}"
+    if "Qdot" not in dftimesteps.columns:
+        msg = f"The network data of particle {traj_ID} in {traj_root} has no column Qdot"
         raise FileNotFoundError(msg)
-    dfheatingthermo = dftimesteps.filter(
-        pl.all_horizontal(pl.col("nstep", "time_s", "hbeta", "htot").is_not_null())
-    ).select("nstep", "time_s", "hbeta", "htot", "Qdot")
-    if dfheatingthermo.is_empty():
-        msg = f"The trajectory of particle {traj_ID} has no timestep with heating values"
-        raise FileNotFoundError(msg)
+    # the Qdot of a heating row can be null, thus it comes from a join and not from the table of the rows
+    dfheatingthermo = get_network_timesteps_table(traj_root, traj_ID, ("hbeta", "htot")).join(
+        dftimesteps.select("nstep", "Qdot", "abundancefile"), on="nstep", how="left", maintain_order="left"
+    )
 
     arr_networktime_s = dfheatingthermo["time_s"].to_numpy()
     arr_networktimedays = arr_networktime_s / day_to_s
@@ -239,10 +237,14 @@ def get_nearest_network_timesteps(
     arr_nstep = np.where(
         hasnetworkstep, dfheatingthermo["nstep"].to_numpy()[np.where(hasnetworkstep, arr_heatingrow, 0)], -1
     )
+    # a heating row that has an abundance file gives its own timestep. The search for the nearest timestep compares
+    # the times in Float32, thus two early timesteps can be the same time there
     arr_abundancestep = arr_nstep.copy()
-    if hasnetworkstep.any():
-        arr_abundancestep[hasnetworkstep] = get_closest_network_timesteps(
-            traj_root, traj_ID, arr_networktime_s[arr_heatingrow[hasnetworkstep]]
+    hasfile = dfheatingthermo["abundancefile"].is_not_null().to_numpy()[np.where(hasnetworkstep, arr_heatingrow, 0)]
+    needsearch = hasnetworkstep & ~hasfile
+    if needsearch.any():
+        arr_abundancestep[needsearch] = get_closest_network_timesteps(
+            traj_root, traj_ID, arr_networktime_s[arr_heatingrow[needsearch]]
         )
 
     # a null Qdot would make the sum over the trajectories NaN with no sign of the cause

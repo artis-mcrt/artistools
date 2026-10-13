@@ -1357,9 +1357,10 @@ def make_cache_folder(folder: Path, parentfolder: Path) -> None:
     try:
         folder.mkdir()
     except FileExistsError:
-        # a folder older than the wait has its final mode, thus only a new folder gets the wait
+        # a folder that stays read-only gives the error at the first write, which stops the command, thus the
+        # wait costs at most five seconds for one command
         for _ in range(50):
-            if os.access(folder, os.W_OK) or time.time() - folder.stat().st_ctime > 5.0:
+            if os.access(folder, os.W_OK):
                 break
             time.sleep(0.1)
         return
@@ -1370,17 +1371,20 @@ def make_cache_folder(folder: Path, parentfolder: Path) -> None:
         msg = f"artistools cannot make its cache folder {folder}, because the folder {parentfolder} is read-only"
         raise PermissionError(msg) from exc
 
+    if sys.platform == "win32":
+        # Windows has no POSIX group or mode, and os.open rejects a folder there
+        return
+
     parentstat = parentfolder.stat()
     # the descriptor of the new folder, and not its path, gets the group and the mode, thus a different user who
     # can write the parent folder cannot replace the folder by a symbolic link to a file between the calls
-    folderfd = os.open(folder, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_DIRECTORY", 0))
+    folderfd = os.open(folder, os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY)
     try:
         # a mkdir gives the folder the primary group of the user, where the parent folder can belong to a project
         # group. Only a member of the group can give it, and some file systems reject a chmod, thus a failure keeps
         # the group and the mode of the mkdir
-        if hasattr(os, "fchown"):
-            with contextlib.suppress(OSError):
-                os.fchown(folderfd, -1, parentstat.st_gid)
+        with contextlib.suppress(OSError):
+            os.fchown(folderfd, -1, parentstat.st_gid)
         with contextlib.suppress(OSError):
             os.fchmod(folderfd, parentstat.st_mode & 0o2777)
     finally:

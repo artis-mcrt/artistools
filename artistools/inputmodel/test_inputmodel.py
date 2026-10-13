@@ -129,7 +129,7 @@ def test_trajectory_archive_formats_give_the_same_table(tmp_path: Path) -> None:
     tables = {
         suffix: at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(
             write_trajectory_archive(tmp_path / suffix.lstrip("."), 3, members, suffix)
-        )
+        )[0]
         for suffix in (".tar", ".tar.zst", ".tar.xz")
     }
     pltest.assert_frame_equal(tables[".tar.zst"], tables[".tar.xz"])
@@ -213,13 +213,16 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
             ),
         },
     )
-    with pytest.raises(ValueError, match="no Qdot value at each timestep up to 3"):
+    # the trajectory has no network data at that timestep, thus the particle is one with no network data
+    with pytest.raises(FileNotFoundError, match="ends at timestep 2 before timestep 3"):
         qdotintegral(6, tmp_path / "short", nts_max=3, t_model_s=4.0)
 
 
 def trajectory_step_count(traj_root: Path, _worker: int) -> int:
     """Return the number of rows that one process reads for a trajectory, after it builds the cache if necessary."""
-    return at.inputmodel.rprocess_from_trajectory.scan_trajectory_network_data(traj_root, 114511).collect().height
+    # a worker keeps the timesteps of the previous trial for the same archive, thus the test clears them
+    at.inputmodel.rprocess_from_trajectory.collect_trajectory_timesteps.cache_clear()
+    return at.inputmodel.rprocess_from_trajectory.get_trajectory_timesteps(traj_root, 114511).height
 
 
 def test_trajectory_cache_write_is_atomic(tmp_path: Path) -> None:
@@ -234,7 +237,7 @@ def test_trajectory_cache_write_is_atomic(tmp_path: Path) -> None:
     traj_root.mkdir()
     traj_root.chmod(0o775)
     shutil.copy(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", traj_root)
-    nrows = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(traj_root / "114511.tar.xz").height
+    nrows = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(traj_root / "114511.tar.xz")[0].height
 
     readrows = partial(trajectory_step_count, traj_root)
     # at.misc.parallel_map would give a thread pool on free-threaded builds, and only separate processes can race on
@@ -811,8 +814,9 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
         },
     )
 
-    dftrajectory = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(archivepath)
+    dftrajectory, leftoutfiles = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(archivepath)
 
+    assert leftoutfiles == []
     assert dftrajectory["nstep"].to_list() == [1, 2, 3, None]
     assert dftrajectory["abundancefile"].to_list() == [None, "nz-plane00002", None, "tday_nz-plane"]
     # timestep 3 takes its time from heating.dat, because energy_thermo.dat does not have timestep 3
@@ -856,9 +860,10 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
         tmp_path,
         5,
         {
-            # the last line of energy_thermo.dat is incomplete, as a network run that stopped during a write leaves it
+            # the last line of energy_thermo.dat is incomplete, as a network run that stopped during a write leaves
+            # it. The cut is in the Qdot column, which a reader uses
             "energy_thermo.dat": (
-                "#count time/s Qdot Ye\n     1  1.000000E+00  1.500000E+21  **********\n     2  2.000000E+00  1.5\n"
+                "#count time/s Qdot Ye\n     1  1.000000E+00  1.500000E+21  **********\n     2  2.000000E+00\n"
             ),
             "heating.dat": "#count time/s hbeta\n     1  corrupt  2.000000E+09\n",
             "nz-plane00001": "  1  1.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
@@ -878,7 +883,8 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
     assert dfthermo["Qdot"].to_list() == pytest.approx([1.5e21])
     with pytest.raises(FileNotFoundError, match="no column Ye"):
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Ye",))
-    with pytest.raises(FileNotFoundError, match="no column hbeta"):
+    # the error of a later run names the file that the cache left out
+    with pytest.raises(FileNotFoundError, match=r"no column hbeta.*left out.*heating\.dat"):
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("hbeta",))
 
 
