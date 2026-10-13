@@ -43,8 +43,12 @@ from artistools.misc import read_wsv
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import get_readonly_cache_error
+from artistools.misc.fileio import is_readonly_error
 
 TRAJECTORY_CACHEVERSION = 1
+# the columns of energy_thermo.dat and heating.dat that the readers use. A corrupt value in one of them makes the
+# table corrupt, and a corrupt value in a different column gives null
+READER_COLUMNS = ("nstep", "time_s", "Qdot", "hbeta", "halpha", "hspof", "htot")
 
 
 def get_elemabund_from_nucabund(dfnucabund: pl.DataFrame) -> dict[str, float]:
@@ -108,9 +112,10 @@ def parse_network_steps_table(text: str) -> pl.DataFrame:
     The timestep column "#count" becomes "nstep", "time/s" becomes "time_s", and "rho(g/cc)" becomes "rho".
     The other columns keep the names of the file, e.g. "Qdot" and "hbeta". A later line that starts with "#"
     is a comment or a second header, e.g. after a restart of the network, and the parse skips it. A restart
-    can also write a timestep again, and the later row then replaces the earlier row. A corrupt timestep or
-    time makes the table corrupt. A corrupt value in a different column, e.g. a Fortran overflow token of
-    asterisks, gives null, thus the other columns of the table stay readable.
+    can also write a timestep again, and the later row then replaces the earlier row. A corrupt value in a
+    column of READER_COLUMNS makes the table corrupt, because a reader of that column must not get a null in
+    place of a value. A corrupt value in a different column, e.g. a Fortran overflow token of asterisks, gives
+    null, thus the columns that the readers use stay readable.
     """
     headerline, _, body = text.partition("\n")
     colnames = [
@@ -124,7 +129,7 @@ def parse_network_steps_table(text: str) -> pl.DataFrame:
         .with_columns(pl.col("line").str.strip_chars())
         .filter((pl.col("line").str.len_chars() > 0) & ~pl.col("line").str.starts_with("#"))
         .select(fields.list.get(index, null_on_oob=True).alias(colname) for index, colname in enumerate(colnames))
-        .with_columns(fix_fortran_exponents(pl.Float64, pl.col("nstep", "time_s")))
+        .with_columns(fix_fortran_exponents(pl.Float64, cs.by_name(*READER_COLUMNS, require_all=False)))
         .with_columns(fix_fortran_exponents(pl.Float64, strict=False))
         .with_columns(pl.col("nstep").cast(pl.Int32))
         .unique(subset="nstep", keep="last", maintain_order=True)
@@ -196,14 +201,10 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
         if filename not in goodfiles:
             print_warning(f"Cannot read {filename} in {sourcename}. The cache leaves out this file.")
 
+    # each file of dfheaders has a nuclide group, thus the join leaves no list null
     return (
         dfheaders.join(dfnuclides.drop("hascorruptline"), on="abundancefile", how="left", maintain_order="left")
-    ).with_columns(
-        nstep=pl.col("abundancefile").str.extract(r"^nz-plane(\d+)$").cast(pl.Int32),
-        N=pl.col("N").fill_null(pl.lit([], dtype=pl.List(pl.Int32))),
-        Z=pl.col("Z").fill_null(pl.lit([], dtype=pl.List(pl.Int32))),
-        log10abund=pl.col("log10abund").fill_null(pl.lit([], dtype=pl.List(pl.Float64))),
-    )
+    ).with_columns(nstep=pl.col("abundancefile").str.extract(r"^nz-plane(\d+)$").cast(pl.Int32))
 
 
 def warn_about_corrupt_values(dfsteps: pl.DataFrame, filename: str, archivename: str) -> None:
@@ -358,7 +359,10 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
     except FileExistsError:
         # a different process made the folder, and only its owner can change the mode
         pass
-    except PermissionError as exc:
+    except OSError as exc:
+        # a read-only mount gives EROFS and not PermissionError
+        if not is_readonly_error(exc):
+            raise
         raise get_readonly_cache_error(parquetpath) from exc
     else:
         # the folder takes the access mode of the trajectory root, with its setgid bit, thus a group that can
@@ -526,19 +530,8 @@ def get_trajectory_timestepfile_nuc_abund(
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
-    lztrajectory = scan_trajectory_network_data(Path(traj_root), particleid)
-    if "Qdot" not in lztrajectory.collect_schema().names():
-        msg = f"The network data of particle {particleid} in {traj_root} has no column Qdot"
-        raise FileNotFoundError(msg)
-
     # the integration starts at one second, and the rows with a Qdot value are the timesteps of energy_thermo.dat
-    dfthermo = (
-        lztrajectory
-        .filter(pl.col("Qdot").is_not_null() & (pl.col("time_s") >= 1.0))
-        .sort("nstep")
-        .select("nstep", "time_s", "Qdot")
-        .collect()
-    )
+    dfthermo = get_network_timesteps_table(Path(traj_root), particleid, ("Qdot",)).filter(pl.col("time_s") >= 1.0)
     assert dfthermo.height > 0, f"The energy_thermo.dat of particle {particleid} holds no time of one second or more"
     # nts_max is the one-based #count of the last network timestep. A nts_max before one second gives no row,
     # and the integral is then zero
@@ -547,7 +540,7 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     # a corrupt Qdot at nts_max is not in dfthermo, thus the row of that timestep shows it. A row of an abundance
     # file alone has its time in abundancetime_s
     lastrow = (
-        lztrajectory
+        scan_trajectory_network_data(Path(traj_root), particleid)
         .filter(pl.col("nstep") == nts_max)
         .select(pl.coalesce("time_s", "abundancetime_s").alias("time_s"), "Qdot")
         .collect()
@@ -851,7 +844,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, "tday_nz-plane")
     dfnucabund = dfnucabund.filter(pl.col("Z") >= 1).with_columns(radioactive=pl.lit(value=True))
 
-    t_model_init_days = t_model_init_seconds / (24 * 60 * 60)
+    t_model_init_days = t_model_init_seconds / day_to_s
 
     wollaeger_profilename = "wollaeger_ejectaprofile_10bins.txt"
     if Path(wollaeger_profilename).exists():
@@ -916,7 +909,7 @@ def get_wollaeger_density_profile(wollaeger_profilename: Path | str, t_model_ini
     print(f"{wollaeger_profilename} found")
     with Path(wollaeger_profilename).open("rt", encoding="utf-8") as f:
         t_model_init_days_in = float(f.readline().strip().removesuffix(" day"))
-    t_model_init_seconds_in = t_model_init_days_in * 24 * 60 * 60
+    t_model_init_seconds_in = t_model_init_days_in * day_to_s
 
     return (
         read_wsv(wollaeger_profilename, has_header=False, skip_rows=1, new_columns=["mgi", "vel_r_max_kmps", "rho"])
