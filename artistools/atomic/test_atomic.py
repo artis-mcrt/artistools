@@ -674,6 +674,16 @@ def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp
     assert np.isclose(dflinelist["lambda_angstroms"][-1], 6500.5)
 
 
+def test_get_linelist_pldf_reads_linelist_only_in_the_model_folder(tmp_path: Path) -> None:
+    """ARTIS writes linelist.out into the model folder only, thus a copy in a run folder must not hide linestat.out."""
+    (tmp_path / "123.slurm").mkdir()
+    write_linelistfile(tmp_path / "123.slurm" / "linelist.out", TEST_LINES)
+    (tmp_path / "0.slurm").mkdir()
+    write_linestatfile(tmp_path / "0.slurm" / "linestat.out", TEST_LINES[:1])
+
+    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 1
+
+
 def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(tmp_path: Path) -> None:
     """A cache of one text file is not current for a different file, also if the two files have the same time stamp."""
     write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
