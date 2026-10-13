@@ -1167,10 +1167,10 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
         raise ValueError(msg)
     # the cast to Int32 truncates a fraction with no error, thus a file with a different order of the rows would give
     # incorrect atomic numbers, ion stages, or levels
-    if not (np.array_equal(data[1:], np.round(data[1:])) and np.all(data[1:] >= 1)):
+    if not (np.all(data[0] > 0) and np.array_equal(data[1:], np.round(data[1:])) and np.all(data[1:] >= 1)):
         msg = (
-            f"The file {filepath} has a value in rows 2 to 5 that is not an integer of 1 or more. Possibly the file"
-            " has a different format"
+            f"The file {filepath} has a wavelength of 0 or less in row 1, or a value in rows 2 to 5 that is not an"
+            " integer of 1 or more. Possibly the file has a different format"
         )
         raise ValueError(msg)
     # the file gives the wavelength in cm, and level numbers that start at 1 in each ion
@@ -1233,9 +1233,9 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     The emission and the absorption type codes of a packet are lineindex values.
     Do not add a sort operation, a filter operation, or a unique operation to this function.
 
-    The function stops if the model has both linelist.out and linestat.out. A current cache needs no glob of the run
-    subfolders, thus the check then includes only the model folder and the folder of the file. If a run subfolder
-    gets the other file after the cache, the function does not find it.
+    An ARTIS that writes linelist.out deletes the line list and the run folders of an earlier model at the start of a
+    new model, thus the model folder holds no linestat.out of an earlier model. ARTIS writes linelist.out into the
+    model folder, and firstexisting finds it there before a linestat.out that a copy adds.
     """
     textfile = firstexisting(
         ["linelist.out", "linestat.out"],
@@ -1248,7 +1248,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     )
     textsourcename = without_compressed_extension(textfile).name
     # the path, with the compression extension, identifies the text source of the cache
-    textsource = (textfile.relative_to(modelpath) if textfile.is_relative_to(modelpath) else textfile).as_posix()
+    textsource = textfile.relative_to(modelpath).as_posix()
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
     parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
     textsource_mtime = textfile.stat().st_mtime
@@ -1259,18 +1259,6 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     _, stalereason = read_parquet_cache_metadata(
         parquetfile, LINELIST_CACHEVERSION, textsource_mtime, textsource=textsource
     )
-    # an older ARTIS does not delete the file of an earlier run, and only the user can tell which file is current
-    othertextfilename = "linestat.out" if textsourcename == "linelist.out" else "linelist.out"
-    searchsubfolders = stalereason is not None
-    for folder in [Path(modelpath)] if searchsubfolders else dict.fromkeys([Path(modelpath), textfile.parent]):
-        othertextfile = firstexisting_or_none(othertextfilename, folder=folder, search_subfolders=searchsubfolders)
-        if othertextfile is not None:
-            msg = (
-                f"The model {modelpath} has both {textfile} and {othertextfile}, and only one of them belongs to the"
-                " latest run. Delete or move the file of the earlier run"
-            )
-            raise FileExistsError(msg)
-
     if stalereason is not None:
         if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")

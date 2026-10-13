@@ -671,21 +671,6 @@ def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp
     assert np.isclose(dflinelist["lambda_angstroms"][-1], 6500.5)
 
 
-@pytest.mark.parametrize("linelistsubfolder", ["", "123.slurm"])
-def test_get_linelist_pldf_refuses_a_model_with_both_files(linelistsubfolder: str, tmp_path: Path) -> None:
-    """An older ARTIS does not delete the file of an earlier run. A copy can change the modification times.
-
-    Thus only the user can tell which of the two files belongs to the latest run. firstexisting searches the model
-    folder before the run subfolders, thus a linelist.out in a run subfolder must not hide the linestat.out above it.
-    """
-    (tmp_path / linelistsubfolder).mkdir(exist_ok=True)
-    write_linelistfile(tmp_path / linelistsubfolder / "linelist.out", TEST_LINES)
-    write_linestatfile(tmp_path / "linestat.out.zst", TEST_LINES[:1])
-
-    with pytest.raises(FileExistsError, match=r"linestat\.out\.zst.* and only one of them belongs to the latest run"):
-        at.atomic.get_linelist_pldf(tmp_path)
-
-
 @pytest.mark.parametrize(
     ("firstfilename", "secondfilename"), [("linestat.out", "linelist.out"), ("linelist.out.zst", "linelist.out")]
 )
@@ -708,43 +693,32 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
 
 
 @pytest.mark.parametrize(
-    ("filename", "content", "expectederror", "expectedmessage"),
+    ("filename", "content", "expectedmessage"),
     [
-        (
-            "linelist.out",
-            f"{LINELIST_HEADER}\n13898.2958 57 3 1 0\n4216.708 38 2 11 1".encode(),
-            ValueError,
-            NO_LINE_END_MESSAGE,
-        ),
+        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 1 0\n4216.708 38 2 11 1".encode(), NO_LINE_END_MESSAGE),
         (
             "linelist.out",
             f"{LINELIST_HEADER}\n13898.2958 57 3 1 0\n4216.708 38 2\n".encode(),
-            ValueError,
             "has a line with fewer values than the header",
         ),
         # zstd with worker threads writes no byte of a small file until the file closes
-        ("linelist.out.zst", b"", ValueError, NO_LINE_END_MESSAGE),
-        ("linestat.out", b"", ValueError, NO_LINE_END_MESSAGE),
-        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n", ValueError, "has 3 rows and not 5"),
-        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1", ValueError, NO_LINE_END_MESSAGE),
+        ("linelist.out.zst", b"", NO_LINE_END_MESSAGE),
+        ("linestat.out", b"", NO_LINE_END_MESSAGE),
+        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n", "has 3 rows and not 5"),
+        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1", NO_LINE_END_MESSAGE),
         # the wavelength row is not first, thus the atomic numbers have a fraction
-        (
-            "linestat.out",
-            b"57 38\n1.38982958e-04 4.21670800e-05\n3 2\n2 3\n1 1\n",
-            ValueError,
-            "is not an integer of 1 or more",
-        ),
+        ("linestat.out", b"57 38\n1.38982958e-04 4.21670800e-05\n3 2\n2 3\n1 1\n", "is not an integer of 1 or more"),
         # a level number of 0 gives the level index -1
-        ("linestat.out", b"1.38982958e-04\n57\n3\n2\n0\n", ValueError, "is not an integer of 1 or more"),
+        ("linestat.out", b"1.38982958e-04\n57\n3\n2\n0\n", "is not an integer of 1 or more"),
     ],
 )
 def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
-    filename: str, content: bytes, expectederror: type[Exception], expectedmessage: str, tmp_path: Path
+    filename: str, content: bytes, expectedmessage: str, tmp_path: Path
 ) -> None:
     """ARTIS or a copy can still write the file. A cache of the partial file stays current after the write ends."""
     (tmp_path / filename).write_bytes(content)
 
-    with pytest.raises(expectederror, match=expectedmessage):
+    with pytest.raises(ValueError, match=expectedmessage):
         at.atomic.get_linelist_pldf(tmp_path)
     assert not (tmp_path / "linelist.out.parquet.tmp").exists()
 
