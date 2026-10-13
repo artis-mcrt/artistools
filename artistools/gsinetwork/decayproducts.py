@@ -225,7 +225,7 @@ def process_trajectory(
         print_warning(f"trajectory {traj_ID} has no network data, thus the sums leave it out")
         return None
 
-    # get nearest network time to each plotted time. A plot time after the last network time has no row
+    # Get the nearest network time to each plot time. A plot time after the last network time gets the index -1
     arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / day_to_s
     arr_heatingrow = np.array(
         [

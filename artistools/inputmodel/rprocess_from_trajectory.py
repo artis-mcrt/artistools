@@ -130,8 +130,8 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
     larger than the time to parse one file of 400 lines. The file nz-plane00200 is timestep 200. A named file,
     e.g. tday_nz-plane, has no timestep, because its time differs from the time of the timestep in its header.
 
-    A file with a bad header line, e.g. a blank line from a network run that stopped, is left out with a
-    warning that names sourcename. The other files of the trajectory stay readable.
+    The function leaves out a file with a bad header line, e.g. a blank line from a network run that stopped. A
+    warning names the file and sourcename. The other files of the trajectory stay readable.
     """
     filenames: list[str] = []
     lines: list[str] = []
@@ -168,7 +168,7 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
     goodfiles = set(dfheaders["abundancefile"].to_list())
     for filename in abundancetexts:
         if filename not in goodfiles:
-            print_warning(f"Cannot read the header line of {filename} in {sourcename}, thus the file is left out")
+            print_warning(f"Cannot read the header line of {filename} in {sourcename}. The cache leaves out this file.")
 
     return dfheaders.join(dfnuclides, on="abundancefile", how="left", maintain_order="left").with_columns(
         nstep=pl.col("abundancefile").str.extract(r"^nz-plane(\d+)$").cast(pl.Int32),
@@ -179,7 +179,10 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
 
 
 def is_network_data_file(filename: str) -> bool:
-    """Return True for a file of the Run_rprocess folder that artistools reads, and False for a resource fork ._name."""
+    """Return True for a file of the Run_rprocess folder that artistools reads.
+
+    A macOS resource fork ._name gives False.
+    """
     iswanted = filename in {"energy_thermo.dat", "heating.dat"} or "nz-plane" in filename
     return iswanted and not filename.startswith(".")
 
@@ -215,7 +218,8 @@ def read_trajectory_network_data(sourcepath: Path) -> pl.DataFrame:
 
     A row holds the columns of energy_thermo.dat and heating.dat for its timestep, and the lists N, Z, and
     log10abund of its abundance file, if the timestep has one. A column that both files hold, e.g. time_s,
-    takes the value of energy_thermo.dat, or of heating.dat for a timestep that energy_thermo.dat lacks. A
+    takes the value of energy_thermo.dat, or the value of heating.dat for a timestep that energy_thermo.dat does
+    not have. A
     named abundance file, e.g. tday_nz-plane, is a row with no timestep. The columns nstep and time_s always
     exist. A column of a file that the source does not hold is absent, e.g. a test archive with the abundance
     files alone has no "Qdot" column.
@@ -265,18 +269,21 @@ def get_trajectory_source_path(traj_root: Path, particleid: int) -> Path | None:
 def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFrame:
     """Scan the network data of a trajectory from its parquet cache, see read_trajectory_network_data.
 
-    The first read of a trajectory reads its archive and writes the cache
+    The first read of a trajectory reads its archive or its folder, and writes the cache
     parquetcaches/{particleid}.networktimesteps.parquet in the trajectory folder. A later read scans the parquet
     file. The row groups of the file hold 64 rows, thus a filter on one abundance file reads a small part of the
-    nuclide lists. A cache from a different artistools version or from a different archive is stale, and the
-    read of the archive replaces it. A cache whose archive is absent stays in use. Several processes can read
-    the same trajectory at the same time, thus the write is atomic. If a different process wrote a complete
-    cache first, the function keeps that cache. The check of the cache runs on each call, thus a replaced
-    archive is read again in a long process.
+    nuclide lists.
+
+    A cache from a different artistools version or from a different source is stale, and a new read of the
+    source replaces it. A cache whose source is absent stays in use. The function checks the cache on each
+    call, thus a long process reads a replaced archive again.
+
+    Several processes can read the same trajectory at the same time, thus the write is atomic. If a different
+    process wrote a complete cache first, the function keeps that cache.
     """
     parquetpath = traj_root / "parquetcaches" / f"{particleid}.networktimesteps.parquet"
     sourcepath = get_trajectory_source_path(traj_root, particleid)
-    # the modification time of an extracted folder changes when a file is added to it
+    # the modification time of an extracted folder changes when a process adds a file to it
     textsource_mtime = (
         (sourcepath / "Run_rprocess" if sourcepath.is_dir() else sourcepath).stat().st_mtime
         if sourcepath is not None
@@ -321,9 +328,9 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
 def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple[str, ...]) -> pl.DataFrame:
     """Return the network timesteps of a trajectory that hold a value in each of the given columns.
 
-    The table holds nstep, time_s, and the given columns, sorted by nstep. A column of heating.dat, e.g.
-    "hbeta", keeps the rows of that file, as a read of the file alone did. The result is cached, thus a
-    caller must not change it.
+    The table holds nstep, time_s, and the given columns, in the order of nstep. A column of heating.dat, e.g.
+    "hbeta", keeps the rows of that file, as a read of the file alone did. An lru_cache holds the result. Do not
+    change the dataframe that the function returns.
     """
     lztrajectory = scan_trajectory_network_data(traj_root, particleid)
     missingcols = [col for col in columns if col not in lztrajectory.collect_schema().names()]

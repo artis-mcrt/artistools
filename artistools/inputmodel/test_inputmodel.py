@@ -685,7 +685,7 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
                 "     2  9.000000E+04  1.000000E-06  2.000000E-12  4.600000E-01  2.000000E+10\n"
             ),
             # a restart of the network writes the header again and writes timestep 2 again, and it adds a timestep
-            # that energy_thermo.dat lacks
+            # that energy_thermo.dat does not have
             "heating.dat": (
                 "#count       time/s            T9     rho(g/cc)         hbeta          htot\n"
                 "     1  1.000000E+00  1.000000E+01  2.000000E+07  1.842623-281  3.000000E+14\n"
@@ -704,7 +704,7 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
 
     assert dftrajectory["nstep"].to_list() == [1, 2, 3, None]
     assert dftrajectory["abundancefile"].to_list() == [None, "nz-plane00002", None, "tday_nz-plane"]
-    # timestep 3 takes its time from heating.dat, because energy_thermo.dat lacks it
+    # timestep 3 takes its time from heating.dat, because energy_thermo.dat does not have timestep 3
     assert dftrajectory["time_s"].to_list() == [1.0, 9.0e4, 1.0e5, None]
     assert dftrajectory["abundancetime_s"].to_list() == [None, 9.0e4, None, 8.64e4]
     # the Fortran exponent of hbeta has no "e", and the later row of timestep 2 replaces the earlier row
