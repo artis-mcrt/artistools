@@ -298,7 +298,8 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
     """
     parquetpath = traj_root / "parquetcaches" / f"{particleid}.parquet"
     archivepath = get_trajectory_archive_path(traj_root, particleid)
-    textsource_mtime = archivepath.stat().st_mtime if archivepath is not None else None
+    archivestat = archivepath.stat() if archivepath is not None else None
+    textsource_mtime = archivestat.st_mtime if archivestat is not None else None
     # the identity of the cache that a rewrite replaces, from the same moment as the staleness check
     outdatedparquet = get_file_identity(parquetpath)
     pqmetadata, reason = read_parquet_cache_metadata(
@@ -307,6 +308,14 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
         textsource_mtime,
         textsource=archivepath.name if archivepath is not None else None,
     )
+    # a copy that keeps the modification time, e.g. cp -p, can replace the archive, thus the size counts too
+    stampedsize = pqmetadata.get("textsource_size") if pqmetadata is not None else None
+    if archivestat is not None and stampedsize is not None and stampedsize != str(archivestat.st_size):
+        pqmetadata = None
+        reason = (
+            f"the cache is from an archive of {stampedsize} bytes, but the archive now has {archivestat.st_size} bytes"
+        )
+
     if pqmetadata is not None:
         return pl.scan_parquet(parquetpath)
 
@@ -315,11 +324,17 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
         if outdatedparquet is not None:
             msg += f" ({parquetpath.name} is stale, because {reason}, and there is no archive to replace it)"
         raise FileNotFoundError(msg)
+    assert archivestat is not None
 
     if outdatedparquet is not None:
         print(f"{parquetpath} is stale, because {reason}. artistools reads {archivepath.name} again.")
 
-    parquetpath.parent.mkdir(exist_ok=True)
+    cachefolder = parquetpath.parent
+    if not cachefolder.is_dir():
+        cachefolder.mkdir(exist_ok=True)
+        # the folder takes the access mode of the trajectory root, thus a group that can write the root can
+        # add a cache. A mkdir alone applies the umask of the process, which removes the group write bit
+        cachefolder.chmod(traj_root.stat().st_mode & 0o777)
     write_parquet_atomic(
         read_trajectory_network_data(archivepath),
         parquetpath,
@@ -328,6 +343,7 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
             "cacheversion": str(TRAJECTORY_CACHEVERSION),
             "textsource": archivepath.name,
             "textsource_mtime": str(textsource_mtime),
+            "textsource_size": str(archivestat.st_size),
         },
         row_group_size=64,
     )

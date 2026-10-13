@@ -122,7 +122,9 @@ def test_trajectory_cache_write_is_atomic(tmp_path: Path) -> None:
     """
     nworkers = 16
     traj_root = tmp_path / "trajectories"
-    traj_root.mkdir()
+    # a group that can write the trajectory root must be able to add a cache, thus the cache folder takes this mode
+    traj_root.mkdir(mode=0o775)
+    traj_root.chmod(0o775)
     shutil.copy(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", traj_root)
     nrows = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(traj_root / "114511.tar.xz").height
 
@@ -138,6 +140,7 @@ def test_trajectory_cache_write_is_atomic(tmp_path: Path) -> None:
             assert list(executor.map(readrows, range(nworkers), chunksize=1)) == [nrows] * nworkers
 
     assert (traj_root / "parquetcaches" / "114511.parquet").is_file()
+    assert (traj_root / "parquetcaches").stat().st_mode & 0o777 == 0o775
 
 
 def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_path: Path) -> None:
@@ -167,8 +170,18 @@ def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_pa
 
     assert pl.read_parquet_metadata(parquetpath)["textsource"] == "114511.tar.xz"
 
+    # a copy with cp -p keeps the modification time, thus the size of the archive shows the change
+    import os
+
+    archivetime = Path(archivepath).stat().st_mtime
+    shutil.copy(testdatapath / "kilonova" / "trajectories" / "109215.tar.xz", archivepath)
+    os.utime(archivepath, (archivetime, archivetime))
+    dfreplaced = scan_trajectory_network_data(traj_root, 114511).collect()
+    assert dfreplaced.height != dftrajectory.height
+    assert dfreplaced["abundancefile"].drop_nulls().to_list() == ["nz-plane00434"]
+
     Path(archivepath).unlink()
-    pltest.assert_frame_equal(scan_trajectory_network_data(traj_root, 114511).collect(), dftrajectory)
+    pltest.assert_frame_equal(scan_trajectory_network_data(traj_root, 114511).collect(), dfreplaced)
 
 
 def test_describeinputmodel(capsys: pytest.CaptureFixture[str]) -> None:
