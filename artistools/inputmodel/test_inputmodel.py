@@ -181,6 +181,9 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
     )
     with pytest.raises(ValueError, match="no Qdot value at each timestep up to 3"):
         qdotintegral(6, tmp_path / "gap", nts_max=3, t_model_s=4.0)
+    # the corrupt value is the last timestep of the integral, thus the timesteps before it are consecutive
+    with pytest.raises(ValueError, match="no Qdot value at each timestep up to 2"):
+        qdotintegral(6, tmp_path / "gap", nts_max=2, t_model_s=4.0)
     assert qdotintegral(6, tmp_path / "gap", nts_max=1, t_model_s=4.0) == pytest.approx(0.0)
 
 
@@ -873,14 +876,14 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(
             "nz-plane00002": "\n" + abundlines,
             "nz-plane00003": goodfile + "  3   4 -1.2E+",
             "nz-plane00004": "  4  8.87x645E+03   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n" + abundlines,
+            "nz-plane00005": "  5  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n",
         },
     )
     _, timesecs = reader(tmp_path / "bad", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
     warnings = capsys.readouterr().err
-    assert "nz-plane00002 in 1.tar.xz" in warnings
-    assert "nz-plane00003 in 1.tar.xz" in warnings
-    assert "nz-plane00004 in 1.tar.xz" in warnings
+    for filename in ("nz-plane00002", "nz-plane00003", "nz-plane00004", "nz-plane00005"):
+        assert f"{filename} in 1.tar.xz" in warnings
     with pytest.raises(KeyError, match="nz-plane00002"):
         reader(tmp_path / "bad", 1, ["nz-plane00001", "nz-plane00002"])
     with pytest.raises(KeyError, match="nz-plane00003"):

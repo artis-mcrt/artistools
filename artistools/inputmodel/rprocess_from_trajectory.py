@@ -139,8 +139,9 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
     larger than the time to parse one file of 400 lines. The file nz-plane00200 is timestep 200. A named file,
     e.g. tday_nz-plane, has no timestep, because its time differs from the time of the timestep in its header.
 
-    The function leaves out a file with a bad header line or a corrupt nuclide line, e.g. from a network run
-    that stopped. A warning names the file and sourcename. The other files of the trajectory stay readable.
+    The function leaves out a file with a bad header line, a corrupt nuclide line, or no nuclide line, e.g.
+    from a network run that stopped. A warning names the file and sourcename. The other files of the trajectory
+    stay readable.
     """
     filenames: list[str] = []
     lines: list[str] = []
@@ -185,7 +186,8 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
         .filter(
             (pl.col("fieldcount") == 6)
             & pl.col("abundancetime_s").is_not_null()
-            & ~pl.col("hascorruptline").fill_null(value=False)
+            # a file with no nuclide line, e.g. from a network run that stopped after the header, is corrupt too
+            & ~pl.col("hascorruptline").fill_null(value=True)
         )
         .drop("fieldcount", "hascorruptline")
     )
@@ -359,9 +361,10 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
     except PermissionError as exc:
         raise get_readonly_cache_error(parquetpath) from exc
     else:
-        # the folder takes the access mode of the trajectory root, thus a group that can write the root can
-        # add a cache. A mkdir alone applies the umask of the process, which removes the group write bit
-        cachefolder.chmod(traj_root.stat().st_mode & 0o777)
+        # the folder takes the access mode of the trajectory root, with its setgid bit, thus a group that can
+        # write the root can add a cache. A mkdir alone applies the umask of the process, which removes the
+        # group write bit
+        cachefolder.chmod(traj_root.stat().st_mode & 0o7777)
     write_parquet_atomic(
         read_trajectory_network_data(archivepath),
         parquetpath,
@@ -541,7 +544,10 @@ def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, 
     # and the integral is then zero
     dfthermo = dfthermo.filter(pl.col("nstep") <= nts_max)
     nsteps = dfthermo["nstep"].to_list()
-    if nsteps and nsteps[-1] - nsteps[0] + 1 != len(nsteps):
+    # a corrupt Qdot at nts_max is not in dfthermo, thus the row of that timestep shows it
+    lastrow = lztrajectory.filter(pl.col("nstep") == nts_max).select("time_s", "Qdot").collect()
+    lastrowiscorrupt = lastrow.height > 0 and (lastrow["time_s"][0] or 0.0) >= 1.0 and lastrow["Qdot"][0] is None
+    if lastrowiscorrupt or (nsteps and nsteps[-1] - nsteps[0] + 1 != len(nsteps)):
         # a trapezoid across a missing timestep would give an integral with no sign of the problem
         msg = f"The energy_thermo.dat of particle {particleid} has no Qdot value at each timestep up to {nts_max}"
         raise ValueError(msg)
