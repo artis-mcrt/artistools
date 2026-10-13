@@ -2,6 +2,7 @@
 
 import math
 import operator
+import os
 import re
 import string
 import time
@@ -28,6 +29,7 @@ from artistools.constants import K_B_ev_per_K
 from artistools.constants import peck_reeder_air_coefficients
 from artistools.misc import firstexisting_or_none
 from artistools.misc import polars_source
+from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import modelpath_cache
@@ -1174,6 +1176,17 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
             .collect(engine="streaming")
         )
     raise_if_cut_line(dflines, filepath)
+    # a cut inside the last value gives a valid number, thus only the missing line end shows the cut. A cut compressed
+    # file fails to decompress, thus the check reads only the last byte of a plain file
+    if filepath.suffix not in COMPRESSED_EXTENSIONS and filepath.stat().st_size > 0:
+        with filepath.open("rb") as linelistfile:
+            linelistfile.seek(-1, os.SEEK_END)
+            if linelistfile.read(1) != b"\n":
+                msg = (
+                    f"The file {filepath} does not end with a line end. Possibly ARTIS or a copy still writes the"
+                    " file, or the end of the file is missing"
+                )
+                raise ValueError(msg)
     return dflines
 
 

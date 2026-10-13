@@ -683,6 +683,7 @@ def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(
     ("filename", "content"),
     [
         ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 2 1\n4216.708 38 2".encode()),
+        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 2 1\n4216.708 38 2 3 1".encode()),
         ("linelist.out", b""),
         ("linelist.out.zst", b""),
         ("linelist.out", b"#lambda_ang"),
