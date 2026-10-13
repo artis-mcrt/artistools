@@ -20,10 +20,12 @@ jobs:
             && github.event.pull_request.user.login != 'dependabot[bot]') || (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
             startsWith(github.event.comment.body, '@claude review') && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
             }}
-        # a new push makes the review of the previous commit obsolete. The concurrency is on the job, because a
-        # skipped run of each other comment on the pull request would otherwise cancel the review
+        # a new push makes the review of the previous push obsolete. A push does not cancel the first review or a
+        # review on request, thus each of these reviews has its own group. The concurrency is on the job, because a
+        # skipped run, e.g. of a push to a draft, would otherwise cancel the review
         concurrency:
-            group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}
+            group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event.action == 'synchronize'
+                && 'push' || github.run_id }}
             cancel-in-progress: true
         runs-on: ubuntu-latest
         # the review runs the code of the pull request. Thus it gets the token of this workflow, which ends with
