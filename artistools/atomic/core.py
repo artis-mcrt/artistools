@@ -6,6 +6,7 @@ import re
 import string
 import time
 import typing as t
+import warnings
 from collections.abc import Collection
 from collections.abc import Generator
 from collections.abc import Mapping
@@ -1152,7 +1153,9 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
 
     # a file of one line gives a one-dimensional array without ndmin, and a file of no line gives no row
     try:
-        with zopen(filepath) as linestatfile:
+        with zopen(filepath) as linestatfile, warnings.catch_warnings():
+            # a model with no lines gives five empty rows, which is not an error
+            warnings.filterwarnings("ignore", message="loadtxt: input contained no data", category=UserWarning)
             data = np.loadtxt(linestatfile, ndmin=2)
     except ValueError as exc:
         exc.add_note(f"while reading {filepath}")
@@ -1233,12 +1236,12 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     The emission and the absorption type codes of a packet are lineindex values.
     Do not add a sort operation, a filter operation, or a unique operation to this function.
 
-    An ARTIS that writes linelist.out deletes the line list and the run folders of an earlier model at the start of a
-    new model, thus the model folder holds no linestat.out of an earlier model. ARTIS writes linelist.out into the
-    model folder, and firstexisting finds it there before a linestat.out that a copy adds.
+    Only an ARTIS that writes linelist.out deletes the line list of an earlier model, thus a linelist.out in any run
+    folder wins over a linestat.out.
     """
-    textfile = firstexisting(
-        ["linelist.out", "linestat.out"],
+    readers = {"linelist.out": read_linelistfile, "linestat.out": read_linestatfile}
+    textfile = firstexisting_or_none("linelist.out", folder=modelpath) or firstexisting(
+        list(readers),
         folder=modelpath,
         purpose=(
             "linelist.out (linestat.out from an older ARTIS version) gives the wavelength, the element, the ion, "
@@ -1246,7 +1249,6 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
             "plotspectra --emissionabsorption."
         ),
     )
-    textsourcename = without_compressed_extension(textfile).name
     # the path, with the compression extension, identifies the text source of the cache
     textsource = textfile.relative_to(modelpath).as_posix()
     # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
@@ -1263,7 +1265,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         if outdatedparquet is not None:
             print(f"{parquetfile} is not a current cache of {textfile.name}, because {stalereason}")
 
-        dflines = read_linelistfile(textfile) if textsourcename == "linelist.out" else read_linestatfile(textfile)
+        dflines = readers[without_compressed_extension(textfile).name](textfile)
 
         pldf = dflines.with_row_index(name="lineindex").with_columns(pl.col("lineindex").cast(pl.Int32))
         write_parquet_atomic(

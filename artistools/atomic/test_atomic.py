@@ -616,6 +616,8 @@ def write_linestatfile(filepath: Path, lines: Sequence[tuple[float, int, int, in
 
 
 @pytest.mark.parametrize(("nlines", "suffix"), [(0, ""), (1, ""), (3, ""), (3, ".zst")])
+# numpy warns for the five empty rows of linestat.out with no lines
+@pytest.mark.filterwarnings("error::UserWarning")
 def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, suffix: str, tmp_path: Path) -> None:
     """linelist.out and linestat.out with the same lines give the same frame.
 
@@ -657,6 +659,15 @@ def test_get_linelist_pldf_ignores_an_empty_line(tmp_path: Path) -> None:
     write_text_rows(tmp_path / "linelist.out", [LINELIST_HEADER, "13898.2958 57 3 1 0", "", "4216.708 38 2 2 0", ""])
 
     assert at.atomic.get_linelist_pldf(tmp_path).collect()["atomic_number"].to_list() == [57, 38]
+
+
+def test_get_linelist_pldf_reads_linelist_in_a_run_folder_before_linestat(tmp_path: Path) -> None:
+    """Firstexisting searches the model folder before the run folders, thus it found a linestat.out of a copy first."""
+    (tmp_path / "123.slurm").mkdir()
+    write_linelistfile(tmp_path / "123.slurm" / "linelist.out", TEST_LINES)
+    write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
+
+    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 3
 
 
 def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp_path: Path) -> None:
