@@ -20,9 +20,11 @@ from artistools.constants import amu_g
 from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
 from artistools.constants import Msun_to_g
-from artistools.inputmodel.rprocess_from_trajectory import fix_fortran_exponents
-from artistools.inputmodel.rprocess_from_trajectory import get_tar_member_extracted_path
+from artistools.inputmodel.rprocess_from_trajectory import describe_leftout_files
+from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
+from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps_table
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
+from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timesteps
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
@@ -203,6 +205,80 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     return append_electroncapture_betaplus_nuclei(ensdf_betaminus, nuc_dataset)
 
 
+def get_nearest_network_timesteps(
+    traj_root: Path, traj_ID: int, arr_t_day: npt.NDArray[np.floating]
+) -> tuple[pl.DataFrame, npt.NDArray[np.bool_], npt.NDArray[np.int64], npt.NDArray[np.int64]]:
+    """Return the heating rows of a trajectory, and the mask, the row, and the abundance timestep of each plot time.
+
+    The rows are those of heating.dat, with the Qdot of energy_thermo.dat where that file has the timestep. A
+    plot time after the last network time has no network timestep, and its row is 0, thus an index with the
+    rows is safe before the mask applies. The abundances come from the nearest timestep that has an abundance
+    file, because the cache leaves out a corrupt file, and a test archive holds the file of one timestep
+    alone. A trajectory with no heating row, or with no Qdot at a timestep that a plot time uses, raises
+    FileNotFoundError, as a trajectory with no network data does.
+    """
+    dftimesteps = get_trajectory_timesteps(traj_root, traj_ID)
+    if "Qdot" not in dftimesteps.columns:
+        msg = (
+            f"The network data of particle {traj_ID} in {traj_root} has no column Qdot."
+            f" {describe_leftout_files(traj_root, traj_ID)}"
+        )
+        raise FileNotFoundError(msg)
+    # the Qdot of a heating row can be null, thus it comes from a join and not from the table of the rows
+    dfheatingthermo = get_network_timesteps_table(traj_root, traj_ID, ("hbeta", "htot")).join(
+        dftimesteps.select("nstep", "Qdot", "abundancefile"), on="nstep", how="left", maintain_order="left"
+    )
+
+    arr_networktime_s = dfheatingthermo["time_s"].to_numpy()
+    arr_networktimedays = arr_networktime_s / day_to_s
+    arr_heatingrow = np.array(
+        [
+            int(np.abs(arr_networktimedays - plottimedays).argmin()) if plottimedays < arr_networktimedays[-1] else -1
+            for plottimedays in arr_t_day
+        ],
+        dtype=np.int64,
+    )
+    hasnetworkstep = arr_heatingrow >= 0
+    # Python evaluates both arguments of np.where before the mask, thus a plot time with no network step reads row 0
+    arr_safeheatingrow = np.where(hasnetworkstep, arr_heatingrow, 0)
+    arr_nstep = np.where(hasnetworkstep, dfheatingthermo["nstep"].to_numpy()[arr_safeheatingrow], -1)
+    # a heating row that has an abundance file gives its own timestep. The search for the nearest timestep compares
+    # the times in Float32, thus two early timesteps can be the same time there
+    arr_abundancestep = arr_nstep.copy()
+    hasfile = dfheatingthermo["abundancefile"].is_not_null().to_numpy()[arr_safeheatingrow]
+    needsearch = hasnetworkstep & ~hasfile
+    if needsearch.any():
+        arr_abundancestep[needsearch] = get_closest_network_timesteps(
+            traj_root, traj_ID, arr_networktime_s[arr_heatingrow[needsearch]]
+        )
+
+    # a null Qdot would make the sum over the trajectories NaN with no sign of the cause, thus the trajectory has no
+    # network data at that plot time, e.g. its energy_thermo.dat ends before its heating.dat
+    badsteps = (
+        dfheatingthermo[arr_heatingrow[hasnetworkstep].tolist()].filter(pl.col("Qdot").is_null())["nstep"].to_list()
+    )
+    if badsteps:
+        msg = (
+            f"The trajectory of particle {traj_ID} has no Qdot value at timestep {badsteps[0]}, which a plot time uses"
+        )
+        raise FileNotFoundError(msg)
+
+    substitutions = sorted({
+        (int(nstep), int(abundancestep))
+        for nstep, abundancestep in zip(arr_nstep, arr_abundancestep, strict=True)
+        if nstep != abundancestep
+    })
+    if substitutions:
+        # the user must see a change of the data source, because the substitute can be far from the timestep
+        substitutiontext = ", ".join(f"{nstep} come from timestep {sub}" for nstep, sub in substitutions[:5])
+        print_warning(
+            f"trajectory {traj_ID}: the abundances of timestep {substitutiontext}"
+            f"{', ...' if len(substitutions) > 5 else ''}, because the timestep has no abundance file"
+        )
+
+    return dfheatingthermo, hasnetworkstep, arr_safeheatingrow, arr_abundancestep
+
+
 def process_trajectory(
     nuc_data: pl.DataFrame,
     traj_root: Path | str,
@@ -219,38 +295,12 @@ def process_trajectory(
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
     try:
-        heatingpath = get_tar_member_extracted_path(
-            traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/heating.dat"
+        dfheatingthermo, hasnetworkstep, arr_safeheatingrow, arr_abundancestep = get_nearest_network_timesteps(
+            traj_root, traj_ID, arr_t_day
         )
-    except FileNotFoundError:
-        print_warning(f"trajectory {traj_ID} has no network data, thus the sums leave it out")
+    except FileNotFoundError as exc:
+        print_warning(f"trajectory {traj_ID} has no network data, thus the sums leave it out ({exc})")
         return None
-
-    dfheatingthermo = (
-        read_wsv(heatingpath)
-        .select("#count", "hbeta", "htot")
-        .with_columns(fix_fortran_exponents(pl.Float64))
-        .join(
-            read_wsv(
-                get_tar_member_extracted_path(
-                    traj_root=traj_root, particleid=traj_ID, memberfilename="./Run_rprocess/energy_thermo.dat"
-                )
-            ).select("#count", "time/s", "Qdot"),
-            on="#count",
-            how="left",
-            maintain_order="left",
-        )
-        .rename({"#count": "nstep", "time/s": "timesec"})
-    )
-
-    # get nearest network time to each plotted time
-    arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / day_to_s
-    networktimestepindices = [
-        int(dfheatingthermo["nstep"].item(int(np.abs(arr_networktimedays - plottimedays).argmin())))
-        if plottimedays < arr_networktimedays[-1]
-        else -1
-        for plottimedays in arr_t_day
-    ]
 
     decay_powers: dict[str, npt.NDArray[np.floating]]
     decay_powers = {
@@ -265,12 +315,8 @@ def process_trajectory(
             "abundweighted_Qdot",
         )
     }
-    arr_networktimestepindex = np.array(networktimestepindices, dtype=np.int64)
-    hasnetworkstep = arr_networktimestepindex >= 1
-    # Python evaluates both arguments of np.where before the mask, thus a plot time with no network step reads row 0
-    arr_heatingrow = np.where(hasnetworkstep, arr_networktimestepindex - 1, 0)
     decay_powers |= {
-        col: np.where(hasnetworkstep, dfheatingthermo[col].to_numpy()[arr_heatingrow], 0.0) * traj_mass_grams
+        col: np.where(hasnetworkstep, dfheatingthermo[col].to_numpy()[arr_safeheatingrow], 0.0) * traj_mass_grams
         for col in ("hbeta", "htot", "Qdot")
     }
     decay_powers |= {"timedays": np.array(arr_t_day)}
@@ -282,12 +328,10 @@ def process_trajectory(
             decay_powers[f"({A},{Z})_nu"] = np.zeros(len(arr_t_day))
 
     # two plot times can use the same network step, thus the code reads each file one time
-    networksteps = sorted({int(nts) for nts in arr_networktimestepindex[hasnetworkstep]})
+    networksteps = sorted({int(nts) for nts in arr_abundancestep[hasnetworkstep]})
     if networksteps:
         dftrajnucabund, _networktimes = get_trajectory_timestepfiles_nuc_abund(
-            traj_root=traj_root,
-            particleid=traj_ID,
-            memberfilenames=[f"./Run_rprocess/nz-plane{nts:05d}" for nts in networksteps],
+            traj_root=traj_root, particleid=traj_ID, abundancefiles=[f"nz-plane{nts:05d}" for nts in networksteps]
         )
 
         assert np.bincount(dftrajnucabund["fileindex"].to_numpy(), minlength=len(networksteps)).min() > 100
@@ -325,7 +369,7 @@ def process_trajectory(
                 abundweighted_Qdot=pl.sum("eps_tot"),
             )
             .join(
-                pl.DataFrame({"nstep": arr_networktimestepindex[hasnetworkstep]}, schema={"nstep": pl.Int64}),
+                pl.DataFrame({"nstep": arr_abundancestep[hasnetworkstep]}, schema={"nstep": pl.Int64}),
                 on="nstep",
                 how="right",
                 maintain_order="right",
@@ -339,7 +383,7 @@ def process_trajectory(
             # store all nuclide contributions in detail
             plottimesteps_of_nstep: dict[int, list[int]] = {}
             for plottimestep in plottimesteps_with_network.tolist():
-                plottimesteps_of_nstep.setdefault(networktimestepindices[plottimestep], []).append(plottimestep)
+                plottimesteps_of_nstep.setdefault(int(arr_abundancestep[plottimestep]), []).append(plottimestep)
             grouped = pldf_all.group_by("nstep", "A", "Z").agg(
                 pl.sum("eps_elec").alias("eps_elec"),
                 pl.sum("eps_gamma").alias("eps_gamma"),

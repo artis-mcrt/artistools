@@ -93,54 +93,207 @@ def get_derived_modeldata(modelpath: Path, **kwargs: t.Any) -> tuple[pl.LazyFram
     return at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta), modelmeta
 
 
-def trajectory_member_size(traj_root: Path, memberfilename: str, _worker: int) -> int:
-    """Return the byte count one process sees for a trajectory tar member, extracting it if needed."""
-    filepath = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
-        traj_root=traj_root, particleid=114511, memberfilename=memberfilename
+def write_trajectory_archive(
+    traj_root: Path, particleid: int, members: dict[str, str], suffix: str = ".tar.xz"
+) -> Path:
+    """Write a small trajectory archive {particleid}.tar.xz whose members are the files of its Run_rprocess folder."""
+    import io
+
+    from artistools.misc.fileio import get_decompress_open
+
+    traj_root.mkdir(parents=True, exist_ok=True)
+    archivepath = traj_root / f"{particleid}{suffix}"
+    tarbytes = io.BytesIO()
+    with tarfile.open(fileobj=tarbytes, mode="w") as tarfilehandle:
+        for filename, text in members.items():
+            data = text.encode("utf-8")
+            tarinfo = tarfile.TarInfo(name=f"./Run_rprocess/{filename}")
+            tarinfo.size = len(data)
+            tarfilehandle.addfile(tarinfo, io.BytesIO(data))
+
+    if suffix == ".tar":
+        archivepath.write_bytes(tarbytes.getvalue())
+    else:
+        with get_decompress_open(archivepath.suffix)(archivepath, "wb") as archivefile:
+            archivefile.write(tarbytes.getvalue())
+
+    return archivepath
+
+
+def test_trajectory_archive_formats_give_the_same_table(tmp_path: Path) -> None:
+    """A .tar.zst, a .tar.xz, and a .tar give the same table, and a .tar.zst comes before a .tar.xz."""
+    members = {
+        "energy_thermo.dat": "#count time/s Qdot\n     1  1.000000E+00  1.500000E+21\n",
+        "nz-plane00001": "  1  1.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n  2   2 -1.27404E+00  0.0  0.0\n",
+    }
+    tables = {
+        suffix: at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(
+            write_trajectory_archive(tmp_path / suffix.lstrip("."), 3, members, suffix)
+        )[0]
+        for suffix in (".tar", ".tar.zst", ".tar.xz")
+    }
+    pltest.assert_frame_equal(tables[".tar.zst"], tables[".tar.xz"])
+    pltest.assert_frame_equal(tables[".tar"], tables[".tar.xz"])
+
+    write_trajectory_archive(tmp_path / "both", 3, members, ".tar.xz")
+    write_trajectory_archive(tmp_path / "both", 3, members, ".tar.zst")
+    archivepath = at.inputmodel.rprocess_from_trajectory.get_trajectory_archive_path(tmp_path / "both", 3)
+    assert archivepath is not None
+    assert archivepath.name == "3.tar.zst"
+
+
+def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> None:
+    """A last timestep before one second gives a zero integral, because the integration starts at one second.
+
+    The filter on the last timestep came before the check for a time of one second or more, thus the check
+    failed with an incorrect message.
+    """
+    write_trajectory_archive(
+        tmp_path,
+        6,
+        {
+            "energy_thermo.dat": (
+                "#count time/s Qdot\n"
+                "     1  5.000000E-01  1.000000E+20\n"
+                "     2  2.000000E+00  2.000000E+10\n"
+                "     3  4.000000E+00  1.000000E+10\n"
+            )
+        },
     )
-    return len(filepath.read_bytes())
+    qdotintegral = at.inputmodel.rprocess_from_trajectory.get_trajectory_qdotintegral
+    assert qdotintegral(6, tmp_path, nts_max=1, t_model_s=4.0) == 0.0
+    # Qdot * t / t_model is 1e10 at both timesteps, thus the trapezoid over two seconds gives 2e10
+    assert qdotintegral(6, tmp_path, nts_max=3, t_model_s=4.0) == pytest.approx(2.0e10)
+
+    # a corrupt Qdot value makes energy_thermo.dat corrupt, and the cache leaves out the table, thus the particle
+    # has no network data for a reader of Qdot
+    write_trajectory_archive(
+        tmp_path / "corrupt",
+        6,
+        {
+            "energy_thermo.dat": (
+                "#count time/s Qdot\n"
+                "     1  2.000000E+00  2.000000E+10\n"
+                "     2  3.000000E+00  **********\n"
+                "     3  4.000000E+00  1.000000E+10\n"
+            )
+        },
+    )
+    with pytest.raises(FileNotFoundError, match="no column Qdot"):
+        qdotintegral(6, tmp_path / "corrupt", nts_max=3, t_model_s=4.0)
+
+    # a missing timestep in the range of the integral stops the integral, because a trapezoid across the gap
+    # would give a wrong energy with no sign of the problem
+    write_trajectory_archive(
+        tmp_path / "gap",
+        6,
+        {
+            "energy_thermo.dat": (
+                "#count time/s Qdot\n     1  2.000000E+00  2.000000E+10\n     3  4.000000E+00  1.000000E+10\n"
+            )
+        },
+    )
+    with pytest.raises(ValueError, match="no Qdot value at each timestep up to 3"):
+        qdotintegral(6, tmp_path / "gap", nts_max=3, t_model_s=4.0)
+    # the missing timestep is the last timestep of the integral, thus the timesteps before it are consecutive
+    with pytest.raises(ValueError, match="no Qdot value at each timestep up to 2"):
+        qdotintegral(6, tmp_path / "gap", nts_max=2, t_model_s=4.0)
+    assert qdotintegral(6, tmp_path / "gap", nts_max=1, t_model_s=4.0) == pytest.approx(0.0)
+
+    # the last timestep has an abundance file and no row in energy_thermo.dat, thus the integral would stop early
+    write_trajectory_archive(
+        tmp_path / "short",
+        6,
+        {
+            "energy_thermo.dat": (
+                "#count time/s Qdot\n     1  2.000000E+00  2.000000E+10\n     2  3.000000E+00  2.000000E+10\n"
+            ),
+            "nz-plane00003": (
+                "  3  4.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n  2   2 -1.27404E+00  0.0  0.0\n"
+            ),
+        },
+    )
+    # the trajectory has no network data at that timestep, thus the particle is one with no network data
+    with pytest.raises(FileNotFoundError, match="ends at timestep 2 before timestep 3"):
+        qdotintegral(6, tmp_path / "short", nts_max=3, t_model_s=4.0)
 
 
-def test_tar_member_extraction_is_atomic(tmp_path: Path) -> None:
-    """Processes extracting the same trajectory member at once must never see a half-written file.
+def trajectory_step_count(traj_root: Path, _worker: int) -> int:
+    """Return the number of rows that one process reads for a trajectory, after it builds the cache if necessary."""
+    # a worker keeps the timesteps of the previous trial for the same archive, thus the test clears them
+    at.inputmodel.rprocess_from_trajectory.collect_trajectory_timesteps.cache_clear()
+    return at.inputmodel.rprocess_from_trajectory.get_trajectory_timesteps(traj_root, 114511).height
 
-    Extracting straight to the destination let one process read what another was still writing, which failed
-    runs at random on a truncated file.
+
+def test_trajectory_cache_write_is_atomic(tmp_path: Path) -> None:
+    """Processes that build the cache of the same trajectory at the same time must all read a complete table.
+
+    The write goes through a temporary file, thus a reader sees either no cache or a complete one. If a different
+    process wrote a complete cache first, the function keeps that cache.
     """
     nworkers = 16
-    memberfilename = "./Run_rprocess/heating.dat"  # the largest member, so the widest window to catch a partial read
     traj_root = tmp_path / "trajectories"
+    # a group that can write the trajectory root must be able to add a cache, thus the cache folder takes this mode
     traj_root.mkdir()
+    traj_root.chmod(0o775)
     shutil.copy(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", traj_root)
-    with tarfile.open(traj_root / "114511.tar.xz", "r:*") as tarfilehandle:
-        membersize = tarfilehandle.getmember(memberfilename).size
+    nrows = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(traj_root / "114511.tar.xz")[0].height
 
-    readsize = partial(trajectory_member_size, traj_root, memberfilename)
+    readrows = partial(trajectory_step_count, traj_root)
     # at.misc.parallel_map would give a thread pool on free-threaded builds, and only separate processes can race on
     # the filesystem. Spawn for the same reason parallel_map does: forking with polars/rayon threads live is unsafe.
     with ProcessPoolExecutor(max_workers=nworkers, mp_context=multiprocessing.get_context("spawn")) as executor:
-        # start the workers up front so that each trial races on the extraction rather than on process startup
+        # start the workers before the trials, because then each trial tests the cache write and not the process start
         list(executor.map(time.sleep, [0.0] * nworkers))
 
         for _trial in range(20):
-            shutil.rmtree(traj_root / "114511", ignore_errors=True)
-            assert list(executor.map(readsize, range(nworkers), chunksize=1)) == [membersize] * nworkers
+            shutil.rmtree(traj_root / "parquetcaches", ignore_errors=True)
+            assert list(executor.map(readrows, range(nworkers), chunksize=1)) == [nrows] * nworkers
+
+    assert (traj_root / "parquetcaches" / "114511.parquet").is_file()
+    assert (traj_root / "parquetcaches").stat().st_mode & 0o777 == 0o775
 
 
-def test_tar_member_empty_leftover_without_archive_raises(tmp_path: Path) -> None:
-    """An empty leftover from an interrupted run is not usable data when there is no archive to re-extract from."""
-    memberfilename = "./Run_rprocess/nz-plane00223"
+def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_path: Path) -> None:
+    """The read rebuilds a cache from a different artistools version, and it uses a cache whose archive is absent.
+
+    A user can delete the archives after artistools reads them one time, because the cache then holds all the data
+    that artistools reads.
+    """
+    from artistools.inputmodel.rprocess_from_trajectory import scan_trajectory_network_data
+    from artistools.inputmodel.rprocess_from_trajectory import TRAJECTORY_CACHEVERSION
+
     traj_root = tmp_path / "trajectories"
-    path_extracted_file = traj_root / "114511" / "Run_rprocess" / "nz-plane00223"
-    path_extracted_file.parent.mkdir(parents=True)
-    path_extracted_file.touch()
+    traj_root.mkdir()
+    with pytest.raises(FileNotFoundError, match="114511"):
+        scan_trajectory_network_data(traj_root, 114511)
 
-    with pytest.raises(FileNotFoundError):
-        at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
-            traj_root=traj_root, particleid=114511, memberfilename=memberfilename
-        )
+    archivepath = shutil.copy(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", traj_root)
+    parquetpath = traj_root / "parquetcaches" / "114511.parquet"
+    parquetpath.parent.mkdir()
+    pl.DataFrame({"nstep": [1]}).write_parquet(
+        parquetpath, metadata={"cacheversion": "0", "textsource_mtime": str(Path(archivepath).stat().st_mtime)}
+    )
 
-    assert not path_extracted_file.exists()
+    dftrajectory = scan_trajectory_network_data(traj_root, 114511).collect()
+    assert dftrajectory.height > 300
+    pqmetadata = pl.read_parquet_metadata(parquetpath)
+    assert pqmetadata["cacheversion"] == str(TRAJECTORY_CACHEVERSION)
+
+    assert pqmetadata["textsource"] == "114511.tar.xz"
+
+    # a copy with cp -p keeps the modification time, thus the size of the archive shows the change
+    import os
+
+    archivetime = Path(archivepath).stat().st_mtime
+    shutil.copy(testdatapath / "kilonova" / "trajectories" / "109215.tar.xz", archivepath)
+    os.utime(archivepath, (archivetime, archivetime))
+    dfreplaced = scan_trajectory_network_data(traj_root, 114511).collect()
+    assert dfreplaced.height != dftrajectory.height
+    assert dfreplaced["abundancefile"].drop_nulls().to_list() == ["nz-plane00434"]
+
+    Path(archivepath).unlink()
+    pltest.assert_frame_equal(scan_trajectory_network_data(traj_root, 114511).collect(), dfreplaced)
 
 
 def test_describeinputmodel(capsys: pytest.CaptureFixture[str]) -> None:
@@ -628,26 +781,158 @@ def test_get_elemabund_from_nucabund() -> None:
     assert result_abunds == all_expected_abunds
 
 
-def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) -> None:
-    """A timestep file whose first line is blank gives no time, thus the read must stop and name that file.
+def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_file(tmp_path: Path) -> None:
+    """A row holds energy_thermo.dat and heating.dat for its timestep, and a named abundance file is a row of its own.
+
+    The named file tday_nz-plane has the timestep number of nz-plane00002 in its header, but its time differs. A
+    full join on the timestep must keep both rows, and the duplicate time column of heating.dat must not replace
+    the time of energy_thermo.dat.
+    """
+    nuclidelines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n  2   2 -1.27404E+00  2.05770E+01  0.00000E+00\n"
+    archivepath = write_trajectory_archive(
+        tmp_path,
+        7,
+        {
+            "energy_thermo.dat": (
+                "#count       time/s            T9     rho(g/cc)            Ye          Qdot\n"
+                "     1  1.000000E+00  1.000000E+01  2.000000E+07  4.600000E-01  1.500000E+21\n"
+                "     2  9.000000E+04  1.000000E-06  2.000000E-12  4.600000E-01  2.000000E+10\n"
+            ),
+            # a restart of the network writes the header again and writes timestep 2 again, and it adds a timestep
+            # that energy_thermo.dat does not have
+            "heating.dat": (
+                "#count       time/s            T9     rho(g/cc)         hbeta          htot\n"
+                "     1  1.000000E+00  1.000000E+01  2.000000E+07  1.842623-281  3.000000E+14\n"
+                "     2  9.000000E+04  1.000000E-06  2.000000E-12  1.000000E+00  1.000000E+00\n"
+                "#count       time/s            T9     rho(g/cc)         hbeta          htot\n"
+                "     2  9.000000E+04  1.000000E-06  2.000000E-12  4.000000E+09  5.000000E+09\n"
+                "     3  1.000000E+05  1.000000E-06  2.000000E-12  6.000000E+09  7.000000E+09\n"
+            ),
+            "nz-plane00002": "  2  9.000000E+04   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
+            "tday_nz-plane": "  2  8.640000E+04   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
+            "._nz-plane00002": "resource fork\n",
+        },
+    )
+
+    dftrajectory, leftoutfiles = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(archivepath)
+
+    assert leftoutfiles == []
+    assert dftrajectory["nstep"].to_list() == [1, 2, 3, None]
+    assert dftrajectory["abundancefile"].to_list() == [None, "nz-plane00002", None, "tday_nz-plane"]
+    # timestep 3 takes its time from heating.dat, because energy_thermo.dat does not have timestep 3
+    # the named file has no timestep, and its time comes from its header
+    assert dftrajectory["time_s"].to_list() == [1.0, 9.0e4, 1.0e5, 8.64e4]
+    assert dftrajectory["abundancetime_s"].to_list() == [None, 9.0e4, None, 8.64e4]
+    # the Fortran exponent of hbeta has no "e", and the later row of timestep 2 replaces the earlier row
+    assert dftrajectory["hbeta"].to_list()[:3] == pytest.approx([1.842623e-281, 4.0e9, 6.0e9])
+    assert dftrajectory["Qdot"].to_list() == [pytest.approx(1.5e21), pytest.approx(2.0e10), None, None]
+    # a timestep with no abundance file has null lists, and a file with no nuclide lines has empty lists
+    assert dftrajectory["N"].to_list() == [None, [0, 2], None, [0, 2]]
+
+    # a reader of heating.dat gets the rows of that file, and a reader of energy_thermo.dat gets its rows
+    dfheating = at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 7, ("hbeta",))
+    assert dfheating["nstep"].to_list() == [1, 2, 3]
+    dfthermo = at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 7, ("Qdot",))
+    assert dfthermo["nstep"].to_list() == [1, 2]
+    # the search for the closest timestep sees timestep 2 alone, because the other timesteps have no abundance file
+    assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 7)["nstep"].to_list() == [2]
+    assert at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(tmp_path, 7, [1.0, 1.0e5]) == [2, 2]
+    with pytest.raises(FileNotFoundError, match="no column halpha"):
+        at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 7, ("halpha",))
+
+    dfnucabund, timesecs = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
+        tmp_path, 7, ["tday_nz-plane", "nz-plane00002"]
+    )
+    assert timesecs == [8.64e4, 9.0e4]
+    assert dfnucabund["fileindex"].to_list() == [0, 0, 1, 1]
+    assert dfnucabund["massfrac"].to_list() == pytest.approx([10**-11.1798, 4 * 10**-1.27404] * 2)
+
+    with pytest.raises(KeyError, match="nz-plane00003"):
+        at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(tmp_path, 7, ["nz-plane00003"])
+
+
+def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A corrupt time in heating.dat must not stop a read of the abundance files, which do not need that table."""
+    nuclidelines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n"
+    write_trajectory_archive(
+        tmp_path,
+        5,
+        {
+            # the last line of energy_thermo.dat is incomplete, as a network run that stopped during a write leaves
+            # it. The cut is in the Qdot column, which a reader uses
+            "energy_thermo.dat": (
+                "#count time/s Qdot Ye\n     1  1.000000E+00  1.500000E+21  **********\n     2  2.000000E+00\n"
+            ),
+            "heating.dat": "#count time/s hbeta\n     1  corrupt  2.000000E+09\n",
+            "nz-plane00001": "  1  1.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
+        },
+    )
+    _, timesecs = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
+        tmp_path, 5, ["nz-plane00001"]
+    )
+    assert timesecs == [1.0]
+    warnings = capsys.readouterr().err
+    assert "heating.dat in 5.tar.xz" in warnings
+    assert "The last line of energy_thermo.dat in 5.tar.xz is incomplete" in warnings
+    assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 5)["nstep"].to_list() == [1]
+    # a Fortran overflow token in a column that no reader uses does no harm, because the cache holds the columns of
+    # the readers alone
+    dfthermo = at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Qdot",))
+    assert dfthermo["Qdot"].to_list() == pytest.approx([1.5e21])
+    with pytest.raises(FileNotFoundError, match="no column Ye"):
+        at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Ye",))
+    # the error of a later run names the file that the cache left out
+    with pytest.raises(FileNotFoundError, match=r"no column hbeta.*left out.*heating\.dat"):
+        at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("hbeta",))
+
+
+def test_trajectory_archive_without_network_files_raises(tmp_path: Path) -> None:
+    """An archive with no file that artistools reads gives an error that names the archive."""
+    archivepath = write_trajectory_archive(tmp_path, 8, {"evol.dat": "1 2\n"})
+    with pytest.raises(FileNotFoundError, match=r"8\.tar\.xz"):
+        at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(archivepath)
+
+
+def test_trajectory_timestep_files_reject_a_blank_header_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A timestep file whose first line is blank gives no time, thus the cache leaves it out and names that file.
 
     A blank line gave a null field count, which the check for six fields passed. The reader then returned None
-    for the time.
+    for the time. The check runs when artistools builds the cache. The other files of the archive stay readable,
+    because a network run that stopped can leave one file with no header.
     """
-    rundir = tmp_path / "1" / "Run_rprocess"
-    rundir.mkdir(parents=True)
     abundlines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n  2   2 -1.27404E+00  2.05770E+01  0.00000E+00\n"
-    (rundir / "nz-plane00001").write_text(
-        "  1  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n" + abundlines
-    )
-    (rundir / "nz-plane00002").write_text("\n" + abundlines)
-
+    goodfile = "  1  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n" + abundlines
     reader = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund
-    _, timesecs = reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001"])
+
+    write_trajectory_archive(tmp_path / "good", 1, {"nz-plane00001": goodfile})
+    _, timesecs = reader(tmp_path / "good", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
 
-    with pytest.raises(ValueError, match="nz-plane00002"):
-        reader(tmp_path, 1, ["./Run_rprocess/nz-plane00001", "./Run_rprocess/nz-plane00002"])
+    # a network run that stopped can leave a file with no header, and a file with a cut nuclide line
+    write_trajectory_archive(
+        tmp_path / "bad",
+        1,
+        {
+            "nz-plane00001": goodfile,
+            "nz-plane00002": "\n" + abundlines,
+            "nz-plane00003": goodfile + "  3   4 -1.2E+",
+            "nz-plane00004": "  4  8.87x645E+03   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n" + abundlines,
+            "nz-plane00005": "  5  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n",
+        },
+    )
+    _, timesecs = reader(tmp_path / "bad", 1, ["nz-plane00001"])
+    assert timesecs == [8873.645]
+    warnings = capsys.readouterr().err
+    for filename in ("nz-plane00002", "nz-plane00003", "nz-plane00004", "nz-plane00005"):
+        assert f"{filename} in 1.tar.xz" in warnings
+    with pytest.raises(KeyError, match="nz-plane00002"):
+        reader(tmp_path / "bad", 1, ["nz-plane00001", "nz-plane00002"])
+    with pytest.raises(KeyError, match="nz-plane00003"):
+        reader(tmp_path / "bad", 1, ["nz-plane00003"])
 
 
 def test_get_trajectory_abund_q(trajectory_copy: Path) -> None:
@@ -2242,9 +2527,11 @@ def test_rprocess_const_and_powerlaw() -> None:
 
 def test_energyfiles_from_trajectory(trajectory_copy: Path) -> None:
     """Integrating a trajectory's heating rate must give a positive total energy."""
-    thermofile = at.inputmodel.rprocess_from_trajectory.get_tar_member_extracted_path(
-        traj_root=trajectory_copy, particleid=109215, memberfilename="./Run_rprocess/energy_thermo.dat"
-    )
+    thermofile = trajectory_copy / "energy_thermo.dat"
+    with tarfile.open(trajectory_copy / "109215.tar.xz", "r:*") as tarfilehandle:
+        memberfile = tarfilehandle.extractfile("./Run_rprocess/energy_thermo.dat")
+        assert memberfile is not None
+        thermofile.write_bytes(memberfile.read())
     dfthermo = at.inputmodel.energyinputfiles.read_trajectory_thermo(thermofile)
     assert dfthermo["time/s"].to_numpy().min() >= 1.0, "the unphysical sub-second Qdot values must be dropped"
 
@@ -4044,14 +4331,17 @@ def test_make1dslicefrom3dmodel(tmp_path: Path) -> None:
 def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The command takes the trajectory folder and the particle id as arguments, and it writes a one-cell model."""
     particleid = 42
-    rundir = tmp_path / "trajectories" / str(particleid) / "Run_rprocess"
-    rundir.mkdir(parents=True)
     # N, Z, and the log10 of the number abundance: He4 and Ni56 have a mass fraction of 0.5 each
     nuclidelines = [f"{2:4d}{2:4d}{math.log10(0.5 / 4):13.5E}", f"{28:4d}{28:4d}{math.log10(0.5 / 56):13.5E}"]
     timeseconds = 86400.0
-    (rundir / "tday_nz-plane").write_text(
-        f"  1  {timeseconds:.6E}   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n" + "\n".join(nuclidelines) + "\n",
-        encoding="utf-8",
+    write_trajectory_archive(
+        tmp_path / "trajectories",
+        particleid,
+        {
+            "tday_nz-plane": f"  1  {timeseconds:.6E}   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n"
+            + "\n".join(nuclidelines)
+            + "\n"
+        },
     )
     # the command reads a density profile from the working folder if one exists
     monkeypatch.chdir(tmp_path)

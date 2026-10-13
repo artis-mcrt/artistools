@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import sys
+import time
 import typing as t
 from collections.abc import Callable
 from collections.abc import Generator
@@ -158,7 +159,21 @@ def write_zstd_lines(fileobj: t.IO[bytes], lines: Sequence[str]) -> None:
     )
 
 
-def zopen(filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None) -> t.IO[str]:
+@t.overload
+def zopen(
+    filename: Path | str, mode: t.Literal["rb"], encoding: str | None = None, errors: str | None = None
+) -> t.IO[bytes]: ...
+
+
+@t.overload
+def zopen(
+    filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None
+) -> t.IO[str]: ...
+
+
+def zopen(
+    filename: Path | str, mode: str = "rt", encoding: str | None = None, errors: str | None = None
+) -> t.IO[str] | t.IO[bytes]:
     """Open filename, falling back to filename.zst, filename.gz or filename.xz.
 
     The named file wins, thus a stale compressed copy never shadows a file that a run has just written.
@@ -1245,6 +1260,7 @@ def read_parquet_cache_metadata(
     *,
     accept_unstamped: bool = False,
     textsource: str | None = None,
+    textsource_size: int | None = None,
 ) -> tuple[dict[str, str] | None, str | None]:
     """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
@@ -1298,6 +1314,14 @@ def read_parquet_cache_metadata(
             else "the cache has no record of its text source"
         )
 
+    # a copy that keeps the modification time, e.g. cp -p, can replace the text source, thus the size counts too
+    foundsize = pqmetadata.get("textsource_size")
+    if textsource_size is not None and foundsize is not None and foundsize != str(textsource_size):
+        return (
+            None,
+            f"the text source had {foundsize} bytes at the write of the cache, but it now has {textsource_size} bytes",
+        )
+
     foundmtime = pqmetadata.get("textsource_mtime")
     if foundmtime is None and accept_unstamped:
         return pqmetadata, None
@@ -1317,6 +1341,58 @@ def is_readonly_error(exc: OSError) -> bool:
     A read-only mount gives errno EROFS, which Python raises as a plain OSError and not as a PermissionError.
     """
     return isinstance(exc, PermissionError) or exc.errno == errno.EROFS
+
+
+def make_cache_folder(folder: Path, parentfolder: Path) -> None:
+    """Make a cache folder with the access mode of its parent folder, if it does not exist.
+
+    The folder takes the group and the access mode of parentfolder, with its setgid and sticky bits, thus a
+    group that can write the parent folder can add a cache. A mkdir alone applies the umask of the process,
+    which removes the group write bit. A different process can make the folder at the same time, and only its
+    owner can change the mode. That process applies the mode after its mkdir, thus a process of a different
+    user waits until a new folder is writable.
+
+    A folder that exists and stays read-only passes, because a read of the caches in it needs no write, and a
+    write then gives the error. A read-only parent folder gives a PermissionError with a readable message.
+    """
+    try:
+        folder.mkdir()
+    except FileExistsError:
+        # the process that made the folder applies the mode a few microseconds after its mkdir, thus a folder that
+        # is not writable gets a short wait when it is new. A folder that stays read-only passes at once, e.g. a
+        # shared model whose caches are current, and a write then gives the error
+        for _ in range(20):
+            if os.access(folder, os.W_OK) or time.time() - folder.stat().st_mtime > 2.0:
+                break
+            time.sleep(0.1)
+        return
+    except OSError as exc:
+        # a read-only mount gives EROFS and not PermissionError
+        if not is_readonly_error(exc):
+            raise
+        msg = f"artistools cannot make its cache folder {folder}, because the folder {parentfolder} is read-only"
+        raise PermissionError(msg) from exc
+
+    if sys.platform == "win32":
+        # Windows has no POSIX group or mode, and os.open rejects a folder there
+        return
+
+    parentstat = parentfolder.stat()
+    # the descriptor of the new folder, and not its path, gets the group and the mode, thus a different user who
+    # can write the parent folder cannot replace the folder by a symbolic link to a file between the calls
+    folderfd = os.open(folder, os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY)
+    try:
+        # a mkdir gives the folder the primary group of the user, where the parent folder can belong to a project
+        # group. Only a member of the group can give it, and some file systems reject a chmod, thus a failure keeps
+        # the group and the mode of the mkdir
+        with contextlib.suppress(OSError):
+            os.fchown(folderfd, -1, parentstat.st_gid)
+        with contextlib.suppress(OSError):
+            # the setgid bit and the sticky bit of the parent folder apply to the caches too: a sticky folder keeps
+            # the cache of one user safe from a different user
+            os.fchmod(folderfd, parentstat.st_mode & 0o3777)
+    finally:
+        os.close(folderfd)
 
 
 def get_readonly_cache_error(parquetfilepath: Path) -> PermissionError:
@@ -1355,6 +1431,7 @@ def write_parquet_atomic(
     metadata: dict[str, str] | None = None,
     replaces: tuple[int, int] | None = None,
     compression_level: int = 13,
+    row_group_size: int | None = None,
 ) -> None:
     """Write a parquet file with zstd compression through a temporary file, thus no reader sees a partial file.
 
@@ -1397,7 +1474,11 @@ def write_parquet_atomic(
     partialfilepath.chmod(destmode & 0o777)
     try:
         pldf.lazy().sink_parquet(
-            partialfilepath, compression="zstd", compression_level=compression_level, metadata=metadata
+            partialfilepath,
+            compression="zstd",
+            compression_level=compression_level,
+            metadata=metadata,
+            row_group_size=row_group_size,
         )
         try:
             # gives the file a second name, and fails if that name is taken, thus the destination appears
