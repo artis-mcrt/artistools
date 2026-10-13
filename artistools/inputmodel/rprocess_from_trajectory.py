@@ -236,11 +236,10 @@ def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
     A row holds the columns of energy_thermo.dat and heating.dat for its timestep, and the lists N, Z, and
     log10abund of its abundance file, if the timestep has one. A column that both files hold, e.g. time_s,
     takes the value of energy_thermo.dat, or the value of heating.dat for a timestep that energy_thermo.dat does
-    not have. A
-    named abundance file, e.g. tday_nz-plane, is a row with no timestep. The columns nstep and time_s always
-    exist. A column of a file that the archive does not hold is absent, e.g. a test archive with the abundance
-    files alone has no "Qdot" column. A table with a corrupt value is left out with a warning, thus a reader
-    of a different file of the trajectory can continue.
+    not have. A named abundance file, e.g. tday_nz-plane, is a row with no timestep. The columns nstep and
+    time_s always exist. A column of a file that the archive does not hold is absent, e.g. a test archive with
+    the abundance files alone has no "Qdot" column. A table with a corrupt value is left out with a warning,
+    thus a reader of a different file of the trajectory can continue.
     """
     texts = read_network_texts(archivepath)
     if not texts:
@@ -475,11 +474,12 @@ def get_trajectory_timestepfile_nuc_abund(
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
-    # the integration starts at one second, and nts_max is the one-based #count of the last network timestep
-    dfthermo = get_network_timesteps_table(Path(traj_root), particleid, ("Qdot",)).filter(
-        (pl.col("time_s") >= 1.0) & (pl.col("nstep") <= nts_max)
-    )
+    # the integration starts at one second
+    dfthermo = get_network_timesteps_table(Path(traj_root), particleid, ("Qdot",)).filter(pl.col("time_s") >= 1.0)
     assert dfthermo.height > 0, f"The energy_thermo.dat of particle {particleid} holds no time of one second or more"
+    # nts_max is the one-based #count of the last network timestep. A nts_max before one second gives no row,
+    # and the integral is then zero
+    dfthermo = dfthermo.filter(pl.col("nstep") <= nts_max)
     assert all(dfthermo["Qdot"] >= 0.0)
 
     dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)
