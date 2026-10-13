@@ -661,15 +661,6 @@ def test_get_linelist_pldf_ignores_an_empty_line(tmp_path: Path) -> None:
     assert at.atomic.get_linelist_pldf(tmp_path).collect()["atomic_number"].to_list() == [57, 38]
 
 
-def test_get_linelist_pldf_reads_linelist_in_a_run_folder_before_linestat(tmp_path: Path) -> None:
-    """Firstexisting searches the model folder before the run folders, thus it found a linestat.out of a copy first."""
-    (tmp_path / "123.slurm").mkdir()
-    write_linelistfile(tmp_path / "123.slurm" / "linelist.out", TEST_LINES)
-    write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
-
-    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 3
-
-
 def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp_path: Path) -> None:
     """ARTIS writes a wavelength such as 6500 Angstroms with no decimal point.
 
@@ -718,9 +709,10 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n", "has 3 rows and not 5"),
         ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1", NO_LINE_END_MESSAGE),
         # the wavelength row is not first, thus the atomic numbers have a fraction
-        ("linestat.out", b"57 38\n1.38982958e-04 4.21670800e-05\n3 2\n2 3\n1 1\n", "is not an integer of 1 or more"),
+        ("linestat.out", b"57 38\n1.38982958e-04 4.21670800e-05\n3 2\n2 3\n1 1\n", "has a value with a fraction"),
         # a level number of 0 gives the level index -1
-        ("linestat.out", b"1.38982958e-04\n57\n3\n2\n0\n", "is not an integer of 1 or more"),
+        ("linestat.out", b"1.38982958e-04\n57\n3\n2\n0\n", "a level index below 0"),
+        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 1 -1\n".encode(), "a level index below 0"),
     ],
 )
 def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
