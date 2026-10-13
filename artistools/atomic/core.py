@@ -1314,15 +1314,16 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     The emission and the absorption type codes of a packet are lineindex values.
     Do not add a sort operation, a filter operation, or a unique operation to this function.
 
-    ARTIS writes linelist.out into the model folder only, thus the search for it includes no run folder. An older
-    ARTIS writes linestat.out, and the search for it includes the run folders, as for the other files of a model.
+    ARTIS writes linelist.out, and an older ARTIS writes linestat.out, into the model folder only. Thus the search
+    includes no run folder.
     """
     readers = {"linelist.out": read_linelistfile, "linestat.out": read_linestatfile}
-    textfile = firstexisting_or_none("linelist.out", folder=modelpath, search_subfolders=False) or firstexisting(
-        "linestat.out",
+    textfile = firstexisting(
+        list(readers),
         folder=modelpath,
+        search_subfolders=False,
         purpose=(
-            "linelist.out in the model folder (linestat.out from an older ARTIS version) gives the wavelength, the "
+            "linelist.out (linestat.out from an older ARTIS version) in the model folder gives the wavelength, the "
             "element, the ion, and the levels of each line. The commands that identify a line read it, e.g. "
             "plotlinefluxes and plotspectra --emissionabsorption."
         ),
