@@ -301,7 +301,7 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
     """Scan the network data of a trajectory from its parquet cache, see read_trajectory_network_data.
 
     The first read of a trajectory reads its archive or its folder, and writes the cache
-    parquetcaches/{particleid}.networktimesteps.parquet in the trajectory folder. A later read scans the parquet
+    parquetcaches/{particleid}.parquet in the trajectory folder. A later read scans the parquet
     file. The row groups of the file hold 64 rows, thus a filter on one abundance file reads a small part of the
     nuclide lists.
 
@@ -312,7 +312,7 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
     Several processes can read the same trajectory at the same time, thus the write is atomic. If a different
     process wrote a complete cache first, the function keeps that cache.
     """
-    parquetpath = traj_root / "parquetcaches" / f"{particleid}.networktimesteps.parquet"
+    parquetpath = traj_root / "parquetcaches" / f"{particleid}.parquet"
     sourcepath = get_trajectory_source_path(traj_root, particleid)
     textsource_mtime = get_trajectory_source_mtime(sourcepath) if sourcepath is not None else None
     # the identity of the cache that a rewrite replaces, from the same moment as the staleness check

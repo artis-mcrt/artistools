@@ -137,7 +137,7 @@ def test_trajectory_cache_write_is_atomic(tmp_path: Path) -> None:
             shutil.rmtree(traj_root / "parquetcaches", ignore_errors=True)
             assert list(executor.map(readrows, range(nworkers), chunksize=1)) == [nrows] * nworkers
 
-    assert (traj_root / "parquetcaches" / "114511.networktimesteps.parquet").is_file()
+    assert (traj_root / "parquetcaches" / "114511.parquet").is_file()
 
 
 def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_path: Path) -> None:
@@ -155,7 +155,7 @@ def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_pa
         scan_trajectory_network_data(traj_root, 114511)
 
     archivepath = shutil.copy(testdatapath / "kilonova" / "trajectories" / "114511.tar.xz", traj_root)
-    parquetpath = traj_root / "parquetcaches" / "114511.networktimesteps.parquet"
+    parquetpath = traj_root / "parquetcaches" / "114511.parquet"
     parquetpath.parent.mkdir()
     pl.DataFrame({"nstep": [1]}).write_parquet(
         parquetpath, metadata={"cacheversion": "0", "textsource_mtime": str(Path(archivepath).stat().st_mtime)}
