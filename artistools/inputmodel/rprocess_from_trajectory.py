@@ -3,6 +3,7 @@
 import argparse
 import gc
 import math
+import os
 import posixpath
 import string
 import tarfile
@@ -357,8 +358,12 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
     try:
         cachefolder.mkdir()
     except FileExistsError:
-        # a different process made the folder, and only its owner can change the mode
-        pass
+        # a different process made the folder, and only its owner can change the mode. That process applies the
+        # mode after its mkdir, thus a process of a different user can see the folder before it is writable
+        for _ in range(50):
+            if os.access(cachefolder, os.W_OK):
+                break
+            time.sleep(0.1)
     except OSError as exc:
         # a read-only mount gives EROFS and not PermissionError
         if not is_readonly_error(exc):
