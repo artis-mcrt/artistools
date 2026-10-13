@@ -10,7 +10,6 @@ import time
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
-from functools import lru_cache
 from functools import partial
 from itertools import batched
 from itertools import chain
@@ -86,14 +85,19 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
     return dfelabundances
 
 
-def fix_fortran_exponents(dtype: pl.DataType | type[pl.DataType]) -> pl.Expr:
+def fix_fortran_exponents(
+    dtype: pl.DataType | type[pl.DataType], columns: pl.Expr | None = None, *, strict: bool = True
+) -> pl.Expr:
     """Return an expression that repairs Fortran triple-digit exponents, then casts to dtype.
 
     Fortran writes a value like 1.735904-244 without the "e", thus the column parses as strings. The cast is
     strict, thus a value that is corrupt for a different reason still raises. Only the sign before the three
-    exponent digits gets the "e", thus a negative mantissa keeps its sign.
+    exponent digits gets the "e", thus a negative mantissa keeps its sign. columns selects the columns, and
+    the default is each string column.
     """
-    return cs.by_dtype(pl.String).str.replace(r"(\d)([+-])(\d{3})$", "${1}e${2}${3}").cast(dtype)
+    if columns is None:
+        columns = cs.by_dtype(pl.String)
+    return columns.str.replace(r"(\d)([+-])(\d{3})$", "${1}e${2}${3}").cast(dtype, strict=strict)
 
 
 def parse_network_steps_table(text: str) -> pl.DataFrame:
@@ -102,7 +106,9 @@ def parse_network_steps_table(text: str) -> pl.DataFrame:
     The timestep column "#count" becomes "nstep", "time/s" becomes "time_s", and "rho(g/cc)" becomes "rho".
     The other columns keep the names of the file, e.g. "Qdot" and "hbeta". A later line that starts with "#"
     is a comment or a second header, e.g. after a restart of the network, and the parse skips it. A restart
-    can also write a timestep again, and the later row then replaces the earlier row.
+    can also write a timestep again, and the later row then replaces the earlier row. A corrupt timestep or
+    time makes the table corrupt. A corrupt value in a different column, e.g. a Fortran overflow token of
+    asterisks, gives null, thus the other columns of the table stay readable.
     """
     headerline, _, body = text.partition("\n")
     colnames = [
@@ -116,7 +122,8 @@ def parse_network_steps_table(text: str) -> pl.DataFrame:
         .with_columns(pl.col("line").str.strip_chars())
         .filter((pl.col("line").str.len_chars() > 0) & ~pl.col("line").str.starts_with("#"))
         .select(fields.list.get(index, null_on_oob=True).alias(colname) for index, colname in enumerate(colnames))
-        .with_columns(fix_fortran_exponents(pl.Float64))
+        .with_columns(fix_fortran_exponents(pl.Float64, pl.col("nstep", "time_s")))
+        .with_columns(fix_fortran_exponents(pl.Float64, strict=False))
         .with_columns(pl.col("nstep").cast(pl.Int32))
         .unique(subset="nstep", keep="last", maintain_order=True)
     )
@@ -151,7 +158,7 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
         lzlines.filter(pl.col("linenumber") == 0).select(
             "abundancefile",
             fieldcount=headerfields.list.len(),
-            abundancetime_s=headerfields.list.get(1, null_on_oob=True).cast(pl.Float64),
+            abundancetime_s=headerfields.list.get(1, null_on_oob=True).cast(pl.Float64, strict=False),
         ),
         lzlines
         .filter((pl.col("linenumber") > 0) & (pl.col("line").str.strip_chars().str.len_chars() > 0))
@@ -169,11 +176,15 @@ def parse_abundance_files(abundancetexts: dict[str, str], sourcename: str) -> pl
         ),
     ])
 
-    # a blank header line gives no fields, and a file without lines gives no header row
+    # a blank header line gives no fields, a corrupt time gives null, and a file without lines gives no header row
     dfheaders = (
         dfheaders
         .join(dfnuclides.select("abundancefile", "hascorruptline"), on="abundancefile", how="left")
-        .filter((pl.col("fieldcount") == 6) & ~pl.col("hascorruptline").fill_null(value=False))
+        .filter(
+            (pl.col("fieldcount") == 6)
+            & pl.col("abundancetime_s").is_not_null()
+            & ~pl.col("hascorruptline").fill_null(value=False)
+        )
         .drop("fieldcount", "hascorruptline")
     )
     goodfiles = set(dfheaders["abundancefile"].to_list())
@@ -324,13 +335,12 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
     return pl.scan_parquet(parquetpath)
 
 
-@lru_cache(maxsize=16)
 def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple[str, ...]) -> pl.DataFrame:
     """Return the network timesteps of a trajectory that hold a value in each of the given columns.
 
     The table holds nstep, time_s, and the given columns, in the order of nstep. A column of heating.dat, e.g.
-    "hbeta", keeps the rows of that file, as a read of the file alone did. An lru_cache holds the result. Do not
-    change the dataframe that the function returns.
+    "hbeta", keeps the rows of that file, as a read of the file alone did. The function holds no cache of the
+    result, because the check of the parquet cache must run on each call. A read costs less than a millisecond.
     """
     lztrajectory = scan_trajectory_network_data(traj_root, particleid)
     missingcols = [col for col in columns if col not in lztrajectory.collect_schema().names()]
@@ -348,12 +358,13 @@ def get_network_timesteps_table(traj_root: Path, particleid: int, columns: tuple
 
 
 def get_traj_network_timesteps(traj_root: Path | str, particleid: int) -> pl.DataFrame:
-    """Return the network timestep numbers and times [s] of one trajectory's energy_thermo.dat.
+    """Return the numbers and the times [s] of the network timesteps that have an abundance file.
 
-    A timestep that heating.dat alone holds has no abundance file, thus the search for the closest timestep
-    must not see it. The column Qdot shows a timestep of energy_thermo.dat.
+    The search for the closest timestep reads the abundance file of its result, thus a timestep with no file,
+    e.g. a file that the cache left out as corrupt, must not enter the search. The time comes from
+    energy_thermo.dat.
     """
-    return get_network_timesteps_table(Path(traj_root), particleid, ("Qdot",)).select(
+    return get_network_timesteps_table(Path(traj_root), particleid, ("abundancefile",)).select(
         pl.col("nstep"), pl.col("time_s").cast(pl.Float32).alias("timesec")
     )
 

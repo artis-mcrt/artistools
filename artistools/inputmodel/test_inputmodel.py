@@ -707,9 +707,9 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
     assert dfheating["nstep"].to_list() == [1, 2, 3]
     dfthermo = at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 7, ("Qdot",))
     assert dfthermo["nstep"].to_list() == [1, 2]
-    # the search for the closest timestep must not see timestep 3, because it has no abundance file
-    assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 7)["nstep"].to_list() == [1, 2]
-    assert at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(tmp_path, 7, [1.0e5]) == [2]
+    # the search for the closest timestep sees timestep 2 alone, because the other timesteps have no abundance file
+    assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 7)["nstep"].to_list() == [2]
+    assert at.inputmodel.rprocess_from_trajectory.get_closest_network_timesteps(tmp_path, 7, [1.0, 1.0e5]) == [2, 2]
     with pytest.raises(ValueError, match="no column halpha"):
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 7, ("halpha",))
 
@@ -727,14 +727,14 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
 def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A corrupt value in heating.dat must not stop a read of the abundance files, which do not need that table."""
+    """A corrupt time in heating.dat must not stop a read of the abundance files, which do not need that table."""
     nuclidelines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n"
     write_trajectory_archive(
         tmp_path,
         5,
         {
-            "energy_thermo.dat": "#count time/s Qdot\n     1  1.000000E+00  1.500000E+21\n",
-            "heating.dat": "#count time/s hbeta\n     1  1.000000E+00  corrupt\n",
+            "energy_thermo.dat": "#count time/s Qdot Ye\n     1  1.000000E+00  1.500000E+21  **********\n",
+            "heating.dat": "#count time/s hbeta\n     1  corrupt  2.000000E+09\n",
             "nz-plane00001": "  1  1.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
         },
     )
@@ -744,6 +744,10 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
     assert timesecs == [1.0]
     assert "heating.dat in 5.tar.xz" in capsys.readouterr().err
     assert at.inputmodel.rprocess_from_trajectory.get_traj_network_timesteps(tmp_path, 5)["nstep"].to_list() == [1]
+    # a Fortran overflow token in a column that no reader uses gives null, and the table stays readable
+    dfthermo = at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Qdot",))
+    assert dfthermo["Qdot"].to_list() == pytest.approx([1.5e21])
+    assert at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("Ye",)).height == 0
     with pytest.raises(ValueError, match="no column hbeta"):
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("hbeta",))
 
@@ -776,13 +780,19 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(
     write_trajectory_archive(
         tmp_path / "bad",
         1,
-        {"nz-plane00001": goodfile, "nz-plane00002": "\n" + abundlines, "nz-plane00003": goodfile + "  3   4 -1.2E+"},
+        {
+            "nz-plane00001": goodfile,
+            "nz-plane00002": "\n" + abundlines,
+            "nz-plane00003": goodfile + "  3   4 -1.2E+",
+            "nz-plane00004": "  4  8.87x645E+03   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n" + abundlines,
+        },
     )
     _, timesecs = reader(tmp_path / "bad", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
     warnings = capsys.readouterr().err
     assert "nz-plane00002 in 1.tar.xz" in warnings
     assert "nz-plane00003 in 1.tar.xz" in warnings
+    assert "nz-plane00004 in 1.tar.xz" in warnings
     with pytest.raises(KeyError, match="nz-plane00002"):
         reader(tmp_path / "bad", 1, ["nz-plane00001", "nz-plane00002"])
     with pytest.raises(KeyError, match="nz-plane00003"):
