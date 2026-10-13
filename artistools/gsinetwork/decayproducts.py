@@ -203,6 +203,52 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     return append_electroncapture_betaplus_nuclei(ensdf_betaminus, nuc_dataset)
 
 
+def get_nearest_network_timesteps(
+    traj_root: Path, traj_ID: int, arr_t_day: npt.NDArray[np.floating]
+) -> tuple[pl.DataFrame, npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.int64]]:
+    """Return the heating rows of a trajectory, and the row, the timestep, and the abundance timestep of each plot time.
+
+    The rows are those of heating.dat, with the Qdot of energy_thermo.dat where that file has the timestep. A
+    plot time after the last network time gets the row -1 and the timestep -1. The abundances come from the
+    nearest timestep that has an abundance file, because the cache leaves out a corrupt file, and a test archive
+    holds the file of one timestep alone. A trajectory with no heating row raises FileNotFoundError, as a
+    trajectory with no network data does.
+    """
+    dfheatingthermo = (
+        get_network_timesteps_table(traj_root, traj_ID, ("hbeta", "htot"))
+        .join(
+            get_network_timesteps_table(traj_root, traj_ID, ("Qdot",)).select("nstep", "Qdot"),
+            on="nstep",
+            how="left",
+            maintain_order="left",
+        )
+        .rename({"time_s": "timesec"})
+    )
+    if dfheatingthermo.is_empty():
+        msg = f"The trajectory of particle {traj_ID} has no timestep with heating values"
+        raise FileNotFoundError(msg)
+
+    arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / day_to_s
+    arr_heatingrow = np.array(
+        [
+            int(np.abs(arr_networktimedays - plottimedays).argmin()) if plottimedays < arr_networktimedays[-1] else -1
+            for plottimedays in arr_t_day
+        ],
+        dtype=np.int64,
+    )
+    hasnetworkstep = arr_heatingrow >= 0
+    arr_networktimestepindex = np.where(
+        hasnetworkstep, dfheatingthermo["nstep"].to_numpy()[np.where(hasnetworkstep, arr_heatingrow, 0)], -1
+    )
+    arr_abundancestep = arr_networktimestepindex.copy()
+    if hasnetworkstep.any():
+        arr_abundancestep[hasnetworkstep] = get_closest_network_timesteps(
+            traj_root, traj_ID, dfheatingthermo["timesec"].to_numpy()[arr_heatingrow[hasnetworkstep]]
+        )
+
+    return dfheatingthermo, arr_heatingrow, arr_networktimestepindex, arr_abundancestep
+
+
 def process_trajectory(
     nuc_data: pl.DataFrame,
     traj_root: Path | str,
@@ -219,32 +265,28 @@ def process_trajectory(
     traj_mass_grams = traj_masses_g[traj_ID]
     traj_root = Path(traj_root)
     try:
-        dfheatingthermo = get_network_timesteps_table(traj_root, traj_ID, ("hbeta", "htot", "Qdot")).rename({
-            "time_s": "timesec"
-        })
-    except FileNotFoundError:
-        print_warning(f"trajectory {traj_ID} has no network data, thus the sums leave it out")
+        dfheatingthermo, arr_heatingrow, arr_networktimestepindex, arr_abundancestep = get_nearest_network_timesteps(
+            traj_root, traj_ID, arr_t_day
+        )
+    except FileNotFoundError as exc:
+        print_warning(f"trajectory {traj_ID} has no network data, thus the sums leave it out ({exc})")
         return None
 
-    # Get the nearest network time to each plot time. A plot time after the last network time gets the index -1
-    arr_networktimedays = dfheatingthermo["timesec"].to_numpy() / day_to_s
-    arr_heatingrow = np.array(
-        [
-            int(np.abs(arr_networktimedays - plottimedays).argmin()) if plottimedays < arr_networktimedays[-1] else -1
-            for plottimedays in arr_t_day
-        ],
-        dtype=np.int64,
-    )
     hasnetworkstep = arr_heatingrow >= 0
     # Python evaluates both arguments of np.where before the mask, thus a plot time with no network step reads row 0
     arr_safeheatingrow = np.where(hasnetworkstep, arr_heatingrow, 0)
-    arr_networktimestepindex = np.where(hasnetworkstep, dfheatingthermo["nstep"].to_numpy()[arr_safeheatingrow], -1)
-    # the abundances come from the nearest timestep that has an abundance file, because the cache leaves out a
-    # corrupt file, and a test archive holds the file of one timestep alone
-    arr_abundancestep = arr_networktimestepindex.copy()
-    if hasnetworkstep.any():
-        arr_abundancestep[hasnetworkstep] = get_closest_network_timesteps(
-            traj_root, traj_ID, dfheatingthermo["timesec"].to_numpy()[arr_heatingrow[hasnetworkstep]]
+
+    substitutions = sorted({
+        (int(nstep), int(abundancestep))
+        for nstep, abundancestep in zip(arr_networktimestepindex, arr_abundancestep, strict=True)
+        if nstep != abundancestep
+    })
+    if substitutions:
+        # the user must see a change of the data source, because the substitute can be far from the timestep
+        substitutiontext = ", ".join(f"{nstep} come from timestep {sub}" for nstep, sub in substitutions[:5])
+        print_warning(
+            f"trajectory {traj_ID}: the abundances of timestep {substitutiontext}"
+            f"{', ...' if len(substitutions) > 5 else ''}, because the timestep has no abundance file"
         )
 
     decay_powers: dict[str, npt.NDArray[np.floating]]

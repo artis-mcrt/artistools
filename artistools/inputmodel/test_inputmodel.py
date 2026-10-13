@@ -165,6 +165,24 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
     # Qdot * t / t_model is 1e10 at both timesteps, thus the trapezoid over two seconds gives 2e10
     assert qdotintegral(6, tmp_path, nts_max=3, t_model_s=4.0) == pytest.approx(2.0e10)
 
+    # a corrupt Qdot value in the range of the integral stops the integral, because a trapezoid across the gap
+    # would give a wrong energy with no sign of the problem
+    write_trajectory_archive(
+        tmp_path / "gap",
+        6,
+        {
+            "energy_thermo.dat": (
+                "#count time/s Qdot\n"
+                "     1  2.000000E+00  2.000000E+10\n"
+                "     2  3.000000E+00  **********\n"
+                "     3  4.000000E+00  1.000000E+10\n"
+            )
+        },
+    )
+    with pytest.raises(ValueError, match="no Qdot value at each timestep up to 3"):
+        qdotintegral(6, tmp_path / "gap", nts_max=3, t_model_s=4.0)
+    assert qdotintegral(6, tmp_path / "gap", nts_max=1, t_model_s=4.0) == pytest.approx(0.0)
+
 
 def trajectory_step_count(traj_root: Path, _worker: int) -> int:
     """Return the number of rows that one process reads for a trajectory, after it builds the cache if necessary."""

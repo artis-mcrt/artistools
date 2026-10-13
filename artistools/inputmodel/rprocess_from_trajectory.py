@@ -42,6 +42,7 @@ from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import write_parquet_atomic
 from artistools.misc.fileio import get_decompress_open
+from artistools.misc.fileio import get_readonly_cache_error
 
 TRAJECTORY_CACHEVERSION = 1
 
@@ -231,11 +232,11 @@ def is_network_data_file(filename: str) -> bool:
 
 
 def open_archive_stream(archivepath: Path) -> t.IO[bytes]:
-    """Open a trajectory archive as a stream of tar bytes, and decompress a .tar.zst, .tar.xz, or .tar.gz on the way.
+    """Open a trajectory archive as a stream of tar bytes, and decompress a .tar.zst or a .tar.xz on the way.
 
     The decompressor of the repository reads a .zst on each Python version, where tarfile needs Python 3.14.
     """
-    if archivepath.suffix in {".zst", ".xz", ".gz"}:
+    if archivepath.suffix in {".zst", ".xz"}:
         return get_decompress_open(archivepath.suffix)(archivepath, "rb")
 
     return archivepath.open("rb")
@@ -271,8 +272,8 @@ def read_trajectory_network_data(archivepath: Path) -> pl.DataFrame:
     takes the value of energy_thermo.dat, or the value of heating.dat for a timestep that energy_thermo.dat does
     not have. A named abundance file, e.g. tday_nz-plane, is a row with no timestep. The columns nstep and
     time_s always exist. A column of a file that the archive does not hold is absent, e.g. a test archive with
-    the abundance files alone has no "Qdot" column. A table with a corrupt value is left out with a warning,
-    thus a reader of a different file of the trajectory can continue.
+    the abundance files alone has no "Qdot" column. The function leaves out a table with a corrupt value and
+    gives a warning, thus a reader of a different file of the trajectory can continue.
     """
     texts = read_network_texts(archivepath)
     if not texts:
@@ -343,15 +344,8 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
         TRAJECTORY_CACHEVERSION,
         textsource_mtime,
         textsource=archivepath.name if archivepath is not None else None,
+        textsource_size=archivestat.st_size if archivestat is not None else None,
     )
-    # a copy that keeps the modification time, e.g. cp -p, can replace the archive, thus the size counts too
-    stampedsize = pqmetadata.get("textsource_size") if pqmetadata is not None else None
-    if archivestat is not None and stampedsize is not None and stampedsize != str(archivestat.st_size):
-        pqmetadata = None
-        reason = (
-            f"the cache is from an archive of {stampedsize} bytes, but the archive now has {archivestat.st_size} bytes"
-        )
-
     if pqmetadata is not None:
         return pl.scan_parquet(parquetpath)
 
@@ -366,8 +360,14 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
         print(f"{parquetpath} is stale, because {reason}. artistools reads {archivepath.name} again.")
 
     cachefolder = parquetpath.parent
-    if not cachefolder.is_dir():
-        cachefolder.mkdir(exist_ok=True)
+    try:
+        cachefolder.mkdir()
+    except FileExistsError:
+        # a different process made the folder, and only its owner can change the mode
+        pass
+    except PermissionError as exc:
+        raise get_readonly_cache_error(parquetpath) from exc
+    else:
         # the folder takes the access mode of the trajectory root, thus a group that can write the root can
         # add a cache. A mkdir alone applies the umask of the process, which removes the group write bit
         cachefolder.chmod(traj_root.stat().st_mode & 0o777)
@@ -414,11 +414,15 @@ def get_traj_network_timesteps(traj_root: Path | str, particleid: int) -> pl.Dat
     """Return the numbers and the times [s] of the network timesteps that have an abundance file.
 
     The search for the closest timestep reads the abundance file of its result, thus a timestep with no file,
-    e.g. a file that the cache left out as corrupt, must not enter the search. The time comes from
-    energy_thermo.dat.
+    e.g. a file that the cache left out as corrupt, must not enter the search. The time comes from the header
+    of the abundance file, thus an archive with the abundance files alone has timesteps too.
     """
-    return get_network_timesteps_table(Path(traj_root), particleid, ("abundancefile",)).select(
-        pl.col("nstep"), pl.col("time_s").cast(pl.Float32).alias("timesec")
+    return (
+        scan_trajectory_network_data(Path(traj_root), particleid)
+        .filter(pl.col("nstep").is_not_null() & pl.col("abundancefile").is_not_null())
+        .sort("nstep")
+        .select(pl.col("nstep"), pl.col("abundancetime_s").cast(pl.Float32).alias("timesec"))
+        .collect()
     )
 
 
@@ -528,12 +532,27 @@ def get_trajectory_timestepfile_nuc_abund(
 
 def get_trajectory_qdotintegral(particleid: int, traj_root: Path, nts_max: int, t_model_s: float) -> float:
     """Calculate initial cell energy [erg/g] from reactions t < t_model_s (reduced by work done)."""
+    lztrajectory = scan_trajectory_network_data(Path(traj_root), particleid)
+    if "Qdot" not in lztrajectory.collect_schema().names():
+        msg = f"The network data of particle {particleid} in {traj_root} has no column Qdot"
+        raise FileNotFoundError(msg)
+
     # the integration starts at one second
-    dfthermo = get_network_timesteps_table(Path(traj_root), particleid, ("Qdot",)).filter(pl.col("time_s") >= 1.0)
+    dfthermo = (
+        lztrajectory
+        .filter(pl.col("nstep").is_not_null() & (pl.col("time_s") >= 1.0))
+        .sort("nstep")
+        .select("nstep", "time_s", "Qdot")
+        .collect()
+    )
     assert dfthermo.height > 0, f"The energy_thermo.dat of particle {particleid} holds no time of one second or more"
     # nts_max is the one-based #count of the last network timestep. A nts_max before one second gives no row,
     # and the integral is then zero
     dfthermo = dfthermo.filter(pl.col("nstep") <= nts_max)
+    if dfthermo["Qdot"].null_count() > 0:
+        # a trapezoid across a missing timestep would give an integral with no sign of the problem
+        msg = f"The energy_thermo.dat of particle {particleid} has no Qdot value at each timestep up to {nts_max}"
+        raise ValueError(msg)
     assert all(dfthermo["Qdot"] >= 0.0)
 
     dfthermo = dfthermo.with_columns(Qdot_expansionadjusted=pl.col("Qdot") * pl.col("time_s") / t_model_s)

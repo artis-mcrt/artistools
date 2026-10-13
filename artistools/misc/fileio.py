@@ -1245,6 +1245,7 @@ def read_parquet_cache_metadata(
     *,
     accept_unstamped: bool = False,
     textsource: str | None = None,
+    textsource_size: int | None = None,
 ) -> tuple[dict[str, str] | None, str | None]:
     """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
@@ -1296,6 +1297,14 @@ def read_parquet_cache_metadata(
             f"the cache is from {foundtextsource}, but the text source is now {textsource}"
             if foundtextsource is not None
             else "the cache has no record of its text source"
+        )
+
+    # a copy that keeps the modification time, e.g. cp -p, can replace the text source, thus the size counts too
+    foundsize = pqmetadata.get("textsource_size")
+    if textsource_size is not None and foundsize is not None and foundsize != str(textsource_size):
+        return (
+            None,
+            f"the text source had {foundsize} bytes at the write of the cache, but it now has {textsource_size} bytes",
         )
 
     foundmtime = pqmetadata.get("textsource_mtime")
