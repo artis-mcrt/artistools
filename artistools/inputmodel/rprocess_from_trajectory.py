@@ -3,6 +3,7 @@
 import argparse
 import gc
 import math
+import posixpath
 import string
 import tarfile
 import time
@@ -133,7 +134,7 @@ def parse_abundance_files(abundancetexts: dict[str, str]) -> pl.DataFrame:
 
     lzlines = (
         pl
-        .DataFrame({"abundancefile": filenames, "line": lines})
+        .DataFrame({"abundancefile": filenames, "line": lines}, schema={"abundancefile": pl.String, "line": pl.String})
         .lazy()
         .with_columns(linenumber=pl.int_range(pl.len()).over("abundancefile"))
     )
@@ -142,7 +143,7 @@ def parse_abundance_files(abundancetexts: dict[str, str]) -> pl.DataFrame:
         lzlines.filter(pl.col("linenumber") == 0).select(
             "abundancefile",
             fieldcount=headerfields.list.len(),
-            abundancetime_s=headerfields.list.get(1, null_on_oob=True).cast(pl.Float64, strict=False),
+            abundancetime_s=headerfields.list.get(1, null_on_oob=True).cast(pl.Float64),
         ),
         lzlines
         .filter((pl.col("linenumber") > 0) & (pl.col("line").str.strip_chars().str.len_chars() > 0))
@@ -155,14 +156,8 @@ def parse_abundance_files(abundancetexts: dict[str, str]) -> pl.DataFrame:
     ])
 
     # a blank header line gives no fields, and a file without lines gives no header row
-    badfile = next(
-        (
-            filename
-            for filename in abundancetexts
-            if filename not in dfheaders.filter(pl.col("fieldcount") == 6)["abundancefile"]
-        ),
-        None,
-    )
+    goodfiles = set(dfheaders.filter(pl.col("fieldcount") == 6)["abundancefile"].to_list())
+    badfile = next((filename for filename in abundancetexts if filename not in goodfiles), None)
     if badfile is not None:
         msg = f"Cannot read the header line of {badfile}"
         raise ValueError(msg)
@@ -192,8 +187,6 @@ def read_trajectory_archive(archivepath: Path) -> pl.DataFrame:
     row with no timestep. A column of a file that the archive does not hold is absent, e.g. a test archive with the
     abundance files alone has no "Qdot" column.
     """
-    import posixpath
-
     texts: dict[str, str] = {}
     with tarfile.open(archivepath, "r|*") as tarfilehandle:
         for member in tarfilehandle:
@@ -206,12 +199,20 @@ def read_trajectory_archive(archivepath: Path) -> pl.DataFrame:
                 assert memberfile is not None
                 texts[filename] = memberfile.read().decode("utf-8")
 
+    if not texts:
+        msg = f"{archivepath} holds no energy_thermo.dat, heating.dat, or nz-plane file in a Run_rprocess folder"
+        raise FileNotFoundError(msg)
+
     frames = [
         parse_network_steps_table(texts[filename])
         for filename in ("energy_thermo.dat", "heating.dat")
         if filename in texts
     ]
-    frames.append(parse_abundance_files({name: text for name, text in texts.items() if "nz-plane" in name}))
+    try:
+        frames.append(parse_abundance_files({name: text for name, text in texts.items() if "nz-plane" in name}))
+    except ValueError as exc:
+        msg = f"{exc} in {archivepath}"
+        raise ValueError(msg) from exc
     dftrajectory = frames[0]
     for dfnext in frames[1:]:
         # a column that two files hold, e.g. time_s, keeps the value of the first file

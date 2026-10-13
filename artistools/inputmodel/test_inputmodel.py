@@ -658,6 +658,64 @@ def test_get_elemabund_from_nucabund() -> None:
     assert result_abunds == all_expected_abunds
 
 
+def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_file(tmp_path: Path) -> None:
+    """A row holds energy_thermo.dat and heating.dat for its timestep, and a named abundance file is a row of its own.
+
+    The named file tday_nz-plane has the timestep number of nz-plane00002 in its header, but its time differs. A
+    full join on the timestep must keep both rows, and the duplicate time column of heating.dat must not replace
+    the time of energy_thermo.dat.
+    """
+    nuclidelines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n  2   2 -1.27404E+00  2.05770E+01  0.00000E+00\n"
+    archivepath = write_trajectory_archive(
+        tmp_path,
+        7,
+        {
+            "energy_thermo.dat": (
+                "#count       time/s            T9     rho(g/cc)            Ye          Qdot\n"
+                "     1  1.000000E+00  1.000000E+01  2.000000E+07  4.600000E-01  1.500000E+21\n"
+                "     2  9.000000E+04  1.000000E-06  2.000000E-12  4.600000E-01  2.000000E+10\n"
+            ),
+            "heating.dat": (
+                "#count       time/s            T9     rho(g/cc)         hbeta          htot\n"
+                "     1  1.000000E+00  1.000000E+01  2.000000E+07  1.842623-281  3.000000E+14\n"
+                "     2  9.000000E+04  1.000000E-06  2.000000E-12  4.000000E+09  5.000000E+09\n"
+            ),
+            "nz-plane00002": "  2  9.000000E+04   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
+            "tday_nz-plane": "  2  8.640000E+04   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
+            "._nz-plane00002": "resource fork\n",
+        },
+    )
+
+    dftrajectory = at.inputmodel.rprocess_from_trajectory.read_trajectory_archive(archivepath)
+
+    assert dftrajectory["nstep"].to_list() == [1, 2, None]
+    assert dftrajectory["abundancefile"].to_list() == [None, "nz-plane00002", "tday_nz-plane"]
+    assert dftrajectory["time_s"].to_list() == [1.0, 9.0e4, None]
+    assert dftrajectory["abundancetime_s"].to_list() == [None, 9.0e4, 8.64e4]
+    # the Fortran exponent of hbeta has no "e", and the duplicate time column of heating.dat is dropped
+    assert dftrajectory["hbeta"].to_list()[:2] == pytest.approx([1.842623e-281, 4.0e9])
+    assert dftrajectory["Qdot"].to_list()[:2] == pytest.approx([1.5e21, 2.0e10])
+    # a timestep with no abundance file has null lists, and a file with no nuclide lines has empty lists
+    assert dftrajectory["N"].to_list() == [None, [0, 2], [0, 2]]
+
+    dfnucabund, timesecs = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
+        tmp_path, 7, ["tday_nz-plane", "nz-plane00002"]
+    )
+    assert timesecs == [8.64e4, 9.0e4]
+    assert dfnucabund["fileindex"].to_list() == [0, 0, 1, 1]
+    assert dfnucabund["massfrac"].to_list() == pytest.approx([10**-11.1798, 4 * 10**-1.27404] * 2)
+
+    with pytest.raises(KeyError, match="nz-plane00003"):
+        at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(tmp_path, 7, ["nz-plane00003"])
+
+
+def test_trajectory_archive_without_network_files_raises(tmp_path: Path) -> None:
+    """An archive with no file that artistools reads gives an error that names the archive."""
+    archivepath = write_trajectory_archive(tmp_path, 8, {"evol.dat": "1 2\n"})
+    with pytest.raises(FileNotFoundError, match=r"8\.tar\.xz"):
+        at.inputmodel.rprocess_from_trajectory.read_trajectory_archive(archivepath)
+
+
 def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) -> None:
     """A timestep file whose first line is blank gives no time, thus the read must stop and name that file.
 
@@ -674,7 +732,7 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(tmp_path: Path) ->
     assert timesecs == [8873.645]
 
     write_trajectory_archive(tmp_path / "bad", 1, {"nz-plane00001": goodfile, "nz-plane00002": "\n" + abundlines})
-    with pytest.raises(ValueError, match="nz-plane00002"):
+    with pytest.raises(ValueError, match=r"nz-plane00002.*1\.tar\.xz"):
         reader(tmp_path / "bad", 1, ["nz-plane00001"])
 
 
