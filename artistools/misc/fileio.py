@@ -351,19 +351,22 @@ def raise_if_cut_line(df: pl.DataFrame, textfilepath: Path | str) -> None:
         raise ValueError(msg)
 
 
-def raise_if_no_final_line_end(filepath: Path) -> None:
-    """Stop if an ARTIS text file is empty or does not end with a line end.
+def complete_text_source(filepath: Path) -> Path | bytes:
+    """Return the source of an ARTIS text file for a reader. Stop if the file is empty or has no final line end.
 
     ARTIS ends each row with a line end. A cut inside the last value gives a valid number, thus only the missing line
-    end shows the cut. A compressed file of more than one frame that is cut at the end of a frame decompresses with no
-    error. Thus the function reads all the decompressed bytes of a compressed file, in chunks.
+    end shows the cut. A plain file gives its path, and the check reads only the last byte. A compressed file gives
+    its decompressed bytes, thus the check and the reader decompress the file one time only. The check uses all the
+    bytes, because a file of more than one frame that is cut at the end of a frame decompresses with no error.
     """
-    lastbyte = b""
     if filepath.suffix in COMPRESSED_EXTENSIONS:
-        with polars_error_note(filepath), get_decompress_open(filepath.suffix)(filepath, mode="rb") as fin:
-            while chunk := fin.read(1 << 24):
-                lastbyte = chunk[-1:]
+        with polars_error_note(filepath):
+            data = read_decompressed_bytes(filepath)
+        source: Path | bytes = data
+        lastbyte = data[-1:]
     else:
+        source = filepath
+        lastbyte = b""
         with filepath.open("rb") as fin:
             if fin.seek(0, os.SEEK_END) > 0:
                 fin.seek(-1, os.SEEK_END)
@@ -375,6 +378,8 @@ def raise_if_no_final_line_end(filepath: Path) -> None:
             " file, or the end of the file is missing"
         )
         raise ValueError(msg)
+
+    return source
 
 
 def bytes_outside_comments_are_utf8(filepath: Path, skip_rows: int = 0, comment_prefix: str | None = None) -> bool:
@@ -1258,6 +1263,15 @@ def read_parquet_cache_metadata(
             else "the file has no cacheversion stamp, thus an artistools version before the stamp wrote it"
         )
 
+    # accept_unstamped does not apply to the text source, thus this check comes before the return for an unstamped
+    # cache
+    if textsource is not None and (foundtextsource := pqmetadata.get("textsource")) != textsource:
+        return None, (
+            f"the cache is from {foundtextsource}, but the text source is now {textsource}"
+            if foundtextsource is not None
+            else "the cache has no record of its text source"
+        )
+
     foundmtime = pqmetadata.get("textsource_mtime")
     if foundmtime is None and accept_unstamped:
         return pqmetadata, None
@@ -1266,13 +1280,6 @@ def read_parquet_cache_metadata(
         return None, (
             f"the text source changed: the cache stamp is {format_mtime(foundmtime)},"
             f" but the text file now has {format_mtime(textsource_mtime)}"
-        )
-
-    if textsource is not None and (foundtextsource := pqmetadata.get("textsource")) != textsource:
-        return None, (
-            f"the cache is from {foundtextsource}, but the text source is now {textsource}"
-            if foundtextsource is not None
-            else "the cache has no record of its text source"
         )
 
     return pqmetadata, None

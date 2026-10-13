@@ -664,15 +664,18 @@ def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp
     assert np.isclose(dflinelist["lambda_angstroms"][-1], 6500.5)
 
 
-def test_get_linelist_pldf_refuses_a_folder_with_both_files(tmp_path: Path) -> None:
+@pytest.mark.parametrize("linelistsubfolder", ["", "123.slurm"])
+def test_get_linelist_pldf_refuses_a_model_with_both_files(linelistsubfolder: str, tmp_path: Path) -> None:
     """An older ARTIS does not delete the file of an earlier run. A copy can change the modification times.
 
-    Thus only the user can tell which of the two files belongs to the latest run.
+    Thus only the user can tell which of the two files belongs to the latest run. firstexisting searches the model
+    folder before the run subfolders, thus a linelist.out in a run subfolder must not hide the linestat.out above it.
     """
-    write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
+    (tmp_path / linelistsubfolder).mkdir(exist_ok=True)
+    write_linelistfile(tmp_path / linelistsubfolder / "linelist.out", TEST_LINES)
     write_linestatfile(tmp_path / "linestat.out.zst", TEST_LINES[:1])
 
-    with pytest.raises(FileExistsError, match=r"has both linelist\.out and linestat\.out\.zst"):
+    with pytest.raises(FileExistsError, match=r"linestat\.out\.zst.* and only one of them belongs to the latest run"):
         at.atomic.get_linelist_pldf(tmp_path)
 
 
@@ -694,25 +697,38 @@ def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(
     assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 3
 
 
+NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
+
+
 @pytest.mark.parametrize(
-    ("filename", "content"),
+    ("filename", "content", "expectederror", "expectedmessage"),
     [
-        ("linelist.out", f"{LINELIST_HEADER}\n13898.2958 57 3 1 0\n4216.708 38 2 11 1".encode()),
-        ("linelist.out.zst", b""),
-        ("linestat.out", b""),
-        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n"),
-        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1"),
+        (
+            "linelist.out",
+            f"{LINELIST_HEADER}\n13898.2958 57 3 1 0\n4216.708 38 2 11 1".encode(),
+            ValueError,
+            NO_LINE_END_MESSAGE,
+        ),
+        (
+            "linelist.out",
+            f"{LINELIST_HEADER}\n13898.2958 57 3 1 0\n4216.708 38 2\n".encode(),
+            ValueError,
+            "has a line with fewer values than the header",
+        ),
+        # zstd with worker threads writes no byte of a small file until the file closes
+        ("linelist.out.zst", b"", OSError, "ends before the end of its compressed data"),
+        ("linestat.out", b"", ValueError, NO_LINE_END_MESSAGE),
+        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n", ValueError, "has 3 rows and not 5"),
+        ("linestat.out", b"1.38982958e-04 4.21670800e-05\n57 38\n3 2\n2 3\n1 1", ValueError, NO_LINE_END_MESSAGE),
     ],
 )
-def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(filename: str, content: bytes, tmp_path: Path) -> None:
-    """ARTIS or a copy can still write the file. A cache of the partial file stays current after the write ends.
-
-    zstd with worker threads writes no byte of a small file until the file closes, thus an empty .zst file can occur.
-    """
+def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
+    filename: str, content: bytes, expectederror: type[Exception], expectedmessage: str, tmp_path: Path
+) -> None:
+    """ARTIS or a copy can still write the file. A cache of the partial file stays current after the write ends."""
     (tmp_path / filename).write_bytes(content)
 
-    # an empty or cut compressed file fails to decompress, which gives an OSError
-    with pytest.raises((ValueError, OSError, pl.exceptions.PolarsError)):
+    with pytest.raises(expectederror, match=expectedmessage):
         at.atomic.get_linelist_pldf(tmp_path)
     assert not (tmp_path / "linelist.out.parquet.tmp").exists()
 
@@ -723,7 +739,7 @@ def test_get_linelist_pldf_refuses_a_compressed_file_that_ends_inside_a_row(tmp_
     with get_decompress_open(".zst")(tmp_path / "linelist.out.zst", mode="ab") as fout:
         fout.write(b"4216.708 38 2 2 0")
 
-    with pytest.raises(ValueError, match="does not end with a line end"):
+    with pytest.raises(ValueError, match=NO_LINE_END_MESSAGE):
         at.atomic.get_linelist_pldf(tmp_path)
 
 

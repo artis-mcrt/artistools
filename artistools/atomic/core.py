@@ -1,5 +1,6 @@
 """Read the ARTIS atomic data files, and convert between the names of elements, ions, and nuclides."""
 
+import io
 import math
 import operator
 import re
@@ -28,13 +29,13 @@ from artistools.constants import K_B_ev_per_K
 from artistools.constants import peck_reeder_air_coefficients
 from artistools.misc import firstexisting_or_none
 from artistools.misc import polars_source
+from artistools.misc.fileio import complete_text_source
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import raise_if_cut_line
-from artistools.misc.fileio import raise_if_no_final_line_end
 from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import resolve_modelpath
@@ -1148,11 +1149,10 @@ def read_linestatfile(filepath: Path) -> pl.DataFrame:
     """
     print(f"Reading {filepath}")
     # ARTIS writes five rows also for a model with no lines, thus an empty file is not complete
-    raise_if_no_final_line_end(filepath)
+    source = complete_text_source(filepath)
 
     # a file of one line gives a one-dimensional array without ndmin, and a file of no line gives no row
-    with zopen(filepath) as linestatfile:
-        data = np.loadtxt(linestatfile, ndmin=2)
+    data = np.loadtxt(io.BytesIO(source) if isinstance(source, bytes) else source, ndmin=2)
     if data.shape[0] == 0:
         data = np.zeros((len(LINELIST_SCHEMA), 0))
     elif data.shape[0] != len(LINELIST_SCHEMA):
@@ -1176,8 +1176,8 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
     print(f"Reading {filepath}")
     # ARTIS writes the values with one space between them and no space at the end of a row. A different
     # separator gives an error and not incorrect values, because each row then has more fields than the header
-    raise_if_no_final_line_end(filepath)
-    with polars_error_note(filepath), polars_source_open(filepath) as source:
+    source = complete_text_source(filepath)
+    with polars_error_note(filepath):
         dflines = (
             pl
             .scan_csv(source, separator=" ", glob=False, infer_schema=False)
@@ -1228,16 +1228,14 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
         ),
     )
     textsourcename = without_compressed_extension(textfile).name
-    # an older ARTIS does not delete the file of an earlier run in the same folder. A copy can change the modification
-    # times, thus only the user can tell which file belongs to the latest run. Each run folder holds its own line list,
-    # thus the search for the other file includes only the folder of the first file
+    # an older ARTIS does not delete the file of an earlier run. A copy can change the modification times, thus only
+    # the user can tell which file belongs to the latest run. firstexisting searches the model folder before the run
+    # subfolders, thus the search for the other file includes both
     othertextfilename = "linestat.out" if textsourcename == "linelist.out" else "linelist.out"
-    if (
-        othertextfile := firstexisting_or_none(othertextfilename, folder=textfile.parent, search_subfolders=False)
-    ) is not None:
+    if (othertextfile := firstexisting_or_none(othertextfilename, folder=modelpath)) is not None:
         msg = (
-            f"The folder {textfile.parent} has both {textfile.name} and {othertextfile.name}, and only one of them"
-            " belongs to the latest run. Delete or move the file of the earlier run"
+            f"The model {modelpath} has both {textfile} and {othertextfile}, and only one of them belongs to the"
+            " latest run. Delete or move the file of the earlier run"
         )
         raise FileExistsError(msg)
     # the path, with the compression extension, identifies the text source of the cache
