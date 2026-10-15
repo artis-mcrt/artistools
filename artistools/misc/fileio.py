@@ -6,6 +6,7 @@ import errno
 import functools
 import inspect
 import io
+import math
 import os
 import re
 import shlex
@@ -936,15 +937,28 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     """Return a dict of metadata for a file from its metadata file, e.g. spectrum.txt.meta.yml for spectrum.txt.
 
     The cache key holds the absolute path, see ModelpathCache. The absolute path keeps a symbolic link, because the
-    metadata file of a link is beside the link. The key also holds the modification time of the metadata file, thus a
-    process that runs for a long time, e.g. a viewer, reads an edited metadata file again.
+    metadata file of a link is beside the link. The key also holds the state of the metadata file, thus a process
+    that runs for a long time, e.g. a viewer, reads an edited metadata file again.
     """
     filepath = Path(filepath).absolute()
     try:
-        metafile_mtime_ns = get_metadata_path(filepath).stat().st_mtime_ns
+        metafile_state = get_file_state(get_metadata_path(filepath))
     except FileNotFoundError:
-        metafile_mtime_ns = None
-    return get_file_metadata_cached(filepath, metafile_mtime_ns)
+        metafile_state = None
+    return get_file_metadata_cached(filepath, metafile_state)
+
+
+def parse_metadata_redshift(value: object, filepath: Path | str) -> float:
+    """Return the redshift z from the metadata of a file, or raise a ValueError that names the file."""
+    # YAML 1.1 reads a number with an exponent and no dot as a string, e.g. 1e-3. str() makes a bool fail
+    try:
+        z = float(str(value))
+    except ValueError:
+        z = math.nan
+    if not (math.isfinite(z) and z > -1.0):
+        msg = f"The redshift z in the metadata of {filepath} must be a number above -1, not {value!r}"
+        raise ValueError(msg)
+    return z
 
 
 def get_metadata_path(filepath: Path) -> Path:
@@ -954,12 +968,12 @@ def get_metadata_path(filepath: Path) -> Path:
 
 
 @lru_cache(maxsize=24)
-def get_file_metadata_cached(filepath: Path, metafile_mtime_ns: int | None) -> dict[str, t.Any]:
+def get_file_metadata_cached(filepath: Path, metafile_state: tuple[int, int, int, int] | None) -> dict[str, t.Any]:
     """Return the metadata of the file at an absolute path, and keep it for the next caller.
 
-    metafile_mtime_ns is only a part of the cache key.
+    metafile_state is only a part of the cache key.
     """
-    del metafile_mtime_ns
+    del metafile_state
 
     def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
         if "a_v" in metadata and "e_bminusv" in metadata and "r_v" not in metadata:

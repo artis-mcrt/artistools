@@ -52,6 +52,7 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
+from artistools.misc.fileio import parse_metadata_redshift
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import read_complete_lines
@@ -2637,15 +2638,7 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         )
         return specdata
 
-    # YAML 1.1 reads a number with an exponent and no dot as a string, e.g. 1e-3. float() also accepts a bool
-    try:
-        z = math.nan if isinstance(metadata["z"], bool) else float(metadata["z"])
-    except (TypeError, ValueError):
-        z = math.nan
-    if not (math.isfinite(z) and z > -1.0):
-        msg = f"The redshift z in the metadata of {filepath} must be a number above -1, not {metadata['z']!r}"
-        raise ValueError(msg)
-
+    z = parse_metadata_redshift(metadata["z"], filepath)
     if z == 0.0:
         print_detail("The metadata gives z = 0, thus the spectrum is in the rest frame")
     else:
