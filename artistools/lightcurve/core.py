@@ -44,7 +44,6 @@ from artistools.misc import read_wsv
 from artistools.misc import require_reference_data_file
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
-from artistools.misc.fileio import get_metadata_path
 from artistools.misc.fileio import parse_metadata_redshift
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import read_complete_lines
@@ -791,7 +790,6 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     if not metadata:
         metadatapath = Path(get_path("artistools_dir"), "data/lightcurves", data_path.name)
         metadata = dict(get_file_metadata(metadatapath))
-    metafile = get_metadata_path(metadatapath)
 
     # the time column below needs the timecorrection value. The command stops when the metadata
     # gives no such value
@@ -819,12 +817,12 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     # thus the distance from the redshift applies only when the metadata gives neither
     if "dist_mpc" not in metadata and "dist_modulus" not in metadata and "z" in metadata:
         # the command reports the ValueError of an incorrect z as an error message, with no traceback
-        z = parse_metadata_redshift(metadata["z"], metafile)
+        z = parse_metadata_redshift(metadata["z"], metadatapath)
         # a z of 0 gives a distance of 0 and an infinite magnitude, and a negative z gives a negative distance
         if z <= 0.0:
             exit_with_error(
-                f"{metafile} gives the redshift z = {z}, which gives no distance",
-                "Give a z above 0, a dist_mpc, or a dist_modulus in that file",
+                f"the metadata of {metadatapath} gives the redshift z = {z}, which gives no distance",
+                f"Give a z above 0, a dist_mpc, or a dist_modulus in {metadatapath.name}.meta.yml",
             )
         metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=z)
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
