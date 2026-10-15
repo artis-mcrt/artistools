@@ -2962,8 +2962,9 @@ def test_write_data_refuses_two_wavelength_grids(tmp_path: Path, capsys: pytest.
 def test_telluric_mask_of_a_reference_spectrum_uses_observed_wavelengths(tmp_path: Path, zline: str) -> None:
     """The telluric mask applies to the observed wavelengths, thus it removes the row at 14000 Å for each z.
 
-    With z = 0.1, the row at 15000 Å moves to 13636 Å, which is inside the observed band from 13500 Å to 14400 Å.
-    A mask after the de-redshift with the observed band limits removes that row. With no z, the mask raised KeyError.
+    The mask moved before the de-redshift, and the result must stay the same. With z = 0.1, the row at 15000 Å moves
+    to 13636 Å, which is inside the observed band from 13500 Å to 14400 Å. Thus the mask must not use the rest-frame
+    wavelengths. With no z, the mask raised KeyError.
     """
     specfile = tmp_path / "telluric.txt"
     specfile.write_text("13000 1.0\n14000 2.0\n15000 3.0\n", encoding="utf-8")

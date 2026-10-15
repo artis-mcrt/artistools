@@ -940,12 +940,12 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     metadata file of a link is beside the link. The key also holds the text of the metadata file, thus a process that
     runs for a long time, e.g. a viewer, reads each edit. A metadata file holds only a few lines.
     """
-    filepath = Path(filepath).absolute()
+    metafile = get_metadata_path(Path(filepath).absolute())
     try:
-        metatext = get_metadata_path(filepath).read_text(encoding="utf-8")
+        metatext = metafile.read_text(encoding="utf-8")
     except (FileNotFoundError, NotADirectoryError):
         metatext = None
-    return get_file_metadata_cached(filepath, metatext)
+    return get_file_metadata_cached(metafile, metatext)
 
 
 def parse_metadata_redshift(value: object, filepath: Path | str) -> float:
@@ -971,8 +971,8 @@ def get_metadata_path(filepath: Path) -> Path:
 
 
 @lru_cache(maxsize=24)
-def get_file_metadata_cached(filepath: Path, metatext: str | None) -> dict[str, t.Any]:
-    """Return the metadata from the text of the metadata file of a file, and keep it for the next caller."""
+def get_file_metadata_cached(metafile: Path, metatext: str | None) -> dict[str, t.Any]:
+    """Return the metadata from the text of a metadata file, and keep it for the next caller."""
 
     def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
         if "a_v" in metadata and "e_bminusv" in metadata and "r_v" not in metadata:
@@ -987,10 +987,9 @@ def get_file_metadata_cached(filepath: Path, metatext: str | None) -> dict[str, 
     import yaml
 
     if metatext is None:
-        print(f"No metadata found for: {without_compressed_extension(filepath)}")
+        print(f"No metadata found: {metafile} does not exist")
         return {}
 
-    metafile = get_metadata_path(filepath)
     # a file of comments alone gives None
     return add_derived_metadata(check_metadata_mapping(yaml.safe_load(metatext) or {}, metafile))
 
