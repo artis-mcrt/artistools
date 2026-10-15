@@ -1910,7 +1910,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs="*",
         type=model_path_from_text,
         action=KeepGivenPaths,
-        help="Paths to ARTIS folders or reference spectra filenames",
+        help=(
+            "Paths to ARTIS folders or reference spectra filenames. The metadata file of a reference spectrum, e.g."
+            " spec.txt.meta.yml, gives its redshift z. With no z, the plot takes the spectrum to be in the rest frame"
+            " and logs a warning"
+        ),
     )
     for flag in ("-specpath", "-modelpath"):
         addarg_pathoption(parser, flag, "specpath", multiplepaths=True)
