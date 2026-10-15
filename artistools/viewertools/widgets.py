@@ -628,8 +628,8 @@ def get_reorder_list_class() -> "type[QtWidgets.QListWidget]":
                 return
             # the list gives a rectangle with no height at the top or the bottom of a row. The stubs of PySide give
             # the fields of an option with no type
-            rect = t.cast("QtCore.QRect", option.rect)
-            palette = t.cast("QtGui.QPalette", option.palette)
+            rect = t.cast("QtCore.QRect", option.rect)  # pyrefly: ignore[invalid-cast]
+            palette = t.cast("QtGui.QPalette", option.palette)  # pyrefly: ignore[invalid-cast]
             painter.fillRect(QtCore.QRect(rect.left(), rect.top() - 1, rect.width(), 2), palette.highlight())
 
     class ReorderList(QtWidgets.QListWidget):

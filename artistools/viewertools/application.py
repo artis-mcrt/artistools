@@ -182,7 +182,7 @@ def serialise_mathtext_parser() -> None:
         with lock:
             return parse(*args, **kwargs)
 
-    mplmathtext.MathTextParser.parse = serialised_parse
+    mplmathtext.MathTextParser.parse = serialised_parse  # pyrefly: ignore[method-assign]
 
 
 # the Qt platform plugins of Linux that show a window on an X11 display or on a Wayland display
