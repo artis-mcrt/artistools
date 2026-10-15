@@ -418,22 +418,6 @@ def plot_reference_spectrum(
     if "scale_factor" in metadata:
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * metadata["scale_factor"])
 
-    if metadata.get("mask_telluric", False):
-        print("Masking telluric regions")
-        # the telluric bands are at fixed wavelengths in the observed frame, thus the mask moves them by the z of
-        # get_reference_spectrum. A spectrum with no z in its metadata has z = 0, thus the bands do not move
-        z = metadata.get("z", 0.0)
-        bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
-        bands_rest = [(band_low / (1 + z), band_high / (1 + z)) for band_low, band_high in bands]
-
-        expr_masked = pl.when(
-            pl.any_horizontal([
-                pl.col("lambda_angstroms").is_between(band_low_rest, band_high_rest, closed="both")
-                for band_low_rest, band_high_rest in bands_rest
-            ])
-        )
-        specdata = specdata.with_columns(f_lambda=expr_masked.then(pl.lit(math.nan)).otherwise(pl.col("f_lambda")))
-
     print_detail(f"points: {len(specdata)}")
 
     print_detail(

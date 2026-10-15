@@ -2583,7 +2583,17 @@ def print_integrated_flux(
 
 
 def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
-    """Return an observed reference spectrum, applying any scaling and time shift from its metadata."""
+    """Return a reference spectrum in the rest frame, after the corrections that its metadata gives.
+
+    Do not change the returned dataframe, because each caller shares it.
+    """
+    return get_reference_spectrum_cached(Path(filepath).absolute())
+
+
+# a reference file does not change while ARTIS runs, thus a redraw of the viewer reads and logs it only one time
+@lru_cache(maxsize=16)
+def get_reference_spectrum_cached(filepath: Path) -> pl.DataFrame:
+    """Return the reference spectrum at an absolute path, and keep it for the next caller."""
     metadata = get_file_metadata(filepath)
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
@@ -2612,15 +2622,26 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
             f" and R_V = {metadata.get('r_v', 3.1)}"
         )
 
-    if "z" in metadata:
+    if metadata.get("mask_telluric", False):
+        # the telluric bands are at fixed wavelengths in the observed frame, thus the mask comes before the de-redshift
+        print("Masking telluric regions")
+        bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
+        isintelluricband = pl.any_horizontal([
+            pl.col("lambda_angstroms").is_between(band_low, band_high, closed="both") for band_low, band_high in bands
+        ])
+        specdata = specdata.with_columns(
+            f_lambda=pl.when(isintelluricband).then(pl.lit(math.nan)).otherwise(pl.col("f_lambda"))
+        )
+
+    z = metadata.get("z")
+    if z is not None and z != 0:
         # the de-redshift divides the wavelength by (1 + z). Thus the flux density in the rest frame
         # is (1 + z) times the observed one, because the same energy falls in a narrower band
         specdata = specdata.with_columns(
-            lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]),
-            f_lambda=pl.col("f_lambda") * (1 + metadata["z"]),
+            lambda_angstroms=pl.col("lambda_angstroms") / (1 + z), f_lambda=pl.col("f_lambda") * (1 + z)
         )
-        print(f"Correcting for redshift z = {metadata['z']}")
-    else:
+        print(f"Correcting for redshift z = {z}")
+    elif z is None:
         print_warning(
             f"The metadata of {Path(filepath).name} gives no redshift z, thus artistools takes the spectrum to be"
             " in the rest frame (z = 0)"
