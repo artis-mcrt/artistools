@@ -115,11 +115,15 @@ FRAME_MARKER = "artistools polars frame"
 # the maximum size of a message, which limits the memory that a reply of a host can take
 MAX_MESSAGE_BYTES = 16 * 1024**3
 
+# a client uses only a server of the same server protocol. Increase the server protocol when a reader with the
+# decorator on_model_host changes its arguments or its result. Also increase it when the format of a message changes.
+# A clone with the server protocol of the release then uses the release on the host, which needs no build of a commit
+SERVER_PROTOCOL = 3
+
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
-# standard output first, thus the client ignores each line before this one. Protocol 2 sends the version of polars
-# and the standard error of a quiet request
+# standard output first, thus the client ignores each line before this one
 SERVER_PROTOCOL_PREFIX = b"artistools server protocol "
-SERVER_START_LINE = SERVER_PROTOCOL_PREFIX + b"2\n"
+SERVER_START_LINE = SERVER_PROTOCOL_PREFIX + f"{SERVER_PROTOCOL}\n".encode()
 
 # each message starts with the length of its data in this number of bytes. One byte then shows whether zlib
 # compressed the data, and the pickle data comes last. The receiver reads a full message before it unpickles it,
@@ -469,11 +473,12 @@ def get_git_command(gitsource: "GitSource") -> str:
 def choose_server_command(givencommand: str | None, gitsource: "GitSource | None") -> tuple[str, str]:
     """Return the command that starts the server on a host, and the reason for the choice.
 
-    A reader must have the same code on the two sides. The function selects the first command that applies:
+    The readers on the two sides must have the same server protocol. The function selects the first command that
+    applies:
     - the value of ARTISTOOLS_REMOTE_COMMAND, because it is the choice of the user;
-    - the release of this version, if this artistools is a release or has the package code of the release;
+    - the release of this version, if this artistools is a release or has the server protocol of the release;
     - the release of this version, if the commit is on no remote branch, because the remote host cannot get it;
-    - the git commit, if its package code differs from the release, or if the clone has no tag of the release.
+    - the git commit, if its server protocol differs from that of the release, or if the clone has no release tag.
     The release needs no build on the host. An empty ARTISTOOLS_REMOTE_COMMAND gives the automatic choice, because ssh
     starts a login shell for an empty command.
     """
@@ -484,20 +489,22 @@ def choose_server_command(givencommand: str | None, gitsource: "GitSource | None
         return givencommand, f"{SERVER_COMMAND_ENVVAR} gives the command"
     if gitsource is None:
         return get_release_command(), f"this artistools is the release {localversion}"
-    if gitsource.releasechanges == []:
-        return (
-            get_release_command(),
-            f"the commit {gitsource.commit} has the same package code as the release {localversion}",
+    if gitsource.releaseprotocol == SERVER_PROTOCOL:
+        samereason = (
+            f"the commit {gitsource.commit} and the release {localversion} have the same server protocol"
+            f" {SERVER_PROTOCOL}"
         )
+        return get_release_command(), samereason
     if not gitsource.ispushed:
         return (
             get_release_command(),
             f"the commit {gitsource.commit} is on no remote branch, thus the remote host cannot get it",
         )
     difference = (
-        f"no release tag v{localversion} is in this clone to compare with"
-        if gitsource.releasechanges is None
-        else f"{len(gitsource.releasechanges)} files of the package differ from the release {localversion}"
+        f"the clone has no release tag v{localversion} that gives a server protocol"
+        if gitsource.releaseprotocol is None
+        else f"the release {localversion} has the server protocol {gitsource.releaseprotocol}, and the commit"
+        f" {gitsource.commit} has the server protocol {SERVER_PROTOCOL}"
     )
     return get_git_command(gitsource), difference
 
@@ -524,6 +531,12 @@ def read_server_versions(process: "subprocess.Popen[bytes]") -> tuple[str, str]:
     return versions
 
 
+def read_server_protocol(source: str) -> int | None:
+    """Return the SERVER_PROTOCOL of the source code of this module, or None for a version before the constant."""
+    protocolmatch = re.search(r"^SERVER_PROTOCOL = (\d+)$", source, re.MULTILINE)
+    return None if protocolmatch is None else int(protocolmatch[1])
+
+
 class GitSource(t.NamedTuple):
     """The git commit of this artistools, and the data that tells if a remote host can install that commit."""
 
@@ -531,8 +544,9 @@ class GitSource(t.NamedTuple):
     commit: str
     # a host can get only a commit that is on a remote branch
     ispushed: bool
-    # the package files that differ from the release of this version, or None if the clone has no tag to compare with
-    releasechanges: list[str] | None
+    # the server protocol of the release of this version. The value is None if the clone has no tag of the release, or
+    # if the tag is older than SERVER_PROTOCOL
+    releaseprotocol: int | None
     notes: list[str]
 
 
@@ -557,7 +571,7 @@ def get_git_source() -> GitSource | None:
         # a host can get the commit of an install from git, and this install has no tag to compare with
         if vcsinfo.get("vcs") != "git":
             return None
-        return GitSource(source["url"], vcsinfo["commit_id"], ispushed=True, releasechanges=None, notes=[])
+        return GitSource(source["url"], vcsinfo["commit_id"], ispushed=True, releaseprotocol=None, notes=[])
 
     folder = str(Path(__file__).resolve().parents[2])
 
@@ -579,17 +593,16 @@ def get_git_source() -> GitSource | None:
         # a folder that is not a clone, or a host with no git, gives no commit
         return None
 
-    # the server does not run the tests, thus a change to a test file cannot change a reader
-    releasechanges: list[str] | None
+    releaseprotocol: int | None = None
     try:
-        changedfiles = run_git("diff", "--name-only", f"v{version('artistools')}", commit, "--", "artistools", "rust")
+        releasesource = run_git(
+            "show", f"v{version('artistools')}:{Path(__file__).resolve().relative_to(folder).as_posix()}"
+        )
     except subprocess.CalledProcessError:
         # a version with no release yet, or a clone with no tags, has no tag to compare with
-        releasechanges = None
+        pass
     else:
-        releasechanges = [
-            path for path in changedfiles.splitlines() if not Path(path).name.startswith(("test_", "conftest"))
-        ]
+        releaseprotocol = read_server_protocol(releasesource)
 
     # uv reads an ssh URL of git only in the form ssh://, and not in the form of scp, e.g. git@github.com:org/repo.git
     if (scpurl := re.match(r"^(?P<userhost>[^/:]+@[^/:]+):(?P<path>.*)$", url)) is not None:
@@ -601,7 +614,7 @@ def get_git_source() -> GitSource | None:
     if haschanges:
         notes.append("The changes that are not in a commit stay on this host.")
 
-    return GitSource(url, commit, ispushed=bool(remotebranches), releasechanges=releasechanges, notes=notes)
+    return GitSource(url, commit, ispushed=bool(remotebranches), releaseprotocol=releaseprotocol, notes=notes)
 
 
 def get_git_server_suggestion(host: str, givencommand: str | None, gitsource: GitSource) -> str:
@@ -680,7 +693,9 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
 
     The server stays for the life of the process, e.g. for each plot of a viewer, because a start through ssh takes
     about 10 s. The exit of the process closes its pipes, and the server then stops. choose_server_command gives the
-    command. If the server of a git commit does not start, e.g. because the host has no Rust, the release starts.
+    command. If the server of a git commit does not start, e.g. because the host has no Rust, the release starts. A
+    release with a different server protocol cannot be the server, thus the release starts only if its server
+    protocol is unknown.
     """
     import atexit
     import shlex
@@ -697,27 +712,26 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     gitsource = get_git_source()
     command, reason = choose_server_command(givencommand, gitsource)
     runscommit = gitsource is not None and givencommand is None and command == get_git_command(gitsource)
-    # the server can run different code from this artistools, thus the warning tells how to run the same commit
-    showssuggestion = (
-        gitsource is not None and not runscommit and (givencommand is not None or gitsource.releasechanges != [])
-    )
-    if showssuggestion:
-        assert gitsource is not None
-        print_warning(get_git_server_suggestion(host, givencommand, gitsource))
-    elif runscommit and gitsource is not None and gitsource.notes:
+    if runscommit and gitsource is not None and gitsource.notes:
         print_warning("\n".join(gitsource.notes))
-    starthelp = (
-        f"Set {SERVER_COMMAND_ENVVAR} as the warning above shows"
-        if showssuggestion
-        else f"Install uv on {host}. The default command needs a release {localversion} of artistools with the"
-        f" server command. As an alternative, set {SERVER_COMMAND_ENVVAR} to a command that starts such a server"
-    )
 
     def get_start_error(argv: list[str], exc: Exception) -> str:
         if isinstance(exc, ConnectionError):
             return f"the artistools server on {host} {exc}"
         # text of a shell can give any error of the unpickle
         return f"the artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}"
+
+    def get_start_help(exc: Exception) -> str:
+        if runscommit:
+            return f"Install uv, git, and Rust on {host}. The first start of a commit builds artistools on the host"
+        if isinstance(exc, ConnectionError) and gitsource is not None:
+            # a different server protocol shows different readers, thus the host must run the commit of the client
+            return get_git_server_suggestion(host, givencommand, gitsource)
+        return (
+            f"Install uv on {host}. The default command needs a release {localversion} of artistools with the"
+            f" server protocol {SERVER_PROTOCOL}. As an alternative, set {SERVER_COMMAND_ENVVAR} to a command that"
+            " starts such a server"
+        )
 
     argv = get_server_argv(host, command)
     print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")
@@ -727,19 +741,20 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     try:
         process, serverversion, serverpolarsversion = launch_server(argv)
     except Exception as exc:  # ruff:ignore[blind-except]
-        if not runscommit:
-            exit_with_error(get_start_error(argv, exc), starthelp)
+        # a release with a known server protocol that differs cannot be the server, see choose_server_command
+        if not runscommit or gitsource is None or gitsource.releaseprotocol is not None:
+            exit_with_error(get_start_error(argv, exc), get_start_help(exc))
         print_warning(
             f"The server of the commit did not start on {host}. To build the commit, the host needs git and Rust."
-            f" artistools starts the release {localversion} instead, and the release possibly reads some files"
-            " differently from this commit"
+            f" artistools starts the release {localversion} instead. The release can have a different server"
+            " protocol, and the start then stops with an error"
         )
         argv = get_server_argv(host, get_release_command())
         print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")
         try:
             process, serverversion, serverpolarsversion = launch_server(argv)
         except Exception as releaseexc:  # ruff:ignore[blind-except]
-            exit_with_error(get_start_error(argv, releaseexc), starthelp)
+            exit_with_error(get_start_error(argv, releaseexc), get_start_help(releaseexc))
 
     atexit.register(close_server_pipes, process)
     if serverpolarsversion != pl.__version__:
@@ -750,11 +765,8 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
             " same version of polars",
             f"Add {get_polars_pin()} to the uvx command of {SERVER_COMMAND_ENVVAR}",
         )
-    if serverversion != localversion:
-        print_warning(
-            f"The artistools server on {host} has version {serverversion}, but this artistools has version "
-            f"{localversion}. A reader with a different signature on the server gives an error"
-        )
+    # the server protocol is the same, thus a different version of artistools has the same readers
+    print_detail(f"The server on {host} runs artistools {serverversion} with the server protocol {SERVER_PROTOCOL}.")
 
     return process, threading.Lock()
 

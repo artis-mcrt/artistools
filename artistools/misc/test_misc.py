@@ -1419,7 +1419,7 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
         gitsource = remote.get_git_source()
     assert gitsource is not None
     assert gitsource == remote.GitSource(
-        "https://github.com/fork/artistools", "abc123", ispushed=True, releasechanges=None, notes=[]
+        "https://github.com/fork/artistools", "abc123", ispushed=True, releaseprotocol=None, notes=[]
     )
     expected = (
         f"POLARS_MAX_THREADS=16 uvx --with polars=={pl.__version__}"
@@ -1457,32 +1457,41 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
 
 
 def test_server_command_runs_the_code_of_this_artistools() -> None:
-    """Choose a given command first, else the release if it has the code of this commit or the commit is only local.
+    """Choose a given command first, else the release if it has the server protocol of this commit.
 
-    A release and a later commit have the same version and the same protocol, but a reader can differ, e.g. a new
-    column. The server of a commit needs a build on the host, thus the release is the choice for the same code.
+    The server of a commit needs a build on the host, thus the release is the choice for the same protocol. A host
+    cannot get a commit that is only on this host, thus the release is also the choice for such a commit.
     """
     releasecommand = remote.get_release_command()
-    changed = remote.GitSource("https://github.com/a/b", "abc123", ispushed=True, releasechanges=["x.py"], notes=[])
+    changed = remote.GitSource(
+        "https://github.com/a/b", "abc123", ispushed=True, releaseprotocol=remote.SERVER_PROTOCOL - 1, notes=[]
+    )
     gitcommand = remote.get_git_command(changed)
     assert remote.choose_server_command(None, None)[0] == releasecommand
     assert remote.choose_server_command("my command", changed)[0] == "my command"
-    assert remote.choose_server_command(None, changed._replace(releasechanges=[]))[0] == releasecommand
+    sameprotocol = changed._replace(releaseprotocol=remote.SERVER_PROTOCOL)
+    assert remote.choose_server_command(None, sameprotocol)[0] == releasecommand
     assert remote.choose_server_command(None, changed)[0] == gitcommand
     # a commit with no release tag to compare with, e.g. an install from git, runs from git
-    assert remote.choose_server_command(None, changed._replace(releasechanges=None))[0] == gitcommand
-    # a host cannot get a commit that is only on this host
+    assert remote.choose_server_command(None, changed._replace(releaseprotocol=None))[0] == gitcommand
     assert remote.choose_server_command(None, changed._replace(ispushed=False))[0] == releasecommand
+
+    # get_git_source reads the protocol of the release from the source of its tag. A different form of the
+    # assignment, e.g. with an annotation, makes the protocol of each release unknown
+    assert remote.read_server_protocol(Path(remote.__file__).read_text(encoding="utf-8")) == remote.SERVER_PROTOCOL
 
 
 def test_server_of_a_commit_falls_back_to_the_release() -> None:
-    """A host with no Rust cannot build the commit, thus the release starts after the failed start of the commit."""
+    """A host with no Rust cannot build the commit, thus the release starts if its server protocol is unknown.
+
+    A release with a known protocol that differs cannot be the server, thus the start then stops with an error.
+    """
     from importlib.metadata import version
 
-    changed = remote.GitSource("https://github.com/a/b", "abc123", ispushed=True, releasechanges=["x.py"], notes=[])
+    unknown = remote.GitSource("https://github.com/a/b", "abc123", ispushed=True, releaseprotocol=None, notes=[])
     started = mock.Mock()
     with (
-        mock.patch.object(remote, "get_git_source", return_value=changed),
+        mock.patch.object(remote, "get_git_source", return_value=unknown),
         mock.patch.object(
             remote, "launch_server", side_effect=[EOFError(), (started, version("artistools"), pl.__version__)]
         ) as launch,
@@ -1492,9 +1501,50 @@ def test_server_of_a_commit_falls_back_to_the_release() -> None:
         process, _ = remote.start_server("vae26")
     assert process is started
     assert [call.args[0][-1] for call in launch.call_args_list] == [
-        remote.get_git_command(changed),
+        remote.get_git_command(unknown),
         remote.get_release_command(),
     ]
+
+    different = unknown._replace(releaseprotocol=remote.SERVER_PROTOCOL - 1)
+    with (
+        mock.patch.object(remote, "get_git_source", return_value=different),
+        mock.patch.object(remote, "launch_server", side_effect=[EOFError()]) as launch,
+        mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+        pytest.raises(SystemExit),
+    ):
+        remote.start_server("vae26")
+    assert launch.call_count == 1
+
+
+def test_server_protocol_changes_with_the_readers() -> None:
+    """Increase SERVER_PROTOCOL when a reader on the server changes its arguments or its return type.
+
+    A clone with the protocol of the release uses the release on the host. A reader with a different signature then
+    gives an error there. The test examines only the signatures. A change of a result, e.g. a new column, also needs a
+    new protocol, and no test finds it.
+    """
+    import ast
+    import hashlib
+
+    packagefolder = Path(remote.__file__).resolve().parents[1]
+    signatures = []
+    for path in sorted(packagefolder.rglob("*.py")):
+        if path.name.startswith("test_"):
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.FunctionDef) and "on_model_host" in map(ast.unparse, node.decorator_list):
+                returns = "" if node.returns is None else ast.unparse(node.returns)
+                signatures.append(
+                    f"{path.relative_to(packagefolder).as_posix()} {node.name}({ast.unparse(node.args)}) -> {returns}"
+                )
+    digest = hashlib.sha256("\n".join(signatures).encode()).hexdigest()[:16]
+
+    # add a new entry for each new protocol. Do not change the digest of a protocol that a release has
+    readerdigests = {3: "e2ac5c740e00b97b"}
+    assert digest == readerdigests.get(remote.SERVER_PROTOCOL), (
+        f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Add the digest"
+        " of the new protocol to this test"
+    )
 
 
 def test_server_of_a_different_protocol_stops_the_start() -> None:
