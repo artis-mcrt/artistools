@@ -950,19 +950,21 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     return get_file_metadata_cached(metafile, metatext)
 
 
-def parse_metadata_redshift(value: object, metafile: Path, exclusiveminimum: float) -> float:
+def parse_metadata_redshift(value: object, metafile: Path, minimum: float, allowminimum: bool) -> float:
     """Return the redshift z from a metadata file, or raise a ValueError that names the file.
 
-    z must be above exclusiveminimum, e.g. -1 for a de-redshift and 0 for a luminosity distance. get_file_metadata
-    keeps z as YAML gives it, because a caller that reads only the label must not fail on z.
+    z must be above minimum, or equal to it if allowminimum, e.g. above -1 for a de-redshift and 0 or above for a
+    luminosity distance. get_file_metadata keeps z as YAML gives it, because a caller that reads only the label must
+    not fail on z.
     """
-    # YAML 1.1 reads a number with an exponent and no dot as a string, e.g. 1e-3. str() makes a bool fail
+    # str() makes a bool fail, and float() accepts True
     try:
         z = float(str(value))
     except ValueError:
         z = math.nan
-    if not (math.isfinite(z) and z > exclusiveminimum):
-        msg = f"The redshift z in {metafile} must be a number above {exclusiveminimum:g}, not {value!r}"
+    if not (math.isfinite(z) and (z >= minimum if allowminimum else z > minimum)):
+        limit = f"of {minimum:g} or above" if allowminimum else f"above {minimum:g}"
+        msg = f"The redshift z in {metafile} must be a number {limit}, not {value!r}"
         raise ValueError(msg)
     return z
 
@@ -989,12 +991,21 @@ def get_file_metadata_cached(metafile: Path, metatext: str | None) -> dict[str, 
 
     import yaml
 
+    class MetadataLoader(yaml.SafeLoader):
+        """Read a number with an exponent and no dot as a float, e.g. 1e-3, as YAML 1.2 does and YAML 1.1 does not."""
+
+    # add_implicit_resolver copies the resolvers of SafeLoader before it adds one, thus SafeLoader stays the same
+    MetadataLoader.add_implicit_resolver(
+        "tag:yaml.org,2002:float", re.compile(r"^[-+]?[0-9][0-9_]*(?:\.[0-9_]*)?[eE][-+]?[0-9]+$"), list("-+0123456789")
+    )
+
     if metatext is None:
-        print(f"No metadata found: Path.exists() gives False for {metafile}")
+        print(f"No metadata file at {metafile}")
         return {}
 
-    # a file of comments alone gives None
-    return add_derived_metadata(check_metadata_mapping(yaml.safe_load(metatext) or {}, metafile))
+    # a file of comments alone gives None. MetadataLoader is a SafeLoader, but ruff does not know the subclass
+    metadata = yaml.load(metatext, Loader=MetadataLoader) or {}  # ruff:ignore[unsafe-yaml-load]
+    return add_derived_metadata(check_metadata_mapping(metadata, metafile))
 
 
 def merge_pdf_files(pdf_files: list[str], outputpath: Path | str | None = None) -> str:

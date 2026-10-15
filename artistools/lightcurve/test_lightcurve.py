@@ -3171,7 +3171,7 @@ def test_reference_band_data_takes_a_header_line_that_starts_with_a_hash(tmp_pat
 def test_reference_band_data_takes_its_distance_from_a_redshift(
     tmp_path: Path, zvalue: str, distance_mpc: float | None
 ) -> None:
-    """YAML 1.1 reads 1e-3 as a string, and 1 + z raised a TypeError.
+    """YAML 1.1 read 1e-3 as a string, and 1 + z raised a TypeError.
 
     A z of 0 gave an infinite magnitude. Now z: 0 marks the rest frame and gives no distance, and a negative z stops.
     """
@@ -3182,7 +3182,7 @@ def test_reference_band_data_takes_its_distance_from_a_redshift(
     )
 
     if zvalue.startswith("-"):
-        with pytest.raises(ValueError, match=r"refband\.dat\.meta\.yml gives a negative luminosity distance"):
+        with pytest.raises(ValueError, match=r"refband\.dat\.meta\.yml must be a number of 0 or above"):
             at.lightcurve.core.read_reflightcurve_band_data(datafile)
     elif distance_mpc is None:
         dfband, metadata = at.lightcurve.core.read_reflightcurve_band_data(datafile)

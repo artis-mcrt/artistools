@@ -2990,8 +2990,8 @@ def test_reference_spectrum_refuses_an_incorrect_redshift(tmp_path: Path, zvalue
         atspectra.get_reference_spectrum(specfile, at.misc.get_file_metadata(specfile))
 
 
-def test_reference_spectrum_takes_a_redshift_that_yaml_reads_as_a_string(tmp_path: Path) -> None:
-    """YAML 1.1 reads 1e-3 as a string, because the number has no dot. 1 + z then raised a TypeError."""
+def test_reference_spectrum_takes_a_redshift_with_an_exponent(tmp_path: Path) -> None:
+    """YAML 1.1 read 1e-3 as a string, because the number has no dot. 1 + z then raised a TypeError."""
     specfile = tmp_path / "spec.txt"
     specfile.write_text("5000 1.0\n6000 2.0\n", encoding="utf-8")
     specfile.with_suffix(".txt.meta.yml").write_text("---\nz: 1e-3\n", encoding="utf-8")

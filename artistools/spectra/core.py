@@ -2643,7 +2643,7 @@ def get_reference_spectrum(filepath: Path | str, metadata: dict[str, t.Any]) -> 
         )
         return specdata
 
-    z = parse_metadata_redshift(metadata["z"], get_metadata_path(Path(filepath)), exclusiveminimum=-1.0)
+    z = parse_metadata_redshift(metadata["z"], get_metadata_path(Path(filepath)), minimum=-1.0, allowminimum=False)
     if z == 0.0:
         print_detail("The metadata gives z = 0, thus the spectrum is in the rest frame")
     else:
