@@ -1434,6 +1434,14 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
     assert "does not name this commit" in remote.get_git_server_suggestion("vae26", oldcommand, gitsource)
     assert "names this commit. The usual command" in remote.get_git_server_suggestion("vae26", expected, gitsource)
 
+    # the server command goes to the output and to the process list of the host, thus a token must not go with it
+    tokeninstall = vcsinstall | {"url": "https://user:ghp_secret@github.com/fork/artistools"}
+    with mock_direct_url(json.dumps(tokeninstall)):
+        tokensource = remote.get_git_source()
+    assert tokensource is not None
+    assert tokensource.url == "https://github.com/fork/artistools"
+    assert remote.without_url_credentials("ssh://git@github.com/a/b") == "ssh://git@github.com/a/b"
+
     # an install from PyPI records no direct_url.json, thus its server is the release of the same version
     with mock_direct_url(None):
         assert remote.get_git_source() is None

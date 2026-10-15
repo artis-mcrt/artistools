@@ -541,6 +541,15 @@ def parse_server_protocol(source: str) -> int | None:
     return None
 
 
+def without_url_credentials(url: str) -> str:
+    """Return the URL with no user name and no password for http and https.
+
+    Such a URL can hold a token, and the server command goes to the output and to the process list of the host. An ssh
+    URL keeps its user name, e.g. git@github.com, because ssh needs it and it holds no secret.
+    """
+    return re.sub(r"^(https?://)[^/@]*@", r"\1", url)
+
+
 class GitSource(t.NamedTuple):
     """The git commit of this artistools, and the data that tells if a remote host can install that commit."""
 
@@ -574,7 +583,9 @@ def get_git_source() -> GitSource | None:
         # a host can get the commit of an install from git, and this install has no tag to compare with
         if vcsinfo.get("vcs") != "git":
             return None
-        return GitSource(source["url"], vcsinfo["commit_id"], ispushed=True, releaseprotocol=None, notes=[])
+        return GitSource(
+            without_url_credentials(source["url"]), vcsinfo["commit_id"], ispushed=True, releaseprotocol=None, notes=[]
+        )
 
     modulefile = Path(__file__).resolve()
     folder = str(modulefile.parents[2])
@@ -583,8 +594,11 @@ def get_git_source() -> GitSource | None:
         return subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
             ["git", "-C", folder, *gitargs],  # ruff:ignore[start-process-with-partial-path]
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
+            # a partial clone can lack the file of a tag, and a fetch of it can need the network or a passphrase
+            env=os.environ | {"GIT_NO_LAZY_FETCH": "1"},
         ).stdout.strip()
 
     try:
@@ -614,7 +628,13 @@ def get_git_source() -> GitSource | None:
     if haschanges:
         notes.append("The changes that are not in a commit stay on this host.")
 
-    return GitSource(url, commit, ispushed=bool(remotebranches), releaseprotocol=releaseprotocol, notes=notes)
+    return GitSource(
+        without_url_credentials(url),
+        commit,
+        ispushed=bool(remotebranches),
+        releaseprotocol=releaseprotocol,
+        notes=notes,
+    )
 
 
 def get_git_server_suggestion(host: str, givencommand: str | None, gitsource: GitSource) -> str:
