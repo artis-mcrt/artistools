@@ -100,10 +100,8 @@ def clear_estimator_caches() -> None:
 def clear_output_caches() -> None:
     """Clear each cache of the files that ARTIS writes while it runs, e.g. spec.out, in this process.
 
-    The files of the input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay. The metadata
-    of the files goes, because a user can edit a .meta.yml file, e.g. to add the redshift z of a reference spectrum.
+    The files of the input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay.
     """
-    from artistools.misc.fileio import get_file_metadata_cached
     from artistools.misc.modelinfo import get_nu_grid_cached
     from artistools.misc.timesteps import get_deposition_cached
     from artistools.misc.timesteps import get_escaped_arrivalrange_cached
@@ -122,7 +120,6 @@ def clear_output_caches() -> None:
         # the file tests of the client also go, e.g. after exspec writes gamma_spec.out
         has_gamma_spec_file,
         get_no_sampled_emission_reason,
-        get_file_metadata_cached,
         model_has_direction_data,
         get_nu_grid_cached,
         get_deposition_cached,

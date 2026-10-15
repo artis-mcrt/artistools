@@ -937,6 +937,19 @@ def test_get_file_metadata(tmp_path: Path) -> None:
         at.misc.get_file_metadata(tmp_path / "scalar.txt")
 
 
+def test_get_file_metadata_reads_an_edited_metadata_file(tmp_path: Path) -> None:
+    """A viewer kept the old metadata after a user added z to a metadata file, until the process stopped."""
+    metafile = tmp_path / "spec.txt.meta.yml"
+    metafile.write_text("dist_mpc: 1.0\n", encoding="utf-8")
+    assert "z" not in at.misc.get_file_metadata(tmp_path / "spec.txt")
+
+    metafile.write_text("dist_mpc: 1.0\nz: 0.01\n", encoding="utf-8")
+    # a file system can keep the same modification time for two writes in one second
+    newtime_ns = metafile.stat().st_mtime_ns + 1_000_000_000
+    os.utime(metafile, ns=(newtime_ns, newtime_ns))
+    assert at.misc.get_file_metadata(tmp_path / "spec.txt")["z"] == pytest.approx(0.01)
+
+
 def test_write_parquet_atomic(tmp_path: Path) -> None:
     df = pl.DataFrame({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
     parquetpath = tmp_path / "out.parquet"

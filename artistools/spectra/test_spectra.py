@@ -2960,10 +2960,10 @@ def test_write_data_refuses_two_wavelength_grids(tmp_path: Path, capsys: pytest.
 
 @pytest.mark.parametrize("zline", ["", "z: 0.1\n"])
 def test_telluric_mask_of_a_reference_spectrum_uses_observed_wavelengths(tmp_path: Path, zline: str) -> None:
-    """The telluric mask applies to the observed wavelengths, thus 14000 Å is masked for each z.
+    """The telluric mask applies to the observed wavelengths, thus it removes the row at 14000 Å for each z.
 
     With z = 0.1, the row at 15000 Å moves to 13636 Å, which is inside the observed band from 13500 Å to 14400 Å.
-    A mask after the de-redshift with the observed band limits would mask that row. With no z, the mask raised KeyError.
+    A mask after the de-redshift with the observed band limits removes that row. With no z, the mask raised KeyError.
     """
     specfile = tmp_path / "telluric.txt"
     specfile.write_text("13000 1.0\n14000 2.0\n15000 3.0\n", encoding="utf-8")
@@ -2977,6 +2977,26 @@ def test_telluric_mask_of_a_reference_spectrum_uses_observed_wavelengths(tmp_pat
 
     yvalues = np.asarray(line.get_ydata(), dtype=np.float64)
     assert np.isnan(yvalues).tolist() == [False, True, False]
+
+
+@pytest.mark.parametrize("zvalue", ["-1", "-2", ".inf", ".nan", "true", "abc"])
+def test_reference_spectrum_refuses_an_incorrect_redshift(tmp_path: Path, zvalue: str) -> None:
+    """A z of -1 divided by zero, and a z that YAML reads as a string gave a TypeError with no file name."""
+    specfile = tmp_path / "spec.txt"
+    specfile.write_text("5000 1.0\n6000 2.0\n", encoding="utf-8")
+    specfile.with_suffix(".txt.meta.yml").write_text(f"---\nz: {zvalue}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"spec\.txt must be a number above -1"):
+        atspectra.get_reference_spectrum(specfile)
+
+
+def test_reference_spectrum_takes_a_redshift_that_yaml_reads_as_a_string(tmp_path: Path) -> None:
+    """YAML 1.1 reads 1e-3 as a string, because the number has no dot. 1 + z then raised a TypeError."""
+    specfile = tmp_path / "spec.txt"
+    specfile.write_text("5000 1.0\n6000 2.0\n", encoding="utf-8")
+    specfile.with_suffix(".txt.meta.yml").write_text("---\nz: 1e-3\n", encoding="utf-8")
+    specdata = atspectra.get_reference_spectrum(specfile)
+    assert np.allclose(specdata["lambda_angstroms"].to_numpy(), [5000.0 / 1.001, 6000.0 / 1.001], rtol=1e-12, atol=0.0)
+    assert np.allclose(specdata["f_lambda"].to_numpy(), [1.001, 2.002], rtol=1e-12, atol=0.0)
 
 
 def test_stokesparam_takes_only_the_values_that_the_plot_reads() -> None:

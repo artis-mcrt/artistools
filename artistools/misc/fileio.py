@@ -936,14 +936,30 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     """Return a dict of metadata for a file from its metadata file, e.g. spectrum.txt.meta.yml for spectrum.txt.
 
     The cache key holds the absolute path, see ModelpathCache. The absolute path keeps a symbolic link, because the
-    metadata file of a link is beside the link.
+    metadata file of a link is beside the link. The key also holds the modification time of the metadata file, thus a
+    process that runs for a long time, e.g. a viewer, reads an edited metadata file again.
     """
-    return get_file_metadata_cached(Path(filepath).absolute())
+    filepath = Path(filepath).absolute()
+    try:
+        metafile_mtime_ns = get_metadata_path(filepath).stat().st_mtime_ns
+    except FileNotFoundError:
+        metafile_mtime_ns = None
+    return get_file_metadata_cached(filepath, metafile_mtime_ns)
+
+
+def get_metadata_path(filepath: Path) -> Path:
+    """Return the path of the metadata file of a file, e.g. spectrum.txt.meta.yml for spectrum.txt.xz."""
+    filepath = without_compressed_extension(filepath)
+    return filepath.with_suffix(f"{filepath.suffix}.meta.yml")
 
 
 @lru_cache(maxsize=24)
-def get_file_metadata_cached(filepath: Path) -> dict[str, t.Any]:
-    """Return the metadata of the file at an absolute path, and keep it for the next caller."""
+def get_file_metadata_cached(filepath: Path, metafile_mtime_ns: int | None) -> dict[str, t.Any]:
+    """Return the metadata of the file at an absolute path, and keep it for the next caller.
+
+    metafile_mtime_ns is only a part of the cache key.
+    """
+    del metafile_mtime_ns
 
     def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
         if "a_v" in metadata and "e_bminusv" in metadata and "r_v" not in metadata:
@@ -957,10 +973,9 @@ def get_file_metadata_cached(filepath: Path) -> dict[str, t.Any]:
 
     import yaml
 
-    filepath = without_compressed_extension(filepath)
-    metafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
+    metafile = get_metadata_path(filepath)
     if not metafile.exists():
-        print(f"No metadata found for: {filepath}")
+        print(f"No metadata found for: {without_compressed_extension(filepath)}")
         return {}
 
     with metafile.open("r", encoding="utf-8") as yamlfile:
