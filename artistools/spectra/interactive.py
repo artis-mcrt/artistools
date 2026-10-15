@@ -34,6 +34,7 @@ from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import EmissionEvent
+from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import get_xunit
 from artistools.spectra.core import XUNITS
 from artistools.spectra.plotspectra import addargs
@@ -43,7 +44,6 @@ from artistools.spectra.plotspectra import draw_plot
 from artistools.spectra.plotspectra import find_reference_spectrum_file_or_none
 from artistools.spectra.plotspectra import get_default_xlimits
 from artistools.spectra.plotspectra import get_emission_event
-from artistools.spectra.plotspectra import get_x_quantity_label
 from artistools.spectra.plotspectra import main as plotspectra_main
 from artistools.spectra.plotspectra import make_plot_figure
 from artistools.spectra.plotspectra import path_is_reference_spectrum

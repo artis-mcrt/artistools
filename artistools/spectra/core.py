@@ -349,6 +349,12 @@ def get_xunit(xunit: str) -> XUnit:
     return XUNITS[convert_xunit_aliases_to_canonical(xunit)]
 
 
+def get_x_quantity_label(xunit: XUnit) -> str:
+    """Return the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]"."""
+    # ARTIS gives the spectra in the rest frame of the source, and get_reference_spectrum moves each reference there
+    return f"Rest-frame {xunit.kind} [{xunit.label}]"
+
+
 def parse_xunit_argument(value: str) -> str:
     """Return the canonical unit of the horizontal axis, or refuse a name that no unit takes.
 
@@ -2641,7 +2647,9 @@ def get_reference_spectrum_cached(filepath: Path) -> pl.DataFrame:
             lambda_angstroms=pl.col("lambda_angstroms") / (1 + z), f_lambda=pl.col("f_lambda") * (1 + z)
         )
         print(f"Correcting for redshift z = {z}")
-    elif z is None:
+    elif z == 0:
+        print("The metadata gives z = 0, thus the spectrum is in the rest frame")
+    else:
         print_warning(
             f"The metadata of {Path(filepath).name} gives no redshift z, thus artistools takes the spectrum to be"
             " in the rest frame (z = 0)"

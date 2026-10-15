@@ -129,6 +129,7 @@ from artistools.spectra.core import get_specpol_data
 from artistools.spectra.core import get_spectra
 from artistools.spectra.core import get_vspecpol_data
 from artistools.spectra.core import get_vspecpol_spectrum
+from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import get_xunit
 from artistools.spectra.core import make_averaged_vspecfiles
 from artistools.spectra.core import make_virtual_spectra_summed_file
@@ -139,7 +140,6 @@ from artistools.spectra.core import print_integrated_flux
 from artistools.spectra.core import SHELLCOLUMNS
 from artistools.spectra.core import sort_and_reduce_flux_contribution_list
 from artistools.spectra.core import timeshift_fluxscale_co56law
-from artistools.spectra.core import XUnit
 from artistools.spectra.writespectra import write_flambda_spectra
 
 if t.TYPE_CHECKING:
@@ -209,12 +209,6 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
         for message in problem_messages:
             print_warning(message)
-
-
-def get_x_quantity_label(xunit: XUnit) -> str:
-    """Return the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]"."""
-    # ARTIS gives the spectra in the rest frame of the source, and get_reference_spectrum moves each reference there
-    return f"Rest-frame {xunit.kind} [{xunit.label}]"
 
 
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
