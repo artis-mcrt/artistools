@@ -941,8 +941,12 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     e.g. a viewer, read each edit. A metadata file holds only a few lines.
     """
     metafile = get_metadata_path(Path(filepath).absolute())
-    # Path.exists() gives False for each error of the operating system, e.g. a symbolic link in a loop
-    metatext = metafile.read_text(encoding="utf-8") if metafile.exists() else None
+    # Path.exists() gives False for each error of the operating system, e.g. a symbolic link in a loop. An editor can
+    # delete the file and write it again after exists(), thus a missing file at the read also gives no metadata
+    metatext = None
+    if metafile.exists():
+        with contextlib.suppress(FileNotFoundError):
+            metatext = metafile.read_text(encoding="utf-8")
     return get_file_metadata_cached(metafile, metatext)
 
 
