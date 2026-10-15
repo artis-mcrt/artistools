@@ -1573,11 +1573,12 @@ def test_release_for_changed_code_gives_a_warning(capsys: pytest.CaptureFixture[
 
 
 def test_server_protocol_changes_with_the_readers() -> None:
-    """Increase SERVER_PROTOCOL when a reader on the server changes its signature, or a type that the signature names.
+    """Increase SERVER_PROTOCOL when a reader on the server or the code of a message changes.
 
     A clone with the server protocol of the release uses the release on the host. Pickle rebuilds a NamedTuple by the
-    position of its fields, thus a changed field gives an error or an incorrect value. The test does not find a change
-    of an option that a reader reads from args, or of a column. Such a change also needs a new server protocol.
+    position of its fields, thus a changed field gives an error or an incorrect value. The test finds a change of a
+    signature, of a type that a signature names, and of the code that makes and reads a message. It does not find a
+    change of an option that a reader reads from args, or of a column. Such a change also needs a new server protocol.
     """
     import ast
     import hashlib
@@ -1615,10 +1616,40 @@ def test_server_protocol_changes_with_the_readers() -> None:
             usednames.add(name)
             pendingnames.extend(re.findall(r"\w+", "\n".join(typedefinitions[name])))
     hashedlines = sorted(signatures) + sorted(line for name in usednames for line in typedefinitions[name])
+
+    # the two sides make and read each message with this code, thus a change of it can change the message format.
+    # unparse drops the comments and the test drops the docstrings, thus a change of the text only keeps the digest
+    messagenames = {
+        "FRAME_MARKER",
+        "MESSAGE_LENGTH_BYTES",
+        "call_on_host",
+        "dump_message",
+        "get_ipc_bytes",
+        "load_reply",
+        "read_message",
+        "read_server_versions",
+        "reduce_dataframe",
+        "reduce_lazyframe",
+        "restore_frames",
+        "run_function",
+        "run_request",
+        "serve",
+        "write_message",
+    }
+    messagecode: dict[str, str] = {}
+    for node in ast.parse(Path(remote.__file__).read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.FunctionDef) and node.name in messagenames:
+            if ast.get_docstring(node) is not None:
+                node.body = node.body[1:]
+            messagecode[node.name] = ast.unparse(node)
+        elif isinstance(node, ast.Assign) and (name := ast.unparse(node.targets[0])) in messagenames:
+            messagecode[name] = ast.unparse(node)
+    assert messagecode.keys() == messagenames, "Give the test the new name of each function of the message format"
+    hashedlines += [messagecode[name] for name in sorted(messagenames)]
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (3, "c1bd29e7978ed7fb"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (3, "fe46bcb9040be59a"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
