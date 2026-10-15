@@ -33,3 +33,8 @@ angstroms_per_micron = 1e4  # Micrometre [Angstrom]
 # wavenumber sigma is in [1/micron]. The tuple holds (A, B, C, D, E).
 # Source: Peck & Reeder (1972), J. Opt. Soc. Am., 62, 958, doi:10.1364/JOSA.62.000958.
 peck_reeder_air_coefficients = (8060.51, 2480990.0, 132.274, 17455.7, 39.32957)
+
+# The flat cosmology of the luminosity distance of a reference light curve that gives only its redshift z. These are
+# round values that many papers use, and not the result of one measurement.
+H0_km_per_s_per_mpc = 70.0
+omega_matter = 0.3

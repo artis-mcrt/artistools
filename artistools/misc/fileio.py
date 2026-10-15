@@ -941,13 +941,8 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     e.g. a viewer, read each edit. A metadata file holds only a few lines.
     """
     metafile = get_metadata_path(Path(filepath).absolute())
-    try:
-        metatext = metafile.read_text(encoding="utf-8")
-    except OSError as exc:
-        # Path.exists() gives False for each of these errors, e.g. for a symbolic link in a loop
-        if exc.errno not in {errno.ENOENT, errno.ENOTDIR, errno.ELOOP, errno.EBADF}:
-            raise
-        metatext = None
+    # Path.exists() gives False for each error of the operating system, e.g. a symbolic link in a loop
+    metatext = metafile.read_text(encoding="utf-8") if metafile.exists() else None
     return get_file_metadata_cached(metafile, metatext)
 
 

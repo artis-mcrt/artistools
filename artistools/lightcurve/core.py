@@ -23,10 +23,12 @@ from artistools.atomic import get_nuclides
 from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.constants import H0_km_per_s_per_mpc
 from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
 from artistools.constants import megaparsec_to_cm
+from artistools.constants import omega_matter
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bracketed
@@ -822,8 +824,11 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
         # a z of 0 gives a distance of 0 and an infinite magnitude, and a negative z gives a negative distance. The
         # command reports the ValueError of an incorrect z as an error message, with no traceback
         z = parse_metadata_redshift(metadata["z"], get_metadata_path(metadatasource), exclusiveminimum=0.0)
-        metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=z)
-        print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
+        metadata["dist_mpc"] = luminosity_distance(H0=H0_km_per_s_per_mpc, Om0=omega_matter, z=z)
+        print(
+            f"luminosity distance from redshift z = {z}: {metadata['dist_mpc']:.4g} Mpc for {metadata['label']}, with a"
+            f" flat cosmology of H0 = {H0_km_per_s_per_mpc} km/s/Mpc and Om0 = {omega_matter}"
+        )
 
     magnitude = pl.col("magnitude").cast(pl.Float64)
     if "dist_mpc" in metadata:
