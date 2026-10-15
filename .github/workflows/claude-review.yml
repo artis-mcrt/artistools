@@ -38,9 +38,10 @@ jobs:
             pull-requests: write
         env:
             UV_FROZEN: 1
-            # the first review and a review on request use the maximum effort. A review after a new push
-            # (synchronize) uses the medium effort, which reports only the findings that it is most sure of
-            REVIEWEFFORT: ${{ github.event.action == 'synchronize' && 'medium' || 'max' }}
+            # the first review and a review on request use the high effort. A review with the maximum effort ran past
+            # the timeout of the job on #702, and the review posts its findings only at the end. A review after a new
+            # push (synchronize) uses the medium effort, which reports only the findings that it is most sure of
+            REVIEWEFFORT: ${{ github.event.action == 'synchronize' && 'medium' || 'high' }}
             # an issue_comment event has no pull_request object, thus the URL comes from the number of the issue
             PRURL: ${{ format('{0}/{1}/pull/{2}', github.server_url, github.repository, github.event.pull_request.number || github.event.issue.number) }}
         steps:

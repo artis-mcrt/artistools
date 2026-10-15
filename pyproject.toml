@@ -79,7 +79,7 @@ dev = [
     "prek>=0.5.4",
     "pynonthermal>=2026.9.30",
     "pypdf>=6.16.2",
-    "pyrefly>=1.3.0",
+    "pyrefly>=1.4.0",
     "pytest>=9.1.1",
     "pytest-codspeed>=5.0.3",
     "pytest-cov>=7.1.0",
@@ -196,15 +196,53 @@ ignore-missing-imports = [
 
 [tool.pyrefly.errors]
 unbound-name = false
-implicit-any-empty-container = true
-implicit-any-lambda = true
+# the strict preset leaves these kinds off
+empty-body = true
+implicit-abstract-class = true
+implicit-import = true
+implicit-reexport = true
 implicitly-defined-attribute = true
+incompatible-comparison = true
+invalid-abstract-method = true
+invalid-cast = true
+missing-super-call = true
 no-any-return-explicit = true
 no-any-return-implicit = true
+non-exhaustive-match-open-type = true
 not-required-key-access = true
+protocol-implicitly-defined-attribute = true
 string-as-iterable = true
-unnecessary-type-conversion = true
+unannotated-protocol-member = true
+unannotated-return = true
+unimported-directive = true
+uninitialized-instance-variable = true
+unknown-attribute-type = true
+unknown-return-type = true
+unsupported-dynamic-base = true
 unsupported-operation = true
+untyped-class-decorator = true
+untyped-function-decorator = true
+untyped-namedtuple = true
+unused-type-ignore = true
+# these kinds are warnings by default, and a warning does not stop CI
+assert-type-unspellable-subtype = "error"
+attribute-assign-on-never = "error"
+deprecated = "error"
+division-by-zero = "error"
+invalid-decorator = "error"
+misplaced-ignore = "error"
+missing-attribute-patch-target = "error"
+name-mismatch = "error"
+non-convergent-recursion = "error"
+non-exhaustive-match = "error"
+redundant-cast = "error"
+redundant-condition = "error"
+unnecessary-type-conversion = "error"
+unreachable = "error"
+unreachable-match-case = "error"
+unresolvable-dunder-all = "error"
+useless-overload-body = "error"
+variance-mismatch = "error"
 
 [tool.pyright]
 venvPath = "."
@@ -267,8 +305,8 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = ["ALL"]
-# the pep257 convention switches off these two rules. An explicit selection switches them on again
-extend-select = ["docstring-starts-with-this", "multi-line-summary-first-line"]
+# ALL does not select a rule that has no code
+extend-select = ["pytest-fixture-autouse"]
 ignore = [
     "any-type",
     "complex-structure",
@@ -361,11 +399,6 @@ strict = true
 [tool.ruff.lint.isort]
 force-single-line = true
 order-by-type = false
-
-[tool.ruff.lint.pydocstyle]
-# Resolves the D203/D211 and D212/D213 conflicts that selecting the whole D group creates, and
-# leaves Args/Returns/Raises sections optional.
-convention = "pep257"
 
 [tool.ty.rules]
 unresolved-import = "ignore"

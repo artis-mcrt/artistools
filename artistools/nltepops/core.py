@@ -185,7 +185,7 @@ def add_lte_pops(
 def read_nltepops(
     modelpath: str | Path,
     timestep: int | np.integer | None = None,
-    modelgridindex: int | np.integer | Sequence[int] | None = None,
+    modelgridindex: int | np.integer | Sequence[int | np.integer] | None = None,
 ) -> pl.DataFrame:
     """Read in NLTE populations from a model for a particular timestep and one or more grid cells.
 

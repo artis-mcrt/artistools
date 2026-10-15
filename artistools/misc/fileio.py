@@ -875,6 +875,7 @@ class ModelpathCache[**P, R]:
 
     if t.TYPE_CHECKING:
         # the type checkers know only the keyword modelpath, because a ParamSpec cannot rename a parameter
+        # pyrefly: ignore[empty-body]
         def __call__(self, modelpath: Path | str, *args: P.args, **kwargs: P.kwargs) -> R:
             """Return the result of the reader for the absolute path of the model."""
             ...
