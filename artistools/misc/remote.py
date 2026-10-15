@@ -559,6 +559,8 @@ class GitSource(t.NamedTuple):
     ispushed: bool
     # the server protocol of the release of this version, or None if no tag of the release is available
     releaseprotocol: int | None
+    # the package files of the commit that differ from the release. The list is empty if no tag is available
+    releasechanges: list[str]
     notes: list[str]
 
 
@@ -584,7 +586,12 @@ def get_git_source() -> GitSource | None:
         if vcsinfo.get("vcs") != "git":
             return None
         return GitSource(
-            without_url_credentials(source["url"]), vcsinfo["commit_id"], ispushed=True, releaseprotocol=None, notes=[]
+            without_url_credentials(source["url"]),
+            vcsinfo["commit_id"],
+            ispushed=True,
+            releaseprotocol=None,
+            releasechanges=[],
+            notes=[],
         )
 
     modulefile = Path(__file__).resolve()
@@ -611,12 +618,18 @@ def get_git_source() -> GitSource | None:
         # a folder that is not a clone, or a host with no git, gives no commit
         return None
 
-    releasemodule = f"v{version('artistools')}:{modulefile.relative_to(folder).as_posix()}"
+    releasetag = f"v{version('artistools')}"
     try:
-        releaseprotocol = parse_server_protocol(run_git("show", releasemodule))
+        releaseprotocol = parse_server_protocol(
+            run_git("show", f"{releasetag}:{modulefile.relative_to(folder).as_posix()}")
+        )
+        changedfiles = run_git("diff", "--name-only", releasetag, commit, "--", "artistools", "rust").splitlines()
     except subprocess.CalledProcessError:
         # a version with no release yet, or a clone with no tags, has no tag to compare with
         releaseprotocol = None
+        changedfiles: list[str] = []
+    # the server does not run the tests, thus a change to a test file cannot change a reader
+    releasechanges = [path for path in changedfiles if not Path(path).name.startswith(("test_", "conftest"))]
 
     # uv reads an ssh URL of git only in the form ssh://, and not in the form of scp, e.g. git@github.com:org/repo.git
     if (scpurl := re.match(r"^(?P<userhost>[^/:]+@[^/:]+):(?P<path>.*)$", url)) is not None:
@@ -633,6 +646,7 @@ def get_git_source() -> GitSource | None:
         commit,
         ispushed=bool(remotebranches),
         releaseprotocol=releaseprotocol,
+        releasechanges=releasechanges,
         notes=notes,
     )
 
@@ -770,6 +784,13 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
             f"the release {localversion} has the server protocol {gitsource.releaseprotocol}, and this artistools has"
             f" the server protocol {SERVER_PROTOCOL}",
             get_git_server_suggestion(host, givencommand, gitsource),
+        )
+    if command == get_release_command() and gitsource is not None and gitsource.releasechanges:
+        # the server protocol finds only a change of the arguments or of a NamedTuple, not of the code of a reader
+        print_warning(
+            f"The host runs the release {localversion}, but {len(gitsource.releasechanges)} package files of this"
+            f" commit differ from it, e.g. {gitsource.releasechanges[0]}. A reader on the host can thus give a"
+            " different result.\n" + get_git_server_suggestion(host, givencommand, gitsource)
         )
 
     argv = get_server_argv(host, command)

@@ -1419,7 +1419,7 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
         gitsource = remote.get_git_source()
     assert gitsource is not None
     assert gitsource == remote.GitSource(
-        "https://github.com/fork/artistools", "abc123", ispushed=True, releaseprotocol=None, notes=[]
+        "https://github.com/fork/artistools", "abc123", ispushed=True, releaseprotocol=None, releasechanges=[], notes=[]
     )
     expected = (
         f"POLARS_MAX_THREADS=16 uvx --with polars=={pl.__version__}"
@@ -1472,7 +1472,12 @@ def test_server_command_runs_the_code_of_this_artistools() -> None:
     """
     releasecommand = remote.get_release_command()
     olderrelease = remote.GitSource(
-        "https://github.com/a/b", "abc123", ispushed=True, releaseprotocol=remote.SERVER_PROTOCOL - 1, notes=[]
+        "https://github.com/a/b",
+        "abc123",
+        ispushed=True,
+        releaseprotocol=remote.SERVER_PROTOCOL - 1,
+        releasechanges=[],
+        notes=[],
     )
     gitcommand = remote.get_git_command(olderrelease)
     assert remote.choose_server_command(None, None)[0] == releasecommand
@@ -1502,7 +1507,9 @@ def test_server_of_a_commit_falls_back_to_the_release() -> None:
     """
     from importlib.metadata import version
 
-    unknownrelease = remote.GitSource("https://github.com/a/b", "abc123", ispushed=True, releaseprotocol=None, notes=[])
+    unknownrelease = remote.GitSource(
+        "https://github.com/a/b", "abc123", ispushed=True, releaseprotocol=None, releasechanges=[], notes=[]
+    )
     samerelease = unknownrelease._replace(releaseprotocol=remote.SERVER_PROTOCOL)
     gitcommand = remote.get_git_command(unknownrelease)
     releasecommand = remote.get_release_command()
@@ -1533,6 +1540,36 @@ def test_server_of_a_commit_falls_back_to_the_release() -> None:
         ):
             remote.start_server("vae26")
         assert launch.call_count == launchcount
+
+
+def test_release_for_changed_code_gives_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
+    """Warn when the release runs for a commit whose package code differs from the release.
+
+    The server protocol finds only a change of the arguments, thus the user must know that the host runs older code.
+    """
+    from importlib.metadata import version
+
+    changedcode = remote.GitSource(
+        "https://github.com/a/b",
+        "abc123",
+        ispushed=True,
+        releaseprotocol=remote.SERVER_PROTOCOL,
+        releasechanges=["artistools/spectra/core.py"],
+        notes=[],
+    )
+    for gitsource, haswarning in ((changedcode, True), (changedcode._replace(releasechanges=[]), False)):
+        with (
+            mock.patch.object(remote, "get_git_source", return_value=gitsource),
+            mock.patch.object(
+                remote, "launch_server", return_value=(mock.Mock(), version("artistools"), pl.__version__)
+            ),
+            mock.patch("atexit.register"),
+            mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+        ):
+            remote.start_server("vae26")
+        stderr = capsys.readouterr().err
+        assert ("artistools/spectra/core.py" in stderr) == haswarning
+        assert (remote.get_git_command(gitsource) in stderr) == haswarning
 
 
 def test_server_protocol_changes_with_the_readers() -> None:
