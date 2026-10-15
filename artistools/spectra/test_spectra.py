@@ -2877,10 +2877,29 @@ def test_eflux_with_a_wavelength_unit_is_lambda_f_lambda() -> None:
         xunit="nm", hidexticklabels=False, hideyticklabels=False, normalised=False, yvariable="eflux", distmpc=1.0
     )
     args.logscaley = False
+    args.specpath = []
     _, ylabel = plotspectra.get_axis_labels(args)
     assert ylabel is not None
     assert "lambda" in ylabel
     assert "erg/s/cm$^2$" in ylabel
+
+
+def test_x_label_says_rest_frame_only_when_each_reference_gives_z() -> None:
+    """A reference spectrum with no z stays in the frame of its file, thus the x axis must not say rest frame."""
+    args = argparse.Namespace(
+        xunit="angstrom", hidexticklabels=False, hideyticklabels=True, normalised=False, yvariable="flux"
+    )
+    withz = "AT2017gfo_ENGRAVE_v1.0_XSHOOTER_MJD-57984.969_Phase+2.42d.dat"
+    withoutz = "2003du_20031213_3219_8822_00.txt"
+    cases: list[tuple[list[str], str]] = [
+        ([], "Rest-frame wavelength [Å]"),
+        ([withz], "Rest-frame wavelength [Å]"),
+        ([withz, withoutz], "Wavelength [Å]"),
+    ]
+    for specpath, expected in cases:
+        args.specpath = specpath
+        xlabel, _ = plotspectra.get_axis_labels(args)
+        assert xlabel == expected, specpath
 
 
 def test_single_time_skips_a_model_that_does_not_hold_it(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

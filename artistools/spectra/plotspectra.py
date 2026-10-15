@@ -211,10 +211,20 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
             print_warning(message)
 
 
-def get_x_quantity_label(xunit: XUnit) -> str:
+def reference_spectra_are_rest_frame(specpaths: Sequence[Path | str]) -> bool:
+    """Return whether each reference spectrum in specpaths gives a redshift z in its metadata."""
+    # get_reference_spectrum removes the redshift z. A file with no z stays in the frame of the file
+    return all(
+        "z" in get_file_metadata(find_reference_spectrum_file(specpath))
+        for specpath in specpaths
+        if path_is_reference_spectrum(specpath)
+    )
+
+
+def get_x_quantity_label(xunit: XUnit, isrestframe: bool) -> str:
     """Return the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]"."""
-    # ARTIS gives the spectra in the rest frame of the source, and get_reference_spectrum removes the redshift z
-    return f"Rest-frame {xunit.kind} [{xunit.label}]"
+    quantity = f"rest-frame {xunit.kind}" if isrestframe else xunit.kind
+    return f"{quantity.capitalize()} [{xunit.label}]"
 
 
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
@@ -222,7 +232,9 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
     xunit = get_xunit(args.xunit)
     str_xunit = xunit.label
 
-    xlabel = None if args.hidexticklabels else get_x_quantity_label(xunit)
+    # ARTIS gives the spectra in the rest frame of the source
+    isrestframe = reference_spectra_are_rest_frame(args.specpath)
+    xlabel = None if args.hidexticklabels else get_x_quantity_label(xunit, isrestframe)
     # a frequency axis draws f_nu, and an energy axis draws the flux per energy interval
     fluxsymbol = {"wavelength": r"F$_\lambda$", "frequency": r"F$_\nu$", "energy": "dF/dE"}[xunit.kind]
 
