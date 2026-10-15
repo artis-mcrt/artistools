@@ -936,9 +936,9 @@ def check_metadata_mapping(metadata: object, metafile: Path) -> dict[str, t.Any]
 def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     """Return a dict of metadata for a file from its metadata file, e.g. spectrum.txt.meta.yml for spectrum.txt.
 
-    The cache key holds the absolute path, see ModelpathCache. The absolute path keeps a symbolic link, because the
-    metadata file of a link is beside the link. The key also holds the text of the metadata file, thus a process that
-    runs for a long time, e.g. a viewer, reads each edit. A metadata file holds only a few lines.
+    The key of the cache holds the absolute path of the metadata file and its text. The absolute path keeps a symbolic
+    link, because the metadata file of a link is beside the link. The text makes a process that runs for a long time,
+    e.g. a viewer, read each edit. A metadata file holds only a few lines.
     """
     metafile = get_metadata_path(Path(filepath).absolute())
     try:
