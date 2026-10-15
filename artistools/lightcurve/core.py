@@ -818,14 +818,12 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     # m - M = 5log(d) - 5  Get absolute magnitude. A distance modulus from the metadata is a measured value,
     # thus the distance from the redshift applies only when the metadata gives neither
     if "dist_mpc" not in metadata and "dist_modulus" not in metadata and "z" in metadata:
-        try:
-            z = parse_metadata_redshift(metadata["z"], metafile)
-        except ValueError:
-            z = math.nan
+        # the command reports the ValueError of an incorrect z as an error message, with no traceback
+        z = parse_metadata_redshift(metadata["z"], metafile)
         # a z of 0 gives a distance of 0 and an infinite magnitude, and a negative z gives a negative distance
-        if not z > 0.0:
+        if z <= 0.0:
             exit_with_error(
-                f"{metafile} gives the redshift z = {metadata['z']!r}, which gives no distance",
+                f"{metafile} gives the redshift z = {z}, which gives no distance",
                 "Give a z above 0, a dist_mpc, or a dist_modulus in that file",
             )
         metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=z)

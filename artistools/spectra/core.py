@@ -2590,12 +2590,13 @@ def print_integrated_flux(
 
 
 def get_reference_spectrum(filepath: Path | str, metadata: dict[str, t.Any]) -> pl.DataFrame:
-    """Return a reference spectrum in the rest frame, after the corrections that its metadata gives.
+    """Return a reference spectrum in the rest frame, after its extinction correction and its telluric mask.
 
     The metadata file gives the redshift z. A spectrum with no z is in the rest frame by design (z = 0), and the
     function logs a warning. A plot can compare a reference spectrum with an ARTIS spectrum only in one frame, thus
     this assumption is necessary. Give z: 0 in the metadata of a spectrum that is in the rest frame, e.g. a model.
-    The caller gives the metadata, thus one plot uses one version of the metadata file.
+    The caller gives the metadata, thus one plot uses one version of the metadata file. The caller also applies the
+    distance, the scale factor, and the scale in time.
     """
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
 
