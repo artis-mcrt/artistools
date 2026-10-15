@@ -990,7 +990,7 @@ def get_file_metadata_cached(metafile: Path, metatext: str | None) -> dict[str, 
     import yaml
 
     if metatext is None:
-        print(f"No metadata found: {metafile} does not exist")
+        print(f"No metadata found: Path.exists() gives False for {metafile}")
         return {}
 
     # a file of comments alone gives None

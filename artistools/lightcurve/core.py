@@ -821,15 +821,22 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     # m - M = 5log(d) - 5  Get absolute magnitude. A distance modulus from the metadata is a measured value,
     # thus the distance from the redshift applies only when the metadata gives neither
     if "dist_mpc" not in metadata and "dist_modulus" not in metadata and "z" in metadata:
-        # a z of 0 gives a distance of 0 and an infinite magnitude, and a negative z gives a negative distance. The
-        # command reports the ValueError of an incorrect z as an error message, with no traceback
-        z = parse_metadata_redshift(metadata["z"], get_metadata_path(metadatasource), exclusiveminimum=0.0)
-        metadata["dist_mpc"] = luminosity_distance(H0=H0_km_per_s_per_mpc, Om0=omega_matter, z=z)
-        print(
-            f"luminosity distance from redshift z = {z}: {metadata['dist_mpc']:.4g} Mpc for {metadata['label']}, with a"
-            f" flat cosmology of H0 = {H0_km_per_s_per_mpc} km/s/Mpc and Om0 = {omega_matter} (round values that"
-            " many papers use, from no single measurement)"
-        )
+        # the command reports the ValueError of an incorrect z as an error message, with no traceback
+        metafile = get_metadata_path(metadatasource)
+        z = parse_metadata_redshift(metadata["z"], metafile, exclusiveminimum=-1.0)
+        if z < 0.0:
+            msg = f"The redshift z = {z} in {metafile} gives a negative luminosity distance. Give a z of 0 or above"
+            raise ValueError(msg)
+        if z == 0.0:
+            # z: 0 marks the rest frame, as for a reference spectrum, thus there is no distance
+            print(f"The metadata gives z = 0 for {metadata['label']}, thus the magnitudes have no distance correction")
+        else:
+            metadata["dist_mpc"] = luminosity_distance(H0=H0_km_per_s_per_mpc, Om0=omega_matter, z=z)
+            print(
+                f"luminosity distance from redshift z = {z}: {metadata['dist_mpc']:.4g} Mpc for {metadata['label']},"
+                f" with a flat cosmology of H0 = {H0_km_per_s_per_mpc} km/s/Mpc and Om0 = {omega_matter} (round"
+                " values that many papers use, from no single measurement)"
+            )
 
     magnitude = pl.col("magnitude").cast(pl.Float64)
     if "dist_mpc" in metadata:

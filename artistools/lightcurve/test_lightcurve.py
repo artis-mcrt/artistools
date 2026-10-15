@@ -3171,16 +3171,23 @@ def test_reference_band_data_takes_a_header_line_that_starts_with_a_hash(tmp_pat
 def test_reference_band_data_takes_its_distance_from_a_redshift(
     tmp_path: Path, zvalue: str, distance_mpc: float | None
 ) -> None:
-    """YAML 1.1 reads 1e-3 as a string, and 1 + z raised a TypeError. A z of 0 gave an infinite magnitude."""
+    """YAML 1.1 reads 1e-3 as a string, and 1 + z raised a TypeError.
+
+    A z of 0 gave an infinite magnitude. Now z: 0 marks the rest frame and gives no distance, and a negative z stops.
+    """
     datafile = tmp_path / "refband.dat"
     datafile.write_text("time magnitude band\n55800.0 12.0 B\n", encoding="utf-8")
     (tmp_path / "refband.dat.meta.yml").write_text(
         f"label: ref\ntimecorrection: 55790.0\nz: {zvalue}\n", encoding="utf-8"
     )
 
-    if distance_mpc is None:
-        with pytest.raises(ValueError, match=r"refband\.dat\.meta\.yml must be a number above 0"):
+    if zvalue.startswith("-"):
+        with pytest.raises(ValueError, match=r"refband\.dat\.meta\.yml gives a negative luminosity distance"):
             at.lightcurve.core.read_reflightcurve_band_data(datafile)
+    elif distance_mpc is None:
+        dfband, metadata = at.lightcurve.core.read_reflightcurve_band_data(datafile)
+        assert "dist_mpc" not in metadata
+        assert dfband["magnitude"].to_list() == pytest.approx([12.0])
     else:
         # at a small z, the luminosity distance is close to c z / H0 with H0 = 70 km/s/Mpc
         _, metadata = at.lightcurve.core.read_reflightcurve_band_data(datafile)
