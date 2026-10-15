@@ -43,6 +43,7 @@ from artistools.spectra.plotspectra import draw_plot
 from artistools.spectra.plotspectra import find_reference_spectrum_file_or_none
 from artistools.spectra.plotspectra import get_default_xlimits
 from artistools.spectra.plotspectra import get_emission_event
+from artistools.spectra.plotspectra import get_x_quantity_label
 from artistools.spectra.plotspectra import main as plotspectra_main
 from artistools.spectra.plotspectra import make_plot_figure
 from artistools.spectra.plotspectra import path_is_reference_spectrum
@@ -1475,7 +1476,7 @@ def open_window(
     add_row(xgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, QtWidgets.QLabel("x scale:"), xscalebox])
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    # the label gives the quantity and the unit of the x axis, e.g. "Wavelength [Å]", and a new unit changes it
+    # the label gives the quantity and the unit of the x axis, e.g. "Rest wavelength [Å]", and a new unit changes it
     xrangelabel = QtWidgets.QLabel()
     zoomtip = " Drag across the plot to select a range. Double-click the plot to get the default range."
     xrangeslider.setToolTip("The minimum and the maximum of the x axis." + zoomtip)
@@ -1723,8 +1724,8 @@ def open_window(
         # a -deltax of a different unit is not correct for the new unit
         lastbinwidths.pop("deltax", None)
         xunit = get_xunit(values.xunit)
-        xrangelabel.setText(f"{xunit.kind.capitalize()} [{xunit.label}]:")
-        xheader.setText(f"Horizontal axis: {xunit.kind.capitalize()} [{xunit.label}]")
+        xrangelabel.setText(f"{get_x_quantity_label(xunit)}:")
+        xheader.setText(f"Horizontal axis: {get_x_quantity_label(xunit)}")
         binmodebox.setItemText(binmodebox.findData("deltax"), f"-deltax [{xunit.label}]")
         rangesunit = (values.xunit, values.gamma)
 
