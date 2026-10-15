@@ -351,7 +351,8 @@ def get_xunit(xunit: str) -> XUnit:
 
 def get_x_quantity_label(xunit: XUnit) -> str:
     """Return the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]"."""
-    # ARTIS gives the spectra in the rest frame of the source, and get_reference_spectrum moves each reference there
+    # ARTIS gives the spectra in the rest frame of the source. get_reference_spectrum removes the redshift z of a
+    # reference, and it takes a reference with no z to be in the rest frame
     return f"Rest-frame {xunit.kind} [{xunit.label}]"
 
 
@@ -2636,17 +2637,17 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         )
         return specdata
 
-    # YAML 1.1 reads a number with an exponent and no dot as a string, e.g. 1e-3
+    # YAML 1.1 reads a number with an exponent and no dot as a string, e.g. 1e-3. float() also accepts a bool
     try:
-        z = float(metadata["z"])
+        z = math.nan if isinstance(metadata["z"], bool) else float(metadata["z"])
     except (TypeError, ValueError):
         z = math.nan
-    if not z > -1.0:
+    if not (math.isfinite(z) and z > -1.0):
         msg = f"The redshift z in the metadata of {filepath} must be a number above -1, not {metadata['z']!r}"
         raise ValueError(msg)
 
     if z == 0.0:
-        print("The metadata gives z = 0, thus the spectrum is in the rest frame")
+        print_detail("The metadata gives z = 0, thus the spectrum is in the rest frame")
     else:
         # the de-redshift divides the wavelength by (1 + z). Thus the flux density in the rest frame
         # is (1 + z) times the observed one, because the same energy falls in a narrower band
