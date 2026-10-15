@@ -1476,7 +1476,8 @@ def open_window(
     add_row(xgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, QtWidgets.QLabel("x scale:"), xscalebox])
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    # the label gives the quantity and the unit of the x axis, e.g. "Rest wavelength [Å]", and a new unit changes it
+    # the label gives the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]". A new unit changes
+    # the label
     xrangelabel = QtWidgets.QLabel()
     zoomtip = " Drag across the plot to select a range. Double-click the plot to get the default range."
     xrangeslider.setToolTip("The minimum and the maximum of the x axis." + zoomtip)

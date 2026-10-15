@@ -2622,8 +2622,8 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         print(f"Correcting for redshift z = {metadata['z']}")
     else:
         print_warning(
-            f"The metadata of {Path(filepath).name} gives no redshift z, thus the plot uses its wavelengths as rest"
-            " wavelengths. Add 'z: 0' to the metadata if the file is in the rest frame"
+            f"The metadata of {Path(filepath).name} gives no redshift z, thus the plot uses its wavelengths as"
+            " rest-frame wavelengths. Add 'z: 0' to the metadata if the file is in the rest frame"
         )
 
     return specdata

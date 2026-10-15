@@ -212,9 +212,9 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
 
 def get_x_quantity_label(xunit: XUnit) -> str:
-    """Return the quantity and the unit of the x axis, e.g. "Rest wavelength [Å]"."""
+    """Return the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]"."""
     # ARTIS gives the spectra in the rest frame of the source, and get_reference_spectrum removes the redshift z
-    return f"Rest {xunit.kind} [{xunit.label}]"
+    return f"Rest-frame {xunit.kind} [{xunit.label}]"
 
 
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
