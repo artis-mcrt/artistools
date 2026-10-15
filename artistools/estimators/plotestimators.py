@@ -695,7 +695,7 @@ def plot_levelpop(
 
     # the mean over the time range weights the population of each timestep with its duration
     dftimesteps = pl.DataFrame({
-        "timestep": list(timestepslist),
+        "timestep": pl.Series(timestepslist, dtype=pl.Int64),
         "volumefactor": [float(arr_volumefactor[timestep]) for timestep in timestepslist],
         "tdelta": [float(arr_tdelta[timestep]) for timestep in timestepslist],
     })

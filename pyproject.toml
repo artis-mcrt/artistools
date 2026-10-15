@@ -196,11 +196,9 @@ ignore-missing-imports = [
 
 [tool.pyrefly.errors]
 unbound-name = false
-# these kinds are off by default
+# the strict preset leaves these kinds off
 empty-body = true
 implicit-abstract-class = true
-implicit-any-empty-container = true
-implicit-any-lambda = true
 implicit-import = true
 implicit-reexport = true
 implicitly-defined-attribute = true
