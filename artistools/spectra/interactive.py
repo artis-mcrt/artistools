@@ -1466,8 +1466,8 @@ def open_window(
     timegrid.addLayout(gridrow, 4, 0, 1, -1)
 
     # the settings keep the open state of the section by its key, which the older heading of the section gave
-    # the heading gives the quantity and the unit of the x axis, e.g. "Horizontal axis: Energy [keV]", as the light
-    # curves give the time
+    # the heading gives the quantity and the unit of the x axis, e.g. "Horizontal axis: Rest-frame energy [keV]", as
+    # the light curves give the time
     xheader, xgrid = add_section(panellayout, "Horizontal axis", key="x axis")
     xunitbox = QtWidgets.QComboBox()
     xunitbox.addItems(list(XUNITS))

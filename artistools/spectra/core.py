@@ -2629,20 +2629,30 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
             f_lambda=pl.when(isintelluricband).then(pl.lit(math.nan)).otherwise(pl.col("f_lambda"))
         )
 
-    z = metadata.get("z")
-    if z is not None and z != 0:
+    if "z" not in metadata:
+        print_warning(
+            f"The metadata of {Path(filepath).name} gives no redshift z, thus artistools takes the spectrum to be"
+            " in the rest frame (z = 0)"
+        )
+        return specdata
+
+    # YAML 1.1 reads a number with an exponent and no dot as a string, e.g. 1e-3
+    try:
+        z = float(metadata["z"])
+    except (TypeError, ValueError):
+        z = math.nan
+    if not z > -1.0:
+        msg = f"The redshift z in the metadata of {filepath} must be a number above -1, not {metadata['z']!r}"
+        raise ValueError(msg)
+
+    if z == 0.0:
+        print("The metadata gives z = 0, thus the spectrum is in the rest frame")
+    else:
         # the de-redshift divides the wavelength by (1 + z). Thus the flux density in the rest frame
         # is (1 + z) times the observed one, because the same energy falls in a narrower band
         specdata = specdata.with_columns(
             lambda_angstroms=pl.col("lambda_angstroms") / (1 + z), f_lambda=pl.col("f_lambda") * (1 + z)
         )
         print(f"Correcting for redshift z = {z}")
-    elif z == 0:
-        print("The metadata gives z = 0, thus the spectrum is in the rest frame")
-    else:
-        print_warning(
-            f"The metadata of {Path(filepath).name} gives no redshift z, thus artistools takes the spectrum to be"
-            " in the rest frame (z = 0)"
-        )
 
     return specdata

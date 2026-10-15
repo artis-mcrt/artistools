@@ -102,6 +102,7 @@ def clear_output_caches() -> None:
 
     The files of the input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay.
     """
+    from artistools.misc.fileio import get_file_metadata_cached
     from artistools.misc.modelinfo import get_nu_grid_cached
     from artistools.misc.timesteps import get_deposition_cached
     from artistools.misc.timesteps import get_escaped_arrivalrange_cached
@@ -120,6 +121,8 @@ def clear_output_caches() -> None:
         # the file tests of the client also go, e.g. after exspec writes gamma_spec.out
         has_gamma_spec_file,
         get_no_sampled_emission_reason,
+        # a user can edit the metadata of a reference file, e.g. to add the redshift z after its warning
+        get_file_metadata_cached,
         model_has_direction_data,
         get_nu_grid_cached,
         get_deposition_cached,
