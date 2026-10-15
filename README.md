@@ -67,7 +67,13 @@ artistools plotspectra -t 300 vae26:~/scratch/mymodel
 
 The rule of rsync decides whether a path is remote: a colon before the first slash makes a remote path. A local folder with such a colon in its name needs "./" at the start, e.g. `./model:2`.
 
-artistools starts the server on that host through ssh, and it prints the command and the reason for it. A release of artistools starts `uvx artistools@<version> server`, with the versions of the local artistools and polars. Thus the host needs only [uv](https://docs.astral.sh/uv/). A clone whose package code differs from the release starts its git commit with uvx, if the commit is on a remote branch. The host then also needs git and Rust. For a commit that is only in the clone, the release starts, because the host cannot get the commit. The command sets `POLARS_MAX_THREADS=16`, because a login node can have hundreds of cores, and other users share them. The server reads the files and makes the data of each plot, e.g. it puts the packets into bins. Only the data to draw comes back, and the parquet caches stay beside the data on the host. A script sends the filter and the columns of each query to the host, and only the rows of the query come back.
+artistools starts the server on that host through ssh, and it prints the command and the reason for it. A release of artistools starts `uvx artistools@<version> server`, with the versions of the local artistools and polars. Thus the host needs only [uv](https://docs.astral.sh/uv/).
+
+The server and the client must have the same server protocol, which is a number. It changes when a reader changes its arguments or its results, or when the format of a message changes. A clone with the server protocol of the release also starts the release. A clone with a different server protocol starts its git commit with uvx. The host then also needs git and Rust. The host cannot get a commit that is only in the clone, thus such a commit must have the server protocol of the release.
+
+The server protocol does not change when the code of a reader changes. Thus a release on the host can give a different result from the clone. If the package files of the clone differ from the release, artistools prints a warning with the number of these files and the name of one file. The warning also gives the command that starts the git commit on the host.
+
+The command sets `POLARS_MAX_THREADS=16`, because a login node can have hundreds of cores, and other users share them. The server reads the files and makes the data of each plot, e.g. it puts the packets into bins. Only the data to draw comes back, and the parquet caches stay beside the data on the host. A script sends the filter and the columns of each query to the host, and only the rows of the query come back.
 
 An option that reads its files on the local host stops with an error. To start the server with a different command on the host, e.g. an artistools in a clone, set `ARTISTOOLS_REMOTE_COMMAND`:
 

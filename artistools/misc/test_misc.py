@@ -1419,7 +1419,7 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
         gitsource = remote.get_git_source()
     assert gitsource is not None
     assert gitsource == remote.GitSource(
-        "https://github.com/fork/artistools", "abc123", ispushed=True, releasechanges=None, notes=[]
+        "https://github.com/fork/artistools", "abc123", ispushed=True, releaseprotocol=None, releasechanges=[], notes=[]
     )
     expected = (
         f"POLARS_MAX_THREADS=16 uvx --with polars=={pl.__version__}"
@@ -1428,11 +1428,19 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
     assert remote.get_git_command(gitsource) == expected
     suggestion = remote.get_git_server_suggestion("vae26", None, gitsource)
     assert f"export ARTISTOOLS_REMOTE_COMMAND='{expected}'" in suggestion
-    assert "but the server command runs a release" in suggestion
-    # a command of ARTISTOOLS_REMOTE_COMMAND can name an old commit, thus the warning tells whether it names this one
+    assert f"its server protocol is {remote.SERVER_PROTOCOL}" in suggestion
+    # a command of ARTISTOOLS_REMOTE_COMMAND can name an old commit, thus the help tells whether it names this one
     oldcommand = "uvx --from 'artistools @ git+https://x@0ld' artistools server"
     assert "does not name this commit" in remote.get_git_server_suggestion("vae26", oldcommand, gitsource)
     assert "names this commit. The usual command" in remote.get_git_server_suggestion("vae26", expected, gitsource)
+
+    # the server command goes to the output and to the process list of the host, thus a token must not go with it
+    tokeninstall = vcsinstall | {"url": "https://user:ghp_secret@github.com/fork/artistools"}
+    with mock_direct_url(json.dumps(tokeninstall)):
+        tokensource = remote.get_git_source()
+    assert tokensource is not None
+    assert tokensource.url == "https://github.com/fork/artistools"
+    assert remote.without_url_credentials("ssh://git@github.com/a/b") == "ssh://git@github.com/a/b"
 
     # an install from PyPI records no direct_url.json, thus its server is the release of the same version
     with mock_direct_url(None):
@@ -1457,44 +1465,205 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
 
 
 def test_server_command_runs_the_code_of_this_artistools() -> None:
-    """Choose a given command first, else the release if it has the code of this commit or the commit is only local.
+    """Choose a given command first, else the release if it has the server protocol of this commit.
 
-    A release and a later commit have the same version and the same protocol, but a reader can differ, e.g. a new
-    column. The server of a commit needs a build on the host, thus the release is the choice for the same code.
+    The server of a commit needs a build on the host, thus the release is the choice for the same server protocol. A
+    host cannot get a commit that is only in the local clone, thus the release is also the choice for such a commit.
     """
     releasecommand = remote.get_release_command()
-    changed = remote.GitSource("https://github.com/a/b", "abc123", ispushed=True, releasechanges=["x.py"], notes=[])
-    gitcommand = remote.get_git_command(changed)
+    olderrelease = remote.GitSource(
+        "https://github.com/a/b",
+        "abc123",
+        ispushed=True,
+        releaseprotocol=remote.SERVER_PROTOCOL - 1,
+        releasechanges=[],
+        notes=[],
+    )
+    gitcommand = remote.get_git_command(olderrelease)
     assert remote.choose_server_command(None, None)[0] == releasecommand
-    assert remote.choose_server_command("my command", changed)[0] == "my command"
-    assert remote.choose_server_command(None, changed._replace(releasechanges=[]))[0] == releasecommand
-    assert remote.choose_server_command(None, changed)[0] == gitcommand
+    assert remote.choose_server_command("my command", olderrelease)[0] == "my command"
+    samerelease = olderrelease._replace(releaseprotocol=remote.SERVER_PROTOCOL)
+    assert remote.choose_server_command(None, samerelease)[0] == releasecommand
+    assert remote.choose_server_command(None, olderrelease)[0] == gitcommand
     # a commit with no release tag to compare with, e.g. an install from git, runs from git
-    assert remote.choose_server_command(None, changed._replace(releasechanges=None))[0] == gitcommand
-    # a host cannot get a commit that is only on this host
-    assert remote.choose_server_command(None, changed._replace(ispushed=False))[0] == releasecommand
+    assert remote.choose_server_command(None, olderrelease._replace(releaseprotocol=None))[0] == gitcommand
+    assert remote.choose_server_command(None, olderrelease._replace(ispushed=False))[0] == releasecommand
+
+    # get_git_source reads the server protocol of the release from the source of its tag. A different form of the
+    # assignment, e.g. with an annotation, makes the server protocol of each release unknown
+    thissource = Path(remote.__file__).read_text(encoding="utf-8")
+    assert remote.parse_server_protocol(thissource) == remote.SERVER_PROTOCOL
+    # a release before the constant, e.g. 2026.10.13, gives its server protocol only in the start line
+    assert remote.parse_server_protocol('SERVER_START_LINE = SERVER_PROTOCOL_PREFIX + b"2\\n"\n') == 2
+    assert remote.parse_server_protocol("") is None
 
 
-def test_server_of_a_commit_falls_back_to_the_release() -> None:
-    """A host with no Rust cannot build the commit, thus the release starts after the failed start of the commit."""
+def test_server_of_a_commit_falls_back_to_the_release(capsys: pytest.CaptureFixture[str]) -> None:
+    """A host with no Rust cannot build the commit, thus the release starts if its server protocol is unknown.
+
+    PyPI gets a release some time after its tag, thus a release that does not start makes a pushed commit start. A
+    release with a known server protocol that differs cannot be the server, thus the start then stops with an
+    error. For a commit that is only in the local clone, the client stops before the start of such a release.
+    """
     from importlib.metadata import version
 
-    changed = remote.GitSource("https://github.com/a/b", "abc123", ispushed=True, releasechanges=["x.py"], notes=[])
-    started = mock.Mock()
-    with (
-        mock.patch.object(remote, "get_git_source", return_value=changed),
-        mock.patch.object(
-            remote, "launch_server", side_effect=[EOFError(), (started, version("artistools"), pl.__version__)]
-        ) as launch,
-        mock.patch("atexit.register"),
-        mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+    unknownrelease = remote.GitSource(
+        "https://github.com/a/b", "abc123", ispushed=True, releaseprotocol=None, releasechanges=[], notes=[]
+    )
+    samerelease = unknownrelease._replace(releaseprotocol=remote.SERVER_PROTOCOL)
+    gitcommand = remote.get_git_command(unknownrelease)
+    releasecommand = remote.get_release_command()
+    for gitsource, commands in (
+        (unknownrelease, [gitcommand, releasecommand]),
+        (samerelease, [releasecommand, gitcommand]),
     ):
-        process, _ = remote.start_server("vae26")
-    assert process is started
-    assert [call.args[0][-1] for call in launch.call_args_list] == [
-        remote.get_git_command(changed),
-        remote.get_release_command(),
-    ]
+        started = mock.Mock()
+        with (
+            mock.patch.object(remote, "get_git_source", return_value=gitsource),
+            mock.patch.object(
+                remote, "launch_server", side_effect=[EOFError(), (started, version("artistools"), pl.__version__)]
+            ) as launch,
+            mock.patch("atexit.register"),
+            mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+        ):
+            process, _ = remote.start_server("vae26")
+        assert process is started
+        assert [call.args[0][-1] for call in launch.call_args_list] == commands
+
+    # the help after a failed fallback names the remedy of the fallback command, and not of the first command
+    for gitsource, helptext in ((unknownrelease, "Install uv on vae26."), (samerelease, "Install uv, git, and Rust")):
+        with (
+            mock.patch.object(remote, "get_git_source", return_value=gitsource),
+            mock.patch.object(remote, "launch_server", side_effect=[EOFError(), EOFError()]),
+            mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+            pytest.raises(SystemExit),
+        ):
+            remote.start_server("vae26")
+        assert helptext in capsys.readouterr().err
+
+    olderrelease = unknownrelease._replace(releaseprotocol=remote.SERVER_PROTOCOL - 1)
+    for gitsource, launchcount in ((olderrelease, 1), (olderrelease._replace(ispushed=False), 0)):
+        with (
+            mock.patch.object(remote, "get_git_source", return_value=gitsource),
+            mock.patch.object(remote, "launch_server", side_effect=[EOFError()]) as launch,
+            mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+            pytest.raises(SystemExit),
+        ):
+            remote.start_server("vae26")
+        assert launch.call_count == launchcount
+
+
+def test_release_for_changed_code_gives_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
+    """Warn when the release runs for a commit whose package code differs from the release.
+
+    The server protocol finds only a change of the arguments, thus the user must know that the host runs older code.
+    """
+    from importlib.metadata import version
+
+    changedcode = remote.GitSource(
+        "https://github.com/a/b",
+        "abc123",
+        ispushed=True,
+        releaseprotocol=remote.SERVER_PROTOCOL,
+        releasechanges=["artistools/spectra/core.py"],
+        notes=[],
+    )
+    for gitsource, haswarning in ((changedcode, True), (changedcode._replace(releasechanges=[]), False)):
+        with (
+            mock.patch.object(remote, "get_git_source", return_value=gitsource),
+            mock.patch.object(
+                remote, "launch_server", return_value=(mock.Mock(), version("artistools"), pl.__version__)
+            ),
+            mock.patch("atexit.register"),
+            mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+        ):
+            remote.start_server("vae26")
+        stderr = capsys.readouterr().err
+        assert ("artistools/spectra/core.py" in stderr) == haswarning
+        assert (remote.get_git_command(gitsource) in stderr) == haswarning
+
+
+def test_server_protocol_changes_with_the_readers() -> None:
+    """Increase SERVER_PROTOCOL when a reader on the server or the code of a message changes.
+
+    A clone with the server protocol of the release uses the release on the host. Pickle rebuilds a NamedTuple by the
+    position of its fields, thus a changed field gives an error or an incorrect value. The test finds a change of a
+    signature, of a type that a signature names, and of the code that makes and reads a message. It does not find a
+    change of an option that a reader reads from args, or of a column. Such a change also needs a new server protocol.
+    """
+    import ast
+    import hashlib
+    import re
+
+    packagefolder = Path(remote.__file__).resolve().parents[1]
+    signatures: list[str] = []
+    typedefinitions: dict[str, list[str]] = {}
+    for path in sorted(packagefolder.rglob("*.py")):
+        # a name with a space is an iCloud conflict copy
+        if path.name.startswith("test_") or " " in path.name:
+            continue
+        modulepath = path.relative_to(packagefolder).as_posix()
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and any(
+                ast.unparse(decorator).rsplit(".", maxsplit=1)[-1] == "on_model_host"
+                for decorator in node.decorator_list
+            ):
+                returns = "" if node.returns is None else ast.unparse(node.returns)
+                signatures.append(f"{modulepath} {node.name}({ast.unparse(node.args)}) -> {returns}")
+            elif isinstance(node, ast.ClassDef) and any(
+                ast.unparse(base).endswith("NamedTuple") for base in node.bases
+            ):
+                fields = "; ".join(ast.unparse(item) for item in node.body if isinstance(item, ast.AnnAssign))
+                typedefinitions.setdefault(node.name, []).append(f"{modulepath} {node.name}: {fields}")
+            elif isinstance(node, ast.TypeAlias):
+                typedefinitions.setdefault(ast.unparse(node.name), []).append(f"{modulepath} {ast.unparse(node)}")
+
+    # follow each name in the signatures to its NamedTuple or type alias, and from there to the names that it uses
+    pendingnames = re.findall(r"\w+", "\n".join(signatures))
+    usednames: set[str] = set()
+    while pendingnames:
+        name = pendingnames.pop()
+        if name in typedefinitions and name not in usednames:
+            usednames.add(name)
+            pendingnames.extend(re.findall(r"\w+", "\n".join(typedefinitions[name])))
+    hashedlines = sorted(signatures) + sorted(line for name in usednames for line in typedefinitions[name])
+
+    # the two sides make and read each message with this code, thus a change of it can change the message format.
+    # unparse drops the comments and the test drops the docstrings, thus a change of the text only keeps the digest
+    messagenames = {
+        "FRAME_MARKER",
+        "MESSAGE_LENGTH_BYTES",
+        "call_on_host",
+        "dump_message",
+        "get_ipc_bytes",
+        "load_reply",
+        "read_message",
+        "read_server_versions",
+        "reduce_dataframe",
+        "reduce_lazyframe",
+        "restore_frames",
+        "run_function",
+        "run_request",
+        "serve",
+        "write_message",
+    }
+    messagecode: dict[str, str] = {}
+    for node in ast.parse(Path(remote.__file__).read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.FunctionDef) and node.name in messagenames:
+            if ast.get_docstring(node) is not None:
+                node.body = node.body[1:]
+            messagecode[node.name] = ast.unparse(node)
+        elif isinstance(node, ast.Assign) and (name := ast.unparse(node.targets[0])) in messagenames:
+            messagecode[name] = ast.unparse(node)
+    assert messagecode.keys() == messagenames, "Give the test the new name of each function of the message format"
+    hashedlines += [messagecode[name] for name in sorted(messagenames)]
+    digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
+
+    # each release keeps its server protocol, thus give each new digest a new number
+    assert (remote.SERVER_PROTOCOL, digest) == (3, "fe46bcb9040be59a"), (
+        f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
+        " new number and the digest in this test"
+    )
 
 
 def test_server_of_a_different_protocol_stops_the_start() -> None:
