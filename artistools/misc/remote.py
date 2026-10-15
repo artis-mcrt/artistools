@@ -750,7 +750,9 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     if runscommit and gitsource.notes:
         print_warning("\n".join(gitsource.notes))
 
-    def exit_with_start_error(argv: list[str], exc: Exception) -> t.NoReturn:
+    def exit_with_start_error(failedcommand: str, exc: Exception) -> t.NoReturn:
+        # after a fallback, the failed command differs from the first command, thus the help names the failed one
+        argv = get_server_argv(host, failedcommand)
         if isinstance(exc, ConnectionError):
             # the readers differ for a different server protocol, thus the host must run the code of the client
             message = f"the artistools server on {host} {exc}"
@@ -763,9 +765,9 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         else:
             # text of a shell can give any error of the unpickle
             message = f"the artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}"
-            if givencommand is not None:
+            if failedcommand == givencommand:
                 helptext = f"Correct the command in {SERVER_COMMAND_ENVVAR}, or remove the variable to use the default"
-            elif runscommit:
+            elif gitsource is not None and failedcommand == get_git_command(gitsource):
                 helptext = f"Install uv, git, and Rust on {host}. The first start of a commit builds artistools there"
             else:
                 helptext = (
@@ -819,13 +821,13 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
                 " needs git and Rust"
             )
         else:
-            exit_with_start_error(argv, exc)
+            exit_with_start_error(command, exc)
         argv = get_server_argv(host, fallbackcommand)
         print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")
         try:
             process, serverversion, serverpolarsversion = launch_server(argv)
-        except Exception as releaseexc:  # ruff:ignore[blind-except]
-            exit_with_start_error(argv, releaseexc)
+        except Exception as fallbackexc:  # ruff:ignore[blind-except]
+            exit_with_start_error(fallbackcommand, fallbackexc)
 
     atexit.register(close_server_pipes, process)
     if serverpolarsversion != pl.__version__:

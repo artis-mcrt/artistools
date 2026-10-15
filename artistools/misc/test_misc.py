@@ -1498,7 +1498,7 @@ def test_server_command_runs_the_code_of_this_artistools() -> None:
     assert remote.parse_server_protocol("") is None
 
 
-def test_server_of_a_commit_falls_back_to_the_release() -> None:
+def test_server_of_a_commit_falls_back_to_the_release(capsys: pytest.CaptureFixture[str]) -> None:
     """A host with no Rust cannot build the commit, thus the release starts if its server protocol is unknown.
 
     PyPI gets a release some time after its tag, thus a release that does not start makes a pushed commit start. A
@@ -1529,6 +1529,17 @@ def test_server_of_a_commit_falls_back_to_the_release() -> None:
             process, _ = remote.start_server("vae26")
         assert process is started
         assert [call.args[0][-1] for call in launch.call_args_list] == commands
+
+    # the help after a failed fallback names the remedy of the fallback command, and not of the first command
+    for gitsource, helptext in ((unknownrelease, "Install uv on vae26."), (samerelease, "Install uv, git, and Rust")):
+        with (
+            mock.patch.object(remote, "get_git_source", return_value=gitsource),
+            mock.patch.object(remote, "launch_server", side_effect=[EOFError(), EOFError()]),
+            mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+            pytest.raises(SystemExit),
+        ):
+            remote.start_server("vae26")
+        assert helptext in capsys.readouterr().err
 
     olderrelease = unknownrelease._replace(releaseprotocol=remote.SERVER_PROTOCOL - 1)
     for gitsource, launchcount in ((olderrelease, 1), (olderrelease._replace(ispushed=False), 0)):
