@@ -137,18 +137,6 @@ def clear_output_caches() -> None:
     clear_estimator_caches()
 
 
-def clear_reference_caches() -> None:
-    """Clear the caches of the reference files and their metadata in this process.
-
-    A user can edit a reference file while the viewer is open, e.g. to add the redshift z after its warning.
-    """
-    from artistools.misc.fileio import get_file_metadata_cached
-    from artistools.spectra.core import get_reference_spectrum_cached
-
-    get_file_metadata_cached.cache_clear()
-    get_reference_spectrum_cached.cache_clear()
-
-
 @on_model_host
 def clear_output_caches_of_model(modelfolder: Path, estimatorsonly: bool) -> None:
     """Clear the caches of the output files on the host of a model.
@@ -185,7 +173,6 @@ def reload_models(
             clear_estimator_caches()
         else:
             clear_output_caches()
-            clear_reference_caches()
         for modelfolder in modelfolders:
             clear_output_caches_of_model(Path(modelfolder), estimatorsonly)
         if read_models is not None:

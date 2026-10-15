@@ -2589,17 +2589,7 @@ def print_integrated_flux(
 
 
 def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
-    """Return a reference spectrum in the rest frame, after the corrections that its metadata gives.
-
-    Do not change the returned dataframe, because each caller shares it.
-    """
-    return get_reference_spectrum_cached(Path(filepath).absolute())
-
-
-# a reference file does not change while ARTIS runs, thus a redraw of the viewer reads and logs it only one time
-@lru_cache(maxsize=16)
-def get_reference_spectrum_cached(filepath: Path) -> pl.DataFrame:
-    """Return the reference spectrum at an absolute path, and keep it for the next caller."""
+    """Return a reference spectrum in the rest frame, after the corrections that its metadata gives."""
     metadata = get_file_metadata(filepath)
 
     flambdaindex = metadata.get("f_lambda_columnindex", 1)

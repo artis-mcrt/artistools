@@ -2958,15 +2958,22 @@ def test_write_data_refuses_two_wavelength_grids(tmp_path: Path, capsys: pytest.
     assert "different wavelength grid" in capsys.readouterr().err
 
 
-def test_telluric_mask_of_a_reference_spectrum_without_a_redshift(tmp_path: Path) -> None:
-    """A reference spectrum with mask_telluric and no z is in the observed frame. The mask raised KeyError."""
+@pytest.mark.parametrize("zline", ["", "z: 0.1\n"])
+def test_telluric_mask_of_a_reference_spectrum_uses_observed_wavelengths(tmp_path: Path, zline: str) -> None:
+    """The telluric mask applies to the observed wavelengths, thus 14000 Å is masked for each z.
+
+    With z = 0.1, the row at 15000 Å moves to 13636 Å, which is inside the observed band from 13500 Å to 14400 Å.
+    A mask after the de-redshift with the observed band limits would mask that row. With no z, the mask raised KeyError.
+    """
     specfile = tmp_path / "telluric.txt"
     specfile.write_text("13000 1.0\n14000 2.0\n15000 3.0\n", encoding="utf-8")
-    specfile.with_suffix(".txt.meta.yml").write_text("---\nmask_telluric: true\ndist_mpc: 1.0\n", encoding="utf-8")
+    specfile.with_suffix(".txt.meta.yml").write_text(
+        f"---\nmask_telluric: true\ndist_mpc: 1.0\n{zline}", encoding="utf-8"
+    )
 
     fig = mplfig.Figure()
     axis = fig.add_subplot()
-    line, _, _ = plotspectra.plot_reference_spectrum(specfile, axis, xmin=12000.0, xmax=16000.0)
+    line, _, _ = plotspectra.plot_reference_spectrum(specfile, axis, xmin=11000.0, xmax=16000.0)
 
     yvalues = np.asarray(line.get_ydata(), dtype=np.float64)
     assert np.isnan(yvalues).tolist() == [False, True, False]
