@@ -559,7 +559,7 @@ class GitSource(t.NamedTuple):
     ispushed: bool
     # the server protocol of the release of this version, or None if no tag of the release is available
     releaseprotocol: int | None
-    # the package files of the commit that differ from the release. The list is empty if no tag is available
+    # the package files of this clone that differ from the release. The list is empty if no tag is available
     releasechanges: list[str]
     notes: list[str]
 
@@ -623,7 +623,8 @@ def get_git_source() -> GitSource | None:
         releaseprotocol = parse_server_protocol(
             run_git("show", f"{releasetag}:{modulefile.relative_to(folder).as_posix()}")
         )
-        changedfiles = run_git("diff", "--name-only", releasetag, commit, "--", "artistools", "rust").splitlines()
+        # with one tree, git compares the tag with the files on disk, thus a change that is not in a commit counts too
+        changedfiles = run_git("diff", "--name-only", releasetag, "--", "artistools", "rust").splitlines()
     except subprocess.CalledProcessError:
         # a version with no release yet, or a clone with no tags, has no tag to compare with
         releaseprotocol = None
@@ -789,7 +790,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         # the server protocol finds only a change of the arguments or of a NamedTuple, not of the code of a reader
         print_warning(
             f"The host runs the release {localversion}, but {len(gitsource.releasechanges)} package files of this"
-            f" commit differ from it, e.g. {gitsource.releasechanges[0]}. A reader on the host can thus give a"
+            f" clone differ from it, e.g. {gitsource.releasechanges[0]}. A reader on the host can thus give a"
             " different result.\n" + get_git_server_suggestion(host, givencommand, gitsource)
         )
 
