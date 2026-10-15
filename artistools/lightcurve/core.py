@@ -44,6 +44,7 @@ from artistools.misc import read_wsv
 from artistools.misc import require_reference_data_file
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
+from artistools.misc.fileio import parse_metadata_redshift
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import read_complete_lines
 from artistools.misc.remote import on_model_host
@@ -813,11 +814,14 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     # m - M = 5log(d) - 5  Get absolute magnitude. A distance modulus from the metadata is a measured value,
     # thus the distance from the redshift applies only when the metadata gives neither
     if "dist_mpc" not in metadata and "dist_modulus" not in metadata and "z" in metadata:
+        z = parse_metadata_redshift(metadata["z"], data_path)
         # a z of 0 gives a distance of 0 and an infinite magnitude, and a negative z gives a negative distance
-        if metadata["z"] <= 0.0:
-            msg = f"The distance of {data_path} comes from its redshift z, which must be above 0, not {metadata['z']}"
-            raise ValueError(msg)
-        metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=metadata["z"])
+        if z <= 0.0:
+            exit_with_error(
+                f"the reference light curve {data_path} gives the redshift z = {z}, which gives no distance",
+                f"Give a z above 0, a dist_mpc, or a dist_modulus in {data_path.name}.meta.yml",
+            )
+        metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=z)
         print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
 
     magnitude = pl.col("magnitude").cast(pl.Float64)

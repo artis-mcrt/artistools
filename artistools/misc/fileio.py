@@ -943,20 +943,23 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     filepath = Path(filepath).absolute()
     try:
         metatext = get_metadata_path(filepath).read_text(encoding="utf-8")
-    except FileNotFoundError:
+    except (FileNotFoundError, NotADirectoryError):
         metatext = None
     return get_file_metadata_cached(filepath, metatext)
 
 
-def parse_metadata_redshift(value: object, metafile: Path) -> float:
-    """Return the redshift z from a metadata file, or raise a ValueError that names the file."""
+def parse_metadata_redshift(value: object, filepath: Path | str) -> float:
+    """Return the redshift z from the metadata of a file, or raise a ValueError that names the file.
+
+    get_file_metadata keeps z as YAML gives it, because a caller that reads only the label must not fail on z.
+    """
     # YAML 1.1 reads a number with an exponent and no dot as a string, e.g. 1e-3. str() makes a bool fail
     try:
         z = float(str(value))
     except ValueError:
         z = math.nan
     if not (math.isfinite(z) and z > -1.0):
-        msg = f"The redshift z in {metafile} must be a number above -1, not {value!r}"
+        msg = f"The redshift z in the metadata of {filepath} must be a number above -1, not {value!r}"
         raise ValueError(msg)
     return z
 
@@ -989,11 +992,7 @@ def get_file_metadata_cached(filepath: Path, metatext: str | None) -> dict[str, 
 
     metafile = get_metadata_path(filepath)
     # a file of comments alone gives None
-    metadata = check_metadata_mapping(yaml.safe_load(metatext) or {}, metafile)
-    if "z" in metadata:
-        metadata["z"] = parse_metadata_redshift(metadata["z"], metafile)
-
-    return add_derived_metadata(metadata)
+    return add_derived_metadata(check_metadata_mapping(yaml.safe_load(metatext) or {}, metafile))
 
 
 def merge_pdf_files(pdf_files: list[str], outputpath: Path | str | None = None) -> str:

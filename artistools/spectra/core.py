@@ -37,7 +37,6 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbins
-from artistools.misc import get_file_metadata
 from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
@@ -52,6 +51,7 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
+from artistools.misc.fileio import parse_metadata_redshift
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import read_complete_lines
@@ -2589,15 +2589,14 @@ def print_integrated_flux(
     return integrated_flux
 
 
-def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
+def get_reference_spectrum(filepath: Path | str, metadata: dict[str, t.Any]) -> pl.DataFrame:
     """Return a reference spectrum in the rest frame, after the corrections that its metadata gives.
 
     The metadata file gives the redshift z. A spectrum with no z is in the rest frame by design (z = 0), and the
     function logs a warning. A plot can compare a reference spectrum with an ARTIS spectrum only in one frame, thus
     this assumption is necessary. Give z: 0 in the metadata of a spectrum that is in the rest frame, e.g. a model.
+    The caller gives the metadata, thus one plot uses one version of the metadata file.
     """
-    metadata = get_file_metadata(filepath)
-
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
 
     specdata = read_wsv(filepath, has_header=False, comment_prefix="#").select(
@@ -2624,7 +2623,7 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
             f" and R_V = {metadata.get('r_v', 3.1)}"
         )
 
-    if metadata.get("mask_telluric", False):
+    if metadata.get("mask_telluric"):
         # the telluric bands are at fixed wavelengths in the observed frame, thus the mask comes before the de-redshift
         print("Masking telluric regions")
         bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
@@ -2642,7 +2641,7 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         )
         return specdata
 
-    z = metadata["z"]
+    z = parse_metadata_redshift(metadata["z"], filepath)
     if z == 0.0:
         print_detail("The metadata gives z = 0, thus the spectrum is in the rest frame")
     else:

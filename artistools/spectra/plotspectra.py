@@ -387,7 +387,7 @@ def plot_reference_spectrum(
     plotkwargs.pop("label", None)
 
     print_heading(f"Reference spectrum '{label}'")
-    specdata = get_reference_spectrum(filepath)
+    specdata = get_reference_spectrum(filepath, metadata)
     print_detail(f"file: {filepath}")
 
     # scale to 1 Mpc, and get_dfspectrum_x_y_with_units then scales to scale_to_dist_mpc

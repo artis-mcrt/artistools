@@ -2504,7 +2504,7 @@ def test_reference_spectrum_de_redshift_scales_the_flux(tmp_path: Path) -> None:
     specfile.write_text("4000 1.0\n5000 2.0\n6000 3.0\n", encoding="utf-8")
     specfile.with_suffix(".txt.meta.yml").write_text(f"---\nz: {redshift}\n", encoding="utf-8")
 
-    specdata = atspectra.get_reference_spectrum(specfile)
+    specdata = atspectra.get_reference_spectrum(specfile, at.misc.get_file_metadata(specfile))
 
     lambda_obs = np.array([4000.0, 5000.0, 6000.0])
     assert np.allclose(specdata["lambda_angstroms"].to_numpy(), lambda_obs / (1 + redshift), atol=0.0)
@@ -2985,8 +2985,8 @@ def test_reference_spectrum_refuses_an_incorrect_redshift(tmp_path: Path, zvalue
     specfile = tmp_path / "spec.txt"
     specfile.write_text("5000 1.0\n6000 2.0\n", encoding="utf-8")
     specfile.with_suffix(".txt.meta.yml").write_text(f"---\nz: {zvalue}\n", encoding="utf-8")
-    with pytest.raises(ValueError, match=r"spec\.txt\.meta\.yml must be a number above -1"):
-        atspectra.get_reference_spectrum(specfile)
+    with pytest.raises(ValueError, match=r"spec\.txt must be a number above -1"):
+        atspectra.get_reference_spectrum(specfile, at.misc.get_file_metadata(specfile))
 
 
 def test_reference_spectrum_takes_a_redshift_that_yaml_reads_as_a_string(tmp_path: Path) -> None:
@@ -2994,7 +2994,7 @@ def test_reference_spectrum_takes_a_redshift_that_yaml_reads_as_a_string(tmp_pat
     specfile = tmp_path / "spec.txt"
     specfile.write_text("5000 1.0\n6000 2.0\n", encoding="utf-8")
     specfile.with_suffix(".txt.meta.yml").write_text("---\nz: 1e-3\n", encoding="utf-8")
-    specdata = atspectra.get_reference_spectrum(specfile)
+    specdata = atspectra.get_reference_spectrum(specfile, at.misc.get_file_metadata(specfile))
     assert np.allclose(specdata["lambda_angstroms"].to_numpy(), [5000.0 / 1.001, 6000.0 / 1.001], rtol=1e-12, atol=0.0)
     assert np.allclose(specdata["f_lambda"].to_numpy(), [1.001, 2.002], rtol=1e-12, atol=0.0)
 
