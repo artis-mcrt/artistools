@@ -695,7 +695,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     about 10 s. The exit of the process closes its pipes, and the server then stops. choose_server_command gives the
     command. A release with a different server protocol cannot be the server, thus the function stops before such a
     start. A server of a git commit can fail to start, e.g. because the host has no Rust. The release then starts only
-    if its server protocol is unknown.
+    if its server protocol is unknown. If the release does not start for a commit on a remote branch, the commit starts.
     """
     import atexit
     import shlex
@@ -761,14 +761,24 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         process, serverversion, serverpolarsversion = launch_server(argv)
     except Exception as exc:  # ruff:ignore[blind-except]
         # a release with a known server protocol that differs cannot be the server
-        if not runscommit or gitsource.releaseprotocol is not None:
+        if runscommit and gitsource.releaseprotocol is None:
+            fallbackcommand = get_release_command()
+            print_warning(
+                f"The server of the commit did not start on {host}. To build the commit, the host needs git and Rust."
+                f" artistools starts the release {localversion} instead. The release can have a different server"
+                " protocol, and the start then stops with an error"
+            )
+        # PyPI gets a release some time after its tag, thus a host can lack a release that the clone has
+        elif command == get_release_command() and gitsource is not None and gitsource.ispushed:
+            fallbackcommand = get_git_command(gitsource)
+            print_warning(
+                f"The release {localversion} did not start on {host}, e.g. because PyPI does not have it yet."
+                " artistools starts the commit instead. The first start of a commit builds artistools, thus the host"
+                " needs git and Rust"
+            )
+        else:
             exit_with_start_error(argv, exc)
-        print_warning(
-            f"The server of the commit did not start on {host}. To build the commit, the host needs git and Rust."
-            f" artistools starts the release {localversion} instead. The release can have a different server"
-            " protocol, and the start then stops with an error"
-        )
-        argv = get_server_argv(host, get_release_command())
+        argv = get_server_argv(host, fallbackcommand)
         print_detail(f"artistools starts the server on {host} with: {shlex.join(argv)}")
         try:
             process, serverversion, serverpolarsversion = launch_server(argv)

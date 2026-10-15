@@ -1488,27 +1488,32 @@ def test_server_command_runs_the_code_of_this_artistools() -> None:
 def test_server_of_a_commit_falls_back_to_the_release() -> None:
     """A host with no Rust cannot build the commit, thus the release starts if its server protocol is unknown.
 
-    A release with a known server protocol that differs cannot be the server, thus the start then stops with an
+    PyPI gets a release some time after its tag, thus a release that does not start makes a pushed commit start. A
+    release with a known server protocol that differs cannot be the server, thus the start then stops with an
     error. For a commit that is only in the local clone, the client stops before the start of such a release.
     """
     from importlib.metadata import version
 
     unknownrelease = remote.GitSource("https://github.com/a/b", "abc123", ispushed=True, releaseprotocol=None, notes=[])
-    started = mock.Mock()
-    with (
-        mock.patch.object(remote, "get_git_source", return_value=unknownrelease),
-        mock.patch.object(
-            remote, "launch_server", side_effect=[EOFError(), (started, version("artistools"), pl.__version__)]
-        ) as launch,
-        mock.patch("atexit.register"),
-        mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+    samerelease = unknownrelease._replace(releaseprotocol=remote.SERVER_PROTOCOL)
+    gitcommand = remote.get_git_command(unknownrelease)
+    releasecommand = remote.get_release_command()
+    for gitsource, commands in (
+        (unknownrelease, [gitcommand, releasecommand]),
+        (samerelease, [releasecommand, gitcommand]),
     ):
-        process, _ = remote.start_server("vae26")
-    assert process is started
-    assert [call.args[0][-1] for call in launch.call_args_list] == [
-        remote.get_git_command(unknownrelease),
-        remote.get_release_command(),
-    ]
+        started = mock.Mock()
+        with (
+            mock.patch.object(remote, "get_git_source", return_value=gitsource),
+            mock.patch.object(
+                remote, "launch_server", side_effect=[EOFError(), (started, version("artistools"), pl.__version__)]
+            ) as launch,
+            mock.patch("atexit.register"),
+            mock.patch.dict("os.environ", {"ARTISTOOLS_REMOTE_COMMAND": ""}),
+        ):
+            process, _ = remote.start_server("vae26")
+        assert process is started
+        assert [call.args[0][-1] for call in launch.call_args_list] == commands
 
     olderrelease = unknownrelease._replace(releaseprotocol=remote.SERVER_PROTOCOL - 1)
     for gitsource, launchcount in ((olderrelease, 1), (olderrelease._replace(ispushed=False), 0)):
