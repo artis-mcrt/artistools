@@ -943,23 +943,27 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     metafile = get_metadata_path(Path(filepath).absolute())
     try:
         metatext = metafile.read_text(encoding="utf-8")
-    except (FileNotFoundError, NotADirectoryError):
+    except OSError as exc:
+        # Path.exists() gives False for each of these errors, e.g. for a symbolic link in a loop
+        if exc.errno not in {errno.ENOENT, errno.ENOTDIR, errno.ELOOP, errno.EBADF}:
+            raise
         metatext = None
     return get_file_metadata_cached(metafile, metatext)
 
 
-def parse_metadata_redshift(value: object, filepath: Path | str) -> float:
-    """Return the redshift z from the metadata of a file, or raise a ValueError that names the file.
+def parse_metadata_redshift(value: object, metafile: Path, exclusiveminimum: float) -> float:
+    """Return the redshift z from a metadata file, or raise a ValueError that names the file.
 
-    get_file_metadata keeps z as YAML gives it, because a caller that reads only the label must not fail on z.
+    z must be above exclusiveminimum, e.g. -1 for a de-redshift and 0 for a luminosity distance. get_file_metadata
+    keeps z as YAML gives it, because a caller that reads only the label must not fail on z.
     """
     # YAML 1.1 reads a number with an exponent and no dot as a string, e.g. 1e-3. str() makes a bool fail
     try:
         z = float(str(value))
     except ValueError:
         z = math.nan
-    if not (math.isfinite(z) and z > -1.0):
-        msg = f"The redshift z in the metadata of {filepath} must be a number above -1, not {value!r}"
+    if not (math.isfinite(z) and z > exclusiveminimum):
+        msg = f"The redshift z in {metafile} must be a number above {exclusiveminimum:g}, not {value!r}"
         raise ValueError(msg)
     return z
 

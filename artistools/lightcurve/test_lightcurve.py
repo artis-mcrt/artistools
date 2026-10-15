@@ -3167,6 +3167,26 @@ def test_reference_band_data_takes_a_header_line_that_starts_with_a_hash(tmp_pat
     assert np.allclose(dfband["magnitude"].to_numpy(), [12.0 - 5 * np.log10(10e6) + 5, 12.5 - 5 * np.log10(10e6) + 5])
 
 
+@pytest.mark.parametrize(("zvalue", "distance_mpc"), [("1e-3", 4.28), ("0", None), ("-0.01", None)])
+def test_reference_band_data_takes_its_distance_from_a_redshift(
+    tmp_path: Path, zvalue: str, distance_mpc: float | None
+) -> None:
+    """YAML 1.1 reads 1e-3 as a string, and 1 + z raised a TypeError. A z of 0 gave an infinite magnitude."""
+    datafile = tmp_path / "refband.dat"
+    datafile.write_text("time magnitude band\n55800.0 12.0 B\n", encoding="utf-8")
+    (tmp_path / "refband.dat.meta.yml").write_text(
+        f"label: ref\ntimecorrection: 55790.0\nz: {zvalue}\n", encoding="utf-8"
+    )
+
+    if distance_mpc is None:
+        with pytest.raises(ValueError, match=r"refband\.dat\.meta\.yml must be a number above 0"):
+            at.lightcurve.core.read_reflightcurve_band_data(datafile)
+    else:
+        # at a small z, the luminosity distance is close to c z / H0 with H0 = 70 km/s/Mpc
+        _, metadata = at.lightcurve.core.read_reflightcurve_band_data(datafile)
+        assert metadata["dist_mpc"] == pytest.approx(distance_mpc, rel=0.01)
+
+
 def test_band_outside_a_virtual_packet_spectrum_gives_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
     """The spectrum of a virtual packet observer covers the range of vpkt.txt. A band outside it has a too faint value.
 
