@@ -2622,8 +2622,8 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         print(f"Correcting for redshift z = {metadata['z']}")
     else:
         print_warning(
-            f"The metadata of {Path(filepath).name} gives no redshift z, thus the plot takes the spectrum to be in"
-            " the rest frame (z = 0)"
+            f"The metadata of {Path(filepath).name} gives no redshift z, thus artistools takes the spectrum to be"
+            " in the rest frame (z = 0)"
         )
 
     return specdata

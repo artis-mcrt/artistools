@@ -1,3 +1,4 @@
 ---
 dist_mpc: 1.0
 label: NERO +300d one-zone
+z: 0 # a model spectrum is in the rest frame

@@ -139,6 +139,7 @@ from artistools.spectra.core import print_integrated_flux
 from artistools.spectra.core import SHELLCOLUMNS
 from artistools.spectra.core import sort_and_reduce_flux_contribution_list
 from artistools.spectra.core import timeshift_fluxscale_co56law
+from artistools.spectra.core import XUnit
 from artistools.spectra.writespectra import write_flambda_spectra
 
 if t.TYPE_CHECKING:
@@ -210,13 +211,18 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
             print_warning(message)
 
 
+def get_x_quantity_label(xunit: XUnit) -> str:
+    """Return the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]"."""
+    # ARTIS gives the spectra in the rest frame of the source, and get_reference_spectrum moves each reference there
+    return f"Rest-frame {xunit.kind} [{xunit.label}]"
+
+
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
     """Get the x-axis and y-axis labels based on the arguments."""
     xunit = get_xunit(args.xunit)
     str_xunit = xunit.label
 
-    # ARTIS gives the spectra in the rest frame of the source, and get_reference_spectrum moves each reference there
-    xlabel = None if args.hidexticklabels else f"Rest-frame {xunit.kind} [{str_xunit}]"
+    xlabel = None if args.hidexticklabels else get_x_quantity_label(xunit)
     # a frequency axis draws f_nu, and an energy axis draws the flux per energy interval
     fluxsymbol = {"wavelength": r"F$_\lambda$", "frequency": r"F$_\nu$", "energy": "dF/dE"}[xunit.kind]
 
@@ -414,7 +420,8 @@ def plot_reference_spectrum(
 
     if metadata.get("mask_telluric", False):
         print("Masking telluric regions")
-        # get_reference_spectrum takes z = 0 for a spectrum with no redshift in its metadata
+        # the telluric bands are at fixed wavelengths in the observed frame, thus the mask moves them by the z of
+        # get_reference_spectrum. A spectrum with no z in its metadata has z = 0, thus the bands do not move
         z = metadata.get("z", 0.0)
         bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
         bands_rest = [(band_low / (1 + z), band_high / (1 + z)) for band_low, band_high in bands]
