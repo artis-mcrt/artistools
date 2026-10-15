@@ -1,3 +1,4 @@
 ---
 dist_mpc: 1.0
 label: RTJ W7 Nomoto+1984 +338d (Maurer et al. 2011)
+z: 0 # a model spectrum is in the rest frame

@@ -2,3 +2,4 @@
 dist_mpc: 1.0e-05
 label: N3 -6.7d
 t: 0
+z: 0 # a model spectrum is in the rest frame

@@ -23,10 +23,12 @@ from artistools.atomic import get_nuclides
 from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.constants import H0_km_per_s_per_mpc
 from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
 from artistools.constants import megaparsec_to_cm
+from artistools.constants import omega_matter
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bracketed
@@ -44,6 +46,8 @@ from artistools.misc import read_wsv
 from artistools.misc import require_reference_data_file
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
+from artistools.misc.fileio import get_metadata_path
+from artistools.misc.fileio import parse_metadata_redshift
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import read_complete_lines
 from artistools.misc.remote import on_model_host
@@ -783,17 +787,21 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
         msg = f"Could not find the reference light curve {lightcurvefilename}"
         raise FileNotFoundError(msg)
 
-    # a copy, because get_file_metadata is cached and this function adds a derived distance below
-    metadata = dict(get_file_metadata(data_path))
+    # a copy, because get_file_metadata is cached and this function adds a derived distance below. The metadata
+    # comes from the folder of the data, or else from the bundled folder
+    metadatasource = data_path
+    metadata = dict(get_file_metadata(metadatasource))
     if not metadata:
-        metadata = dict(get_file_metadata(Path(get_path("artistools_dir"), "data/lightcurves", data_path.name)))
+        metadatasource = Path(get_path("artistools_dir"), "data/lightcurves", data_path.name)
+        metadata = dict(get_file_metadata(metadatasource))
 
     # the time column below needs the timecorrection value. The command stops when the metadata
     # gives no such value
     if "timecorrection" not in metadata:
         exit_with_error(
             f"the reference light curve {data_path} has no timecorrection value",
-            f"Write {data_path.name}.meta.yml in the folder of the data, with a timecorrection value and a label",
+            f"Write {get_metadata_path(data_path).name} in the folder of the data, with a timecorrection value and a"
+            " label",
         )
     metadata.setdefault("label", data_path.stem)
 
@@ -813,8 +821,23 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     # m - M = 5log(d) - 5  Get absolute magnitude. A distance modulus from the metadata is a measured value,
     # thus the distance from the redshift applies only when the metadata gives neither
     if "dist_mpc" not in metadata and "dist_modulus" not in metadata and "z" in metadata:
-        metadata["dist_mpc"] = luminosity_distance(H0=70.0, Om0=0.3, z=metadata["z"])
-        print(f"luminosity distance from redshift = {metadata['dist_mpc']} for {metadata['label']}")
+        # the command reports the ValueError of an incorrect z as an error message, with no traceback
+        metafile = get_metadata_path(metadatasource)
+        # a negative z gives a negative luminosity distance
+        z = parse_metadata_redshift(metadata["z"], metafile, minimum=0.0, allowminimum=True)
+        if z == 0.0:
+            # z: 0 marks the rest frame, as for a reference spectrum, thus there is no distance
+            print_warning(
+                f"{metafile} gives z = 0 and no dist_mpc or dist_modulus, thus the magnitudes of {metadata['label']}"
+                " have no distance correction"
+            )
+        else:
+            metadata["dist_mpc"] = luminosity_distance(H0=H0_km_per_s_per_mpc, Om0=omega_matter, z=z)
+            print(
+                f"luminosity distance from redshift z = {z}: {metadata['dist_mpc']:.4g} Mpc for {metadata['label']},"
+                f" with a flat cosmology of H0 = {H0_km_per_s_per_mpc} km/s/Mpc and Om0 = {omega_matter} (round"
+                " values that many papers use, from no single measurement)"
+            )
 
     magnitude = pl.col("magnitude").cast(pl.Float64)
     if "dist_mpc" in metadata:

@@ -221,7 +221,7 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
   - `add_y_limits_row` and `add_y_axis_actions` give the controls of the y range and the y scale;
   - `edit_series_properties` gives the popup of the line properties of a series, e.g. the label and the colour;
   - `reload_models` reads the models again.
-- Use the same heading for the same section in each viewer. plotlightcurves uses "Horizontal axis: Time [d]" for its x section, because its x axis is always the time. plotspectra gives the quantity and the unit of its x axis in the same form, e.g. "Horizontal axis: Wavelength [Å]". The headings are:
+- Use the same heading for the same section in each viewer. plotlightcurves uses "Horizontal axis: Time [d]" for its x section, because its x axis is always the time. plotspectra gives the quantity and the unit of its x axis in the same form, e.g. "Horizontal axis: Rest-frame wavelength [Å]". The headings are:
   - "Data sources", which comes first and holds the list of the models and the reference files;
   - "Time";
   - "Horizontal axis";

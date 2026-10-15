@@ -2504,7 +2504,7 @@ def test_reference_spectrum_de_redshift_scales_the_flux(tmp_path: Path) -> None:
     specfile.write_text("4000 1.0\n5000 2.0\n6000 3.0\n", encoding="utf-8")
     specfile.with_suffix(".txt.meta.yml").write_text(f"---\nz: {redshift}\n", encoding="utf-8")
 
-    specdata = atspectra.get_reference_spectrum(specfile)
+    specdata = atspectra.get_reference_spectrum(specfile, at.misc.get_file_metadata(specfile))
 
     lambda_obs = np.array([4000.0, 5000.0, 6000.0])
     assert np.allclose(specdata["lambda_angstroms"].to_numpy(), lambda_obs / (1 + redshift), atol=0.0)
@@ -2958,18 +2958,46 @@ def test_write_data_refuses_two_wavelength_grids(tmp_path: Path, capsys: pytest.
     assert "different wavelength grid" in capsys.readouterr().err
 
 
-def test_telluric_mask_of_a_reference_spectrum_without_a_redshift(tmp_path: Path) -> None:
-    """A reference spectrum with mask_telluric and no z is in the observed frame. The mask raised KeyError."""
+@pytest.mark.parametrize("zline", ["", "z: 0.1\n"])
+def test_telluric_mask_of_a_reference_spectrum_uses_observed_wavelengths(tmp_path: Path, zline: str) -> None:
+    """The telluric mask applies to the observed wavelengths, thus it removes the row at 14000 Å for each z.
+
+    The mask moved before the de-redshift, and the result must stay the same. With z = 0.1, the row at 15000 Å moves
+    to 13636 Å, which is inside the observed band from 13500 Å to 14400 Å. Thus the mask must not use the rest-frame
+    wavelengths. With no z, the mask raised KeyError.
+    """
     specfile = tmp_path / "telluric.txt"
     specfile.write_text("13000 1.0\n14000 2.0\n15000 3.0\n", encoding="utf-8")
-    specfile.with_suffix(".txt.meta.yml").write_text("---\nmask_telluric: true\ndist_mpc: 1.0\n", encoding="utf-8")
+    specfile.with_suffix(".txt.meta.yml").write_text(
+        f"---\nmask_telluric: true\ndist_mpc: 1.0\n{zline}", encoding="utf-8"
+    )
 
     fig = mplfig.Figure()
     axis = fig.add_subplot()
-    line, _, _ = plotspectra.plot_reference_spectrum(specfile, axis, xmin=12000.0, xmax=16000.0)
+    line, _, _ = plotspectra.plot_reference_spectrum(specfile, axis, xmin=11000.0, xmax=16000.0)
 
     yvalues = np.asarray(line.get_ydata(), dtype=np.float64)
     assert np.isnan(yvalues).tolist() == [False, True, False]
+
+
+@pytest.mark.parametrize("zvalue", ["-1", "-2", ".inf", ".nan", "true", "abc"])
+def test_reference_spectrum_refuses_an_incorrect_redshift(tmp_path: Path, zvalue: str) -> None:
+    """A z of -1 divided by zero, and a z that YAML reads as a string gave a TypeError with no file name."""
+    specfile = tmp_path / "spec.txt"
+    specfile.write_text("5000 1.0\n6000 2.0\n", encoding="utf-8")
+    specfile.with_suffix(".txt.meta.yml").write_text(f"---\nz: {zvalue}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"spec\.txt\.meta\.yml must be a number above -1"):
+        atspectra.get_reference_spectrum(specfile, at.misc.get_file_metadata(specfile))
+
+
+def test_reference_spectrum_takes_a_redshift_with_an_exponent(tmp_path: Path) -> None:
+    """YAML 1.1 read 1e-3 as a string, because the number has no dot. 1 + z then raised a TypeError."""
+    specfile = tmp_path / "spec.txt"
+    specfile.write_text("5000 1.0\n6000 2.0\n", encoding="utf-8")
+    specfile.with_suffix(".txt.meta.yml").write_text("---\nz: 1e-3\n", encoding="utf-8")
+    specdata = atspectra.get_reference_spectrum(specfile, at.misc.get_file_metadata(specfile))
+    assert np.allclose(specdata["lambda_angstroms"].to_numpy(), [5000.0 / 1.001, 6000.0 / 1.001], rtol=1e-12, atol=0.0)
+    assert np.allclose(specdata["f_lambda"].to_numpy(), [1.001, 2.002], rtol=1e-12, atol=0.0)
 
 
 def test_stokesparam_takes_only_the_values_that_the_plot_reads() -> None:

@@ -129,6 +129,7 @@ from artistools.spectra.core import get_specpol_data
 from artistools.spectra.core import get_spectra
 from artistools.spectra.core import get_vspecpol_data
 from artistools.spectra.core import get_vspecpol_spectrum
+from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import get_xunit
 from artistools.spectra.core import make_averaged_vspecfiles
 from artistools.spectra.core import make_virtual_spectra_summed_file
@@ -213,10 +214,9 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
     """Get the x-axis and y-axis labels based on the arguments."""
     xunit = get_xunit(args.xunit)
-    xtype = {"wavelength": "Wavelength", "frequency": "Frequency", "energy": "Energy"}[xunit.kind]
     str_xunit = xunit.label
 
-    xlabel = None if args.hidexticklabels else f"{xtype} [{str_xunit}]"
+    xlabel = None if args.hidexticklabels else get_x_quantity_label(xunit)
     # a frequency axis draws f_nu, and an energy axis draws the flux per energy interval
     fluxsymbol = {"wavelength": r"F$_\lambda$", "frequency": r"F$_\nu$", "energy": "dF/dE"}[xunit.kind]
 
@@ -387,7 +387,7 @@ def plot_reference_spectrum(
     plotkwargs.pop("label", None)
 
     print_heading(f"Reference spectrum '{label}'")
-    specdata = get_reference_spectrum(filepath)
+    specdata = get_reference_spectrum(filepath, metadata)
     print_detail(f"file: {filepath}")
 
     # scale to 1 Mpc, and get_dfspectrum_x_y_with_units then scales to scale_to_dist_mpc
@@ -411,21 +411,6 @@ def plot_reference_spectrum(
 
     if "scale_factor" in metadata:
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * metadata["scale_factor"])
-
-    if metadata.get("mask_telluric", False):
-        print("Masking telluric regions")
-        # a spectrum with no redshift in its metadata is in the observed frame, where the telluric bands are
-        z = metadata.get("z", 0.0)
-        bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
-        bands_rest = [(band_low / (1 + z), band_high / (1 + z)) for band_low, band_high in bands]
-
-        expr_masked = pl.when(
-            pl.any_horizontal([
-                pl.col("lambda_angstroms").is_between(band_low_rest, band_high_rest, closed="both")
-                for band_low_rest, band_high_rest in bands_rest
-            ])
-        )
-        specdata = specdata.with_columns(f_lambda=expr_masked.then(pl.lit(math.nan)).otherwise(pl.col("f_lambda")))
 
     print_detail(f"points: {len(specdata)}")
 
@@ -1925,7 +1910,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs="*",
         type=model_path_from_text,
         action=KeepGivenPaths,
-        help="Paths to ARTIS folders or reference spectra filenames",
+        help=(
+            "Paths to ARTIS folders or reference spectra filenames. The metadata file of a reference spectrum, e.g."
+            " spec.txt.meta.yml, gives its redshift z. With no z, the plot takes the spectrum to be in the rest frame"
+            " and logs a warning"
+        ),
     )
     for flag in ("-specpath", "-modelpath"):
         addarg_pathoption(parser, flag, "specpath", multiplepaths=True)

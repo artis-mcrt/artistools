@@ -34,6 +34,7 @@ from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import EmissionEvent
+from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import get_xunit
 from artistools.spectra.core import XUNITS
 from artistools.spectra.plotspectra import addargs
@@ -1465,8 +1466,8 @@ def open_window(
     timegrid.addLayout(gridrow, 4, 0, 1, -1)
 
     # the settings keep the open state of the section by its key, which the older heading of the section gave
-    # the heading gives the quantity and the unit of the x axis, e.g. "Horizontal axis: Energy [keV]", as the light
-    # curves give the time
+    # the heading gives the quantity and the unit of the x axis, e.g. "Horizontal axis: Rest-frame energy [keV]", as
+    # the light curves give the time
     xheader, xgrid = add_section(panellayout, "Horizontal axis", key="x axis")
     xunitbox = QtWidgets.QComboBox()
     xunitbox.addItems(list(XUNITS))
@@ -1475,7 +1476,8 @@ def open_window(
     add_row(xgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, QtWidgets.QLabel("x scale:"), xscalebox])
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    # the label gives the quantity and the unit of the x axis, e.g. "Wavelength [Å]", and a new unit changes it
+    # the label gives the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]". A new unit changes
+    # the label
     xrangelabel = QtWidgets.QLabel()
     zoomtip = " Drag across the plot to select a range. Double-click the plot to get the default range."
     xrangeslider.setToolTip("The minimum and the maximum of the x axis." + zoomtip)
@@ -1723,8 +1725,8 @@ def open_window(
         # a -deltax of a different unit is not correct for the new unit
         lastbinwidths.pop("deltax", None)
         xunit = get_xunit(values.xunit)
-        xrangelabel.setText(f"{xunit.kind.capitalize()} [{xunit.label}]:")
-        xheader.setText(f"Horizontal axis: {xunit.kind.capitalize()} [{xunit.label}]")
+        xrangelabel.setText(f"{get_x_quantity_label(xunit)}:")
+        xheader.setText(f"Horizontal axis: {get_x_quantity_label(xunit)}")
         binmodebox.setItemText(binmodebox.findData("deltax"), f"-deltax [{xunit.label}]")
         rangesunit = (values.xunit, values.gamma)
 

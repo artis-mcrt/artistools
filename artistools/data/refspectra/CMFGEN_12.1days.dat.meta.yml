@@ -2,3 +2,4 @@
 dist_mpc: 1
 label: CMFGEN
 t: 12
+z: 0 # a model spectrum is in the rest frame

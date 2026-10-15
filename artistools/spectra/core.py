@@ -37,7 +37,6 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import get_dirbins
-from artistools.misc import get_file_metadata
 from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
@@ -52,6 +51,8 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
+from artistools.misc.fileio import get_metadata_path
+from artistools.misc.fileio import parse_metadata_redshift
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import read_complete_lines
@@ -347,6 +348,13 @@ def get_xunit_names() -> list[str]:
 def get_xunit(xunit: str) -> XUnit:
     """Return the unit of the horizontal axis for its canonical name or an alias, e.g. "angstroms" or "nanometers"."""
     return XUNITS[convert_xunit_aliases_to_canonical(xunit)]
+
+
+def get_x_quantity_label(xunit: XUnit) -> str:
+    """Return the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]"."""
+    # ARTIS gives the spectra in the rest frame of the source. get_reference_spectrum removes the redshift z of a
+    # reference, and it takes a reference with no z to be in the rest frame
+    return f"Rest-frame {xunit.kind} [{xunit.label}]"
 
 
 def parse_xunit_argument(value: str) -> str:
@@ -2582,10 +2590,15 @@ def print_integrated_flux(
     return integrated_flux
 
 
-def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
-    """Return an observed reference spectrum, applying any scaling and time shift from its metadata."""
-    metadata = get_file_metadata(filepath)
+def get_reference_spectrum(filepath: Path | str, metadata: dict[str, t.Any]) -> pl.DataFrame:
+    """Return a reference spectrum in the rest frame, after its extinction correction and its telluric mask.
 
+    The metadata file gives the redshift z. A spectrum with no z is in the rest frame by design (z = 0), and the
+    function logs a warning. A plot can compare a reference spectrum with an ARTIS spectrum only in one frame, thus
+    this assumption is necessary. Give z: 0 in the metadata of a spectrum that is in the rest frame, e.g. a model.
+    The caller gives the metadata, thus these corrections and the corrections of the caller use one version of the
+    metadata file. The caller applies the distance, the scale factor, and the scale in time.
+    """
     flambdaindex = metadata.get("f_lambda_columnindex", 1)
 
     specdata = read_wsv(filepath, has_header=False, comment_prefix="#").select(
@@ -2612,13 +2625,33 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
             f" and R_V = {metadata.get('r_v', 3.1)}"
         )
 
-    if "z" in metadata:
+    if metadata.get("mask_telluric"):
+        # the telluric bands are at fixed wavelengths in the observed frame, thus the mask comes before the de-redshift
+        print("Masking telluric regions")
+        bands = [(1.35e4, 1.44e4), (1.8e4, 1.94e4)]  # [Angstroms]
+        isintelluricband = pl.any_horizontal([
+            pl.col("lambda_angstroms").is_between(band_low, band_high, closed="both") for band_low, band_high in bands
+        ])
+        specdata = specdata.with_columns(
+            f_lambda=pl.when(isintelluricband).then(pl.lit(math.nan)).otherwise(pl.col("f_lambda"))
+        )
+
+    if "z" not in metadata:
+        print_warning(
+            f"The metadata of {Path(filepath).name} gives no redshift z, thus artistools takes the spectrum to be"
+            " in the rest frame (z = 0)"
+        )
+        return specdata
+
+    z = parse_metadata_redshift(metadata["z"], get_metadata_path(Path(filepath)), minimum=-1.0, allowminimum=False)
+    if z == 0.0:
+        print_detail("The metadata gives z = 0, thus the spectrum is in the rest frame")
+    else:
         # the de-redshift divides the wavelength by (1 + z). Thus the flux density in the rest frame
         # is (1 + z) times the observed one, because the same energy falls in a narrower band
         specdata = specdata.with_columns(
-            lambda_angstroms=pl.col("lambda_angstroms") / (1 + metadata["z"]),
-            f_lambda=pl.col("f_lambda") * (1 + metadata["z"]),
+            lambda_angstroms=pl.col("lambda_angstroms") / (1 + z), f_lambda=pl.col("f_lambda") * (1 + z)
         )
-        print(f"Correcting for redshift z = {metadata['z']}")
+        print(f"Correcting for redshift z = {z}")
 
     return specdata

@@ -6,6 +6,7 @@ import errno
 import functools
 import inspect
 import io
+import math
 import os
 import re
 import shlex
@@ -935,15 +936,48 @@ def check_metadata_mapping(metadata: object, metafile: Path) -> dict[str, t.Any]
 def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     """Return a dict of metadata for a file from its metadata file, e.g. spectrum.txt.meta.yml for spectrum.txt.
 
-    The cache key holds the absolute path, see ModelpathCache. The absolute path keeps a symbolic link, because the
-    metadata file of a link is beside the link.
+    The key of the cache holds the absolute path of the metadata file and its text. The absolute path keeps a symbolic
+    link, because the metadata file of a link is beside the link. The text makes a process that runs for a long time,
+    e.g. a viewer, read each edit. A metadata file holds only a few lines.
     """
-    return get_file_metadata_cached(Path(filepath).absolute())
+    metafile = get_metadata_path(Path(filepath).absolute())
+    # Path.exists() gives False for each error of the operating system, e.g. a symbolic link in a loop. An editor can
+    # delete the file and write it again after exists(), thus a missing file at the read also gives no metadata
+    metatext = None
+    if metafile.exists():
+        with contextlib.suppress(FileNotFoundError):
+            metatext = metafile.read_text(encoding="utf-8")
+    return get_file_metadata_cached(metafile, metatext)
+
+
+def parse_metadata_redshift(value: object, metafile: Path, minimum: float, allowminimum: bool) -> float:
+    """Return the redshift z from a metadata file, or raise a ValueError that names the file.
+
+    z must be above minimum, or equal to it if allowminimum, e.g. above -1 for a de-redshift and 0 or above for a
+    luminosity distance. get_file_metadata keeps z as YAML gives it, because a caller that reads only the label must
+    not fail on z.
+    """
+    # str() makes a bool fail, and float() accepts True
+    try:
+        z = float(str(value))
+    except ValueError:
+        z = math.nan
+    if not (math.isfinite(z) and (z >= minimum if allowminimum else z > minimum)):
+        limit = f"of {minimum:g} or above" if allowminimum else f"above {minimum:g}"
+        msg = f"The redshift z in {metafile} must be a number {limit}, not {value!r}"
+        raise ValueError(msg)
+    return z
+
+
+def get_metadata_path(filepath: Path) -> Path:
+    """Return the path of the metadata file of a file, e.g. spectrum.txt.meta.yml for spectrum.txt.xz."""
+    filepath = without_compressed_extension(filepath)
+    return filepath.with_suffix(f"{filepath.suffix}.meta.yml")
 
 
 @lru_cache(maxsize=24)
-def get_file_metadata_cached(filepath: Path) -> dict[str, t.Any]:
-    """Return the metadata of the file at an absolute path, and keep it for the next caller."""
+def get_file_metadata_cached(metafile: Path, metatext: str | None) -> dict[str, t.Any]:
+    """Return the metadata from the text of a metadata file, and keep it for the next caller."""
 
     def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
         if "a_v" in metadata and "e_bminusv" in metadata and "r_v" not in metadata:
@@ -957,16 +991,20 @@ def get_file_metadata_cached(filepath: Path) -> dict[str, t.Any]:
 
     import yaml
 
-    filepath = without_compressed_extension(filepath)
-    metafile = filepath.with_suffix(f"{filepath.suffix}.meta.yml")
-    if not metafile.exists():
-        print(f"No metadata found for: {filepath}")
+    class MetadataLoader(yaml.SafeLoader):
+        """Read a number with an exponent and no dot as a float, e.g. 1e-3, as YAML 1.2 does and YAML 1.1 does not."""
+
+    # add_implicit_resolver copies the resolvers of SafeLoader before it adds one, thus SafeLoader stays the same
+    MetadataLoader.add_implicit_resolver(
+        "tag:yaml.org,2002:float", re.compile(r"^[-+]?[0-9][0-9_]*(?:\.[0-9_]*)?[eE][-+]?[0-9]+$"), list("-+0123456789")
+    )
+
+    if metatext is None:
+        print(f"No metadata file at {metafile}")
         return {}
 
-    with metafile.open("r", encoding="utf-8") as yamlfile:
-        # a file of comments alone gives None
-        metadata = yaml.safe_load(yamlfile) or {}
-
+    # a file of comments alone gives None. MetadataLoader is a SafeLoader, but ruff does not know the subclass
+    metadata = yaml.load(metatext, Loader=MetadataLoader) or {}  # ruff:ignore[unsafe-yaml-load]
     return add_derived_metadata(check_metadata_mapping(metadata, metafile))
 
 

@@ -932,9 +932,26 @@ def test_get_file_metadata(tmp_path: Path) -> None:
     (tmp_path / "nometa.txt").write_text("data")
     assert at.misc.get_file_metadata(tmp_path / "nometa.txt") == {}
 
+    # YAML 1.1 reads a number with an exponent and no dot as a string, and the magnitude of a light curve then failed
+    (tmp_path / "exponent.txt.meta.yml").write_text("dist_mpc: 4e1\nz: -1E-3\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(tmp_path / "exponent.txt") == {"dist_mpc": 40.0, "z": -0.001}
+
     (tmp_path / "scalar.txt.meta.yml").write_text("a scalar\n", encoding="utf-8")
     with pytest.raises(ValueError, match="must be a mapping"):
         at.misc.get_file_metadata(tmp_path / "scalar.txt")
+
+
+def test_get_file_metadata_reads_an_edited_metadata_file(tmp_path: Path) -> None:
+    """A viewer kept the old metadata after a user edited a metadata file, until the process stopped.
+
+    The two edits have the same size and can have the same modification time, thus only the text tells them apart.
+    """
+    metafile = tmp_path / "spec.txt.meta.yml"
+    metafile.write_text("z: 0.01\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(tmp_path / "spec.txt")["z"] == pytest.approx(0.01)
+
+    metafile.write_text("z: 0.02\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(tmp_path / "spec.txt")["z"] == pytest.approx(0.02)
 
 
 def test_write_parquet_atomic(tmp_path: Path) -> None:
