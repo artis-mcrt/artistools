@@ -190,7 +190,7 @@ def take_back_folders(
     if pathaction is None or not parsed or parsed == pathaction.default:
         return [], rows
     folders = parsed if isinstance(parsed, list) else [parsed]
-    convert = pathaction.type if callable(pathaction.type) else str
+    convert: Callable[[str], object] = pathaction.type if callable(pathaction.type) else str
     listflags = {flag for flag, action in get_actions_by_flag(parser).items() if action.nargs in {"*", "+"}}
     count = len(folders)
     # the option keeps one value at least, because the command takes no folder from an option of folders alone
@@ -723,7 +723,7 @@ def get_path_colours(paths: "Sequence[str]", isreference: "Sequence[bool]", rows
 def get_helptexts(parser: argparse.ArgumentParser) -> dict[str, str]:
     """Return the help text of each option by its dest. A tooltip gives it, thus the window and the CLI agree."""
     return {
-        action.dest: str(action.help).replace("%(default)s", str(action.default)).replace("%%", "%")
+        action.dest: action.help.replace("%(default)s", str(action.default)).replace("%%", "%")
         for action in parser._actions  # ruff:ignore[private-member-access]
         if action.help and action.help != argparse.SUPPRESS
     }
