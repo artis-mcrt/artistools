@@ -938,14 +938,16 @@ def test_get_file_metadata(tmp_path: Path) -> None:
 
 
 def test_get_file_metadata_reads_an_edited_metadata_file(tmp_path: Path) -> None:
-    """A viewer kept the old metadata after a user added z to a metadata file, until the process stopped."""
-    metafile = tmp_path / "spec.txt.meta.yml"
-    metafile.write_text("dist_mpc: 1.0\n", encoding="utf-8")
-    assert "z" not in at.misc.get_file_metadata(tmp_path / "spec.txt")
+    """A viewer kept the old metadata after a user edited a metadata file, until the process stopped.
 
-    # a file system can keep the same modification time for two writes in one second, thus the size must change
-    metafile.write_text("dist_mpc: 1.0\nz: 0.01\n", encoding="utf-8")
+    The two edits have the same size and can have the same modification time, thus only the text tells them apart.
+    """
+    metafile = tmp_path / "spec.txt.meta.yml"
+    metafile.write_text("z: 0.01\n", encoding="utf-8")
     assert at.misc.get_file_metadata(tmp_path / "spec.txt")["z"] == pytest.approx(0.01)
+
+    metafile.write_text("z: 0.02\n", encoding="utf-8")
+    assert at.misc.get_file_metadata(tmp_path / "spec.txt")["z"] == pytest.approx(0.02)
 
 
 def test_write_parquet_atomic(tmp_path: Path) -> None:

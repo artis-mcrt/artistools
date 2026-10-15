@@ -52,7 +52,6 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import split_multitable_dataframe
-from artistools.misc.fileio import parse_metadata_redshift
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import read_complete_lines
@@ -2638,7 +2637,7 @@ def get_reference_spectrum(filepath: Path | str) -> pl.DataFrame:
         )
         return specdata
 
-    z = parse_metadata_redshift(metadata["z"], filepath)
+    z = metadata["z"]
     if z == 0.0:
         print_detail("The metadata gives z = 0, thus the spectrum is in the rest frame")
     else:

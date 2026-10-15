@@ -937,26 +937,26 @@ def get_file_metadata(filepath: Path | str) -> dict[str, t.Any]:
     """Return a dict of metadata for a file from its metadata file, e.g. spectrum.txt.meta.yml for spectrum.txt.
 
     The cache key holds the absolute path, see ModelpathCache. The absolute path keeps a symbolic link, because the
-    metadata file of a link is beside the link. The key also holds the state of the metadata file, thus a process
-    that runs for a long time, e.g. a viewer, reads an edited metadata file again.
+    metadata file of a link is beside the link. The key also holds the text of the metadata file, thus a process that
+    runs for a long time, e.g. a viewer, reads each edit. A metadata file holds only a few lines.
     """
     filepath = Path(filepath).absolute()
     try:
-        metafile_state = get_file_state(get_metadata_path(filepath))
+        metatext = get_metadata_path(filepath).read_text(encoding="utf-8")
     except FileNotFoundError:
-        metafile_state = None
-    return get_file_metadata_cached(filepath, metafile_state)
+        metatext = None
+    return get_file_metadata_cached(filepath, metatext)
 
 
-def parse_metadata_redshift(value: object, filepath: Path | str) -> float:
-    """Return the redshift z from the metadata of a file, or raise a ValueError that names the file."""
+def parse_metadata_redshift(value: object, metafile: Path) -> float:
+    """Return the redshift z from a metadata file, or raise a ValueError that names the file."""
     # YAML 1.1 reads a number with an exponent and no dot as a string, e.g. 1e-3. str() makes a bool fail
     try:
         z = float(str(value))
     except ValueError:
         z = math.nan
     if not (math.isfinite(z) and z > -1.0):
-        msg = f"The redshift z in the metadata of {filepath} must be a number above -1, not {value!r}"
+        msg = f"The redshift z in {metafile} must be a number above -1, not {value!r}"
         raise ValueError(msg)
     return z
 
@@ -968,12 +968,8 @@ def get_metadata_path(filepath: Path) -> Path:
 
 
 @lru_cache(maxsize=24)
-def get_file_metadata_cached(filepath: Path, metafile_state: tuple[int, int, int, int] | None) -> dict[str, t.Any]:
-    """Return the metadata of the file at an absolute path, and keep it for the next caller.
-
-    metafile_state is only a part of the cache key.
-    """
-    del metafile_state
+def get_file_metadata_cached(filepath: Path, metatext: str | None) -> dict[str, t.Any]:
+    """Return the metadata from the text of the metadata file of a file, and keep it for the next caller."""
 
     def add_derived_metadata(metadata: dict[str, t.Any]) -> dict[str, t.Any]:
         if "a_v" in metadata and "e_bminusv" in metadata and "r_v" not in metadata:
@@ -987,16 +983,17 @@ def get_file_metadata_cached(filepath: Path, metafile_state: tuple[int, int, int
 
     import yaml
 
-    metafile = get_metadata_path(filepath)
-    if not metafile.exists():
+    if metatext is None:
         print(f"No metadata found for: {without_compressed_extension(filepath)}")
         return {}
 
-    with metafile.open("r", encoding="utf-8") as yamlfile:
-        # a file of comments alone gives None
-        metadata = yaml.safe_load(yamlfile) or {}
+    metafile = get_metadata_path(filepath)
+    # a file of comments alone gives None
+    metadata = check_metadata_mapping(yaml.safe_load(metatext) or {}, metafile)
+    if "z" in metadata:
+        metadata["z"] = parse_metadata_redshift(metadata["z"], metafile)
 
-    return add_derived_metadata(check_metadata_mapping(metadata, metafile))
+    return add_derived_metadata(metadata)
 
 
 def merge_pdf_files(pdf_files: list[str], outputpath: Path | str | None = None) -> str:

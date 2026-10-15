@@ -2985,7 +2985,7 @@ def test_reference_spectrum_refuses_an_incorrect_redshift(tmp_path: Path, zvalue
     specfile = tmp_path / "spec.txt"
     specfile.write_text("5000 1.0\n6000 2.0\n", encoding="utf-8")
     specfile.with_suffix(".txt.meta.yml").write_text(f"---\nz: {zvalue}\n", encoding="utf-8")
-    with pytest.raises(ValueError, match=r"spec\.txt must be a number above -1"):
+    with pytest.raises(ValueError, match=r"spec\.txt\.meta\.yml must be a number above -1"):
         atspectra.get_reference_spectrum(specfile)
 
 
