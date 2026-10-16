@@ -127,7 +127,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": ("completions", "getpath", "timesteps", "version"),
+    "other commands": ("completions", "getpath", "installskill", "timesteps", "version"),
 })
 
 # "artistools describeinputmodel" was a top-level command, thus a script of a user holds that name.
@@ -222,6 +222,11 @@ subcommandtree: CommandTree = {
         ),
         "to_tardis": CommandSpec("inputmodel.to_tardis", helptext="Convert an ARTIS format model to TARDIS format."),
     },
+    "installskill": CommandSpec(
+        "installskill",
+        helptext="Install the artis-data skill for a large language model (LLM) agent, e.g. Claude Code.",
+        note="The skill tells the agent how to read the data of a model with artistools.",
+    ),
     "makevpktinput": CommandSpec(
         "make_vpkt_input",
         helptext="Write a vpkt.txt for a model.",

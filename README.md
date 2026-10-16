@@ -149,6 +149,16 @@ A package that has a plot command gives it as `plot`, e.g. `at.spectra.plot`, `a
 at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile="spectrum.pdf")
 ```
 
+## Use with an LLM agent
+
+artistools contains a skill for a large language model (LLM) agent, e.g. Claude Code. The skill tells the agent how to use artistools to answer a question about a model. An example is "What is the range of Te at 10 days?". This command installs the skill for Claude Code:
+
+```sh
+artistools installskill
+```
+
+The command makes a link in `~/.claude/skills` to the skill in the installed package. Thus an update of artistools also updates the skill. For a different agent, give its skills folder with `-skillsdir`. Start a new session of the agent after the installation. Then ask a question about a model, or type `/artis-data`.
+
 ## Example output
 
 ![Emission plot](https://github.com/artis-mcrt/artistools/raw/main/images/fig-emission.png)

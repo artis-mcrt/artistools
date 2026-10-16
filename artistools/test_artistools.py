@@ -4524,6 +4524,26 @@ def test_completions_writes_the_code_to_a_redirect(
     assert "To enable tab completion in zsh" in captured.err
 
 
+def test_installskill_replaces_a_link_and_keeps_the_skill_of_the_package(tmp_path: Path) -> None:
+    """A copy must replace the link itself, because rmtree through the link deletes the skill of the package."""
+    from artistools.installskill import get_skill_folder
+    from artistools.installskill import install_skill
+
+    skillsdir = tmp_path / "skills"
+    packageskill = get_skill_folder() / "SKILL.md"
+    assert install_skill(skillsdir, copy=False, force=False)
+    assert not install_skill(skillsdir, copy=False, force=False)
+
+    with pytest.raises(SystemExit):
+        install_skill(skillsdir, copy=True, force=False)
+
+    assert install_skill(skillsdir, copy=True, force=True)
+    destination = skillsdir / "artis-data"
+    assert not destination.is_symlink()
+    assert packageskill.is_file()
+    assert (destination / "SKILL.md").read_text(encoding="utf-8") == packageskill.read_text(encoding="utf-8")
+
+
 def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> None:
     """ARTIS writes the deposition of timestep n into the estimators of timestep n + 1.
 
