@@ -1,6 +1,6 @@
 ---
 name: artis-data
-description: Answer a question about the data of an ARTIS model. Examples are the range of the electron temperature (Te) at 10 days and the density of a cell. Other examples are the deposition rate, the peak of the light curve, and the flux of a spectrum. Use it for the estimators, the cells, the deposition, the light curves, the spectra, or the packets of a model. It reads the data with Python calls into artistools.
+description: Answer a question about the data of an ARTIS model. Examples are the range of the electron temperature (Te) at 10 days and the density of a cell. Other examples are the deposition rate, the peak of the light curve, and the flux of a spectrum. Use it for the estimators, the cells, the ionisation, the deposition, the light curves, the spectra, or the packets of a model. It reads the data with Python calls into artistools.
 ---
 
 # Answer a question about the data of an ARTIS model
@@ -114,6 +114,97 @@ for limitname in ("MINTEMP", "MAXTEMP"):
         atlimitcount = dfcells.filter(pl.col(column) == float(limit)).height
         print(f"{limitname} = {limit}: {atlimitcount} cells")
 ```
+
+### Ionisation
+
+The estimators give the ionisation state of each element in each cell:
+
+- `nnion_<El>_<ion stage>` is the number density of an ion (cm^-3). The ion stage is a Roman numeral, e.g. `IV` in
+  `nnion_Fe_IV`. The ion charge is the ion stage minus 1. `at.decode_roman_numeral("IV")` gives 4.
+- The ion fraction is `nnion_<El>_<ion stage> / nnelement_<El>`.
+- The mean charge of an element is the sum of the charge times the ion fraction, over the ions of the element.
+- `gamma_R_<ion>` (photoionisation, s^-1) and `gamma_NT_<ion>` (non-thermal ionisation, s^-1) are the rates of
+  ionisation from that ion. Thus the top ion has no such column. `Alpha_R_<ion>` (cm^3/s) is the coefficient of
+  recombination from that ion to the ion below it. `Alpha_R*nne_<ion>` (s^-1) is that coefficient times `nne`.
+
+Possible errors:
+
+- ARTIS includes only the ions that `compositiondata.txt` gives. `at.get_composition_data(modelpath)` gives the columns
+  `Z`, `lowermost_ion_stage`, and `uppermost_ion_stage`. ARTIS cannot ionise an element above its top ion. Thus a large
+  fraction in the top ion shows that the true ionisation can be higher. A mean charge equal to the charge of the top ion
+  is a lower limit and not a physical value. Give the number of cells where the top ion holds most of the element.
+- To get the ion fraction of a group of cells, divide the number of ions by the number of atoms of the element. Use the
+  weight `volume` from `join_modeldata=True`. A mean of the ion fractions of the cells gives the same weight to a cell
+  with few atoms and to a cell with many atoms.
+- An element with `nnelement_<El>` = 0 in a cell has no ion fraction there. Do not include such a cell.
+
+Example: the ion fractions of Fe in all the cells, the mean charge of each cell, and the cells at the top ion.
+
+```python
+import artistools as at
+import polars as pl
+
+modelpath = "."
+element = "Fe"
+timestep = at.get_timestep_of_timedays(modelpath, 10)
+
+elementcol = f"nnelement_{element}"
+lfcells = at.scan_estimators(modelpath, timestep=timestep, join_modeldata=True)
+ioncols = [col for col in lfcells.collect_schema().names() if col.startswith(f"nnion_{element}_")]
+ioncharges = {col: at.decode_roman_numeral(col.removeprefix(f"nnion_{element}_")) - 1 for col in ioncols}
+topioncol = max(ioncharges, key=ioncharges.__getitem__)
+dfcells = (
+    lfcells
+    .filter(pl.col(elementcol) > 0)
+    .select("modelgridindex", "tmid_days", "volume", elementcol, *ioncols)
+    .with_columns(
+        meancharge=pl.sum_horizontal(charge * pl.col(col) for col, charge in ioncharges.items()) / pl.col(elementcol)
+    )
+    .collect()
+)
+print(
+    dfcells.select([
+        ((pl.col(col) * pl.col("volume")).sum() / (pl.col(elementcol) * pl.col("volume")).sum()).alias(
+            col.removeprefix("nnion_")
+        )
+        for col in ioncols
+    ])
+)
+print(
+    dfcells.select(
+        pl.len().alias("cellcount"),
+        pl.col("tmid_days").first(),
+        pl.col("meancharge").min().alias("min"),
+        pl.col("meancharge").median().alias("median"),
+        pl.col("meancharge").max().alias("max"),
+    )
+)
+
+dfcomposition = at.get_composition_data(modelpath).filter(pl.col("Z") == at.get_atomic_number(element))
+topstage = dfcomposition["uppermost_ion_stage"].item()
+attopcount = dfcells.filter(pl.col(topioncol) > 0.5 * pl.col(elementcol)).height
+topion = at.get_ionstring(at.get_atomic_number(element), topstage)
+print(f"top ion: {topion}. It holds most of {element} in {attopcount} cells.")
+```
+
+`artistools plotestimators -plot "Fe IV" "Fe V" ionpoptype=elpop -plot averageionisation Fe -t 10 <modelpath>` plots
+the ion fractions and the mean charge against the velocity. Use it to check a result.
+
+### NLTE level populations
+
+`at.nltepops.read_nltepops(modelpath, timestep=..., modelgridindex=...)` gives the level populations that ARTIS
+calculates out of local thermodynamic equilibrium (non-LTE, or NLTE). It gives a DataFrame with the columns `timestep`,
+`modelgridindex`, `Z`, `ion_stage`, `level`, `n_LTE`, and `n_NLTE`. `n_NLTE` is the number density of the level
+(cm^-3). `n_LTE` is a Boltzmann population relative to the NLTE population of the ground level. Thus `n_NLTE / n_LTE`
+is 1 at the ground level, and it gives the departure from a Boltzmann distribution inside the ion.
+
+Possible errors:
+
+- Only a model that wrote the files `nlte_*.out` has these data. artistools needs minutes to read a large model. Thus
+  give a time step and the cells.
+- A row with `level` = -1 is a superlevel. It holds the levels above the highest NLTE level of its ion, up to the last
+  level that ARTIS keeps. The top ion has only its ground level.
+- The sum of `n_NLTE` over the levels of an ion can be different from `nnion_`. Use `nnion_` for the ion fraction.
 
 ## Model data: the cells of `model.txt`
 
