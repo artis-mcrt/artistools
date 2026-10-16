@@ -47,6 +47,9 @@ Call `help()` on a function to get all its arguments.
 - Use polars expressions. Give each result of an aggregation its own name with `.alias()`.
 - Print the column names of a LazyFrame with `.collect_schema().names()` before you select a column. The columns can
   change with the version of ARTIS.
+- ARTIS calculates its values with Monte Carlo packets, thus each value has noise. A value has more noise if the model
+  has few packets, if the cell is small, or if the value is for one direction bin. Before you report a change as real,
+  compare the value with the values of the time steps and the cells near it.
 
 ## Estimators: the values of each cell at each time step
 
@@ -311,8 +314,15 @@ Possible errors:
 
 - The luminosity is 0 at the early time steps, before packets escape. The magnitude of such a row is `inf`.
 - The light curve of a direction bin has more Monte Carlo noise than the average over all directions.
+- The light curve has values only for the time steps of the model. If the maximum is in the first two or the last two
+  time steps, the true peak can be outside the time range of the model. The same applies if the first time step is
+  almost as bright as the maximum. Give this warning with the answer.
+- In the last time steps, the luminosity in the observer frame falls, e.g. to 0, but the luminosity in the comoving
+  frame does not. The observer-frame time of a packet includes the travel time of the light across the ejecta. Thus
+  the last time steps do not get the packets that escape after the last time step of the model. Do not report this
+  fall as the decline of the light curve.
 
-Example: the time and the luminosity of the peak.
+Example: the time and the luminosity of the peak, the rows near it, and a test of the edges of the time range.
 
 ```python
 import artistools as at
@@ -320,9 +330,18 @@ import polars as pl
 
 modelpath = "."
 lcpath = at.lightcurve.find_lightcurve_file(modelpath)
-dflc = at.lightcurve.scan_lightcurve(lcpath)[-1].collect()
+dflc = at.lightcurve.scan_lightcurve(lcpath)[-1].collect().with_row_index("row")
 print(lcpath)
-print(dflc.sort("luminosity_erg/s", descending=True).head(1).select("time_days", "luminosity_erg/s", "mag"))
+peakrow = dflc.sort("luminosity_erg/s", descending=True)["row"][0]
+print(dflc.slice(max(peakrow - 2, 0), 5).select("row", "time_days", "luminosity_erg/s", "luminosity_cmf_erg/s", "mag"))
+peakluminosity = dflc["luminosity_erg/s"][peakrow]
+firstluminosity = dflc["luminosity_erg/s"][0]
+if peakrow < 2 or peakrow > dflc.height - 3:
+    print("The maximum is at an edge of the time range, thus the true peak can be outside the range.")
+elif firstluminosity > 0.9 * peakluminosity:
+    print(
+        f"The first luminosity is {firstluminosity / peakluminosity:.0%} of the maximum. The true peak can be earlier."
+    )
 ```
 
 ## Spectra

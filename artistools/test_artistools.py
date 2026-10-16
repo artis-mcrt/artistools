@@ -1,6 +1,7 @@
 import argparse
 import contextlib
 import dataclasses as dc
+import functools
 import hashlib
 import importlib
 import importlib.util
@@ -4542,6 +4543,56 @@ def test_installskill_replaces_a_link_and_keeps_the_skill_of_the_package(tmp_pat
     assert not destination.is_symlink()
     assert packageskill.is_file()
     assert (destination / "SKILL.md").read_text(encoding="utf-8") == packageskill.read_text(encoding="utf-8")
+
+
+def test_artis_data_skill_names_each_function_that_exists() -> None:
+    """A rename needs no shim in artistools, thus a stale name in the skill gives an agent an error and no warning."""
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
+    names = sorted(set(re.findall(r"\bat\.([a-z_]+(?:\.[a-z_]+)*)\(", skilltext)))
+    assert len(names) > 10
+
+    stalenames = []
+    for name in names:
+        try:
+            function = functools.reduce(getattr, name.split("."), at)
+        except AttributeError:
+            stalenames.append(name)
+        else:
+            if not callable(function):
+                stalenames.append(name)
+    assert not stalenames, f"SKILL.md names functions that artistools does not have: {stalenames}"
+
+
+def test_artis_data_skill_examples_run_on_the_test_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each example of the skill must run, because a change of a reader can stop it with no other failed test.
+
+    The examples use 10 days and 12 days, but the test model ends at 7.9 days. Thus the test uses 5 days and 6 days.
+    """
+    import runpy
+
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
+    examples = list(re.finditer(r"```python\n(.*?)```", skilltext, re.DOTALL))
+    assert len(examples) > 3
+
+    monkeypatch.chdir(modelpath_classic_3d)
+    for index, example in enumerate(examples):
+        code = (
+            example
+            .group(1)
+            .replace("timedays(modelpath, 10)", "timedays(modelpath, 5)")
+            .replace("timedays(modelpath, 12)", "timedays(modelpath, 6)")
+        )
+        scriptpath = tmp_path / f"example{index}.py"
+        scriptpath.write_text(code, encoding="utf-8")
+        try:
+            runpy.run_path(str(scriptpath), run_name="__main__")
+        except Exception as exc:
+            exc.add_note(f"in the example at line {skilltext.count(chr(10), 0, example.start()) + 1} of SKILL.md")
+            raise
 
 
 def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> None:
