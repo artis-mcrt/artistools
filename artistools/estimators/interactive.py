@@ -848,6 +848,12 @@ def get_batch_caches(modelpath: Path) -> "list[EstimatorBatchCache]":
     child process imports artistools again, which took 0.4 s, thus the viewer process reads the caches itself when no
     batch is stale.
     """
+    # a cache in a cloud folder that is not on the disk can stop the window for minutes with no other output
+    runfoldernames = ", ".join(str(runfolder.relative_to(modelpath)) for runfolder in get_runfolders(modelpath))
+    print(
+        f"The viewer reads the metadata of the estimator caches in the run folders of {modelpath.resolve()}:"
+        f" {runfoldernames}"
+    )
     states = get_estimator_batch_states(modelpath, None, None)
     convert = partial(convert_estimator_batch_caches, verbose=False)
     if any(state.rebuild for state in states):
