@@ -24,13 +24,25 @@ def get_skill_folder() -> Path:
     return Path(__file__).parent / "data" / "skills" / SKILLNAME
 
 
+def get_layout_skillsdir(layout: str) -> Path:
+    """Return the skills folder of the user for a layout, e.g. ~/.agents/skills for "agents"."""
+    return Path.home() / f".{layout}" / "skills"
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add the arguments that select the skills folder and the type of the installation."""
-    parser.add_argument(
-        "-skillsdir",
-        type=Path,
-        default=Path.home() / ".claude" / "skills",
-        help="The folder that holds the skills of the user. The default is ~/.claude/skills, which Claude Code reads",
+    foldergroup = parser.add_mutually_exclusive_group()
+    foldergroup.add_argument(
+        "-layout",
+        choices=("claude", "agents"),
+        default="claude",
+        help=(
+            "The skills folder of the agent. claude gives ~/.claude/skills, which Claude Code reads. agents gives"
+            " ~/.agents/skills, which Codex, Cursor, and OpenCode read"
+        ),
+    )
+    foldergroup.add_argument(
+        "-skillsdir", type=Path, help="A skills folder of the user in place of the folder that -layout gives"
     )
     parser.add_argument(
         "--copy",
@@ -73,8 +85,9 @@ def install_skill(skillsdir: Path, *, copy: bool, force: bool) -> bool:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Install the artis-data skill for a large language model (LLM) agent, e.g. Claude Code."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    destination = args.skillsdir / SKILLNAME
-    if install_skill(args.skillsdir, copy=args.copy, force=args.force):
+    skillsdir = args.skillsdir or get_layout_skillsdir(args.layout)
+    destination = skillsdir / SKILLNAME
+    if install_skill(skillsdir, copy=args.copy, force=args.force):
         print(f"Installed {SKILLNAME} as a {'copy' if args.copy else 'link'} in {destination}")
     else:
         print(f"{destination} is already a link to the skill of this installation of artistools")

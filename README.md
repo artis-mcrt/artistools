@@ -157,7 +157,11 @@ artistools contains a skill for a large language model (LLM) agent, e.g. Claude 
 artistools installskill
 ```
 
-The command makes a link in `~/.claude/skills` to the skill in the installed package. Thus an update of artistools also updates the skill. For a different agent, give its skills folder with `-skillsdir`. Start a new session of the agent after the installation. Then ask a question about a model, or type `/artis-data`.
+The command makes a link in `~/.claude/skills` to the skill in the installed package. Thus an update of artistools also updates the skill.
+
+For Codex, Cursor, or OpenCode, give `-layout agents`. The command then makes the link in `~/.agents/skills`. For a different agent, give its skills folder with `-skillsdir`.
+
+Start a new session of the agent after the installation. Then ask a question about a model, or type `/artis-data`.
 
 ## Example output
 
