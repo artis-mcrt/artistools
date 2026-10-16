@@ -186,6 +186,31 @@ def test_spectraemissionplot_nostack(mockplot: mock.MagicMock, tmp_path: Path) -
     assert len(seriescalls) % 2 == 0
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_spectraabsorptionplot_draws_the_net_spectrum(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """--showabsorption alone draws the same net spectrum as --showemission.
+
+    Before, a plot with no emission gave a net spectrum of zero.
+    """
+    netspectra = []
+    for flag in ("--showemission", "--showabsorption"):
+        mockplot.reset_mock()
+        at.spectra.plot(
+            argsraw=[flag],
+            specpath=modelpath,
+            outputfile=tmp_path / f"{flag}.pdf",
+            timemin=290,
+            timemax=320,
+            use_thermalemissiontype=True,
+        )
+        (netcall,) = [call for call in mockplot.call_args_list if call.kwargs.get("color") == "black"]
+        netspectra.append(np.asarray(netcall.args[2]))
+
+    emissionnet, absorptionnet = netspectra
+    assert np.any(emissionnet > 0.0)
+    assert np.allclose(absorptionnet, emissionnet, rtol=1e-12, atol=0.0)
+
+
 def test_spectra_get_spectrum() -> None:
     def check_spectrum(dfspectrumpkts: pl.DataFrame, expectedmax: float, expectedmean: float) -> None:
         assert math.isclose(max(dfspectrumpkts["f_lambda"]), expectedmax, rel_tol=1e-4)

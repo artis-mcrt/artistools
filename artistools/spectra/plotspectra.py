@@ -1273,58 +1273,71 @@ def get_emission_contributions(
     """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
 
     A run with --frompackets reads the packets files. A run without it reads the emission file and the
-    absorption file that ARTIS writes for each timestep.
+    absorption file that ARTIS writes for each timestep. The total emitted flux is the net spectrum, thus a plot
+    with --showabsorption alone also reads the emission.
     """
-    if not args.frompackets:
-        assert not args.vpkt_match_emission_exclusion_to_opac
-        # the emission files of exspec hold no sampled emission, thus resolve_frompackets selects the packets for it
-        assert not args.use_sampledemissiontype
-        lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, args.xunit)
 
-        return get_flux_contributions(
+    def read_contributions(
+        getemission: bool, getabsorption: bool
+    ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+        """Return the contributions, the total emitted flux, and the wavelength grid of the selected processes."""
+        if not args.frompackets:
+            assert not args.vpkt_match_emission_exclusion_to_opac
+            # the emission files of exspec hold no sampled emission, thus resolve_frompackets selects the packets
+            assert not args.use_sampledemissiontype
+            lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, args.xunit)
+
+            return get_flux_contributions(
+                modelpath,
+                timestepmin,
+                timestepmax,
+                filterfunc=filterfunc,
+                getemission=getemission,
+                getabsorption=getabsorption,
+                use_lastemissiontype=not args.use_thermalemissiontype,
+                directionbin=dirbin,
+                average_over_phi=args.average_over_phi_angle,
+                average_over_theta=args.average_over_theta_angle,
+                lambda_min=lambda_min,
+                lambda_max=lambda_max,
+                maxseriescount=args.maxseriescount,
+                fixedionlist=args.fixedionlist,
+            )
+
+        return get_flux_contributions_from_packets(
             modelpath,
-            timestepmin,
-            timestepmax,
+            timelowdays=timemin,
+            timehighdays=timemax,
+            lambda_bin_edges=get_packet_lambda_bin_edges(args, xmin, xmax, modelpath),
+            getemission=getemission,
+            getabsorption=getabsorption,
+            maxpacketfiles=args.maxpacketfiles,
             filterfunc=filterfunc,
-            getemission=args.showemission,
-            getabsorption=args.showabsorption,
-            use_lastemissiontype=not args.use_thermalemissiontype,
+            groupby=args.groupby,
+            use_time=get_packet_use_time(args),
+            fixedionlist=args.fixedionlist,
+            maxseriescount=args.maxseriescount + 20,
+            gamma=args.gamma,
+            emissionevent=get_emission_event(args),
             directionbin=dirbin,
             average_over_phi=args.average_over_phi_angle,
             average_over_theta=args.average_over_theta_angle,
-            lambda_min=lambda_min,
-            lambda_max=lambda_max,
-            maxseriescount=args.maxseriescount,
-            fixedionlist=args.fixedionlist,
+            directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+            vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
+            shelledges=args.shelledges,
+            shellunit=args.shellunit,
+            velocityranges=args.velocityranges_kmps,
         )
 
-    use_time = get_packet_use_time(args)
-    lambda_bin_edges = get_packet_lambda_bin_edges(args, xmin, xmax, modelpath)
-
-    return get_flux_contributions_from_packets(
-        modelpath,
-        timelowdays=timemin,
-        timehighdays=timemax,
-        lambda_bin_edges=lambda_bin_edges,
-        getemission=args.showemission,
-        getabsorption=args.showabsorption,
-        maxpacketfiles=args.maxpacketfiles,
-        filterfunc=filterfunc,
-        groupby=args.groupby,
-        use_time=use_time,
-        fixedionlist=args.fixedionlist,
-        maxseriescount=args.maxseriescount + 20,
-        gamma=args.gamma,
-        emissionevent=get_emission_event(args),
-        directionbin=dirbin,
-        average_over_phi=args.average_over_phi_angle,
-        average_over_theta=args.average_over_theta_angle,
-        directionbins_are_vpkt_observers=args.plotvspecpol is not None,
-        vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
-        shelledges=args.shelledges,
-        shellunit=args.shellunit,
-        velocityranges=args.velocityranges_kmps,
+    contribution_list, array_flambda_emission_total, arraylambda_angstroms = read_contributions(
+        args.showemission, args.showabsorption
     )
+    if not args.showemission:
+        # the emission of each series would change the ranking of the absorption series, thus only the total
+        # comes from this call
+        _, array_flambda_emission_total, _ = read_contributions(getemission=True, getabsorption=False)
+
+    return contribution_list, array_flambda_emission_total, arraylambda_angstroms
 
 
 def order_and_color_shells(
