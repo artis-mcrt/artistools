@@ -8,6 +8,7 @@ from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
+from operator import itemgetter
 from pathlib import Path
 from types import MappingProxyType
 
@@ -27,6 +28,7 @@ from artistools.commands import get_path
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
+from artistools.constants import megaparsec_to_cm
 from artistools.inputmodel import get_spatial_scales
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
@@ -99,6 +101,7 @@ from artistools.plottools import make_frame_figure
 from artistools.plottools import make_frame_figure_with_residuals
 from artistools.plottools import plain_label
 from artistools.plottools import print_dirbin_summary
+from artistools.plottools import print_series_summary
 from artistools.plottools import ResidualSeries
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
@@ -361,6 +364,68 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     save_figure(fig, outpath, args=args)
 
 
+def print_spectrum_summary(
+    seriesname: str, dfspectrum: pl.DataFrame, xlimits: tuple[float, float], xunit: str, yvariable: str
+) -> None:
+    """Log the peak of a drawn spectrum and the luminosity of the drawn range, from the rows inside the x range.
+
+    The frame of a spectrum keeps the nearest row outside each end of the x range, and the axis does not show it. The
+    luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc over the drawn wavelengths, thus it does not
+    depend on -distmpc or --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g. all the
+    packets, thus the summary does not give it.
+    """
+    xlow, xhigh = sorted(xlimits)
+    dfinrange = dfspectrum.filter(pl.col("x").is_between(xlow, xhigh)).sort("lambda_angstroms")
+    if dfinrange.is_empty():
+        print_series_summary(seriesname, ["no point in the x range"])
+        return
+    peakx, peaky = dfinrange.select(pl.col("x", "y").sort_by("y", descending=True).first()).row(0)
+    flux_onempc = abs(float(np.trapezoid(dfinrange["f_lambda"].to_numpy(), x=dfinrange["lambda_angstroms"].to_numpy())))
+    print_series_summary(
+        seriesname,
+        [
+            f"{dfinrange.height} points from {dfinrange['x'].min():.4g} to {dfinrange['x'].max():.4g} {xunit}",
+            f"peak {yvariable} {peaky:.4g} at {peakx:.4g} {xunit}",
+            f"luminosity of the drawn range {flux_onempc * 4 * math.pi * megaparsec_to_cm**2:.4g} erg/s",
+        ],
+    )
+
+
+def print_main_contributions(
+    modelname: str,
+    contributions: Sequence[FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    xlimits: tuple[float, float],
+    args: argparse.Namespace,
+) -> None:
+    """Log the five drawn series with the largest share of the emission, and of the absorption, in the drawn range.
+
+    A share is the integral of f_lambda of the series over the drawn wavelengths divided by the sum of these integrals
+    of all the drawn series. The series "Other" holds the series that the plot does not draw alone.
+    """
+    lambda_min, lambda_max = convert_xlimits_to_lambda_range(*xlimits, args.xunit)
+    inrange = (arraylambda_angstroms >= lambda_min) & (arraylambda_angstroms <= lambda_max)
+    if inrange.sum() < 2:
+        return
+    lambdas = arraylambda_angstroms[inrange]
+    for kind, show in (("emission", args.showemission), ("absorption", args.showabsorption)):
+        if not show:
+            continue
+        integrals = {
+            contribution.linelabel: abs(
+                float(np.trapezoid(np.asarray(getattr(contribution, f"array_flambda_{kind}"))[inrange], x=lambdas))
+            )
+            for contribution in contributions
+        }
+        total = sum(integrals.values())
+        if total <= 0.0:
+            continue
+        largest = sorted(integrals.items(), key=itemgetter(1), reverse=True)[:5]
+        print_series_summary(
+            f"{kind} of {modelname}", [f"{plain_label(label)} {integral / total:.1%}" for label, integral in largest]
+        )
+
+
 def plot_reference_spectrum(
     filename: Path | str,
     axis: mplax.Axes,
@@ -447,6 +512,7 @@ def plot_reference_spectrum(
     ymax = specdata["y"].max()
     assert isinstance(ymax, float)
     (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=label, **plotkwargs)
+    print_spectrum_summary(label, specdata, (xmin, xmax), xunit, yvariable)
 
     if residualseries is not None:
         residualseries.append(
@@ -1026,6 +1092,13 @@ def plot_artis_spectrum(
             seriessuffix = f"_dirbin{dirbin:02d}" if dirbin >= 0 else ""
             if args.multispecplot:
                 seriessuffix += f"_{args.timedayslist[axindex]}d"
+            print_spectrum_summary(
+                f"{linelabel_withdirbin or get_model_name(modelpath)}{seriessuffix}",
+                dfspectrum,
+                (xmin, xmax),
+                xunit,
+                yvariable,
+            )
             xplot, yplot = dfspectrum["x"].to_numpy(), dfspectrum["y"].to_numpy()
             binedges = None
             if args.histogram:
@@ -1771,6 +1844,8 @@ def make_emissionabsorption_plot(
             hideother=args.hideother,
         )
 
+    print_main_contributions(modelname, contributions_sorted_reduced, arraylambda_angstroms, (xmin, xmax), args)
+
     plotobjectlabels: list[str] = []
     plotobjects: list[Artist] = []
 
@@ -1801,6 +1876,13 @@ def make_emissionabsorption_plot(
             zorder=100,
         )
         plotobjects.append(line)
+        print_spectrum_summary(
+            f"{modelname} spectrum",
+            dfspectotal.with_columns(y=pl.col("y") * scalefactor),
+            (xmin, xmax),
+            args.xunit,
+            args.yvariable,
+        )
 
     dfaxisdata = pl.DataFrame({"lambda_angstroms": arraylambda_angstroms})
     for contribution in contributions_sorted_reduced:

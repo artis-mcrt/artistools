@@ -6083,6 +6083,36 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
     summary = get_series_summary_query(dfseries, {}).collect().row(0, named=True)
     assert (summary["xmin"], summary["xmax"], summary["valuecount"], summary["emptybincount"]) == (2.0, 3.0, 2, 2)
 
+    # the luminosity of the drawn range is 4 pi (1 Mpc)^2 times the integrated flux at 1 Mpc of the same rows
+    at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "spec.pdf")
+    out = capsys.readouterr().out
+    spectrummatch = re.search(
+        r"TEST MODEL [^:]*: (\d+) points from .* angstrom, peak flux ([\d.e+-]+) at ([\d.e+-]+) angstrom, luminosity of"
+        r" the drawn range ([\d.e+-]+) erg/s",
+        out,
+    )
+    assert spectrummatch is not None
+    dfspec = at.spectra.get_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect()
+    dfrange = dfspec.filter(pl.col("lambda_angstroms").is_between(2500, 19000)).sort("lambda_angstroms")
+    expected_luminosity = (
+        np.trapezoid(dfrange["f_lambda"].to_numpy(), x=dfrange["lambda_angstroms"].to_numpy())
+        * 4
+        * math.pi
+        * at.constants.megaparsec_to_cm**2
+    )
+    assert np.isclose(float(spectrummatch.group(4)), expected_luminosity, rtol=1e-3)
+
+    # --showemission gives the five series with the largest share of the emission
+    at.spectra.plot(
+        argsraw=[], specpath=[modelpath_classic_3d], timedays="5", showemission=True, outputfile=tmp_path / "em.pdf"
+    )
+    emissionmatch = re.search(r"emission of test-classicmode_3d: (.*)", capsys.readouterr().out)
+    assert emissionmatch is not None
+    shares = [float(share.rstrip("%")) for share in re.findall(r"([\d.]+)%", emissionmatch.group(1))]
+    assert len(shares) == 5
+    assert shares == sorted(shares, reverse=True)
+    assert sum(shares) <= 100.0
+
 
 def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
