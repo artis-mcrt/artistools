@@ -13,6 +13,7 @@ from pathlib import Path
 
 import polars as pl
 
+from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
@@ -100,20 +101,17 @@ def summarise_log_messages(dfmessages: pl.DataFrame) -> pl.DataFrame:
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, default=Path())
-    rankgroup = parser.add_mutually_exclusive_group()
-    rankgroup.add_argument(
+    parser.add_argument(
         "-ranks", default="0", help='The MPI ranks of the logs to read, e.g. 0-3,8 or "all". The default is 0'
     )
-    rankgroup.add_argument(
-        "-modelgridindex", type=int, nargs="+", help="Read the logs of the ranks that update these cells"
-    )
+    addarg_modelgridindex(parser, helptext="Read the logs of the ranks that update these cells, in place of -ranks")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Count the warnings and the errors in the logs of an ARTIS model, by kind of message."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     modelpath = get_model_folder(args.modelpath)
-    if args.modelgridindex is not None:
+    if args.modelgridindex:
         ranks = list(get_mpiranklist(modelpath, modelgridindex=args.modelgridindex))
     elif args.ranks == "all":
         ranks = list(get_mpiranklist(modelpath))
