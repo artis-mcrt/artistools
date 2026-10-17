@@ -3,6 +3,7 @@
 import argparse
 import dataclasses as dc
 import importlib
+import sys
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Mapping
@@ -127,7 +128,16 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": ("completions", "describe", "getpath", "installskill", "logsummary", "timesteps", "version"),
+    "other commands": (
+        "completions",
+        "describe",
+        "getpath",
+        "installskill",
+        "logsummary",
+        "python",
+        "timesteps",
+        "version",
+    ),
 })
 
 # "artistools describeinputmodel" was a top-level command, thus a script of a user holds that name.
@@ -320,6 +330,12 @@ subcommandtree: CommandTree = {
         "plotviewingangles",
         helptext="Plot a 3D view of a model.",
         note="The view holds an isosurface of the density and the direction bins.",
+    ),
+    "python": CommandSpec(
+        "commands",
+        funcname="show_python",
+        helptext="Print the path of the Python interpreter that runs artistools.",
+        note="A script that imports artistools can run with this interpreter, e.g. from an agent.",
     ),
     "server": CommandSpec(
         "misc.remote",
@@ -931,6 +947,17 @@ def show_version(args: argparse.Namespace | None = None, **kwargs: t.Any) -> Non
     from artistools.misc import print_product
 
     print_product(args or argparse.Namespace(), f"artistools {version('artistools')}")
+
+
+def show_python(args: argparse.Namespace | None = None, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
+    """Print the path of the Python interpreter that runs artistools. The path is the product, thus --quiet keeps it.
+
+    The command of artistools can be in a different folder from its interpreter, e.g. ~/.local/bin for pip install
+    --user, thus the folder of the command does not give the interpreter.
+    """
+    from artistools.misc import print_product
+
+    print_product(args or argparse.Namespace(), sys.executable)
 
 
 def get_path(key: str) -> Path:

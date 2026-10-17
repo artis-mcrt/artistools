@@ -34,10 +34,10 @@ The file `recipes.md` gives tested examples for questions about why a model beha
 
 ## Run Python with artistools
 
-Use the Python of the environment that holds the `artistools` command:
+Use the Python of the environment that holds the `artistools` command. `artistools python` gives its path:
 
 ```sh
-ATPY="$(dirname "$(realpath "$(command -v artistools)")")/python"
+ATPY="$(artistools python --quiet)"
 "$ATPY" -P - <<'EOF'
 import artistools as at
 ...

@@ -3060,6 +3060,23 @@ def test_write_data_gives_a_table_for_each_wavelength_grid(tmp_path: Path) -> No
     assert not np.allclose(dffirst["lambda_angstroms"], dfsecond["lambda_angstroms"])
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_write_data_gives_the_edges_of_a_histogram(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """--histogram draws each bin from its lower edge to its upper edge, and the table gave the centre alone."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath],
+        timedays="300",
+        histogram=True,
+        write_data=True,
+        outputfile=tmp_path / "histogram.pdf",
+    )
+    dftable = pl.read_csv(tmp_path / "histogram.txt", separator=" ", null_values="nan")
+    drawnx = np.asarray(mockplot.call_args_list[0].args[1], dtype=np.float64)
+    edges = np.column_stack([dftable["x_lower_angstrom"].to_numpy(), dftable["x_upper_angstrom"].to_numpy()])
+    assert np.allclose(drawnx, edges.ravel(), rtol=1e-9, atol=0)
+
+
 @mock.patch.object(mplax.Axes, "fill_between", side_effect=mplax.Axes.fill_between, autospec=True)
 def test_write_data_gives_the_noise_of_shownoise(mockfill: mock.MagicMock, tmp_path: Path) -> None:
     """--shownoise draws the band y * (1 +- r), and the table gave y alone, thus it could not give the band."""

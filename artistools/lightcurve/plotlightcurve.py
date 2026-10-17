@@ -329,12 +329,10 @@ def plot_bol_reflightcurve(
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
     time_days = dflightcurve["time_days"].to_numpy()
     yvalues = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
-    if plottedpoints is not None:
-        plottedpoints.append(
-            dflightcurve.select(
-                pl.lit(plotlabel).alias("model"), pl.lit("reference").alias("escape_type"), pl.all()
-            ).with_columns(pl.Series(get_plot_lum_column(lumunit), yvalues, dtype=pl.Float64))
-        )
+    plotcolumn = get_plot_lum_column(lumunit)
+    dfplotted = dflightcurve.select(
+        pl.lit(plotlabel).alias("model"), pl.lit("reference").alias("escape_type"), pl.all()
+    ).with_columns(pl.Series(plotcolumn, yvalues, dtype=pl.Float64))
 
     residual_yerr = None
     errorbar_kwargs = None
@@ -345,6 +343,12 @@ def plot_bol_reflightcurve(
             dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
             dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
             lumunit,
+        )
+        # the bars are in the unit of the y axis, and a magnitude bar has its sides in the other order
+        dfplotted = dfplotted.with_columns(
+            pl.Series(f"{plotcolumn}_errlower", np.asarray(yerr[0], dtype=np.float64)),
+            pl.Series(f"{plotcolumn}_errupper", np.asarray(yerr[1], dtype=np.float64)),
+            pl.Series("faint_side_unbounded", np.asarray(unbounded, dtype=bool)),
         )
         # the error bars are the only lines of this series, thus -linewidth sets their width
         errorbars = axis.errorbar(
@@ -387,6 +391,8 @@ def plot_bol_reflightcurve(
             time_days, yvalues, marker="o", linestyle="None", label=plotlabel, color=color, alpha=alpha
         )
         refartists = [refline]
+    if plottedpoints is not None:
+        plottedpoints.append(dfplotted)
 
     # a marker and a line have different default zorders. With an equal zorder, matplotlib draws
     # the series in the order of the command line

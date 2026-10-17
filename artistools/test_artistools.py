@@ -4662,9 +4662,17 @@ def test_artis_data_skill_python_ignores_a_module_in_the_model_folder(tmp_path: 
     marker = tmp_path / "ran.txt"
     (modelfolder / "artistools.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
 
-    # the editable installation of a checkout can need the checkout on PYTHONPATH, and -P keeps that path
+    # the command of pip install --user is in ~/.local/bin, and that folder holds no python. Thus the command of this
+    # test is in a folder of its own. The editable installation of a checkout can need PYTHONPATH, and -P keeps it
+    commandfolder = tmp_path / "bin"
+    commandfolder.mkdir()
+    # a console script does not put the working folder on sys.path, and -m does without -P
+    (commandfolder / "artistools").write_text(
+        f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -P -m artistools "$@"\n', encoding="utf-8"
+    )
+    (commandfolder / "artistools").chmod(0o755)
     env = os.environ | {
-        "PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
+        "PATH": os.pathsep.join([str(commandfolder), os.environ.get("PATH", "")]),
         "PYTHONPATH": str(Path(at.__file__).resolve().parent.parent),
     }
     bashpath = shutil.which("bash")

@@ -1258,6 +1258,7 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: mock.MagicMock) -> No
         reflightcurves=[REFLIGHTCURVE],
         magnitude=True,
         outputfile=outputpath / "lc_reflightcurves_arg.pdf",
+        write_data=True,
     )
 
     dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(REFLIGHTCURVE)
@@ -1275,6 +1276,13 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: mock.MagicMock) -> No
     )
     assert np.allclose(yerr[0], expected[0])
     assert np.allclose(yerr[1], expected[1])
+
+    # the table gave the error sizes in erg/s, and the figure draws them in magnitudes with the sides swapped
+    dftable = pl.read_csv(
+        outputpath / "lc_reflightcurves_arg.txt", separator=" ", null_values="nan", infer_schema_length=None
+    ).filter(pl.col("escape_type") == "reference")
+    assert np.allclose(dftable["mag_errlower"], yerr[0], rtol=1e-6, atol=0)
+    assert np.allclose(dftable["mag_errupper"], yerr[1], rtol=1e-6, atol=0)
 
 
 @pytest.mark.parametrize(

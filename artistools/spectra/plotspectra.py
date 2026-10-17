@@ -1026,8 +1026,6 @@ def plot_artis_spectrum(
             seriessuffix = f"_dirbin{dirbin:02d}" if dirbin >= 0 else ""
             if args.multispecplot:
                 seriessuffix += f"_{args.timedayslist[axindex]}d"
-            drawnseries.append((seriessuffix, dfspectrum))
-
             xplot, yplot = dfspectrum["x"].to_numpy(), dfspectrum["y"].to_numpy()
             binedges = None
             if args.histogram:
@@ -1038,6 +1036,9 @@ def plot_artis_spectrum(
                     f" The edges are {edgesource}"
                 )
                 xplot, yplot = get_histogram_xy(lower, upper, yplot)
+                # the bins of a histogram can have different widths, thus the table gives the edges of each bin
+                dfspectrum = dfspectrum.with_columns(x_lower=pl.Series(lower), x_upper=pl.Series(upper))
+            drawnseries.append((seriessuffix, dfspectrum))
             (modelline,) = axis.plot(
                 xplot, yplot, label=linelabel_withdirbin if axindex == 0 else None, **panelplotkwargs
             )
@@ -1068,22 +1069,33 @@ def plot_artis_spectrum(
     gridtables: list[pl.DataFrame] = []
     for seriessuffix, dfspectrum in drawnseries:
         hasnoise = args.shownoise and "yrelnoise" in dfspectrum.columns
+        hasedges = "x_lower" in dfspectrum.columns
         add_to_grid_tables(
             gridtables,
             dfspectrum.select(
                 "lambda_angstroms",
                 pl.col("x").alias(xcolumn),
+                *(
+                    [pl.col("x_lower").alias(f"x_lower_{args.xunit}"), pl.col("x_upper").alias(f"x_upper_{args.xunit}")]
+                    if hasedges
+                    else []
+                ),
                 pl.col("f_lambda").alias(f"f_lambda{seriessuffix}"),
                 pl.col("y").alias(f"{args.yvariable}_plotted{seriessuffix}"),
                 *([pl.col("yrelnoise").alias(f"{args.yvariable}_relnoise{seriessuffix}")] if hasnoise else []),
             ),
-            xcolumn,
+            get_grid_columns(args.xunit),
         )
 
     return gridtables
 
 
-def add_to_grid_tables(gridtables: list[pl.DataFrame], dfseries: pl.DataFrame, xcolumn: str) -> None:
+def get_grid_columns(xunit: str) -> tuple[str, ...]:
+    """Return the columns of a spectrum table that belong to its wavelength grid, and not to one series."""
+    return ("lambda_angstroms", f"x_plotted_{xunit}", f"x_lower_{xunit}", f"x_upper_{xunit}")
+
+
+def add_to_grid_tables(gridtables: list[pl.DataFrame], dfseries: pl.DataFrame, gridcolumns: Sequence[str]) -> None:
     """Add the columns of a series to the table of its wavelength grid, or start a table for a new grid.
 
     Two models or two direction bins can have different wavelength grids, and one wide table holds one grid.
@@ -1092,7 +1104,7 @@ def add_to_grid_tables(gridtables: list[pl.DataFrame], dfseries: pl.DataFrame, x
     for index, table in enumerate(gridtables):
         tablelambdas = table["lambda_angstroms"].to_numpy()
         if tablelambdas.shape == serieslambdas.shape and np.allclose(tablelambdas, serieslambdas):
-            gridtables[index] = table.with_columns(dfseries.drop("lambda_angstroms", xcolumn))
+            gridtables[index] = table.with_columns(dfseries.drop(gridcolumns, strict=False))
             return
     gridtables.append(dfseries)
 
@@ -1232,21 +1244,20 @@ def make_spectrum_plot(
             dfothers.append(get_drawn_lines_table(otherlines, args))
         if seriesdata:
             # one column for each model, direction bin, and panel, e.g. f_lambda.mymodel_dirbin05_300d
-            xcolumn = f"x_plotted_{args.xunit}"
+            gridcolumns = get_grid_columns(args.xunit)
             for dfgrid in seriesdata:
                 add_to_grid_tables(
                     gridtables,
                     dfgrid.select(
-                        "lambda_angstroms",
-                        xcolumn,
+                        *(colname for colname in dfgrid.columns if colname in gridcolumns),
                         *(
                             pl.col(colname).alias(f"{prefix}.{seriesname}{suffix}")
                             for colname in dfgrid.columns
-                            if colname not in {"lambda_angstroms", xcolumn}
+                            if colname not in gridcolumns
                             for prefix, suffix in [split_series_column(colname, args.yvariable)]
                         ),
                     ),
-                    xcolumn,
+                    gridcolumns,
                 )
 
     if nseriesplotted == 0:
