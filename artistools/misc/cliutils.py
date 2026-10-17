@@ -16,6 +16,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import MappingProxyType
 
+import matplotlib.colors as mplcolors
+
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
 from artistools.misc.fileio import get_file_copies
@@ -843,8 +845,6 @@ def color_arg(value: str) -> str:
     The colours are compared and resolved long before anything is drawn, so a typo caught here names the
     argument that caused it instead of surfacing from inside a plotting helper.
     """
-    import matplotlib.colors as mplcolors
-
     if not mplcolors.is_color_like(value):
         msg = f"not a matplotlib color: {value}"
         raise argparse.ArgumentTypeError(msg)

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import polars as pl
+from matplotlib.backends.backend_pdf import PdfPages
 
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -124,8 +125,6 @@ def make_plot(
     args: argparse.Namespace,
 ) -> None:
     """Write one page per timestep of stage duration versus mpi rank to a multi-page PDF."""
-    from matplotlib.backends.backend_pdf import PdfPages
-
     makestable = getattr(args, "print_data", False) or getattr(args, "write_data", False)
     dfdrawnlines: list[pl.DataFrame] = []
 

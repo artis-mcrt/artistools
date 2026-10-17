@@ -22,6 +22,7 @@ from types import MappingProxyType
 
 import polars as pl
 from polars import selectors as cs
+from polars.io.plugins import register_io_source
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
@@ -1163,8 +1164,6 @@ def scan_remote_estimators(
     sends the rows and the columns of the query. batchcaches gives the caches of the model on the host.
     """
     import functools
-
-    from polars.io.plugins import register_io_source
 
     template, modelmeta, source = get_remote_estimator_schema(
         modelpath,

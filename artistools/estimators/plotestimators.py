@@ -16,8 +16,10 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
+import matplotlib as mpl
 import matplotlib.axes as mplax
 import matplotlib.colors as mc
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 from polars import selectors as cs
@@ -1110,8 +1112,6 @@ def get_styled_series(
     A line style of the item replaces the dash pattern of the plot, e.g. of an ion. A dash pattern of the item replaces
     the line style.
     """
-    import matplotlib as mpl
-
     plotkwargs = series.plotkwargs.copy()
     if "color" in style:
         plotkwargs["color"] = style["color"]
@@ -2676,8 +2676,6 @@ def draw_image_figure(
 
     If the caller gives an empty figure as fig, the function draws on it, e.g. for a window that stays open.
     """
-    import matplotlib.pyplot as plt
-
     set_mpl_style()
     plotaxis1, plotaxis2 = figuredata.plotaxes
     isplane = plotaxis1 != "rcyl"

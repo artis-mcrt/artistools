@@ -10,6 +10,8 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
+import polars as pl
+
 if t.TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -188,8 +190,6 @@ def get_polars_panic() -> type[BaseException]:
 
     The dispatcher imports polars only when an error comes, thus a quick command such as version starts quickly.
     """
-    import polars as pl
-
     return pl.exceptions.PanicException
 
 

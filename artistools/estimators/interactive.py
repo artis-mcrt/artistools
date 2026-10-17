@@ -11,9 +11,12 @@ from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
+import matplotlib as mpl
+import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
+from matplotlib.collections import QuadMesh
 
 from artistools.atomic import get_ionstring
 from artistools.constants import C_cm_per_s
@@ -310,8 +313,6 @@ def get_series_swatches(
 
     darkforeground is the foreground colour of Dark Mode, which takes the place of a dark grey, see get_light_grey.
     """
-    import matplotlib as mpl
-    import matplotlib.colors as mplcolors
 
     def get_shown_rgba(colour: t.Any) -> tuple[float, float, float, float]:
         rgba = mplcolors.to_rgba(colour)
@@ -2055,7 +2056,6 @@ def open_window(
     tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]", *, newwindow: bool = True
 ) -> str | None:
     """Open a window of the viewer for the plotestimators arguments in tokens, or return the reason for no window."""
-    from matplotlib.collections import QuadMesh
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
@@ -2891,8 +2891,6 @@ def open_window(
 
     def edit_item_style(row: int, position: int, anchor: QtCore.QPoint | None = None) -> None:
         """Ask for the line properties of one series of a subplot, and show each change in the plot immediately."""
-        import matplotlib as mpl
-
         subplot = viewer.values.subplots[row]
         if position >= len(subplot):
             return

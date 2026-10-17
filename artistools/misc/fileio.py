@@ -21,6 +21,7 @@ from functools import cache
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 import polars.selectors as cs
 
@@ -1051,7 +1052,6 @@ def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: f
 
     iio = import_optional("imageio.v2")
 
-    import numpy as np
     from PIL import Image
 
     # a gif holds one canvas, thus pad every frame to the largest size or lose what lies outside.

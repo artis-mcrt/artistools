@@ -10,17 +10,25 @@ from collections.abc import Sequence
 from functools import cache
 from functools import partial
 
+import matplotlib as mpl
 import matplotlib.artist as mplartist
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
 import matplotlib.cm as mplcm
+import matplotlib.collections as mplcollections
 import matplotlib.colors as mplcolors
+import matplotlib.container as mplcontainer
 import matplotlib.figure as mplfig
+import matplotlib.legend as mpllegend
 import matplotlib.lines as mpllines
 import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
+import numpy as np
 import polars as pl
+from matplotlib.collections import Collection
+from matplotlib.patches import Patch
+from matplotlib.text import Text
 
 from artistools.commands import get_path
 from artistools.misc import exit_with_error
@@ -47,8 +55,6 @@ def get_drawn_values(ax: "AxesTree") -> "tuple[npt.NDArray[np.float64], npt.NDAr
     A point covers half the distance to each of its neighbours, in the scale of the x axis. Thus a light curve at
     times in a geometric sequence gives most of a linear time axis to its late points, which are few.
     """
-    import numpy as np
-
     ycolumns: list[npt.NDArray[np.float64]] = []
     widthcolumns: list[npt.NDArray[np.float64]] = []
     for axis in iter_axes(ax):
@@ -78,8 +84,6 @@ def wants_log_scale(values: "npt.NDArray[np.float64]", xwidths: "npt.NDArray[np.
 
     A value of zero or below has no place on a log axis, thus many of them keep the linear one.
     """
-    import numpy as np
-
     # a mask costs one byte per value, thus this counts them without a copy
     isfinite = np.isfinite(values)
     ispositive = isfinite & (values > 0.0)
@@ -124,11 +128,9 @@ if t.TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    import matplotlib.legend as mpllegend
     import matplotlib.legend_handler as mpllegendhandler
     import matplotlib.transforms as mpltransforms
     import matplotlib.typing as mplt
-    import numpy as np
     import numpy.typing as npt
     from matplotlib.backend_bases import RendererBase
 
@@ -555,8 +557,6 @@ def make_frame_figure(
         fig.set_size_inches(figwidth, figheight, forward=True)
     divider = Divider(fig, (0.0, 0.0, 1.0, 1.0), horizontal, vertical, aspect=False)
 
-    import numpy as np
-
     axes = np.empty((rows, cols), dtype=object)
     for row in range(rows):
         for col in range(cols):
@@ -666,8 +666,6 @@ def get_fitted_legend_columns(ax: mplax.Axes, legendkwargs: dict[str, t.Any]) ->
 
     A legend that would become wider than the frame keeps the columns before that.
     """
-    import matplotlib.legend as mpllegend
-
     fig = ax.get_figure(root=True)
     get_renderer = getattr(fig.canvas, "get_renderer", None) if fig is not None else None
     if get_renderer is None:
@@ -735,8 +733,6 @@ def get_polyline_yrange(points: "npt.NDArray[np.float64]", xlow: float, xhigh: f
     The points are in the fractions of the axes. A segment that crosses a side of the range counts at that side, thus
     a line with few points under a legend still counts. The part of the line outside the axes does not count.
     """
-    import numpy as np
-
     x, y = points[:, 0], points[:, 1]
     candidates = [y[(x >= xlow) & (x <= xhigh)]]
     if len(x) > 1:
@@ -758,9 +754,6 @@ def get_data_fraction_range(ax: mplax.Axes, xlow: float, xhigh: float) -> tuple[
     An artist with a position in the fractions of the axes on one axis does not count. For example, axvline covers
     each height, and the span of a Shift-drag covers each x.
     """
-    import matplotlib.collections as mplcollections
-    import numpy as np
-
     toaxes = ax.transAxes.inverted()
     scatterpoints: list[npt.NDArray[np.float64]] = []
 
@@ -849,8 +842,6 @@ def make_room_for_legend(
         if yrange is None:
             return
 
-    import numpy as np
-
     scale = ax.yaxis.get_transform()
     bottom, top = ax.get_ylim()
     if (bottom, top) != ax.yaxis.limit_range_for_scale(bottom, top):
@@ -882,8 +873,6 @@ def get_legend_entries_in_draw_order(
     series with markers moves below each model line, and the legend shows a different order from the
     command line.
     """
-    import matplotlib.container as mplcontainer
-
     handles, labels = ax.get_legend_handles_labels(handler_map)
     children = ax.get_children()
 
@@ -931,8 +920,6 @@ def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequen
 @cache
 def read_mpl_style() -> dict[str, t.Any]:
     """Read the bundled matplotlibrc one time and return its settings."""
-    import matplotlib as mpl
-
     rcparams = mpl.rc_params_from_file(get_path("artistools_dir") / "matplotlibrc", use_default_template=False)
     return dict(rcparams.items())
 
@@ -1009,8 +996,6 @@ def get_residuals(
     A reference value of NaN keeps a gap in the residual panel.
     A reference with one point accepts only model points at the same x value.
     """
-    import numpy as np
-
     # Keep non-finite reference values as gaps instead of interpolating across them.
     hasx = np.isfinite(reference.x)
     referencex = reference.x[hasx]
@@ -1037,8 +1022,6 @@ def draw_residual_series(
     ratio: bool,
 ) -> None:
     """Draw the residual points with the line properties and error bars of the main frame."""
-    import numpy as np
-
     xvalues = model.x[inrange]
     (line,) = axis.plot(xvalues, yvalues, color=model.color, linewidth=0.8)
     if model.line is not None:
@@ -1096,8 +1079,6 @@ def plot_residual_panel(
     The table gives the number of points and the root mean square (RMS) of each residual.
     It also gives the ratio of the RMS to the mean baseline value, which has no meaning for a magnitude.
     """
-    import numpy as np
-
     if residualtype not in {"absolute", "relative", "relativelog"}:
         exit_with_error(
             f"Unknown residual type: {residualtype}", "Give absolute, relative, or relativelog with -residualtype"
@@ -1330,9 +1311,6 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
     The other colours stay, e.g. the colours of the series and of an image. A dark colour of a series, e.g. the dark
     red of sulphur, is not grey, thus it stays.
     """
-    from matplotlib.collections import Collection
-    from matplotlib.patches import Patch
-    from matplotlib.text import Text
 
     def get_one_light_grey(
         colours: "mplt.ColorType | Sequence[mplt.ColorType]",
@@ -1684,8 +1662,6 @@ def warn_hidden_values(axis: mplax.Axes) -> None:
     label, and the gid is the name of the series. A series with no legend entry, e.g. a direction bin of a colour bar,
     has a gid. A line with neither is a part of a different series, e.g. a repeated end point.
     """
-    import numpy as np
-
     ylow, yhigh = sorted(axis.get_ylim())
     xlow, xhigh = sorted(axis.get_xlim())
     islog = axis.get_yscale() == "log"
@@ -1916,8 +1892,6 @@ def make_colorbar_viewingangles(
     scaledmap: t.Any, args: argparse.Namespace, fig: mplfig.Figure | None = None, ax: AxesTree | None = None
 ) -> None:
     """Add a colorbar labelled with the cos(theta) or phi viewing angle bin boundaries."""
-    import numpy as np
-
     if args.colorbarphi:
         print("Reordered phi bins")
         nbins = get_viewingdirection_phibincount()

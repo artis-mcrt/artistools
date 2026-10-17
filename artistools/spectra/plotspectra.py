@@ -15,6 +15,7 @@ import matplotlib.axes as mplax
 import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -1521,8 +1522,6 @@ def order_and_color_shells(
     edges, and a colour that goes from dark to light with the edge. -maxseriescount still applies: the
     shells with the least flux join the "Other" series, as the ions do.
     """
-    import matplotlib.pyplot as plt
-
     fixedionlist = args.fixedionlist
     if fixedionlist is None:
         # a shell that holds no packet gives no series, and the name of such a shell gives a warning. The packet

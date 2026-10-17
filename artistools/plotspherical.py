@@ -11,6 +11,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
+from matplotlib.collections import QuadMesh
 
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
@@ -407,8 +408,6 @@ def get_map_table(axes: t.Any, plotvars: Sequence[str], nphibins: int, timerange
     -pi to +pi with phi = 0 at the centre. --phireverse changes its sign. The cos theta edges give the vertical
     coordinate, because the latitude of the map is arcsin(cos theta).
     """
-    from matplotlib.collections import QuadMesh
-
     _, column_phibins = get_map_columns(nphibins)
     valuecolumns: dict[str, npt.NDArray[np.float64]] = {}
     pixeledges: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None = None

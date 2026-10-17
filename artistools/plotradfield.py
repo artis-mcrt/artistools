@@ -11,6 +11,7 @@ import matplotlib.axes as mplax
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+from matplotlib import ticker
 
 from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
@@ -393,7 +394,6 @@ def plot_celltimestep(
 
     axis.set_xlabel(r"Wavelength ($\mathrm{{\AA}}$)")
     axis.set_ylabel(r"J$_\lambda$ [{}erg/s/cm$^2$/$\mathrm{{\AA}}$]")
-    from matplotlib import ticker
 
     axis.xaxis.set_minor_locator(ticker.MultipleLocator(base=500))
     axis.set_xlim(left=xmin, right=xmax)

@@ -18,7 +18,9 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
+import polars as pl
 
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
@@ -31,9 +33,6 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc.cliutils import get_provenance_lines
-
-if t.TYPE_CHECKING:
-    import polars as pl
 
 LIGHTCURVEFILENAME = "lightcurve.png"
 SPECTRUMFILENAME = "spectrum_timestep{timestep:03d}.png"
@@ -158,8 +157,6 @@ def get_log_summary_table(modelfolder: Path) -> "tuple[list[Path], pl.DataFrame 
 
     The table is None if the model has no log of rank 0.
     """
-    import polars as pl
-
     from artistools.logsummary import get_logfiles
     from artistools.logsummary import read_log_messages
     from artistools.logsummary import summarise_log_messages
@@ -254,8 +251,6 @@ def get_figure_html(
     command is the name of the command and its main function, and arguments are the arguments of the command before
     the -o argument of the report.
     """
-    import matplotlib.pyplot as plt
-
     commandname, commandmain = command
     outputpath = reportfolder / filename
     argsraw = [*arguments, "-o", str(outputpath)]

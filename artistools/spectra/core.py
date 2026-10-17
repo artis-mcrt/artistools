@@ -13,6 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -2500,8 +2501,6 @@ def sort_and_reduce_flux_contribution_list(
     )
     kept = [rowofname[name] for name in keptnames]
     other = [rowofname[name] for name in othernames]
-
-    import matplotlib.pyplot as plt
 
     from artistools.plottools import glasbey_category20_nogreys
     from artistools.plottools import remove_greys
