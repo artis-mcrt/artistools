@@ -14,7 +14,7 @@ error.
 Use the Python of the environment that holds the `artistools` command:
 
 ```sh
-ATPY="$(dirname "$(command -v artistools)")/python"
+ATPY="$(dirname "$(realpath "$(command -v artistools)")")/python"
 "$ATPY" - <<'EOF'
 import artistools as at
 ...
@@ -22,8 +22,19 @@ EOF
 ```
 
 If no `artistools` command exists, ask the user for the environment. Run the script in the model folder, or give
-the model path in the script. A remote model path has the form `host:path`, and artistools reads it on that host.
-Call `help()` on a function to get all its arguments.
+the model path in the script. Call `help()` on a function to get all its arguments.
+
+A remote model path has the form `host:path`. Give it as `Path("host:path")`. Some readers read a `str` path on this
+computer and not on the host. These readers read a remote model on its host:
+
+- `at.scan_estimators`, `at.get_timestep_times`, `at.get_timestep_of_timedays`, and `at.misc.get_time_range`;
+- `at.get_composition_data` and `at.get_deposition`;
+- `at.spectra.get_spectra` and `at.spectra.get_from_packets`;
+- `at.lightcurve.find_lightcurve_file`, `at.lightcurve.scan_lightcurve`, and `at.lightcurve.get_from_packets`;
+- `at.packets.get_packets_column_names`.
+
+The other readers stop with an error, and `at.misc.get_artis_option` gives `None`. For these readers, run the script on
+the host.
 
 ## Terms
 
@@ -60,13 +71,15 @@ main columns are:
 - `Te` (electron temperature, K), `TR` (radiation temperature, K), `TJ` (J temperature, K), and `W` (dilution factor);
 - `nne` (free electron density, cm^-3);
 - `nnelement_<El>`, `nnion_<El>_<ion stage>`, and `nniso_<nuclide>` (number densities, cm^-3);
-- `heating_<process>`, `cooling_<process>`, and `deposition_<particle>` (rates, erg/s/cm^3).
+- `heating_<process>`, `cooling_<process>`, and `deposition_<particle>` (rates, erg/s/cm^3). A column with `/` in its
+  name, e.g. `heating_heating_dep/total_dep`, is a ratio and not a rate.
 
 To list the columns of a model and their units, run `artistools plotestimators --listvariables <modelpath>`.
 `join_modeldata=True` adds these columns:
 
 - `tmid_days` (the mid time of the time step);
-- `rho` (density at that time, g/cm^3) and `volume` (cm^3);
+- `rho` (density at that time, g/cm^3), `volume` (cm^3), and `volume_prevtimestep` (the volume at the time step
+  before, cm^3);
 - `mass_g` (the mass of the cell);
 - `init_<column>` (a value of `model.txt` at the start time of the model).
 
@@ -77,7 +90,13 @@ Possible errors:
 - ARTIS limits Te and the other temperatures to the range from `MINTEMP` to `MAXTEMP`. A temperature at a limit is
   not a physical value. Get the limits with `at.misc.get_artis_option(modelpath, "MINTEMP")`. If that gives `None`,
   read `artisoptions.h` in the model folder. Give the number of cells at each limit.
-- If a `heating_`, `cooling_`, or `deposition_` column has no value, the value is 0. It does not mean "no data".
+- If a rate column of `heating_`, `cooling_`, or `deposition_` has no value, the rate is 0. ARTIS writes no value
+  for a rate of 0. Do not include a ratio column in a sum of the rates.
+- ARTIS writes the Monte Carlo deposition rate of time step n into the row of time step n + 1. It divides the rate by
+  the volume of time step n. Thus the row of n + 1 gives the rate of time step n in erg/s/cm^3. For the rate of the
+  cell in erg/s, multiply that value by `volume_prevtimestep`. The last time step has no Monte Carlo rate.
+- `deposition_gamma` always holds a Monte Carlo rate. Another `deposition_` column that equals its `emission_ana_`
+  column in the same row holds an analytic rate. That rate is for the time step of its own row.
 - A statistic without a weight gives the same weight to a small outer cell and to a large inner cell. If the user
   asks for a typical value, also give a mean with the weight `mass_g`.
 
@@ -272,7 +291,8 @@ Possible errors:
 - The deposition rates are in solar luminosities and not in erg/s. Multiply by `Lsun_to_erg_per_s` from
   `artistools.constants`.
 - `deposition.out` gives the sum over the ejecta. For the deposition rate of each cell, use the `deposition_`
-  columns of the estimators.
+  columns of the estimators. A `deposition_` column with a Monte Carlo rate holds the rate of the time step before its
+  row. See "Estimators".
 
 Example: the deposition at a time, and the fraction of the gamma-ray energy that the ejecta absorb.
 
@@ -314,9 +334,14 @@ Possible errors:
 
 - The luminosity is 0 at the early time steps, before packets escape. The magnitude of such a row is `inf`.
 - The light curve of a direction bin has more Monte Carlo noise than the average over all directions.
-- The light curve has values only for the time steps of the model. If the maximum is in the first two or the last two
-  time steps, the true peak can be outside the time range of the model. The same applies if the first time step is
-  almost as bright as the maximum. Give this warning with the answer.
+- The light curve has values only for the time steps of the model. The true peak can be outside the time range of
+  the model in these cases:
+  - the maximum of the observer-frame luminosity is in the first two or the last two time steps;
+  - the first time step is almost as bright as the maximum;
+  - the maximum of the comoving-frame luminosity is in the last two time steps, thus the light curve still rises at
+    the end.
+
+  Give this warning with the answer.
 - In the last time steps, the luminosity in the observer frame falls, e.g. to 0, but the luminosity in the comoving
   frame does not. The observer-frame time of a packet includes the travel time of the light across the ejecta. Thus
   the last time steps do not get the packets that escape after the last time step of the model. Do not report this
@@ -326,18 +351,21 @@ Example: the time and the luminosity of the peak, the rows near it, and a test o
 
 ```python
 import artistools as at
-import polars as pl
 
 modelpath = "."
 lcpath = at.lightcurve.find_lightcurve_file(modelpath)
 dflc = at.lightcurve.scan_lightcurve(lcpath)[-1].collect().with_row_index("row")
 print(lcpath)
-peakrow = dflc.sort("luminosity_erg/s", descending=True)["row"][0]
+peakrow = dflc["luminosity_erg/s"].arg_max()
+cmfpeakrow = dflc["luminosity_cmf_erg/s"].arg_max()
 print(dflc.slice(max(peakrow - 2, 0), 5).select("row", "time_days", "luminosity_erg/s", "luminosity_cmf_erg/s", "mag"))
 peakluminosity = dflc["luminosity_erg/s"][peakrow]
 firstluminosity = dflc["luminosity_erg/s"][0]
 if peakrow < 2 or peakrow > dflc.height - 3:
     print("The maximum is at an edge of the time range, thus the true peak can be outside the range.")
+# the observer-frame luminosity falls at the end, thus only the comoving frame shows a curve that still rises
+elif cmfpeakrow > dflc.height - 3:
+    print("The comoving-frame luminosity has its maximum at the end, thus the true peak can be after the time range.")
 elif firstluminosity > 0.9 * peakluminosity:
     print(
         f"The first luminosity is {firstluminosity / peakluminosity:.0%} of the maximum. The true peak can be earlier."
@@ -356,16 +384,20 @@ dict with one LazyFrame for each direction bin. Each spectrum is the mean over t
 The flux is at a distance of 1 Mpc. Give `gamma=True` for the gamma-ray spectrum. Give only the direction bins that you
 need. For a bin of 0 or more, artistools reads the large file `spec_res.out`.
 
-`at.spectra.get_from_packets(modelpath, timelowdays, timehighdays)` makes the spectrum from the packets files for a
-time range in days. It is slower than `get_spectra`.
+`at.spectra.get_from_packets(modelpath, timelowdays, timehighdays, directionbins=[-1])` makes the spectrum from the
+packets files for a time range in days. It is slower than `get_spectra`.
 
 Possible errors:
 
-- `get_spectra` takes time steps and not days. Change the days to time steps with `at.get_timestep_of_timedays`.
+- `get_spectra` takes time steps and not days. Change a range of days to time steps with
+  `at.misc.get_time_range(modelpath, timemin=..., timemax=...)`. It keeps the time steps whose mid time is in the range,
+  as `artistools plotspectra -timedays` does. For a range after the end of the model, it gives the time step -1.
+- A maximum in a range of wavelengths can be at an edge of that range. Compare it with the maximum of the full spectrum.
 - Multiply the flux by `4 * math.pi * megaparsec_to_cm**2` to get a luminosity density. Integrate it over the
   wavelength or the frequency to get a luminosity. `megaparsec_to_cm` is in `artistools.constants`.
 
-Example: the mean spectrum from 10 to 12 days, and the wavelength of its maximum.
+Example: the mean spectrum from 10 to 12 days, the wavelength of its maximum in the range from 3000 to 10000 Å, and
+its luminosity.
 
 ```python
 import math
@@ -376,17 +408,13 @@ import polars as pl
 from artistools.constants import megaparsec_to_cm
 
 modelpath = "."
-timestepmin = at.get_timestep_of_timedays(modelpath, 10)
-timestepmax = at.get_timestep_of_timedays(modelpath, 12)
+timestepmin, timestepmax, daysmin, daysmax = at.misc.get_time_range(modelpath, timemin=10, timemax=12)
 dfspec = at.spectra.get_spectra(Path(modelpath), timestepmin, timestepmax, directionbins=[-1])[-1].collect()
-print(f"time steps {timestepmin} to {timestepmax}")
-print(
-    dfspec
-    .filter(pl.col("lambda_angstroms").is_between(3000, 10000))
-    .sort("f_lambda", descending=True)
-    .head(1)
-    .select("lambda_angstroms", "f_lambda")
-)
+print(f"time steps {timestepmin} to {timestepmax}, {daysmin:.2f} to {daysmax:.2f} days")
+print(dfspec.filter(pl.col("lambda_angstroms").is_between(3000, 10000)).top_k(1, by="f_lambda"))
+lambdapeak = dfspec.top_k(1, by="f_lambda")["lambda_angstroms"].item()
+if not 3000 <= lambdapeak <= 10000:
+    print(f"The maximum of the full spectrum is at {lambdapeak:.0f} Å, outside the range from 3000 to 10000 Å.")
 luminosity = (
     dfspec.sort("nu").select(pl.col("f_nu") * pl.col("nu").diff()).sum().item() * 4 * math.pi * megaparsec_to_cm**2
 )
@@ -395,10 +423,19 @@ print(f"luminosity in the spectrum: {luminosity:.3e} erg/s")
 
 ## Other data
 
-- `at.packets.get_packets(modelpath)` gives `(number of ranks, LazyFrame of the packets)`. The packets files are large.
-  Select the columns and filter the rows before `.collect()`.
+- `at.packets.get_packets(modelpath)` gives `(number of ranks that it read, LazyFrame of the packets)`. artistools
+  divides a sum of the packet energies by that number, e.g. for a luminosity. Do the same. Before it returns, the first
+  call writes a parquet cache for each batch of 100 packets files. On a large model this takes many minutes. To prevent
+  a slow step:
+  - get the columns with `at.packets.get_packets_column_names(modelpath)`, which writes no cache;
+  - give `maxpacketfiles=100` to read only the packets files of the first 100 ranks;
+  - select the columns and filter the rows before `.collect()`.
+
+  `get_packets_column_names` gives the columns of the packets files. The LazyFrame does not have some of these columns,
+  and it adds other columns, e.g. `t_arrive_d` and `dirbin`.
 - `at.get_inputparams(modelpath)` gives a dict of the parameters of `input.txt`.
-- For a different reader, read the section "Use from Python" of the artistools `README.md`.
+- For a different reader, read the section "Use from Python" of the artistools README:
+  https://github.com/artis-mcrt/artistools#use-from-python
 
 ## Report
 

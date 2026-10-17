@@ -5,6 +5,7 @@ skill. With --copy, the command writes a copy. Install the skill again after eac
 """
 
 import argparse
+import os
 import shutil
 import typing as t
 from collections.abc import Sequence
@@ -25,8 +26,23 @@ def get_skill_folder() -> Path:
 
 
 def get_layout_skillsdir(layout: str) -> Path:
-    """Return the skills folder of the user for a layout, e.g. ~/.agents/skills for "agents"."""
+    """Return the skills folder of the user for a layout, e.g. ~/.agents/skills for "agents".
+
+    If CLAUDE_CONFIG_DIR has a value, Claude Code uses that folder in place of ~/.claude.
+    """
+    if layout == "claude" and (claudeconfigdir := os.environ.get("CLAUDE_CONFIG_DIR")):
+        return Path(claudeconfigdir).expanduser() / "skills"
     return Path.home() / f".{layout}" / "skills"
+
+
+def is_in_folder(path: Path, folder: Path) -> bool:
+    """Return True when the path is the folder or is below it, also for a different spelling of the folder."""
+    return any(candidate.exists() and candidate.samefile(folder) for candidate in (path, *path.parents))
+
+
+def is_in_uv_cache(path: Path) -> bool:
+    """Return True when the path is in an archive of the uv cache, e.g. when uvx runs artistools."""
+    return any(part.startswith("archive-v") and part.removeprefix("archive-v").isdigit() for part in path.parts)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -37,8 +53,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=("claude", "agents"),
         default="claude",
         help=(
-            "The skills folder of the agent. claude gives ~/.claude/skills, which Claude Code reads. agents gives"
-            " ~/.agents/skills, which Codex, Cursor, and OpenCode read"
+            "The skills folder of the agent. claude gives ~/.claude/skills, which Claude Code reads. If"
+            " CLAUDE_CONFIG_DIR has a value, claude gives $CLAUDE_CONFIG_DIR/skills. agents gives ~/.agents/skills,"
+            " which Codex, Cursor, and OpenCode read"
         ),
     )
     foldergroup.add_argument(
@@ -56,19 +73,33 @@ def install_skill(skillsdir: Path, *, copy: bool, force: bool) -> bool:
     """Put the skill into the skills folder. Return False when the link to the package is there already."""
     source = get_skill_folder().resolve()
     destination = skillsdir / SKILLNAME
-    if destination.resolve() == source:
-        if destination.is_symlink() and not copy:
-            return False
-        if not destination.is_symlink():
-            exit_with_error(f"{destination} is the folder of the skill in the package", "Give a different -skillsdir")
+    islinktosource = destination.is_symlink() and destination.exists() and destination.samefile(source)
+    if islinktosource and not copy:
+        return False
+    # samefile also finds the folder through a different spelling, e.g. other capital letters on macOS
+    if not islinktosource and is_in_folder(destination.resolve(), source):
+        exit_with_error(
+            f"{destination} is the folder of the skill in the package, or is in it", "Give a different -skillsdir"
+        )
+    if not copy and is_in_uv_cache(source):
+        exit_with_error(
+            f"This installation of artistools runs from the uv cache, which uv can delete. Thus a link to {source} can"
+            " break",
+            "Install artistools with `uv tool install artistools`, or give --copy",
+        )
 
     # is_symlink also finds a link to a folder that does not exist
     if destination.exists() or destination.is_symlink():
-        if (destination / "SKILL.md").is_file():
-            confirm_overwrite([destination], ["SKILL.md"], force)
-        elif not force:
+        if not force and not (destination / "SKILL.md").is_file():
             exit_with_error(f"{destination} exists, and it holds no SKILL.md", "Give -f or --force to replace it")
 
+        # the command removes a link and not the folder of the link, but rmtree deletes each file of a real folder
+        filenames = (
+            ["SKILL.md"]
+            if destination.is_symlink() or not destination.is_dir()
+            else sorted(str(path.relative_to(destination)) for path in destination.rglob("*") if path.is_file())
+        )
+        confirm_overwrite([destination], filenames, force)
         if destination.is_symlink() or destination.is_file():
             destination.unlink()
         else:
@@ -85,10 +116,17 @@ def install_skill(skillsdir: Path, *, copy: bool, force: bool) -> bool:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Install the artis-data skill for a large language model (LLM) agent, e.g. Claude Code."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    skillsdir = args.skillsdir or get_layout_skillsdir(args.layout)
+    # a shell does not expand the ~ of "-skillsdir=~/skills" or of a quoted path
+    skillsdir = args.skillsdir.expanduser() if args.skillsdir else get_layout_skillsdir(args.layout)
     destination = skillsdir / SKILLNAME
     if install_skill(skillsdir, copy=args.copy, force=args.force):
         print(f"Installed {SKILLNAME} as a {'copy' if args.copy else 'link'} in {destination}")
     else:
         print(f"{destination} is already a link to the skill of this installation of artistools")
-    print_detail("Start a new session of the agent. Then ask a question about a model, or type /artis-data.")
+    print_detail("Start a new session of the agent. Then ask a question about a model.")
+    if args.skillsdir is None:
+        print_detail(
+            f"In Claude Code, you can also type /{SKILLNAME}."
+            if args.layout == "claude"
+            else f"In Codex, you can also type ${SKILLNAME}."
+        )

@@ -4545,6 +4545,65 @@ def test_installskill_replaces_a_link_and_keeps_the_skill_of_the_package(tmp_pat
     assert (destination / "SKILL.md").read_text(encoding="utf-8") == packageskill.read_text(encoding="utf-8")
 
 
+def test_installskill_names_each_file_that_rmtree_deletes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The warning named only SKILL.md, but rmtree then also deleted the other files of a real skill folder."""
+    from artistools.installskill import install_skill
+
+    skillsdir = tmp_path / "skills"
+    (skillsdir / "artis-data" / "references").mkdir(parents=True)
+    (skillsdir / "artis-data" / "SKILL.md").write_text("an older copy", encoding="utf-8")
+    usernotes = skillsdir / "artis-data" / "references" / "notes.md"
+    usernotes.write_text("notes of the user", encoding="utf-8")
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    with pytest.raises(SystemExit):
+        install_skill(skillsdir, copy=True, force=False)
+    assert usernotes.is_file()
+    assert "notes.md" in capsys.readouterr().err
+
+    assert install_skill(skillsdir, copy=True, force=True)
+    assert "notes.md" in capsys.readouterr().err
+
+
+def test_installskill_refuses_a_destination_in_the_skill_of_the_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A comparison of the path text let rmtree delete the skill of the package, or let the command write into it."""
+    from artistools.installskill import install_skill
+
+    packageskill = tmp_path / "package" / "skills" / "artis-data"
+    packageskill.mkdir(parents=True)
+    (packageskill / "SKILL.md").write_text("the skill of the package", encoding="utf-8")
+    monkeypatch.setattr("artistools.installskill.get_skill_folder", lambda: packageskill)
+
+    # on a case-insensitive file system, e.g. the macOS default, SKILLS is a different spelling of the same folder
+    for skillsdir in (packageskill, packageskill.parent, packageskill.parent.with_name("SKILLS")):
+        if skillsdir.exists():
+            with pytest.raises(SystemExit):
+                install_skill(skillsdir, copy=True, force=True)
+    assert [path.name for path in packageskill.iterdir()] == ["SKILL.md"]
+
+
+def test_installskill_makes_no_link_into_the_uv_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With uvx, artistools runs from the uv cache.
+
+    When uv deletes the cache, the link breaks and no message tells the user.
+    """
+    from artistools.installskill import install_skill
+
+    cachedskill = tmp_path / "uv" / "archive-v0" / "abc123" / "artistools" / "data" / "skills" / "artis-data"
+    cachedskill.mkdir(parents=True)
+    (cachedskill / "SKILL.md").write_text("the skill in the cache", encoding="utf-8")
+    monkeypatch.setattr("artistools.installskill.get_skill_folder", lambda: cachedskill)
+
+    with pytest.raises(SystemExit):
+        install_skill(tmp_path / "skills", copy=False, force=False)
+    assert install_skill(tmp_path / "skills", copy=True, force=False)
+    assert not (tmp_path / "skills" / "artis-data").is_symlink()
+
+
 def test_artis_data_skill_names_each_function_that_exists() -> None:
     """A rename needs no shim in artistools, thus a stale name in the skill gives an agent an error and no warning."""
     from artistools.installskill import get_skill_folder
@@ -4584,7 +4643,7 @@ def test_artis_data_skill_examples_run_on_the_test_model(tmp_path: Path, monkeyp
             example
             .group(1)
             .replace("timedays(modelpath, 10)", "timedays(modelpath, 5)")
-            .replace("timedays(modelpath, 12)", "timedays(modelpath, 6)")
+            .replace("timemin=10, timemax=12", "timemin=5, timemax=6")
         )
         scriptpath = tmp_path / f"example{index}.py"
         scriptpath.write_text(code, encoding="utf-8")

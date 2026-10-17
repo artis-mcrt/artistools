@@ -157,11 +157,11 @@ artistools contains a skill for a large language model (LLM) agent, e.g. Claude 
 artistools installskill
 ```
 
-The command makes a link in `~/.claude/skills` to the skill in the installed package. Thus an update of artistools also updates the skill.
+The command makes a link in `~/.claude/skills` to the skill in the installed package. Thus an update of artistools also updates the skill. If the environment variable `CLAUDE_CONFIG_DIR` has a value, the command uses `$CLAUDE_CONFIG_DIR/skills`. If artistools runs from the uv cache, e.g. with `uvx`, the command stops and makes no link, because uv can delete its cache. In that case, install artistools with `uv tool install artistools`, or give `--copy`.
 
 For Codex, Cursor, or OpenCode, give `-layout agents`. The command then makes the link in `~/.agents/skills`. For a different agent, give its skills folder with `-skillsdir`.
 
-Start a new session of the agent after the installation. Then ask a question about a model, or type `/artis-data`.
+Start a new session of the agent after the installation. Then ask a question about a model. In Claude Code, you can also type `/artis-data`. In Codex, you can also type `$artis-data`.
 
 ## Example output
 
