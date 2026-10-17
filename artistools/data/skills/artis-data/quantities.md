@@ -129,4 +129,7 @@ SKILL.md gives the light curves and `deposition.out`. Other readers:
   `FIRST_NLTE_RADFIELD_TIMESTEP`. For an older model, also try each older name.
 - `at.plotlogfiles.read_time_taken(at.plotlogfiles.read_logfiles(modelpath))` gives the time of each part of each time
   step, from the logs `output_*.txt`.
+- `artistools logsummary <modelpath>` counts the warnings and the errors of the logs by kind, with their time steps and
+  the number of cells. Each rank logs the cells that it updates, thus `-ranks all` or `-modelgridindex <cell>` reads
+  more logs. Use it to explain an odd value, e.g. a cell at `MAXTEMP`.
 - The log `output_0-0.txt` holds the messages of ARTIS for each time step. Search it for a message, e.g. a warning.

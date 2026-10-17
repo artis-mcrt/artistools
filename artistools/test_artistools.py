@@ -5875,3 +5875,21 @@ def test_radfield_first_timestep_takes_each_name_of_the_option(tmp_path: Path, o
     """ARTIS renamed the option two times on 2026-10-16, thus a current model gave no first timestep of the bin fits."""
     (tmp_path / "artisoptions.h").write_text(f"constexpr int {optionname} = 6;\n", encoding="utf-8")
     assert at.plotradfield.get_multibin_radfield_first_timestep(tmp_path) == (6, optionname)
+
+
+def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:
+    """A log holds thousands of warnings of a few kinds, thus the table names each kind, its timesteps, and its cells.
+
+    In the classic-mode 3D test, heating is bigger than cooling in many cells, thus ARTIS sets Te to MAXTEMP. The first
+    timesteps are in LTE, where ARTIS solves no thermal balance.
+    """
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelpath_classic_3d), "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    dfmaxtemp = dfsummary.filter(pl.col("kind").str.contains("T_e forced to be MAXTEMP"))
+    assert dfmaxtemp.height == 1
+    assert dfmaxtemp["count"].item() > 1000
+    assert dfmaxtemp["first_timestep"].item() == 5
+    assert dfmaxtemp["cells"].item() > 100
+    assert dfsummary["count"].is_sorted(descending=True)
