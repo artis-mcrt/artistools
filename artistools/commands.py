@@ -159,7 +159,7 @@ subcommandtree: CommandTree = {
     ),
     "describe": CommandSpec(
         "describemodel",
-        helptext="Summarise an ARTIS model: its folders, cells, timesteps, output files, ions, and main options.",
+        helptext="Summarise an ARTIS model, e.g. its cells, timesteps, output files, ions, and physics options.",
         note="Run it first to choose the readers and the timesteps for a question about the model.",
     ),
     # the help lists this name under "inputmodel describe", thus the top level hides it

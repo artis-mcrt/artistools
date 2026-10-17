@@ -5862,7 +5862,10 @@ def test_describe_counts_the_cells_and_the_rank_files_of_each_run_folder(capsys:
     assert "nlte: 0 rank files" in output
     assert "Fe I to Fe V" in output
     # the model folder of the classic-mode 3D test holds artisoptions.h and no folder artis
-    assert "artisoptions.h MINTEMP: 3500." in output
+    assert "temperature limits: MINTEMP = 3500.; MAXTEMP = 140000." in output
+    # an old ARTIS gave a different name to an option, e.g. NT_ON and not NT_SCHEME
+    assert "non-thermal: NT_ON = false" in output
+    assert "ARTIS of run folder job0: v2023.10-106-gfcb7e2c (branch develop)" in output
 
 
 @pytest.mark.parametrize(

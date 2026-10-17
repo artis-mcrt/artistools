@@ -1,7 +1,8 @@
-"""Summarise an ARTIS model: its folders, cells, timesteps, output files, ions, and main options.
+"""Summarise an ARTIS model: its folders, cells, timesteps, output files, ions, ARTIS version, and physics options.
 
-The summary reads the model file and the names of the output files, and no other large file. Run it first to choose
-the readers and the timesteps for a question about a model.
+The summary reads the model file, the names of the output files, the start of the first log of each run, and
+artisoptions.h. It reads no other large file. Run it first to choose the readers and the timesteps for a question about
+a model, and to know which physics the run had on.
 """
 
 import argparse
@@ -17,12 +18,14 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_modelpath
 from artistools.misc import firstexisting_or_none
-from artistools.misc import get_artis_option
+from artistools.misc import get_artis_options
 from artistools.misc import get_model_folder
+from artistools.misc import get_run_subfolders
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
+from artistools.misc import zopen
 from artistools.misc.modelinfo import get_rank_outputfiles
 
 # the output files that are not rank files, in the order of the summary. A reader also accepts each one with a
@@ -37,8 +40,43 @@ SINGLEOUTPUTFILES = (
     "deposition.out",
 )
 
-# the options of artisoptions.h that change the meaning of an estimator value, see the artis-data skill
-SUMMARYOPTIONS = ("MINTEMP", "MAXTEMP")
+# the options of artisoptions.h that change the physics of a run or the meaning of an output, by topic. ARTIS renamed
+# some options, thus each entry gives the names of one option, the newest name first
+PHYSICSOPTIONS: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...] = (
+    (
+        "NLTE",
+        (
+            ("ION_NLEVELS_EXCITED_NLTE", "LEVEL_IS_NLTE"),
+            ("FORCE_SAHA_ION_BALANCE",),
+            ("NLTE_TIME_DEPENDENT_FIRST_TIMESTEP",),
+            ("NLTE_TE_NNE_MAXITER", "NLTEITER"),
+        ),
+    ),
+    ("non-thermal", (("NT_SCHEME", "NT_ON"), ("NT_SOLVE_SPENCERFANO",), ("NT_EXCITATION_ON",))),
+    (
+        "thermalisation",
+        (("PARTICLE_THERMALISATION_SCHEME", "INSTANT_PARTICLE_DEPOSITION"), ("GAMMA_THERMALISATION_SCHEME",)),
+    ),
+    (
+        "radiation field",
+        (
+            ("MULTIBIN_RADFIELD_MODEL_ON",),
+            ("MULTIBIN_RADFIELD_FIRST_TIMESTEP", "FIRST_BINNED_RADFIELD_TIMESTEP", "FIRST_NLTE_RADFIELD_TIMESTEP"),
+            ("LTEPOP_EXCITATION_USE_TJ",),
+        ),
+    ),
+    (
+        "estimators",
+        (
+            ("DETAILED_BF_ESTIMATORS_ON",),
+            ("DETAILED_LINE_ESTIMATORS_ON",),
+            ("USE_LUT_PHOTOION",),
+            ("WRITE_ION_HEATING_COOLING_RATES",),
+        ),
+    ),
+    ("temperature limits", (("MINTEMP",), ("MAXTEMP",))),
+    ("packets", (("MPKTS",), ("POL_ON",), ("VPKT_ON",), ("KEEP_ESCAPED_GAMMAS",), ("SAMPLE_RPKT_EMISSION",))),
+)
 
 
 def get_model_lines(modelpath: Path) -> list[str]:
@@ -93,30 +131,75 @@ def get_ion_lines(modelpath: Path) -> list[str]:
     return lines
 
 
-def get_option_lines(modelpath: Path) -> list[str]:
-    """Return one line for each main option of artisoptions.h, or a line that says that no file gives it."""
-    return [f"artisoptions.h {name}: {get_artis_option(modelpath, name) or 'not found'}" for name in SUMMARYOPTIONS]
+def get_option_lines(modelpath: Path, alloptions: bool = False) -> list[str]:
+    """Return the physics options of artisoptions.h by topic, or each option of the file with alloptions."""
+    options = get_artis_options(modelpath)
+    if not options:
+        return ["artisoptions.h: none in the model folder or in its folder artis"]
+    if alloptions:
+        return ["artisoptions.h:", *(f"  {name} = {value}" for name, value in options.items())]
+
+    lines = ["artisoptions.h (--alloptions gives each option):"]
+    for topic, optionnames in PHYSICSOPTIONS:
+        found = [
+            f"{name} = {options[name]}"
+            for names in optionnames
+            if (name := next((name for name in names if name in options), None)) is not None
+        ]
+        if found:
+            lines.append(f"  {topic}: {'; '.join(found)}")
+    return lines
 
 
-def get_model_summary(modelpath: Path) -> list[str]:
+def get_version_lines(modelpath: Path) -> list[str]:
+    """Return the ARTIS version and the git branch of each run, from the start of its first log.
+
+    A restarted run can use a different build of ARTIS, thus each run folder gives its own version.
+    """
+    lines: list[str] = []
+    for folder in get_run_subfolders(modelpath):
+        logpath = firstexisting_or_none("output_0-0.txt", folder=folder, search_subfolders=False)
+        if logpath is None:
+            continue
+        fields: dict[str, str] = {}
+        with zopen(logpath) as flog:
+            # ARTIS writes the git lines near the start of the log, thus the search reads only the first lines
+            for _, line in zip(range(500), flog, strict=False):
+                for key in ("git version", "git branch"):
+                    if f"{key}" in line and key not in fields:
+                        fields[key] = line.split(key, 1)[1].lstrip(": ").strip()
+        if fields:
+            foldername = "." if folder == modelpath else folder.name
+            lines.append(
+                f"ARTIS of run folder {foldername}: {fields.get('git version', 'unknown version')}"
+                f" (branch {fields.get('git branch', 'unknown')})"
+            )
+    return lines
+
+
+def get_model_summary(modelpath: Path, alloptions: bool = False) -> list[str]:
     """Return the lines of the summary. A part whose input file is missing gives one line that says so."""
     lines = [f"model folder: {modelpath.resolve()}"]
-    parts = (get_model_lines, get_timestep_lines, get_output_lines, get_ion_lines, get_option_lines)
+    parts = (get_model_lines, get_timestep_lines, get_output_lines, get_ion_lines, get_version_lines)
     for part in parts:
         try:
             lines.extend(part(modelpath))
         except FileNotFoundError as exc:
             lines.append(f"{part.__name__.removeprefix('get_').removesuffix('_lines')}: {exc}")
+    lines.extend(get_option_lines(modelpath, alloptions=alloptions))
     return lines
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, default=Path())
+    parser.add_argument(
+        "--alloptions", action="store_true", help="Give each option of artisoptions.h, and not only the physics options"
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Summarise an ARTIS model: its folders, cells, timesteps, output files, ions, and main options."""
+    """Summarise an ARTIS model: its folders, cells, timesteps, output files, ions, ARTIS version, and options."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     modelpath = get_model_folder(args.modelpath)
-    print_product(args, "\n".join(get_model_summary(modelpath)))
+    print_product(args, "\n".join(get_model_summary(modelpath, alloptions=args.alloptions)))

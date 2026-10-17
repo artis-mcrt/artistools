@@ -33,8 +33,9 @@ EOF
 If no `artistools` command exists, ask the user for the environment. Run the script in the model folder, or give
 the model path in the script. Call `help()` on a function to get all its arguments.
 
-Run `artistools describe <modelpath>` first. It gives the cells, the time steps, the output files, the ions, and the
-main options of the model. The commands plotestimators, plotspectra, plotlightcurves, and plotlinefluxes print the
+Run `artistools describe <modelpath>` first. It gives the cells, the time steps, the output files, the ions, the ARTIS
+version, and the physics options of the run, e.g. NLTE, non-thermal ionisation, and thermalisation. These options change
+the meaning of many outputs. The commands plotestimators, plotspectra, plotlightcurves, and plotlinefluxes print the
 plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te -t 300 <modelpath> --print_data
 --quiet`. Use them to check a result, or for a quick answer with no Python. A value or a column name that contains a
 space has quotes.

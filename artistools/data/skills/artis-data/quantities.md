@@ -121,6 +121,8 @@ SKILL.md gives the light curves and `deposition.out`. Other readers:
 
 ## Logs and options
 
+- `artistools describe <modelpath>` gives the ARTIS version of each run folder and the physics options by topic.
+  `--alloptions` gives each option of `artisoptions.h`. `at.misc.get_artis_options(modelpath)` gives them as a dict.
 - `at.misc.get_artis_option(modelpath, name)` reads an option of `artisoptions.h` in the model folder. If that file
   does not exist, it reads `artis/artisoptions.h`. ARTIS renamed some options on 2026-10-16, e.g.
   `MULTIBIN_RADFIELD_FIRST_TIMESTEP` was `FIRST_BINNED_RADFIELD_TIMESTEP` and, before that,

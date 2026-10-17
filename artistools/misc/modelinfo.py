@@ -203,14 +203,21 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
     return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
+# a value option, e.g. "constexpr double MINTEMP = 3500.;" or a value on the next line, and a function option, e.g.
+# "constexpr bool LEVEL_IS_NLTE(int element_z, int ionstage, int level) { return false; }"
+ARTIS_OPTION_PATTERN = re.compile(
+    r"^[ \t]*constexpr\s+(?:enum\s+)?[\w:<>]+\s+(\w+)\s*(\([^)]*\)\s*\{[^}]*\}|=\s*[^;]*;)", re.MULTILINE
+)
+
+
 @on_model_host
-def get_artis_option(modelpath: Path | str, name: str) -> str | None:
-    """Return the value text of a constexpr option of the artisoptions.h of a model, or None.
+def get_artis_options(modelpath: Path | str) -> dict[str, str]:
+    """Return each constexpr option of the artisoptions.h of a model and the text of its value, or an empty dict.
 
     The model folder of an ARTIS test holds artisoptions.h. The model folder of a production model holds the ARTIS
     source in the folder artis. For a local test, artis can be a link to the ARTIS repository, which holds a different
-    preset. Thus the copy in the model folder comes first. A model with no such file, or a file with no such option,
-    gives None. A commented line gives no value.
+    preset. Thus the copy in the model folder comes first. A commented line gives no option. A function option, e.g.
+    LEVEL_IS_NLTE, gives its parameters and its body.
     """
     optionspath = next(
         (
@@ -221,10 +228,17 @@ def get_artis_option(modelpath: Path | str, name: str) -> str | None:
         None,
     )
     if optionspath is None:
-        return None
-    optionstext = optionspath.read_text(encoding="utf-8")
-    match = re.search(rf"^\s*constexpr\s+\S+\s+{re.escape(name)}\s*=\s*([^;\n]*?)\s*;", optionstext, re.MULTILINE)
-    return None if match is None else match.group(1)
+        return {}
+    options: dict[str, str] = {}
+    for name, valuetext in ARTIS_OPTION_PATTERN.findall(optionspath.read_text(encoding="utf-8")):
+        value = valuetext.removeprefix("=").removesuffix(";") if valuetext.startswith("=") else valuetext
+        options[name] = " ".join(value.split())
+    return options
+
+
+def get_artis_option(modelpath: Path | str, name: str) -> str | None:
+    """Return the value text of one constexpr option of the artisoptions.h of a model, or None."""
+    return get_artis_options(modelpath).get(name)
 
 
 @lru_cache(maxsize=16)
