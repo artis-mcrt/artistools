@@ -3794,10 +3794,15 @@ def test_artis_option_function_keeps_its_nested_blocks() -> None:
         "constexpr int ION_NLEVELS_EXCITED_NLTE(int element_z, int ionstage) {\n"
         "  if (element_z == 26 && ionstage == 2) {\n    return 197;\n  }\n  return 80;\n}\n"
         "constexpr double MINTEMP = 3500.;\n"
+        # an optional with no initialiser has no value, and the pattern gave no entry for it
+        "constexpr std::optional<double> GAMMA_USE_KAPPA_GREY;\n"
+        "constexpr std::int64_t NUM_PACKETS = 1e9;\n"
     )
     assert options == {
         "ION_NLEVELS_EXCITED_NLTE": (
             "(int element_z, int ionstage) { if (element_z == 26 && ionstage == 2) { return 197; } return 80; }"
         ),
         "MINTEMP": "3500.",
+        "GAMMA_USE_KAPPA_GREY": "std::nullopt",
+        "NUM_PACKETS": "1e9",
     }

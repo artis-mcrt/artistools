@@ -1256,7 +1256,8 @@ def make_spectrum_plot(
                 print_warning("the filter functions plot normalised values, thus give --normalised as well")
             filterlines = plot_filter_functions(axis, args.xunit, residualseries=residualseries)
             if tableneedsfilters:
-                dfothers.append(get_drawn_lines_table(filterlines, args))
+                # a filter curve gives the dimensionless transmission, and not a flux
+                dfothers.append(get_drawn_lines_table(filterlines, args, ycolumn="transmission"))
                 tableneedsfilters = False
 
         # a flux of stokes I is not negative, and the y margin puts the bottom below zero. make_plot applies -ymin
@@ -1626,18 +1627,21 @@ def plot_reference_spectra(
     return plotobjects, plotobjectlabels, ymaxrefall, get_drawn_lines_table(reflines, args)
 
 
-def get_drawn_lines_table(lines: Sequence[Line2D], args: argparse.Namespace) -> pl.DataFrame:
+def get_drawn_lines_table(
+    lines: Sequence[Line2D], args: argparse.Namespace, ycolumn: str | None = None
+) -> pl.DataFrame:
     """Return the drawn points of each line, e.g. of a reference spectrum, with one row for each point.
 
     A reference spectrum or a code comparison spectrum has its own wavelength grid, thus its points do not go in the
-    table of the ARTIS spectra.
+    table of the ARTIS spectra. ycolumn names the column of the y values, e.g. "transmission" for a filter curve. The
+    default is the plotted -yvariable.
     """
     return pl.concat(
         [
             pl.DataFrame({
                 "series": str(line.get_label()),
                 f"x_plotted_{args.xunit}": np.asarray(line.get_xdata(), dtype=np.float64),
-                f"{args.yvariable}_plotted": np.asarray(line.get_ydata(), dtype=np.float64),
+                ycolumn or f"{args.yvariable}_plotted": np.asarray(line.get_ydata(), dtype=np.float64),
             })
             for line in lines
         ]

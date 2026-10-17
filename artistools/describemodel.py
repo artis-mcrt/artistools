@@ -78,7 +78,10 @@ PHYSICSOPTIONS: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...] = (
         ),
     ),
     ("temperature limits", (("MINTEMP",), ("MAXTEMP",))),
-    ("packets", (("MPKTS",), ("POL_ON",), ("VPKT_ON",), ("KEEP_ESCAPED_GAMMAS",), ("SAMPLE_RPKT_EMISSION",))),
+    (
+        "packets",
+        (("NUM_PACKETS", "MPKTS"), ("POL_ON",), ("VPKT_ON",), ("KEEP_ESCAPED_GAMMAS",), ("SAMPLE_RPKT_EMISSION",)),
+    ),
 )
 
 

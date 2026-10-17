@@ -368,7 +368,8 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
     (tablepath,) = tmp_path.glob("*risetime_peakmag.txt")
     dftable = pl.read_csv(tablepath, separator=" ", null_values="nan")
     assert dftable.columns == ["model", "dirbin", "risetime_days", "peakmag"]
-    assert dftable["dirbin"].to_list() == [0, -1]
+    # the data file of a run with no -plotviewingangle holds the angle average, which is the direction bin -1
+    assert dftable["dirbin"].to_list() == [-1, -1]
 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
@@ -393,9 +394,12 @@ def test_viewing_angle_scatter_plot_colours_each_direction_bin_of_the_data_file(
         "make_viewing_angle_peakmag_risetime_scatter_plot": True,
         "colorbarcostheta": True,
     }
-    at.lightcurve.plot(argsraw=[], plotviewingangle=[0, 10], **scatterplotargs, **commonargs)
+    at.lightcurve.plot(argsraw=[], plotviewingangle=[0, 10], write_data=True, **scatterplotargs, **commonargs)
 
     assert list(tmp_path.glob("*risetime_peakmag.pdf"))
+    # the table gave the direction bins 0 and 1 for the rows of the bins 0 and 10
+    (tablepath,) = tmp_path.glob("*risetime_peakmag.txt")
+    assert pl.read_csv(tablepath, separator=" ", null_values="nan")["dirbin"].to_list()[:2] == [0, 10]
     dirbincolors = mockscatter.call_args_list[0].kwargs["color"]
     assert len(dirbincolors) == 2
     assert not np.allclose(dirbincolors[0], dirbincolors[1]), "the two cos(theta) bins share a colour"

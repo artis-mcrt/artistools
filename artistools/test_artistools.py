@@ -2906,6 +2906,20 @@ def test_linefluxes_lineflux_ratio_plot() -> None:
     assert dfcomparisons.height == 3
 
 
+def test_linefluxes_floers_ratio_file_with_no_w7_model(tmp_path: Path) -> None:
+    """A file with no W7 model gave a frame with no columns, and the concatenation of the comparisons then failed."""
+    ratiofile = tmp_path / "floersratios.csv"
+    ratiofile.write_text("file,epoch,NIR_VIS_ratio\nfig-nne_Te_allcells-subch-300d.txt,300,1.5\n", encoding="utf-8")
+    at.plotlinefluxes.main(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
+        floersmodelratiofile=str(ratiofile),
+        outputfile=tmp_path / "linefluxes.pdf",
+    )
+    assert (tmp_path / "linefluxes.pdf").is_file()
+
+
 def test_get_ion_tuple_rejects_missing_element() -> None:
     """A string with a separator but no element symbol must raise rather than return atomic number -1."""
     for badionstr in (" II", "_II", "notanion", "Fe "):

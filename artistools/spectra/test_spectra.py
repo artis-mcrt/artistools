@@ -1484,6 +1484,7 @@ def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) ->
     )
     dffilters = pl.read_csv(tmp_path / "filters_references.txt", separator=" ", null_values="nan")
     assert dffilters["series"].unique(maintain_order=True).to_list() == ["U", "B", "V", "I"]
+    assert (dffilters["transmission"] <= 1.0).all()
 
 
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)

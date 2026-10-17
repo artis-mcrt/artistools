@@ -369,6 +369,17 @@ def set_scatterplot_plotkwargs(
     return plotkwargsviewingangles, plotkwargsangleaveraged
 
 
+def get_table_dirbins(dfdata: pl.DataFrame) -> list[int]:
+    """Return the direction bin of each row of a viewing angle data file for the table of --print_data.
+
+    An older file holds no dirbin column, and its rows then take their row numbers. get_datafile_dirbins stops
+    with an error for such a file, but a plot with no colour bar needs no direction bin.
+    """
+    if "dirbin" in dfdata.columns:
+        return dfdata["dirbin"].cast(pl.Int64).to_list()
+    return list(range(dfdata.height))
+
+
 def get_datafile_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argparse.Namespace) -> list[int]:
     """Return the direction bin of each row of a viewing angle data file.
 
@@ -476,7 +487,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
             pl.DataFrame(
                 [
                     *zip(
-                        range(len(xvalues_viewingangles)),
+                        get_table_dirbins(viewing_angle_plot_data),
                         xvalues_viewingangles,
                         band_peak_mag_viewing_angles,
                         strict=True,
@@ -581,7 +592,13 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         )
         plotkwargsviewingangles["label"] = modelname
         ax.scatter(dfdata["peakcolour"], y=dfdata[f"{bands[0]}max"], **plotkwargsviewingangles)
-        dfplotted.append(dfdata.with_row_index("dirbin").select(pl.lit(modelname).alias("model"), pl.all()))
+        dfplotted.append(
+            dfdata.select(
+                pl.lit(modelname).alias("model"),
+                pl.Series("dirbin", get_table_dirbins(viewing_angle_plot_data), dtype=pl.Int64),
+                pl.all(),
+            )
+        )
 
     ax.errorbar(
         x=sn_data["(B-V)Bmax"],

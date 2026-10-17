@@ -478,7 +478,7 @@ def get_labelandlineindices_cached(
 def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args: argparse.Namespace) -> pl.DataFrame:
     """Overplot the NIR/VIS ratios of the Flörs models from a CSV of columns file, epoch, NIR_VIS_ratio.
 
-    Return the drawn points in the form of get_comparison_table, or an empty frame.
+    Return the drawn points in the form of get_comparison_table, which has no row if the file has no W7 model.
     """
     if not floersmodelratiopath.is_file():
         msg = f"{floersmodelratiopath} not found"
@@ -502,7 +502,8 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     dfmodel = dffloers.filter(pl.col("modelname") == "w7").sort("epoch")
     if dfmodel.is_empty():
         print_warning(f"no rows for Flörs model w7 in {floersmodelratiopath}")
-        return pl.DataFrame()
+        # an empty frame of the comparison schema concatenates with the other comparison series
+        return get_comparison_table("Flörs W7", [], [])
 
     axis.plot(
         dfmodel["epoch"].to_list(),
