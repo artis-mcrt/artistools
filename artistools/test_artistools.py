@@ -4647,6 +4647,51 @@ def test_artis_data_skill_names_each_function_that_exists() -> None:
     assert not stalenames, f"SKILL.md names functions that artistools does not have: {stalenames}"
 
 
+def test_artis_data_skill_summary_examples_match_the_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The skill shows an example of each summary line, and a change of the format made the example incorrect.
+
+    A number of an example matches any number, "mymodel" matches any model name, and "..." matches any text.
+    """
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
+    section = skilltext.split("one summary line for each drawn series.", 1)[1].split("A line that starts with", 1)[0]
+    examples = [" ".join(span.split()) for span in re.findall(r"`([^`]+)`", section) if not span.startswith("-")]
+    assert len(examples) == 5, examples
+
+    numberpattern = r"[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?"
+
+    def get_example_pattern(example: str) -> str:
+        wordpatterns = []
+        for word in example.split():
+            if word.startswith("..."):
+                wordpatterns.append(".*" + re.escape(word.removeprefix("...")))
+            elif word.startswith("mymodel"):
+                wordpatterns.append(".+" + re.escape(word.removeprefix("mymodel")))
+            else:
+                parts = re.split(f"({numberpattern})", word)
+                wordpatterns.append(
+                    "".join(numberpattern if index % 2 else re.escape(part) for index, part in enumerate(parts))
+                )
+        return r"\s+".join(wordpatterns)
+
+    at.estimators.plot(argsraw=[], modelpath=modelpath_classic_3d, outputfile=tmp_path, timedays=5, plotlist=[["Te"]])
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], frompackets=True, outputfile=tmp_path)
+    at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "spec.pdf")
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        timedays="5",
+        showemission=True,
+        showabsorption=True,
+        outputfile=tmp_path / "em.pdf",
+    )
+    output = capsys.readouterr().out
+    unmatched = [example for example in examples if re.search(get_example_pattern(example), output) is None]
+    assert not unmatched, f"SKILL.md gives summary lines that the commands do not print: {unmatched}"
+
+
 def test_artis_data_skill_python_ignores_a_module_in_the_model_folder(tmp_path: Path) -> None:
     """The command of the skill runs Python in a model folder, and "python -" imported an artistools.py of that folder.
 
@@ -5978,6 +6023,7 @@ def test_describe_counts_the_cells_and_the_rank_files_of_each_run_folder(capsys:
     assert "estimators: 4 rank files" in output
     assert "nlte: 0 rank files" in output
     assert "Fe I to Fe V" in output
+    assert "direction bins: 100 = 10 cos θ bins times 10 φ bins, from spec_res.out and light_curve_res.out" in output
     # the model folder of the classic-mode 3D test holds artisoptions.h and no folder artis
     assert "temperature limits: MINTEMP = 3500.; MAXTEMP = 140000." in output
     # an old ARTIS gave a different name to an option, e.g. NT_ON and not NT_SCHEME
@@ -6041,6 +6087,32 @@ def test_hidden_values_of_a_line_give_a_warning(capsys: pytest.CaptureFixture[st
     assert err.count("does not show") == 1
 
 
+def test_packet_summaries_give_the_monte_carlo_noise(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    """A number from few packets is noisy, thus the summary of a packet plot gives sqrt(Σ e²) / Σ e and a warning.
+
+    ARTIS gives the packets of an r-packet spectrum almost the same energy, thus the noise is close to 1 / sqrt(N).
+    """
+    at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", frompackets=True, outputfile=tmp_path / "s.pdf")
+    captured = capsys.readouterr()
+    match = re.search(
+        r"(\d+) packets in the drawn bins, relative noise of the luminosity ([\d.]+)% = sqrt", captured.out
+    )
+    assert match is not None, captured.out
+    assert np.isclose(float(match.group(2)) / 100, 1 / math.sqrt(int(match.group(1))), rtol=0.05)
+    assert "the luminosity has a relative Monte Carlo noise of" in captured.err
+
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], frompackets=True, outputfile=tmp_path)
+    captured = capsys.readouterr()
+    match = re.search(r"noise of the peak point ([\d.]+)% = sqrt\(Σ e²\) / Σ e of its (\d+) packets", captured.out)
+    assert match is not None, captured.out
+    assert np.isclose(float(match.group(1)) / 100, 1 / math.sqrt(int(match.group(2))), rtol=0.05)
+    assert "the peak point has a relative Monte Carlo noise of" in captured.err
+
+    # spec.out has no packet count, thus the line gives no noise
+    at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "s.pdf")
+    assert "packets in the drawn bins" not in capsys.readouterr().out
+
+
 def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     """An agent reads the summary in the log, thus each line gives the values that a question about the plot needs.
 
@@ -6050,6 +6122,8 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
     captured = capsys.readouterr()
     assert re.search(r"  Te: subplot 0, 540 points, .*min 3500 K at x = .*max 1\.4e\+05 K", captured.out)
     assert "Te: 258 points are at MAXTEMP" in captured.err
+    # 155 cells of the 695 with matter are in the corners of the cube, and the mean of the summary leaves them out
+    assert "the plot leaves out each cell with vel_r_mid above vmax = 28920 km/s" in captured.out
     assert "Te: 44 points are at MINTEMP" in captured.err
 
     at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)

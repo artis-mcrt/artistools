@@ -276,6 +276,7 @@ def get_from_packets(
             vpkt_config,
             lambda obsdirindex: pl.col(f"dir{obsdirindex}_t_arrive_d"),
             timebinstarts_plusend,
+            sumsquares=True,
         )
         cmfsums = None
     else:
@@ -287,6 +288,7 @@ def get_from_packets(
             "e_rf",
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
+            sumsquares=True,
         )
         cmfsums = (
             sum_packets_by_dirbin(
@@ -307,10 +309,14 @@ def get_from_packets(
     dftimes = dftimesteps_selected.select(pl.col("timestep").cast(pl.Int32), time_days=pl.col("tmid_days"))
     lcdata: dict[int, pl.LazyFrame] = {}
     for dirbin, sums in rfsums.items():
+        assert sums.weightsquaresums is not None
+        # relnoise = sqrt(sum(e^2)) / sum(e) is the relative Monte Carlo noise of a timestep with packets
+        relnoise = np.sqrt(sums.weightsquaresums) / np.where(sums.weightsums > 0.0, sums.weightsums, np.nan)
         dflc = dftimes.select(
             pl.Series("packetcount", sums.packetcounts),
             pl.all(),
             pl.Series("luminosity_Lsun", sums.weightsums * sums.solidanglefactor * lumfactors),
+            pl.Series("relnoise", relnoise).fill_nan(None),
         )
         if cmfsums is not None:
             dflc = dflc.with_columns(

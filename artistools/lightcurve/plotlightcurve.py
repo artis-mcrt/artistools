@@ -316,13 +316,20 @@ def is_in_time_range(colname: str, timemin: float | None, timemax: float | None)
 
 
 def get_peak_summary(
-    time_days: npt.ArrayLike, yvalues: npt.ArrayLike, unit: str, *, ismagnitude: bool, isband: bool = False
+    time_days: npt.ArrayLike,
+    yvalues: npt.ArrayLike,
+    unit: str,
+    *,
+    ismagnitude: bool,
+    isband: bool = False,
+    packetnoise: tuple[npt.ArrayLike, npt.ArrayLike] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return the parts of the summary line of a drawn light curve, and its warnings.
 
     The peak is the largest luminosity, or the smallest magnitude. The time of the peak is the rise time from the
     explosion. For a band, Δm15 is the magnitude 15 days after the peak minus the peak magnitude. If the peak is in the
-    first two or the last two points, the true peak can be outside the time range.
+    first two or the last two points, the true peak can be outside the time range. packetnoise gives the packet count
+    and the relative noise sqrt(Σ e²) / Σ e of each point of a light curve from packets.
     """
     times = np.asarray(time_days, dtype=np.float64)
     values = np.asarray(yvalues, dtype=np.float64)
@@ -330,23 +337,40 @@ def get_peak_summary(
     if not hasvalue.any():
         return ["no finite value"], []
     times, values = times[hasvalue], values[hasvalue]
+    packetcounts, relnoises = (
+        (None, None)
+        if packetnoise is None
+        else (np.asarray(packetnoise[0])[hasvalue], np.asarray(packetnoise[1], dtype=np.float64)[hasvalue])
+    )
     peakindex = int(np.argmin(values) if ismagnitude else np.argmax(values))
     peaktime, peakvalue = float(times[peakindex]), float(values[peakindex])
     parts = [
         f"{len(times)} points from {times.min():.4g} to {times.max():.4g} d",
         f"peak {peakvalue:.4g} {unit} at {peaktime:.4g} d ({'brightest' if ismagnitude else 'largest'} drawn point)",
     ]
+    warnings = []
+    if packetcounts is not None and relnoises is not None and np.isfinite(relnoises[peakindex]):
+        peaknoise = float(relnoises[peakindex])
+        # a magnitude of a luminosity L with the relative noise r has the noise 2.5 / ln(10) * r
+        noisetext = f"{2.5 / math.log(10) * peaknoise:.3g} mag" if ismagnitude else f"{peaknoise:.2%}"
+        parts.append(
+            f"noise of the peak point {noisetext} = sqrt(Σ e²) / Σ e of its {int(packetcounts[peakindex])} packets"
+        )
+        if peaknoise > 0.1:
+            warnings.append(
+                f"the peak point has a relative Monte Carlo noise of {peaknoise:.0%}, thus the time and the value of"
+                " the peak are uncertain"
+            )
     if isband:
         if peaktime + 15.0 <= times.max():
             deltam15 = float(np.interp(peaktime + 15.0, times, values)) - peakvalue
             parts.append(f"Δm15 {deltam15:.3g} mag (linear interpolation of the magnitude at the peak time + 15 d)")
         else:
             parts.append("no Δm15, because the time range ends before 15 days after the peak")
-    warnings = (
-        ["the peak is in the first two or the last two points, thus the true peak can be outside the time range"]
-        if len(times) > 4 and (peakindex < 2 or peakindex > len(times) - 3)
-        else []
-    )
+    if len(times) > 4 and (peakindex < 2 or peakindex > len(times) - 3):
+        warnings.append(
+            "the peak is in the first two or the last two points, thus the true peak can be outside the time range"
+        )
     return parts, warnings
 
 
@@ -939,8 +963,14 @@ def plot_artis_lightcurve(
         )
         # the frame keeps the nearest point outside each end of -timemin and -timemax, and the axis does not show it
         lcdata_inrange = lcdata_valid.filter(is_in_time_range("time_days", args.timemin, args.timemax))
+        # the relative noise of the timestep is the noise of the observer-frame luminosity and not of the comoving frame
+        haspacketnoise = {"packetcount", "relnoise"}.issubset(lcdata_inrange.columns) and "cmf" not in ycolumn
         summaryparts, summarywarnings = get_peak_summary(
-            lcdata_inrange["time_days"], lcdata_inrange[ycolumn], lumunit, ismagnitude=lumunit == "mag"
+            lcdata_inrange["time_days"],
+            lcdata_inrange[ycolumn],
+            lumunit,
+            ismagnitude=lumunit == "mag",
+            packetnoise=(lcdata_inrange["packetcount"], lcdata_inrange["relnoise"]) if haspacketnoise else None,
         )
         # a magnitude has no comoving-frame column, and its maximum is the faintest point
         cmfcolumn_summary = ycolumn.replace("luminosity_", "luminosity_cmf_")

@@ -30,6 +30,7 @@ import polars as pl
 
 import artistools as at
 from artistools.constants import Lsun_to_erg_per_s
+from artistools.constants import megaparsec_to_cm
 from artistools.installskill import get_skill_folder
 
 MODEL3D = "test-classicmode_3d"
@@ -150,6 +151,45 @@ def get_fe2_fraction_300d(modelpath: Path) -> float:
     )
 
 
+def get_spectrum_luminosity_300d(modelpath: Path) -> float:
+    """Return 4 pi (1 Mpc)^2 times the integral of f_lambda of spec.out at 300 days, from 3500 to 7000 Å."""
+    timestep = at.get_timestep_of_timedays(modelpath, 300)
+    dfspec = at.spectra.get_spectra(modelpath, timestepmin=timestep, timestepmax=timestep)[-1].collect()
+    dfspec = dfspec.sort("lambda_angstroms")
+    lambdas, flambdas = dfspec["lambda_angstroms"].to_numpy(), dfspec["f_lambda"].to_numpy()
+    isinside = (lambdas > 3500.0) & (lambdas < 7000.0)
+    xpoints = np.concatenate([[3500.0], lambdas[isinside], [7000.0]])
+    return float(np.trapezoid(np.interp(xpoints, lambdas, flambdas), x=xpoints)) * 4 * np.pi * megaparsec_to_cm**2
+
+
+def get_packet_noise_300d(modelpath: Path) -> float:
+    """Return sqrt(sum(e^2)) / sum(e) of the escaped r-packets of the time step at 300 days, from 2500 to 19000 Å."""
+    timestep = at.get_timestep_of_timedays(modelpath, 300)
+    tstart = at.get_timestep_times(modelpath, loc="start")[timestep]
+    tend = at.get_timestep_times(modelpath, loc="end")[timestep]
+    _, lfpackets = at.packets.get_packets(modelpath, escape_type="TYPE_RPKT")
+    return float(
+        lfpackets
+        .filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="left"))
+        .filter((at.constants.c_ang_per_s / pl.col("nu_rf")).is_between(2500.0, 19000.0))
+        .select(pl.col("e_rf").pow(2).sum().sqrt() / pl.col("e_rf").sum())
+        .collect()
+        .item()
+    )
+
+
+def get_mean_te_5d(modelpath: Path) -> float:
+    """Return the mean of Te at 5 days with the volume of each cell as the weight."""
+    timestep = at.get_timestep_of_timedays(modelpath, 5)
+    return float(
+        at
+        .scan_estimators(modelpath, timestep=timestep, join_modeldata=True)
+        .select((pl.col("Te") * pl.col("volume")).sum() / pl.col("volume").sum())
+        .collect()
+        .item()
+    )
+
+
 QUESTIONS = (
     Question(
         "peaktime",
@@ -197,6 +237,27 @@ QUESTIONS = (
         MODEL1D,
         f"In the model {MODEL1D} at 300 days, what fraction of all the iron atoms in the ejecta is Fe II?",
         get_fe2_fraction_300d,
+    ),
+    Question(
+        "spectrumluminosity",
+        MODEL1D,
+        f"What is the luminosity in erg/s of the spectrum of the model {MODEL1D} at 300 days, from 3500 to 7000 Å?",
+        get_spectrum_luminosity_300d,
+    ),
+    Question(
+        "packetnoise",
+        MODEL1D,
+        f"What is the relative Monte Carlo noise of the luminosity of the packet spectrum of the model {MODEL1D} at"
+        " 300 days, from 2500 to 19000 Å? Give it as a fraction, e.g. 0.05 for 5 %.",
+        get_packet_noise_300d,
+        rtol=0.05,
+    ),
+    Question(
+        "meante",
+        MODEL3D,
+        f"What is the mean electron temperature in K of the model {MODEL3D} at 5 days, with the volume of each cell as"
+        " the weight?",
+        get_mean_te_5d,
     ),
 )
 

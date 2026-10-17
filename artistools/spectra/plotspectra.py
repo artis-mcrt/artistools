@@ -407,7 +407,37 @@ def print_spectrum_summary(
     if not isdrawnsegment.all():
         gapwidth = float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum())
         parts.append(f"the integral leaves out {gapwidth:.4g} Å with no value of f_λ, e.g. a masked telluric band")
-    print_series_summary(seriesname, parts)
+    noiseparts, noisewarnings = get_packet_noise_summary(dfinrange)
+    print_series_summary(seriesname, parts + noiseparts, noisewarnings)
+
+
+def get_packet_noise_summary(dfbins: pl.DataFrame) -> tuple[list[str], list[str]]:
+    """Return the packet count and the relative Monte Carlo noise of the luminosity of the bins of a packet spectrum.
+
+    f_lambda * delta_lambda of a bin is proportional to the sum of the packet energies e of the bin, with the same
+    factor for each bin. relnoise * f_lambda * delta_lambda is thus proportional to sqrt(sum(e^2)) of the bin, and the
+    noise of the sum over the bins is sqrt(sum(e^2)) / sum(e) over all their packets. spec.out has no packet count.
+    """
+    if dfbins.is_empty() or not {"packetcount", "relnoise", "delta_lambda"}.issubset(dfbins.columns):
+        return [], []
+    binenergy = pl.col("f_lambda") * pl.col("delta_lambda")
+    packetcount, energysum, sqrtsquaresum = dfbins.select(
+        pl.col("packetcount").sum(),
+        binenergy.sum(),
+        (pl.col("relnoise").fill_null(0.0) * binenergy).pow(2).sum().sqrt(),
+    ).row(0)
+    if not energysum > 0.0:
+        return [f"{packetcount} packets in the drawn bins"], []
+    relativenoise = sqrtsquaresum / energysum
+    noisetext = (
+        f"{packetcount} packets in the drawn bins, relative noise of the luminosity {relativenoise:.2%}"
+        " = sqrt(Σ e²) / Σ e of these packets"
+    )
+    warningtext = (
+        f"the luminosity has a relative Monte Carlo noise of {relativenoise:.0%}, thus a difference below that is"
+        " not significant. A longer time range or more packets decreases the noise"
+    )
+    return [noisetext], [warningtext] if relativenoise > 0.1 else []
 
 
 def plot_reference_spectrum(
@@ -974,8 +1004,9 @@ def plot_artis_spectrum(
                 gamma=args.gamma,
                 # the packets of each requested bin take a pass of the Rust kernel, thus the plot asks only for its bins
                 directionbins=directionbins,
-                # the squared energies of the packets give the noise, and only --shownoise needs them
-                relnoise=args.shownoise,
+                # the squared energies of the packets give the noise of --shownoise and of the summary line. On a model
+                # with 4e8 packets, the sums of the squares did not change the time of the command
+                relnoise=True,
             )
 
         elif args.plotvspecpol is not None:

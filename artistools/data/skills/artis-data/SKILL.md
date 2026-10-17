@@ -50,9 +50,15 @@ folder from a different person can hold a file such as `artistools.py`, and Pyth
 If no `artistools` command exists, ask the user for the environment. Run the script in the model folder, or give
 the model path in the script. Call `help()` on a function to get all its arguments.
 
-Run `artistools describe <modelpath>` first. It gives the cells, the time steps, the output files, the ions, the ARTIS
-version, and the physics options of the run, e.g. NLTE, non-thermal ionisation, and thermalisation. These options change
-the meaning of many outputs. The commands plotestimators, plotspectra, plotlightcurves, and plotlinefluxes print the
+Run `artistools describe <modelpath>` first. It gives these items:
+
+- the cells, the time steps, and the output files;
+- the plot selections, e.g. the direction bins for `-plotviewingangle` and the virtual packet spectra for
+  `-plotvspecpol`;
+- the ions and the ARTIS version;
+- the physics options of the run, e.g. NLTE, non-thermal ionisation, and thermalisation.
+
+The physics options change the meaning of many outputs. The commands plotestimators, plotspectra, plotlightcurves, and plotlinefluxes print the
 plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te -t 300 <modelpath> --print_data
 --quiet`. Use them to check a result, or for a quick answer with no Python. A value or a column name that contains a
 space has quotes.
@@ -67,6 +73,8 @@ Read these lines before you calculate a value yourself. Examples are:
 - `mymodel: 518 points from 2500 to 1.9e+04 angstrom, largest drawn flux 5.121e-16 at 4648 angstrom, luminosity
   2.763e+40 erg/s = 4π (1 Mpc)² ∫ f_λ dλ from 2500 to 19000 Å (trapezoidal rule, ...)`. The luminosity is for the
   drawn wavelengths alone, and not for the full spectrum;
+- with `--frompackets`, the line also gives the packet count and the relative Monte Carlo noise, e.g. `noise of the
+  peak point 17.41% = sqrt(Σ e²) / Σ e of its 33 packets`. A difference smaller than the noise is not significant;
 - with `--showemission` or `--showabsorption`, a heading with the wavelength range and the integration rule, one line
   for each drawn series with its flux at 1 Mpc and its share, e.g. `Co II      emission 3.48e-08 (68.3%)  absorption
   1.50e-08 (96.7%)`, and one line for the series in "Other".

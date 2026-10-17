@@ -26,7 +26,11 @@ from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
 from artistools.misc import zopen
+from artistools.misc.dirbins import get_viewingdirection_costhetabincount
+from artistools.misc.dirbins import get_viewingdirection_phibincount
+from artistools.misc.dirbins import get_viewingdirectionbincount
 from artistools.misc.modelinfo import get_rank_outputfiles
+from artistools.misc.modelinfo import get_vpkt_config
 from artistools.misc.remote import on_model_host
 from artistools.packets import count_packets_textfiles
 from artistools.packets import has_packets_files
@@ -134,6 +138,43 @@ def get_output_lines(modelpath: Path) -> list[str]:
     return lines
 
 
+def get_selection_lines(modelpath: Path) -> list[str]:
+    """Return the lines that name what a plot can select: the direction bins, the virtual packet observers, and more.
+
+    An agent then gives a valid selection with no trial of the arguments.
+    """
+    lines = ["plot selections:"]
+    resfiles = [
+        filename
+        for filename in ("spec_res.out", "light_curve_res.out")
+        if firstexisting_or_none(filename, folder=modelpath) is not None
+    ]
+    if resfiles:
+        lines.append(
+            f"  direction bins: {get_viewingdirectionbincount()} = {get_viewingdirection_costhetabincount()} cos θ"
+            f" bins times {get_viewingdirection_phibincount()} φ bins, from {' and '.join(resfiles)}."
+            " -plotviewingangle N selects bin N, and -1 is all the directions"
+        )
+    if Path(modelpath, "vpkt.txt").is_file():
+        vpktconfig = get_vpkt_config(modelpath)
+        timetext = (
+            f", from {vpktconfig['initial_time']} to {vpktconfig['final_time']} d"
+            if vpktconfig["time_limits_enabled"]
+            else ""
+        )
+        spectrumcount = vpktconfig["nobsdirections"] * vpktconfig["nspectraperobs"]
+        lines.append(
+            f"  virtual packet spectra: {spectrumcount} = {vpktconfig['nobsdirections']} directions times"
+            f" {vpktconfig['nspectraperobs']} opacity choices{timetext}. -plotvspecpol N selects spectrum N of 0 to"
+            f" {spectrumcount - 1}"
+        )
+    if get_runfolders(modelpath):
+        lines.append(
+            "  estimator variables: plotestimators --listvariables lists them, and --listnuclides lists the nuclides"
+        )
+    return lines if len(lines) > 1 else []
+
+
 def get_ion_lines(modelpath: Path) -> list[str]:
     """Return one line for each element of compositiondata.txt, with its lowest and its top ion."""
     dfcomposition = get_composition_data(modelpath)
@@ -198,7 +239,14 @@ def get_model_summary(modelpath: Path, alloptions: bool = False) -> list[str]:
     The host of a remote model makes the summary, because each part reads a file of the model folder.
     """
     lines = [f"model folder: {modelpath.resolve()}"]
-    parts = (get_model_lines, get_timestep_lines, get_output_lines, get_ion_lines, get_version_lines)
+    parts = (
+        get_model_lines,
+        get_timestep_lines,
+        get_output_lines,
+        get_selection_lines,
+        get_ion_lines,
+        get_version_lines,
+    )
     for part in parts:
         try:
             lines.extend(part(modelpath))

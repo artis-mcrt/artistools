@@ -87,6 +87,7 @@ from artistools.misc import item_names_a_folder
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
+from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
@@ -3621,6 +3622,12 @@ def add_plot_columns(
     # the average around the z axis reads all the cells, and it applies the limit of the cylindrical radius itself
     if args.modelgridindex is None and args.dimensionreduce == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+        if modelmeta["dimensions"] == 3:
+            # the corners of the cube hold matter, thus a mean of the plot differs from a mean of all the cells
+            print_detail(
+                f"the plot leaves out each cell with vel_r_mid above vmax = {modelmeta['vmax_cmps'] / km_to_cm:.5g}"
+                " km/s. These cells are the corners of the 3D grid, and the velocity of the model ends at vmax"
+            )
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
     return estimators, estimators.collect_schema().names()
