@@ -1805,7 +1805,10 @@ def test_lightcurve_print_data_survives_quiet(capsys: pytest.CaptureFixture[str]
     # a script reads the product, thus no progress message may stand around it
     assert "====>" not in withdata
     assert "Reading " not in withdata
-    assert withdata.lstrip().startswith("shape:")
+    # the polars display of a table shows only ten rows, thus the product is the table as text with every row
+    datalines = withdata.splitlines()
+    assert datalines[0].startswith("model escape_type dirbin time_days ")
+    assert len(datalines) == 1 + len(at.get_timestep_times(modelpath))
 
 
 def test_lightcurve_reference_data_takes_a_day_range(tmp_path: Path) -> None:
@@ -2122,7 +2125,7 @@ def test_bolometric_residual_accepts_a_baseline_with_one_observation(tmp_path: P
             write_data=True,
             outputfile=tmp_path / "residual.pdf",
         )
-    stats = pl.read_csv(tmp_path / "residual_residuals.csv")
+    stats = pl.read_csv(tmp_path / "residual_residuals.txt", separator=" ", null_values="nan")
     assert stats["npoints"].item() == 1
     assert np.isclose(stats["rms"].item(), 2.0)
     line = mockdraw.call_args.args[0].lines[0]
@@ -2156,7 +2159,7 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
         write_data=True,
         outputfile=tmp_path / "bolresiduals.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "bolresiduals_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "bolresiduals_residuals.txt", separator=" ", null_values="nan")
     assert dfstats["reference"].item() == "fake bolometric"
     fullmodel = (
         at.lightcurve
@@ -2287,7 +2290,7 @@ def test_lightcurve_residual_panel_compares_two_models(tmp_path: Path, filternam
         write_data=True,
         outputfile=tmp_path / "models.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "models_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "models_residuals.txt", separator=" ", null_values="nan")
     assert dfstats["model"].item() == "comparison"
     assert dfstats["reference"].item() == "baseline"
     assert np.isclose(dfstats["rms"].item(), 0.0)
@@ -2306,7 +2309,7 @@ def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path, f
         write_data=True,
         outputfile=tmp_path / "selected.pdf",
     )
-    stats = pl.read_csv(tmp_path / "selected_residuals.csv")
+    stats = pl.read_csv(tmp_path / "selected_residuals.txt", separator=" ", null_values="nan")
     assert stats["model"].to_list() == ["comparison"]
     assert stats["reference"].to_list() == ["baseline"]
     assert np.isclose(stats["rms"].item(), 0.0)
@@ -2330,7 +2333,7 @@ def test_residual_baseline_counts_gamma_lightcurves(tmp_path: Path, rpkt: bool, 
     labels = [r"model1 $\gamma$", r"model2 $\gamma$"]
     if rpkt:
         labels = ["model1", labels[0], "model2", labels[1]]
-    dfstats = pl.read_csv(tmp_path / "gamma_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "gamma_residuals.txt", separator=" ", null_values="nan")
     assert dfstats["reference"].to_list() == [labels[baselineindex]] * (len(labels) - 1)
     assert dfstats["model"].to_list() == [label for index, label in enumerate(labels) if index != baselineindex]
     assert (dfstats["npoints"] > 0).all()
@@ -2358,7 +2361,7 @@ def test_residual_baseline_counts_comoving_frame_curves(tmp_path: Path, modelcou
         assert np.allclose(residualseries.x, line.get_xdata())
         assert np.allclose(residualseries.y, line.get_ydata())
         assert residualseries.color == line.get_color()
-    dfstats = pl.read_csv(tmp_path / "cmf_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "cmf_residuals.txt", separator=" ", null_values="nan")
     assert dfstats.height == len(series) - 1
     assert dfstats["reference"].to_list() == [series[baselineindex].label] * dfstats.height
     baseline = series[baselineindex]
@@ -2422,7 +2425,7 @@ def test_residual_baseline_counts_energy_rate_curves(
     rateline = mockdraw.call_args.args[1].lines[1]
     assert series[1].label == rateline.get_label()
     assert series[1].color == rateline.get_color()
-    dfstats = pl.read_csv(tmp_path / "rates_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "rates_residuals.txt", separator=" ", null_values="nan")
     assert dfstats["reference"].to_list() == [series[baselineindex].label] * 2
     assert dfstats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
     assert (dfstats["npoints"] > 0).all()
@@ -2462,7 +2465,7 @@ def test_residual_baseline_counts_hesma_curve(
     assert np.allclose(series[2].x, [265.0, 280.0, 300.0])
     assert np.allclose(series[2].y, [-13.5, -13.0, -12.5])
     assert series[2].color == axis.lines[-1].get_color()
-    stats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
+    stats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.txt", separator=" ", null_values="nan")
     assert stats["reference"].to_list() == [series[baselineindex].label] * 2
     assert stats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
     assert (stats["npoints"] > 0).all()
@@ -2497,7 +2500,7 @@ def test_band_residual_panel_takes_one_filter(
         )
         # a fainter model lies below the reference in the main frame, thus it must also lie below zero in the panel
         assert all(axis.yaxis_inverted() for axis in mocksave.call_args.args[0].axes)
-        dfstats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
+        dfstats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.txt", separator=" ", null_values="nan")
         assert dfstats["npoints"].item() > 3
         assert dfstats["rms"].item() > 0.0
         # a ratio to a mean magnitude has no meaning
@@ -3035,8 +3038,11 @@ def test_direction_bins_of_a_model_with_no_direction_file_give_a_warning(
     assert mockplot.call_args.kwargs["label"] == "TEST MODEL"
 
 
-def test_band_data_files_of_several_models_hold_the_model_name(tmp_path: Path) -> None:
-    """--write_data writes one band file for each model. The second model overwrote the file of the first model."""
+def test_band_data_of_several_models_names_the_model_of_each_row(tmp_path: Path) -> None:
+    """--write_data writes one table for all the models.
+
+    The old code wrote one file for each model, and the second model replaced the file of the first model.
+    """
     modelcopy = tmp_path / "secondmodel"
     modelcopy.mkdir()
     for filepath in modelpath.iterdir():
@@ -3052,10 +3058,9 @@ def test_band_data_files_of_several_models_hold_the_model_name(tmp_path: Path) -
         write_data=True,
         outputfile=outputfolder,
     )
-    assert sorted(path.name for path in outputfolder.glob("band_*.txt")) == [
-        "band_B_TEST MODEL.txt",
-        "band_B_secondmodel.txt",
-    ]
+    dfbands = pl.read_csv(outputfolder / "plotBlightcurves.txt", separator=" ", null_values="nan")
+    assert sorted(dfbands["model"].unique()) == ["TEST MODEL", "secondmodel"]
+    assert dfbands["band"].unique().to_list() == ["B"]
 
 
 def test_band_name_with_an_instrument_folder_gives_valid_file_names(tmp_path: Path) -> None:
@@ -3073,7 +3078,7 @@ def test_band_name_with_an_instrument_folder_gives_valid_file_names(tmp_path: Pa
         outputfile=tmp_path,
     )
     assert (tmp_path / "plotNOT_Blightcurves.pdf").is_file()
-    assert (tmp_path / "band_NOT_B.txt").is_file()
+    assert (tmp_path / "plotNOT_Blightcurves.txt").is_file()
 
     args = at.misc.parse_cli_args(
         at.lightcurve.plotlightcurve.addargs, None, None, [str(modelpath), "-colour_evolution", "NOT/B-NOT/V"]

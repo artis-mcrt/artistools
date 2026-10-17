@@ -1238,16 +1238,6 @@ def draw_residual_panel(
     return dfresidualstats
 
 
-def write_residual_stats(dfresidualstats: pl.DataFrame, outputfile: "Path | str") -> None:
-    """Write the statistics of a residual panel to a file of comma-separated values next to the figure."""
-    from pathlib import Path
-
-    if not dfresidualstats.is_empty():
-        residualfile = Path(outputfile).with_name(f"{Path(outputfile).stem}_residuals.csv")
-        dfresidualstats.write_csv(residualfile)
-        print_saved(residualfile)
-
-
 def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:
     """Return the top of the title of the axes in pixels, at the place where the next draw puts it.
 

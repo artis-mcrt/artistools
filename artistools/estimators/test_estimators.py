@@ -1,6 +1,7 @@
 import argparse
 import copy
 import dataclasses as dc
+import io
 import json
 import os
 import re
@@ -5672,3 +5673,23 @@ def test_classic_restart_repeats_its_first_timestep(tmp_path: Path) -> None:
     assert sorted(estimators) == [(timestep, mgi) for timestep in range(3) for mgi in (0, 1)]
     assert np.isclose(estimators[1, 0]["Te"], 4000.0)
     assert np.isclose(estimators[2, 0]["Te"], 9000.0)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_print_data_gives_the_drawn_values(
+    mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """--print_data must give the values of the drawn line, thus a script gets the plot as numbers."""
+    at.estimators.plot(
+        argsraw=[], modelpath=modelpath_classic_3d, outputfile=tmp_path, timedays=5, plotlist=[["Te"]], print_data=True
+    )
+    output = capsys.readouterr().out
+    headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
+    dftable = pl.read_csv(io.StringIO(output[headerstart:]), separator=" ", null_values="nan")
+
+    assert set(dftable["series"]) == {"Te"}
+    # the line repeats its first and its last bin out to the edges of the axis, thus the table holds the inner points
+    drawnlines = [np.asarray(call.args[2], dtype=np.float64)[1:-1] for call in mockplot.call_args_list]
+    assert any(
+        len(ydata) == dftable.height and np.allclose(ydata, dftable["value"], rtol=1e-6, atol=0) for ydata in drawnlines
+    )

@@ -127,7 +127,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": ("completions", "getpath", "installskill", "timesteps", "version"),
+    "other commands": ("completions", "describe", "getpath", "installskill", "timesteps", "version"),
 })
 
 # "artistools describeinputmodel" was a top-level command, thus a script of a user holds that name.
@@ -156,6 +156,11 @@ subcommandtree: CommandTree = {
             "The deposition_ estimators of each cell give the rate, thus the command needs the output of a"
             " recent ARTIS version. Every column covers the cells that hold matter."
         ),
+    ),
+    "describe": CommandSpec(
+        "describemodel",
+        helptext="Summarise an ARTIS model: its folders, cells, timesteps, output files, ions, and main options.",
+        note="Run it first to choose the readers and the timesteps for a question about the model.",
     ),
     # the help lists this name under "inputmodel describe", thus the top level hides it
     "describeinputmodel": dc.replace(DESCRIBEINPUTMODEL, aliases=(), hidden=True),

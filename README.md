@@ -48,9 +48,18 @@ Run "artistools" (or the short alias "at") at the command-line to get a full lis
 - artistools plotlightcurves (alias: at lc)
 - artistools plotestimators (alias: at estimators)
 - artistools plotnltepops
+- artistools describe (a summary of a model: its cells, timesteps, output files, and ions)
 - artistools inputmodel describe
 
 Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Run a command in a model folder, or give the path of the model folder. A command that reads a model takes the model path with `-modelpath`, e.g. `artistools timesteps -modelpath mymodel`. Most of these commands also take the model path as the last positional argument, e.g. `artistools plotspectra -t 300 mymodel`.
+
+### The plotted data as text
+
+Four plot commands give the plotted data as a table with a header row and a space between the values: plotestimators, plotspectra, plotlightcurves, and plotlinefluxes. `--print_data` prints the table to the standard output, and `--quiet` then hides the progress messages. `--write_data` writes the same table to a .txt file beside the figure. A value that is not available is `nan`, and a value or a column name that contains a space has quotes. For example, this command writes the electron temperature against the velocity at 300 days to a file:
+
+```sh
+artistools plotestimators Te -t 300 mymodel --print_data --quiet > te.txt
+```
 
 ### A model on a different host
 

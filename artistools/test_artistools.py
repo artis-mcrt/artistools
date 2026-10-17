@@ -4608,7 +4608,7 @@ def test_artis_data_skill_names_each_function_that_exists() -> None:
     """A rename needs no shim in artistools, thus a stale name in the skill gives an agent an error and no warning."""
     from artistools.installskill import get_skill_folder
 
-    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
+    skilltext = "\n".join(path.read_text(encoding="utf-8") for path in sorted(get_skill_folder().glob("*.md")))
     names = sorted(set(re.findall(r"\bat\.([a-z_]+(?:\.[a-z_]+)*)\(", skilltext)))
     assert len(names) > 10
 
@@ -4627,22 +4627,27 @@ def test_artis_data_skill_names_each_function_that_exists() -> None:
 def test_artis_data_skill_examples_run_on_the_test_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Each example of the skill must run, because a change of a reader can stop it with no other failed test.
 
-    The examples use 10 days and 12 days, but the test model ends at 7.9 days. Thus the test uses 5 days and 6 days.
+    The examples use 10, 12, and 50 days, but the test model ends at 7.9 days. Thus the test uses 5 days and 6 days.
     """
     import runpy
 
     from artistools.installskill import get_skill_folder
 
-    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
-    examples = list(re.finditer(r"```python\n(.*?)```", skilltext, re.DOTALL))
+    examples = [
+        (path.name, skilltext, example)
+        for path in sorted(get_skill_folder().glob("*.md"))
+        for skilltext in [path.read_text(encoding="utf-8")]
+        for example in re.finditer(r"```python\n(.*?)```", skilltext, re.DOTALL)
+    ]
     assert len(examples) > 3
 
     monkeypatch.chdir(modelpath_classic_3d)
-    for index, example in enumerate(examples):
+    for index, (filename, skilltext, example) in enumerate(examples):
         code = (
             example
             .group(1)
             .replace("timedays(modelpath, 10)", "timedays(modelpath, 5)")
+            .replace("timedays(modelpath, 50)", "timedays(modelpath, 5)")
             .replace("timemin=10, timemax=12", "timemin=5, timemax=6")
         )
         scriptpath = tmp_path / f"example{index}.py"
@@ -4650,8 +4655,30 @@ def test_artis_data_skill_examples_run_on_the_test_model(tmp_path: Path, monkeyp
         try:
             runpy.run_path(str(scriptpath), run_name="__main__")
         except Exception as exc:
-            exc.add_note(f"in the example at line {skilltext.count(chr(10), 0, example.start()) + 1} of SKILL.md")
+            exc.add_note(f"in the example at line {skilltext.count(chr(10), 0, example.start()) + 1} of {filename}")
             raise
+
+
+def test_artis_data_skill_compares_ionisation_processes_on_a_model_with_both_rates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The 3D test model has no non-thermal rates, thus the examples test runs only the branch that says so."""
+    import runpy
+
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
+    example = next(block for block in re.findall(r"```python\n(.*?)```", skilltext, re.DOTALL) if "gamma_NT" in block)
+    scriptpath = tmp_path / "ionisationprocesses.py"
+    scriptpath.write_text(example.replace("timedays(modelpath, 50)", "timedays(modelpath, 300)"), encoding="utf-8")
+
+    monkeypatch.chdir(modelpath)
+    runpy.run_path(str(scriptpath), run_name="__main__")
+    output = capsys.readouterr().out
+    # non-thermal ionisation gives most ionisations of Fe II at 300 days, and photoionisation most of Fe I
+    rows = {line.split()[1]: line.split() for line in output.splitlines() if line.startswith("│ Fe_")}
+    assert float(rows["Fe_II"][-2]) > 0.9
+    assert float(rows["Fe_I"][-2]) < 0.1
 
 
 def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> None:
@@ -5820,3 +5847,17 @@ def test_lazy_imports_survive_the_qt_bindings(order: str) -> None:
         [sys.executable, "-c", LAZY_IMPORT_CHECK_CODE, order], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_describe_counts_the_cells_and_the_rank_files_of_each_run_folder(capsys: pytest.CaptureFixture[str]) -> None:
+    """The summary must count the cells with matter and the rank files of all the run folders, e.g. job0 and job1."""
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["describe", str(modelpath_classic_3d), "--quiet"])
+    output = capsys.readouterr().out
+    assert "1000 cells, 695 cells with matter" in output
+    assert "timesteps: 30, from 3.000 to 8.000 days" in output
+    assert "run folders with estimators: job0, job1" in output
+    assert "estimators: 4 rank files" in output
+    assert "nlte: 0 rank files" in output
+    assert "Fe I to Fe V" in output

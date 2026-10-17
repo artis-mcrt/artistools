@@ -3,6 +3,7 @@
 from artistools.misc.cliutils import addarg_action as addarg_action
 from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
 from artistools.misc.cliutils import addarg_darkmode as addarg_darkmode
+from artistools.misc.cliutils import addarg_data_output as addarg_data_output
 from artistools.misc.cliutils import addarg_dpi as addarg_dpi
 from artistools.misc.cliutils import addarg_figscale as addarg_figscale
 from artistools.misc.cliutils import addarg_filter as addarg_filter
@@ -43,6 +44,7 @@ from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
 from artistools.misc.cliutils import make_output_folder as make_output_folder
 from artistools.misc.cliutils import makelist as makelist
 from artistools.misc.cliutils import normalize_path_list as normalize_path_list
+from artistools.misc.cliutils import output_data as output_data
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args
 from artistools.misc.cliutils import parse_float_range as parse_float_range
 from artistools.misc.cliutils import parse_range as parse_range

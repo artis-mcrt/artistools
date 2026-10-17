@@ -19,6 +19,7 @@ from types import MappingProxyType
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
 from artistools.misc.fileio import get_file_copies
+from artistools.misc.fileio import print_saved
 from artistools.misc.remote import model_path_from_text
 
 if t.TYPE_CHECKING:
@@ -26,6 +27,7 @@ if t.TYPE_CHECKING:
 
     import numpy as np
     import numpy.typing as npt
+    import polars as pl
 
 # a path argument arrives as a scalar, as a sequence, or as a nested sequence from repeated -modelpath
 type PathArg = Path | str | Sequence[PathArg] | None
@@ -1235,7 +1237,60 @@ def print_product(args: argparse.Namespace, *values: object) -> None:
     of --print_data or the listing of --listvariables, must reach the standard output even so. A script
     then reads that product with no progress message around it.
     """
-    print(*values, file=getattr(args, "productstream", None) or sys.stdout)
+    productstream = getattr(args, "productstream", None) or sys.stdout
+    if len(values) == 1 and not isinstance(values[0], str):
+        import polars as pl
+
+        if isinstance(values[0], pl.DataFrame):
+            write_data_table(values[0], productstream)
+            return
+
+    print(*values, file=productstream)
+
+
+def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO") -> None:
+    """Write a table as text with a space between the values and a header row of column names.
+
+    The polars display of a table shows only some rows, thus a reader of the output does not get each value. A reader
+    that splits on spaces moves each later value to the wrong column after an empty field. Thus a missing value is nan.
+    A value or a column name that contains a space has quotes, which polars and pandas read.
+    """
+    dfdata.write_csv(destination, separator=" ", null_value="nan")
+
+
+def addarg_data_output(parser: argparse.ArgumentParser) -> None:
+    """Add the --print_data and --write_data arguments, which give the plotted data as text."""
+    group = arggroup(parser, "output")
+    group.add_argument(
+        "--print_data",
+        action="store_true",
+        help="Print the plotted data to the standard output, with a space between the values",
+    )
+    group.add_argument(
+        "--write_data",
+        action="store_true",
+        help="Write the plotted data to a .txt file beside the figure, with a space between the values",
+    )
+
+
+def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", outputfile: Path | str) -> None:
+    """Print the plotted data, write it to files, or both, as --print_data and --write_data ask.
+
+    Each key of tables is the end of a file name, e.g. "_residuals" gives myplot_residuals.txt for myplot.pdf, and an
+    empty key gives myplot.txt. The standard output gives the tables in the same order, with an empty line between two
+    tables. The function skips an empty table.
+    """
+    tables = {suffix: dfdata for suffix, dfdata in tables.items() if not dfdata.is_empty()}
+    if getattr(args, "print_data", False):
+        for tableindex, dfdata in enumerate(tables.values()):
+            if tableindex > 0:
+                print_product(args, "")
+            print_product(args, dfdata)
+    if getattr(args, "write_data", False):
+        for suffix, dfdata in tables.items():
+            datafile = Path(outputfile).with_name(f"{Path(outputfile).stem}{suffix}.txt")
+            write_data_table(dfdata, datafile)
+            print_saved(datafile)
 
 
 def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:

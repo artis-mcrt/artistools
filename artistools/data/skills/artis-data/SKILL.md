@@ -1,6 +1,6 @@
 ---
 name: artis-data
-description: Answer a question about the data of an ARTIS model. Examples are the range of the electron temperature (Te) at 10 days and the density of a cell. Other examples are the deposition rate, the peak of the light curve, and the flux of a spectrum. Use it for the estimators, the cells, the ionisation, the deposition, the light curves, the spectra, or the packets of a model. It reads the data with Python calls into artistools.
+description: Answer a question about the data of an ARTIS model. Examples are the range of the electron temperature (Te) at 10 days and the density of a cell. Other examples are the deposition rate, the peak of the light curve, and the flux of a spectrum. Use it for the estimators, the cells, the ionisation, the deposition, the light curves, the spectra, and the packets. Also use it for the radiation field, the heating and the cooling processes, or another internal quantity of a model. It reads the data with Python calls into artistools.
 ---
 
 # Answer a question about the data of an ARTIS model
@@ -8,6 +8,15 @@ description: Answer a question about the data of an ARTIS model. Examples are th
 Read the data only through artistools. Do not open the parquet files of a model folder directly. They are caches,
 and artistools checks their version and their age against the text files. A direct read can give old data with no
 error.
+
+This file gives the rules and the main readers. The file `quantities.md` in the folder of this skill lists each file of
+an ARTIS model, what it holds, and its reader. Read it to explain the behaviour of a model. Examples are:
+
+- the radiation field;
+- the heating and the cooling processes;
+- the emission of each ion in a spectrum;
+- the last interaction of each packet;
+- the atomic data.
 
 ## Run Python with artistools
 
@@ -23,6 +32,12 @@ EOF
 
 If no `artistools` command exists, ask the user for the environment. Run the script in the model folder, or give
 the model path in the script. Call `help()` on a function to get all its arguments.
+
+Run `artistools describe <modelpath>` first. It gives the cells, the time steps, the output files, the ions, and the
+main options of the model. The commands plotestimators, plotspectra, plotlightcurves, and plotlinefluxes print the
+plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te -t 300 <modelpath> --print_data
+--quiet`. Use them to check a result, or for a quick answer with no Python. A value or a column name that contains a
+space has quotes.
 
 A remote model path has the form `host:path`. Give it as `Path("host:path")`. Some readers read a `str` path on this
 computer and not on the host. These readers read a remote model on its host:
@@ -61,6 +76,9 @@ the host.
 - ARTIS calculates its values with Monte Carlo packets, thus each value has noise. A value has more noise if the model
   has few packets, if the cell is small, or if the value is for one direction bin. Before you report a change as real,
   compare the value with the values of the time steps and the cells near it.
+- To compare two processes, e.g. two heating processes or two ionisation processes, change each one to a rate per unit
+  volume. Multiply that rate by `volume`, then add the values of all the cells. A rate per ion or per atom does not show
+  which process is more important.
 
 ## Estimators: the values of each cell at each time step
 
@@ -211,6 +229,63 @@ print(f"top ion: {topion}. It holds most of {element} in {attopcount} cells.")
 
 `artistools plotestimators -plot "Fe IV" "Fe V" ionpoptype=elpop -plot averageionisation Fe -t 10 <modelpath>` plots
 the ion fractions and the mean charge against the velocity. Use it to check a result.
+
+### Ionisation processes
+
+The estimators give two rates of ionisation for each ion except the top ion:
+
+- `gamma_R_<ion>` (s^-1) is the photoionisation rate of each ion of `<ion>`. ARTIS adds the rates of the levels that it
+  can ionise, with a correction for stimulated recombination. The rate does not include collisional ionisation.
+- `gamma_NT_<ion>` (s^-1) is the non-thermal ionisation rate of each ion, from the fast electrons of the radioactive
+  decays. ARTIS calculates it from the Spencer-Fano solution or from the work-function approximation. One non-thermal
+  ionisation can remove more than one electron.
+
+Possible errors:
+
+- ARTIS writes `gamma_NT_` only if non-thermal ionisation is on. Without it, the model has no non-thermal ionisation.
+- The more important process can be different for each ion and for each region. Give the answer for each ion that
+  holds much of the element, e.g. Fe II and Fe III. For a question about a region, select its cells, e.g. with
+  `vel_r_mid` from `join_modeldata=True`.
+
+Example: the ionisations per second by each process for each ion at a time.
+
+```python
+import artistools as at
+import polars as pl
+
+modelpath = "."
+timestep = at.get_timestep_of_timedays(modelpath, 50)
+lfcells = at.scan_estimators(modelpath, timestep=timestep, join_modeldata=True)
+columns = lfcells.collect_schema().names()
+# the top ion has no ionisation rate, thus each rate column names the lower ion of the process
+ions = sorted(
+    {col.removeprefix("gamma_R_") for col in columns if col.startswith("gamma_R_")}
+    & {col.removeprefix("gamma_NT_") for col in columns if col.startswith("gamma_NT_")}
+)
+if not ions:
+    print("This model has no gamma_R or no gamma_NT columns. ARTIS writes gamma_NT only with non-thermal ionisation.")
+else:
+    # the ionisations per second in all the cells: the rate per ion times the ion density times the volume
+    dftotals = lfcells.select(
+        *(
+            (pl.col(f"{process}_{ion}") * pl.col(f"nnion_{ion}") * pl.col("volume")).sum().alias(f"{process}_{ion}")
+            for process in ("gamma_R", "gamma_NT")
+            for ion in ions
+        ),
+        pl.col("tmid_days").first(),
+    ).collect()
+    dfions = pl.DataFrame({
+        "ion": ions,
+        "photoionisations_per_s": [dftotals[f"gamma_R_{ion}"].item() for ion in ions],
+        "nonthermal_ionisations_per_s": [dftotals[f"gamma_NT_{ion}"].item() for ion in ions],
+    }).with_columns(
+        nonthermal_fraction=pl.col("nonthermal_ionisations_per_s")
+        / (pl.col("photoionisations_per_s") + pl.col("nonthermal_ionisations_per_s"))
+    )
+    print(f"time step {timestep}, mid time {dftotals['tmid_days'].item():.1f} days")
+    with pl.Config(tbl_rows=-1):
+        print(dfions)
+```
 
 ### NLTE level populations
 

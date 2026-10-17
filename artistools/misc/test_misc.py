@@ -3695,3 +3695,23 @@ def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
     assert dirbins.get_dirbin_labels([10], average_over_phi=True) == {
         10: dirbins.get_costheta_bins(usedegrees=False)[2][1]
     }
+
+
+def test_output_data_prints_and_writes_each_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A reader that splits on spaces moves each later value of a row with an empty field, thus a null must be nan.
+
+    Two tables on the standard output need an empty line between them, and an empty table gives no file.
+    """
+    args = argparse.Namespace(print_data=True, write_data=True)
+    tables = {
+        "": pl.DataFrame({"x": [1.0, 2.0], "label": ["a b", None]}),
+        "_residuals": pl.DataFrame({"rms": [0.5]}),
+        "_unused": pl.DataFrame(),
+    }
+    at.misc.output_data(args, tables, tmp_path / "myplot.pdf")
+
+    maintable = 'x label\n1.0 "a b"\n2.0 nan\n'
+    assert capsys.readouterr().out.startswith(f"{maintable}\nrms\n0.5\n")
+    assert (tmp_path / "myplot.txt").read_text(encoding="utf-8") == maintable
+    assert (tmp_path / "myplot_residuals.txt").read_text(encoding="utf-8") == "rms\n0.5\n"
+    assert not (tmp_path / "myplot_unused.txt").exists()

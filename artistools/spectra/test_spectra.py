@@ -2055,7 +2055,7 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
         write_data=True,
         outputfile=tmp_path / "residuals.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "residuals_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "residuals_residuals.txt", separator=" ", null_values="nan")
     assert dfstats.height == 1
     assert dfstats["reference"].item() == "fake observation"
     assert dfstats["npoints"].item() > 100
@@ -2094,7 +2094,7 @@ def test_spectra_residual_panel_compares_series_of_the_same_type(tmp_path: Path,
         write_data=True,
         outputfile=tmp_path / "same_type.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "same_type_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "same_type_residuals.txt", separator=" ", null_values="nan")
     assert dfstats["model"].item() == "comparison"
     assert dfstats["reference"].item() == "baseline"
     assert np.isclose(dfstats["rms"].item(), 0.0)
@@ -2112,7 +2112,7 @@ def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path) -
         write_data=True,
         outputfile=tmp_path / "selected.pdf",
     )
-    stats = pl.read_csv(tmp_path / "selected_residuals.csv")
+    stats = pl.read_csv(tmp_path / "selected_residuals.txt", separator=" ", null_values="nan")
     assert stats["model"].to_list() == ["comparison"]
     assert stats["reference"].to_list() == ["baseline"]
     assert np.isclose(stats["rms"].item(), 0.0)
@@ -2150,7 +2150,7 @@ def test_residual_baseline_counts_codecomparison_spectra(tmp_path: Path, baselin
         assert np.allclose(item.x, np.asarray(line.get_xdata(), dtype=np.float64))
         assert np.allclose(item.y, np.asarray(line.get_ydata(), dtype=np.float64), atol=0.0)
         assert item.color == line.get_color()
-    stats = pl.read_csv(tmp_path / "codecomparison_residuals.csv")
+    stats = pl.read_csv(tmp_path / "codecomparison_residuals.txt", separator=" ", null_values="nan")
     assert stats["reference"].to_list() == [series[baselineindex].label] * 2
     assert stats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
     assert (stats["npoints"] > 0).all()
@@ -2180,7 +2180,7 @@ def test_residual_baseline_counts_filter_curves(tmp_path: Path, baselineindex: i
         assert np.allclose(item.x, np.asarray(line.get_xdata(), dtype=np.float64))
         assert np.allclose(item.y, np.asarray(line.get_ydata(), dtype=np.float64))
         assert item.color == line.get_color()
-    stats = pl.read_csv(tmp_path / "filters_residuals.csv")
+    stats = pl.read_csv(tmp_path / "filters_residuals.txt", separator=" ", null_values="nan")
     assert stats["reference"].to_list() == [series[baselineindex].label] * stats.height
     assert stats.height > 0
     if baselineindex == 0:

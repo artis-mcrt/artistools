@@ -3074,8 +3074,10 @@ def test_describeinputmodel_prints_the_selected_cell(capsys: pytest.CaptureFixtu
     output = capsys.readouterr().out
     assert "Selected single cell mgi 0:" in output
     assert "naive plan" not in output
-    # a collected frame prints its shape, and the one cell gives one row
-    assert "shape: (1," in output
+    # the table has a header row and one row for the one cell
+    tablelines = output.split("Selected single cell mgi 0:\n", 1)[1].splitlines()
+    assert tablelines[0].startswith("inputcellid ")
+    assert tablelines[1].split()[0] == "1"
 
 
 def test_plotinitialcomposition_reads_the_model_folder_last(tmp_path: Path) -> None:

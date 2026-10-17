@@ -47,6 +47,7 @@ from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_decliner
 from artistools.lightcurve.viewingangleanalysis import plot_viewanglebrightness_at_fixed_time
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
@@ -80,13 +81,12 @@ from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import makelist
 from artistools.misc import normalize_path_list
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_dir
 from artistools.misc import path_is_file
 from artistools.misc import print_detail
 from artistools.misc import print_heading
-from artistools.misc import print_product
-from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
@@ -117,7 +117,6 @@ from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
-from artistools.plottools import write_residual_stats
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -814,9 +813,6 @@ def plot_artis_lightcurve(
                     line=modelline,
                 )
             )
-        if args.print_data:
-            print_product(args, lcdata)
-
         cmfcolumn = ycolumn.replace("luminosity_", "luminosity_cmf_")
         if args.plotcmf and cmfcolumn not in lcdata.columns:
             print_warning(
@@ -869,12 +865,14 @@ def make_plot_figure(
 
 def draw_plot(
     args: argparse.Namespace, axis: mplax.Axes, thermaxis: mplax.Axes | None, residualaxis: mplax.Axes | None
-) -> pl.DataFrame | None:
-    """Draw the light curves and the energy rates that args selects, and return the statistics of the residuals.
+) -> dict[str, pl.DataFrame]:
+    """Draw the light curves and the energy rates that args selects, and return the tables of the plotted data.
 
     The light curves come from light_curve.out, gamma_light_curve.out, light_curve_res.out, or the packets files. The
     axes must be empty. This function writes no file, thus the viewer can call it again for each change of a control.
-    The statistics are None without a residual panel.
+    The keys of the tables are the ends of the names of the data files, see output_data. The table of the light curves
+    has one row for each time of each model, escape type, and direction bin. The statistics of the residuals are empty
+    without a residual panel.
     """
     modelpaths = args.modelpath
     showuvoir, showgamma = args.rpkt, args.gamma
@@ -890,6 +888,7 @@ def draw_plot(
 
     plottedsomething = False
     plotteddeposition = False
+    dflightcurves: list[pl.DataFrame] = []
     for lcindex, modelpath in enumerate(modelpaths):
         if path_is_reference_lightcurve(modelpath):
             bolreflightcurve = Path(modelpath)
@@ -953,6 +952,16 @@ def draw_plot(
                         residualseries=residualseries,
                     )
                     plottedthismodel = plottedthismodel or (lcdataframes is not None)
+                    dflightcurves.extend(
+                        dflc.select(
+                            pl.lit(get_model_name(modelpath)).alias("model"),
+                            pl.lit(escape_type).alias("escape_type"),
+                            *([pl.lit(pellet_nucname).alias("pellet_nucname")] if pellet_nucname is not None else []),
+                            pl.lit(dirbin).alias("dirbin"),
+                            pl.all(),
+                        )
+                        for dirbin, dflc in (lcdataframes or {}).items()
+                    )
 
             plottedsomething = plottedsomething or plottedthismodel
 
@@ -1041,7 +1050,7 @@ def draw_plot(
         # applied before a one-sided limit is lost
         invert_magnitude_yaxis(axis)
 
-    dfresidualstats = None
+    dfresidualstats = pl.DataFrame()
     if residualaxis is not None and residualseries is not None:
         dfresidualstats = draw_residual_panel(residualaxis, axis, residualseries, args, ismagnitude=lumunit == "mag")
 
@@ -1055,7 +1064,8 @@ def draw_plot(
         thermaxis.set_xlabel(labelaxis.get_xlabel())
         labelaxis.set_xlabel("")
 
-    return dfresidualstats
+    dfplotted = pl.concat(dflightcurves, how="diagonal_relaxed") if dflightcurves else pl.DataFrame()
+    return {"": dfplotted, "_residuals": dfresidualstats}
 
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_] | mplax.Axes]:
@@ -1136,10 +1146,8 @@ def set_lightcurve_plot_labels(
     return fig, ax
 
 
-def make_band_lightcurves_plot(
-    modelpaths: Sequence[str | Path], outputfolder: Path | str, args: argparse.Namespace
-) -> None:
-    """Plot band magnitude light curves for every model and save the figure."""
+def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.Namespace) -> None:
+    """Plot the light curves of the band magnitudes for each model, give the plotted data, and save the figure."""
     residualaxis = None
     residualseries: list[ResidualSeries] | None = None
     if args.residualbaselineseries is not None:
@@ -1163,9 +1171,7 @@ def make_band_lightcurves_plot(
     # y axis label and the output file name. main() dispatches here only when -filter has a value
     bandnames: list[str] = list(args.filter)
     filterfunc = get_filterfunc(args)
-    # each model writes its own data files, thus the name of a file holds the model name if the plot holds several
-    # models. The file name of one model stays the same
-    namesmodel = len(modelpaths) > 1
+    dfbands: list[pl.DataFrame] = []
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, dirbin_definition = parse_directionbin_args(modelpath, args)
@@ -1181,21 +1187,15 @@ def make_band_lightcurves_plot(
                 axis = axes[plotnumber]
                 time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
 
-                if args.print_data or args.write_data:
-                    txtlinesout = [f"# band: {band_name}", f"# model: {modelname}", "# time_days magnitude"]
-                    txtlinesout.extend(f"{t_d} {m}" for t_d, m in zip(time, brightness_in_mag, strict=False))
-                    txtout = "\n".join(txtlinesout)
-                if args.write_data:
-                    filestem = f"band_{get_filename_part(band_name)}"
-                    if namesmodel:
-                        filestem += f"_{get_filename_part(modelname)}"
-                    bandoutfile = Path(
-                        outputfolder, f"{filestem}_angle_{dirbin}.txt" if dirbin != -1 else f"{filestem}.txt"
-                    )
-                    bandoutfile.write_text(txtout, encoding="utf-8")
-                    print_saved(bandoutfile)
-                if args.print_data:
-                    print_product(args, txtout)
+                dfbands.append(
+                    pl.DataFrame({
+                        "model": modelname,
+                        "dirbin": dirbin,
+                        "band": band_name,
+                        "time_days": np.asarray(time, dtype=np.float64),
+                        "magnitude": np.asarray(brightness_in_mag, dtype=np.float64),
+                    })
+                )
 
                 plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
 
@@ -1275,12 +1275,13 @@ def make_band_lightcurves_plot(
 
     invert_magnitude_yaxis(ax)
 
+    dfresidualstats = pl.DataFrame()
     if residualaxis is not None and residualseries is not None:
         assert isinstance(ax, mplax.Axes)
         dfresidualstats = draw_residual_panel(residualaxis, ax, residualseries, args, ismagnitude=True)
-        if args.write_data:
-            write_residual_stats(dfresidualstats, args.outputfile)
 
+    dfplotted = pl.concat(dfbands) if dfbands else pl.DataFrame()
+    output_data(args, {"": dfplotted, "_residuals": dfresidualstats}, args.outputfile)
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
@@ -1674,13 +1675,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-colour_evolution", nargs="*", help="Plot the colour evolution of each pair of bands, e.g. B-V U-B"
     )
 
-    parser.add_argument("--print_data", action="store_true", help="Print plotted data")
-
-    parser.add_argument(
-        "--write_data",
-        action="store_true",
-        help="Save the band light curves of -filter and the statistics of -residual in text files",
-    )
+    addarg_data_output(parser)
 
     addarg_residuals(parser)
 
@@ -1895,7 +1890,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     resolve_plot_args(args)
     modelpaths = args.modelpath
-    outputfolder = args.outputfile.parent
 
     # determine if this will be a scatter plot or not
     if any(getattr(args, dest) for dest in PEAKMAGDESTS):
@@ -1925,15 +1919,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if args.filter:
-        make_band_lightcurves_plot(modelpaths, outputfolder, args)
+        make_band_lightcurves_plot(modelpaths, args)
 
     elif args.colour_evolution:
         colour_evolution_plot(modelpaths, args)
     else:
         fig, axis, thermaxis, residualaxis = make_plot_figure(args)
-        dfresidualstats = draw_plot(args, axis, thermaxis, residualaxis)
-        if args.write_data and dfresidualstats is not None:
-            write_residual_stats(dfresidualstats, args.outputfile)
+        output_data(args, draw_plot(args, axis, thermaxis, residualaxis), args.outputfile)
         save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 

@@ -51,6 +51,7 @@ from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axi
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
@@ -79,6 +80,7 @@ from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_timesteps
 from artistools.misc import item_names_a_folder
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_modelpath
@@ -2015,8 +2017,45 @@ def make_figure(
         outfilename = format_frame_path(outpath, **framefields, format=args.format, **slicefields)
 
     save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
+    if isinstance(figuredata, LineFigureData):
+        output_data(args, {"": get_line_figure_table(figuredata, args.x)}, outfilename)
+    elif args.print_data or args.write_data:
+        print_warning("--print_data and --write_data give the data of a line plot, and a colour image gives none")
 
     return outfilename
+
+
+def get_line_figure_table(figuredata: LineFigureData, xvariable: str) -> pl.DataFrame:
+    """Return one table of the plotted points, with one row for each point of each series of each subplot.
+
+    A series with x bins gives the weighted mean of each bin and the range of the cells in the bin. A series with
+    -xbins 0 gives each point. The fields of the frame, e.g. the timestep, are columns, thus each row names its time.
+    """
+    xcolumn = {"velocity": "velocity_kmps", "time": "time_days"}.get(xvariable, xvariable)
+    dfseriestables: list[pl.DataFrame] = []
+    for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
+        for series in seriesdatas:
+            if series.dflinepoints is not None:
+                dfpoints = series.dflinepoints.select(
+                    pl.col("xvalue_binned").alias(xcolumn),
+                    value=pl.col("yvalue_binned"),
+                    value_min=pl.col("yvalue_binned_min"),
+                    value_max=pl.col("yvalue_binned_max"),
+                )
+            elif series.dfpoints is not None:
+                dfpoints = series.dfpoints.select(pl.col("xvalue").alias(xcolumn), value=pl.col("yvalue"))
+            else:
+                continue
+            dfseriestables.append(
+                dfpoints.select(
+                    *(pl.lit(fieldvalue).alias(fieldname) for fieldname, fieldvalue in figuredata.framefields.items()),
+                    pl.lit(subplotindex).alias("subplot"),
+                    pl.lit(series.seriesname).alias("series"),
+                    pl.all(),
+                )
+            )
+
+    return pl.concat(dfseriestables, how="diagonal_relaxed") if dfseriestables else pl.DataFrame()
 
 
 def draw_figure_data(
@@ -2652,6 +2691,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_dpi(parser, default=600)
 
     addarg_output(parser, kind="file", default=Path(), helptext="Filename for PDF file")
+    addarg_data_output(parser)
 
     parser.add_argument(
         "--colorbyion",

@@ -27,6 +27,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_maxpacketfiles
@@ -43,9 +44,9 @@ from artistools.misc import get_series_label
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
-from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
@@ -612,22 +613,20 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     args.outputfile = resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
-    if args.write_data and plotteddata:
-        write_plotted_data(plotteddata, args.outputfile)
+    if plotteddata:
+        output_data(args, {"": get_plotted_data_table(plotteddata)}, args.outputfile)
 
     # the suffix of the file name sets the format, e.g. .pdf or .png
     save_figure(fig, args.outputfile, args=args)
 
 
-def write_plotted_data(plotteddata: Sequence[pl.DataFrame], outputfile: Path | str) -> None:
-    """Write one column of times and one column for each model to a CSV file in the folder of the figure."""
+def get_plotted_data_table(plotteddata: Sequence[pl.DataFrame]) -> pl.DataFrame:
+    """Return one table with one column of times and one column for each model."""
     dfalldata = plotteddata[0]
     for dfmodel in plotteddata[1:]:
         dfalldata = dfalldata.join(dfmodel, on="time", how="full", coalesce=True)
 
-    datafilenameout = Path(outputfile).with_suffix(".txt")
-    dfalldata.sort("time").write_csv(datafilenameout, separator=" ")
-    print_saved(datafilenameout)
+    return dfalldata.sort("time")
 
 
 def plot_nne_te_points(
@@ -956,7 +955,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_figscale(parser)
 
-    parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
+    addarg_data_output(parser)
 
     parser.add_argument(
         "--plotemittingregions",

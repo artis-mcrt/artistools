@@ -30,6 +30,7 @@ from artistools.constants import km_to_cm
 from artistools.inputmodel import get_spatial_scales
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
@@ -69,6 +70,7 @@ from artistools.misc import KeepGivenPaths
 from artistools.misc import make_output_folder
 from artistools.misc import makelist
 from artistools.misc import normalize_path_list
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_artis_model
 from artistools.misc import path_is_codecomparison
@@ -77,7 +79,6 @@ from artistools.misc import path_is_file
 from artistools.misc import path_is_reference_data
 from artistools.misc import print_detail
 from artistools.misc import print_heading
-from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
@@ -106,7 +107,6 @@ from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
-from artistools.plottools import write_residual_stats
 from artistools.spectra.core import bin_spectrum
 from artistools.spectra.core import check_time_range_overlaps_time_bins
 from artistools.spectra.core import convert_angstroms_to_unit
@@ -784,7 +784,7 @@ def plot_artis_spectrum(
         print_warning(f"Skipping because {modelpath} does not exist")
         return None
 
-    # --write_data names one column for each drawn series, thus the loops below collect every one of
+    # the data output names one column for each drawn series, thus the loops below collect every one of
     # them. The suffix names the direction bin and the epoch of the panel
     drawnseries: list[tuple[str, pl.DataFrame]] = []
     # each direction bin and each panel draws a series, thus print_method_line prints each method line one time only
@@ -1005,7 +1005,7 @@ def plot_artis_spectrum(
                     exit_with_error(
                         f"--binflux averages over wavelength, and -xunit gives {args.xunit}", "Give -xunit angstrom"
                     )
-                # bin f_lambda as well, because --write_data returns that column. The earlier
+                # bin f_lambda as well, because the data output gives that column. The earlier
                 # code gave it the value of y, which holds the selected y variable
                 dfspectrum = (
                     bin_spectrum(dfspectrum, 5, "lambda_angstroms", ["y", "f_lambda"])
@@ -1048,8 +1048,8 @@ def plot_artis_spectrum(
     if not drawnseries:
         return None
 
-    if not args.write_data:
-        # the caller counts a frame that is not None as a drawn series, and --write_data alone
+    if not (args.print_data or args.write_data):
+        # the caller counts a frame that is not None as a drawn series, and the data output alone
         # reads the columns. One table needs one wavelength grid, which a plot does not need
         return pl.DataFrame()
 
@@ -1062,8 +1062,8 @@ def plot_artis_spectrum(
     for seriessuffix, dfspectrum in drawnseries:
         if not np.allclose(dfseriesdata["lambda_angstroms"], dfspectrum["lambda_angstroms"].to_numpy()):
             exit_with_error(
-                "--write_data gives one table, and the drawn series have different wavelength grids",
-                "Remove --write_data, or give one direction bin and one epoch",
+                "--print_data and --write_data give one table, and the drawn series have different wavelength grids",
+                "Remove --print_data and --write_data, or give one direction bin and one epoch",
             )
         dfseriesdata = dfseriesdata.with_columns(
             dfspectrum["f_lambda"].alias(f"f_lambda{seriessuffix}"),
@@ -1195,7 +1195,7 @@ def make_spectrum_plot(
                 seriesname = get_model_name(specpath)
                 nseriesplotted += 1
 
-        if args.write_data and seriesdata is not None:
+        if (args.print_data or args.write_data) and seriesdata is not None:
             if dfalldata.is_empty():
                 dfalldata = pl.DataFrame({"lambda_angstroms": seriesdata["lambda_angstroms"]})
             else:
@@ -1204,9 +1204,9 @@ def make_spectrum_plot(
                 lambda_this = seriesdata["lambda_angstroms"].to_numpy()
                 if lambda_first.shape != lambda_this.shape or not np.allclose(lambda_first, lambda_this):
                     exit_with_error(
-                        f"--write_data gives one table, and {get_model_name(specpath)} has a different wavelength grid"
-                        " from the model before it",
-                        "Remove --write_data, or give models with the same frequency bins",
+                        f"--print_data and --write_data give one table, and {get_model_name(specpath)} has a different"
+                        " wavelength grid from the model before it",
+                        "Remove --print_data and --write_data, or give models with the same wavelength grid",
                     )
             # the plotted x column is the same for every model, thus the table holds it once
             xcolumn = f"x_plotted_{args.xunit}"
@@ -2214,7 +2214,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--hideyticklabels", action="store_true", help="Don't show numbers or a label on the y axis")
 
-    parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
+    addarg_data_output(parser)
 
     addarg_output(parser, kind="file", helptext="Path/filename for PDF file")
 
@@ -2722,12 +2722,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             # no model resolved both bounds, thus the time placeholders get no values
             filenameout = str(Path(filenameout).with_name("plotspectra.pdf"))
 
-        if args.write_data and len(dfalldata.columns) > 0:
-            datafilenameout = Path(filenameout).with_suffix(".txt")
-            dfalldata.write_csv(datafilenameout, separator=" ")
-            print_saved(datafilenameout)
-        if args.write_data:
-            write_residual_stats(dfresidualstats, filenameout)
+        output_data(args, {"": dfalldata, "_residuals": dfresidualstats}, filenameout)
 
         save_figure(fig, filenameout, args=args, dpi=args.dpi)
 
