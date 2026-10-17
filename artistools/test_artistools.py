@@ -4647,6 +4647,37 @@ def test_artis_data_skill_names_each_function_that_exists() -> None:
     assert not stalenames, f"SKILL.md names functions that artistools does not have: {stalenames}"
 
 
+def test_artis_data_skill_python_ignores_a_module_in_the_model_folder(tmp_path: Path) -> None:
+    """The command of the skill runs Python in a model folder, and "python -" imported an artistools.py of that folder.
+
+    A model from a different person can hold such a file, thus the agent ran it with the permission to read data.
+    """
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
+    command = next(block for block in re.findall(r"```sh\n(.*?)```", skilltext, re.DOTALL) if "ATPY=" in block)
+    command = command.replace("...", "print(at.__file__)")
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    marker = tmp_path / "ran.txt"
+    (modelfolder / "artistools.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+
+    # the editable installation of a checkout can need the checkout on PYTHONPATH, and -P keeps that path
+    env = os.environ | {
+        "PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
+        "PYTHONPATH": str(Path(at.__file__).resolve().parent.parent),
+    }
+    bashpath = shutil.which("bash")
+    assert bashpath is not None
+    # the command is the fixed text of the skill, which the agent runs in a shell
+    completed = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [bashpath, "-c", command], cwd=modelfolder, env=env, capture_output=True, text=True, check=False
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert not marker.exists()
+    assert Path(completed.stdout.strip()).resolve() == Path(at.__file__).resolve()
+
+
 def test_artis_data_skill_examples_run_on_the_test_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Each example of the skill must run, because a change of a reader can stop it with no other failed test.
 

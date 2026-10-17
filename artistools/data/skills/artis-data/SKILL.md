@@ -38,11 +38,14 @@ Use the Python of the environment that holds the `artistools` command:
 
 ```sh
 ATPY="$(dirname "$(realpath "$(command -v artistools)")")/python"
-"$ATPY" - <<'EOF'
+"$ATPY" -P - <<'EOF'
 import artistools as at
 ...
 EOF
 ```
+
+Always give `-P`. Without it, Python imports a file of the working folder before the installed package. A model
+folder from a different person can hold a file such as `artistools.py`, and Python then runs that file.
 
 If no `artistools` command exists, ask the user for the environment. Run the script in the model folder, or give
 the model path in the script. Call `help()` on a function to get all its arguments.
