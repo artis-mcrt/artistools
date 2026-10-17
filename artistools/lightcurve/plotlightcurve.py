@@ -34,6 +34,7 @@ from artistools.lightcurve.core import get_colour_delta_mag
 from artistools.lightcurve.core import get_filename_part
 from artistools.lightcurve.core import get_filter_data
 from artistools.lightcurve.core import get_from_packets
+from artistools.lightcurve.core import get_katz_integral
 from artistools.lightcurve.core import get_top_nuclides
 from artistools.lightcurve.core import lum_lsun_to_mag
 from artistools.lightcurve.core import path_is_reference_lightcurve
@@ -118,6 +119,7 @@ from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
+from artistools.plottools import warn_direction_bin_noise
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -809,6 +811,10 @@ def plot_artis_lightcurve(
                 "Give -plotviewingangle with light_curve_res.out, give no -plotviewingangle with light_curve.out, and"
                 " give a file that ARTIS wrote in full",
             )
+        if directionresolved:
+            warn_direction_bin_noise(
+                lcpath.name, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+            )
         # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
         if -1 in dirbins and -1 not in lcdataframes:
             lcdataframes[-1] = scan_lightcurve(
@@ -898,18 +904,7 @@ def plot_artis_lightcurve(
             plotkwargs["color"] = None
 
         lcdata_tmin, lcdata_tmax = get_time_range_days(lcdata)
-        lcdata = lcdata.with_columns(time_s=pl.col("time_days") * day_to_s)
-        katz_integral = np.trapezoid(
-            (
-                lcdata
-                .select(pl.col("luminosity_erg/s") * pl.col("time_s"))
-                .fill_null(0.0)
-                .fill_nan(0.0)
-                .to_series()
-                .to_numpy()
-            ),
-            x=lcdata["time_s"],
-        )
+        katz_integral = get_katz_integral(lcdata["time_days"], lcdata["luminosity_erg/s"])
         print_detail(f"Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]")
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
@@ -929,7 +924,7 @@ def plot_artis_lightcurve(
 
         # the line of the luminosity shows only the valid range, and -plotinvalidpart and --plotcmf show each row.
         # Thus the table keeps each row, and a column names the rows of the line
-        plotteddataframes[dirbin] = lcdata.drop("time_s").with_columns(
+        plotteddataframes[dirbin] = lcdata.with_columns(
             in_valid_range=pl.lit(value=False)
             if validrange_start_days is None or validrange_end_days is None
             else pl.col("time_days").is_between(validrange_start_days, validrange_end_days)
@@ -1523,9 +1518,13 @@ def plot_hesma_lightcurve(
     for axis, band_name in zip(axes[: len(bandnames)], bandnames, strict=True):
         if band_name in hesma_model.columns:
             (hesmaline,) = axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
+            # the line reaches each end of the axis, and the summary and the table give only the points that it shows
+            dfinrange = hesma_model.filter(is_in_time_range(timecolumn, args.timemin, args.timemax))
+            summaryparts, summarywarnings = get_peak_summary(
+                dfinrange[timecolumn], dfinrange[band_name], "mag", ismagnitude=True, isband=True
+            )
+            print_series_summary(f"{band_name} {label}", summaryparts, summarywarnings)
             if plottedpoints is not None:
-                # the line reaches each end of the axis, and the table gives only the points that the axis shows
-                dfinrange = hesma_model.filter(is_in_time_range(timecolumn, args.timemin, args.timemax))
                 plottedpoints.append(
                     get_magnitude_table(label, None, ("band", band_name), dfinrange[timecolumn], dfinrange[band_name])
                 )

@@ -2573,9 +2573,10 @@ def test_band_reference_table_has_only_the_time_range(
     dfbands = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfbands.filter(pl.col("model") == "reference")["time_days"].to_list() == [280.0]
     assert dfbands.filter(pl.col("model") == "hesma")["time_days"].to_list() == [280.0]
-    assert "B reference: 1 points from 280 to 280 d, peak -12.5 mag at 280 d (brightest drawn point)" in (
-        capsys.readouterr().out
-    )
+    output = capsys.readouterr().out
+    assert "B reference: 1 points from 280 to 280 d, peak -12.5 mag at 280 d (brightest drawn point)" in output
+    # the HESMA band gave no summary line either
+    assert "B hesma: 1 points from 280 to 280 d, peak -13 mag at 280 d (brightest drawn point)" in output
 
 
 @pytest.mark.parametrize("residualtype", [None, "absolute", "relative", "relativelog"])

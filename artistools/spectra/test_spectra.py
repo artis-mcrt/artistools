@@ -4453,3 +4453,19 @@ def test_spectrum_summary_integrates_around_a_masked_band(capsys: pytest.Capture
     assert np.isclose(float(match.group(1)), luminosity, rtol=1e-3)
     assert "leaves out 2000 Å with no value of f_λ" in out
     assert "largest drawn flux 1 at" in out
+
+    # a masked point at the end of the range is not drawn, and the summary counted it in the points and the x range
+    dfendmasked = dfspectrum.with_columns(
+        f_lambda=pl.Series([1.0, 1.0, 1.0, 1.0, float("nan")]), y=pl.Series([1.0, 1.0, 1.0, 1.0, float("nan")])
+    )
+    print_spectrum_summary("endmasked", dfendmasked, (1000.0, 5000.0), "angstrom", "flux")
+    assert "endmasked: 4 points from 1000 to 4000 angstrom" in capsys.readouterr().out
+
+    # a filter combines the packets of neighbouring bins, and the summary gave the noise of the unfiltered bins
+    dfpackets = dfspectrum.with_columns(
+        packetcount=pl.Series([10, 10, 10, 10, 10]), relnoise=0.3, delta_lambda=1000.0, f_lambda=1.0, y=1.0
+    )
+    print_spectrum_summary("filtered", dfpackets, (1000.0, 5000.0), "angstrom", "flux", isfiltered=True)
+    out = capsys.readouterr().out
+    assert "no noise estimate, because the filter combines the packets" in out
+    assert "relative noise of the luminosity" not in out

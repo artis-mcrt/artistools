@@ -2201,8 +2201,12 @@ def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicM
         ylabel = call.args[0].get_ylabel()
         dftable, ycolumn = next(value for key, value in panels.items() if ylabel.startswith(key))
         dfcurve = dftable.filter(pl.col("model") == call.kwargs["label"])
-        np.testing.assert_allclose(dfcurve["vel_r_on_c"], np.asarray(call.args[1], dtype=float), rtol=1e-12)
-        np.testing.assert_allclose(dfcurve[ycolumn], np.asarray(call.args[2], dtype=float), rtol=1e-12, atol=0.0)
+        # the table gives the points that the axis shows, and the line can close at v = c outside the axis
+        xlow, xhigh = call.args[0].get_xlim()
+        drawnx, drawny = np.asarray(call.args[1], dtype=float), np.asarray(call.args[2], dtype=float)
+        isvisible = (drawnx >= xlow) & (drawnx <= xhigh)
+        np.testing.assert_allclose(dfcurve["vel_r_on_c"], drawnx[isvisible], rtol=1e-12)
+        np.testing.assert_allclose(dfcurve[ycolumn], drawny[isvisible], rtol=1e-12, atol=0.0)
         ncurves += 1
     # two models on each of the two mass panels, and one model with Ye on the Ye panel
     assert ncurves == 5
@@ -4594,3 +4598,28 @@ def test_closest_network_timesteps_agree_with_a_filter_of_each_time(trajectory_c
     ]
     assert get_closest_network_timesteps(trajectory_copy, 114511, times[:1], cond="lessorequal") == [None]
     assert get_closest_network_timesteps(trajectory_copy, 114511, times[-1:], cond="greaterorequal") == [None]
+
+
+def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(tmp_path: Path) -> None:
+    """The axis shows the velocities from -xmin to -xmax, and the tables also gave the closing point at v = c."""
+    at.inputmodel.plotdensity.main(
+        argsraw=[], modelpath=[modelpath], outputpath=tmp_path, xmin=0.01, xmax=0.05, write_data=True, quiet=True
+    )
+    for filename in ("densityprofile.txt", "densityprofile_massprofile.txt"):
+        dftable = read_data_table(tmp_path / filename)
+        assert dftable.height > 0
+        assert dftable["vel_r_on_c"].is_between(0.01, 0.05).all(), filename
+
+
+def test_plotinitialcomposition_3d_tables_follow_the_order_of_the_cells() -> None:
+    """--plot3d gave no table. The cells of a model change x first, thus each row must keep the velocity of its cell."""
+    from artistools.inputmodel.plotinitialcomposition import get_3d_tables
+
+    xgrid = np.array([-0.2, 0.0])
+    cellvalues = np.arange(8.0)
+    tables = get_3d_tables(xgrid, cellvalues.reshape((2, 2, 2), order="F"), "rho", np.array([1.0, 5.0]))
+    dfcells = tables[""]
+    assert dfcells["rho"].to_list() == cellvalues.tolist()
+    assert dfcells["vel_x_min_on_c"].to_list() == [-0.2, 0.0] * 4
+    assert dfcells["vel_z_min_on_c"].to_list() == [-0.2] * 4 + [0.0] * 4
+    assert tables["_isosurfaces"]["rho_of_isosurface"].to_list() == [1.0, 5.0]

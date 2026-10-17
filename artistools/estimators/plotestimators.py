@@ -38,6 +38,7 @@ from artistools.constants import Msun_to_g
 from artistools.estimators.core import get_averageexcitation
 from artistools.estimators.core import get_levelpop_modeldata
 from artistools.estimators.core import get_prefix_group
+from artistools.estimators.core import get_temperature_limits
 from artistools.estimators.core import get_units
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import get_variable
@@ -75,7 +76,6 @@ from artistools.misc import exit_with_error
 from artistools.misc import flatten_list
 from artistools.misc import folder_is_artis_model
 from artistools.misc import format_frame_path
-from artistools.misc import get_artis_option
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -2028,16 +2028,6 @@ class LineFigureData(t.NamedTuple):
 
 # the temperatures that ARTIS limits to the range from MINTEMP to MAXTEMP
 TEMPERATURENAMES: t.Final = frozenset({"Te", "TR", "TJ"})
-
-
-def get_temperature_limits(modelpath: Path | str) -> dict[str, float]:
-    """Return MINTEMP and MAXTEMP of the artisoptions.h of a model, with no entry for a limit that it does not give."""
-    limits: dict[str, float] = {}
-    for name in ("MINTEMP", "MAXTEMP"):
-        value = get_artis_option(modelpath, name)
-        with contextlib.suppress(TypeError, ValueError):
-            limits[name] = float(str(value).rstrip("fF"))
-    return limits
 
 
 def print_line_figure_summary(figuredata: "LineFigureData", args: argparse.Namespace) -> None:

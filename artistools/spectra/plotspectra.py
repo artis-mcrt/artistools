@@ -109,6 +109,7 @@ from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
+from artistools.plottools import warn_direction_bin_noise
 from artistools.spectra.core import bin_spectrum
 from artistools.spectra.core import check_time_range_overlaps_time_bins
 from artistools.spectra.core import convert_angstroms_to_unit
@@ -364,7 +365,12 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 
 
 def print_spectrum_summary(
-    seriesname: str, dfspectrum: pl.DataFrame, xlimits: tuple[float, float], xunit: str, yvariable: str
+    seriesname: str,
+    dfspectrum: pl.DataFrame,
+    xlimits: tuple[float, float],
+    xunit: str,
+    yvariable: str,
+    isfiltered: bool = False,
 ) -> None:
     """Log the largest drawn point of a spectrum and the luminosity of the drawn range.
 
@@ -386,8 +392,9 @@ def print_spectrum_summary(
     dfdrawnpoints = dfinrange.filter(pl.col("y").is_finite())
     if not dfdrawnpoints.is_empty():
         peakx, peaky = dfdrawnpoints.select(pl.col("x", "y").sort_by("y", descending=True).first()).row(0)
+        drawnxmin, drawnxmax = dfdrawnpoints["x"].min(), dfdrawnpoints["x"].max()
         parts += [
-            f"{dfinrange.height} points from {dfinrange['x'].min():.4g} to {dfinrange['x'].max():.4g} {xunit}",
+            f"{dfdrawnpoints.height} points from {drawnxmin:.4g} to {drawnxmax:.4g} {xunit}",
             f"largest drawn {yvariable} {peaky:.4g} at {peakx:.4g} {xunit}",
         ]
     # np.interp gives the end value outside the data, thus a limit outside the data is the end of the data
@@ -407,6 +414,11 @@ def print_spectrum_summary(
     if not isdrawnsegment.all():
         gapwidth = float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum())
         parts.append(f"the integral leaves out {gapwidth:.4g} Å with no value of f_λ, e.g. a masked telluric band")
+    if isfiltered and "relnoise" in dfinrange.columns:
+        # a filter combines neighbouring bins, thus the noise of each bin is not the noise of the drawn value
+        parts.append("no noise estimate, because the filter combines the packets of neighbouring bins")
+        print_series_summary(seriesname, parts)
+        return
     noiseparts, noisewarnings = get_packet_noise_summary(dfinrange)
     print_series_summary(seriesname, parts + noiseparts, noisewarnings)
 
@@ -1030,6 +1042,12 @@ def plot_artis_spectrum(
                 # bin -1 stays, because the plot shows it in place of a bin that the model does not have
                 directionbins=[-1, *directionbins],
             )
+            if any(dirbin >= 0 for dirbin in directionbins):
+                warn_direction_bin_noise(
+                    "gamma_spec_res.out" if args.gamma else "spec_res.out",
+                    average_over_phi=average_over_phi,
+                    average_over_theta=average_over_theta,
+                )
 
         if args.plotvspecpol is None and (average_over_phi or average_over_theta):
             # an averaged bin is the first bin of its group, thus a different bin has no label and no packets
@@ -1108,7 +1126,9 @@ def plot_artis_spectrum(
             if args.multispecplot:
                 seriessuffix += f"_{args.timedayslist[axindex]}d"
             summaryname = f"{linelabel_withdirbin or get_model_name(modelpath)}{seriessuffix}"
-            print_spectrum_summary(summaryname, dfspectrum, (xmin, xmax), xunit, yvariable)
+            print_spectrum_summary(
+                summaryname, dfspectrum, (xmin, xmax), xunit, yvariable, isfiltered=filterfunc is not None
+            )
             xplot, yplot = dfspectrum["x"].to_numpy(), dfspectrum["y"].to_numpy()
             binedges = None
             if args.histogram:

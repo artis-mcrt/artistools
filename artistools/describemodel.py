@@ -6,9 +6,12 @@ a model, and to know which physics the run had on.
 """
 
 import argparse
+import re
 import typing as t
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 import polars as pl
 
@@ -47,6 +50,27 @@ SINGLEOUTPUTFILES = (
     "gamma_spec.out",
     "deposition.out",
 )
+
+# the artistools command that reads each output, as a hint for a person or an agent. <days> is a time in days, N is a
+# direction bin, and <cell> is a cell
+READERCOMMANDS: Mapping[str, str] = MappingProxyType({
+    "estimators": "plotestimators <variable> -t <days>; deposition; check",
+    "nlte": "plotnltepops -t <days> -modelgridindex <cell>",
+    "packets": "plotspectra --frompackets; plotlightcurves --frompackets; plotlastpacketinteraction; plotspherical",
+    "light_curve.out": "plotlightcurves",
+    "light_curve_res.out": "plotlightcurves -plotviewingangle N",
+    "gamma_light_curve.out": "plotlightcurves --gamma",
+    "spec.out": "plotspectra -t <days>",
+    "spec_res.out": "plotspectra -t <days> -plotviewingangle N",
+    "gamma_spec.out": "plotspectra --gamma -t <days>",
+    "deposition.out": "plotlightcurves -deposition gamma positron",
+})
+
+
+def get_reader_text(outputname: str) -> str:
+    """Return the text that names the artistools command that reads an output."""
+    return f" (read with: artistools {READERCOMMANDS[outputname]})" if outputname in READERCOMMANDS else ""
+
 
 # the options of artisoptions.h that change the physics of a run or the meaning of an output, by topic. ARTIS renamed
 # some options, thus each entry gives the names of one option, the newest name first
@@ -124,18 +148,22 @@ def get_output_lines(modelpath: Path) -> list[str]:
             for folder in runfolders
         )
         alltext = f", {allrankscount} files of all ranks ({kind}_allranks.out)" if allrankscount else ""
-        lines.append(f"{kind}: {rankcount} rank files{alltext}")
+        lines.append(f"{kind}: {rankcount} rank files{alltext}{get_reader_text(kind) if rankcount or alltext else ''}")
 
     packetcount = count_packets_textfiles(modelpath)
     if packetcount == 0 and has_packets_files(modelpath):
         lines.append("packets: no text files, and the parquet cache of the packets")
     else:
-        lines.append(f"packets: {packetcount} rank files")
+        lines.append(f"packets: {packetcount} rank files{get_reader_text('packets') if packetcount else ''}")
 
     for filename in SINGLEOUTPUTFILES:
         # the readers of the light curves and the spectra also search the run folders, and get_deposition does not
         filepath = firstexisting_or_none(filename, folder=modelpath, search_subfolders=filename != "deposition.out")
-        lines.append(f"{filename}: {filepath.relative_to(modelpath) if filepath is not None else 'none'}")
+        lines.append(
+            f"{filename}: {filepath.relative_to(modelpath)}{get_reader_text(filename)}"
+            if filepath is not None
+            else f"{filename}: none"
+        )
     return lines
 
 
@@ -211,15 +239,128 @@ def get_option_lines(modelpath: Path, alloptions: bool = False) -> list[str]:
         ]
         if found:
             lines.append(f"  {topic}: {'; '.join(found)}")
+            lines.extend(f"    effect: {effect}" for effect in get_option_effects(topic, options))
     return lines
 
 
-def get_version_lines(modelpath: Path) -> list[str]:
-    """Return the ARTIS version and the git branch of each run, from the start of its first log.
+# the method of each time-dependent scheme, from the comments of update_packets.cc of ARTIS
+THERMALISATIONMETHODS: Mapping[str, str] = MappingProxyType({
+    "BARNES": (
+        "a particle packet deposits with the efficiency of Barnes et al. (2016), ApJ, 829, 110,"
+        " doi:10.3847/0004-637X/829/2/110, and otherwise escapes"
+    ),
+    "WOLLAEGER": (
+        "a particle packet deposits with the efficiency of Wollaeger et al. (2018), MNRAS, 478, 3298-3334,"
+        " doi:10.1093/mnras/sty1018, and otherwise escapes"
+    ),
+    "TIMEDEPENDENT": (
+        "the particles lose energy along their paths, as Shingles et al. (2023), ApJL, 954, L41,"
+        " doi:10.3847/2041-8213/acf29a, describe"
+    ),
+    "TIMEDEPENDENT_WITH_ADIABATIC_LOSS": (
+        "the particles lose energy along their paths and by the adiabatic expansion, as Shingles et al. (2023),"
+        " ApJL, 954, L41, doi:10.3847/2041-8213/acf29a, describe"
+    ),
+})
 
-    A restarted run can use a different build of ARTIS, thus each run folder gives its own version.
+
+def returns_only(value: str | None, result: str) -> bool:
+    """Return True if the text of a function option has only return statements of one result, e.g. "false"."""
+    if value is None:
+        return False
+    results = re.findall(r"\breturn\s+([^;]+);", value)
+    return bool(results) and all(found.strip() == result for found in results)
+
+
+def get_option_effects(topic: str, options: Mapping[str, str]) -> list[str]:
+    """Return what the options of a topic mean for the outputs, from the physics notes of the artis-data skill.
+
+    A value that the code cannot read, e.g. a function with a condition, gives no effect line. The option line above
+    it still gives the value.
     """
-    lines: list[str] = []
+    effects: list[str] = []
+    match topic:
+        case "NLTE":
+            nlteoption = options.get("ION_NLEVELS_EXCITED_NLTE", options.get("LEVEL_IS_NLTE"))
+            hasnonltelevel = returns_only(nlteoption, "false") or returns_only(nlteoption, "0")
+            sahaoption = options.get("FORCE_SAHA_ION_BALANCE")
+            # phi_saha of ltepop.cc of ARTIS evaluates the Saha equation at Te
+            if returns_only(sahaoption, "true"):
+                effects.append("the ion balance of each element is the Saha equation at Te")
+            elif hasnonltelevel:
+                effects.append("the ratio of two ions comes from the balance of the ionisation and the recombination")
+            if (
+                sahaoption is not None
+                and not returns_only(sahaoption, "true")
+                and not returns_only(sahaoption, "false")
+            ):
+                effects.append(
+                    "FORCE_SAHA_ION_BALANCE gives the Saha equation at Te to the ion balance of some elements"
+                )
+            if hasnonltelevel:
+                effects.append("no level is NLTE, thus the levels of an ion follow the Boltzmann distribution")
+            elif nlteoption is not None:
+                effects.append(
+                    "ARTIS solves the rate equations of the NLTE levels and of a superlevel of each ion, as section 2.3"
+                    " of Shingles et al. (2020), MNRAS, 492, 2029-2043, doi:10.1093/mnras/stz3412, describes"
+                )
+        case "non-thermal":
+            ntscheme = options.get("NT_SCHEME", "")
+            if options.get("NT_ON") == "false" or "NT_OFF" in ntscheme:
+                effects.append("ARTIS gives no non-thermal ionisation and no non-thermal excitation")
+            elif "NT_AXELRODAPPROX" in ntscheme:
+                effects.append("the non-thermal rates come from the approximation NT_AXELRODAPPROX, not Spencer-Fano")
+            elif "NT_SPENCERFANO" in ntscheme or options.get("NT_SOLVE_SPENCERFANO") == "true":
+                effects.append(
+                    "the Spencer-Fano solution gives the fractions of the deposition that go into heating, ionisation,"
+                    " and excitation, and the rates gamma_NT_<ion>"
+                )
+        case "thermalisation":
+            scheme = options.get("PARTICLE_THERMALISATION_SCHEME")
+            instant = "INSTANTFULLDEPOSITION" in scheme if scheme is not None else None
+            if scheme is None and "INSTANT_PARTICLE_DEPOSITION" in options:
+                instant = options["INSTANT_PARTICLE_DEPOSITION"] == "true"
+            if instant is True:
+                effects.append(
+                    "the positrons, the electrons, and the alpha particles give their energy at once to their cell,"
+                    " thus their deposition_ rates are analytic and belong to the time step of their row"
+                )
+            elif instant is False:
+                effects.append(
+                    "the particles are Monte Carlo packets, thus their deposition_ rates belong to the time step"
+                    " before their row"
+                )
+                for schemename, method in THERMALISATIONMETHODS.items():
+                    if scheme is not None and scheme.endswith(f"::{schemename}"):
+                        effects.append(method)
+        case "radiation field":
+            if options.get("MULTIBIN_RADFIELD_MODEL_ON") == "true":
+                effects.append(
+                    "from the first time step of the binned radiation field (the option above), the photoionisation"
+                    " rates use a fit of TR and W to each frequency bin of J"
+                )
+            if options.get("LTEPOP_EXCITATION_USE_TJ") == "true":
+                effects.append("the Boltzmann distribution of the levels uses TJ in place of Te")
+        case "temperature limits":
+            effects.append("a cell with Te at MINTEMP or MAXTEMP has no thermal balance, thus that Te is not physical")
+        case "packets":
+            if options.get("VPKT_ON") == "true":
+                effects.append("the virtual packets give a spectrum for each direction of vpkt.txt, with less noise")
+            if options.get("POL_ON") == "true":
+                effects.append("specpol.out and specpol_res.out give the Stokes parameters of the spectra")
+        case _:
+            # the estimators topic names the columns that ARTIS writes, and it changes no physics
+            pass
+    return effects
+
+
+def get_run_versions(modelpath: Path) -> dict[str, dict[str, str]]:
+    """Return the git version and the git branch of ARTIS of each run folder with a log, from the start of its log.
+
+    A restarted run can use a different build of ARTIS, thus each run folder gives its own version. The key is the
+    name of the run folder, or "." for the model folder. A log can give only one of the two fields.
+    """
+    versions: dict[str, dict[str, str]] = {}
     for folder in get_run_subfolders(modelpath):
         logpath = firstexisting_or_none("output_0-0.txt", folder=folder, search_subfolders=False)
         if logpath is None:
@@ -232,12 +373,17 @@ def get_version_lines(modelpath: Path) -> list[str]:
                     if f"{key}" in line and key not in fields:
                         fields[key] = line.split(key, 1)[1].lstrip(": ").strip()
         if fields:
-            foldername = "." if folder == modelpath else folder.name
-            lines.append(
-                f"ARTIS of run folder {foldername}: {fields.get('git version', 'unknown version')}"
-                f" (branch {fields.get('git branch', 'unknown')})"
-            )
-    return lines
+            versions["." if folder == modelpath else folder.name] = fields
+    return versions
+
+
+def get_version_lines(modelpath: Path) -> list[str]:
+    """Return the ARTIS version and the git branch of each run, from the start of its first log."""
+    return [
+        f"ARTIS of run folder {foldername}: {fields.get('git version', 'unknown version')}"
+        f" (branch {fields.get('git branch', 'unknown')})"
+        for foldername, fields in get_run_versions(modelpath).items()
+    ]
 
 
 @on_model_host

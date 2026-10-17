@@ -52,13 +52,20 @@ the model path in the script. Call `help()` on a function to get all its argumen
 
 Run `artistools describe <modelpath>` first. It gives these items:
 
-- the cells, the time steps, and the output files;
+- the cells, the time steps, and the output files, with the command that reads each file;
 - the plot selections, e.g. the direction bins for `-plotviewingangle` and the virtual packet spectra for
   `-plotvspecpol`;
 - the ions and the ARTIS version;
-- the physics options of the run, e.g. NLTE, non-thermal ionisation, and thermalisation.
+- the physics options of the run, e.g. NLTE, non-thermal ionisation, and thermalisation, and an `effect:` line that
+  says what each option means for the outputs.
 
-The physics options change the meaning of many outputs.
+The physics options change the meaning of many outputs. Three more commands help before an answer:
+
+- `artistools check <modelpath>` gives one row for each check of trust, e.g. the cells at a temperature limit, the
+  complete time steps, a restart with a different build, and the Katz energy test. `--frompackets` adds the packet
+  noise. Read its warnings before you trust a number of the model;
+- `artistools catalog <folder>` gives one row for each model below a folder, e.g. the physics options and the peak;
+- `artistools report <modelpath>` makes an HTML page with the check, the summary, the logs, and standard figures.
 
 Each plot command prints the plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te
 -t 300 <modelpath> --print_data --quiet`. Use it to check a result, or for a quick answer with no Python. A value or a

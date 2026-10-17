@@ -93,6 +93,17 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floati
         return Mbol_sun - (2.5 * np.log10(lum_lsun))
 
 
+def get_katz_integral(time_days: pl.Series, luminosity_erg_per_s: pl.Series) -> float:
+    """Return the integral of t L(t) dt in erg s, with the trapezoid rule over the given times.
+
+    A null or NaN luminosity counts as zero. Katz B., Kushnir D., Dong S. (2013), arXiv:1301.6766, compare this
+    integral with the same integral of the deposition rate.
+    """
+    time_s = time_days.cast(pl.Float64).to_numpy() * day_to_s
+    integrand = (luminosity_erg_per_s.cast(pl.Float64).fill_null(0.0).fill_nan(0.0).to_numpy()) * time_s
+    return float(np.trapezoid(integrand, x=time_s))
+
+
 @on_model_host
 def scan_lightcurve(
     filepath: str | Path,

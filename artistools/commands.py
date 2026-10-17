@@ -129,12 +129,15 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writespectra",
     ),
     "other commands": (
+        "catalog",
+        "check",
         "completions",
         "describe",
         "getpath",
         "installskill",
         "logsummary",
         "python",
+        "report",
         "timesteps",
         "version",
     ),
@@ -149,6 +152,19 @@ DESCRIBEINPUTMODEL = CommandSpec(
 )
 
 subcommandtree: CommandTree = {
+    "catalog": CommandSpec(
+        "catalog",
+        helptext="Make a table of the ARTIS models below a folder, with one row for each model.",
+        note=(
+            "The table gives the cells, the time steps, the main physics options, the ARTIS version, and the peak"
+            " luminosity. It reads no packets, estimators, or spectra."
+        ),
+    ),
+    "check": CommandSpec(
+        "check",
+        helptext="Check whether the results of an ARTIS model deserve trust, and give one row for each check.",
+        note="--frompackets also reads the escaped packets to find the Monte Carlo noise of the light curve.",
+    ),
     "comparetogsinetwork": CommandSpec(
         "gsinetwork.comparetogsinetwork",
         helptext="Compare ARTIS to a GSI Network calculation.",
@@ -336,6 +352,14 @@ subcommandtree: CommandTree = {
         funcname="show_python",
         helptext="Print the path of the Python interpreter that runs artistools.",
         note="A script that imports artistools can run with this interpreter, e.g. from an agent.",
+    ),
+    "report": CommandSpec(
+        "report",
+        helptext="Make one HTML page that is the first page to read about an ARTIS model.",
+        note=(
+            "The page holds the provenance, the health check, the model summary, the log summary, and standard figures."
+        ),
+        examples=((". -o myreport", "the report of the model in the working folder, in the folder myreport"),),
     ),
     "server": CommandSpec(
         "misc.remote",

@@ -34,6 +34,7 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import format_frame_path
@@ -405,17 +406,21 @@ def plot_celltimestep(
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
-        output_data(args, {"": get_drawn_series_table(drawnseries)}, outputfile)
+        output_data(args, {"": get_drawn_series_table(drawnseries, xmin, xmax)}, outputfile)
     # the suffix of the file name sets the format, e.g. .pdf or .png
     save_figure(fig, outputfile, args=args, isframe=isframe)
     return True
 
 
-def get_drawn_series_table(drawnseries: Sequence[tuple[str, npt.ArrayLike, npt.ArrayLike]]) -> pl.DataFrame:
+def get_drawn_series_table(
+    drawnseries: Sequence[tuple[str, npt.ArrayLike, npt.ArrayLike]], xmin: float, xmax: float
+) -> pl.DataFrame:
     """Return the drawn points of each series of a plot of one cell, with one row for each point.
 
     Each series has its own wavelengths, thus a column gives the series of each row. The band-average field gives the
-    points of its step line. The value of each point applies from the point before it to that point.
+    points of its step line. The value of each point applies from the point before it to that point. The axis shows
+    xmin to xmax, thus each series keeps the points inside that range and the nearest point outside each end, which
+    the line or the step to the edge of the axis needs.
     """
     # a series with no point, e.g. a cell with no line estimators, needs the schema for the types of its columns
     schema = {
@@ -424,14 +429,19 @@ def get_drawn_series_table(drawnseries: Sequence[tuple[str, npt.ArrayLike, npt.A
         "J_lambda_erg_per_s_per_cm2_per_angstrom": pl.Float64,
     }
     return pl.concat([
-        pl.DataFrame(
-            {
-                "series": label,
-                "lambda_angstroms": np.asarray(arr_lambda, dtype=np.float64),
-                "J_lambda_erg_per_s_per_cm2_per_angstrom": np.asarray(j_lambda, dtype=np.float64),
-            },
-            schema=schema,
-        )
+        df_filter_minmax_bracketed(
+            pl.DataFrame(
+                {
+                    "series": label,
+                    "lambda_angstroms": np.asarray(arr_lambda, dtype=np.float64),
+                    "J_lambda_erg_per_s_per_cm2_per_angstrom": np.asarray(j_lambda, dtype=np.float64),
+                },
+                schema=schema,
+            ),
+            colname="lambda_angstroms",
+            minval=xmin,
+            maxval=xmax,
+        ).collect()
         for label, arr_lambda, j_lambda in drawnseries
     ])
 

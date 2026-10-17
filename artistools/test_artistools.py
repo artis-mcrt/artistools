@@ -6057,6 +6057,43 @@ def test_describe_counts_the_cells_and_the_rank_files_of_each_run_folder(capsys:
     assert "ARTIS of run folder job0: v2023.10-106-gfcb7e2c (branch develop)" in output
 
 
+def test_describe_gives_the_effect_of_the_physics_options() -> None:
+    """The ion balance of a kilonova model with FORCE_SAHA_ION_BALANCE is Saha at Te, and not the rate balance.
+
+    The effect of the options must follow the code of ARTIS, thus each case here comes from ltepop.cc and
+    update_packets.cc.
+    """
+    from artistools.describemodel import get_option_effects
+
+    kilonova = {
+        "ION_NLEVELS_EXCITED_NLTE": "(int element_z, int ionstage) { return 0; }",
+        "FORCE_SAHA_ION_BALANCE": "(int element_z) { return true; }",
+        "NT_SCHEME": "NonThermalScheme::NT_OFF",
+        "PARTICLE_THERMALISATION_SCHEME": "ParticleThermalisationScheme::BARNES",
+    }
+    assert get_option_effects("NLTE", kilonova) == [
+        "the ion balance of each element is the Saha equation at Te",
+        "no level is NLTE, thus the levels of an ion follow the Boltzmann distribution",
+    ]
+    assert get_option_effects("non-thermal", kilonova) == [
+        "ARTIS gives no non-thermal ionisation and no non-thermal excitation"
+    ]
+    thermalisation = get_option_effects("thermalisation", kilonova)
+    assert "belong to the time step before their row" in thermalisation[0]
+    assert "Barnes et al. (2016)" in thermalisation[1]
+
+    # a condition in the function of an option gives no claim about its effect
+    nebular = {
+        "ION_NLEVELS_EXCITED_NLTE": "(int element_z, int ionstage) { if (element_z == 26) { return 80; } return 0; }",
+        "FORCE_SAHA_ION_BALANCE": "(int element_z) { if (element_z == 1) { return true; } return false; }",
+        "INSTANT_PARTICLE_DEPOSITION": "true",
+    }
+    nebulareffects = get_option_effects("NLTE", nebular)
+    assert "the Saha equation at Te to the ion balance of some elements" in nebulareffects[0]
+    assert "rate equations of the NLTE levels" in nebulareffects[1]
+    assert "analytic" in get_option_effects("thermalisation", nebular)[0]
+
+
 def test_describe_counts_the_direction_bins_of_the_file(tmp_path: Path) -> None:
     """ARTIS sets MABINS when it compiles, and the summary gave the 100 bins of artistools for a file of 2 bins."""
     from artistools.describemodel import get_selection_lines
@@ -6083,7 +6120,7 @@ def test_describe_finds_the_light_curve_in_a_run_folder(tmp_path: Path) -> None:
     (modelfolder / "12411848.slurm" / "deposition.out").write_text("1.0 2.0 3.0\n", encoding="utf-8")
 
     lines = get_output_lines(modelfolder)
-    assert "light_curve.out: 12411848.slurm/light_curve.out" in lines
+    assert "light_curve.out: 12411848.slurm/light_curve.out (read with: artistools plotlightcurves)" in lines
     assert "deposition.out: none" in lines
 
     # a run can join the estimator files of its ranks into one file, and the summary counted the rank files alone
@@ -6094,7 +6131,10 @@ def test_describe_finds_the_light_curve_in_a_run_folder(tmp_path: Path) -> None:
         "timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e5\n\n", encoding="utf-8"
     )
     lines = get_output_lines(allranksmodel)
-    assert "estimators: 0 rank files, 1 files of all ranks (estimators_allranks.out)" in lines
+    assert any(
+        line.startswith("estimators: 0 rank files, 1 files of all ranks (estimators_allranks.out) (read with:")
+        for line in lines
+    )
 
 
 @pytest.mark.parametrize(
@@ -6151,6 +6191,17 @@ def test_packet_summaries_give_the_monte_carlo_noise(capsys: pytest.CaptureFixtu
     captured = capsys.readouterr()
     assert "noise of the peak point" not in captured.out
     assert "no noise estimate, because the filter combines the packets" in captured.out
+
+    # a direction bin holds about 1/100 of the packets, and the files of the direction bins give no packet count
+    at.lightcurve.plot(argsraw=["-plotviewingangle", "0"], modelpath=[modelpath_classic_3d], outputfile=tmp_path)
+    assert "holds about 1/100 of the escaped packets" in capsys.readouterr().err
+    at.spectra.plot(
+        argsraw=["-plotviewingangle", "0", "--average_over_phi_angle"],
+        specpath=[modelpath_classic_3d],
+        timedays="5",
+        outputfile=tmp_path / "s.pdf",
+    )
+    assert "each direction bin of spec_res.out holds about 1/10 of the escaped packets" in capsys.readouterr().err
 
     # spec.out has no packet count, thus the line gives no noise
     at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "s.pdf")
@@ -6503,10 +6554,19 @@ def test_plotradfield_writes_the_drawn_values(
         "Emergent spectrum (scaled)",
     }
     assert set(dftable["series"]) == set(drawnseries)
-    for label, (_, drawnx, drawny) in drawnseries.items():
+    # the axis shows 1000 to 20000 Å, and the table keeps the nearest point outside each end for the line to the edge
+    for label, (_, drawnxvalues, drawnyvalues) in drawnseries.items():
         dfseries = dftable.filter(pl.col("series") == label)
-        assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx, rtol=1e-12, atol=0.0)
-        assert np.allclose(dfseries["J_lambda_erg_per_s_per_cm2_per_angstrom"].to_numpy(), drawny, rtol=1e-12, atol=0.0)
+        drawnx, drawny = np.asarray(drawnxvalues, dtype=float), np.asarray(drawnyvalues, dtype=float)
+        lowedge = drawnx[drawnx <= 1000.0].max(initial=-np.inf)
+        highedge = drawnx[drawnx >= 20000.0].min(initial=np.inf)
+        iskept = (drawnx >= lowedge) & (drawnx <= highedge)
+        assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx[iskept], rtol=1e-12, atol=0.0)
+        assert np.allclose(
+            dfseries["J_lambda_erg_per_s_per_cm2_per_angstrom"].to_numpy(), drawny[iskept], rtol=1e-12, atol=0.0
+        )
+        assert (dfseries["lambda_angstroms"] < 1000.0).sum() <= 1
+        assert (dfseries["lambda_angstroms"] > 20000.0).sum() <= 1
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -6528,3 +6588,282 @@ def test_plottransitions_writes_the_drawn_values(mockplot: mock.MagicMock, tmp_p
         )
         assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx, rtol=1e-12, atol=0.0)
         assert np.allclose(dfseries["f_lambda_arbitrary"].to_numpy(), drawny, rtol=1e-12, atol=0.0)
+
+
+def test_catalog_gives_one_row_for_each_model_and_warns_about_a_broken_model(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A folder of models gives one row for each model, and a broken model gives null values and one warning."""
+    from artistools.catalog import main
+
+    (tmp_path / "group").mkdir()
+    (tmp_path / "group" / "classic3d").symlink_to(modelpath_classic_3d, target_is_directory=True)
+    (tmp_path / "testmodel").symlink_to(modelpath, target_is_directory=True)
+    # a link back to the top folder must not make the search loop
+    (tmp_path / "group" / "loop").symlink_to(tmp_path, target_is_directory=True)
+    brokenfolder = tmp_path / "broken"
+    brokenfolder.mkdir()
+    (brokenfolder / "input.txt").write_text("not an input file\n", encoding="utf-8")
+    (brokenfolder / "model.txt").write_text("not a model\n", encoding="utf-8")
+
+    outputfile = tmp_path / "out" / "catalog.txt"
+    main(argsraw=[str(tmp_path), "-o", str(outputfile)])
+    captured = capsys.readouterr()
+
+    dfcatalog = read_data_file(outputfile)
+    assert dfcatalog["modelfolder"].to_list() == ["broken", "group/classic3d", "testmodel"]
+    assert "#   peak_lum_erg_per_s, peak_time_days: the largest point of light_curve.out" in outputfile.read_text(
+        encoding="utf-8"
+    )
+
+    rowbroken, rowclassic, rowtestmodel = dfcatalog.iter_rows(named=True)
+    assert rowbroken["cells"] is None
+    assert rowbroken["timesteps"] is None
+    assert captured.err.count("WARNING") == 1
+    assert "model broken in broken: the table gives nan for the cells of model.txt" in captured.err
+
+    assert rowclassic["dimensions"] == 3
+    assert rowclassic["cells"] == 1000
+    assert rowclassic["timesteps"] == 30
+    assert rowclassic["nlte"] is False
+    assert rowclassic["nonthermal"] is False
+    assert rowclassic["thermalisation"] == "INSTANT_PARTICLE_DEPOSITION=true"
+    # MPKTS = 15000 packets for each of the 2 ranks of input.txt
+    assert rowclassic["num_packets"] == 30000
+    assert rowclassic["artis_version"] == "v2023.10-106-gfcb7e2c"
+
+    # the test model has no artisoptions.h and no log
+    assert rowtestmodel["modelname"] == "TEST MODEL"
+    assert rowtestmodel["nlte"] is None
+    assert rowtestmodel["artis_version"] is None
+
+    for row, folder in ((rowclassic, modelpath_classic_3d), (rowtestmodel, modelpath)):
+        # light_curve.out holds the time and the luminosity in Lsun, and an older file repeats the times in a second
+        # table, thus the first table ends where the time decreases
+        lightcurve = np.loadtxt(folder / "light_curve.out")
+        firsttablelength = next(
+            (index + 1 for index in range(len(lightcurve) - 1) if lightcurve[index + 1, 0] < lightcurve[index, 0]),
+            len(lightcurve),
+        )
+        times, lums_lsun = lightcurve[:firsttablelength, 0], lightcurve[:firsttablelength, 1]
+        assert np.isclose(row["peak_lum_erg_per_s"], lums_lsun.max() * at.constants.Lsun_to_erg_per_s, rtol=1e-6)
+        assert np.isclose(row["peak_time_days"], times[lums_lsun.argmax()], rtol=1e-6)
+
+
+def test_catalog_prints_the_methods_and_the_table_and_asks_before_it_overwrites_a_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The standard output gives the method of each column and the table, and -o asks before it replaces a file."""
+    from artistools.catalog import main
+
+    (tmp_path / "testmodel").symlink_to(modelpath, target_is_directory=True)
+    main(argsraw=[str(tmp_path)])
+    printedlines = capsys.readouterr().out.splitlines()
+    # the progress messages come before the product, which is the lines of the methods and then the table
+    productstart = printedlines.index("# the method of each column:")
+    tablestart = next(index for index, line in enumerate(printedlines) if line.startswith("modelname "))
+    assert all(line.startswith("# ") for line in printedlines[productstart:tablestart])
+    dfcatalog = pl.read_csv(io.StringIO("\n".join(printedlines[tablestart:])), separator=" ", null_values="nan")
+    assert dfcatalog["modelname"].to_list() == ["TEST MODEL"]
+    assert dfcatalog["modelfolder"].to_list() == ["testmodel"]
+
+    outputfile = tmp_path / "out" / "catalog.txt"
+    main(argsraw=[str(tmp_path), "-o", str(outputfile)])
+    assert "# command: " in outputfile.read_text(encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main(argsraw=[str(tmp_path), "-o", str(outputfile)])
+    main(argsraw=[str(tmp_path), "-o", str(outputfile), "--force"])
+
+
+def test_report_holds_each_part_and_its_figures(tmp_path: Path) -> None:
+    """The page gives each part in order, an image for each figure, and the summary lines of each figure."""
+    from artistools.report import main
+
+    dfchecks = pl.DataFrame({
+        "check": ["light curve", "estimators"],
+        "status": ["ok", "warning"],
+        "detail": ["light_curve.out has 30 timesteps", "121 cells <at MAXTEMP>"],
+    })
+    reportfolder = tmp_path / "report"
+    with mock.patch("artistools.report.get_check_results_table", return_value=dfchecks) as mockcheck:
+        main(argsraw=[], modelpath=modelpath_classic_3d, outputfile=reportfolder)
+    mockcheck.assert_called_once()
+
+    page = (reportfolder / "index.html").read_text(encoding="utf-8")
+    headings = re.findall(r"<h2 id=\"[^\"]+\">([^<]+)</h2>", page)
+    assert headings == [
+        "Provenance",
+        "Health check",
+        "Model summary",
+        "Log summary of rank 0",
+        "Bolometric light curve",
+        "Spectra",
+        "Electron temperature against velocity",
+    ]
+    # the page escapes the text of a check, and the row of a warning has its class
+    assert '<tr class="status-warning"><td>estimators</td><td>warning</td><td>121 cells &lt;at MAXTEMP&gt;</td>' in page
+    assert "model.txt: 3D, 1000 cells, 695 cells with matter" in page
+    assert "call_T_e_finder: heating bigger than cooling" in page
+
+    imagenames = re.findall(r'<img src="([^"]+)" alt="[^"]+">', page)
+    assert imagenames == [
+        "lightcurve.png",
+        "spectrum_timestep005.png",
+        "spectrum_timestep014.png",
+        "spectrum_timestep023.png",
+        "Te_timestep005.png",
+        "Te_timestep014.png",
+        "Te_timestep023.png",
+    ]
+    assert all((reportfolder / imagename).is_file() for imagename in imagenames)
+    assert "<pre>test-classicmode_3d: 19 points from 3.591 to 6.468 d, peak 1.206e+43 erg/s at 5.864 d" in page
+    assert "WARNING: Te: 260 points are at MAXTEMP" in page
+    assert "<script" not in page
+    assert "http" not in page
+
+    # a second run asks before it overwrites the report, and stdin of pytest is no terminal
+    with pytest.raises(SystemExit):
+        main(argsraw=[], modelpath=modelpath_classic_3d, outputfile=reportfolder)
+
+
+def test_report_of_model_with_no_estimators_names_each_error(tmp_path: Path) -> None:
+    """A part that fails gives one error line, and the page continues to its end."""
+    from artistools.report import main
+
+    modelfolder = tmp_path / "noestimators"
+    modelfolder.mkdir()
+    for filename in (
+        "input.txt",
+        "model.txt",
+        "abundances.txt",
+        "compositiondata.txt",
+        "light_curve.out",
+        "spec.out",
+        "deposition.out",
+    ):
+        shutil.copy(modelpath_classic_3d / filename, modelfolder / filename)
+    reportfolder = tmp_path / "report"
+    with mock.patch("artistools.report.get_check_results_table", side_effect=ValueError("no check")):
+        main(argsraw=[], modelpath=modelfolder, outputfile=reportfolder)
+
+    page = (reportfolder / "index.html").read_text(encoding="utf-8")
+    assert '<p class="error">This part of the report failed: ValueError: no check</p>' in page
+    assert "The model has no log of rank 0." in page
+    assert page.count('<img src="spectrum_timestep') == 3
+    assert '<img src="Te_timestep' not in page
+    assert page.count('<p class="error">This part of the report failed:') == 4
+    assert page.rstrip().endswith("</html>")
+
+
+def test_check_counts_the_cells_at_the_temperature_limits() -> None:
+    """The worst time step and the fraction over all time steps agree with a count of the estimators."""
+    from artistools.check import get_check_results
+
+    dfresults = get_check_results(modelpath_classic_3d)
+    assert dfresults.columns == ["check", "status", "detail"]
+    status, detail = dfresults.filter(pl.col("check") == "temperature limits").select("status", "detail").row(0)
+
+    dfte = at.scan_estimators(modelpath_classic_3d).select("timestep", "Te").collect()
+    atlimit = dfte["Te"].is_in([3500.0, 140000.0])
+    assert dfte.filter(pl.col("timestep") == 0)["Te"].eq(3500.0).sum() == 562
+    overallpercent = 100 * float(atlimit.to_numpy().mean())
+    assert np.isclose(overallpercent, 54.6, atol=0.05)
+    assert status == "warning"
+    assert "at the worst time step 0 (3.05 d), of the 695 cells with Te, 562 (80.9%) are at MINTEMP = 3500 K" in detail
+    assert f"over all 30 time steps, {overallpercent:.1f}% of the values of Te are at a limit" in detail
+
+
+def test_check_reads_each_log_once_and_finds_the_restarts() -> None:
+    """The model folder holds a copy of the log of job1, thus the log check reads the logs of job0 and job1 alone.
+
+    Almost each run logs warnings, thus a log with no error gives the status ok.
+    """
+    from artistools.check import get_check_results
+
+    dfresults = get_check_results(modelpath_classic_3d)
+    statusofcheck = dict(zip(dfresults["check"], dfresults["status"], strict=True))
+    detailofcheck = dict(zip(dfresults["check"], dfresults["detail"], strict=True))
+    assert statusofcheck["log messages"] == "ok"
+    assert (
+        "the rank-0 logs of 2 run folders (job0, job1) hold 0 errors and 7419 warnings" in detailofcheck["log messages"]
+    )
+    assert statusofcheck["restarts"] == "ok"
+    assert "2 run folders with estimators (job0, job1)" in detailofcheck["restarts"]
+    assert "v2023.10-106-gfcb7e2c" in detailofcheck["restarts"]
+    assert statusofcheck["complete time steps"] == "ok"
+    assert "30 of 30 time steps as complete" in detailofcheck["complete time steps"]
+    assert statusofcheck["packet noise"] == "not checked"
+    assert detailofcheck["packet noise"] == "give --frompackets to read the packets"
+
+
+def test_check_katz_ratio_agrees_with_a_direct_integration(tmp_path: Path) -> None:
+    """The energy check reads only light_curve.out and deposition.out, thus a model with no estimators also has it.
+
+    The time range of the test model starts at 3 days with hot ejecta, thus the ratio is far from 1 with no fault.
+    """
+    from artistools.check import get_check_results
+
+    for filename in (
+        "input.txt",
+        "model.txt",
+        "abundances.txt",
+        "compositiondata.txt",
+        "light_curve.out",
+        "spec.out",
+        "deposition.out",
+    ):
+        shutil.copy(modelpath_classic_3d / filename, tmp_path / filename)
+
+    # light_curve.out holds a second table of 30 rows, which repeats the times
+    lightcurve = np.loadtxt(modelpath_classic_3d / "light_curve.out")[:30]
+    deposition = np.loadtxt(modelpath_classic_3d / "deposition.out")
+    lumtime_s = lightcurve[:, 0] * at.constants.day_to_s
+    deptime_s = deposition[:, 1] * at.constants.day_to_s
+    lumintegral = np.trapezoid(lightcurve[:, 1] * at.constants.Lsun_to_erg_per_s * lumtime_s, x=lumtime_s)
+    depintegral = np.trapezoid(deposition[:, 3] * at.constants.Lsun_to_erg_per_s * deptime_s, x=deptime_s)
+
+    for model in (modelpath_classic_3d, tmp_path):
+        dfresults = get_check_results(model)
+        status, detail = dfresults.filter(pl.col("check") == "energy").select("status", "detail").row(0)
+        assert status == "warning"
+        assert f"∫ t L dt = {lumintegral:.3e} erg s" in detail
+        assert f"∫ t Q dt = {depintegral:.3e} erg s" in detail
+        assert f"L/Q = {lumintegral / depintegral:.3f}" in detail
+        assert "gives a ratio far from 1 with no fault in the model" in detail
+
+    dfresults = get_check_results(tmp_path)
+    statusofcheck = dict(zip(dfresults["check"], dfresults["status"], strict=True))
+    assert statusofcheck["restarts"] == "not checked"
+    assert statusofcheck["temperature limits"] == "not checked"
+    assert statusofcheck["log messages"] == "not checked"
+
+
+def test_check_that_fails_gives_an_error_row_and_the_other_checks_run() -> None:
+    """An exception in one check gives a row of status error, and the other checks still run."""
+    from artistools.check import get_check_results
+
+    with mock.patch("artistools.check.check_temperature_limits", side_effect=RuntimeError("no\nestimators")):
+        dfresults = get_check_results(modelpath_classic_3d)
+    assert dfresults.height == 6
+    assert dfresults.filter(pl.col("check") == "temperature limits").select("status", "detail").row(0) == (
+        "error",
+        "RuntimeError: no estimators",
+    )
+    assert dfresults.filter(pl.col("check") == "complete time steps")["status"].item() == "ok"
+
+
+def test_check_from_packets_gives_the_largest_noise(capsys: pytest.CaptureFixture[str]) -> None:
+    """--frompackets gives the largest relative noise of the light curve and its time, with a warning."""
+    from artistools.check import main
+
+    dflightcurve = at.lightcurve.get_from_packets(modelpath)[-1].collect().filter(pl.col("relnoise").is_not_null())
+    worst = dflightcurve.sort("relnoise", descending=True).row(0, named=True)
+    main(argsraw=[str(modelpath), "--frompackets"])
+    captured = capsys.readouterr()
+    assert "\ncheck status detail\n" in captured.out
+    noiseline = next(line for line in captured.out.splitlines() if line.startswith('"packet noise"'))
+    assert noiseline.startswith('"packet noise" warning ')
+    assert f"the largest relative noise is {100 * worst['relnoise']:.1f}% at {worst['time_days']:.2f} d" in noiseline
+    assert re.search(r"WARNING: packet noise \(warning\): the largest relative noise", captured.err)
+    # a check that is not checked gives no warning line
+    assert "complete time steps (" not in captured.err

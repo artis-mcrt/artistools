@@ -6,6 +6,7 @@ with each number replaced by N, thus the same warning for different cells and ti
 """
 
 import argparse
+import filecmp
 import re
 import typing as t
 from collections.abc import Sequence
@@ -82,13 +83,37 @@ def get_logfiles(modelpath: Path, ranks: Sequence[int] | None, cells: Sequence[i
     thus None finds the ranks of each folder from the names of its logs, and cells finds the ranks of these cells in
     the layout of each folder.
     """
-    return [
+    return get_unique_logfiles([
         logpath
         for folder in get_run_subfolders(modelpath)
         for rank in get_folder_ranks(modelpath, folder, ranks, cells)
         if (logpath := firstexisting_or_none(f"output_{rank}-0.txt", folder=folder, search_subfolders=False))
         is not None
-    ]
+    ])
+
+
+def get_unique_logfiles(logfiles: Sequence[Path]) -> list[Path]:
+    """Return the logs with no copy: a link to a different log, or a file with the same bytes as a different log.
+
+    A model folder can hold a copy or a link of the log of its last run, e.g. output_0-0.txt, and its messages then
+    counted two times. The run subfolders come first in get_run_subfolders, thus the log of the run stays. A copy has
+    the name of its log, thus only logs of one name need a comparison, and a run of 2000 ranks stays fast.
+    """
+    uniquelogs: list[Path] = []
+    uniquelogsofname: dict[str, list[Path]] = {}
+    for logfile in logfiles:
+        samename = uniquelogsofname.setdefault(logfile.name, [])
+        isfirstoccurrence = all(
+            logfile.resolve() != uniquelog.resolve()
+            and (
+                logfile.stat().st_size != uniquelog.stat().st_size or not filecmp.cmp(logfile, uniquelog, shallow=False)
+            )
+            for uniquelog in samename
+        )
+        if isfirstoccurrence:
+            samename.append(logfile)
+            uniquelogs.append(logfile)
+    return uniquelogs
 
 
 def get_folder_ranks(

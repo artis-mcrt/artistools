@@ -10,6 +10,7 @@ from pathlib import Path
 import matplotlib.axes as mplax
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 from matplotlib import gridspec
@@ -309,6 +310,29 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     save_figure(fig, outfilename, args=args, format="pdf")
 
 
+def get_3d_tables(
+    xgrid: npt.NDArray[np.floating],
+    values: npt.NDArray[np.floating],
+    valuename: str,
+    surfacelevels: npt.NDArray[np.floating],
+) -> dict[str, pl.DataFrame]:
+    """Return the values of the cells that the isosurfaces come from, and the value of each isosurface.
+
+    The mesh of pyvista has one point for each cell, at the lower corner of the cell, thus the velocities are the
+    lower corners in units of c. values has the order (x, y, z).
+    """
+    x, y, z = np.meshgrid(xgrid, xgrid, xgrid, indexing="ij")
+    return {
+        "": pl.DataFrame({
+            "vel_x_min_on_c": x.ravel(order="F"),
+            "vel_y_min_on_c": y.ravel(order="F"),
+            "vel_z_min_on_c": z.ravel(order="F"),
+            valuename: values.ravel(order="F"),
+        }),
+        "_isosurfaces": pl.DataFrame({f"{valuename}_of_isosurface": surfacelevels}),
+    }
+
+
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     """Render an isosurface of the 3D model with pyvista, coloured by the first of args.plotvars."""
     pv = import_optional("pyvista")
@@ -354,6 +378,12 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
         surfacepositions = args.surfaces3d  # expects an array of surface positions
 
     surf = mesh.contour(surfacepositions, scalars=coloursurfaceby)  # create isosurfaces
+    if getattr(args, "print_data", False) or getattr(args, "write_data", False):
+        output_data(
+            args,
+            get_3d_tables(xgrid, surfacecolorscale, coloursurfaceby, np.asarray(surfacepositions, dtype=float)),
+            modelpath / "3Dplot.png",
+        )
 
     sargs = {
         "height": 0.25,

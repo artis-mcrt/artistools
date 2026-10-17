@@ -240,8 +240,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     max_vmax_on_c, tables = plot_density_profiles(args, axes)
 
-    axes[0].set_xlim(left=0.0 if args.xmin is None else args.xmin)
-    axes[0].set_xlim(right=max_vmax_on_c if args.xmax is None else args.xmax)
+    xlimits = (0.0 if args.xmin is None else args.xmin, max_vmax_on_c if args.xmax is None else args.xmax)
+    axes[0].set_xlim(*xlimits)
 
     axes[-1].set_xlabel(r"Velocity $\left[c\right]$")
     axes[0].set_ylabel(r"Mass Enclosed $\left[\mathrm{M}_\odot\right]$")
@@ -253,5 +253,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[0].set_ylim(bottom=0.0)
     axes[1].set_ylim(bottom=0.0)
 
-    output_data(args, tables, args.outputfile)
+    # the axis shows the velocities of xlimits, thus the tables give only these points
+    output_data(
+        args,
+        {
+            suffix: dftable.filter(pl.col("vel_r_on_c").is_between(*xlimits)) if not dftable.is_empty() else dftable
+            for suffix, dftable in tables.items()
+        },
+        args.outputfile,
+    )
     save_figure(fig, args.outputfile, args=args)
