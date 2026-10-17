@@ -189,7 +189,7 @@ def read_nltepops(
     timestep: int | np.integer | None = None,
     modelgridindex: int | np.integer | Sequence[int | np.integer] | None = None,
 ) -> pl.DataFrame:
-    """Read in NLTE populations from a model for a particular timestep and one or more grid cells.
+    """Read in NLTE populations from a model for a particular timestep and one or more cells.
 
     A figure of several subplots reads the same populations for each one, and a window reads them again for each of
     its plots. Thus the last reads stay in memory. Do not change the frame that this function returns.

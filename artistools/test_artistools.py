@@ -4662,7 +4662,7 @@ def test_artis_data_skill_examples_run_on_the_test_model(tmp_path: Path, monkeyp
 def test_artis_data_skill_compares_ionisation_processes_on_a_model_with_both_rates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The 3D test model has no non-thermal rates, thus the examples test runs only the branch that says so."""
+    """The 3D test model has no non-thermal rates, thus the test of all the examples runs only one branch."""
     import runpy
 
     from artistools.installskill import get_skill_folder
@@ -4679,6 +4679,31 @@ def test_artis_data_skill_compares_ionisation_processes_on_a_model_with_both_rat
     rows = {line.split()[1]: line.split() for line in output.splitlines() if line.startswith("│ Fe_")}
     assert float(rows["Fe_II"][-2]) > 0.9
     assert float(rows["Fe_I"][-2]) < 0.1
+
+
+def test_artis_data_skill_balances_ionisation_and_recombination_on_a_model_with_both_rates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Alpha_R*nne_<ion> is the recombination to the ion below, thus an incorrect pair of ions gives no balance.
+
+    The 3D test model has no recombination rates, thus the test of all the examples runs only the branch that prints
+    this.
+    """
+    import runpy
+
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "recipes.md").read_text(encoding="utf-8")
+    example = next(block for block in re.findall(r"```python\n(.*?)```", skilltext, re.DOTALL) if "Alpha_R" in block)
+    scriptpath = tmp_path / "ionisationbalance.py"
+    scriptpath.write_text(example.replace("timedays(modelpath, 50)", "timedays(modelpath, 300)"), encoding="utf-8")
+
+    monkeypatch.chdir(modelpath)
+    runpy.run_path(str(scriptpath), run_name="__main__")
+    output = capsys.readouterr().out
+    ratios = {line.split()[1]: float(line.split()[-2]) for line in output.splitlines() if line.startswith("│ Fe_")}
+    assert set(ratios) == {"Fe_I", "Fe_II", "Fe_III", "Fe_IV"}
+    assert all(ratio == pytest.approx(1.0, rel=0.05) for ratio in ratios.values())
 
 
 def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> None:

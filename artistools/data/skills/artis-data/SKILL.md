@@ -18,6 +18,20 @@ an ARTIS model, what it holds, and its reader. Read it to explain the behaviour 
 - the last interaction of each packet;
 - the atomic data.
 
+The file `physics.md` in the same folder explains the physics of ARTIS and gives the papers that describe it. Read it
+to explain how ARTIS calculates a value. Examples are:
+
+- the temperatures Te and TR, and the dilution factor W;
+- the ionisation;
+- the population of a superlevel.
+
+The file `recipes.md` gives tested examples for questions about why a model behaves as it does. Examples are:
+
+- the energy budget at a time;
+- the temperature and the cooling of each region;
+- the balance of ionisation and recombination;
+- the region where a spectral feature forms.
+
 ## Run Python with artistools
 
 Use the Python of the environment that holds the `artistools` command:

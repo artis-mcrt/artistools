@@ -1811,9 +1811,10 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
 
 
 def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> None:
-    """The readers of the model input, of input.txt, and of the NLTE populations give the local data for host:path.
+    """The readers of model.txt, input.txt, the NLTE populations, and the options give the local data for host:path.
 
-    A read of all the NLTE populations can send several GB through ssh, thus a remote read needs a selection.
+    A read of all the NLTE populations can send several GB through ssh, thus a remote read needs a timestep or a
+    modelgridindex.
     """
     modelpath = at.get_path("testartismodel").resolve()
     modellink = tmp_path / "testmodel"
