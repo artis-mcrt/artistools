@@ -16,6 +16,8 @@ from artistools.constants import K_B_ev_per_K
 from artistools.misc import read_rank_outputfiles
 from artistools.misc.fileio import folder_holds_match
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.remote import is_remote_path
+from artistools.misc.remote import on_model_host
 
 
 def texifyterm(strterm: str) -> str:
@@ -199,12 +201,19 @@ def read_nltepops(
         cells = tuple(int(mgi) for mgi in modelgridindex)
     else:
         cells = int(modelgridindex)
+    if timestep is None and cells is None and is_remote_path(modelpath):
+        msg = (
+            f"Give a timestep or a modelgridindex to read the NLTE populations of {modelpath}. The populations of all"
+            " the timesteps and cells of a remote model can be several GB"
+        )
+        raise ValueError(msg)
     return read_nltepops_cached(resolve_modelpath(modelpath), None if timestep is None else int(timestep), cells)
 
 
 # a window reads the levels of one cell for its menu, and a cache of one read would then drop the frame of the plot.
 # A frame of a large model can hold several GB, thus the cache keeps only these two reads
 @lru_cache(maxsize=2)
+@on_model_host
 def read_nltepops_cached(modelpath: Path, timestep: int | None, cells: int | tuple[int, ...] | None) -> pl.DataFrame:
     """Read the NLTE populations of the model at an absolute path. One read of a large model takes minutes."""
     modelgridindex = list(cells) if isinstance(cells, tuple) else cells

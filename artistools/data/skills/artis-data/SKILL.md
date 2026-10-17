@@ -44,10 +44,11 @@ A remote model path has the form `host:path`. Give it as `Path("host:path")`. So
 computer and not on the host. These readers read a remote model on its host:
 
 - `at.scan_estimators`, `at.get_timestep_times`, `at.get_timestep_of_timedays`, and `at.misc.get_time_range`;
-- `at.get_composition_data` and `at.get_deposition`;
+- `at.get_modeldata`, `at.get_inputparams`, `at.get_composition_data`, and `at.get_deposition`;
+- `at.nltepops.read_nltepops`, which needs a `timestep` or a `modelgridindex` for a remote model;
 - `at.spectra.get_spectra` and `at.spectra.get_from_packets`;
 - `at.lightcurve.find_lightcurve_file`, `at.lightcurve.scan_lightcurve`, and `at.lightcurve.get_from_packets`;
-- `at.packets.get_packets_column_names` and `at.misc.get_artis_option`.
+- `at.packets.get_packets_column_names`, `at.misc.get_artis_options`, and `at.misc.get_artis_option`.
 
 The other readers stop with an error. For these readers, run the script on the host.
 

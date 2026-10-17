@@ -1660,7 +1660,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (4, "302fa92f3e0c04d5"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "c98e023ec52cc73c"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1808,6 +1808,44 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
         at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")[-1].collect(),
         abs_tol=0.0,
     )
+
+
+def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> None:
+    """The readers of the model input, of input.txt, and of the NLTE populations give the local data for host:path.
+
+    A read of all the NLTE populations can send several GB through ssh, thus a remote read needs a selection.
+    """
+    modelpath = at.get_path("testartismodel").resolve()
+    modellink = tmp_path / "testmodel"
+    modellink.symlink_to(modelpath)
+    remotepath = Path(f"testhost:{modellink}")
+
+    remote.forget_server("testhost")
+    with mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]):
+        process, _ = remote.get_server("testhost")
+        try:
+            dfremotemodel, remotemodelmeta = at.get_modeldata(remotepath)
+            dfremotemodel = dfremotemodel.collect()
+            remoteinputparams = at.get_inputparams(remotepath)
+            dfremotenltepops = at.nltepops.read_nltepops(remotepath, timestep=40, modelgridindex=0)
+            remoteoptions = at.misc.get_artis_options(remotepath)
+            with pytest.raises(ValueError, match="Give a timestep or a modelgridindex"):
+                at.nltepops.read_nltepops(remotepath)
+        finally:
+            assert process.stdin is not None
+            process.stdin.close()
+            assert process.wait(timeout=30) == 0
+            remote.forget_server("testhost")
+
+    dflocalmodel, localmodelmeta = at.get_modeldata(modelpath)
+    pltest.assert_frame_equal(dfremotemodel, dflocalmodel.collect(), abs_tol=0.0)
+    assert remotemodelmeta == localmodelmeta
+    assert remoteinputparams == at.get_inputparams(modelpath)
+    pltest.assert_frame_equal(
+        dfremotenltepops, at.nltepops.read_nltepops(modelpath, timestep=40, modelgridindex=0), abs_tol=0.0
+    )
+    assert dfremotenltepops.height > 0
+    assert remoteoptions == at.misc.get_artis_options(modelpath)
 
 
 def test_get_filterfunc() -> None:

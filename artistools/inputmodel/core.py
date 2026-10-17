@@ -685,6 +685,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
     return smallest, largest, f"{gridtext}. {scaletext}"
 
 
+@on_model_host
 def get_modeldata(
     modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:

@@ -315,6 +315,7 @@ def get_nprocs(modelpath: Path) -> int:
 
 
 @modelpath_cache(maxsize=8)
+@on_model_host
 def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     """Return the parameters that input.txt gives.
 
