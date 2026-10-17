@@ -2,7 +2,8 @@
 # Stop hook: check the full Python tree after a change.
 #
 # The PostToolUse hook examines one file. A change to a signature can cause an
-# error in a different file, and only a check of the full tree finds it.
+# error in a different file, and only a check of the full tree finds it. The
+# hook also finds a Python change that a command of Bash made, see the state below.
 # AGENTS.md makes both type checkers necessary. prek runs ty, but pyrefly runs
 # only in CI, thus this hook is the one place where both run before a push.
 #
@@ -11,7 +12,10 @@
 set -u
 
 projectdir="${CLAUDE_PROJECT_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)}"
-marker="${TMPDIR:-/tmp}/artistools-claude-pyedit-$(id -u)"
+# two sessions can work in two checkouts, e.g. a worktree, thus each checkout has its own marker and state
+checkoutid="$(printf '%s' "$projectdir" | cksum | cut -d ' ' -f 1)"
+marker="${TMPDIR:-/tmp}/artistools-claude-pyedit-$(id -u)-$checkoutid"
+statefile="${TMPDIR:-/tmp}/artistools-claude-pystate-$(id -u)-$checkoutid"
 
 hookinput="$(cat)"
 
@@ -20,12 +24,36 @@ if printf '%s' "$hookinput" | jq -e '.stop_hook_active == true' >/dev/null 2>&1;
     exit 0
 fi
 
-# the PostToolUse hook writes the marker, thus no Python change means no check
-[ -f "$marker" ] || exit 0
-rm -f "$marker"
-
 command -v uv >/dev/null 2>&1 || exit 0
 cd "$projectdir" || exit 0
+
+# The PostToolUse hook writes the marker after an Edit or a Write. A command of Bash can also change a Python file,
+# e.g. with sed or a script, and no hook sees that change. Thus the state also holds the commit and a checksum of the
+# Python changes, and a different state runs the check. The commits since the last check count only if they change
+# a Python file
+head="$(git rev-parse HEAD 2>/dev/null)"
+changes="$({ git diff HEAD -- '*.py'; git ls-files --others --exclude-standard -z -- '*.py' | xargs -0 cat 2>/dev/null; } \
+    | cksum | cut -d ' ' -f 1)"
+state="$head $changes"
+laststate="$(cat -- "$statefile" 2>/dev/null)"
+lasthead="${laststate%% *}"
+printf '%s' "$state" >"$statefile" 2>/dev/null
+
+needscheck=0
+[ -f "$marker" ] && needscheck=1
+rm -f "$marker"
+if [ -n "$laststate" ] && [ "$state" != "$laststate" ]; then
+    if [ "${laststate#* }" != "$changes" ]; then
+        needscheck=1
+    elif [ -n "$(git diff --name-only "$lasthead" "$head" -- '*.py' 2>/dev/null)" ]; then
+        needscheck=1
+    fi
+fi
+# the first stop of a checkout has no state, thus an uncommitted Python change runs the check
+if [ -z "$laststate" ] && [ -n "$(git status --porcelain -- '*.py' 2>/dev/null)" ]; then
+    needscheck=1
+fi
+[ "$needscheck" -eq 1 ] || exit 0
 
 run() { uv run --no-sync -- "$@"; }
 

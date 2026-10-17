@@ -1,6 +1,7 @@
 import argparse
 import contextlib
 import dataclasses as dc
+import functools
 import hashlib
 import importlib
 import importlib.util
@@ -11,6 +12,7 @@ import math
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -1082,7 +1084,7 @@ def test_radfield_bin_with_no_fit_takes_the_full_spectrum_fit() -> None:
     assert np.allclose(j_nu[:200], j_nu_fullspec[:200], rtol=1e-10)
     assert np.allclose(j_nu[200:], j_nu_bins[200:], rtol=1e-10)
 
-    # before FIRST_NLTE_RADFIELD_TIMESTEP, ARTIS takes the full-spectrum fit for every bin
+    # before MULTIBIN_RADFIELD_FIRST_TIMESTEP, ARTIS takes the full-spectrum fit for every bin
     _, j_lambda_fullspec = get_fitted_field(radfielddata, modelgridindex=0, timestep=5, usebinfits=False)
     assert np.allclose(np.array(j_lambda_fullspec) * np.array(arr_lambda) / arr_nu, j_nu_fullspec, rtol=1e-10)
 
@@ -2884,7 +2886,11 @@ def test_linefluxes_rejects_emittingregions_without_enough_colours() -> None:
 
 
 def test_linefluxes_lineflux_ratio_plot() -> None:
-    """The line flux ratio plot must run with no arguments beyond the model path."""
+    """The line flux ratio plot must run with no arguments beyond the model path.
+
+    The plot of Fe II 7155 Å and 12570 Å also draws the fit of Flörs et al. (2020), and --write_data gave no table of
+    it.
+    """
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
     at.plotlinefluxes.main(
@@ -2892,8 +2898,50 @@ def test_linefluxes_lineflux_ratio_plot() -> None:
         modelpath=[modelpath_classic_3d],
         emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
         outputfile=funcoutpath / "linefluxes.pdf",
+        write_data=True,
     )
     assert (funcoutpath / "linefluxes.pdf").is_file()
+    dfcomparisons = pl.read_csv(
+        funcoutpath / "linefluxes_comparisons.txt", separator=" ", null_values="nan", comment_prefix="#"
+    )
+    assert dfcomparisons["series"].unique().to_list() == ["Flörs+2020 fit"]
+    assert dfcomparisons.height == 3
+
+
+def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Three models of one name gave the same column, and the join stopped the plot with a repeated column.
+
+    The axis shows the times from -xmin to -xmax, and the table also gave the points outside that range.
+    """
+    at.plotlinefluxes.main(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d] * 3,
+        emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
+        xmin=4.5,
+        xmax=6.5,
+        outputfile=tmp_path / "linefluxes.pdf",
+        write_data=True,
+    )
+    assert "the data table gives the column of" in capsys.readouterr().err
+    dftable = read_data_file(tmp_path / "linefluxes.txt")
+    assert len([column for column in dftable.columns if column.startswith("fratio_")]) == 3
+    assert dftable["time"].is_between(4.5, 6.5).all()
+    assert dftable.height > 0
+    assert read_data_file(tmp_path / "linefluxes_comparisons.txt")["time"].is_between(4.5, 6.5).all()
+
+
+def test_linefluxes_floers_ratio_file_with_no_w7_model(tmp_path: Path) -> None:
+    """A file with no W7 model gave a frame with no columns, and the concatenation of the comparisons then failed."""
+    ratiofile = tmp_path / "floersratios.csv"
+    ratiofile.write_text("file,epoch,NIR_VIS_ratio\nfig-nne_Te_allcells-subch-300d.txt,300,1.5\n", encoding="utf-8")
+    at.plotlinefluxes.main(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
+        floersmodelratiofile=str(ratiofile),
+        outputfile=tmp_path / "linefluxes.pdf",
+    )
+    assert (tmp_path / "linefluxes.pdf").is_file()
 
 
 def test_get_ion_tuple_rejects_missing_element() -> None:
@@ -4524,6 +4572,271 @@ def test_completions_writes_the_code_to_a_redirect(
     assert "To enable tab completion in zsh" in captured.err
 
 
+def test_installskill_replaces_a_link_and_keeps_the_skill_of_the_package(tmp_path: Path) -> None:
+    """A copy must replace the link itself, because rmtree through the link deletes the skill of the package."""
+    from artistools.installskill import get_skill_folder
+    from artistools.installskill import install_skill
+
+    skillsdir = tmp_path / "skills"
+    packageskill = get_skill_folder() / "SKILL.md"
+    assert install_skill(skillsdir, copy=False, force=False)
+    assert not install_skill(skillsdir, copy=False, force=False)
+
+    with pytest.raises(SystemExit):
+        install_skill(skillsdir, copy=True, force=False)
+
+    assert install_skill(skillsdir, copy=True, force=True)
+    destination = skillsdir / "artis-data"
+    assert not destination.is_symlink()
+    assert packageskill.is_file()
+    assert (destination / "SKILL.md").read_text(encoding="utf-8") == packageskill.read_text(encoding="utf-8")
+
+
+def test_installskill_names_each_file_that_rmtree_deletes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The warning named only SKILL.md, but rmtree then also deleted the other files of a real skill folder."""
+    from artistools.installskill import install_skill
+
+    skillsdir = tmp_path / "skills"
+    (skillsdir / "artis-data" / "references").mkdir(parents=True)
+    (skillsdir / "artis-data" / "SKILL.md").write_text("an older copy", encoding="utf-8")
+    usernotes = skillsdir / "artis-data" / "references" / "notes.md"
+    usernotes.write_text("notes of the user", encoding="utf-8")
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    with pytest.raises(SystemExit):
+        install_skill(skillsdir, copy=True, force=False)
+    assert usernotes.is_file()
+    assert "notes.md" in capsys.readouterr().err
+
+    assert install_skill(skillsdir, copy=True, force=True)
+    assert "notes.md" in capsys.readouterr().err
+
+
+def test_installskill_refuses_a_destination_in_the_skill_of_the_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A comparison of the path text let rmtree delete the skill of the package, or let the command write into it."""
+    from artistools.installskill import install_skill
+
+    packageskill = tmp_path / "package" / "skills" / "artis-data"
+    packageskill.mkdir(parents=True)
+    (packageskill / "SKILL.md").write_text("the skill of the package", encoding="utf-8")
+    monkeypatch.setattr("artistools.installskill.get_skill_folder", lambda: packageskill)
+
+    # on a case-insensitive file system, e.g. the macOS default, SKILLS is a different spelling of the same folder
+    for skillsdir in (packageskill, packageskill.parent, packageskill.parent.with_name("SKILLS")):
+        if skillsdir.exists():
+            with pytest.raises(SystemExit):
+                install_skill(skillsdir, copy=True, force=True)
+    assert [path.name for path in packageskill.iterdir()] == ["SKILL.md"]
+
+
+def test_installskill_makes_no_link_into_the_uv_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With uvx, artistools runs from the uv cache.
+
+    When uv deletes the cache, the link breaks and no message tells the user.
+    """
+    from artistools.installskill import install_skill
+
+    cachedskill = tmp_path / "uv" / "archive-v0" / "abc123" / "artistools" / "data" / "skills" / "artis-data"
+    cachedskill.mkdir(parents=True)
+    (cachedskill / "SKILL.md").write_text("the skill in the cache", encoding="utf-8")
+    monkeypatch.setattr("artistools.installskill.get_skill_folder", lambda: cachedskill)
+
+    with pytest.raises(SystemExit):
+        install_skill(tmp_path / "skills", copy=False, force=False)
+    assert install_skill(tmp_path / "skills", copy=True, force=False)
+    assert not (tmp_path / "skills" / "artis-data").is_symlink()
+
+
+def test_artis_data_skill_names_each_function_that_exists() -> None:
+    """A rename needs no shim in artistools, thus a stale name in the skill gives an agent an error and no warning."""
+    from artistools.installskill import get_skill_folder
+
+    skilltext = "\n".join(path.read_text(encoding="utf-8") for path in sorted(get_skill_folder().glob("*.md")))
+    names = sorted(set(re.findall(r"\bat\.([a-z_]+(?:\.[a-z_]+)*)\(", skilltext)))
+    assert len(names) > 10
+
+    stalenames = []
+    for name in names:
+        try:
+            function = functools.reduce(getattr, name.split("."), at)
+        except AttributeError:
+            stalenames.append(name)
+        else:
+            if not callable(function):
+                stalenames.append(name)
+    assert not stalenames, f"SKILL.md names functions that artistools does not have: {stalenames}"
+
+
+def test_artis_data_skill_summary_examples_match_the_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The skill shows an example of each summary line, and a change of the format made the example incorrect.
+
+    A number of an example matches any number, "mymodel" matches any model name, and "..." matches any text.
+    """
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
+    section = skilltext.split("one summary line for each drawn series.", 1)[1].split("A line that starts with", 1)[0]
+    examples = [" ".join(span.split()) for span in re.findall(r"`([^`]+)`", section) if not span.startswith("-")]
+    assert len(examples) == 5, examples
+
+    numberpattern = r"[-+]?\d+(?:\.\d+)?(?:e[-+]?\d+)?"
+
+    def get_example_pattern(example: str) -> str:
+        wordpatterns = []
+        for word in example.split():
+            if word.startswith("..."):
+                wordpatterns.append(".*" + re.escape(word.removeprefix("...")))
+            elif word.startswith("mymodel"):
+                wordpatterns.append(".+" + re.escape(word.removeprefix("mymodel")))
+            else:
+                parts = re.split(f"({numberpattern})", word)
+                wordpatterns.append(
+                    "".join(numberpattern if index % 2 else re.escape(part) for index, part in enumerate(parts))
+                )
+        return r"\s+".join(wordpatterns)
+
+    at.estimators.plot(argsraw=[], modelpath=modelpath_classic_3d, outputfile=tmp_path, timedays=5, plotlist=[["Te"]])
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], frompackets=True, outputfile=tmp_path)
+    at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "spec.pdf")
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        timedays="5",
+        showemission=True,
+        showabsorption=True,
+        outputfile=tmp_path / "em.pdf",
+    )
+    output = capsys.readouterr().out
+    unmatched = [example for example in examples if re.search(get_example_pattern(example), output) is None]
+    assert not unmatched, f"SKILL.md gives summary lines that the commands do not print: {unmatched}"
+
+
+def test_artis_data_skill_python_ignores_a_module_in_the_model_folder(tmp_path: Path) -> None:
+    """The command of the skill runs Python in a model folder, and "python -" imported an artistools.py of that folder.
+
+    A model from a different person can hold such a file, thus the agent ran it with the permission to read data.
+    """
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
+    command = next(block for block in re.findall(r"```sh\n(.*?)```", skilltext, re.DOTALL) if "ATPY=" in block)
+    command = command.replace("...", "print(at.__file__)")
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    marker = tmp_path / "ran.txt"
+    (modelfolder / "artistools.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+
+    # the command of pip install --user is in ~/.local/bin, and that folder holds no python. Thus the command of this
+    # test is in a folder of its own. The editable installation of a checkout can need PYTHONPATH, and -P keeps it
+    commandfolder = tmp_path / "bin"
+    commandfolder.mkdir()
+    # a console script does not put the working folder on sys.path, and -m does without -P
+    (commandfolder / "artistools").write_text(
+        f'#!/bin/sh\nexec {shlex.quote(sys.executable)} -P -m artistools "$@"\n', encoding="utf-8"
+    )
+    (commandfolder / "artistools").chmod(0o755)
+    env = os.environ | {
+        "PATH": os.pathsep.join([str(commandfolder), os.environ.get("PATH", "")]),
+        "PYTHONPATH": str(Path(at.__file__).resolve().parent.parent),
+    }
+    bashpath = shutil.which("bash")
+    assert bashpath is not None
+    # the command is the fixed text of the skill, which the agent runs in a shell
+    completed = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [bashpath, "-c", command], cwd=modelfolder, env=env, capture_output=True, text=True, check=False
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert not marker.exists()
+    assert Path(completed.stdout.strip()).resolve() == Path(at.__file__).resolve()
+
+
+def test_artis_data_skill_examples_run_on_the_test_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each example of the skill must run, because a change of a reader can stop it with no other failed test.
+
+    The examples use 10, 12, and 50 days, but the test model ends at 7.9 days. Thus the test uses 5 days and 6 days.
+    """
+    import runpy
+
+    from artistools.installskill import get_skill_folder
+
+    examples = [
+        (path.name, skilltext, example)
+        for path in sorted(get_skill_folder().glob("*.md"))
+        for skilltext in [path.read_text(encoding="utf-8")]
+        for example in re.finditer(r"```python\n(.*?)```", skilltext, re.DOTALL)
+    ]
+    assert len(examples) > 3
+
+    monkeypatch.chdir(modelpath_classic_3d)
+    for index, (filename, skilltext, example) in enumerate(examples):
+        code = (
+            example
+            .group(1)
+            .replace("timedays(modelpath, 10)", "timedays(modelpath, 5)")
+            .replace("timedays(modelpath, 50)", "timedays(modelpath, 5)")
+            .replace("timemin=10, timemax=12", "timemin=5, timemax=6")
+        )
+        scriptpath = tmp_path / f"example{index}.py"
+        scriptpath.write_text(code, encoding="utf-8")
+        try:
+            runpy.run_path(str(scriptpath), run_name="__main__")
+        except Exception as exc:
+            exc.add_note(f"in the example at line {skilltext.count(chr(10), 0, example.start()) + 1} of {filename}")
+            raise
+
+
+def test_artis_data_skill_compares_ionisation_processes_on_a_model_with_both_rates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The 3D test model has no non-thermal rates, thus the test of all the examples runs only one branch."""
+    import runpy
+
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "SKILL.md").read_text(encoding="utf-8")
+    example = next(block for block in re.findall(r"```python\n(.*?)```", skilltext, re.DOTALL) if "gamma_NT" in block)
+    scriptpath = tmp_path / "ionisationprocesses.py"
+    scriptpath.write_text(example.replace("timedays(modelpath, 50)", "timedays(modelpath, 300)"), encoding="utf-8")
+
+    monkeypatch.chdir(modelpath)
+    runpy.run_path(str(scriptpath), run_name="__main__")
+    output = capsys.readouterr().out
+    # non-thermal ionisation gives most ionisations of Fe II at 300 days, and photoionisation most of Fe I
+    rows = {line.split()[1]: line.split() for line in output.splitlines() if line.startswith("│ Fe_")}
+    assert float(rows["Fe_II"][-2]) > 0.9
+    assert float(rows["Fe_I"][-2]) < 0.1
+
+
+def test_artis_data_skill_balances_ionisation_and_recombination_on_a_model_with_both_rates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Alpha_R*nne_<ion> is the recombination to the ion below, thus an incorrect pair of ions gives no balance.
+
+    The 3D test model has no recombination rates, thus the test of all the examples runs only the branch that prints
+    this.
+    """
+    import runpy
+
+    from artistools.installskill import get_skill_folder
+
+    skilltext = (get_skill_folder() / "recipes.md").read_text(encoding="utf-8")
+    example = next(block for block in re.findall(r"```python\n(.*?)```", skilltext, re.DOTALL) if "Alpha_R" in block)
+    scriptpath = tmp_path / "ionisationbalance.py"
+    scriptpath.write_text(example.replace("timedays(modelpath, 50)", "timedays(modelpath, 300)"), encoding="utf-8")
+
+    monkeypatch.chdir(modelpath)
+    runpy.run_path(str(scriptpath), run_name="__main__")
+    output = capsys.readouterr().out
+    ratios = {line.split()[1]: float(line.split()[-2]) for line in output.splitlines() if line.startswith("│ Fe_")}
+    assert set(ratios) == {"Fe_I", "Fe_II", "Fe_III", "Fe_IV"}
+    assert all(ratio == pytest.approx(1.0, rel=0.05) for ratio in ratios.values())
+
+
 def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> None:
     """ARTIS writes the deposition of timestep n into the estimators of timestep n + 1.
 
@@ -4602,9 +4915,41 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
             timebins_tstart=[4.0, 5.0],
             timebins_tend=[6.0, 7.0],
             outputfile=tmp_path / "emreg.pdf",
+            write_data=True,
         )
 
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]
+    # the model has no packets in the features, and the table left out the reference curve, thus it gave no file
+    dfpoints = pl.read_csv(tmp_path / "emreg_5.0d.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dfpoints.select("model", "feature", "log10nne", "Te").rows() == [
+        ("Flörs+2020 +5d", "reference", 5.0, 5000.0)
+    ]
+
+
+def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> None:
+    """--write_data wrote no file for the emitting regions. The 3D test model has no packets in these features."""
+    import collections
+
+    emdata = collections.defaultdict(lambda: {"em_log10nne": np.array([5.0, 6.0]), "em_Te": np.array([4e3, 5e3])})
+    with mock.patch.object(at.plotlinefluxes, "get_emitting_regions_data", return_value=emdata):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            plotemittingregions=True,
+            norefdata=True,
+            timebins_tstart=[4.0, 5.0],
+            timebins_tend=[6.0, 7.0],
+            outputfile=tmp_path / "emreg.pdf",
+            write_data=True,
+        )
+
+    for tmid in (5.0, 6.0):
+        dfpoints = pl.read_csv(
+            tmp_path / f"emreg_{tmid:.1f}d.txt", separator=" ", null_values="nan", comment_prefix="#"
+        )
+        assert dfpoints.columns == ["model", "feature", "time_days", "log10nne", "Te"]
+        assert dfpoints["time_days"].unique().to_list() == [tmid]
+        assert dfpoints["log10nne"].to_list()[:2] == [5.0, 6.0]
 
 
 def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission() -> None:
@@ -5690,3 +6035,866 @@ def test_lazy_imports_survive_the_qt_bindings(order: str) -> None:
         [sys.executable, "-c", LAZY_IMPORT_CHECK_CODE, order], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_describe_counts_the_cells_and_the_rank_files_of_each_run_folder(capsys: pytest.CaptureFixture[str]) -> None:
+    """The summary must count the cells with matter and the rank files of all the run folders, e.g. job0 and job1."""
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["describe", str(modelpath_classic_3d), "--quiet"])
+    output = capsys.readouterr().out
+    assert "1000 cells, 695 cells with matter" in output
+    assert "timesteps: 30, from 3.000 to 8.000 days" in output
+    assert "run folders with estimators: job0, job1" in output
+    assert "estimators: 4 rank files" in output
+    assert "nlte: 0 rank files" in output
+    assert "Fe I to Fe V" in output
+    assert "direction bins: 100 tables in light_curve_res.out = 10 cos θ bins times 10 φ bins" in output
+    # the model folder of the classic-mode 3D test holds artisoptions.h and no folder artis
+    assert "temperature limits: MINTEMP = 3500.; MAXTEMP = 140000." in output
+    # an old ARTIS gave a different name to an option, e.g. NT_ON and not NT_SCHEME
+    assert "non-thermal: NT_ON = false" in output
+    assert "ARTIS of run folder job0: v2023.10-106-gfcb7e2c (branch develop)" in output
+
+
+def test_describe_gives_the_effect_of_the_physics_options() -> None:
+    """The ion balance of a kilonova model with FORCE_SAHA_ION_BALANCE is Saha at Te, and not the rate balance.
+
+    The effect of the options must follow the code of ARTIS, thus each case here comes from ltepop.cc and
+    update_packets.cc.
+    """
+    from artistools.describemodel import get_option_effects
+
+    kilonova = {
+        "ION_NLEVELS_EXCITED_NLTE": "(int element_z, int ionstage) { return 0; }",
+        "FORCE_SAHA_ION_BALANCE": "(int element_z) { return true; }",
+        "NT_SCHEME": "NonThermalScheme::NT_OFF",
+        "PARTICLE_THERMALISATION_SCHEME": "ParticleThermalisationScheme::BARNES",
+    }
+    assert get_option_effects("NLTE", kilonova) == [
+        "the ion balance of each element is the Saha equation at Te",
+        "no level is NLTE, thus the levels of an ion follow the Boltzmann distribution",
+    ]
+    assert get_option_effects("non-thermal", kilonova) == [
+        "ARTIS gives no non-thermal ionisation and no non-thermal excitation"
+    ]
+    thermalisation = get_option_effects("thermalisation", kilonova)
+    assert "belong to the time step before their row" in thermalisation[0]
+    assert "Barnes et al. (2016)" in thermalisation[1]
+
+    # a condition in the function of an option gives no claim about its effect
+    nebular = {
+        "ION_NLEVELS_EXCITED_NLTE": "(int element_z, int ionstage) { if (element_z == 26) { return 80; } return 0; }",
+        "FORCE_SAHA_ION_BALANCE": "(int element_z) { if (element_z == 1) { return true; } return false; }",
+        "INSTANT_PARTICLE_DEPOSITION": "true",
+    }
+    nebulareffects = get_option_effects("NLTE", nebular)
+    assert "the Saha equation at Te to the ion balance of some elements" in nebulareffects[0]
+    assert "rate equations of the NLTE levels" in nebulareffects[1]
+    assert "analytic" in get_option_effects("thermalisation", nebular)[0]
+
+
+def test_describe_counts_the_direction_bins_of_the_file(tmp_path: Path) -> None:
+    """ARTIS sets MABINS when it compiles, and the summary gave the 100 bins of artistools for a file of 2 bins."""
+    from artistools.describemodel import get_selection_lines
+
+    (tmp_path / "light_curve_res.out").write_text("1.0 1.0 1.0\n2.0 1.0 1.0\n" * 2, encoding="utf-8")
+    (selectionline,) = [line for line in get_selection_lines(tmp_path) if "direction bins" in line]
+    assert "direction bins: 2 tables in light_curve_res.out, and artistools gives the angles of 100 bins" in (
+        selectionline
+    )
+    assert "selects bin N of 0 to 1," in selectionline
+
+
+def test_describe_finds_the_light_curve_in_a_run_folder(tmp_path: Path) -> None:
+    """A run on a cluster writes light_curve.out into its run folder, and the summary searched only the model folder.
+
+    The light curve reader searches the run folders, and get_deposition reads only the model folder.
+    """
+    from artistools.describemodel import get_output_lines
+
+    modelfolder = tmp_path / "model"
+    (modelfolder / "12411848.slurm").mkdir(parents=True)
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    (modelfolder / "12411848.slurm" / "light_curve.out").write_text("1.0 2.0 3.0\n", encoding="utf-8")
+    (modelfolder / "12411848.slurm" / "deposition.out").write_text("1.0 2.0 3.0\n", encoding="utf-8")
+
+    lines = get_output_lines(modelfolder)
+    assert "light_curve.out: 12411848.slurm/light_curve.out (read with: artistools plotlightcurves)" in lines
+    assert "deposition.out: none" in lines
+
+    # a run can join the estimator files of its ranks into one file, and the summary counted the rank files alone
+    allranksmodel = tmp_path / "allranksmodel"
+    (allranksmodel / "12411848.slurm").mkdir(parents=True)
+    shutil.copy(modelpath / "input.txt", allranksmodel / "input.txt")
+    (allranksmodel / "12411848.slurm" / "estimators_allranks.out").write_text(
+        "timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e5\n\n", encoding="utf-8"
+    )
+    lines = get_output_lines(allranksmodel)
+    assert any(
+        line.startswith("estimators: 0 rank files, 1 files of all ranks (estimators_allranks.out) (read with:")
+        for line in lines
+    )
+
+
+@pytest.mark.parametrize(
+    "optionname", ["MULTIBIN_RADFIELD_FIRST_TIMESTEP", "FIRST_BINNED_RADFIELD_TIMESTEP", "FIRST_NLTE_RADFIELD_TIMESTEP"]
+)
+def test_radfield_first_timestep_takes_each_name_of_the_option(tmp_path: Path, optionname: str) -> None:
+    """ARTIS renamed the option two times on 2026-10-16, thus a current model gave no first timestep of the bin fits."""
+    (tmp_path / "artisoptions.h").write_text(f"constexpr int {optionname} = 6;\n", encoding="utf-8")
+    assert at.plotradfield.get_multibin_radfield_first_timestep(tmp_path) == (6, optionname)
+
+
+def test_hidden_values_of_a_line_give_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
+    """A y limit or a log axis can hide values of a series, thus the function gives a warning for these values."""
+    from artistools.plottools import warn_hidden_values
+
+    fig = mplfig.Figure()
+    axis = fig.add_subplot()
+    axis.plot([1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 10.0, 100.0], label="series")
+    # a line with no label is a part of a different series, e.g. a repeated end point
+    axis.plot([1.0, 2.0], [1000.0, 1000.0])
+    axis.set_yscale("log")
+    axis.set_ylim(0.5, 50.0)
+    warn_hidden_values(axis)
+    err = capsys.readouterr().err
+    assert "values above the top of the axis (50): 1" in err
+    assert "values of zero or below on the log axis: 1" in err
+    assert "below the bottom" not in err
+    assert err.count("does not show") == 1
+
+
+def test_packet_summaries_give_the_monte_carlo_noise(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    """A number from few packets is noisy, thus the summary of a packet plot gives sqrt(Σ e²) / Σ e and a warning.
+
+    ARTIS gives the packets of an r-packet spectrum almost the same energy, thus the noise is close to 1 / sqrt(N).
+    """
+    at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", frompackets=True, outputfile=tmp_path / "s.pdf")
+    captured = capsys.readouterr()
+    match = re.search(
+        r"(\d+) packets in the drawn bins, relative noise of the luminosity ([\d.]+)% = sqrt", captured.out
+    )
+    assert match is not None, captured.out
+    assert np.isclose(float(match.group(2)) / 100, 1 / math.sqrt(int(match.group(1))), rtol=0.05)
+    assert "the luminosity has a relative Monte Carlo noise of" in captured.err
+
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], frompackets=True, outputfile=tmp_path)
+    captured = capsys.readouterr()
+    match = re.search(r"noise of the peak point ([\d.]+)% = sqrt\(Σ e²\) / Σ e of its (\d+) packets", captured.out)
+    assert match is not None, captured.out
+    assert np.isclose(float(match.group(1)) / 100, 1 / math.sqrt(int(match.group(2))), rtol=0.05)
+    assert "the peak point has a relative Monte Carlo noise of" in captured.err
+
+    # a filter combines the packets of neighbouring timesteps, and the line gave the noise of one unfiltered timestep
+    at.lightcurve.plot(argsraw=["-filtermovingavg", "3"], modelpath=[modelpath], frompackets=True, outputfile=tmp_path)
+    captured = capsys.readouterr()
+    assert "noise of the peak point" not in captured.out
+    assert "no noise estimate, because the filter combines the packets" in captured.out
+
+    # a direction bin holds about 1/100 of the packets, and the files of the direction bins give no packet count
+    at.lightcurve.plot(argsraw=["-plotviewingangle", "0"], modelpath=[modelpath_classic_3d], outputfile=tmp_path)
+    assert "holds about 1/100 of the escaped packets" in capsys.readouterr().err
+    at.spectra.plot(
+        argsraw=["-plotviewingangle", "0", "--average_over_phi_angle"],
+        specpath=[modelpath_classic_3d],
+        timedays="5",
+        outputfile=tmp_path / "s.pdf",
+    )
+    assert "each direction bin of spec_res.out holds about 1/10 of the escaped packets" in capsys.readouterr().err
+
+    # spec.out has no packet count, thus the line gives no noise
+    at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "s.pdf")
+    assert "packets in the drawn bins" not in capsys.readouterr().out
+
+
+def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    """An agent reads the summary in the log, thus each line gives the values that a question about the plot needs.
+
+    In the 3D test model at 5 days, 258 cells are at MAXTEMP, which is a limit of ARTIS and not a physical value.
+    """
+    at.estimators.plot(argsraw=[], modelpath=modelpath_classic_3d, outputfile=tmp_path, timedays=5, plotlist=[["Te"]])
+    captured = capsys.readouterr()
+    assert re.search(r"  Te: subplot 0, 540 points, .*min 3500 K at x = .*max 1\.4e\+05 K", captured.out)
+    assert "Te: 258 points are at MAXTEMP" in captured.err
+    # 155 cells of the 695 with matter are in the corners of the cube, and the mean of the summary leaves them out
+    assert "the plot leaves out each cell with vel_r_mid above vmax = 28920 km/s" in captured.out
+    assert "Te: 44 points are at MINTEMP" in captured.err
+
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)
+    assert re.search(
+        r"B TEST MODEL: 54 points .*, peak -13\.1\d mag at 267\.9 d \(brightest drawn point\),"
+        r" Δm15 0\.2\d+ mag \(linear interpolation",
+        capsys.readouterr().out,
+    )
+
+    # the frame keeps the nearest point outside -timemin, and the summary counted that point
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], timemin=250.5, timemax=299.0, outputfile=tmp_path)
+    summarymatch = re.search(r"TEST MODEL: \d+ points from ([\d.]+) to", capsys.readouterr().out)
+    assert summarymatch is not None
+    assert float(summarymatch.group(1)) >= 250.5
+
+    # a magnitude has no comoving-frame column, and the check read the faintest magnitude as the maximum
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], magnitude=True, outputfile=tmp_path)
+    assert "comoving-frame" not in capsys.readouterr().err
+
+    # a reference light curve gave no summary
+    at.lightcurve.plot(argsraw=[], modelpath=["AT2017gfo_waxmanetal2018.txt"], outputfile=tmp_path)
+    assert re.search(r"AT2017gfo \(Waxman\+2018\): \d+ points .*, peak ", capsys.readouterr().out)
+
+    # the axis does not show the points before -timemin, and the summary gave the peak at 0.6 d
+    at.lightcurve.plot(argsraw=[], modelpath=["AT2017gfo_waxmanetal2018.txt"], timemin=1.0, outputfile=tmp_path)
+    assert re.search(
+        r"AT2017gfo \(Waxman\+2018\): \d+ points from 1 to .*, peak 6\.15e\+41 erg/s at 1 d", capsys.readouterr().out
+    )
+
+    # the plot draws no point where the series has no value or an infinite value, and the x range counted such a point
+    from artistools.estimators.plotestimators import get_series_summary_query
+
+    dfseries = pl.LazyFrame({
+        "xvalue": [1.0, 2.0, 3.0, 4.0, 5.0],
+        "xvalue_binned": [1.0, 2.0, 3.0, 4.0, 5.0],
+        "yvalue": [None, 5.0, 6.0, float("nan"), float("inf")],
+        "celltsweight": [1.0, 1.0, 1.0, 1.0, 1.0],
+    })
+    summary = get_series_summary_query(dfseries, "cell volume", {}).collect().row(0, named=True)
+    assert (summary["xmin"], summary["xmax"], summary["valuecount"], summary["emptybincount"]) == (2.0, 3.0, 2, 3)
+    assert np.isclose(summary["ymax"], 6.0)
+
+    # the luminosity is 4 pi (1 Mpc)^2 times the integrated flux at 1 Mpc of the drawn line, which reaches each axis
+    # limit. The integral left out the segments between each axis limit and the nearest row inside it
+    dfspec = at.spectra.get_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect().sort("lambda_angstroms")
+    lambdas, flambdas = dfspec["lambda_angstroms"].to_numpy(), dfspec["f_lambda"].to_numpy()
+
+    def get_expected_luminosity(lambdamin: float, lambdamax: float) -> float:
+        isinside = (lambdas > lambdamin) & (lambdas < lambdamax)
+        xpoints = np.concatenate([[lambdamin], lambdas[isinside], [lambdamax]])
+        ypoints = np.interp(xpoints, lambdas, flambdas)
+        return float(np.trapezoid(ypoints, x=xpoints)) * 4 * math.pi * at.constants.megaparsec_to_cm**2
+
+    # a range between two rows has no row inside it, and the summary gave no luminosity for the drawn line
+    for xlimits in [(2600.0, 18000.0), (4000.5, 4001.0)]:
+        at.spectra.plot(
+            argsraw=[],
+            specpath=[modelpath],
+            timedays="300",
+            xmin=xlimits[0],
+            xmax=xlimits[1],
+            outputfile=tmp_path / "spec.pdf",
+        )
+        out = capsys.readouterr().out
+        spectrummatch = re.search(
+            r"TEST MODEL [^:]*: (?:\d+ points from .* angstrom, largest drawn flux [\d.e+-]+ at [\d.e+-]+ angstrom, )?"
+            r"luminosity ([\d.e+-]+) erg/s = 4π \(1 Mpc\)² ∫ f_λ dλ from ([\d.e+-]+) to [\d.e+-]+ Å \(trapezoidal",
+            out,
+        )
+        assert spectrummatch is not None, out
+        assert np.isclose(float(spectrummatch.group(2)), xlimits[0], rtol=1e-3)
+        assert np.isclose(float(spectrummatch.group(1)), get_expected_luminosity(*xlimits), rtol=1e-3)
+
+    # --showemission gives one line for each drawn series with its share, and none for a series with no flux
+    at.spectra.plot(
+        argsraw=[], specpath=[modelpath_classic_3d], timedays="5", showemission=True, outputfile=tmp_path / "em.pdf"
+    )
+    out = capsys.readouterr().out
+    shares = [float(share) for share in re.findall(r"^    \S.*? emission [\d.e+-]+ \( *([\d.]+)%\)", out, re.MULTILINE)]
+    assert shares[:2] == [68.3, 21.6]
+    assert 99.0 < sum(shares) <= 100.0
+    assert "absorption 0.0" not in out
+    assert "drawn series have no emission and no absorption" in out
+
+
+def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A run that stops early writes a log and no estimator file, and its log holds the error that stopped it."""
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    (modelfolder / "12411848.slurm").mkdir(parents=True)
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    (modelfolder / "12411848.slurm" / "output_0-0.txt").write_text(
+        "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[error] cell 3 has no matter\n",
+        encoding="utf-8",
+    )
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan", comment_prefix="#")
+    assert dfsummary["level"].to_list() == ["error"]
+    assert dfsummary["first_timestep"].item() == 0
+
+
+def test_logsummary_all_ranks_reads_the_ranks_of_each_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A restart can use fewer ranks, and -ranks all read only the ranks of input.txt, which left out an error."""
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    for runfolder, rank, text in [
+        ("100.slurm", 7, "[error] cell 3 has no matter\n"),
+        ("200.slurm", 0, "[warning] cell 4 is cold\n"),
+    ]:
+        (modelfolder / runfolder).mkdir()
+        (modelfolder / runfolder / f"output_{rank}-0.txt").write_text(
+            f"timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n{text}", encoding="utf-8"
+        )
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-ranks", "all", "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan", comment_prefix="#")
+    assert sorted(dfsummary["level"].to_list()) == ["error", "warning"]
+
+
+def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A restart can use more ranks, and the rank of a cell in the current input.txt is a different cell in a run.
+
+    With 1000 cells, the blocks of ARTIS give cell 999 to rank 1 of 2 ranks, and to rank 3 of 4 ranks.
+    """
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    (modelfolder / "model.txt").write_text("1000\n", encoding="utf-8")
+    header = "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n"
+    for runfolder, rankcount, cellrank in [("100.slurm", 2, 1), ("200.slurm", 4, 3)]:
+        (modelfolder / runfolder).mkdir()
+        for rank in range(rankcount):
+            message = "[error] cell 999 has no matter\n" if rank == cellrank else "[warning] cell 5 is cold\n"
+            (modelfolder / runfolder / f"output_{rank}-0.txt").write_text(header + message, encoding="utf-8")
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-modelgridindex", "999", "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert dfsummary["level"].to_list() == ["error"]
+    assert dfsummary["count"].item() == 2
+
+
+def test_logsummary_reads_a_compressed_copy_of_a_log_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A gzip copy of the log of a run in the model folder had a different name, and its messages counted twice."""
+    import gzip
+
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    (modelfolder / "100.slurm").mkdir(parents=True)
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    logtext = "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[error] cell 3 has no matter\n"
+    (modelfolder / "100.slurm" / "output_0-0.txt").write_text(logtext, encoding="utf-8")
+    with gzip.open(modelfolder / "output_0-0.txt.gz", "wt", encoding="utf-8") as fcopy:
+        fcopy.write(logtext)
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert dfsummary["count"].to_list() == [1]
+
+
+def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:
+    """A log holds thousands of warnings of a few kinds, thus the table names each kind, its timesteps, and its cells.
+
+    In the classic-mode 3D test, heating is bigger than cooling in many cells, thus ARTIS sets Te to MAXTEMP. The first
+    timesteps are in LTE, where ARTIS solves no thermal balance.
+    """
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelpath_classic_3d), "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan", comment_prefix="#")
+    dfmaxtemp = dfsummary.filter(pl.col("kind").str.contains("T_e forced to be MAXTEMP"))
+    assert dfmaxtemp.height == 1
+    assert dfmaxtemp["count"].item() > 1000
+    assert dfmaxtemp["first_timestep"].item() == 5
+    assert dfmaxtemp["cells"].item() > 100
+    assert dfsummary["count"].is_sorted(descending=True)
+
+
+def read_data_file(path: Path) -> pl.DataFrame:
+    """Read a table that --write_data wrote."""
+    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_logfiles_write_data_holds_the_plotted_times(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The table of --write_data must give each line of each page: the mpi ranks and the seconds of each stage."""
+    at.plotlogfiles.main(
+        argsraw=[], modelpath=[modelpath_classic_3d], outputfile=tmp_path / "logfiles.pdf", write_data=True
+    )
+
+    dftable = read_data_file(tmp_path / "logfiles.txt")
+    assert dftable.columns == ["timestep", "mpirank", "update_grid_s", "update_packets_s", "communicate_estimators_s"]
+    assert len(mockplot.call_args_list) == 3 * 30
+    for call in mockplot.call_args_list:
+        axis, mpirank, timetaken = call.args
+        timestep = int(axis.get_title().split()[-1])
+        dfpage = dftable.filter(pl.col("timestep") == timestep).sort("mpirank")
+        assert dfpage["mpirank"].to_list() == list(mpirank)
+        assert np.allclose(dfpage[f"{call.kwargs['label']}_s"].to_numpy(), timetaken, rtol=1e-12, atol=0)
+
+
+@mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
+def test_plotspherical_write_data_holds_the_drawn_maps(mockpcolormesh: mock.MagicMock, tmp_path: Path) -> None:
+    """The table of --write_data must give each pixel of each map after the smoothing, at the drawn coordinates.
+
+    The longitude of the map does not follow the ascending phi bins, and --phireverse changes its sign. Thus the
+    table must give the edges that the axes received, and not the edges of the phi bins.
+    """
+    ncosthetabins, nphibins = 4, 5
+    plotvars = ["luminosity", "emvelocityoverc"]
+    at.plotspherical.main(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=tmp_path / "map.pdf",
+        nphibins=nphibins,
+        ncosthetabins=ncosthetabins,
+        plotvars=plotvars,
+        gaussian_sigma=40,
+        phireverse=True,
+        write_data=True,
+    )
+
+    dftable = read_data_file(tmp_path / "map.txt")
+    assert dftable.columns[-2:] == ["luminosity_erg_per_s", "emvelocityoverc"]
+    # the colour bar draws a mesh of its own after each map
+    mapcalls = [call for call in mockpcolormesh.call_args_list if call.args[0].name == "mollweide"]
+    assert len(mapcalls) == len(plotvars)
+    for call, colname in zip(mapcalls, ["luminosity_erg_per_s", "emvelocityoverc"], strict=True):
+        _, meshgrid_phi, meshgrid_theta, data = call.args
+        drawn = np.asarray(data, dtype=np.float64)
+        assert drawn.shape == (ncosthetabins, nphibins + 1)
+        assert np.allclose(dftable[colname].to_numpy().reshape(drawn.shape), drawn, rtol=1e-6, atol=0, equal_nan=True)
+
+    longitude_edges = np.sort(meshgrid_phi[0])
+    assert np.allclose(dftable["longitude_lower_rad"].to_numpy()[: nphibins + 1], longitude_edges[:-1][::-1])
+    assert np.allclose(dftable["longitude_upper_rad"].to_numpy()[: nphibins + 1], longitude_edges[1:][::-1])
+    assert np.allclose(
+        dftable["costheta_lower"].to_numpy()[:: nphibins + 1], np.sin(meshgrid_theta[:-1, 0]), rtol=1e-12, atol=1e-15
+    )
+
+
+def test_plotviewingangles_write_data_holds_the_volume_and_the_lines(tmp_path: Path) -> None:
+    """The tables of --write_data must give the density of each cell of the volume and the points of each line."""
+    pytest.importorskip("plotly")
+    import plotly.express as px
+    import plotly.graph_objects as go
+
+    outputfile = tmp_path / "viewingangles.html"
+    with (
+        mock.patch.object(go, "Volume", side_effect=go.Volume) as mockvolume,
+        mock.patch.object(px, "line_3d", side_effect=px.line_3d) as mockline3d,
+    ):
+        at.plotviewingangles.main(argsraw=[str(modelpath_3d), "-o", str(outputfile), "--write_data"])
+
+    dfvolume = read_data_file(tmp_path / "viewingangles.txt")
+    volumekwargs = mockvolume.call_args.kwargs
+    for colname, kwarg in (
+        ("pos_x_mid_cm", "x"),
+        ("pos_y_mid_cm", "y"),
+        ("pos_z_mid_cm", "z"),
+        ("rho_g_per_cm3", "value"),
+    ):
+        assert np.allclose(dfvolume[colname].to_numpy(), volumekwargs[kwarg], rtol=1e-12, atol=0)
+
+    dflines = read_data_file(tmp_path / "viewingangles_directions.txt")
+    dfdrawnlines = mockline3d.call_args.args[0]
+    assert dflines["dirbin"].to_list() == [int(dirbin) for dirbin in dfdrawnlines["Angle-bin"]]
+    for axis in ("x", "y", "z"):
+        assert np.allclose(
+            dflines[f"{axis}_cm"].to_numpy(), dfdrawnlines[f"{axis}_coord"].to_numpy(), rtol=1e-12, atol=0
+        )
+
+
+@mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotopacity_writes_the_drawn_values(
+    mockplot: mock.MagicMock, mockaxhline: mock.MagicMock, tmp_path: Path
+) -> None:
+    """--write_data gives the drawn bins, the moving averages, the ratios, the line counts, and the Planck mean.
+
+    The moving average has one more point at each end of the range, thus it goes in a second table. With no moving
+    average, the ratios go in the table of the bins, with one value for each bin.
+    """
+    commonargs = ["-modelpath", str(modelpath), "-timestep", "40", "-xmin", "3000", "-xmax", "4000", "--write_data"]
+    at.plotopacity.main(argsraw=[*commonargs, "--showplanckmean", "--showlinecount", "-o", str(tmp_path / "opac.pdf")])
+    dfbins = read_data_file(tmp_path / "opac.txt")
+    dfaverages = read_data_file(tmp_path / "opac_movingaverage.txt")
+
+    axes = list(dict.fromkeys(call.args[0] for call in mockplot.call_args_list))
+    mainplots = [call.args for call in mockplot.call_args_list if call.args[0] is axes[0]]
+    ratioplots = [call.args for call in mockplot.call_args_list if call.args[0] is axes[1]]
+    (linecountplot,) = [call.args for call in mockplot.call_args_list if call.args[0] is axes[2]]
+    columns = ["exopac", "linebinned_cap1", "linebinned"]
+    # each opacity draws its bins, then its moving average. The line of each bin has a point at each edge and a NaN
+    for column, (_, binx, biny), (_, averagex, averagey) in zip(columns, mainplots[0::2], mainplots[1::2], strict=True):
+        assert np.allclose(dfbins["lambda_angstroms_lower"].to_numpy(), binx[0::3], rtol=1e-12, atol=0.0)
+        assert np.allclose(dfbins["lambda_angstroms_upper"].to_numpy(), binx[1::3], rtol=1e-12, atol=0.0)
+        assert np.allclose(dfbins[f"{column}_cm2_per_g"].to_numpy(), biny[0::3], rtol=1e-12, atol=0.0)
+        assert np.allclose(dfaverages["lambda_angstroms_bin_mid"].to_numpy(), averagex, rtol=1e-12, atol=0.0)
+        assert np.allclose(dfaverages[f"{column}_movingaverage_cm2_per_g"].to_numpy(), averagey, rtol=1e-12, atol=0.0)
+    for column, (_, ratiox, ratioy) in zip(columns[1:], ratioplots, strict=True):
+        assert np.allclose(dfaverages["lambda_angstroms_bin_mid"].to_numpy(), ratiox, rtol=1e-12, atol=0.0)
+        assert np.allclose(
+            dfaverages[f"ratio_{column}_to_exopac"].to_numpy(), ratioy, rtol=1e-12, atol=0.0, equal_nan=True
+        )
+    assert np.array_equal(dfbins["linecount"].to_numpy(), linecountplot[2][0::3])
+    assert np.allclose(dfbins["planckmean_exopac_cm2_per_g"], mockaxhline.call_args.args[1], rtol=1e-12, atol=0.0)
+
+    mockplot.reset_mock()
+    at.plotopacity.main(argsraw=[*commonargs, "-movingaveragewidth", "0", "-o", str(tmp_path / "noaverage.pdf")])
+    assert not (tmp_path / "noaverage_movingaverage.txt").exists()
+    dfbins = read_data_file(tmp_path / "noaverage.txt")
+    assert "planckmean_exopac_cm2_per_g" not in dfbins.columns
+    axes = list(dict.fromkeys(call.args[0] for call in mockplot.call_args_list))
+    ratioplots = [call.args for call in mockplot.call_args_list if call.args[0] is axes[1]]
+    for column, (_, ratiox, ratioy) in zip(columns[1:], ratioplots, strict=True):
+        assert np.allclose(dfbins["lambda_angstroms_lower"].to_numpy(), ratiox[0::3], rtol=1e-12, atol=0.0)
+        assert np.allclose(
+            dfbins[f"ratio_{column}_to_exopac"].to_numpy(), ratioy[0::3], rtol=1e-12, atol=0.0, equal_nan=True
+        )
+
+
+@mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotradfield_writes_the_drawn_values(
+    mockplot: mock.MagicMock, mockstep: mock.MagicMock, tmp_path: Path
+) -> None:
+    """--write_data gives the drawn points of each series in one long table, because each series has its own grid."""
+    at.plotradfield.main(
+        argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=40, outputfile=tmp_path / "rf.pdf", write_data=True
+    )
+    dftable = read_data_file(tmp_path / "rf.txt")
+
+    drawncalls = [*mockplot.call_args_list, *mockstep.call_args_list]
+    drawnseries = {str(call.kwargs["label"]).strip(): call.args for call in drawncalls if "label" in call.kwargs}
+    # the emergent spectrum has the scale of the specific intensity at the surface
+    assert set(drawnseries) == {
+        "Dilute blackbody model",
+        "Band-average field",
+        "Radiation field model",
+        "Emergent spectrum (scaled)",
+    }
+    assert set(dftable["series"]) == set(drawnseries)
+    # the axis shows 1000 to 20000 Å, and the table keeps the nearest point outside each end for the line to the edge
+    for label, (_, drawnxvalues, drawnyvalues) in drawnseries.items():
+        dfseries = dftable.filter(pl.col("series") == label)
+        drawnx, drawny = np.asarray(drawnxvalues, dtype=float), np.asarray(drawnyvalues, dtype=float)
+        lowedge = drawnx[drawnx <= 1000.0].max(initial=-np.inf)
+        highedge = drawnx[drawnx >= 20000.0].min(initial=np.inf)
+        iskept = (drawnx >= lowedge) & (drawnx <= highedge)
+        assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx[iskept], rtol=1e-12, atol=0.0)
+        assert np.allclose(
+            dfseries["J_lambda_erg_per_s_per_cm2_per_angstrom"].to_numpy(), drawny[iskept], rtol=1e-12, atol=0.0
+        )
+        assert (dfseries["lambda_angstroms"] < 1000.0).sum() <= 1
+        assert (dfseries["lambda_angstroms"] > 20000.0).sum() <= 1
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plottransitions_writes_the_drawn_values(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """--write_data gives one row for each ion, each series, and each wavelength, and the ion names the panel."""
+    at.plottransitions.main(
+        argsraw=[], modelpath=modelpath, timedays=300, T=[5000.0], outputfile=tmp_path / "trans.pdf", write_data=True
+    )
+    dftable = read_data_file(tmp_path / "trans.txt")
+
+    axes = list(dict.fromkeys(call.args[0] for call in mockplot.call_args_list))
+    ionlabels = list(dict.fromkeys(dftable["ion"]))
+    assert len(ionlabels) == len(axes) == 7
+    assert dftable.height == sum(len(call.args[1]) for call in mockplot.call_args_list)
+    for call in mockplot.call_args_list:
+        axis, drawnx, drawny = call.args
+        dfseries = dftable.filter(
+            pl.col("ion") == ionlabels[axes.index(axis)], pl.col("series") == call.kwargs["label"]
+        )
+        assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx, rtol=1e-12, atol=0.0)
+        assert np.allclose(dfseries["f_lambda_arbitrary"].to_numpy(), drawny, rtol=1e-12, atol=0.0)
+
+
+def test_catalog_gives_one_row_for_each_model_and_warns_about_a_broken_model(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A folder of models gives one row for each model, and a broken model gives null values and one warning."""
+    from artistools.catalog import main
+
+    (tmp_path / "group").mkdir()
+    (tmp_path / "group" / "classic3d").symlink_to(modelpath_classic_3d, target_is_directory=True)
+    (tmp_path / "testmodel").symlink_to(modelpath, target_is_directory=True)
+    # a link back to the top folder must not make the search loop
+    (tmp_path / "group" / "loop").symlink_to(tmp_path, target_is_directory=True)
+    brokenfolder = tmp_path / "broken"
+    brokenfolder.mkdir()
+    (brokenfolder / "input.txt").write_text("not an input file\n", encoding="utf-8")
+    (brokenfolder / "model.txt").write_text("not a model\n", encoding="utf-8")
+
+    outputfile = tmp_path / "out" / "catalog.txt"
+    main(argsraw=[str(tmp_path), "-o", str(outputfile)])
+    captured = capsys.readouterr()
+
+    dfcatalog = read_data_file(outputfile)
+    assert dfcatalog["modelfolder"].to_list() == ["broken", "group/classic3d", "testmodel"]
+    assert "#   peak_lum_erg_per_s, peak_time_days: the largest point of light_curve.out" in outputfile.read_text(
+        encoding="utf-8"
+    )
+
+    rowbroken, rowclassic, rowtestmodel = dfcatalog.iter_rows(named=True)
+    assert rowbroken["cells"] is None
+    assert rowbroken["timesteps"] is None
+    assert captured.err.count("WARNING") == 1
+    assert "model broken in broken: the table gives nan for the cells of model.txt" in captured.err
+
+    assert rowclassic["dimensions"] == 3
+    assert rowclassic["cells"] == 1000
+    assert rowclassic["timesteps"] == 30
+    assert rowclassic["nlte"] is False
+    assert rowclassic["nonthermal"] is False
+    assert rowclassic["thermalisation"] == "INSTANT_PARTICLE_DEPOSITION=true"
+    # MPKTS = 15000 packets for each of the 2 ranks of input.txt
+    assert rowclassic["num_packets"] == 30000
+    assert rowclassic["artis_version"] == "v2023.10-106-gfcb7e2c"
+
+    # the test model has no artisoptions.h and no log
+    assert rowtestmodel["modelname"] == "TEST MODEL"
+    assert rowtestmodel["nlte"] is None
+    assert rowtestmodel["artis_version"] is None
+
+    for row, folder in ((rowclassic, modelpath_classic_3d), (rowtestmodel, modelpath)):
+        # light_curve.out holds the time and the luminosity in Lsun, and an older file repeats the times in a second
+        # table, thus the first table ends where the time decreases
+        lightcurve = np.loadtxt(folder / "light_curve.out")
+        firsttablelength = next(
+            (index + 1 for index in range(len(lightcurve) - 1) if lightcurve[index + 1, 0] < lightcurve[index, 0]),
+            len(lightcurve),
+        )
+        times, lums_lsun = lightcurve[:firsttablelength, 0], lightcurve[:firsttablelength, 1]
+        assert np.isclose(row["peak_lum_erg_per_s"], lums_lsun.max() * at.constants.Lsun_to_erg_per_s, rtol=1e-6)
+        assert np.isclose(row["peak_time_days"], times[lums_lsun.argmax()], rtol=1e-6)
+
+
+def test_catalog_prints_the_methods_and_the_table_and_asks_before_it_overwrites_a_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The standard output gives the method of each column and the table, and -o asks before it replaces a file."""
+    from artistools.catalog import main
+
+    (tmp_path / "testmodel").symlink_to(modelpath, target_is_directory=True)
+    main(argsraw=[str(tmp_path)])
+    printedlines = capsys.readouterr().out.splitlines()
+    # the progress messages come before the product, which is the lines of the methods and then the table
+    productstart = printedlines.index("# the method of each column:")
+    tablestart = next(index for index, line in enumerate(printedlines) if line.startswith("modelname "))
+    assert all(line.startswith("# ") for line in printedlines[productstart:tablestart])
+    dfcatalog = pl.read_csv(io.StringIO("\n".join(printedlines[tablestart:])), separator=" ", null_values="nan")
+    assert dfcatalog["modelname"].to_list() == ["TEST MODEL"]
+    assert dfcatalog["modelfolder"].to_list() == ["testmodel"]
+
+    outputfile = tmp_path / "out" / "catalog.txt"
+    main(argsraw=[str(tmp_path), "-o", str(outputfile)])
+    assert "# command: " in outputfile.read_text(encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main(argsraw=[str(tmp_path), "-o", str(outputfile)])
+    main(argsraw=[str(tmp_path), "-o", str(outputfile), "--force"])
+
+
+def test_report_holds_each_part_and_its_figures(tmp_path: Path) -> None:
+    """The page gives each part in order, an image for each figure, and the summary lines of each figure."""
+    from artistools.report import main
+
+    dfchecks = pl.DataFrame({
+        "check": ["light curve", "estimators"],
+        "status": ["ok", "warning"],
+        "detail": ["light_curve.out has 30 timesteps", "121 cells <at MAXTEMP>"],
+    })
+    reportfolder = tmp_path / "report"
+    with mock.patch("artistools.report.get_check_results_table", return_value=dfchecks) as mockcheck:
+        main(argsraw=[], modelpath=modelpath_classic_3d, outputfile=reportfolder)
+    mockcheck.assert_called_once()
+
+    page = (reportfolder / "index.html").read_text(encoding="utf-8")
+    headings = re.findall(r"<h2 id=\"[^\"]+\">([^<]+)</h2>", page)
+    assert headings == [
+        "Provenance",
+        "Health check",
+        "Model summary",
+        "Log summary of rank 0",
+        "Bolometric light curve",
+        "Spectra",
+        "Electron temperature against velocity",
+    ]
+    # the page escapes the text of a check, and the row of a warning has its class
+    assert '<tr class="status-warning"><td>estimators</td><td>warning</td><td>121 cells &lt;at MAXTEMP&gt;</td>' in page
+    assert "model.txt: 3D, 1000 cells, 695 cells with matter" in page
+    assert "call_T_e_finder: heating bigger than cooling" in page
+
+    imagenames = re.findall(r'<img src="([^"]+)" alt="[^"]+">', page)
+    assert imagenames == [
+        "lightcurve.png",
+        "spectrum_timestep005.png",
+        "spectrum_timestep014.png",
+        "spectrum_timestep023.png",
+        "Te_timestep005.png",
+        "Te_timestep014.png",
+        "Te_timestep023.png",
+    ]
+    assert all((reportfolder / imagename).is_file() for imagename in imagenames)
+    assert "<pre>test-classicmode_3d: 19 points from 3.591 to 6.468 d, peak 1.206e+43 erg/s at 5.864 d" in page
+    assert "WARNING: Te: 260 points are at MAXTEMP" in page
+    assert "<script" not in page
+    assert "http" not in page
+
+    # a second run asks before it overwrites the report, and stdin of pytest is no terminal
+    with pytest.raises(SystemExit):
+        main(argsraw=[], modelpath=modelpath_classic_3d, outputfile=reportfolder)
+
+
+def test_report_of_model_with_no_estimators_names_each_error(tmp_path: Path) -> None:
+    """A part that fails gives one error line, and the page continues to its end."""
+    from artistools.report import main
+
+    modelfolder = tmp_path / "noestimators"
+    modelfolder.mkdir()
+    for filename in (
+        "input.txt",
+        "model.txt",
+        "abundances.txt",
+        "compositiondata.txt",
+        "light_curve.out",
+        "spec.out",
+        "deposition.out",
+    ):
+        shutil.copy(modelpath_classic_3d / filename, modelfolder / filename)
+    reportfolder = tmp_path / "report"
+    with mock.patch("artistools.report.get_check_results_table", side_effect=ValueError("no check")):
+        main(argsraw=[], modelpath=modelfolder, outputfile=reportfolder)
+
+    page = (reportfolder / "index.html").read_text(encoding="utf-8")
+    assert '<p class="error">This part of the report failed: ValueError: no check</p>' in page
+    assert "The model has no log of rank 0." in page
+    assert page.count('<img src="spectrum_timestep') == 3
+    assert '<img src="Te_timestep' not in page
+    assert page.count('<p class="error">This part of the report failed:') == 4
+    assert page.rstrip().endswith("</html>")
+
+
+def test_check_counts_the_cells_at_the_temperature_limits() -> None:
+    """The worst time step and the fraction over all time steps agree with a count of the estimators."""
+    from artistools.check import get_check_results
+
+    dfresults = get_check_results(modelpath_classic_3d)
+    assert dfresults.columns == ["check", "status", "detail"]
+    status, detail = dfresults.filter(pl.col("check") == "temperature limits").select("status", "detail").row(0)
+
+    dfte = at.scan_estimators(modelpath_classic_3d).select("timestep", "Te").collect()
+    atlimit = dfte["Te"].is_in([3500.0, 140000.0])
+    assert dfte.filter(pl.col("timestep") == 0)["Te"].eq(3500.0).sum() == 562
+    overallpercent = 100 * float(atlimit.to_numpy().mean())
+    assert np.isclose(overallpercent, 54.6, atol=0.05)
+    assert status == "warning"
+    assert "at the worst time step 0 (3.05 d), of the 695 cells with Te, 562 (80.9%) are at MINTEMP = 3500 K" in detail
+    assert f"over all 30 time steps, {overallpercent:.1f}% of the values of Te are at a limit" in detail
+
+
+def test_check_gives_an_error_for_a_te_that_is_not_finite() -> None:
+    """A NaN Te counted as a cell with Te at no limit, thus it lowered the fraction at the limits."""
+    from artistools.check import check_temperature_limits
+
+    dfte = pl.LazyFrame({"timestep": [0, 0, 0, 1], "Te": [3500.0, 5000.0, float("nan"), float("inf")]})
+    with mock.patch("artistools.check.scan_estimators", return_value=dfte):
+        status, detail = check_temperature_limits(modelpath_classic_3d)
+    assert status == "error"
+    assert "of the 2 cells with Te, 1 (50.0%) are at MINTEMP = 3500 K" in detail
+    assert "2 values of Te are NaN or infinite" in detail
+
+
+def test_check_reads_each_log_once_and_finds_the_restarts() -> None:
+    """The model folder holds a copy of the log of job1, thus the log check reads the logs of job0 and job1 alone.
+
+    Almost each run logs warnings, thus a log with no error gives the status ok.
+    """
+    from artistools.check import get_check_results
+
+    dfresults = get_check_results(modelpath_classic_3d)
+    statusofcheck = dict(zip(dfresults["check"], dfresults["status"], strict=True))
+    detailofcheck = dict(zip(dfresults["check"], dfresults["detail"], strict=True))
+    assert statusofcheck["log messages"] == "ok"
+    assert (
+        "the rank-0 logs of 2 run folders (job0, job1) hold 0 errors and 7419 warnings" in detailofcheck["log messages"]
+    )
+    assert statusofcheck["restarts"] == "ok"
+    assert "2 run folders with estimators (job0, job1)" in detailofcheck["restarts"]
+    assert "v2023.10-106-gfcb7e2c" in detailofcheck["restarts"]
+    assert statusofcheck["complete time steps"] == "ok"
+    assert "30 of 30 time steps as complete" in detailofcheck["complete time steps"]
+    assert statusofcheck["packet noise"] == "not checked"
+    assert detailofcheck["packet noise"] == "give --frompackets to read the packets"
+
+
+def test_check_katz_ratio_agrees_with_a_direct_integration(tmp_path: Path) -> None:
+    """The energy check reads only light_curve.out and deposition.out, thus a model with no estimators also has it.
+
+    The time range of the test model starts at 3 days with hot ejecta, thus the ratio is far from 1 with no fault.
+    """
+    from artistools.check import get_check_results
+
+    for filename in (
+        "input.txt",
+        "model.txt",
+        "abundances.txt",
+        "compositiondata.txt",
+        "light_curve.out",
+        "spec.out",
+        "deposition.out",
+    ):
+        shutil.copy(modelpath_classic_3d / filename, tmp_path / filename)
+
+    # light_curve.out holds a second table of 30 rows, which repeats the times
+    lightcurve = np.loadtxt(modelpath_classic_3d / "light_curve.out")[:30]
+    deposition = np.loadtxt(modelpath_classic_3d / "deposition.out")
+    lumtime_s = lightcurve[:, 0] * at.constants.day_to_s
+    deptime_s = deposition[:, 1] * at.constants.day_to_s
+    lumintegral = np.trapezoid(lightcurve[:, 1] * at.constants.Lsun_to_erg_per_s * lumtime_s, x=lumtime_s)
+    depintegral = np.trapezoid(deposition[:, 3] * at.constants.Lsun_to_erg_per_s * deptime_s, x=deptime_s)
+
+    for model in (modelpath_classic_3d, tmp_path):
+        dfresults = get_check_results(model)
+        status, detail = dfresults.filter(pl.col("check") == "energy").select("status", "detail").row(0)
+        assert status == "warning"
+        assert f"∫ t L dt = {lumintegral:.3e} erg s" in detail
+        assert f"∫ t Q dt = {depintegral:.3e} erg s" in detail
+        assert f"L/Q = {lumintegral / depintegral:.3f}" in detail
+        assert "gives a ratio far from 1 with no fault in the model" in detail
+
+    dfresults = get_check_results(tmp_path)
+    statusofcheck = dict(zip(dfresults["check"], dfresults["status"], strict=True))
+    assert statusofcheck["restarts"] == "not checked"
+    assert statusofcheck["temperature limits"] == "not checked"
+    assert statusofcheck["log messages"] == "not checked"
+
+
+def test_check_that_fails_gives_an_error_row_and_the_other_checks_run() -> None:
+    """An exception in one check gives a row of status error, and the other checks still run."""
+    from artistools.check import get_check_results
+
+    with mock.patch("artistools.check.check_temperature_limits", side_effect=RuntimeError("no\nestimators")):
+        dfresults = get_check_results(modelpath_classic_3d)
+    assert dfresults.height == 6
+    assert dfresults.filter(pl.col("check") == "temperature limits").select("status", "detail").row(0) == (
+        "error",
+        "RuntimeError: no estimators",
+    )
+    assert dfresults.filter(pl.col("check") == "complete time steps")["status"].item() == "ok"
+
+
+def test_check_from_packets_gives_the_largest_noise(capsys: pytest.CaptureFixture[str]) -> None:
+    """--frompackets gives the largest relative noise of the light curve and its time, with a warning."""
+    from artistools.check import main
+
+    dflightcurve = at.lightcurve.get_from_packets(modelpath)[-1].collect().filter(pl.col("relnoise").is_not_null())
+    worst = dflightcurve.sort("relnoise", descending=True).row(0, named=True)
+    main(argsraw=[str(modelpath), "--frompackets"])
+    captured = capsys.readouterr()
+    assert "\ncheck status detail\n" in captured.out
+    noiseline = next(line for line in captured.out.splitlines() if line.startswith('"packet noise"'))
+    assert noiseline.startswith('"packet noise" warning ')
+    assert f"the largest relative noise is {100 * worst['relnoise']:.1f}% at {worst['time_days']:.2f} d" in noiseline
+    assert re.search(r"WARNING: packet noise \(warning\): the largest relative noise", captured.err)
+    # a check that is not checked gives no warning line
+    assert "complete time steps (" not in captured.err

@@ -6,17 +6,21 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_output
+from artistools.misc import exit_with_error
 from artistools.misc import get_costheta_bins
 from artistools.misc import get_phi_bins
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import import_optional
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import resolve_outputfile
 from artistools.plottools import TRANSPARENT_DARKMODE_FORMATS
@@ -61,6 +65,28 @@ def gen_viewing_angle_df(length: int) -> pl.DataFrame:
     return pl.DataFrame(viewing_angles)
 
 
+def get_plotted_tables(
+    cellpositions: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]],
+    rho: npt.NDArray[np.float64],
+    va: pl.DataFrame,
+) -> dict[str, pl.DataFrame]:
+    """Return the density of each cell in the volume, and the points of the direction bin lines.
+
+    The lines have a different set of points from the volume, thus they go in the second table. Each line goes from
+    the origin to its end point, thus the second table has two rows for each direction bin.
+    """
+    x, y, z = cellpositions
+    return {
+        "": pl.DataFrame({"pos_x_mid_cm": x, "pos_y_mid_cm": y, "pos_z_mid_cm": z, "rho_g_per_cm3": rho}),
+        "_directions": va.select(
+            pl.col("Angle-bin").cast(pl.Int64).alias("dirbin"),
+            pl.col("x_coord").alias("x_cm"),
+            pl.col("y_coord").alias("y_cm"),
+            pl.col("z_coord").alias("z_cm"),
+        ),
+    }
+
+
 def viewing_angles_visualisation(
     modelfile: str,
     outfile: str | None = None,
@@ -72,6 +98,7 @@ def viewing_angles_visualisation(
     linelength: float = 1.0,
     show_plot: bool = False,
     darkmode: bool = False,
+    args: argparse.Namespace | None = None,
 ) -> tuple[float, float]:
     """Draw a 3D visualisation of an ARTIS model, with an animation of the direction bins.
 
@@ -100,12 +127,20 @@ def viewing_angles_visualisation(
         True shows the plot after the function saves it.
     darkmode : bool
         True gives the plot white text on a black background, or on a transparent background in a PDF or SVG file.
+    args : argparse.Namespace
+        The arguments of the command. --print_data and --write_data give the plotted data as text.
 
     Returns
     -------
     isomin, isomax : float, float
 
     """
+    if args is not None and getattr(args, "write_data", False) and not outfile:
+        exit_with_error(
+            "--write_data writes the table beside the figure, and without -o the command writes no figure",
+            "Give -o with the name of the figure, e.g. -o viewingangles.html",
+        )
+
     px = import_optional("plotly.express")
     go = import_optional("plotly.graph_objects")
 
@@ -130,6 +165,8 @@ def viewing_angles_visualisation(
     # the vectors reach the edge of the box at a line length of one
     length = max(x.flatten()) * linelength
     va = gen_viewing_angle_df(length)
+    if args is not None and (getattr(args, "print_data", False) or getattr(args, "write_data", False)):
+        output_data(args, get_plotted_tables((x, y, z), rho, va), outfile or "plotviewingangles.html")
 
     fig = px.line_3d(
         va,
@@ -198,6 +235,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--show_plot", action="store_true", help="Show the plot after the command saves it")
     addarg_darkmode(parser)
+    addarg_data_output(parser)
 
     # deprecated double-dash spellings kept as hidden aliases
     parser.add_argument("--outfile", dest="outputfile", type=Path, help=argparse.SUPPRESS)
@@ -225,4 +263,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         linelength=args.linelength,
         show_plot=args.show_plot,
         darkmode=args.darkmode,
+        args=args,
     )

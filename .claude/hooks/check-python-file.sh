@@ -28,8 +28,10 @@ command -v jq >/dev/null 2>&1 || exit 0
 
 cd "$projectdir" || exit 0
 
-# the Stop hook reads this marker, thus the full tree check runs only after a change
-touch "${TMPDIR:-/tmp}/artistools-claude-pyedit-$(id -u)" 2>/dev/null
+# the Stop hook reads this marker, thus the full tree check runs after a change. Two sessions can work in two
+# checkouts, e.g. a worktree, thus the name of the marker holds a checksum of the folder of the checkout
+checkoutid="$(printf '%s' "$projectdir" | cksum | cut -d ' ' -f 1)"
+touch "${TMPDIR:-/tmp}/artistools-claude-pyedit-$(id -u)-$checkoutid" 2>/dev/null
 
 # --no-sync keeps the hook from a reinstall of the environment at each edit
 run() { uv run --no-sync -- "$@"; }

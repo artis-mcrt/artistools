@@ -36,12 +36,12 @@ from artistools.misc import zopen
 from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import with_compressed_extension
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_zstd_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.modelinfo import parse_npts_line
-from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
 
 CREATED_COMMENT_PREFIX = "created:"
@@ -705,8 +705,18 @@ def get_modeldata(
         if True, print warnings but skip informational progress messages
 
     """
-    check_local_path(modelpath)
-    inputpath = Path(modelpath)
+    # on_model_host finds a remote path only in a Path argument, thus a str path becomes a Path first
+    return read_modeldata(
+        resolve_modelpath(modelpath), get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly
+    )
+
+
+@on_model_host
+def read_modeldata(
+    modelpath: Path, get_elemabundances: bool = False, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Read model.txt, and abundances.txt with get_elemabundances, for a model path that get_modeldata resolved."""
+    inputpath = modelpath
 
     if inputpath.is_dir():
         modelpath = inputpath

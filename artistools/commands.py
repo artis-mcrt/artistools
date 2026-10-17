@@ -3,6 +3,7 @@
 import argparse
 import dataclasses as dc
 import importlib
+import sys
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Mapping
@@ -127,7 +128,19 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": ("completions", "getpath", "timesteps", "version"),
+    "other commands": (
+        "catalog",
+        "check",
+        "completions",
+        "describe",
+        "getpath",
+        "installskill",
+        "logsummary",
+        "python",
+        "report",
+        "timesteps",
+        "version",
+    ),
 })
 
 # "artistools describeinputmodel" was a top-level command, thus a script of a user holds that name.
@@ -139,6 +152,19 @@ DESCRIBEINPUTMODEL = CommandSpec(
 )
 
 subcommandtree: CommandTree = {
+    "catalog": CommandSpec(
+        "catalog",
+        helptext="Make a table of the ARTIS models below a folder, with one row for each model.",
+        note=(
+            "The table gives the cells, the time steps, the main physics options, the ARTIS version, and the peak"
+            " luminosity. It reads no packets, estimators, or spectra."
+        ),
+    ),
+    "check": CommandSpec(
+        "check",
+        helptext="Check whether the results of an ARTIS model deserve trust, and give one row for each check.",
+        note="--frompackets also reads the escaped packets to find the Monte Carlo noise of the light curve.",
+    ),
     "comparetogsinetwork": CommandSpec(
         "gsinetwork.comparetogsinetwork",
         helptext="Compare ARTIS to a GSI Network calculation.",
@@ -156,6 +182,11 @@ subcommandtree: CommandTree = {
             "The deposition_ estimators of each cell give the rate, thus the command needs the output of a"
             " recent ARTIS version. Every column covers the cells that hold matter."
         ),
+    ),
+    "describe": CommandSpec(
+        "describemodel",
+        helptext="Summarise an ARTIS model, e.g. its cells, timesteps, output files, ions, and physics options.",
+        note="Run it first to choose the readers and the timesteps for a question about the model.",
     ),
     # the help lists this name under "inputmodel describe", thus the top level hides it
     "describeinputmodel": dc.replace(DESCRIBEINPUTMODEL, aliases=(), hidden=True),
@@ -222,6 +253,16 @@ subcommandtree: CommandTree = {
         ),
         "to_tardis": CommandSpec("inputmodel.to_tardis", helptext="Convert an ARTIS format model to TARDIS format."),
     },
+    "installskill": CommandSpec(
+        "installskill",
+        helptext="Install the artis-data skill for a large language model (LLM) agent, e.g. Claude Code.",
+        note="The skill tells the agent how to read the data of a model with artistools.",
+    ),
+    "logsummary": CommandSpec(
+        "logsummary",
+        helptext="Count the warnings and the errors in the logs of an ARTIS model, by kind of message.",
+        note="Each rank logs the cells that it updates, thus -ranks and -modelgridindex select the logs to read.",
+    ),
     "makevpktinput": CommandSpec(
         "make_vpkt_input",
         helptext="Write a vpkt.txt for a model.",
@@ -305,6 +346,20 @@ subcommandtree: CommandTree = {
         "plotviewingangles",
         helptext="Plot a 3D view of a model.",
         note="The view holds an isosurface of the density and the direction bins.",
+    ),
+    "python": CommandSpec(
+        "commands",
+        funcname="show_python",
+        helptext="Print the path of the Python interpreter that runs artistools.",
+        note="A script that imports artistools can run with this interpreter, e.g. from an agent.",
+    ),
+    "report": CommandSpec(
+        "report",
+        helptext="Make one HTML page that is the first page to read about an ARTIS model.",
+        note=(
+            "The page holds the provenance, the health check, the model summary, the log summary, and standard figures."
+        ),
+        examples=((". -o myreport", "the report of the model in the working folder, in the folder myreport"),),
     ),
     "server": CommandSpec(
         "misc.remote",
@@ -916,6 +971,17 @@ def show_version(args: argparse.Namespace | None = None, **kwargs: t.Any) -> Non
     from artistools.misc import print_product
 
     print_product(args or argparse.Namespace(), f"artistools {version('artistools')}")
+
+
+def show_python(args: argparse.Namespace | None = None, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
+    """Print the path of the Python interpreter that runs artistools. The path is the product, thus --quiet keeps it.
+
+    The command of artistools can be in a different folder from its interpreter, e.g. ~/.local/bin for pip install
+    --user, thus the folder of the command does not give the interpreter.
+    """
+    from artistools.misc import print_product
+
+    print_product(args or argparse.Namespace(), sys.executable)
 
 
 def get_path(key: str) -> Path:

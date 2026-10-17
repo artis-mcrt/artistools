@@ -21,10 +21,10 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 
+import polars as pl
+
 if t.TYPE_CHECKING:
     import subprocess
-
-    import polars as pl
 
 
 def make_remotepath_pattern(*, windows: bool) -> re.Pattern[str]:
@@ -117,7 +117,7 @@ MAX_MESSAGE_BYTES = 16 * 1024**3
 
 # increase the server protocol when a reader with the decorator on_model_host changes its arguments or its result.
 # Also increase it for a new format of a message. Then a clone with the protocol of the release needs no build on a host
-SERVER_PROTOCOL = 3
+SERVER_PROTOCOL = 4
 
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
 # standard output first, thus the client ignores each line before this one
@@ -303,8 +303,6 @@ def restore_frames(value: t.Any) -> t.Any:
     """Return the value of a message with a polars frame in place of each tuple of FRAME_MARKER."""
     import io
 
-    import polars as pl
-
     if type(value) is tuple and len(value) == 3 and value[0] == FRAME_MARKER and isinstance(value[1], bytes):
         df = pl.read_ipc(io.BytesIO(value[1]))
         return df.lazy() if value[2] else df
@@ -328,8 +326,6 @@ def dump_message(value: t.Any) -> bytes:
     """
     import copyreg
     import io
-
-    import polars as pl
 
     buffer = io.BytesIO()
     pickler = pickle.Pickler(buffer, protocol=pickle.HIGHEST_PROTOCOL)
@@ -434,8 +430,6 @@ def get_polars_pin() -> str:
     The filter of a query of a remote model goes to the host as a serialised polars expression, see
     read_remote_estimator_rows. The format of such an expression changes between two versions of polars.
     """
-    import polars as pl
-
     return f"--with polars=={pl.__version__}"
 
 
@@ -736,8 +730,6 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     import shlex
     from importlib.metadata import version
 
-    import polars as pl
-
     from artistools.misc.cliutils import exit_with_error
     from artistools.misc.cliutils import print_detail
     from artistools.misc.cliutils import print_warning
@@ -949,8 +941,6 @@ def collect_lazyframes(value: t.Any) -> t.Any:
     The frames of a reader can share a scan, e.g. the 100 direction bins of light_curve_res.out. pl.collect_all
     reads that file once, but a collect of each frame reads it once for each frame.
     """
-    import polars as pl
-
     lazyframes: list[pl.LazyFrame] = []
 
     def add_lazyframe(leaf: t.Any) -> None:
@@ -1023,8 +1013,6 @@ def run_request(request: bytes) -> bytes:
 def serve(requeststream: t.IO[bytes], resultstream: t.IO[bytes]) -> None:
     """Run each request of the request stream, and write each result to the result stream."""
     from importlib.metadata import version
-
-    import polars as pl
 
     resultstream.write(SERVER_START_LINE)
     write_message(resultstream, dump_message((version("artistools"), pl.__version__)))

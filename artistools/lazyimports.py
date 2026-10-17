@@ -34,13 +34,15 @@ def can_import_lazily(importing: str | None, imported: str, fromlist: object) ->
     """Return True for an import of an artistools module that can wait until the first use of its name.
 
     The imports of other code stay eager, e.g. of a script or of matplotlib. Then only artistools holds pending
-    imports, and a script that imports PySide6 loads it at once. numpy and polars stay eager, see
-    artistools/__init__.py. The Qt bindings also stay eager.
+    imports, and a script that imports PySide6 loads it at once. A lazy import inside polars stopped polars as it
+    loaded, and one inside matplotlib broke its rcParams. numpy stays eager, see artistools/__init__.py. The Qt bindings
+    also stay eager. polars itself is lazy, and a read of a polars name, e.g. an annotation of a decorated function,
+    loads it.
     """
     del fromlist
     return (
         is_artistools_module(importing)
-        and not imported.startswith(("numpy", "polars"))
+        and not imported.startswith("numpy")
         and imported.partition(".")[0] not in QT_PACKAGES
     )
 

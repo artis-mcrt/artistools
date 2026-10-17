@@ -93,6 +93,19 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floati
         return Mbol_sun - (2.5 * np.log10(lum_lsun))
 
 
+def get_katz_integral(time_days: pl.Series, luminosity_erg_per_s: pl.Series) -> tuple[float, float]:
+    """Return the integral of t L(t) dt in erg s with the trapezoid rule, and the days that it leaves out.
+
+    A null or NaN luminosity is not a zero, thus the integral leaves out each trapezoid with such an end. Katz B.,
+    Kushnir D., Dong S. (2013), arXiv:1301.6766, compare this integral with the same integral of the deposition rate.
+    """
+    time = time_days.cast(pl.Float64).to_numpy()
+    integrand = luminosity_erg_per_s.cast(pl.Float64).fill_null(np.nan).to_numpy() * time * day_to_s
+    segments = 0.5 * (integrand[:-1] + integrand[1:]) * np.diff(time) * day_to_s
+    isfinitesegment = np.isfinite(segments)
+    return float(segments[isfinitesegment].sum()), float(np.abs(np.diff(time))[~isfinitesegment].sum())
+
+
 @on_model_host
 def scan_lightcurve(
     filepath: str | Path,
@@ -276,6 +289,7 @@ def get_from_packets(
             vpkt_config,
             lambda obsdirindex: pl.col(f"dir{obsdirindex}_t_arrive_d"),
             timebinstarts_plusend,
+            sumsquares=True,
         )
         cmfsums = None
     else:
@@ -287,6 +301,7 @@ def get_from_packets(
             "e_rf",
             average_over_phi=average_over_phi,
             average_over_theta=average_over_theta,
+            sumsquares=True,
         )
         cmfsums = (
             sum_packets_by_dirbin(
@@ -307,10 +322,14 @@ def get_from_packets(
     dftimes = dftimesteps_selected.select(pl.col("timestep").cast(pl.Int32), time_days=pl.col("tmid_days"))
     lcdata: dict[int, pl.LazyFrame] = {}
     for dirbin, sums in rfsums.items():
+        assert sums.weightsquaresums is not None
+        # relnoise = sqrt(sum(e^2)) / sum(e) is the relative Monte Carlo noise of a timestep with packets
+        relnoise = np.sqrt(sums.weightsquaresums) / np.where(sums.weightsums > 0.0, sums.weightsums, np.nan)
         dflc = dftimes.select(
             pl.Series("packetcount", sums.packetcounts),
             pl.all(),
             pl.Series("luminosity_Lsun", sums.weightsums * sums.solidanglefactor * lumfactors),
+            pl.Series("relnoise", relnoise).fill_nan(None),
         )
         if cmfsums is not None:
             dflc = dflc.with_columns(

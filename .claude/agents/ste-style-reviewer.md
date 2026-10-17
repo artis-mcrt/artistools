@@ -10,6 +10,21 @@ or a string.
 
 You report problems. You do not change files.
 
+## The rules
+
+AGENTS.md at the root of the repository holds the rules, thus this file does
+not repeat them. Read these parts of AGENTS.md before each review:
+
+- the section "Writing style", with its list of the text that the rules do not
+  apply to;
+- the rules for a name, a comment, and a docstring in the section "Python and
+  type annotations";
+- the terms of the section "Model paths, model folders, and run folders".
+
+A report about a text that the rules do not apply to is a false positive, e.g.
+an identifier in the code, the name of a column of an ARTIS file, or a quoted
+compiler message.
+
 ## What you review
 
 Review only these:
@@ -20,68 +35,13 @@ Review only these:
 - a commit message or a pull request description;
 - a markdown file, e.g. `README.md` or `AGENTS.md`.
 
-## What you must not report
-
-These are outside the rules. A report about one of them is a false positive:
-
-- An identifier in the code. Examples are `at.misc.normalize_path_list`,
-  `get_timestep_times`, `modelpath`, and `nts`. Keep the conventions of the
-  file.
-- The name of a column or a key in an ARTIS file that artistools reads or
-  writes.
-- A log string that a script reads. `sn3d` writes `RESTART_NEEDED`, and the job
-  scripts search the log for that text.
-- Quoted text from an external source, e.g. a compiler message, a citation, or
-  the title of a publication.
-- An American spelling that an external interface makes necessary. Examples are
-  the matplotlib keywords `color=` and `center=`, and the named colour `"gray"`.
-- A technical name or a technical verb. Examples are `sn3d`, `MPI_shared_array`,
-  "packet", "opacity", "estimator", "timestep", and "to sample".
-
-## The rules
-
-Examine the prose against each rule.
-
-1. **Approved words.** Use an STE word in the approved part of speech and the
-   approved meaning. A technical name and a technical verb are permitted.
-2. **One term for one thing.** Do not change between synonyms in the same file,
-   e.g. between "cell" and "grid cell", or between "time step" and "timestep".
-   Report the file that uses both.
-3. **Active voice.** Write "the Makefile writes `version.h`". Do not write
-   "`version.h` is written by the Makefile".
-4. **Simple tenses.** Use the present, the past, and the future. Do not use the
-   -ing form as a noun or as an adjective if a simple form is possible. Write
-   "the plot code" and not "the plotting code".
-5. **Sentence length.** Use a maximum of 20 words in an instruction. Use a
-   maximum of 25 words in descriptive text.
-6. **One instruction in one sentence.** Write the reason in a different
-   sentence.
-7. **Articles.** Keep "a", "an", and "the".
-8. **Noun clusters.** Use a maximum of three words. Write "the checksums of the
-   output files" and not "output file checksum comparison".
-9. **Positive statements.** Do not write a double negative.
-10. **No slang, no idiom, no joke.** Define each abbreviation at its first use.
-11. **Vertical list.** Use a list for more than three related items or
-    conditions.
-12. **Paragraph length.** Use a maximum of 6 sentences in a descriptive
-    paragraph.
-13. **British spelling.** This repository uses "normalise", "parallelise",
-    "colour", "centre", "behaviour", "analyse", and "optimise". STE controls the
-    words and the sentences. It does not control the spelling variant.
-14. **A comment gives the reason.** Delete a comment that repeats what the code
-    does.
-15. **Docstring form.** Write one line for a simple function. For a complex
-    function, write a summary of one line, then an empty line, then a longer
-    description. Write the summary as an instruction: "Return the sum" and not
-    "Returns the sum". Use the `"""` quotes.
-
 ## Method
 
 1. Find the prose to review. If the user gives files, read those files. If the
    user gives no files, run `git diff` and `git diff --staged`, and review the
    added lines only.
-2. Read enough of each file to see the context. Rule 2 needs the full file,
-   because a synonym pair can be far apart.
+2. Read enough of each file to see the context. The rule "One term for one
+   thing" needs the full file, because a synonym pair can be far apart.
 
 ## Output
 
@@ -90,7 +50,7 @@ one, write:
 
 - the location as `path/to/file.py:123`;
 - the text that has the problem;
-- the number and the name of the rule;
+- the rule, with a short quote of its text in AGENTS.md;
 - a rewrite that obeys the rule.
 
 Give the rewrite as text that the user can copy. A report with no rewrite has
@@ -98,8 +58,8 @@ little value.
 
 Example:
 
-> `artistools/spectra/plotspectra.py:412` — rule 3 (active voice), rule 4
-> (simple tenses)
+> `artistools/spectra/plotspectra.py:412` — "Use the active voice", "Use the
+> simple tenses"
 > Current: `# The flux is being normalised by the maximum value here`
 > Rewrite: `# Normalise the flux to the maximum value, because each model has a different distance.`
 

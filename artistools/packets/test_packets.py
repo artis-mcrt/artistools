@@ -780,3 +780,55 @@ def test_timestep_of_a_time_at_the_start_of_a_timestep() -> None:
     timesteps = dftimes.select(get_timestep_expr(pl.col("time"), [1.0, 2.0, 3.0])).to_series().to_list()
 
     assert timesteps == [-1, 0, 0, 1, 2, 2]
+
+
+@mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
+@pytest.mark.parametrize("colorlogscale", [False, True], ids=["linear", "log"])
+def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
+    mockimshow: mock.MagicMock, colorlogscale: bool, tmp_path: Path
+) -> None:
+    """Each row of the table gives the edges of one bin and the value that the image shows in that bin."""
+    from artistools.packets import plotlastpacketinteraction
+
+    outputfile = tmp_path / "lastinteraction.pdf"
+    plotlastpacketinteraction.main(
+        argsraw=[],
+        modelpath=at.get_path("testdata") / "testmodel",
+        timedays=300,
+        outputfile=outputfile,
+        colorlogscale=colorlogscale,
+        write_data=True,
+    )
+
+    image = mockimshow.call_args.args[1]
+    dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
+    valuecolumn = "log10_emissivity_erg_per_s_per_cm3" if colorlogscale else "emissivity_erg_per_s_per_cm3"
+    assert dftable.height == image.size
+    assert dftable[valuecolumn].null_count() == int(np.ma.count_masked(image))
+    assert dftable[valuecolumn].null_count() < dftable.height
+
+    # the image has one row for each v_z bin of 0.02 c from -0.5 c, and one column for each v_r bin of 0.02 c
+    rowindices = np.rint((dftable["v_z_min_c"].to_numpy() + 0.5) / 0.02).astype(int)
+    columnindices = np.rint(dftable["v_r_min_c"].to_numpy() / 0.02).astype(int)
+    assert np.allclose(dftable["v_r_max_c"] - dftable["v_r_min_c"], 0.02, rtol=1e-9, atol=0.0)
+    assert np.allclose(dftable["v_z_max_c"] - dftable["v_z_min_c"], 0.02, rtol=1e-9, atol=0.0)
+    imagevalues = np.ma.filled(image[rowindices, columnindices].astype(float), np.nan)
+    assert np.allclose(dftable[valuecolumn].to_numpy(), imagevalues, rtol=1e-12, atol=0.0, equal_nan=True)
+
+    if colorlogscale:
+        # the log scale took the natural logarithm, and the colour bar and the table named it log
+        plotlastpacketinteraction.main(
+            argsraw=[],
+            modelpath=at.get_path("testdata") / "testmodel",
+            timedays=300,
+            outputfile=tmp_path / "linear.pdf",
+            write_data=True,
+        )
+        dflinear = pl.read_csv(tmp_path / "linear.txt", separator=" ", null_values="nan", comment_prefix="#")
+        assert np.allclose(
+            10 ** dftable[valuecolumn].to_numpy(),
+            dflinear["emissivity_erg_per_s_per_cm3"].to_numpy(),
+            rtol=1e-9,
+            atol=0.0,
+            equal_nan=True,
+        )

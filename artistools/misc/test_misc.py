@@ -1660,7 +1660,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (3, "fe46bcb9040be59a"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "3bbab05ca5ca336b"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1808,6 +1808,61 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
         at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")[-1].collect(),
         abs_tol=0.0,
     )
+
+
+def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> None:
+    """The readers of the model, the NLTE populations, the options, and describe give the local data for host:path.
+
+    A read of all the NLTE populations can send several GB through ssh, thus a remote read needs a timestep or a
+    modelgridindex.
+    """
+    from artistools.describemodel import get_model_summary
+
+    modelpath = at.get_path("testartismodel").resolve()
+    modellink = tmp_path / "testmodel"
+    modellink.symlink_to(modelpath)
+    remotepath = Path(f"testhost:{modellink}")
+    # the 1D test model has no artisoptions.h, thus a folder of its own holds one
+    optionsfolder = tmp_path / "optionsmodel"
+    optionsfolder.mkdir()
+    (optionsfolder / "artisoptions.h").write_text("constexpr double MINTEMP = 3500.;\n", encoding="utf-8")
+
+    remote.forget_server("testhost")
+    with mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]):
+        process, _ = remote.get_server("testhost")
+        try:
+            # a str path stayed on this host, and check_local_path then stopped the read
+            dfremotemodel, remotemodelmeta = at.get_modeldata(str(remotepath))
+            dfremotemodel = dfremotemodel.collect()
+            remoteinputparams = at.get_inputparams(remotepath)
+            dfremotenltepops = at.nltepops.read_nltepops(remotepath, timestep=40, modelgridindex=0)
+            remoteoptions = at.misc.get_artis_options(Path(f"testhost:{optionsfolder}"))
+            # a str path stayed on this host, and the missing local folder then gave no options and no error
+            remotemintemp = at.misc.get_artis_option(f"testhost:{optionsfolder}", "MINTEMP")
+            remotesummary = get_model_summary(remotepath)
+            # a negative cell and an empty list also select all the cells
+            allcellselections: tuple[int | list[int] | None, ...] = (None, -1, [])
+            for allcells in allcellselections:
+                with pytest.raises(ValueError, match="Give a timestep or a modelgridindex"):
+                    at.nltepops.read_nltepops(remotepath, timestep=-1, modelgridindex=allcells)
+        finally:
+            assert process.stdin is not None
+            process.stdin.close()
+            assert process.wait(timeout=30) == 0
+            remote.forget_server("testhost")
+
+    dflocalmodel, localmodelmeta = at.get_modeldata(modelpath)
+    pltest.assert_frame_equal(dfremotemodel, dflocalmodel.collect(), abs_tol=0.0)
+    assert remotemodelmeta == localmodelmeta
+    assert remoteinputparams == at.get_inputparams(modelpath)
+    pltest.assert_frame_equal(
+        dfremotenltepops, at.nltepops.read_nltepops(modelpath, timestep=40, modelgridindex=0), abs_tol=0.0
+    )
+    assert dfremotenltepops.height > 0
+    assert remoteoptions == {"MINTEMP": "3500."}
+    assert remotemintemp == "3500."
+    # get_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
+    assert remotesummary == get_model_summary(modelpath)
 
 
 def test_get_filterfunc() -> None:
@@ -3694,4 +3749,83 @@ def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
 
     assert dirbins.get_dirbin_labels([10], average_over_phi=True) == {
         10: dirbins.get_costheta_bins(usedegrees=False)[2][1]
+    }
+
+
+def test_output_data_prints_and_writes_each_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A reader that splits on spaces moves each later value of a row with an empty field, thus a null must be nan.
+
+    Two tables on the standard output need an empty line between them, and an empty table gives no file.
+    """
+    args = argparse.Namespace(print_data=True, write_data=True)
+    tables = {
+        "": pl.DataFrame({"x": [1.0, 2.0], "label": ["a b", None]}),
+        "_residuals": pl.DataFrame({"rms": [0.5]}),
+        "_unused": pl.DataFrame(),
+    }
+    at.misc.output_data(args, tables, tmp_path / "myplot.pdf")
+
+    maintable = 'x label\n1.0 "a b"\n2.0 nan\n'
+    # a pipe reads the standard output, thus only a file has the comment lines that tell how the command made it
+    assert capsys.readouterr().out.startswith(f"{maintable}\nrms\n0.5\n")
+    filelines = (tmp_path / "myplot.txt").read_text(encoding="utf-8").splitlines(keepends=True)
+    assert filelines[0].startswith("# artistools ")
+    assert filelines[1] == f"# working folder: {Path.cwd()}\n"
+    assert filelines[2] == "# command: a Python call with the arguments print_data=True, write_data=True\n"
+    assert "".join(filelines[3:]) == maintable
+    assert (tmp_path / "myplot_residuals.txt").read_text(encoding="utf-8").endswith("\nrms\n0.5\n")
+    assert not (tmp_path / "myplot_unused.txt").exists()
+
+
+def test_artis_option_comes_from_the_artisoptions_of_the_model_folder(tmp_path: Path) -> None:
+    """The model folder of an ARTIS test holds artisoptions.h, and the reader looked only in the folder artis.
+
+    For a local test, artis can link to the ARTIS repository, which holds a different preset. Thus the copy in the
+    model folder comes first.
+    """
+    (tmp_path / "artis").mkdir()
+    (tmp_path / "artis" / "artisoptions.h").write_text("constexpr double MINTEMP = 1000.;\n", encoding="utf-8")
+    assert at.misc.get_artis_option(tmp_path, "MINTEMP") == "1000."
+
+    (tmp_path / "artisoptions.h").write_text("constexpr double MINTEMP = 3500.;\n", encoding="utf-8")
+    assert at.misc.get_artis_option(tmp_path, "MINTEMP") == "3500."
+
+
+def test_artis_option_function_keeps_its_nested_blocks() -> None:
+    """The body of ION_NLEVELS_EXCITED_NLTE holds an if block, and the pattern stopped at the brace of that block."""
+    from artistools.misc.modelinfo import parse_artis_options
+
+    options = parse_artis_options(
+        "constexpr int ION_NLEVELS_EXCITED_NLTE(int element_z, int ionstage) {\n"
+        "  if (element_z == 26 && ionstage == 2) {\n    return 197;\n  }\n  return 80;\n}\n"
+        "constexpr double MINTEMP = 3500.;\n"
+        # an optional with no initialiser has no value, and the pattern gave no entry for it
+        "constexpr std::optional<double> GAMMA_USE_KAPPA_GREY;\n"
+        "constexpr std::int64_t NUM_PACKETS = 1e9;\n"
+        # a type with a comma, a space, or a pointer has more than one word
+        "constexpr std::array<int, 2> SELECTED_IONS = {26, 2};\n"
+        'constexpr const char *GRID_NAME = "cartesian";\n'
+        # a disabled alternative in a comment replaced the option that ARTIS compiles
+        "/*\nconstexpr double MINTEMP = 1000.;\n*/\n"
+        "// constexpr std::int64_t NUM_PACKETS = 5;\n"
+        # a string literal can hold a comment marker, and the removal of a comment cut the string
+        'constexpr const char *URL = "https://example.org/*x*/"; // a comment\n'
+        "constexpr int MAXITER = 4;\n"
+        # a string literal can hold a semicolon, and the value stopped at it
+        'constexpr const char *TEXT = "a;b";\n'
+        "constexpr int NCELLS = 1'000;\n"
+    )
+    assert options == {
+        "ION_NLEVELS_EXCITED_NLTE": (
+            "(int element_z, int ionstage) { if (element_z == 26 && ionstage == 2) { return 197; } return 80; }"
+        ),
+        "MINTEMP": "3500.",
+        "GAMMA_USE_KAPPA_GREY": "std::nullopt",
+        "NUM_PACKETS": "1e9",
+        "SELECTED_IONS": "{26, 2}",
+        "GRID_NAME": '"cartesian"',
+        "URL": '"https://example.org/*x*/"',
+        "MAXITER": "4",
+        "TEXT": '"a;b"',
+        "NCELLS": "1'000",
     }
