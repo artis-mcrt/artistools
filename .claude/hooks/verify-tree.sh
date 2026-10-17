@@ -49,10 +49,9 @@ if [ -n "$laststate" ] && [ "$state" != "$laststate" ]; then
         needscheck=1
     fi
 fi
-# the first stop of a checkout has no state, thus an uncommitted Python change runs the check
-if [ -z "$laststate" ] && [ -n "$(git status --porcelain -- '*.py' 2>/dev/null)" ]; then
-    needscheck=1
-fi
+# the first stop of a checkout has no state. A command of Bash can commit a Python change before that stop, thus
+# the first stop runs the check
+[ -z "$laststate" ] && needscheck=1
 [ "$needscheck" -eq 1 ] || exit 0
 
 run() { uv run --no-sync -- "$@"; }

@@ -3496,16 +3496,30 @@ def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixtur
     assert "-timestep" not in parser.format_help()
 
 
-@pytest.mark.parametrize("example", [command for command, _ in at.commands.get_examples()])
-def test_help_examples_run(example: str, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("example", "testfolder"),
+    [(commandline, spec.exampletestfolder) for commandline, _, spec in at.commands.get_example_specs()],
+)
+def test_help_examples_run(
+    example: str, testfolder: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Every example of the help text must run, thus no example can name an argument that went away.
 
-    The examples give a path of ".", which this test replaces with the test model.
+    The examples give a path of ".", which this test replaces with the test folder of the command. An example
+    that needs data that the test data does not have must still parse. A command can write into the working
+    folder, thus the test runs in tmp_path.
     """
     import artistools.__main__
 
-    argv = [str(modelpath) if word == "." else word for word in example.split()]
-    artistools.__main__.main(argsraw=[*argv, "-o", str(tmp_path), "--quiet"])
+    folder = at.get_path("testdata") / (testfolder or "testmodel")
+    argv = [str(folder) if word == "." else word for word in example.split()]
+    args = artistools.__main__.build_parser().parse_args(at.misc.separate_trailing_folders(argv))
+    if testfolder is None:
+        return
+
+    monkeypatch.chdir(tmp_path)
+    outputargs = ["-o", str(tmp_path)] if hasattr(args, "outputkind") else []
+    artistools.__main__.main(argsraw=[*argv, *outputargs, "--quiet"])
 
 
 def test_help_shows_the_examples() -> None:
@@ -6390,6 +6404,44 @@ def test_logsummary_reads_a_compressed_copy_of_a_log_once(tmp_path: Path, capsys
     assert dfsummary["count"].to_list() == [1]
 
 
+def test_logsummary_combines_the_summary_of_each_log() -> None:
+    """The messages of all the logs did not fit in the memory, thus each log gives its own summary first.
+
+    The combination must give the summary of all the messages: the sums, the bounds, the cells, and the first example.
+    """
+    from artistools.logsummary import get_log_summary
+    from artistools.logsummary import get_logfiles
+    from artistools.logsummary import read_log_messages
+    from artistools.logsummary import summarise_log_messages
+
+    logfiles = get_logfiles(modelpath_classic_3d, None)
+    assert len(logfiles) > 2
+    dfall = summarise_log_messages(pl.concat([read_log_messages(logfile) for logfile in logfiles]))
+    pltest.assert_frame_equal(get_log_summary(logfiles), dfall)
+
+
+def test_logsummary_reads_two_gzip_copies_of_a_log_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Two gzip files of one text can have different bytes, e.g. another time in the header of gzip."""
+    import gzip
+
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    (modelfolder / "100.slurm").mkdir(parents=True)
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    logtext = b"timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[error] cell 3 has no matter\n"
+    for folder, mtime in ((modelfolder / "100.slurm", 1), (modelfolder, 2)):
+        with gzip.GzipFile(folder / "output_0-0.txt.gz", "wb", mtime=mtime) as fcopy:
+            fcopy.write(logtext)
+    assert (modelfolder / "output_0-0.txt.gz").read_bytes() != (
+        modelfolder / "100.slurm" / "output_0-0.txt.gz"
+    ).read_bytes()
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert dfsummary["count"].to_list() == [1]
+
+
 def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:
     """A log holds thousands of warnings of a few kinds, thus the table names each kind, its timesteps, and its cells.
 
@@ -6898,3 +6950,167 @@ def test_check_from_packets_gives_the_largest_noise(capsys: pytest.CaptureFixtur
     assert re.search(r"WARNING: packet noise \(warning\): the largest relative noise", captured.err)
     # a check that is not checked gives no warning line
     assert "complete time steps (" not in captured.err
+
+
+def test_values_of_one_cell_agree_with_the_estimators() -> None:
+    """The values command must give the raw estimators of the cell, and not a mean over cells or bins."""
+    from artistools.values import get_values_table
+
+    dfvalues = get_values_table(modelpath_classic_3d, ["Te", "TR", "nne", "rho"], timesteps=[29], modelgridindex=[23])
+    assert dfvalues.columns == [
+        "timestep",
+        "time_days",
+        "modelgridindex",
+        "vel_r_mid_kmps",
+        "Te[K]",
+        "TR[K]",
+        "nne[e^-/cm^3]",
+        "rho[g/cm^3]",
+    ]
+    assert dfvalues.height == 1
+
+    expected = (
+        at
+        .scan_estimators(modelpath_classic_3d, modelgridindex=23, timestep=29, join_modeldata=True)
+        .select("tmid_days", "vel_r_mid", "Te", "TR", "nne", "rho")
+        .collect()
+        .row(0, named=True)
+    )
+    row = dfvalues.row(0, named=True)
+    assert row["timestep"] == 29
+    assert row["modelgridindex"] == 23
+    assert np.isclose(row["time_days"], at.get_timestep_times(modelpath_classic_3d, loc="mid")[29], rtol=1e-6)
+    assert np.isclose(row["vel_r_mid_kmps"], expected["vel_r_mid"] / at.constants.km_to_cm, rtol=1e-6)
+    for variable, column in (("Te", "Te[K]"), ("TR", "TR[K]"), ("nne", "nne[e^-/cm^3]"), ("rho", "rho[g/cm^3]")):
+        assert np.isclose(row[column], expected[variable], rtol=1e-6, atol=0.0), variable
+
+
+def test_values_of_a_range_of_cells_give_one_row_for_each_cell_and_timestep(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A range of cells and timesteps gives one row for each pair, and a cell with no matter gives a warning.
+
+    The cells 12, 13, and 16 of the 3D model hold no matter, thus ARTIS wrote no estimators for them.
+    """
+    from artistools.values import main
+
+    outputfile = tmp_path / "values.txt"
+    main(argsraw=["Te", "nne", "-ts", "28-29", "-cell", "12-16", "-o", str(outputfile), str(modelpath_classic_3d)])
+
+    assert "modelgridindex 12-13,16 has no estimators" in capsys.readouterr().err
+
+    dfwritten = pl.read_csv(outputfile, separator=" ", comment_prefix="#")
+    assert dfwritten.select("timestep", "modelgridindex").rows() == [(28, 14), (28, 15), (29, 14), (29, 15)]
+
+    dfexpected = (
+        at
+        .scan_estimators(modelpath_classic_3d, modelgridindex=[14, 15], timestep=[28, 29])
+        .select("timestep", "modelgridindex", "Te", "nne")
+        .sort("timestep", "modelgridindex")
+        .collect()
+    )
+    assert np.allclose(dfwritten["Te[K]"].to_numpy(), dfexpected["Te"].to_numpy(), rtol=1e-6, atol=0.0)
+    assert np.allclose(dfwritten["nne[e^-/cm^3]"].to_numpy(), dfexpected["nne"].to_numpy(), rtol=1e-6, atol=0.0)
+
+    # the header of the file tells how the command made the table
+    header = [line for line in outputfile.read_text(encoding="utf-8").splitlines() if line.startswith("#")]
+    assert any("with no average" in line for line in header)
+    assert any(line.startswith("# command:") for line in header)
+
+
+def test_values_with_quiet_print_only_the_table(capsys: pytest.CaptureFixture[str]) -> None:
+    """--quiet must leave only the table on the standard output, thus a script can read it directly."""
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["values", "Te", "-t", "7.8", "-cell", "14", "--quiet", str(modelpath_classic_3d)])
+
+    dfprinted = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ")
+    assert dfprinted.columns == ["timestep", "time_days", "modelgridindex", "vel_r_mid_kmps", "Te[K]"]
+    assert dfprinted.select("timestep", "modelgridindex").rows() == [(29, 14)]
+
+
+def test_values_of_an_unknown_variable_name_the_listing(capsys: pytest.CaptureFixture[str]) -> None:
+    """A variable that the model does not hold stops the command, and the help names a near name and the listing."""
+    from artistools.values import main
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(argsraw=["Tee", "-t", "7.8", str(modelpath_classic_3d)])
+    assert excinfo.value.code == 1
+
+    stderr = capsys.readouterr().err
+    assert "'Tee' is not a variable" in stderr
+    assert "Did you mean Te?" in stderr
+    assert "--listvariables" in stderr
+
+
+def test_explain_gives_the_meaning_unit_method_and_paper(capsys: pytest.CaptureFixture[str]) -> None:
+    """An agent with no skill reads the meaning of a column, its unit, the method of ARTIS, and the full reference."""
+    from artistools.explain import main
+
+    main(argsraw=["TJ", "nne", "--quiet"])
+    output = capsys.readouterr().out
+
+    tjtext, nnetext = output.split("\n\n")
+    assert "Meaning: J temperature" in tjtext
+    assert "Unit: K\n" in tjtext
+    assert "TJ = (pi J / sigma)^(1/4)" in tjtext
+    assert "Kromer M., Sim S. A., 2009, MNRAS, 398, 1809-1826, doi:10.1111/j.1365-2966.2009.15256.x" in tjtext
+    # the skill and the plot labels of artistools give a different unit for nne, thus the output names both
+    assert "Unit: cm^-3 (artistools gives e^-/cm^3)" in nnetext
+
+
+def test_explain_matches_the_family_of_a_name_with_an_ion(capsys: pytest.CaptureFixture[str]) -> None:
+    """A name with an ion matches the entry of its family, and the most specific family wins."""
+    from artistools.explain import find_entries
+    from artistools.explain import main
+
+    main(argsraw=["gamma_NT_Fe_II"])
+    output = capsys.readouterr().out
+
+    assert "Entry: gamma_NT_<ion> in quantities.md" in output
+    assert "Unit: s^-1" in output
+    assert "Spencer-Fano equation" in output
+    assert "Shingles L. J., Sim S. A., Kromer M." in output
+    assert "doi:10.1093/mnras/stz3412" in output
+    # the family with the ion is more specific than the family of the process alone, thus it wins
+    assert {entry.name for entry in find_entries("heating_bf_Fe_II")} == {"heating_<process>_<ion>"}
+    assert {entry.name for entry in find_entries("nnion_Fe_II")} == {"nnion_<El>_<ion stage>"}
+
+
+def test_explain_unknown_name_suggests_names_and_checks_the_model(capsys: pytest.CaptureFixture[str]) -> None:
+    """A name with no entry stops the command, with the near names and the columns of the model."""
+    from artistools.explain import main
+
+    with pytest.raises(SystemExit):
+        main(argsraw=["TJJ", "grey_depth", str(modelpath)])
+    error = capsys.readouterr().err
+
+    assert "Did you mean TJ?" in error
+    assert "has no estimator column 'TJJ'" in error
+    assert "has the estimator column 'grey_depth'" in error
+    assert "plotestimators --listvariables" in error
+
+
+@pytest.mark.parametrize("filename", ["quantities.md", "SKILL.md"])
+def test_explain_parses_each_entry_of_the_skill(filename: str) -> None:
+    """Each entry of the skill must parse, thus an edit that breaks the format of an entry fails here."""
+    from artistools.explain import find_entries
+    from artistools.explain import get_entry_candidates
+    from artistools.explain import get_name_pattern
+    from artistools.explain import parse_entry
+
+    examplevalues = {"El": "Fe", "ion stage": "II", "ion": "Fe_II", "nuclide": "Ni56"}
+    candidates = get_entry_candidates(filename)
+    assert len(candidates) > 10
+    entries = [entry for block in candidates for entry in parse_entry(block)]
+    if filename == "quantities.md":
+        # each list item that starts with a name must define it. A changed format then fails here
+        assert [block.text for block in candidates if not parse_entry(block)] == []
+
+    for entry in entries:
+        example = entry.name
+        for placeholder, value in examplevalues.items():
+            example = example.replace(f"<{placeholder}>", value)
+        example = re.sub(r"<[\w ]+>", "abc", example)
+        assert get_name_pattern(entry.name).fullmatch(example), entry.name
+        assert find_entries(example), entry.name

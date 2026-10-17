@@ -20,6 +20,7 @@ import matplotlib.colors as mplcolors
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
+from artistools.misc.columns import get_column_description_lines
 from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import print_saved
 from artistools.misc.remote import model_path_from_text
@@ -1307,7 +1308,8 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
 
     Each key of tables is the end of a file name, e.g. "_residuals" gives myplot_residuals.txt for myplot.pdf, and an
     empty key gives myplot.txt. The standard output gives the tables in the same order, with an empty line between two
-    tables. The function skips an empty table.
+    tables. The function skips an empty table. A file starts with comment lines that tell how the command made the data
+    and what each column holds. A pipe reads the standard output, thus it gets no comment lines.
     """
     tables = {suffix: dfdata for suffix, dfdata in tables.items() if not dfdata.is_empty()}
     if getattr(args, "print_data", False):
@@ -1318,7 +1320,8 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
     if getattr(args, "write_data", False):
         for suffix, dfdata in tables.items():
             datafile = Path(outputfile).with_name(f"{Path(outputfile).stem}{suffix}.txt")
-            write_data_table(dfdata, datafile, commentlines=get_provenance_lines(args))
+            commentlines = [*get_provenance_lines(args), *get_column_description_lines(dfdata.columns)]
+            write_data_table(dfdata, datafile, commentlines=commentlines)
             print_saved(datafile)
 
 

@@ -116,11 +116,12 @@ def are_copies(logfile: Path, otherlogfile: Path) -> bool:
     """Return True if two logs are one file, or if they hold the same text after their decompression."""
     if logfile.resolve() == otherlogfile.resolve():
         return True
-    if logfile.suffix == otherlogfile.suffix:
-        # the same compression gives the same bytes for the same text, thus a different size is a different log
+    if logfile == without_compressed_extension(logfile) and otherlogfile == without_compressed_extension(otherlogfile):
+        # two text files with the same text have the same bytes, thus a different size is a different log
         return logfile.stat().st_size == otherlogfile.stat().st_size and filecmp.cmp(
             logfile, otherlogfile, shallow=False
         )
+    # two compressed files of one text can have different bytes, e.g. a different header of gzip
     with zopen(logfile) as flog, zopen(otherlogfile) as fotherlog:
         return all(line == otherline for line, otherline in itertools.zip_longest(flog, fotherlog))
 
@@ -157,19 +158,53 @@ def get_folder_log_ranks(folder: Path) -> list[int]:
 
 def summarise_log_messages(dfmessages: pl.DataFrame) -> pl.DataFrame:
     """Return one row for each kind of message, with its count, its timesteps, its number of cells, and an example."""
+    return combine_log_summaries([get_partial_log_summary(dfmessages)])
+
+
+def get_partial_log_summary(dfmessages: pl.DataFrame) -> pl.DataFrame:
+    """Return one row for each kind of message of one log, with its count, its timesteps, its cells, and an example.
+
+    The cells stay a list, thus combine_log_summaries can count each cell of all the logs one time.
+    """
+    return dfmessages.group_by("level", "kind", maintain_order=True).agg(
+        count=pl.len(),
+        first_timestep=pl.col("timestep").min(),
+        last_timestep=pl.col("timestep").max(),
+        cells=pl.col("modelgridindex").drop_nulls().unique(),
+        example=pl.col("message").first(),
+    )
+
+
+def combine_log_summaries(partialsummaries: Sequence[pl.DataFrame]) -> pl.DataFrame:
+    """Return the summary of all the logs from the partial summary of each log, with the example of the first log."""
     return (
-        dfmessages
-        .group_by("level", "kind")
+        pl
+        .concat(partialsummaries)
+        .group_by("level", "kind", maintain_order=True)
         .agg(
-            count=pl.len(),
-            first_timestep=pl.col("timestep").min(),
-            last_timestep=pl.col("timestep").max(),
-            cells=pl.col("modelgridindex").drop_nulls().n_unique(),
-            example=pl.col("message").first(),
+            pl.col("count").sum(),
+            pl.col("first_timestep").min(),
+            pl.col("last_timestep").max(),
+            pl.col("cells").list.explode(keep_nulls=False, empty_as_null=False).n_unique(),
+            pl.col("example").first(),
         )
         .sort(["count", "kind"], descending=[True, False])
         .select("level", "count", "first_timestep", "last_timestep", "cells", "kind", "example")
     )
+
+
+def read_log_summary(logfile: Path) -> pl.DataFrame:
+    """Return the partial summary of one log."""
+    return get_partial_log_summary(read_log_messages(logfile))
+
+
+def get_log_summary(logfiles: Sequence[Path]) -> pl.DataFrame:
+    """Return the summary of the messages of the logs.
+
+    A run of 2000 ranks can repeat a warning of each cell at each timestep, thus the messages of all the logs did not
+    fit in the memory. Each log gives its own summary first, and the summaries then combine.
+    """
+    return combine_log_summaries(parallel_map(read_log_summary, logfiles, desc="logs", unit="log"))
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -205,5 +240,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         rankstext = f"the ranks {', '.join(str(rank) for rank in ranks)}"
     print_detail(f"reading {len(logfiles)} logs of {rankstext}")
 
-    dfmessages = pl.concat(parallel_map(read_log_messages, logfiles, desc="logs", unit="log"))
-    print_product(args, summarise_log_messages(dfmessages))
+    print_product(args, get_log_summary(logfiles))

@@ -4493,3 +4493,65 @@ def test_spectrum_summary_integrates_around_a_masked_band(capsys: pytest.Capture
     out = capsys.readouterr().out
     assert "no noise estimate, because the filter combines the packets" in out
     assert "relative noise of the luminosity" not in out
+
+
+def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
+
+    The luminosity must also agree with 4π (1 Mpc)² times the trapezoid integral of f_λ in the table of the spectrum. A
+    reference spectrum has no packets, thus its row has no noise.
+    """
+    plotspectra.main(
+        argsraw=[],
+        specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
+        timedays="300",
+        frompackets=True,
+        outputfile=tmp_path / "spec.pdf",
+        write_data=True,
+    )
+    output = capsys.readouterr().out
+    readargs: dict[str, t.Any] = {"separator": " ", "null_values": "nan", "comment_prefix": "#"}
+    dfsummary = pl.read_csv(tmp_path / "spec_summary.txt", **readargs)
+    assert dfsummary.height == 2
+    for row in dfsummary.iter_rows(named=True):
+        match = re.search(
+            rf"{re.escape(row['series'])}: (\d+) points from (\S+) to (\S+) angstrom, largest drawn flux (\S+) at (\S+)"
+            r" angstrom, luminosity (\S+) erg/s = 4π \(1 Mpc\)² ∫ f_λ dλ from (\S+) to (\S+) Å \((.+?)\)",
+            output,
+        )
+        assert match is not None, output
+        assert int(match[1]) == row["point_count"]
+        assert np.allclose(
+            [float(value) for value in match.group(2, 3, 4, 5, 6, 7, 8)],
+            [
+                row["x_min_angstrom"],
+                row["x_max_angstrom"],
+                row["peak_flux"],
+                row["x_at_peak_angstrom"],
+                row["luminosity_erg_per_s"],
+                row["lambda_min_angstroms"],
+                row["lambda_max_angstroms"],
+            ],
+            rtol=1e-3,
+            atol=0.0,
+        )
+        assert match[9] == row["method"]
+
+    modelrow, referencerow = dfsummary.iter_rows(named=True)
+    noisematch = re.search(
+        r"(\d+) packets in the drawn bins, relative noise of the luminosity (\S+)% = (.+) of these packets", output
+    )
+    assert noisematch is not None
+    assert int(noisematch[1]) == modelrow["packet_count"]
+    assert np.isclose(float(noisematch[2]) / 100.0, modelrow["relnoise_luminosity"], rtol=1e-3)
+    assert noisematch[3] == modelrow["noise_method"]
+    assert referencerow["relnoise_luminosity"] is None
+
+    dfspectrum = pl.read_csv(tmp_path / "spec.txt", **readargs).filter(
+        pl.col("lambda_angstroms").is_between(modelrow["lambda_min_angstroms"], modelrow["lambda_max_angstroms"])
+    )
+    integral = np.trapezoid(dfspectrum["f_lambda.TEST MODEL"], dfspectrum["lambda_angstroms"])
+    # the summary also takes the part of the end bins up to the axis limits, which this integral leaves out
+    assert np.isclose(
+        4 * math.pi * at.constants.megaparsec_to_cm**2 * integral, modelrow["luminosity_erg_per_s"], rtol=0.02
+    )

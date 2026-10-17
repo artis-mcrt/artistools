@@ -5817,7 +5817,10 @@ def test_estimator_print_data_gives_the_drawn_values(
     )
     output = capsys.readouterr().out
     headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
-    dftable = pl.read_csv(io.StringIO(output[headerstart:]), separator=" ", null_values="nan", comment_prefix="#")
+    # an empty line separates the table of the points from the table _summary
+    pointstext, summarytext = output[headerstart:].split("\n\n", 1)
+    dftable = pl.read_csv(io.StringIO(pointstext), separator=" ", null_values="nan", comment_prefix="#")
+    assert summarytext.startswith("timestep timedays series subplot point_count ")
 
     assert set(dftable["series"]) == {"Te"}
     # the line repeats its first and its last bin out to the edges of the axis, and the table held the inner points
@@ -5847,7 +5850,9 @@ def test_estimator_print_data_gives_the_drawn_values(
     )
     output = capsys.readouterr().out
     headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
-    dfmarkertable = pl.read_csv(io.StringIO(output[headerstart:]), separator=" ", null_values="nan", comment_prefix="#")
+    dfmarkertable = pl.read_csv(
+        io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ", null_values="nan", comment_prefix="#"
+    )
     dfline = dfmarkertable.filter(pl.col("points") == "line")
     assert dfline.height == dftable.height
     assert np.allclose(dfline["value"], dftable["value"], rtol=1e-6, atol=0)
@@ -5866,3 +5871,56 @@ def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.
     descriptions = dict(zip(dftable["variable"], dftable["description"], strict=True))
     # the ratio is in the family of the heating rates, but it is no rate
     assert "fraction" in descriptions["heating_heating_dep/total_dep"]
+
+
+def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
+
+    The maximum must also agree with the bins of the table of the plotted points, which a different query makes.
+    """
+    plotestimators.main(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        outputfile=tmp_path,
+        timedays=5,
+        plotlist=[["Te", "rho"]],
+        write_data=True,
+    )
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    (summaryfile,) = tmp_path.glob("*_summary.txt")
+    dfsummary = pl.read_csv(summaryfile, separator=" ", null_values="nan", comment_prefix="#")
+    assert dfsummary["series"].to_list() == ["Te", "rho"]
+    dfpoints = pl.read_csv(
+        summaryfile.with_name(summaryfile.name.replace("_summary", "")),
+        separator=" ",
+        null_values="nan",
+        comment_prefix="#",
+    )
+    for row in dfsummary.iter_rows(named=True):
+        match = re.search(
+            rf"{row['series']}: subplot 0, (\d+) points, .*, max (\S+) {re.escape(row['units'])} at x = (\S+),"
+            rf" mean (\S+) {re.escape(row['units'])}, weight of the mean: (.+)",
+            output,
+        )
+        assert match is not None, output
+        assert int(match[1]) == row["value_count"] == row["point_count"]
+        assert np.isclose(float(match[2]), row["value_max"], rtol=1e-3)
+        assert np.isclose(float(match[3]), row["velocity_kmps_at_value_max"], rtol=1e-3)
+        assert np.isclose(float(match[4]), row["value_mean"], rtol=1e-3)
+        assert match[5] == row["method"]
+        binmaximum = (
+            dfpoints
+            .filter(pl.col("series") == row["series"], pl.col("points") == "line")
+            .select(pl.col("value_max").max())
+            .item()
+        )
+        assert np.isclose(binmaximum, row["value_max"], rtol=1e-6)
+
+    mintempcount, maxtempcount = (
+        dfsummary.filter(pl.col("series") == "Te").select("mintemp_point_count", "maxtemp_point_count").row(0)
+    )
+    assert f"Te: {mintempcount} points are at MINTEMP" in output
+    assert f"Te: {maxtempcount} points are at MAXTEMP" in output
+    # a density has no temperature limit of ARTIS
+    assert dfsummary.filter(pl.col("series") == "rho")["mintemp_point_count"].is_null().all()

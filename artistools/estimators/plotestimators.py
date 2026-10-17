@@ -110,6 +110,7 @@ from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
+from artistools.plottools import get_summary_table
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
 from artistools.plottools import plain_label
@@ -454,9 +455,10 @@ def get_series_summary_query(
         xvalid.min().alias("xmin"),
         xvalid.max().alias("xmax"),
         yvalid.min().alias("ymin"),
-        xvalid.sort_by(yvalid).first().alias("x_at_ymin"),
+        # many cells can be at a limit of Te, and the order of tied values is not fixed, thus a tie takes the smallest x
+        xvalid.sort_by([yvalid, xvalid]).first().alias("x_at_ymin"),
         yvalid.max().alias("ymax"),
-        xvalid.sort_by(yvalid).last().alias("x_at_ymax"),
+        xvalid.sort_by([yvalid, xvalid], descending=[True, False]).first().alias("x_at_ymax"),
         pl
         .when(weightvalid.sum() != 0.0)
         .then((yvalid * weightvalid).sum() / weightvalid.sum())
@@ -2030,46 +2032,98 @@ class LineFigureData(t.NamedTuple):
 TEMPERATURENAMES: t.Final = frozenset({"Te", "TR", "TJ"})
 
 
-def print_line_figure_summary(figuredata: "LineFigureData", args: argparse.Namespace) -> None:
-    """Print one line with the statistics of the points of each drawn series, and a warning for each problem.
+def get_table_xcolumn(xvariable: str) -> str:
+    """Return the name of the column of the x values in a data table, which gives the unit of a velocity or a time."""
+    return {"velocity": "velocity_kmps", "time": "time_days"}.get(xvariable, xvariable)
 
-    The mean takes the weight of the drawn line, which the line names. A point is a cell at a time step.
+
+def get_line_figure_summary_rows(figuredata: "LineFigureData", args: argparse.Namespace) -> list[dict[str, t.Any]]:
+    """Return the fields of the summary of each drawn series, with one dict for each series.
+
+    The keys of the x values name the x variable and its unit as the columns of the table of the points do, e.g.
+    velocity_kmps_min. The y values have the unit of the column "units". The column "method" gives the weight of the
+    mean. A field is None when the series has no point with a value.
     """
-    xunits = get_units(args.x, latex=False)
-    xunitstext = f" {xunits}" if xunits else ""
+    xcolumn = get_table_xcolumn(args.x)
+    rows: list[dict[str, t.Any]] = []
     for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
         for series in seriesdatas:
             summary = series.summary
             if summary is None:
                 continue
-            # the label of the legend can hold the units or the model, thus the line gives the name of the series
-            seriesname = series.seriesname or plain_label(series.label or "")
-            yunits = get_units(series.seriesname, latex=False) if series.seriesname else None
-            yunitstext = f" {yunits}" if yunits else ""
-            pointstext = (
-                f"{summary['valuecount']} points"
-                if summary["valuecount"] == summary["pointcount"]
-                else f"{summary['valuecount']} of {summary['pointcount']} points with a value"
-            )
-            parts = [f"subplot {subplotindex}", pointstext]
-            if summary["valuecount"]:
-                parts += [
-                    f"x {summary['xmin']:.4g} to {summary['xmax']:.4g}{xunitstext}",
-                    f"min {summary['ymin']:.4g}{yunitstext} at x = {summary['x_at_ymin']:.4g}",
-                    f"max {summary['ymax']:.4g}{yunitstext} at x = {summary['x_at_ymax']:.4g}",
-                    f"mean {summary['weightedmean']:.4g}{yunitstext}",
-                    f"weight of the mean: {summary['meanweight']}",
-                ]
-            warnings = [
-                f"{summary[f'at_{name}']} points are at {name}, which is a limit of ARTIS and not a physical value"
-                for name in ("MINTEMP", "MAXTEMP")
-                if summary.get(f"at_{name}")
+            hasvalue = summary["valuecount"] > 0
+            rows.append({
+                # the label of the legend can hold the units or the model, thus the row gives the name of the series
+                "series": plain_label(series.seriesname or series.label or ""),
+                "subplot": subplotindex,
+                "point_count": summary["pointcount"],
+                "value_count": summary["valuecount"],
+                f"{xcolumn}_min": summary["xmin"],
+                f"{xcolumn}_max": summary["xmax"],
+                "value_min": summary["ymin"],
+                f"{xcolumn}_at_value_min": summary["x_at_ymin"],
+                "value_max": summary["ymax"],
+                f"{xcolumn}_at_value_max": summary["x_at_ymax"],
+                "value_mean": summary["weightedmean"] if hasvalue else None,
+                "method": summary["meanweight"] if hasvalue else None,
+                "units": get_units(series.seriesname, latex=False) if series.seriesname else None,
+                "empty_bin_count": summary["emptybincount"],
+                **{
+                    f"{name.lower()}_point_count": summary[f"at_{name}"]
+                    for name in ("MINTEMP", "MAXTEMP")
+                    if f"at_{name}" in summary
+                },
+            })
+    return rows
+
+
+def print_line_figure_summary(figuredata: "LineFigureData", args: argparse.Namespace) -> None:
+    """Print one line with the statistics of the points of each drawn series, and a warning for each problem.
+
+    The line takes the fields of get_line_figure_summary_rows, thus it agrees with the table _summary. The mean takes
+    the weight of the drawn line, which the line names. A point is a cell at a time step.
+    """
+    xcolumn = get_table_xcolumn(args.x)
+    xunits = get_units(args.x, latex=False)
+    xunitstext = f" {xunits}" if xunits else ""
+    for row in get_line_figure_summary_rows(figuredata, args):
+        yunitstext = f" {row['units']}" if row["units"] else ""
+        pointstext = (
+            f"{row['value_count']} points"
+            if row["value_count"] == row["point_count"]
+            else f"{row['value_count']} of {row['point_count']} points with a value"
+        )
+        parts = [f"subplot {row['subplot']}", pointstext]
+        if row["value_count"]:
+            parts += [
+                f"x {row[f'{xcolumn}_min']:.4g} to {row[f'{xcolumn}_max']:.4g}{xunitstext}",
+                f"min {row['value_min']:.4g}{yunitstext} at x = {row[f'{xcolumn}_at_value_min']:.4g}",
+                f"max {row['value_max']:.4g}{yunitstext} at x = {row[f'{xcolumn}_at_value_max']:.4g}",
+                f"mean {row['value_mean']:.4g}{yunitstext}",
+                f"weight of the mean: {row['method']}",
             ]
-            if summary["emptybincount"]:
-                warnings.append(
-                    f"{summary['emptybincount']} x bins have no value, thus the line has a gap or ends early"
-                )
-            print_series_summary(seriesname, parts, warnings)
+        warnings = [
+            f"{row[f'{name.lower()}_point_count']} points are at {name}, which is a limit of ARTIS and not a physical"
+            " value"
+            for name in ("MINTEMP", "MAXTEMP")
+            if row.get(f"{name.lower()}_point_count")
+        ]
+        if row["empty_bin_count"]:
+            warnings.append(f"{row['empty_bin_count']} x bins have no value, thus the line has a gap or ends early")
+        print_series_summary(row["series"], parts, warnings)
+
+
+def get_figure_summary_table(figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace) -> pl.DataFrame:
+    """Return the table _summary of a figure, with one row for each series and the fields of the frame as columns.
+
+    An image has no summary line, thus its table is empty.
+    """
+    if not isinstance(figuredata, LineFigureData):
+        return pl.DataFrame()
+    dfsummary = get_summary_table(get_line_figure_summary_rows(figuredata, args))
+    return dfsummary.select(
+        *(pl.lit(fieldvalue).alias(fieldname) for fieldname, fieldvalue in figuredata.framefields.items()), pl.all()
+    )
 
 
 def get_line_figure_data(
@@ -2219,7 +2273,7 @@ def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) 
     with --markers draws both. The drawn line repeats its first and its last value at its ends, and the column
     bin_centre is false for these repeated points.
     """
-    xcolumn = {"velocity": "velocity_kmps", "time": "time_days"}.get(args.x, args.x)
+    xcolumn = get_table_xcolumn(args.x)
     startfromzero, xbinwidth = get_line_ends(figuredata, args)
     dfseriestables: list[pl.DataFrame] = []
     for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
@@ -3510,7 +3564,12 @@ def write_snapshot_figures(
         # the fields of each frame, e.g. the timestep, are columns, thus one table holds every frame and one header
         output_data(
             args,
-            {"": pl.concat([get_figure_table(figuredata, args) for figuredata in figures], how="diagonal_relaxed")},
+            {
+                "": pl.concat([get_figure_table(figuredata, args) for figuredata in figures], how="diagonal_relaxed"),
+                "_summary": pl.concat(
+                    [get_figure_summary_table(figuredata, args) for figuredata in figures], how="diagonal_relaxed"
+                ),
+            },
             productpath or outputfiles[0],
         )
 
@@ -3785,6 +3844,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.x in TIME_XVARIABLES:
         outfilename = make_figure(figures[0], args)
         if args.print_data or args.write_data:
-            output_data(args, {"": get_figure_table(figures[0], args)}, outfilename)
+            output_data(
+                args,
+                {"": get_figure_table(figures[0], args), "_summary": get_figure_summary_table(figures[0], args)},
+                outfilename,
+            )
     else:
         write_snapshot_figures(args, figures, timesteps_included)

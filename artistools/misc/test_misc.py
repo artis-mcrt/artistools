@@ -32,6 +32,7 @@ from artistools.misc import fileio
 from artistools.misc import modelinfo
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
+from artistools.misc.columns import get_column_description_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.viewertools.core import run_command_step_with_warning
 
@@ -3767,14 +3768,78 @@ def test_output_data_prints_and_writes_each_table(tmp_path: Path, capsys: pytest
 
     maintable = 'x label\n1.0 "a b"\n2.0 nan\n'
     # a pipe reads the standard output, thus only a file has the comment lines that tell how the command made it
-    assert capsys.readouterr().out.startswith(f"{maintable}\nrms\n0.5\n")
+    stdout = capsys.readouterr().out
+    assert stdout.startswith(f"{maintable}\nrms\n0.5\n")
+    assert "# " not in stdout
     filelines = (tmp_path / "myplot.txt").read_text(encoding="utf-8").splitlines(keepends=True)
     assert filelines[0].startswith("# artistools ")
     assert filelines[1] == f"# working folder: {Path.cwd()}\n"
     assert filelines[2] == "# command: a Python call with the arguments print_data=True, write_data=True\n"
-    assert "".join(filelines[3:]) == maintable
-    assert (tmp_path / "myplot_residuals.txt").read_text(encoding="utf-8").endswith("\nrms\n0.5\n")
+    assert filelines[3:5] == [
+        "# column x: the horizontal value of the point, in the unit of the horizontal axis\n",
+        "# column label: the label of the plotted series or panel\n",
+    ]
+    assert "".join(filelines[5:]) == maintable
+    residuallines = (tmp_path / "myplot_residuals.txt").read_text(encoding="utf-8").splitlines(keepends=True)
+    assert residuallines[3:] == [
+        (
+            "# column rms: the root mean square of the series minus the reference series, in the unit of the plotted"
+            " values\n"
+        ),
+        "rms\n",
+        "0.5\n",
+    ]
     assert not (tmp_path / "myplot_unused.txt").exists()
+
+
+def test_column_description_lines_give_the_meaning_and_the_unit_of_each_known_column() -> None:
+    """The columns come from tables that the plot commands write, and an unknown column must get no line.
+
+    A family with a model suffix, e.g. f_lambda.<model>, must take the description of its family, and a longer family,
+    e.g. emission_flux_plotted, must win over a shorter one. An estimator variable takes the unit of the estimator
+    table, and a log10_ column takes the description of the column without the prefix.
+    """
+    columns = [
+        "lambda_angstroms",
+        "x_plotted_nm",
+        "f_lambda.TEST MODEL_dirbin05",
+        "flux_plotted.TEST MODEL",
+        "emission_flux_plotted.Fe II bound-free",
+        "luminosity_erg/s",
+        "mag_errlower",
+        "log10_rho_Fe_g_per_cm3",
+        "Te",
+        "nnion_Fe_II",
+        "log_lbol",
+    ]
+    fluxperx = "flux per unit of x_plotted, at the distance of -distmpc"
+    assert get_column_description_lines(columns) == [
+        "column lambda_angstroms: the wavelength, in the rest frame of the source for an emergent spectrum [Å]",
+        (
+            "column x_plotted_nm: the plotted horizontal value: the rest-frame wavelength, frequency, or photon"
+            " energy [nm]"
+        ),
+        "column f_lambda.TEST MODEL_dirbin05: the flux per unit wavelength at 1 Mpc [erg/s/cm^2/Å]",
+        (
+            f"column flux_plotted.TEST MODEL: the plotted {fluxperx}, or divided by the peak with --normalised"
+            " [erg/s/cm^2/(unit of x_plotted)]"
+        ),
+        (
+            f"column emission_flux_plotted.Fe II bound-free: the plotted {fluxperx}, from the packets with their last"
+            " emission in the suffix group [erg/s/cm^2/(unit of x_plotted)]"
+        ),
+        (
+            "column luminosity_erg/s: the luminosity in the observer frame. A direction bin gives the"
+            " isotropic-equivalent luminosity [erg/s]"
+        ),
+        "column mag_errlower: the lower error bar of the magnitude of the reference data [mag]",
+        (
+            "column log10_rho_Fe_g_per_cm3: the base-10 logarithm of the density of Fe in the cell at the time of"
+            " the model snapshot [log10(g/cm^3)]"
+        ),
+        "column Te: the electron temperature of the cell [K]",
+        "column nnion_Fe_II: the number density of the ion Fe_II [cm^-3]",
+    ]
 
 
 def test_artis_option_comes_from_the_artisoptions_of_the_model_folder(tmp_path: Path) -> None:

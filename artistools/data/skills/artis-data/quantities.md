@@ -87,9 +87,10 @@ main columns of an escaped packet are:
 - `emissiontype`, the process of the last emission: a value of 0 or more is the row of the line in `linelist.out`,
   -9999999 is free-free, and another negative value v is the bound-free continuum -1 - v of `bflist.out`;
 - `trueemissiontype`, the last emission from the thermal pool, with the same codes;
-- `absorption_type` and `absorption_freq` (Hz), the last absorption: a value of 0 or more is a line, -1 is free-free,
-  and -2 is bound-free. -11 is a line in a binned opacity. A different negative value shows that the packet had no
-  r-packet absorption, e.g. -10 for a pellet decay;
+- `absorption_type`, the process of the last absorption: a value of 0 or more is a line, -1 is free-free, and -2 is
+  bound-free. -11 is a line in a binned opacity. A different negative value shows that the packet had no r-packet
+  absorption, e.g. -10 for a pellet decay;
+- `absorption_freq` (Hz), the frequency of the packet at its last absorption;
 - `em_posx`, `em_posy`, `em_posz` (cm), and `em_time` (s), the place and the time of the last emission or scattering.
 
 `artistools plotspectra --frompackets -groupby ion` and `artistools plotlastpacketinteraction` use these columns.
@@ -123,6 +124,11 @@ SKILL.md gives the light curves and `deposition.out`. Other readers:
 
 ## Logs and options
 
+These options and commands describe a run:
+
+- `MINTEMP` and `MAXTEMP` (K), the lowest and the highest Te of `artisoptions.h`. ARTIS sets Te to a limit when no Te
+  between them gives the balance of heating and cooling, thus a Te at a limit is not a physical value. `artistools
+  check <modelpath>` counts the cells at each limit.
 - `artistools describe <modelpath>` gives the ARTIS version of each run folder and the physics options by topic.
   `--alloptions` gives each option of `artisoptions.h`. `at.misc.get_artis_options(modelpath)` gives them as a dict.
 - `at.misc.get_artis_option(modelpath, name)` reads an option of `artisoptions.h` in the model folder. If that file

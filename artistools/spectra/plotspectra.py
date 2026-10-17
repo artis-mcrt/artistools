@@ -96,6 +96,7 @@ from artistools.packets import get_packets_column_names
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
+from artistools.plottools import get_summary_table
 from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
 from artistools.plottools import make_frame_figure_with_residuals
@@ -378,6 +379,7 @@ def print_spectrum_summary(
     xunit: str,
     yvariable: str,
     isfiltered: bool = False,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> None:
     """Log the largest drawn point of a spectrum and the luminosity of the drawn range.
 
@@ -385,25 +387,28 @@ def print_spectrum_summary(
     the largest point comes from the rows inside the x range, and the integral uses f_lambda and lambda interpolated
     linearly in x at each axis limit. The luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc, thus it
     does not depend on -distmpc or --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g.
-    all the packets, thus the summary does not give it.
+    all the packets, thus the summary does not give it. summaryrows takes the fields of the line.
     """
     xlow, xhigh = sorted(xlimits)
     dfsorted = dfspectrum.sort("x")
     xvalues = dfsorted["x"].to_numpy()
     if dfsorted.is_empty() or xhigh <= xvalues[0] or xlow >= xvalues[-1]:
-        print_series_summary(seriesname, ["no point in the x range"])
+        print_series_summary(
+            seriesname, ["no point in the x range"], fields={"point_count": 0}, summaryrows=summaryrows
+        )
         return
     dfinrange = dfsorted.filter(pl.col("x").is_between(xlow, xhigh))
-    parts = []
     # polars sorts NaN above each number, and a masked band, e.g. a telluric band, holds NaN
     dfdrawnpoints = dfinrange.filter(pl.col("y").is_finite())
+    fields: dict[str, t.Any] = {"point_count": dfdrawnpoints.height}
     if not dfdrawnpoints.is_empty():
         peakx, peaky = dfdrawnpoints.select(pl.col("x", "y").sort_by("y", descending=True).first()).row(0)
-        drawnxmin, drawnxmax = dfdrawnpoints["x"].min(), dfdrawnpoints["x"].max()
-        parts += [
-            f"{dfdrawnpoints.height} points from {drawnxmin:.4g} to {drawnxmax:.4g} {xunit}",
-            f"largest drawn {yvariable} {peaky:.4g} at {peakx:.4g} {xunit}",
-        ]
+        fields |= {
+            f"x_min_{xunit}": dfdrawnpoints["x"].min(),
+            f"x_max_{xunit}": dfdrawnpoints["x"].max(),
+            f"peak_{yvariable}": peaky,
+            f"x_at_peak_{xunit}": peakx,
+        }
     # np.interp gives the end value outside the data, thus a limit outside the data is the end of the data
     xlimitsinside = [max(xlow, float(xvalues[0])), min(xhigh, float(xvalues[-1]))]
     lambdaends = np.interp(xlimitsinside, xvalues, dfsorted["lambda_angstroms"].to_numpy())
@@ -413,50 +418,73 @@ def print_spectrum_summary(
     # the figure draws no segment with a NaN end, thus the integral leaves out such a segment
     segmentintegrals = 0.5 * (flambdas[:-1] + flambdas[1:]) * np.diff(lambdas)
     isdrawnsegment = np.isfinite(segmentintegrals)
-    luminosity = abs(float(segmentintegrals[isdrawnsegment].sum())) * 4 * math.pi * megaparsec_to_cm**2
+    fields |= {
+        "luminosity_erg_per_s": abs(float(segmentintegrals[isdrawnsegment].sum())) * 4 * math.pi * megaparsec_to_cm**2,
+        "lambda_min_angstroms": float(lambdaends.min()),
+        "lambda_max_angstroms": float(lambdaends.max()),
+        "method": "trapezoidal rule, f_λ interpolated linearly at the axis limits",
+        "gap_width_angstroms": float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum()),
+    }
+    # a filter combines neighbouring bins, thus the noise of each bin is not the noise of the drawn value
+    hasnoise = not (isfiltered and "relnoise" in dfinrange.columns)
+    noisefields, noiseparts, noisewarnings = get_packet_noise_summary(dfinrange) if hasnoise else ({}, [], [])
+    fields |= noisefields
+
+    parts = []
+    if fields["point_count"]:
+        parts += [
+            (
+                f"{fields['point_count']} points from {fields[f'x_min_{xunit}']:.4g} to"
+                f" {fields[f'x_max_{xunit}']:.4g} {xunit}"
+            ),
+            (
+                f"largest drawn {yvariable} {fields[f'peak_{yvariable}']:.4g} at"
+                f" {fields[f'x_at_peak_{xunit}']:.4g} {xunit}"
+            ),
+        ]
     parts.append(
-        f"luminosity {luminosity:.4g} erg/s = 4π (1 Mpc)² ∫ f_λ dλ from {lambdaends.min():.5g} to"
-        f" {lambdaends.max():.5g} Å (trapezoidal rule, f_λ interpolated linearly at the axis limits)"
+        f"luminosity {fields['luminosity_erg_per_s']:.4g} erg/s = 4π (1 Mpc)² ∫ f_λ dλ from"
+        f" {fields['lambda_min_angstroms']:.5g} to {fields['lambda_max_angstroms']:.5g} Å ({fields['method']})"
     )
     if not isdrawnsegment.all():
-        gapwidth = float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum())
-        parts.append(f"the integral leaves out {gapwidth:.4g} Å with no value of f_λ, e.g. a masked telluric band")
-    if isfiltered and "relnoise" in dfinrange.columns:
-        # a filter combines neighbouring bins, thus the noise of each bin is not the noise of the drawn value
+        parts.append(
+            f"the integral leaves out {fields['gap_width_angstroms']:.4g} Å with no value of f_λ, e.g. a masked"
+            " telluric band"
+        )
+    if not hasnoise:
         parts.append("no noise estimate, because the filter combines the packets of neighbouring bins")
-        print_series_summary(seriesname, parts)
-        return
-    noiseparts, noisewarnings = get_packet_noise_summary(dfinrange)
-    print_series_summary(seriesname, parts + noiseparts, noisewarnings)
+    print_series_summary(seriesname, parts + noiseparts, noisewarnings, fields=fields, summaryrows=summaryrows)
 
 
-def get_packet_noise_summary(dfbins: pl.DataFrame) -> tuple[list[str], list[str]]:
-    """Return the packet count and the relative Monte Carlo noise of the luminosity of the bins of a packet spectrum.
+def get_packet_noise_summary(dfbins: pl.DataFrame) -> tuple[dict[str, t.Any], list[str], list[str]]:
+    """Return the fields, the parts of the summary line, and the warnings of the packet noise of a packet spectrum.
 
-    f_lambda * delta_lambda of a bin is proportional to the sum of the packet energies e of the bin, with the same
-    factor for each bin. relnoise * f_lambda * delta_lambda is thus proportional to sqrt(sum(e^2)) of the bin, and the
-    noise of the sum over the bins is sqrt(sum(e^2)) / sum(e) over all their packets. spec.out has no packet count.
+    The fields are the packet count and the relative Monte Carlo noise of the luminosity of the bins. f_lambda *
+    delta_lambda of a bin is proportional to the sum of the packet energies e of the bin, with the same factor for each
+    bin. relnoise * f_lambda * delta_lambda is thus proportional to sqrt(sum(e^2)) of the bin, and the noise of the sum
+    over the bins is sqrt(sum(e^2)) / sum(e) over all their packets. spec.out has no packet count.
     """
     if dfbins.is_empty() or not {"packetcount", "relnoise", "delta_lambda"}.issubset(dfbins.columns):
-        return [], []
+        return {}, [], []
     binenergy = pl.col("f_lambda") * pl.col("delta_lambda")
     packetcount, energysum, sqrtsquaresum = dfbins.select(
         pl.col("packetcount").sum(),
         binenergy.sum(),
         (pl.col("relnoise").fill_null(0.0) * binenergy).pow(2).sum().sqrt(),
     ).row(0)
+    fields: dict[str, t.Any] = {"packet_count": packetcount}
     if not energysum > 0.0:
-        return [f"{packetcount} packets in the drawn bins"], []
-    relativenoise = sqrtsquaresum / energysum
+        return fields, [f"{packetcount} packets in the drawn bins"], []
+    fields |= {"relnoise_luminosity": sqrtsquaresum / energysum, "noise_method": "sqrt(Σ e²) / Σ e"}
     noisetext = (
-        f"{packetcount} packets in the drawn bins, relative noise of the luminosity {relativenoise:.2%}"
-        " = sqrt(Σ e²) / Σ e of these packets"
+        f"{packetcount} packets in the drawn bins, relative noise of the luminosity"
+        f" {fields['relnoise_luminosity']:.2%} = {fields['noise_method']} of these packets"
     )
     warningtext = (
-        f"the luminosity has a relative Monte Carlo noise of {relativenoise:.0%}, thus a difference below that is"
-        " not significant. A longer time range or more packets decreases the noise"
+        f"the luminosity has a relative Monte Carlo noise of {fields['relnoise_luminosity']:.0%}, thus a difference"
+        " below that is not significant. A longer time range or more packets decreases the noise"
     )
-    return [noisetext], [warningtext] if relativenoise > 0.1 else []
+    return fields, [noisetext], [warningtext] if fields["relnoise_luminosity"] > 0.1 else []
 
 
 def plot_reference_spectrum(
@@ -472,12 +500,13 @@ def plot_reference_spectrum(
     xunit: str = "angstrom",
     yvariable: str = "flux",
     residualseries: list[ResidualSeries] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
     **plotkwargs: t.Any,
 ) -> tuple[Line2D, str, float]:
     """Plot a single reference spectrum.
 
     The filename must be in space separated text formatted with the first two
-    columns being wavelength in Angstroms, and F_lambda
+    columns being wavelength in Angstroms, and F_lambda. summaryrows takes the fields of the summary line.
     """
     filepath = find_reference_spectrum_file(filename)
 
@@ -545,7 +574,7 @@ def plot_reference_spectrum(
     ymax = specdata["y"].max()
     assert isinstance(ymax, float)
     (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=label, **plotkwargs)
-    print_spectrum_summary(label, specdata, (xmin, xmax), xunit, yvariable)
+    print_spectrum_summary(label, specdata, (xmin, xmax), xunit, yvariable, summaryrows=summaryrows)
 
     if residualseries is not None:
         residualseries.append(
@@ -569,6 +598,7 @@ def plot_reference_spectrum_for_args(
     scale_to_peak: float | None,
     offset: float = 0.0,
     residualseries: list[ResidualSeries] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
     **plotkwargs: t.Any,
 ) -> tuple[Line2D, str, float]:
     """Plot a reference spectrum over the x range of the axes, in the units and at the distance that args give."""
@@ -586,6 +616,7 @@ def plot_reference_spectrum_for_args(
         xunit=args.xunit,
         yvariable=args.yvariable,
         residualseries=residualseries,
+        summaryrows=summaryrows,
         **plotkwargs,
     )
 
@@ -878,11 +909,13 @@ def plot_artis_spectrum(
     maxpacketfiles: int | None = None,
     xunit: str = "angstrom",
     residualseries: list[ResidualSeries] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
     **plotkwargs: t.Any,
 ) -> list[pl.DataFrame] | None:
     """Plot an ARTIS output spectrum, and return the plotted data with one table for each wavelength grid.
 
-    The function returns None if it draws no series, and an empty list if args asks for no data output.
+    The function returns None if it draws no series, and an empty list if args asks for no data output. summaryrows
+    takes the fields of the summary line of each drawn series.
     """
     modelpath = Path(modelpath)
     if path_is_file(modelpath):  # handle e.g. modelpath = 'modelpath/spec.out'
@@ -1134,7 +1167,13 @@ def plot_artis_spectrum(
                 seriessuffix += f"_{args.timedayslist[axindex]}d"
             summaryname = f"{linelabel_withdirbin or get_model_name(modelpath)}{seriessuffix}"
             print_spectrum_summary(
-                summaryname, dfspectrum, (xmin, xmax), xunit, yvariable, isfiltered=filterfunc is not None
+                summaryname,
+                dfspectrum,
+                (xmin, xmax),
+                xunit,
+                yvariable,
+                isfiltered=filterfunc is not None,
+                summaryrows=summaryrows,
             )
             xplot, yplot = dfspectrum["x"].to_numpy(), dfspectrum["y"].to_numpy()
             binedges = None
@@ -1261,12 +1300,14 @@ def make_spectrum_plot(
     args: argparse.Namespace,
     scale_to_peak: float | None = None,
     residualseries: list[ResidualSeries] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> tuple[list[pl.DataFrame], pl.DataFrame]:
     """Plot the reference spectra and the ARTIS spectra, and return the data of each type.
 
     The ARTIS spectra give one wide table for each wavelength grid. residualseries takes each drawn series for a
-    residual panel. A reference spectrum, a code comparison spectrum, and a filter curve of --showfilterfunctions have
-    their own wavelength grids. Thus a different table holds their points, with one row for each point.
+    residual panel, and summaryrows takes the fields of the summary line of each drawn series. A reference spectrum,
+    a code comparison spectrum, and a filter curve of --showfilterfunctions have their own wavelength grids. Thus a
+    different table holds their points, with one row for each point.
     """
     gridtables: list[pl.DataFrame] = []
     dfothers: list[pl.DataFrame] = []
@@ -1308,7 +1349,14 @@ def make_spectrum_plot(
             # each panel of --multispecplot gets the same line, thus the table takes the line of the first panel
             otherlines = [
                 plot_reference_spectrum_for_args(
-                    specpath, axis, args, filterfunc, scale_to_peak, residualseries=residualseries, **plotkwargs
+                    specpath,
+                    axis,
+                    args,
+                    filterfunc,
+                    scale_to_peak,
+                    residualseries=residualseries,
+                    summaryrows=summaryrows,
+                    **plotkwargs,
                 )[0]
                 for axis in axes
             ][:1]
@@ -1346,6 +1394,7 @@ def make_spectrum_plot(
                     usedegrees=args.usedegrees,
                     xunit=args.xunit,
                     residualseries=residualseries,
+                    summaryrows=summaryrows,
                     **plotkwargs,
                 )
             except FileNotFoundError as e:
@@ -1729,10 +1778,12 @@ def plot_reference_spectra(
     args: argparse.Namespace,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     scale_to_peak: float | None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> tuple[list[Artist], list[str], float, pl.DataFrame]:
     """Draw each reference spectrum of -specpath, and return the artists, the labels, the maximum, and the points.
 
-    The points have the form of get_drawn_lines_table.
+    The points have the form of get_drawn_lines_table. summaryrows takes the fields of the summary line of each
+    reference spectrum.
     """
     plotobjects: list[Artist] = []
     reflines: list[Line2D] = []
@@ -1761,7 +1812,14 @@ def plot_reference_spectra(
                     plotkwargs[stylename] = value
 
         plotobj, serieslabel, ymaxref = plot_reference_spectrum_for_args(
-            filepath, axis, args, filterfunc, scale_to_peak, offset=0.3 if scale_to_peak else 0.0, **plotkwargs
+            filepath,
+            axis,
+            args,
+            filterfunc,
+            scale_to_peak,
+            offset=0.3 if scale_to_peak else 0.0,
+            summaryrows=summaryrows,
+            **plotkwargs,
         )
         ymaxrefall = max(ymaxrefall, ymaxref)
 
@@ -1835,10 +1893,12 @@ def make_emissionabsorption_plot(
     args: argparse.Namespace,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     scale_to_peak: float | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> tuple[list[Artist], list[str], pl.DataFrame, pl.DataFrame]:
     """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model.
 
-    Return the artists, their labels, the data of the model, and the points of the reference spectra.
+    Return the artists, their labels, the data of the model, and the points of the reference spectra. summaryrows
+    takes the fields of the summary line of the total spectrum and of each reference spectrum.
     """
     modelname = get_series_label(args.label, 0, get_model_name(modelpath))
 
@@ -1926,6 +1986,7 @@ def make_emissionabsorption_plot(
             (xmin, xmax),
             args.xunit,
             args.yvariable,
+            summaryrows=summaryrows,
         )
 
     dfaxisdata = pl.DataFrame({"lambda_angstroms": arraylambda_angstroms})
@@ -1958,7 +2019,9 @@ def make_emissionabsorption_plot(
 
     plotobjectlabels.extend([contribution.linelabel for contribution in contributions_sorted_reduced])
 
-    refobjects, reflabels, ymaxrefall, dfreferences = plot_reference_spectra(axis, args, filterfunc, scale_to_peak)
+    refobjects, reflabels, ymaxrefall, dfreferences = plot_reference_spectra(
+        axis, args, filterfunc, scale_to_peak, summaryrows=summaryrows
+    )
     plotobjects.extend(refobjects)
     plotobjectlabels.extend(reflabels)
 
@@ -2047,7 +2110,8 @@ def draw_plot(
 
     - the empty key gives the ARTIS spectra;
     - "_references" gives the reference spectra, the code comparison spectra, and the filter curves;
-    - "_residuals" gives the statistics of the residuals, and "_residualcurves" gives the drawn residual curves.
+    - "_residuals" gives the statistics of the residuals, and "_residualcurves" gives the drawn residual curves;
+    - "_summary" gives the fields of the summary line of each drawn spectrum, see print_spectrum_summary.
     """
     dfresidualstats = pl.DataFrame()
     dfresidualcurves: list[pl.DataFrame] = []
@@ -2060,6 +2124,7 @@ def draw_plot(
     set_axis_properties(axes, args, setyaxis=False)
 
     residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
+    summaryrows: list[dict[str, t.Any]] = []
     if args.showemission or args.showabsorption:
         legendncol = 2
         plotobjects, plotobjectlabels, dfemission, dfothers = make_emissionabsorption_plot(
@@ -2068,6 +2133,7 @@ def draw_plot(
             filterfunc=filterfunc,
             args=args,
             scale_to_peak=scale_to_peak,
+            summaryrows=summaryrows,
         )
         gridtables = [dfemission]
     else:
@@ -2077,7 +2143,13 @@ def draw_plot(
         # --multispecplot and axes[-1] otherwise
         specaxes = list(axes) if args.multispecplot else [axes[-1]]
         gridtables, dfothers = make_spectrum_plot(
-            args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak, residualseries=residualseries
+            args.specpath,
+            specaxes,
+            filterfunc,
+            args,
+            scale_to_peak=scale_to_peak,
+            residualseries=residualseries,
+            summaryrows=summaryrows,
         )
         plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
 
@@ -2167,6 +2239,7 @@ def draw_plot(
         "_references": dfothers,
         "_residuals": dfresidualstats,
         "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
+        "_summary": get_summary_table(summaryrows),
     }
 
 

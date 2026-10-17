@@ -98,6 +98,7 @@ from artistools.misc.remote import on_model_host
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import get_next_color
+from artistools.plottools import get_summary_table
 from artistools.plottools import get_unused_colors
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
@@ -325,61 +326,80 @@ def get_peak_summary(
     ismagnitude: bool,
     isband: bool = False,
     packetnoise: tuple[npt.ArrayLike, npt.ArrayLike] | None = None,
-) -> tuple[list[str], list[str]]:
-    """Return the parts of the summary line of a drawn light curve, and its warnings.
+) -> tuple[dict[str, t.Any], list[str], list[str]]:
+    """Return the fields of the summary of a drawn light curve, the parts of its summary line, and its warnings.
 
     The peak is the largest luminosity, or the smallest magnitude. The time of the peak is the rise time from the
     explosion. For a band, Δm15 is the magnitude 15 days after the peak minus the peak magnitude. If the peak is in the
     first two or the last two points, the true peak can be outside the time range. packetnoise gives the packet count
-    and the relative noise sqrt(Σ e²) / Σ e of each point of a light curve from packets.
+    and the relative noise sqrt(Σ e²) / Σ e of each point of a light curve from packets. The function makes the parts
+    from the fields, thus the line agrees with the table _summary. The key of the peak value gives its unit, e.g.
+    peak_luminosity_erg_per_s or peak_mag.
     """
     times = np.asarray(time_days, dtype=np.float64)
     values = np.asarray(yvalues, dtype=np.float64)
     hasvalue = np.isfinite(values) & np.isfinite(times)
     if not hasvalue.any():
-        return ["no finite value"], []
+        return {"point_count": 0}, ["no finite value"], []
     # a reference file can list its points in any order, and the interpolation of Δm15 and the test of the ends need
     # the order of the times
     order = np.argsort(times[hasvalue], kind="stable")
     times, values = times[hasvalue][order], values[hasvalue][order]
-    packetcounts, relnoises = (
-        (None, None)
-        if packetnoise is None
-        else (
-            np.asarray(packetnoise[0])[hasvalue][order],
-            np.asarray(packetnoise[1], dtype=np.float64)[hasvalue][order],
-        )
-    )
     peakindex = int(np.argmin(values) if ismagnitude else np.argmax(values))
-    peaktime, peakvalue = float(times[peakindex]), float(values[peakindex])
+    peakkey = "peak_mag" if ismagnitude else f"peak_luminosity_{unit.replace('/', '_per_')}"
+    fields: dict[str, t.Any] = {
+        "point_count": len(times),
+        "time_min_days": float(times.min()),
+        "time_max_days": float(times.max()),
+        "peak_time_days": float(times[peakindex]),
+        peakkey: float(values[peakindex]),
+        "method": "brightest drawn point" if ismagnitude else "largest drawn point",
+    }
+    if packetnoise is not None:
+        peakrelnoise = float(np.asarray(packetnoise[1], dtype=np.float64)[hasvalue][order][peakindex])
+        if np.isfinite(peakrelnoise):
+            fields |= {
+                "peak_packet_count": int(np.asarray(packetnoise[0])[hasvalue][order][peakindex]),
+                "peak_relnoise": peakrelnoise,
+                # a magnitude of a luminosity L with the relative noise r has the noise 2.5 / ln(10) * r
+                **({"peak_noise_mag": 2.5 / math.log(10) * peakrelnoise} if ismagnitude else {}),
+                "noise_method": "sqrt(Σ e²) / Σ e",
+            }
+    if isband:
+        hasdeltam15 = fields["peak_time_days"] + 15.0 <= fields["time_max_days"]
+        fields |= {
+            "deltam15_mag": float(np.interp(fields["peak_time_days"] + 15.0, times, values)) - fields[peakkey]
+            if hasdeltam15
+            else None,
+            "deltam15_method": "linear interpolation of the magnitude at the peak time + 15 d" if hasdeltam15 else None,
+        }
+
     parts = [
-        f"{len(times)} points from {times.min():.4g} to {times.max():.4g} d",
-        f"peak {peakvalue:.4g} {unit} at {peaktime:.4g} d ({'brightest' if ismagnitude else 'largest'} drawn point)",
+        f"{fields['point_count']} points from {fields['time_min_days']:.4g} to {fields['time_max_days']:.4g} d",
+        f"peak {fields[peakkey]:.4g} {unit} at {fields['peak_time_days']:.4g} d ({fields['method']})",
     ]
     warnings = []
-    if packetcounts is not None and relnoises is not None and np.isfinite(relnoises[peakindex]):
-        peaknoise = float(relnoises[peakindex])
-        # a magnitude of a luminosity L with the relative noise r has the noise 2.5 / ln(10) * r
-        noisetext = f"{2.5 / math.log(10) * peaknoise:.3g} mag" if ismagnitude else f"{peaknoise:.2%}"
+    if "peak_relnoise" in fields:
+        noisetext = f"{fields['peak_noise_mag']:.3g} mag" if ismagnitude else f"{fields['peak_relnoise']:.2%}"
         parts.append(
-            f"noise of the peak point {noisetext} = sqrt(Σ e²) / Σ e of its {int(packetcounts[peakindex])} packets"
+            f"noise of the peak point {noisetext} = {fields['noise_method']} of its {fields['peak_packet_count']}"
+            " packets"
         )
-        if peaknoise > 0.1:
+        if fields["peak_relnoise"] > 0.1:
             warnings.append(
-                f"the peak point has a relative Monte Carlo noise of {peaknoise:.0%}, thus the time and the value of"
-                " the peak are uncertain"
+                f"the peak point has a relative Monte Carlo noise of {fields['peak_relnoise']:.0%}, thus the time and"
+                " the value of the peak are uncertain"
             )
     if isband:
-        if peaktime + 15.0 <= times.max():
-            deltam15 = float(np.interp(peaktime + 15.0, times, values)) - peakvalue
-            parts.append(f"Δm15 {deltam15:.3g} mag (linear interpolation of the magnitude at the peak time + 15 d)")
+        if fields["deltam15_mag"] is not None:
+            parts.append(f"Δm15 {fields['deltam15_mag']:.3g} mag ({fields['deltam15_method']})")
         else:
             parts.append("no Δm15, because the time range ends before 15 days after the peak")
     if len(times) > 4 and (peakindex < 2 or peakindex > len(times) - 3):
         warnings.append(
             "the peak is in the first two or the last two points, thus the true peak can be outside the time range"
         )
-    return parts, warnings
+    return fields, parts, warnings
 
 
 def plot_bol_reflightcurve(
@@ -394,12 +414,14 @@ def plot_bol_reflightcurve(
     plottedpoints: list[pl.DataFrame] | None = None,
     timemin: float | None = None,
     timemax: float | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
     Return the label used in the plot legend, which comes from the file metadata unless label is given. plottedpoints
     takes the rows of the file, with the label as the model, "reference" as the escape type, and the plotted values.
-    Only the points from timemin to timemax go into the figure, the summary, and plottedpoints.
+    summaryrows takes the fields of the summary line. Only the points from timemin to timemax go into the figure, the
+    summary, and plottedpoints.
     """
     dflightcurve, metadata = read_bol_reflightcurve_data(lightcurvefilename)
     # the points have no line between them, thus a point outside the time range has no part in the figure
@@ -473,8 +495,16 @@ def plot_bol_reflightcurve(
         refartists = [refline]
     if plottedpoints is not None:
         plottedpoints.append(dfplotted)
-    summaryparts, summarywarnings = get_peak_summary(time_days, yvalues, lumunit, ismagnitude=lumunit == "mag")
-    print_series_summary(plotlabel or str(lightcurvefilename), summaryparts, summarywarnings)
+    summaryfields, summaryparts, summarywarnings = get_peak_summary(
+        time_days, yvalues, lumunit, ismagnitude=lumunit == "mag"
+    )
+    print_series_summary(
+        plotlabel or str(lightcurvefilename),
+        summaryparts,
+        summarywarnings,
+        fields=summaryfields,
+        summaryrows=summaryrows,
+    )
 
     # a marker and a line have different default zorders. With an equal zorder, matplotlib draws
     # the series in the order of the command line
@@ -729,9 +759,13 @@ def plot_artis_lightcurve(
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
     residualseries: list[ResidualSeries] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
     **plotkwargs: t.Any,
 ) -> dict[int, pl.DataFrame] | None:
-    """Plot one model's bolometric light curve, and return the plotted data per direction bin."""
+    """Plot one model's bolometric light curve, and return the plotted data per direction bin.
+
+    summaryrows takes the fields of the summary line of each direction bin.
+    """
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
@@ -972,7 +1006,7 @@ def plot_artis_lightcurve(
         haspacketnoise = {"packetcount", "relnoise"}.issubset(lcdata_inrange.columns) and "cmf" not in ycolumn
         # a filter combines the packets of neighbouring timesteps, thus the noise of one timestep is not its noise
         isfiltered = filterfunc is not None
-        summaryparts, summarywarnings = get_peak_summary(
+        summaryfields, summaryparts, summarywarnings = get_peak_summary(
             lcdata_inrange["time_days"],
             lcdata_inrange[ycolumn],
             lumunit,
@@ -993,7 +1027,7 @@ def plot_artis_lightcurve(
                     "the comoving-frame luminosity has its maximum at the end, thus the true peak can be after the"
                     " time range"
                 )
-        print_series_summary(summaryname, summaryparts, summarywarnings)
+        print_series_summary(summaryname, summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows)
         if residualseries is not None:
             residualseries.append(
                 ResidualSeries(
@@ -1065,7 +1099,8 @@ def draw_plot(
     The keys of the tables are the ends of the names of the data files, see output_data. The table of the light curves
     has one row for each time of each model, escape type, and direction bin. It holds the values after -filtersavgol
     or -filtermovingavg. The table of the energy rates holds the curves of deposition.out and of the thermalisation
-    panel. The statistics of the residuals are empty without a residual panel.
+    panel. The statistics of the residuals are empty without a residual panel. The table _summary gives the fields of
+    the summary line of each drawn light curve, see get_peak_summary.
     """
     modelpaths = args.modelpath
     showuvoir, showgamma = args.rpkt, args.gamma
@@ -1083,6 +1118,7 @@ def draw_plot(
     plotteddeposition = False
     dflightcurves: list[pl.DataFrame] = []
     dfenergyrates: list[pl.DataFrame] = []
+    summaryrows: list[dict[str, t.Any]] = []
     for lcindex, modelpath in enumerate(modelpaths):
         if path_is_reference_lightcurve(modelpath):
             bolreflightcurve = Path(modelpath)
@@ -1099,6 +1135,7 @@ def draw_plot(
                 plottedpoints=dflightcurves,
                 timemin=args.timemin,
                 timemax=args.timemax,
+                summaryrows=summaryrows,
             )
             print_heading(lightcurvelabel)
             plottedsomething = True
@@ -1147,6 +1184,7 @@ def draw_plot(
                         color=args.color[lcindex],
                         linelabel=args.label[lcindex],
                         residualseries=residualseries,
+                        summaryrows=summaryrows,
                     )
                     plottedthismodel = plottedthismodel or (lcdataframes is not None)
                     dflightcurves.extend(
@@ -1192,6 +1230,7 @@ def draw_plot(
                 plottedpoints=dflightcurves,
                 timemin=args.timemin,
                 timemax=args.timemax,
+                summaryrows=summaryrows,
             )
             plottedsomething = True
 
@@ -1275,6 +1314,7 @@ def draw_plot(
         "_energyrates": dfrates,
         "_residuals": dfresidualstats,
         "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
+        "_summary": get_summary_table(summaryrows),
     }
 
 
@@ -1382,6 +1422,7 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
     bandnames: list[str] = list(args.filter)
     filterfunc = get_filterfunc(args)
     dfbands: list[pl.DataFrame] = []
+    summaryrows: list[dict[str, t.Any]] = []
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, dirbin_definition = parse_directionbin_args(modelpath, args)
@@ -1440,10 +1481,12 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
 
                 summaryname = f"{band_name} {plotkwargs['label'] or modelname}"
                 (modelline,) = axis.plot(time, brightness_in_mag, gid=summaryname, **plotkwargs)
-                summaryparts, summarywarnings = get_peak_summary(
+                summaryfields, summaryparts, summarywarnings = get_peak_summary(
                     time, brightness_in_mag, "mag", ismagnitude=True, isband=True
                 )
-                print_series_summary(summaryname, summaryparts, summarywarnings)
+                print_series_summary(
+                    summaryname, summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows
+                )
                 if residualseries is not None:
                     residualseries.append(
                         ResidualSeries(
@@ -1470,10 +1513,11 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
             plottedpoints=dfbands,
             timemin=args.timemin,
             timemax=args.timemax,
+            summaryrows=summaryrows,
         )
 
     if args.plot_hesma_model:
-        plot_hesma_lightcurve(axes, bandnames, args, residualseries, plottedpoints=dfbands)
+        plot_hesma_lightcurve(axes, bandnames, args, residualseries, plottedpoints=dfbands, summaryrows=summaryrows)
 
     ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=bandnames[0] if bandnames else None)
@@ -1499,6 +1543,7 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
             "": dfplotted,
             "_residuals": dfresidualstats,
             "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
+            "_summary": get_summary_table(summaryrows),
         },
         args.outputfile,
     )
@@ -1511,10 +1556,12 @@ def plot_hesma_lightcurve(
     args: argparse.Namespace,
     residualseries: list[ResidualSeries] | None,
     plottedpoints: list[pl.DataFrame] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> None:
     """Draw each band of the HESMA model of -plot_hesma_model on the panel of that band.
 
     plottedpoints takes the points of each band from -timemin to -timemax in the form of get_magnitude_table.
+    summaryrows takes the fields of the summary line of each band.
 
     The first column of the file holds the time, and a column with the name of a band holds its magnitudes. The grid
     of panels can hold more panels than bands, e.g. six panels for four bands.
@@ -1530,10 +1577,12 @@ def plot_hesma_lightcurve(
             (hesmaline,) = axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
             # the line reaches each end of the axis, and the summary and the table give only the points that it shows
             dfinrange = hesma_model.filter(is_in_time_range(timecolumn, args.timemin, args.timemax))
-            summaryparts, summarywarnings = get_peak_summary(
+            summaryfields, summaryparts, summarywarnings = get_peak_summary(
                 dfinrange[timecolumn], dfinrange[band_name], "mag", ismagnitude=True, isband=True
             )
-            print_series_summary(f"{band_name} {label}", summaryparts, summarywarnings)
+            print_series_summary(
+                f"{band_name} {label}", summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows
+            )
             if plottedpoints is not None:
                 plottedpoints.append(
                     get_magnitude_table(label, None, ("band", band_name), dfinrange[timecolumn], dfinrange[band_name])
@@ -1701,11 +1750,13 @@ def plot_lightcurve_from_refdata(
     plottedpoints: list[pl.DataFrame] | None = None,
     timemin: float | None = None,
     timemax: float | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label.
 
     The points have no line, thus -linewidth sets the size of each marker. plottedpoints takes the points of each band
-    in the form of get_magnitude_table. Only the points from timemin to timemax go into the figure and plottedpoints.
+    in the form of get_magnitude_table, and summaryrows takes the fields of the summary line of each band. Only the
+    points from timemin to timemax go into the figure and plottedpoints.
     """
     lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"]
@@ -1730,10 +1781,16 @@ def plot_lightcurve_from_refdata(
             label=linename,
             color=color,
         )
-        summaryparts, summarywarnings = get_peak_summary(
+        summaryfields, summaryparts, summarywarnings = get_peak_summary(
             dfband["time"], dfband["magnitude"], "mag", ismagnitude=True, isband=True
         )
-        print_series_summary(f"{filter_name_raw} {linename or lightcurvefilename}", summaryparts, summarywarnings)
+        print_series_summary(
+            f"{filter_name_raw} {linename or lightcurvefilename}",
+            summaryparts,
+            summarywarnings,
+            fields=summaryfields,
+            summaryrows=summaryrows,
+        )
         if plottedpoints is not None:
             plottedpoints.append(
                 get_magnitude_table(

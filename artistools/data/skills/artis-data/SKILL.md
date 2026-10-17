@@ -59,13 +59,16 @@ Run `artistools describe <modelpath>` first. It gives these items:
 - the physics options of the run, e.g. NLTE, non-thermal ionisation, and thermalisation, and an `effect:` line that
   says what each option means for the outputs.
 
-The physics options change the meaning of many outputs. Three more commands help before an answer:
+The physics options change the meaning of many outputs. More commands help before an answer:
 
 - `artistools check <modelpath>` gives one row for each check of trust, e.g. the cells at a temperature limit, the
   complete time steps, a restart with a different build, and the Katz energy test. `--frompackets` adds the packet
   noise. Read its warnings before you trust a number of the model;
 - `artistools catalog <folder>` gives one row for each model below a folder, e.g. the physics options and the peak;
 - `artistools report <modelpath>` makes an HTML page with the check, the summary, the logs, and standard figures.
+- `artistools values Te nne -t 300 -modelgridindex 12 <modelpath>` prints the raw estimators of cells and timesteps,
+  with no average and the unit in each column name. Use it for the value of one cell, in place of Python;
+- `artistools explain TJ gamma_NT_Fe_II` gives the meaning, the unit, the method, and the papers of each name.
 
 Each plot command prints the plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te
 -t 300 <modelpath> --print_data --quiet`. Use it to check a result, or for a quick answer with no Python. A value or a
@@ -74,7 +77,9 @@ lines that give the command. Read such a file with `pl.read_csv(path, separator=
 null_values="nan")`.
 
 Without `--quiet`, plotestimators, plotlightcurves, and plotspectra also log one summary line for each drawn series.
-Read these lines before you calculate a value yourself. Examples are:
+Read these lines before you calculate a value yourself. `--print_data` and `--write_data` also give the same values
+as a table named _summary, with one row for each series and the unit in each column name. Read that table in place of the
+line when you need a number. Examples of the lines are:
 
 - `Te: subplot 0, 540 points, x 5009 to 2.878e+04 km/s, min 3500 K at x = 1.711e+04, ..., mean 8.394e+04 K, weight of
   the mean: cell volume times time step duration`. A point is a cell at a time step, and the line names the weight;
@@ -517,8 +522,10 @@ elif firstluminosity > 0.9 * peakluminosity:
 dict with one LazyFrame for each direction bin. Each spectrum is the mean over the time steps from `timestepmin` to
 `timestepmax`, with the width of each time step as the weight. The columns are:
 
-- `lambda_angstroms` and `f_lambda` (erg/s/cm^2/Å);
-- `nu` (Hz) and `f_nu` (erg/s/cm^2/Hz).
+- `lambda_angstroms` (Å), the wavelength of the bin;
+- `f_lambda` (erg/s/cm^2/Å), the flux per unit wavelength at a distance of 1 Mpc;
+- `nu` (Hz), the frequency of the bin;
+- `f_nu` (erg/s/cm^2/Hz), the flux per unit frequency at a distance of 1 Mpc.
 
 The flux is at a distance of 1 Mpc. Give `gamma=True` for the gamma-ray spectrum. Give only the direction bins that you
 need. For a bin of 0 or more, artistools reads the large file `spec_res.out`.

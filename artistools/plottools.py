@@ -1644,14 +1644,34 @@ def warn_direction_bin_noise(source: str, *, average_over_phi: bool, average_ove
     )
 
 
-def print_series_summary(seriesname: str, parts: Sequence[str], warnings: Sequence[str] = ()) -> None:
+def print_series_summary(
+    seriesname: str,
+    parts: Sequence[str],
+    warnings: Sequence[str] = (),
+    *,
+    fields: Mapping[str, t.Any] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
+) -> None:
     """Print one line that summarises a drawn series, and print each warning about the series.
 
-    An agent or a script reads the line, thus each plot command gives its summary in this one form.
+    An agent or a script reads the line, thus each plot command gives its summary in this one form. The caller makes
+    the parts from fields. If summaryrows is a list, the function adds the series name and fields to it as one row of
+    the table _summary of --print_data and --write_data. Thus the line and the table always agree.
     """
     print_detail(f"{plain_label(seriesname)}: {', '.join(parts)}")
     for warning in warnings:
         print_warning(f"{plain_label(seriesname)}: {warning}")
+    if summaryrows is not None:
+        summaryrows.append({"series": plain_label(seriesname), **(fields or {})})
+
+
+def get_summary_table(summaryrows: Sequence[Mapping[str, t.Any]]) -> pl.DataFrame:
+    """Return the table _summary, with one row for each drawn series and one column for each field.
+
+    Two series can have different fields, e.g. only a light curve from packets has a noise. A field that a series does
+    not have is null in its row.
+    """
+    return pl.DataFrame(summaryrows, infer_schema_length=None) if summaryrows else pl.DataFrame()
 
 
 def warn_hidden_values(axis: mplax.Axes) -> None:

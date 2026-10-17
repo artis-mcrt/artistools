@@ -25,9 +25,8 @@ from artistools.lightcurve import get_from_packets
 from artistools.lightcurve import get_katz_integral
 from artistools.lightcurve import scan_lightcurve
 from artistools.logsummary import get_folder_log_ranks
+from artistools.logsummary import get_log_summary
 from artistools.logsummary import get_logfiles
-from artistools.logsummary import read_log_messages
-from artistools.logsummary import summarise_log_messages
 from artistools.misc import addarg_modelpath
 from artistools.misc import exit_with_error
 from artistools.misc import get_deposition
@@ -71,17 +70,16 @@ def check_log_messages(modelpath: Path) -> tuple[str, str]:
     if not logfiles:
         return "not checked", "the model folder and its subfolders hold no rank-0 log (output_0-0.txt)"
 
-    dfmessages = pl.concat([read_log_messages(logfile) for logfile in logfiles])
-    errorcount = dfmessages.filter(pl.col("level") == "error").height
-    warningcount = dfmessages.filter(pl.col("level") == "warning").height
-    dfkinds = summarise_log_messages(dfmessages)
+    dfkinds = get_log_summary(logfiles)
+    errorcount = int(dfkinds.filter(pl.col("level") == "error")["count"].sum())
+    warningcount = int(dfkinds.filter(pl.col("level") == "warning")["count"].sum())
     runnames = get_names_text([get_runname(modelpath, logfile.parent) for logfile in logfiles])
     detail = (
         f"the rank-0 logs of {len(logfiles)} run folders ({runnames}) hold {errorcount} errors and {warningcount}"
         f" warnings of {dfkinds.height} kinds"
     )
     if dfkinds.height > 0:
-        # summarise_log_messages puts the errors and the warnings in one list, sorted by the count
+        # get_log_summary puts the errors and the warnings in one list, sorted by the count
         dfworst = dfkinds.sort(["level", "count"], descending=[False, True]).row(0, named=True)
         exampletext = str(dfworst["example"])
         if len(exampletext) > 100:

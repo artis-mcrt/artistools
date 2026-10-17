@@ -20,7 +20,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import polars as pl
 
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
@@ -33,6 +32,9 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc.cliutils import get_provenance_lines
+
+if t.TYPE_CHECKING:
+    import polars as pl
 
 LIGHTCURVEFILENAME = "lightcurve.png"
 SPECTRUMFILENAME = "spectrum_timestep{timestep:03d}.png"
@@ -157,16 +159,13 @@ def get_log_summary_table(modelfolder: Path) -> "tuple[list[Path], pl.DataFrame 
 
     The table is None if the model has no log of rank 0.
     """
+    from artistools.logsummary import get_log_summary
     from artistools.logsummary import get_logfiles
-    from artistools.logsummary import read_log_messages
-    from artistools.logsummary import summarise_log_messages
-    from artistools.misc import parallel_map
 
     logfiles = get_logfiles(modelfolder, [0])
     if not logfiles:
         return logfiles, None
-    dfmessages = pl.concat(parallel_map(read_log_messages, logfiles, desc="logs", unit="log"))
-    return logfiles, summarise_log_messages(dfmessages)
+    return logfiles, get_log_summary(logfiles)
 
 
 def get_log_summary_html(modelfolder: Path) -> str:

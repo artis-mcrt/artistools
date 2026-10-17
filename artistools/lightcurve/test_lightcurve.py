@@ -1873,9 +1873,13 @@ def test_lightcurve_print_data_survives_quiet(capsys: pytest.CaptureFixture[str]
     assert "====>" not in withdata
     assert "Reading " not in withdata
     # the polars display of a table shows only ten rows, thus the product is the table as text with every row
-    datalines = withdata.splitlines()
+    # an empty line separates the table of the light curve from the table _summary of the summary lines
+    curvetext, summarytext = withdata.split("\n\n")
+    datalines = curvetext.splitlines()
     assert datalines[0].startswith("model escape_type dirbin time_days ")
     assert len(datalines) == 1 + len(at.get_timestep_times(modelpath))
+    assert summarytext.splitlines()[0].startswith("series point_count ")
+    assert len(summarytext.splitlines()) == 2
 
 
 def test_lightcurve_reference_data_takes_a_day_range(tmp_path: Path) -> None:
@@ -3590,12 +3594,14 @@ def test_peak_summary_sorts_the_times_of_a_reference_file() -> None:
 
     times = np.array([30.0, 10.0, 0.0, 20.0, 40.0, 5.0])
     magnitudes = -15.0 + 0.1 * np.abs(times - 10.0)
-    sortedparts, _ = get_peak_summary(
+    sortedfields, sortedparts, _ = get_peak_summary(
         np.sort(times), magnitudes[np.argsort(times)], "mag", ismagnitude=True, isband=True
     )
-    parts, warnings = get_peak_summary(times, magnitudes, "mag", ismagnitude=True, isband=True)
+    fields, parts, warnings = get_peak_summary(times, magnitudes, "mag", ismagnitude=True, isband=True)
     assert parts == sortedparts
+    assert fields == sortedfields
     assert "Δm15 1.5 mag" in parts[2]
+    assert np.isclose(fields["deltam15_mag"], 1.5)
     # the peak at 10 d is the third point in time, thus it is not at an end
     assert not warnings
 
@@ -3617,3 +3623,40 @@ def test_katz_integral_leaves_out_a_missing_luminosity() -> None:
     # the trapezoid from 3 to 4 days is the only complete one: 0.5 (3 d + 4 d) L times 1 d, in seconds
     assert np.isclose(integral, 0.5 * (3.0 + 4.0) * at.constants.day_to_s**2, rtol=1e-12, atol=0.0)
     assert np.isclose(omitted_days, 2.0)
+
+
+def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
+
+    The peak must also be the largest luminosity of the valid range in the table of the plotted light curve.
+    """
+    outputfile = tmp_path / "lc.pdf"
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], frompackets=True, outputfile=outputfile, write_data=True)
+    output = capsys.readouterr().out
+    readargs: dict[str, t.Any] = {"separator": " ", "null_values": "nan", "comment_prefix": "#"}
+    dfsummary = pl.read_csv(tmp_path / "lc_summary.txt", **readargs)
+    row = dfsummary.row(0, named=True)
+    assert dfsummary.height == 1
+    match = re.search(
+        r"TEST MODEL: (\d+) points from (\S+) to (\S+) d, peak (\S+) erg/s at (\S+) d \((.+?)\),"
+        r" noise of the peak point (\S+)% = (.+) of its (\d+) packets",
+        output,
+    )
+    assert match is not None, output
+    assert int(match[1]) == row["point_count"]
+    assert np.allclose(
+        [float(value) for value in match.group(2, 3, 4, 5)],
+        [row["time_min_days"], row["time_max_days"], row["peak_luminosity_erg_per_s"], row["peak_time_days"]],
+        rtol=1e-3,
+        atol=0.0,
+    )
+    assert match[6] == row["method"]
+    assert np.isclose(float(match[7]) / 100.0, row["peak_relnoise"], rtol=1e-3)
+    assert match[8] == row["noise_method"]
+    assert int(match[9]) == row["peak_packet_count"]
+
+    dfvalid = pl.read_csv(tmp_path / "lc.txt", **readargs).filter(pl.col("in_valid_range"))
+    dfpeak = dfvalid.filter(pl.col("luminosity_erg/s") == pl.col("luminosity_erg/s").max())
+    assert np.isclose(dfpeak["luminosity_erg/s"].item(), row["peak_luminosity_erg_per_s"], rtol=1e-12)
+    assert np.isclose(dfpeak["time_days"].item(), row["peak_time_days"], rtol=1e-12)
+    assert np.isclose(dfpeak["relnoise"].item(), row["peak_relnoise"], rtol=1e-12)
