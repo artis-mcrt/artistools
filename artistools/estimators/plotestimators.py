@@ -2033,29 +2033,38 @@ def get_line_figure_table(figuredata: LineFigureData, xvariable: str) -> pl.Data
 
     A series with x bins gives the weighted mean of each bin and the range of the cells in the bin. A series with
     -xbins 0 gives each point. The fields of the frame, e.g. the timestep, are columns, thus each row names its time.
+    The column "points" is "line" for a point of the line and "markers" for a point of --markers, because a series
+    with --markers draws both.
     """
     xcolumn = {"velocity": "velocity_kmps", "time": "time_days"}.get(xvariable, xvariable)
     dfseriestables: list[pl.DataFrame] = []
     for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
         for series in seriesdatas:
+            dfdrawn: list[tuple[str, pl.DataFrame]] = []
             if series.dflinepoints is not None:
-                dfpoints = series.dflinepoints.select(
-                    pl.col("xvalue_binned").alias(xcolumn),
-                    value=pl.col("yvalue_binned"),
-                    value_min=pl.col("yvalue_binned_min"),
-                    value_max=pl.col("yvalue_binned_max"),
-                )
-            elif series.dfpoints is not None:
-                dfpoints = series.dfpoints.select(pl.col("xvalue").alias(xcolumn), value=pl.col("yvalue"))
-            else:
-                continue
-            dfseriestables.append(
+                dfdrawn.append((
+                    "line",
+                    series.dflinepoints.select(
+                        pl.col("xvalue_binned").alias(xcolumn),
+                        value=pl.col("yvalue_binned"),
+                        value_min=pl.col("yvalue_binned_min"),
+                        value_max=pl.col("yvalue_binned_max"),
+                    ),
+                ))
+            if series.dfpoints is not None:
+                dfdrawn.append((
+                    "markers",
+                    series.dfpoints.select(pl.col("xvalue").alias(xcolumn), value=pl.col("yvalue")),
+                ))
+            dfseriestables.extend(
                 dfpoints.select(
                     *(pl.lit(fieldvalue).alias(fieldname) for fieldname, fieldvalue in figuredata.framefields.items()),
                     pl.lit(subplotindex).alias("subplot"),
                     pl.lit(series.seriesname).alias("series"),
+                    pl.lit(pointkind).alias("points"),
                     pl.all(),
                 )
+                for pointkind, dfpoints in dfdrawn
             )
 
     return pl.concat(dfseriestables, how="diagonal_relaxed") if dfseriestables else pl.DataFrame()

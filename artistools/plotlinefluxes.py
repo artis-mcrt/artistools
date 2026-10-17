@@ -792,7 +792,11 @@ def set_emitting_regions_limits(
 
 
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
-    """Plot the electron density and temperature of the cells emitting each feature, and save the figure."""
+    """Plot the electron density and the temperature of the cells that emit each feature, and save the figure.
+
+    --print_data and --write_data give one row for each packet in each figure. Each row holds the log10nne and the Te of
+    the cell that emitted the packet.
+    """
     refdatafilenames: list[str] = [] if args.norefdata else ["floers_te_nne.json"]
     refdatalabels = ["Flörs+2020"]
     refdatacolors = ["0.0", "C1", "C2", "C4"]
@@ -848,8 +852,29 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     label=f"{refdatalabels[refdataindex]} +{refdatakeys[timeindexb]}d",
                 )
 
+        dfpoints: list[pl.DataFrame] = []
         for modelindex, emdata in enumerate(emdata_all):
             emfeatures = get_labelandlineindices(args.modelpath[modelindex], tuple(args.emfeaturesearch))
+            # a feature with no packet gives an empty frame, thus the schema gives the types of its columns
+            dfpoints.extend(
+                pl.DataFrame(
+                    {
+                        "model": get_model_name(args.modelpath[modelindex]),
+                        "feature": feature.colname,
+                        "time_days": tmid,
+                        "log10nne": np.asarray(emdata[tmid, feature.colname]["em_log10nne"], dtype=np.float64),
+                        "Te": np.asarray(emdata[tmid, feature.colname]["em_Te"], dtype=np.float64),
+                    },
+                    schema={
+                        "model": pl.String,
+                        "feature": pl.String,
+                        "time_days": pl.Float64,
+                        "log10nne": pl.Float64,
+                        "Te": pl.Float64,
+                    },
+                )
+                for feature in emfeatures
+            )
 
             em_log10nne = np.concatenate([emdata[tmid, feature.colname]["em_log10nne"] for feature in emfeatures])
             em_Te = np.concatenate([emdata[tmid, feature.colname]["em_Te"] for feature in emfeatures])
@@ -876,6 +901,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         # would replace the one before it
         if len(times_days) > 1 and "{timeavg" not in str(args.outputfile):
             outputfile = outputfile.with_stem(f"{outputfile.stem}_{tmid:.{ndecimals}f}d")
+        output_data(args, {"": pl.concat(dfpoints) if dfpoints else pl.DataFrame()}, outputfile)
         save_figure(fig, outputfile, args=args)
 
 

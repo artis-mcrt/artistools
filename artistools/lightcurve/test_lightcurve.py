@@ -3038,6 +3038,63 @@ def test_direction_bins_of_a_model_with_no_direction_file_give_a_warning(
     assert mockplot.call_args.kwargs["label"] == "TEST MODEL"
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_lightcurve_data_gives_the_filtered_curve_and_the_energy_rates(
+    mockplot: mock.MagicMock, tmp_path: Path
+) -> None:
+    """The table took the light curve before -filtersavgol, and it held no curve of -deposition."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        filtersavgol=["5", "3"],
+        deposition=["gamma"],
+        write_data=True,
+        outputfile=tmp_path / "lc.pdf",
+    )
+    dflc = pl.read_csv(tmp_path / "lc.txt", separator=" ", null_values="nan")
+    modelname = at.get_model_name(modelpath_classic_3d)
+    modelcall = next(call for call in mockplot.call_args_list if call.kwargs.get("label") == modelname)
+    dfdrawn = pl.DataFrame({
+        "time_days": np.asarray(modelcall.args[1], dtype=np.float64),
+        "drawn": np.asarray(modelcall.args[2], dtype=np.float64),
+    })
+    dfcompared = dfdrawn.join(dflc.select("time_days", "luminosity_erg/s"), on="time_days", how="inner")
+    assert dfcompared.height == dfdrawn.height
+    assert np.allclose(dfcompared["luminosity_erg/s"], dfcompared["drawn"], rtol=1e-6, atol=0)
+
+    dfrates = pl.read_csv(tmp_path / "lc_energyrates.txt", separator=" ", null_values="nan")
+    assert dfrates["quantity"].unique().to_list() == ["gammadep_Lsun"]
+    assert dfrates["unit"].unique().to_list() == ["erg/s"]
+    assert dfrates["model"].unique().to_list() == [modelname]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_band_and_colour_data_give_the_filtered_magnitudes(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The band table took the magnitudes before -filtermovingavg, and the colour plot wrote no table."""
+
+    def table_is_drawn(tablename: str, valuecolumn: str) -> bool:
+        dftable = pl.read_csv(tmp_path / tablename, separator=" ", null_values="nan")
+        drawnvalues = [np.asarray(call.args[2], dtype=np.float64) for call in mockplot.call_args_list]
+        mockplot.reset_mock()
+        return any(
+            len(values) == dftable.height and np.allclose(values, dftable[valuecolumn], rtol=1e-6, atol=0)
+            for values in drawnvalues
+        )
+
+    commonoptions: dict[str, t.Any] = {
+        "modelpath": [modelpath],
+        "timemin": 250,
+        "timemax": 300,
+        "filtermovingavg": 3,
+        "write_data": True,
+        "outputfile": tmp_path,
+    }
+    at.lightcurve.plot(argsraw=[], filter=["B"], **commonoptions)
+    assert table_is_drawn("plotBlightcurves.txt", "magnitude")
+    at.lightcurve.plot(argsraw=[], colour_evolution=["B-V"], **commonoptions)
+    assert table_is_drawn("plotcolorevolutionB-V.txt", "colour_mag")
+
+
 def test_band_data_of_several_models_names_the_model_of_each_row(tmp_path: Path) -> None:
     """--write_data writes one table for all the models.
 

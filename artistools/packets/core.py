@@ -526,6 +526,15 @@ def get_packets_textfilename(rank: int, virtual: bool) -> str:
     return f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out"
 
 
+def count_packets_textfiles(modelpath: Path) -> int:
+    """Return the number of ranks that have a packets text file in the folders that the reader searches.
+
+    A run on a cluster writes its packets into a run folder, e.g. 12411848.slurm, and the reader also searches there.
+    """
+    filenames = [get_packets_textfilename(rank, virtual=False) for rank in range(get_nprocs(modelpath))]
+    return len(find_packets_textsources(modelpath, filenames))
+
+
 def get_first_packets_file(modelpath: Path) -> Path | None:
     """Return the packets text file of the first rank, or the parquet cache of the first batch, or None.
 

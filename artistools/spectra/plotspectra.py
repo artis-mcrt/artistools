@@ -1109,12 +1109,14 @@ def make_spectrum_plot(
     args: argparse.Namespace,
     scale_to_peak: float | None = None,
     residualseries: list[ResidualSeries] | None = None,
-) -> pl.DataFrame:
-    """Plot reference spectra and ARTIS spectra.
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Plot the reference spectra and the ARTIS spectra, and return the data of each type.
 
-    residualseries takes each drawn series for a residual panel.
+    residualseries takes each drawn series for a residual panel. A reference spectrum or a code comparison spectrum
+    has its own wavelength grid. Thus a second table holds its points, with one row for each point.
     """
     dfalldata = pl.DataFrame()
+    dfothers: list[pl.DataFrame] = []
     nseriesplotted = 0
 
     set_prop_cycle_unusedcolors(axes, args.color)
@@ -1138,6 +1140,7 @@ def make_spectrum_plot(
         # only an ARTIS spectrum produces writable series data. Reset it every iteration, so that a reference
         # spectrum neither reads an unset variable nor re-writes the previous model's spectrum under its own name
         seriesdata: pl.DataFrame | None = None
+        otherlines: list[Line2D] = []
         if path_is_reference_spectrum(specpath):
             # reference spectrum
             if "linewidth" not in plotkwargs:
@@ -1148,10 +1151,13 @@ def make_spectrum_plot(
                 plotkwargs["color"] = "k"
             if args.label[seriesindex]:
                 plotkwargs["label"] = args.label[seriesindex]
-            for axis in axes:
+            # each panel of --multispecplot gets the same line, thus the table takes the line of the first panel
+            otherlines = [
                 plot_reference_spectrum_for_args(
                     specpath, axis, args, filterfunc, scale_to_peak, residualseries=residualseries, **plotkwargs
-                )
+                )[0]
+                for axis in axes
+            ][:1]
             nseriesplotted += 1
         elif path_is_codecomparison(specpath):
             check_codecomparison_args(args)
@@ -1159,7 +1165,9 @@ def make_spectrum_plot(
             timeavg = (args.timemin + args.timemax) / 2.0
             from artistools.codecomparison import plot_spectrum
 
-            plot_spectrum(specpath, timedays=timeavg, axis=axes[0], residualseries=residualseries, **plotkwargs)
+            otherlines = [
+                plot_spectrum(specpath, timedays=timeavg, axis=axes[0], residualseries=residualseries, **plotkwargs)
+            ]
             nseriesplotted += 1
         else:
             # ARTIS model spectrum
@@ -1195,6 +1203,15 @@ def make_spectrum_plot(
                 seriesname = get_model_name(specpath)
                 nseriesplotted += 1
 
+        if args.print_data or args.write_data:
+            dfothers.extend(
+                pl.DataFrame({
+                    "series": str(line.get_label()),
+                    f"x_plotted_{args.xunit}": np.asarray(line.get_xdata(), dtype=np.float64),
+                    f"{args.yvariable}_plotted": np.asarray(line.get_ydata(), dtype=np.float64),
+                })
+                for line in otherlines
+            )
         if (args.print_data or args.write_data) and seriesdata is not None:
             if dfalldata.is_empty():
                 dfalldata = pl.DataFrame({"lambda_angstroms": seriesdata["lambda_angstroms"]})
@@ -1243,7 +1260,7 @@ def make_spectrum_plot(
 
         set_plot_title(axis, args.title, args)
 
-    return dfalldata
+    return dfalldata, pl.concat(dfothers) if dfothers else pl.DataFrame()
 
 
 def get_xy_spectrum(
@@ -1754,13 +1771,13 @@ def check_residual_args(args: argparse.Namespace) -> None:
         print_warning("the residual and its statistics take the smoothed series of -filtersavgol")
 
 
-def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_], pl.DataFrame, pl.DataFrame]:
+def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_], dict[str, pl.DataFrame]]:
     """Plot the spectra that args selects.
 
-    Return the figure, the axes, the plotted data, and the statistics of the residuals.
+    Return the figure, the axes, and the tables of the plotted data that draw_plot gives.
     """
     fig, axes, residualaxis = make_plot_figure(args)
-    dfalldata, dfresidualstats = draw_plot(args, axes, residualaxis)
+    tables = draw_plot(args, axes, residualaxis)
 
     defaultoutputfile = (
         "plotspectra_emission_{timemin:.2f}d-{timemax:.2f}d{directionbins}.pdf"
@@ -1769,7 +1786,7 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     )
     args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
 
-    return fig, axes, dfalldata, dfresidualstats
+    return fig, axes, tables
 
 
 def make_plot_figure(
@@ -1799,12 +1816,15 @@ def make_plot_figure(
 
 def draw_plot(
     args: argparse.Namespace, axes: npt.NDArray[t.Any], residualaxis: mplax.Axes | None
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Draw the spectra that args selects, and return the plotted data and the statistics of the residuals.
+) -> dict[str, pl.DataFrame]:
+    """Draw the spectra that args selects, and return the tables of the plotted data.
 
     The axes must be empty. This function writes no file, thus the viewer can call it again for each change
-    of a control.
+    of a control. The keys of the tables are the ends of the names of the data files, see output_data. The empty
+    key gives the ARTIS spectra, "_references" gives the reference and code comparison spectra, and "_residuals"
+    gives the statistics of the residuals.
     """
+    dfothers = pl.DataFrame()
     dfresidualstats = pl.DataFrame()
     filterfunc = get_filterfunc(args)
 
@@ -1830,7 +1850,7 @@ def draw_plot(
         # the legend comes from the first axis that a plot used, which is axes[0] for
         # --multispecplot and axes[-1] otherwise
         specaxes = list(axes) if args.multispecplot else [axes[-1]]
-        dfalldata = make_spectrum_plot(
+        dfalldata, dfothers = make_spectrum_plot(
             args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak, residualseries=residualseries
         )
         plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
@@ -1912,7 +1932,7 @@ def draw_plot(
         for line in leg.get_lines():
             line.set_linewidth(2.0)
 
-    return dfalldata, dfresidualstats
+    return {"": dfalldata, "_references": dfothers, "_residuals": dfresidualstats}
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -2705,7 +2725,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             write_flambda_spectra(modelpath, outdirectory=modeloutdirectory)
 
     else:
-        fig, _axes, dfalldata, dfresidualstats = make_plot(args)
+        fig, _axes, tables = make_plot(args)
 
         # the observers of the virtual packets also name the file, thus the plots of two observers keep both files
         if args.plotviewingangle:
@@ -2722,7 +2742,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             # no model resolved both bounds, thus the time placeholders get no values
             filenameout = str(Path(filenameout).with_name("plotspectra.pdf"))
 
-        output_data(args, {"": dfalldata, "_residuals": dfresidualstats}, filenameout)
+        output_data(args, tables, filenameout)
 
         save_figure(fig, filenameout, args=args, dpi=args.dpi)
 

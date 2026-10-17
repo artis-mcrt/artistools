@@ -12,6 +12,7 @@ import math
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -4789,6 +4790,30 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]
 
 
+def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> None:
+    """--write_data wrote no file for the emitting regions. The 3D test model has no packets in these features."""
+    import collections
+
+    emdata = collections.defaultdict(lambda: {"em_log10nne": np.array([5.0, 6.0]), "em_Te": np.array([4e3, 5e3])})
+    with mock.patch.object(at.plotlinefluxes, "get_emitting_regions_data", return_value=emdata):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            plotemittingregions=True,
+            norefdata=True,
+            timebins_tstart=[4.0, 5.0],
+            timebins_tend=[6.0, 7.0],
+            outputfile=tmp_path / "emreg.pdf",
+            write_data=True,
+        )
+
+    for tmid in (5.0, 6.0):
+        dfpoints = pl.read_csv(tmp_path / f"emreg_{tmid:.1f}d.txt", separator=" ", null_values="nan")
+        assert dfpoints.columns == ["model", "feature", "time_days", "log10nne", "Te"]
+        assert dfpoints["time_days"].unique().to_list() == [tmid]
+        assert dfpoints["log10nne"].to_list()[:2] == [5.0, 6.0]
+
+
 def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission() -> None:
     """The cell and the timestep of the emitting regions must come from the same event.
 
@@ -5900,6 +5925,26 @@ def test_radfield_first_timestep_takes_each_name_of_the_option(tmp_path: Path, o
     """ARTIS renamed the option two times on 2026-10-16, thus a current model gave no first timestep of the bin fits."""
     (tmp_path / "artisoptions.h").write_text(f"constexpr int {optionname} = 6;\n", encoding="utf-8")
     assert at.plotradfield.get_multibin_radfield_first_timestep(tmp_path) == (6, optionname)
+
+
+def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A run that stops early writes a log and no estimator file, and its log holds the error that stopped it."""
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    (modelfolder / "12411848.slurm").mkdir(parents=True)
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    (modelfolder / "12411848.slurm" / "output_0-0.txt").write_text(
+        "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[error] cell 3 has no matter\n",
+        encoding="utf-8",
+    )
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert dfsummary["level"].to_list() == ["error"]
+    assert dfsummary["first_timestep"].item() == 0
 
 
 def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:

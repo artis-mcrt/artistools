@@ -23,6 +23,7 @@ from artistools.plottools import ResidualSeries
 
 if t.TYPE_CHECKING:
     import matplotlib.axes as mplax
+    import matplotlib.lines as mpllines
 
 
 def split_codecomparison_path(modelpath: Path | str) -> tuple[Path, str, str]:
@@ -233,8 +234,8 @@ def plot_spectrum(
     *,
     residualseries: list[ResidualSeries] | None = None,
     **plotkwargs: t.Any,
-) -> None:
-    """Plot a code comparison workshop model's spectrum at the time closest to timedays."""
+) -> "mpllines.Line2D":
+    """Plot the spectrum of a code comparison model at the time closest to timedays, and return its line."""
     dfspectra, arr_timedays = get_spectra(modelpath)
     timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())
     timedays_found = dfspectra.columns[timeindex + 1]
@@ -257,3 +258,4 @@ def plot_spectrum(
                 line=specline,
             )
         )
+    return specline

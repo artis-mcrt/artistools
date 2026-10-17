@@ -175,6 +175,14 @@ ENERGYRATEKINDS: t.Final = (
     ("analyticemission", ANALYTICEMISSIONCOLUMNS, "dashdot", r"$\dot{{E}}_{{rad,{}}}$ analytical"),
 )
 
+# the columns of the table of the energy rates and the thermalisation ratios that --print_data gives
+CURVESCHEMA: t.Final = MappingProxyType({
+    "quantity": pl.String,
+    "unit": pl.String,
+    "time_days": pl.Float64,
+    "value": pl.Float64,
+})
+
 # the arguments that name the particles of the energy rates
 ENERGYRATEDESTS: t.Final = ("deposition", "emission", "analyticemission", "thermalisation")
 
@@ -414,8 +422,10 @@ def plot_energy_rates(
     linewidth: float | str | None = None,
     *,
     residualseries: list[ResidualSeries] | None = None,
-) -> bool:
-    """Plot the energy rates of deposition.out that args names, and return True if the function drew a curve on axis.
+) -> tuple[bool, pl.DataFrame]:
+    """Plot the energy rates of deposition.out that args names, and return whether a curve is on axis, and the data.
+
+    The data has one row for each point of each curve, with the columns quantity, unit, time_days, and value.
 
     axis takes the deposition rates and the emission rates. thermaxis takes the thermalisation ratios with the curves
     of Barnes, Kasen, Wu & Martínez-Pinedo (2016, ApJ, 829, 110, doi:10.3847/0004-637X/829/2/110). Each particle takes
@@ -437,6 +447,7 @@ def plot_energy_rates(
         )
 
     drewrate = False
+    dfcurves: list[pl.DataFrame] = []
     for particle, colour in particlecolours.items():
         for dest, columns, linestyle, labelformat in ENERGYRATEKINDS:
             if particle not in getattr(args, dest):
@@ -460,13 +471,26 @@ def plot_energy_rates(
                         line=rateline,
                     )
                 )
+            dfcurves.append(get_curve_table(column, lumunit, depdata["tmid_days"], yvalues))
             drewrate = True
 
     if args.thermalisation:
         assert thermaxis is not None
-        plot_thermalisation(thermaxis, depdata, modelpath, modelname, args, particlecolours, linewidth)
+        dfcurves.extend(plot_thermalisation(thermaxis, depdata, modelpath, modelname, args, particlecolours, linewidth))
 
-    return drewrate
+    return drewrate, pl.concat(dfcurves) if dfcurves else pl.DataFrame(schema=CURVESCHEMA)
+
+
+def get_curve_table(
+    quantity: str,
+    unit: str,
+    time_days: pl.Series | list[float],
+    values: pl.Series | npt.NDArray[np.floating] | list[float],
+) -> pl.DataFrame:
+    """Return the points of one plotted curve in the form of the energy rate table."""
+    return pl.DataFrame(
+        {"quantity": quantity, "unit": unit, "time_days": time_days, "value": values}, schema=CURVESCHEMA
+    )
 
 
 def plot_thermalisation(
@@ -477,12 +501,13 @@ def plot_thermalisation(
     args: argparse.Namespace,
     particlecolours: dict[str, str],
     linewidth: float | str | None,
-) -> None:
-    """Plot the deposition rate over the emission rate of each particle of -thermalisation.
+) -> list[pl.DataFrame]:
+    """Plot the deposition rate over the emission rate of each particle of -thermalisation, and return the curves.
 
     --showbarnes adds the curves of Barnes et al. (2016, ApJ, 829, 110) for the gamma rays, the electrons, and the alpha
     particles.
     """
+    dfcurves: list[pl.DataFrame] = []
     if "betaplus" in args.thermalisation:
         print_detail(
             "the thermalisation ratio of the positrons divides by the analytical emission rate, because"
@@ -499,9 +524,11 @@ def plot_thermalisation(
             )
             continue
         symbol = PARTICLESYMBOLS[particle]
+        ratios = depdata[depcolumn] / depdata[emissioncolumn]
+        dfcurves.append(get_curve_table(f"{depcolumn}/{emissioncolumn}", "ratio", depdata["tmid_days"], ratios))
         thermaxis.plot(
             depdata["tmid_days"],
-            depdata[depcolumn] / depdata[emissioncolumn],
+            ratios,
             linewidth=linewidth,
             label=rf"{modelname} $\left(\dot{{E}}_{{dep,{symbol}}} \middle/ \dot{{E}}_{{rad,{symbol}}}\right)$",
             linestyle="solid",
@@ -511,7 +538,7 @@ def plot_thermalisation(
     # the curves of Barnes et al. (2016, ApJ, 829, 110) describe the gamma rays, the electrons, and the alpha particles
     barnesparticles = [particle for particle in ("gamma", "betaminus", "alpha") if particle in args.thermalisation]
     if not (args.showbarnes and barnesparticles):
-        return
+        return dfcurves
 
     model_mass_grams, ejecta_ke_erg = get_model_mass_and_kinetic_energy(Path(modelpath))
     print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
@@ -545,6 +572,7 @@ def plot_thermalisation(
     }
     for particle in barnesparticles:
         barnes_f, symbol = barnes_curves[particle]
+        dfcurves.append(get_curve_table(f"Barnes2016_f_{particle}", "ratio", tmids, barnes_f))
         thermaxis.plot(
             tmids,
             barnes_f,
@@ -553,6 +581,7 @@ def plot_thermalisation(
             linestyle="dashed",
             color=particlecolours[particle],
         )
+    return dfcurves
 
 
 def get_time_range_days(dflightcurve: pl.DataFrame) -> tuple[float | None, float | None]:
@@ -719,6 +748,7 @@ def plot_artis_lightcurve(
         print_theta_phi_definitions()
 
     filterfunc = get_filterfunc(args)
+    plotteddataframes: dict[int, pl.DataFrame] = {}
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
         print_dirbin_summary(dirbin, angle_definition[dirbin], lcdata)
@@ -729,6 +759,7 @@ def plot_artis_lightcurve(
                     filterfunc, return_dtype=pl.self_dtype()
                 )
             )
+        plotteddataframes[dirbin] = lcdata
 
         label_with_tags: str | None = linelabel
         if dirbin != -1:
@@ -839,7 +870,7 @@ def plot_artis_lightcurve(
                     )
                 )
 
-    return lcdataframes
+    return plotteddataframes
 
 
 def make_plot_figure(
@@ -870,9 +901,11 @@ def draw_plot(
 
     The light curves come from light_curve.out, gamma_light_curve.out, light_curve_res.out, or the packets files. The
     axes must be empty. This function writes no file, thus the viewer can call it again for each change of a control.
+
     The keys of the tables are the ends of the names of the data files, see output_data. The table of the light curves
-    has one row for each time of each model, escape type, and direction bin. The statistics of the residuals are empty
-    without a residual panel.
+    has one row for each time of each model, escape type, and direction bin. It holds the values after -filtersavgol
+    or -filtermovingavg. The table of the energy rates holds the curves of deposition.out and of the thermalisation
+    panel. The statistics of the residuals are empty without a residual panel.
     """
     modelpaths = args.modelpath
     showuvoir, showgamma = args.rpkt, args.gamma
@@ -889,6 +922,7 @@ def draw_plot(
     plottedsomething = False
     plotteddeposition = False
     dflightcurves: list[pl.DataFrame] = []
+    dfenergyrates: list[pl.DataFrame] = []
     for lcindex, modelpath in enumerate(modelpaths):
         if path_is_reference_lightcurve(modelpath):
             bolreflightcurve = Path(modelpath)
@@ -968,7 +1002,7 @@ def draw_plot(
             if plottedthismodel and (shows_energy_rates(args) or args.thermalisation):
                 # the rates belong to the model, not to one escape type or pellet nuclide, and the style
                 # comes from the command line rather than from whatever a series left in its plot kwargs
-                drewrate = plot_energy_rates(
+                drewrate, dfmodelrates = plot_energy_rates(
                     axis,
                     thermaxis,
                     get_model_folder(modelpath),
@@ -978,6 +1012,7 @@ def draw_plot(
                     residualseries=residualseries,
                 )
                 plotteddeposition = plotteddeposition or drewrate
+                dfenergyrates.append(dfmodelrates.select(pl.lit(get_model_name(modelpath)).alias("model"), pl.all()))
 
         print()
 
@@ -1065,7 +1100,8 @@ def draw_plot(
         labelaxis.set_xlabel("")
 
     dfplotted = pl.concat(dflightcurves, how="diagonal_relaxed") if dflightcurves else pl.DataFrame()
-    return {"": dfplotted, "_residuals": dfresidualstats}
+    dfrates = pl.concat(dfenergyrates) if dfenergyrates else pl.DataFrame()
+    return {"": dfplotted, "_energyrates": dfrates, "_residuals": dfresidualstats}
 
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_] | mplax.Axes]:
@@ -1186,6 +1222,8 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 axis = axes[plotnumber]
                 time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
+                if filterfunc is not None:
+                    brightness_in_mag = filterfunc(brightness_in_mag)
 
                 dfbands.append(
                     pl.DataFrame({
@@ -1198,9 +1236,6 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
                 )
 
                 plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
-
-                if filterfunc is not None:
-                    brightness_in_mag = filterfunc(brightness_in_mag)
 
                 text_key = FILTERNAME_ALIASES.get(band_name, band_name)
 
@@ -1340,6 +1375,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
     # the filter pairs share bands, so integrate the bands of every pair once per direction bin
     bandnames = sorted({name for filters in args.colour_evolution for name in filters.split("-")})
     filterfunc = get_filterfunc(args)
+    dfcolours: list[pl.DataFrame] = []
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = get_model_name(modelpath)
@@ -1366,6 +1402,25 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
 
                 if filterfunc is not None:
                     colour_delta_mag = filterfunc(colour_delta_mag)
+                # a colour with no time gives an empty frame, thus the schema gives the types of its columns
+                dfcolours.append(
+                    pl.DataFrame(
+                        {
+                            "model": modelname,
+                            "dirbin": dirbin,
+                            "colour": filters,
+                            "time_days": np.asarray(plot_times, dtype=np.float64),
+                            "colour_mag": np.asarray(colour_delta_mag, dtype=np.float64),
+                        },
+                        schema={
+                            "model": pl.String,
+                            "dirbin": pl.Int64,
+                            "colour": pl.String,
+                            "time_days": pl.Float64,
+                            "colour_mag": pl.Float64,
+                        },
+                    )
+                )
 
                 axes[plotnumber].plot(
                     plot_times,
@@ -1409,6 +1464,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
 
     invert_magnitude_yaxis(ax)
 
+    output_data(args, {"": pl.concat(dfcolours) if dfcolours else pl.DataFrame()}, args.outputfile)
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 

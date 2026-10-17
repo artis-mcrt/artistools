@@ -27,6 +27,9 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_product
 from artistools.misc import zopen
 from artistools.misc.modelinfo import get_rank_outputfiles
+from artistools.misc.remote import on_model_host
+from artistools.packets import count_packets_textfiles
+from artistools.packets import has_packets_files
 
 # the output files that are not rank files, in the order of the summary. A reader also accepts each one with a
 # compressed extension
@@ -109,10 +112,11 @@ def get_output_lines(modelpath: Path) -> list[str]:
         rankcount = sum(len(get_rank_outputfiles(folder, filenameformat)) for folder in runfolders)
         lines.append(f"{kind}: {rankcount} rank files")
 
-    packetranks = set(get_rank_outputfiles(modelpath, "packets00_{mpirank:04d}.out"))
-    if (modelpath / "packets").is_dir():
-        packetranks |= set(get_rank_outputfiles(modelpath / "packets", "packets00_{mpirank:04d}.out"))
-    lines.append(f"packets: {len(packetranks)} rank files")
+    packetcount = count_packets_textfiles(modelpath)
+    if packetcount == 0 and has_packets_files(modelpath):
+        lines.append("packets: no text files, and the parquet cache of the packets")
+    else:
+        lines.append(f"packets: {packetcount} rank files")
 
     for filename in SINGLEOUTPUTFILES:
         filepath = firstexisting_or_none(filename, folder=modelpath, search_subfolders=False)
@@ -177,8 +181,12 @@ def get_version_lines(modelpath: Path) -> list[str]:
     return lines
 
 
+@on_model_host
 def get_model_summary(modelpath: Path, alloptions: bool = False) -> list[str]:
-    """Return the lines of the summary. A part whose input file is missing gives one line that says so."""
+    """Return the lines of the summary. A part whose input file is missing gives one line that says so.
+
+    The host of a remote model makes the summary, because each part reads a file of the model folder.
+    """
     lines = [f"model folder: {modelpath.resolve()}"]
     parts = (get_model_lines, get_timestep_lines, get_output_lines, get_ion_lines, get_version_lines)
     for part in parts:

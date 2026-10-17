@@ -5724,6 +5724,24 @@ def test_estimator_print_data_gives_the_drawn_values(
         len(ydata) == dftable.height and np.allclose(ydata, dftable["value"], rtol=1e-6, atol=0) for ydata in drawnlines
     )
 
+    # --markers draws the line and a marker for each cell, and the table gave only the line
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        outputfile=tmp_path,
+        timedays=5,
+        plotlist=[["Te"]],
+        markers=True,
+        print_data=True,
+    )
+    output = capsys.readouterr().out
+    headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
+    dfmarkertable = pl.read_csv(io.StringIO(output[headerstart:]), separator=" ", null_values="nan")
+    dfline = dfmarkertable.filter(pl.col("points") == "line")
+    assert dfline.height == dftable.height
+    assert np.allclose(dfline["value"], dftable["value"], rtol=1e-6, atol=0)
+    assert dfmarkertable.filter(pl.col("points") == "markers").height > dfline.height
+
 
 def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.CaptureFixture[str]) -> None:
     """A script or an agent needs the units of each column, and the listing for a reader gives them by family."""

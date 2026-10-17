@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.testing as pltest
 import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from pytest_codspeed.plugin import BenchmarkFixture
@@ -1407,11 +1408,12 @@ def test_spectra_multispec_outputfile(tmp_path: Path) -> None:
     assert (tmp_path / "custom_multispec.pdf").is_file()
 
 
-def test_write_data_skips_reference_spectra(tmp_path: Path) -> None:
-    """--write_data must write one column per ARTIS model and nothing for a reference spectrum.
+def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) -> None:
+    """--write_data must write one column for each ARTIS model, and the drawn points of a reference spectrum in a table.
 
     Only the ARTIS branch produces series data, so an unset variable used to raise UnboundLocalError for a
-    reference spectrum alone, and to re-write the preceding model's spectrum as a bogus extra column after it.
+    reference spectrum alone, and to write the spectrum of the preceding model again as an incorrect extra column. A
+    reference spectrum has its own wavelength grid, and the table then left it out.
     """
     at.spectra.plot(
         argsraw=[],
@@ -1423,8 +1425,10 @@ def test_write_data_skips_reference_spectra(tmp_path: Path) -> None:
 
     dfout = pl.read_csv(tmp_path / "spec.txt", separator=" ")
     assert [col for col in dfout.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
+    dfreferences = pl.read_csv(tmp_path / "spec_references.txt", separator=" ", null_values="nan")
+    assert dfreferences["series"].n_unique() == 1
+    assert dfreferences.height > 100
 
-    # a reference spectrum on its own has nothing to write, but must still plot without error
     at.spectra.plot(
         argsraw=[],
         specpath=["2003du_20031213_3219_8822_00.txt"],
@@ -1433,6 +1437,10 @@ def test_write_data_skips_reference_spectra(tmp_path: Path) -> None:
         write_data=True,
     )
     assert (tmp_path / "refonly.pdf").is_file()
+    assert not (tmp_path / "refonly.txt").exists()
+    pltest.assert_frame_equal(
+        pl.read_csv(tmp_path / "refonly_references.txt", separator=" ", null_values="nan"), dfreferences
+    )
 
 
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
@@ -2545,7 +2553,7 @@ def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
         plotspectra.addargs, None, None, [str(modelpath), "-t", "300", "--normalised", "-yscale", "log"]
     )
     plotspectra.resolve_plot_args(args)
-    fig, axes, _, _ = plotspectra.make_plot(args)
+    fig, axes, _ = plotspectra.make_plot(args)
     fig.canvas.draw()
     assert axes[0].get_yscale() == "log"
     assert axes[0].get_ylim()[1] > 1.02
@@ -3805,7 +3813,7 @@ def test_absorption_plot_keeps_a_linear_axis() -> None:
     plotspectra.resolve_plot_args(args)
     # the automatic rule then asks for a log axis for every set of values
     with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
-        fig, axes, _, _ = plotspectra.make_plot(args)
+        fig, axes, _ = plotspectra.make_plot(args)
     assert axes[0].get_yscale() == "linear"
     assert axes[0].get_ylim()[0] < 0.0
     plt.close(fig)
@@ -4150,7 +4158,7 @@ def test_emission_plot_file_name_holds_the_vspecpol_observer(tmp_path: Path) -> 
 
     with (
         mock.patch.object(at.spectra.plotspectra, "save_figure", save_figure),
-        mock.patch.object(at.spectra.plotspectra, "draw_plot", return_value=(pl.DataFrame(), pl.DataFrame())),
+        mock.patch.object(at.spectra.plotspectra, "draw_plot", return_value={}),
     ):
         for observer in (0, 1):
             at.spectra.plot(

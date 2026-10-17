@@ -19,7 +19,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_model_folder
 from artistools.misc import get_mpiranklist
-from artistools.misc import get_runfolders
+from artistools.misc import get_run_subfolders
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import parse_range_list
@@ -71,10 +71,14 @@ def read_log_messages(logpath: Path) -> pl.DataFrame:
 
 
 def get_logfiles(modelpath: Path, ranks: Sequence[int]) -> list[Path]:
-    """Return the log of each selected rank in each run folder."""
+    """Return the log of each selected rank in each run folder.
+
+    A run that stops before it writes an estimator file has no run folder in get_runfolders, but its log can hold the
+    error. Thus the search reads each subfolder of the model folder.
+    """
     return [
         logpath
-        for folder in get_runfolders(modelpath)
+        for folder in get_run_subfolders(modelpath)
         for rank in ranks
         if (logpath := firstexisting_or_none(f"output_{rank}-0.txt", folder=folder, search_subfolders=False))
         is not None

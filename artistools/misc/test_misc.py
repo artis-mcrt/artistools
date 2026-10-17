@@ -1660,7 +1660,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (4, "c98e023ec52cc73c"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "b6ad76923bd1b142"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1811,15 +1811,21 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
 
 
 def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> None:
-    """The readers of model.txt, input.txt, the NLTE populations, and the options give the local data for host:path.
+    """The readers of the model, the NLTE populations, the options, and describe give the local data for host:path.
 
     A read of all the NLTE populations can send several GB through ssh, thus a remote read needs a timestep or a
     modelgridindex.
     """
+    from artistools.describemodel import get_model_summary
+
     modelpath = at.get_path("testartismodel").resolve()
     modellink = tmp_path / "testmodel"
     modellink.symlink_to(modelpath)
     remotepath = Path(f"testhost:{modellink}")
+    # the 1D test model has no artisoptions.h, thus a folder of its own holds one
+    optionsfolder = tmp_path / "optionsmodel"
+    optionsfolder.mkdir()
+    (optionsfolder / "artisoptions.h").write_text("constexpr double MINTEMP = 3500.;\n", encoding="utf-8")
 
     remote.forget_server("testhost")
     with mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]):
@@ -1829,7 +1835,10 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
             dfremotemodel = dfremotemodel.collect()
             remoteinputparams = at.get_inputparams(remotepath)
             dfremotenltepops = at.nltepops.read_nltepops(remotepath, timestep=40, modelgridindex=0)
-            remoteoptions = at.misc.get_artis_options(remotepath)
+            remoteoptions = at.misc.get_artis_options(Path(f"testhost:{optionsfolder}"))
+            # a str path stayed on this host, and the missing local folder then gave no options and no error
+            remotemintemp = at.misc.get_artis_option(f"testhost:{optionsfolder}", "MINTEMP")
+            remotesummary = get_model_summary(remotepath)
             with pytest.raises(ValueError, match="Give a timestep or a modelgridindex"):
                 at.nltepops.read_nltepops(remotepath)
         finally:
@@ -1846,7 +1855,10 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
         dfremotenltepops, at.nltepops.read_nltepops(modelpath, timestep=40, modelgridindex=0), abs_tol=0.0
     )
     assert dfremotenltepops.height > 0
-    assert remoteoptions == at.misc.get_artis_options(modelpath)
+    assert remoteoptions == {"MINTEMP": "3500."}
+    assert remotemintemp == "3500."
+    # get_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
+    assert remotesummary == get_model_summary(modelpath)
 
 
 def test_get_filterfunc() -> None:

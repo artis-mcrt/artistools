@@ -1023,7 +1023,7 @@ class SpectrumViewer:
             if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
                 return "A different option of the command keeps the emission plot on"
             _, axes, residualaxis = make_plot_figure(plotargs, fig=fig)
-            dfalldata, _ = draw_plot(plotargs, axes, residualaxis)
+            dfalldata = draw_plot(plotargs, axes, residualaxis)[""]
             return RenderedSpectrum(
                 axes=axes,
                 residualaxis=residualaxis,

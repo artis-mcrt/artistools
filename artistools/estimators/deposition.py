@@ -206,6 +206,13 @@ def aggregate_deposition_rates(
         dfestim = dfestim.filter(pl.col("init_Ye").is_between(yerange[0], yerange[1]))
 
     selectedchannels = select_deposition_channels(colnames, channels)
+    # the test of the analytic channels and the sum both read these columns, thus one .collect() reads them once
+    neededcolumns = dict.fromkeys([
+        *("timestep", "modelgridindex", "tmid_days", "mass_g", "volume", "volume_prevtimestep", "nntot"),
+        *(f"{DEPOSITIONPREFIX}{channel}" for channel in selectedchannels),
+        *(f"emission_ana_{channel}" for channel in selectedchannels if f"emission_ana_{channel}" in colnames),
+    ])
+    dfestim = dfestim.select(list(neededcolumns)).collect().lazy()
     analyticchannels = get_analytic_deposition_channels(dfestim, selectedchannels)
     montecarlochannels = [channel for channel in selectedchannels if channel not in analyticchannels]
     if analyticchannels:

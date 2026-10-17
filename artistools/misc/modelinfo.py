@@ -210,9 +210,17 @@ ARTIS_OPTION_PATTERN = re.compile(
 )
 
 
-@on_model_host
 def get_artis_options(modelpath: Path | str) -> dict[str, str]:
     """Return each constexpr option of the artisoptions.h of a model and the text of its value, or an empty dict.
+
+    on_model_host finds a remote path only in a Path argument, thus a str path becomes a Path first.
+    """
+    return read_artis_options(resolve_modelpath(modelpath))
+
+
+@on_model_host
+def read_artis_options(modelpath: Path) -> dict[str, str]:
+    """Return each constexpr option of the artisoptions.h in a model folder and the text of its value.
 
     The model folder of an ARTIS test holds artisoptions.h. The model folder of a production model holds the ARTIS
     source in the folder artis. For a local test, artis can be a link to the ARTIS repository, which holds a different
@@ -220,11 +228,7 @@ def get_artis_options(modelpath: Path | str) -> dict[str, str]:
     LEVEL_IS_NLTE, gives its parameters and its body.
     """
     optionspath = next(
-        (
-            path
-            for path in (Path(modelpath) / "artisoptions.h", Path(modelpath) / "artis" / "artisoptions.h")
-            if path.is_file()
-        ),
+        (path for path in (modelpath / "artisoptions.h", modelpath / "artis" / "artisoptions.h") if path.is_file()),
         None,
     )
     if optionspath is None:

@@ -487,6 +487,8 @@ Possible errors:
 - A maximum in a range of wavelengths can be at an edge of that range. Compare it with the maximum of the full spectrum.
 - Multiply the flux by `4 * math.pi * megaparsec_to_cm**2` to get a luminosity density. Integrate it over the
   wavelength or the frequency to get a luminosity. `megaparsec_to_cm` is in `artistools.constants`.
+- Integrate with the trapezoidal rule, e.g. `np.trapezoid`, as artistools does. A sum of the flux times the width of
+  each interval takes only one end of each interval.
 
 Example: the mean spectrum from 10 to 12 days, the wavelength of its maximum in the range from 3000 to 10000 Å, and
 its luminosity.
@@ -496,6 +498,7 @@ import math
 from pathlib import Path
 
 import artistools as at
+import numpy as np
 import polars as pl
 from artistools.constants import megaparsec_to_cm
 
@@ -507,9 +510,9 @@ print(dfspec.filter(pl.col("lambda_angstroms").is_between(3000, 10000)).top_k(1,
 lambdapeak = dfspec.top_k(1, by="f_lambda")["lambda_angstroms"].item()
 if not 3000 <= lambdapeak <= 10000:
     print(f"The maximum of the full spectrum is at {lambdapeak:.0f} Å, outside the range from 3000 to 10000 Å.")
-luminosity = (
-    dfspec.sort("nu").select(pl.col("f_nu") * pl.col("nu").diff()).sum().item() * 4 * math.pi * megaparsec_to_cm**2
-)
+dfbyfrequency = dfspec.sort("nu")
+flux = float(np.trapezoid(dfbyfrequency["f_nu"].to_numpy(), x=dfbyfrequency["nu"].to_numpy()))
+luminosity = flux * 4 * math.pi * megaparsec_to_cm**2
 print(f"luminosity in the spectrum: {luminosity:.3e} erg/s")
 ```
 
