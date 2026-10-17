@@ -57,6 +57,22 @@ plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestima
 --quiet`. Use them to check a result, or for a quick answer with no Python. A value or a column name that contains a
 space has quotes.
 
+Without `--quiet`, plotestimators and plotlightcurves also log one summary line for each drawn series. Read these
+lines before you calculate a value yourself. Examples are:
+
+- `Te: subplot 0, 540 points, x 5009 to 2.878e+04 km/s, min 3500 K at x = 1.711e+04, ..., weighted mean 8.394e+04 K`.
+  A point is a cell at a time step, and the mean has the weight of the drawn line, e.g. the mass of each cell;
+- `B mymodel: 54 points from 250.4 to 299.3 d, peak -13.12 mag at 267.9 d, Δm15 0.248 mag`.
+
+A line that starts with `WARNING:` gives a problem of the plot. Examples are:
+
+- cells at `MINTEMP` or `MAXTEMP`;
+- a peak at an edge of the time range;
+- values that the y range or a log axis does not show;
+- x bins that have no value.
+
+Give each such warning with the answer.
+
 A remote model path has the form `host:path`. Give it as `Path("host:path")`. Some readers read a `str` path on this
 computer and not on the host. These readers read a remote model on its host:
 

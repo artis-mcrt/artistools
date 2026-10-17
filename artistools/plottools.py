@@ -1448,9 +1448,14 @@ def save_figure(
 
     With --darkmode, the figure has white text and frames. A PDF file or an SVG file has a transparent background,
     and a file in a different format has a black background.
+
+    The function warns about each value that a line of the figure has outside the y range of its axes, see
+    warn_hidden_values. Each plot command saves its figure with this function, thus each command gives this warning.
     """
     from pathlib import Path
 
+    for axis in fig.axes:
+        warn_hidden_values(axis)
     show = args is not None and getattr(args, "show", False)
     openfile = args is not None and not isframe and getattr(args, "open", False)
 
@@ -1641,6 +1646,51 @@ class PrunedLogLocator(mplticker.LogLocator):
 
         # a log axis of many decades carries few major ticks, thus keep them all rather than leave too few
         return keep if self.minticks <= len(keep) < len(inview) else ticks
+
+
+def print_series_summary(seriesname: str, parts: Sequence[str], warnings: Sequence[str] = ()) -> None:
+    """Print one line that summarises a drawn series, and print each warning about the series.
+
+    An agent or a script reads the line, thus each plot command gives its summary in this one form.
+    """
+    print_detail(f"{plain_label(seriesname)}: {', '.join(parts)}")
+    for warning in warnings:
+        print_warning(f"{plain_label(seriesname)}: {warning}")
+
+
+def warn_hidden_values(axis: mplax.Axes) -> None:
+    """Print a warning for each line of the axes that has values outside the y range, which the figure does not show.
+
+    Call the function after the plot sets the limits of the axes, e.g. with -ymin and -ymax. The function reads these
+    limits. A log axis also hides each value of zero or below. The function reads only the lines that have a label. A
+    line with no label is a part of a different series, e.g. a repeated end point.
+    """
+    import numpy as np
+
+    ylow, yhigh = sorted(axis.get_ylim())
+    xlow, xhigh = sorted(axis.get_xlim())
+    islog = axis.get_yscale() == "log"
+    for line in axis.get_lines():
+        label = str(line.get_label())
+        if not label or label.startswith("_"):
+            continue
+        xvalues = np.asarray(line.get_xdata(), dtype=np.float64)
+        yvalues = np.asarray(line.get_ydata(), dtype=np.float64)
+        yvalues = yvalues[(xvalues >= xlow) & (xvalues <= xhigh) & np.isfinite(yvalues)]
+        hidden = [
+            f"{kind}: {count}"
+            for count, kind in (
+                (int((yvalues > yhigh).sum()), f"values above the top of the axis ({yhigh:.4g})"),
+                (
+                    int(((yvalues < ylow) & ((yvalues > 0.0) | (not islog))).sum()),
+                    f"values below the bottom of the axis ({ylow:.4g})",
+                ),
+                (int((yvalues <= 0.0).sum()) if islog else 0, "values of zero or below on the log axis"),
+            )
+            if count > 0
+        ]
+        if hidden:
+            print_warning(f"the figure does not show these values of '{plain_label(label)}': {'; '.join(hidden)}")
 
 
 def plain_label(label: str) -> str:

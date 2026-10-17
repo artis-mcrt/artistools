@@ -6022,6 +6022,42 @@ def test_radfield_first_timestep_takes_each_name_of_the_option(tmp_path: Path, o
     assert at.plotradfield.get_multibin_radfield_first_timestep(tmp_path) == (6, optionname)
 
 
+def test_hidden_values_of_a_line_give_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
+    """A y limit or a log axis can hide values of a series, thus the function gives a warning for these values."""
+    from artistools.plottools import warn_hidden_values
+
+    fig = mplfig.Figure()
+    axis = fig.add_subplot()
+    axis.plot([1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 10.0, 100.0], label="series")
+    # a line with no label is a part of a different series, e.g. a repeated end point
+    axis.plot([1.0, 2.0], [1000.0, 1000.0])
+    axis.set_yscale("log")
+    axis.set_ylim(0.5, 50.0)
+    warn_hidden_values(axis)
+    err = capsys.readouterr().err
+    assert "values above the top of the axis (50): 1" in err
+    assert "values of zero or below on the log axis: 1" in err
+    assert "below the bottom" not in err
+    assert err.count("does not show") == 1
+
+
+def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    """An agent reads the summary in the log, thus each line gives the values that a question about the plot needs.
+
+    In the 3D test model at 5 days, 258 cells are at MAXTEMP, which is a limit of ARTIS and not a physical value.
+    """
+    at.estimators.plot(argsraw=[], modelpath=modelpath_classic_3d, outputfile=tmp_path, timedays=5, plotlist=[["Te"]])
+    captured = capsys.readouterr()
+    assert re.search(r"  Te: subplot 0, 540 points, .*min 3500 K at x = .*max 1\.4e\+05 K", captured.out)
+    assert "Te: 258 points are at MAXTEMP" in captured.err
+    assert "Te: 44 points are at MINTEMP" in captured.err
+
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)
+    assert re.search(
+        r"B TEST MODEL: 54 points .*, peak -13\.1\d mag at 267\.9 d, Δm15 0\.2\d+ mag", capsys.readouterr().out
+    )
+
+
 def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

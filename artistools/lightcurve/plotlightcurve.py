@@ -107,6 +107,7 @@ from artistools.plottools import make_colorbar_viewingangles_colormap
 from artistools.plottools import make_frame_figure
 from artistools.plottools import make_frame_figure_with_residuals
 from artistools.plottools import print_dirbin_summary
+from artistools.plottools import print_series_summary
 from artistools.plottools import RESIDUALROWHEIGHT
 from artistools.plottools import ResidualSeries
 from artistools.plottools import save_figure
@@ -305,6 +306,41 @@ def get_reflightcurve_yerr(
 
     # a non-positive luminosity has no magnitude to draw a bar around, and inf bounds make matplotlib warn
     return [np.where(hasmag, errside, 0.0) for errside in yerr], unbounded
+
+
+def get_peak_summary(
+    time_days: npt.ArrayLike, yvalues: npt.ArrayLike, unit: str, *, ismagnitude: bool, isband: bool = False
+) -> tuple[list[str], list[str]]:
+    """Return the parts of the summary line of a drawn light curve, and its warnings.
+
+    The peak is the largest luminosity, or the smallest magnitude. The time of the peak is the rise time from the
+    explosion. For a band, Δm15 is the magnitude 15 days after the peak minus the peak magnitude. If the peak is in the
+    first two or the last two points, the true peak can be outside the time range.
+    """
+    times = np.asarray(time_days, dtype=np.float64)
+    values = np.asarray(yvalues, dtype=np.float64)
+    hasvalue = np.isfinite(values) & np.isfinite(times)
+    if not hasvalue.any():
+        return ["no finite value"], []
+    times, values = times[hasvalue], values[hasvalue]
+    peakindex = int(np.argmin(values) if ismagnitude else np.argmax(values))
+    peaktime, peakvalue = float(times[peakindex]), float(values[peakindex])
+    parts = [
+        f"{len(times)} points from {times.min():.4g} to {times.max():.4g} d",
+        f"peak {peakvalue:.4g} {unit} at {peaktime:.4g} d",
+    ]
+    if isband:
+        if peaktime + 15.0 <= times.max():
+            deltam15 = float(np.interp(peaktime + 15.0, times, values)) - peakvalue
+            parts.append(f"Δm15 {deltam15:.3g} mag")
+        else:
+            parts.append("no Δm15, because the time range ends before 15 days after the peak")
+    warnings = (
+        ["the peak is in the first two or the last two points, thus the true peak can be outside the time range"]
+        if len(times) > 4 and (peakindex < 2 or peakindex > len(times) - 3)
+        else []
+    )
+    return parts, warnings
 
 
 def plot_bol_reflightcurve(
@@ -883,6 +919,19 @@ def plot_artis_lightcurve(
             )
 
         (modelline,) = axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
+        summaryparts, summarywarnings = get_peak_summary(
+            lcdata_valid["time_days"], lcdata_valid[ycolumn], lumunit, ismagnitude=lumunit == "mag"
+        )
+        cmfcolumn_summary = ycolumn.replace("luminosity_", "luminosity_cmf_")
+        if cmfcolumn_summary in lcdata.columns and lcdata.height > 4:
+            # the observer-frame luminosity falls at the end, thus only the comoving frame shows a rise at the end
+            cmfpeakindex = lcdata[cmfcolumn_summary].fill_nan(None).arg_max() or 0
+            if cmfpeakindex > lcdata.height - 3:
+                summarywarnings.append(
+                    "the comoving-frame luminosity has its maximum at the end, thus the true peak can be after the"
+                    " time range"
+                )
+        print_series_summary(label_with_tags or linelabel or f"direction bin {dirbin}", summaryparts, summarywarnings)
         if residualseries is not None:
             residualseries.append(
                 ResidualSeries(
@@ -1324,6 +1373,10 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
                 plotkwargs["alpha"] = args.linealpha[modelnumber]
 
                 (modelline,) = axis.plot(time, brightness_in_mag, **plotkwargs)
+                summaryparts, summarywarnings = get_peak_summary(
+                    time, brightness_in_mag, "mag", ismagnitude=True, isband=True
+                )
+                print_series_summary(f"{band_name} {plotkwargs['label'] or modelname}", summaryparts, summarywarnings)
                 if residualseries is not None:
                     residualseries.append(
                         ResidualSeries(

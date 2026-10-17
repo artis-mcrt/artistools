@@ -75,6 +75,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import flatten_list
 from artistools.misc import folder_is_artis_model
 from artistools.misc import format_frame_path
+from artistools.misc import get_artis_option
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -108,6 +109,8 @@ from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
+from artistools.plottools import plain_label
+from artistools.plottools import print_series_summary
 from artistools.plottools import prune_log_ticks
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
@@ -276,6 +279,8 @@ class SeriesData(t.NamedTuple):
     dfpoints: pl.DataFrame | None
     # the default keeps the data of a host that runs an older release, which gives no name. Then no style applies
     seriesname: str = ""
+    # the statistics of the points of the series, see get_series_summary_query. A host of an older release gives none
+    summary: dict[str, t.Any] | None = None
 
 
 class SubplotSettings(t.TypedDict, total=False):
@@ -403,12 +408,51 @@ def draw_series(
         )
 
 
-def get_subplot_queries(plans: Sequence[SeriesPlan], args: argparse.Namespace) -> list[pl.LazyFrame]:
-    """Return the queries of the average lines and then of the points of every series of the subplot."""
+def get_subplot_queries(
+    plans: Sequence[SeriesPlan], args: argparse.Namespace, temperaturelimits: Mapping[str, float] | None = None
+) -> list[pl.LazyFrame]:
+    """Return the queries of the average lines, of the points, and of the summaries of every series of the subplot."""
     # -xbins 0 draws the points alone, thus it needs no average line
     linequeries = [get_line_points(plan.dfseries, args) for plan in plans] if args.xbins != 0 else []
     pointqueries = [plan.dfseries.select("xvalue", "yvalue") for plan in plans] if args.markers else []
-    return [*linequeries, *pointqueries]
+    summaryqueries = [
+        get_series_summary_query(
+            plan.dfseries, (temperaturelimits or {}) if plan.seriesname in TEMPERATURENAMES else {}
+        )
+        for plan in plans
+    ]
+    return [*linequeries, *pointqueries, *summaryqueries]
+
+
+def get_series_summary_query(dfseries: pl.LazyFrame, temperaturelimits: Mapping[str, float]) -> pl.LazyFrame:
+    """Return a query of one row with the statistics of the points of a series, for the summary in the log.
+
+    The mean takes the weight of the drawn line, e.g. the mass of each cell. A temperature at MINTEMP or MAXTEMP is a
+    limit of ARTIS and not a physical value, thus the query counts these points.
+    """
+    isvalid = pl.col("yvalue").is_not_null() & pl.col("yvalue").cast(pl.Float64).is_not_nan()
+    yvalid = pl.col("yvalue").cast(pl.Float64).filter(isvalid)
+    xvalid = pl.col("xvalue").cast(pl.Float64).filter(isvalid)
+    weightvalid = pl.col("celltsweight").cast(pl.Float64).filter(isvalid)
+    return dfseries.select(
+        pl.len().alias("pointcount"),
+        isvalid.sum().alias("valuecount"),
+        (pl.col("xvalue_binned").n_unique() - pl.col("xvalue_binned").filter(isvalid).n_unique()).alias(
+            "emptybincount"
+        ),
+        pl.col("xvalue").cast(pl.Float64).min().alias("xmin"),
+        pl.col("xvalue").cast(pl.Float64).max().alias("xmax"),
+        yvalid.min().alias("ymin"),
+        xvalid.sort_by(yvalid).first().alias("x_at_ymin"),
+        yvalid.max().alias("ymax"),
+        xvalid.sort_by(yvalid).last().alias("x_at_ymax"),
+        pl
+        .when(weightvalid.sum() != 0.0)
+        .then((yvalid * weightvalid).sum() / weightvalid.sum())
+        .otherwise(yvalid.mean())
+        .alias("weightedmean"),
+        *((yvalid == limit).sum().alias(f"at_{name}") for name, limit in temperaturelimits.items()),
+    )
 
 
 def get_series_data(
@@ -416,11 +460,15 @@ def get_series_data(
 ) -> list[SeriesData]:
     """Return the data of each series of the subplot, from the frames of the queries of get_subplot_queries."""
     linecount = len(plans) if args.xbins != 0 else 0
+    pointcount = len(plans) if args.markers else 0
     dflinepoints_of_plan: Sequence[pl.DataFrame | None] = frames[:linecount] or [None] * len(plans)
-    dfpoints_of_plan: Sequence[pl.DataFrame | None] = frames[linecount:] or [None] * len(plans)
+    dfpoints_of_plan: Sequence[pl.DataFrame | None] = frames[linecount : linecount + pointcount] or [None] * len(plans)
+    summaries = [dfsummary.row(0, named=True) for dfsummary in frames[linecount + pointcount :]]
     return [
-        SeriesData(plan.label, plan.plotkwargs, dflinepoints, dfpoints, plan.seriesname)
-        for plan, dflinepoints, dfpoints in zip(plans, dflinepoints_of_plan, dfpoints_of_plan, strict=True)
+        SeriesData(plan.label, plan.plotkwargs, dflinepoints, dfpoints, plan.seriesname, summary)
+        for plan, dflinepoints, dfpoints, summary in zip(
+            plans, dflinepoints_of_plan, dfpoints_of_plan, summaries, strict=True
+        )
     ]
 
 
@@ -1912,6 +1960,61 @@ class LineFigureData(t.NamedTuple):
     framefields: dict[str, int | str]
 
 
+# the temperatures that ARTIS limits to the range from MINTEMP to MAXTEMP
+TEMPERATURENAMES: t.Final = frozenset({"Te", "TR", "TJ"})
+
+
+def get_temperature_limits(modelpath: Path | str) -> dict[str, float]:
+    """Return MINTEMP and MAXTEMP of the artisoptions.h of a model, with no entry for a limit that it does not give."""
+    limits: dict[str, float] = {}
+    for name in ("MINTEMP", "MAXTEMP"):
+        value = get_artis_option(modelpath, name)
+        with contextlib.suppress(TypeError, ValueError):
+            limits[name] = float(str(value).rstrip("fF"))
+    return limits
+
+
+def print_line_figure_summary(figuredata: "LineFigureData", args: argparse.Namespace) -> None:
+    """Print one line with the statistics of the points of each drawn series, and a warning for each problem.
+
+    The mean takes the weight of the drawn line, e.g. the mass of each cell. A point is a cell at a timestep.
+    """
+    xunits = get_units(args.x, latex=False)
+    xunitstext = f" {xunits}" if xunits else ""
+    for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
+        for series in seriesdatas:
+            summary = series.summary
+            if summary is None:
+                continue
+            # the label of the legend can hold the units or the model, thus the line gives the name of the series
+            seriesname = series.seriesname or plain_label(series.label or "")
+            yunits = get_units(series.seriesname, latex=False) if series.seriesname else None
+            yunitstext = f" {yunits}" if yunits else ""
+            pointstext = (
+                f"{summary['valuecount']} points"
+                if summary["valuecount"] == summary["pointcount"]
+                else f"{summary['valuecount']} of {summary['pointcount']} points with a value"
+            )
+            parts = [f"subplot {subplotindex}", pointstext]
+            if summary["valuecount"]:
+                parts += [
+                    f"x {summary['xmin']:.4g} to {summary['xmax']:.4g}{xunitstext}",
+                    f"min {summary['ymin']:.4g}{yunitstext} at x = {summary['x_at_ymin']:.4g}",
+                    f"max {summary['ymax']:.4g}{yunitstext} at x = {summary['x_at_ymax']:.4g}",
+                    f"weighted mean {summary['weightedmean']:.4g}{yunitstext}",
+                ]
+            warnings = [
+                f"{summary[f'at_{name}']} points are at {name}, which is a limit of ARTIS and not a physical value"
+                for name in ("MINTEMP", "MAXTEMP")
+                if summary.get(f"at_{name}")
+            ]
+            if summary["emptybincount"]:
+                warnings.append(
+                    f"{summary['emptybincount']} x bins have no value, thus the line has a gap or ends early"
+                )
+            print_series_summary(seriesname, parts, warnings)
+
+
 def get_line_figure_data(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
@@ -1933,7 +2036,8 @@ def get_line_figure_data(
     subplotplans = [
         get_subplot_plans(timestepslist, plotitems, mgilist, modelpath, estimators, args) for plotitems in plotlist
     ]
-    queries = [get_subplot_queries(plans, args) for plans, _ in subplotplans]
+    temperaturelimits = get_temperature_limits(modelpath)
+    queries = [get_subplot_queries(plans, args, temperaturelimits) for plans, _ in subplotplans]
     # one collect_all runs the series of all the subplots in parallel
     frames = pl.collect_all([query for subplotqueries in queries for query in subplotqueries])
     subplots: list[tuple[list[SeriesData], SubplotSettings]] = []
@@ -2035,6 +2139,8 @@ def make_figure(
         outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, framename)
         outfilename = format_frame_path(outpath, **framefields, format=args.format, **slicefields)
 
+    if isinstance(figuredata, LineFigureData):
+        print_line_figure_summary(figuredata, args)
     save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
 
     return outfilename
