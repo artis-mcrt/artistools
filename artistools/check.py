@@ -115,7 +115,9 @@ def check_temperature_limits(modelpath: Path) -> tuple[str, str]:
         .filter(te.is_not_null())
         .group_by("timestep")
         .agg(
-            cellcount=pl.len(),
+            # a NaN or an infinite Te is no temperature, thus it does not count as a cell with Te
+            nonfinitecount=(~te.is_finite()).sum(),
+            cellcount=te.is_finite().sum(),
             # polars gives NaN == NaN as true, thus a limit that artisoptions.h does not give counts no cell
             atmintemp=(te == limits["MINTEMP"]).sum() if "MINTEMP" in limits else pl.lit(0, dtype=pl.UInt32),
             atmaxtemp=(te == limits["MAXTEMP"]).sum() if "MAXTEMP" in limits else pl.lit(0, dtype=pl.UInt32),
@@ -124,7 +126,11 @@ def check_temperature_limits(modelpath: Path) -> tuple[str, str]:
         .sort("timestep")
         .collect()
     )
+    nonfinitecount = int(dftimesteps["nonfinitecount"].sum())
+    dftimesteps = dftimesteps.filter(pl.col("cellcount") > 0)
     if dftimesteps.is_empty():
+        if nonfinitecount:
+            return "error", f"the estimator files hold {nonfinitecount} values of Te, and none of them is finite"
         return "not checked", "the estimator files hold no value of Te"
 
     worst = dftimesteps.sort(["atlimitfraction", "timestep"], descending=[True, False]).row(0, named=True)
@@ -142,6 +148,10 @@ def check_temperature_limits(modelpath: Path) -> tuple[str, str]:
         f" Te, {' and '.join(limittexts)}; over all {dftimesteps.height} time steps, {100 * overallfraction:.1f}% of"
         " the values of Te are at a limit, with an equal weight for each cell at each time step"
     )
+    if nonfinitecount:
+        # ARTIS writes a finite Te for each cell with matter, thus a NaN or an infinity shows a fault of the run
+        detail += f"; {nonfinitecount} values of Te are NaN or infinite, and the fractions leave them out"
+        return "error", detail
     return ("warning" if overallfraction > TEMPERATURE_LIMIT_FRACTION_MAX else "ok"), detail
 
 
@@ -272,14 +282,23 @@ def check_energy(modelpath: Path) -> tuple[str, str]:
         .select("time_days", "luminosity_erg/s")
         .collect()
     )
-    lumintegral = get_katz_integral(dflightcurve["time_days"], dflightcurve["luminosity_erg/s"])
-    depintegral = get_katz_integral(dfdeposition["tmid_days"], dfdeposition[DEPOSITIONCOLUMN] * Lsun_to_erg_per_s)
+    lumintegral, lumomitted_days = get_katz_integral(dflightcurve["time_days"], dflightcurve["luminosity_erg/s"])
+    depintegral, depomitted_days = get_katz_integral(
+        dfdeposition["tmid_days"], dfdeposition[DEPOSITIONCOLUMN] * Lsun_to_erg_per_s
+    )
     ratio = lumintegral / depintegral if depintegral > 0.0 else np.nan
     detail = (
         f"∫ t L dt = {lumintegral:.3e} erg s from light_curve.out and ∫ t Q dt = {depintegral:.3e} erg s from"
         f" {DEPOSITIONCOLUMN} of deposition.out, with the trapezoid rule over the mid times of {dfdeposition.height}"
         f" complete time steps from {tmindays:.2f} to {tmaxdays:.2f} d, give the ratio L/Q = {ratio:.3f}"
     )
+    if lumomitted_days or depomitted_days:
+        # a missing rate is not a zero, thus the integrals leave out its trapezoids, and the ratio can then be wrong
+        detail += (
+            f". The integrals leave out {lumomitted_days:.3g} d of L and {depomitted_days:.3g} d of Q with no value,"
+            " thus the ratio covers different times"
+        )
+        return "warning", detail
     isinrange = KATZ_RATIO_RANGE[0] <= ratio <= KATZ_RATIO_RANGE[1]
     if not isinrange:
         # the ratio can be correct physics, thus the detail gives the condition of the relation

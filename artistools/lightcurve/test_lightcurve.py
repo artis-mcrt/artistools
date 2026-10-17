@@ -3582,3 +3582,38 @@ def test_viewing_angle_table_gives_no_bin_that_the_file_does_not_name(capsys: py
     assert "has no dirbin column" in capsys.readouterr().err
     args.plotviewingangle = [5, 10]
     assert get_table_dirbins(dfdata, Path("old_viewing_angle_data.txt"), args) == [5, 10]
+
+
+def test_peak_summary_sorts_the_times_of_a_reference_file() -> None:
+    """A reference file can list its points in any order, and np.interp of Δm15 needs increasing times."""
+    from artistools.lightcurve.plotlightcurve import get_peak_summary
+
+    times = np.array([30.0, 10.0, 0.0, 20.0, 40.0, 5.0])
+    magnitudes = -15.0 + 0.1 * np.abs(times - 10.0)
+    sortedparts, _ = get_peak_summary(
+        np.sort(times), magnitudes[np.argsort(times)], "mag", ismagnitude=True, isband=True
+    )
+    parts, warnings = get_peak_summary(times, magnitudes, "mag", ismagnitude=True, isband=True)
+    assert parts == sortedparts
+    assert "Δm15 1.5 mag" in parts[2]
+    # the peak at 10 d is the third point in time, thus it is not at an end
+    assert not warnings
+
+
+def test_katz_integral_leaves_out_a_missing_luminosity() -> None:
+    """A null or NaN luminosity counted as zero, and the trapezoids on both sides of it added an invented energy."""
+    from artistools.lightcurve import get_katz_integral
+
+    integral, omitted_days = get_katz_integral(
+        pl.Series([1.0, 2.0, 3.0, 4.0]), pl.Series([1.0, float("nan"), 1.0, None])
+    )
+    # each trapezoid has a missing end, thus none of them counts
+    assert integral == 0.0
+    assert np.isclose(omitted_days, 3.0)
+
+    integral, omitted_days = get_katz_integral(
+        pl.Series([1.0, 2.0, 3.0, 4.0]), pl.Series([1.0, float("nan"), 1.0, 1.0])
+    )
+    # the trapezoid from 3 to 4 days is the only complete one: 0.5 (3 d + 4 d) L times 1 d, in seconds
+    assert np.isclose(integral, 0.5 * (3.0 + 4.0) * at.constants.day_to_s**2, rtol=1e-12, atol=0.0)
+    assert np.isclose(omitted_days, 2.0)

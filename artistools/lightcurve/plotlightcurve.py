@@ -338,11 +338,17 @@ def get_peak_summary(
     hasvalue = np.isfinite(values) & np.isfinite(times)
     if not hasvalue.any():
         return ["no finite value"], []
-    times, values = times[hasvalue], values[hasvalue]
+    # a reference file can list its points in any order, and the interpolation of Δm15 and the test of the ends need
+    # the order of the times
+    order = np.argsort(times[hasvalue], kind="stable")
+    times, values = times[hasvalue][order], values[hasvalue][order]
     packetcounts, relnoises = (
         (None, None)
         if packetnoise is None
-        else (np.asarray(packetnoise[0])[hasvalue], np.asarray(packetnoise[1], dtype=np.float64)[hasvalue])
+        else (
+            np.asarray(packetnoise[0])[hasvalue][order],
+            np.asarray(packetnoise[1], dtype=np.float64)[hasvalue][order],
+        )
     )
     peakindex = int(np.argmin(values) if ismagnitude else np.argmax(values))
     peaktime, peakvalue = float(times[peakindex]), float(values[peakindex])
@@ -904,8 +910,12 @@ def plot_artis_lightcurve(
             plotkwargs["color"] = None
 
         lcdata_tmin, lcdata_tmax = get_time_range_days(lcdata)
-        katz_integral = get_katz_integral(lcdata["time_days"], lcdata["luminosity_erg/s"])
-        print_detail(f"Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]")
+        katz_integral, katzomitted_days = get_katz_integral(lcdata["time_days"], lcdata["luminosity_erg/s"])
+        omittedtext = f", leaving out {katzomitted_days:.3g} days with no luminosity" if katzomitted_days else ""
+        print_detail(
+            f"Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days, trapezoid rule{omittedtext}):"
+            f" {katz_integral:.3e} [erg s]"
+        )
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid

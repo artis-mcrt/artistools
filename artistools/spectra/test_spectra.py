@@ -2752,8 +2752,32 @@ def test_polarisation_plot_writes_the_drawn_ratio(mockplot: mock.MagicMock, tmp_
     (tablepath,) = tmp_path.glob("plotpol_*.txt")
     dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
     assert dftable.columns == ["x_plotted_angstrom", "Q/I"]
-    drawn = np.asarray(mockplot.call_args.args[2], dtype=np.float64)
-    assert np.allclose(dftable["Q/I"].to_numpy(), drawn, rtol=1e-6, atol=0, equal_nan=True)
+    axis, drawnx, drawny = mockplot.call_args.args
+    drawnx, drawny = np.asarray(drawnx, dtype=np.float64), np.asarray(drawny, dtype=np.float64)
+    # the table holds the points of the axis and the nearest point outside each end
+    xlow, xhigh = sorted(axis.get_xlim())
+    lowedge = drawnx[drawnx <= xlow].max(initial=-np.inf)
+    highedge = drawnx[drawnx >= xhigh].min(initial=np.inf)
+    iskept = (drawnx >= lowedge) & (drawnx <= highedge)
+    assert np.allclose(dftable["Q/I"].to_numpy(), drawny[iskept], rtol=1e-6, atol=0, equal_nan=True)
+
+    # the axis shows -xmin to -xmax, and the table gave each wavelength of the spectrum
+    mockplot.reset_mock()
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        timedays="5",
+        stokesparam="Q/I",
+        xmin=4000.0,
+        xmax=6000.0,
+        write_data=True,
+        outputfile=tmp_path / "range",
+    )
+    (tablepath,) = (tmp_path / "range").glob("plotpol_*.txt")
+    wavelengths = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")["x_plotted_angstrom"]
+    assert (wavelengths < 4000.0).sum() <= 1
+    assert (wavelengths > 6000.0).sum() <= 1
+    assert wavelengths.is_between(4000.0, 6000.0).sum() > 0
 
 
 def test_emission_plot_takes_a_list_of_one_time(tmp_path: Path) -> None:

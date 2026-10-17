@@ -3212,9 +3212,10 @@ def test_analytic_deposition_channel_gives_the_rate_of_its_own_timestep() -> Non
 
 
 def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path: Path) -> None:
-    """A Monte Carlo channel can equal its analytic emission in the selected rows, e.g. if both are zero.
+    """The options of the run decide which deposition channels hold an analytic rate, when the options exist.
 
-    The numeric test then took it as an analytic channel, thus the options of the run decide when they exist.
+    A Monte Carlo rate differs from the analytic rate by its noise. A restart with a different scheme gives rows that
+    follow a different rule, in either direction, and the command must stop.
     """
     configured = at.estimators.deposition.get_configured_analytic_channels
     assert configured(tmp_path) is None
@@ -3235,7 +3236,7 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
         "volume_prevtimestep": [None, 2.0],
         "mass_g": [5.0, 5.0],
         "deposition_alpha": [7.0e-10, 6.0e-10],
-        "emission_ana_alpha": [7.0e-10, 6.0e-10],
+        "emission_ana_alpha": [7.1e-10, 6.2e-10],
     })
     dfalpha = at.estimators.deposition.aggregate_deposition_rates(
         dfestim, channels=["alpha"], configuredanalyticchannels=["spfission"]
@@ -3246,10 +3247,18 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
 
     # a restart with Monte Carlo alpha deposition gives the rows of its run a rate that is not the analytic rate, and
     # the analytic rule of artisoptions.h took it as the rate of its own timestep
-    dfmixed = dfestim.with_columns(deposition_alpha=pl.Series([7.0e-10, 9.0e-10]))
-    with pytest.raises(ValueError, match=r"differs from emission_ana_alpha at the timesteps \[1\]"):
+    dfmixed = dfestim.with_columns(deposition_alpha=pl.Series([7.1e-10, 9.0e-10]))
+    with pytest.raises(ValueError, match=r"gives an analytic rate for the deposition channel alpha.*timesteps \[1\]"):
         at.estimators.deposition.aggregate_deposition_rates(
             dfmixed, channels=["alpha"], configuredanalyticchannels=["spfission", "alpha"]
+        )
+
+    # a restart with instant deposition gives the rows of its run the analytic rate, and the Monte Carlo rule of
+    # artisoptions.h moved that rate back one timestep
+    dfinstantrun = dfestim.with_columns(deposition_alpha=pl.Series([7.0e-10, 6.2e-10]))
+    with pytest.raises(ValueError, match=r"gives a Monte Carlo rate for the deposition channel alpha.*timesteps \[1\]"):
+        at.estimators.deposition.aggregate_deposition_rates(
+            dfinstantrun, channels=["alpha"], configuredanalyticchannels=["spfission"]
         )
 
 

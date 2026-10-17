@@ -6371,6 +6371,25 @@ def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
     assert dfsummary["count"].item() == 2
 
 
+def test_logsummary_reads_a_compressed_copy_of_a_log_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A gzip copy of the log of a run in the model folder had a different name, and its messages counted twice."""
+    import gzip
+
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    (modelfolder / "100.slurm").mkdir(parents=True)
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    logtext = "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[error] cell 3 has no matter\n"
+    (modelfolder / "100.slurm" / "output_0-0.txt").write_text(logtext, encoding="utf-8")
+    with gzip.open(modelfolder / "output_0-0.txt.gz", "wt", encoding="utf-8") as fcopy:
+        fcopy.write(logtext)
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert dfsummary["count"].to_list() == [1]
+
+
 def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:
     """A log holds thousands of warnings of a few kinds, thus the table names each kind, its timesteps, and its cells.
 
@@ -6771,6 +6790,18 @@ def test_check_counts_the_cells_at_the_temperature_limits() -> None:
     assert status == "warning"
     assert "at the worst time step 0 (3.05 d), of the 695 cells with Te, 562 (80.9%) are at MINTEMP = 3500 K" in detail
     assert f"over all 30 time steps, {overallpercent:.1f}% of the values of Te are at a limit" in detail
+
+
+def test_check_gives_an_error_for_a_te_that_is_not_finite() -> None:
+    """A NaN Te counted as a cell with Te at no limit, thus it lowered the fraction at the limits."""
+    from artistools.check import check_temperature_limits
+
+    dfte = pl.LazyFrame({"timestep": [0, 0, 0, 1], "Te": [3500.0, 5000.0, float("nan"), float("inf")]})
+    with mock.patch("artistools.check.scan_estimators", return_value=dfte):
+        status, detail = check_temperature_limits(modelpath_classic_3d)
+    assert status == "error"
+    assert "of the 2 cells with Te, 1 (50.0%) are at MINTEMP = 3500 K" in detail
+    assert "2 values of Te are NaN or infinite" in detail
 
 
 def test_check_reads_each_log_once_and_finds_the_restarts() -> None:

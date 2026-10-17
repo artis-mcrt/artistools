@@ -356,9 +356,15 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis.set_xlabel(xlabel)
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     outpath = resolve_outputfile(args.outputfile, figname)
+    # the axis shows -xmin to -xmax, and the line to each edge of the axis needs the nearest point outside each end
+    dfvisible = df_filter_minmax_bracketed(dfdrawn, colname="x", minval=args.xmin, maxval=args.xmax).collect()
     output_data(
         args,
-        {"": dfdrawn.select(pl.col("x").alias(f"x_plotted_{args.xunit}"), pl.col(timecolname).alias(args.stokesparam))},
+        {
+            "": dfvisible.select(
+                pl.col("x").alias(f"x_plotted_{args.xunit}"), pl.col(timecolname).alias(args.stokesparam)
+            )
+        },
         outpath,
     )
     save_figure(fig, outpath, args=args)

@@ -125,27 +125,50 @@ def equals_analytic_rate(channel: str) -> pl.Expr:
     ).abs()
 
 
-def check_analytic_channels_of_each_run(dfestim: pl.LazyFrame, analyticchannels: Sequence[str]) -> None:
-    """Stop if a channel that artisoptions.h makes analytic does not equal its analytic rate in each row.
+def check_channels_of_each_run(
+    dfestim: pl.LazyFrame, analyticchannels: Sequence[str], montecarlochannels: Sequence[str]
+) -> None:
+    """Stop if the rows of a timestep do not follow the deposition scheme of artisoptions.h for a channel.
 
     The estimators join the rows of all the run folders, and artisoptions.h gives the options of one build. A restart
-    with a different PARTICLE_THERMALISATION_SCHEME gives Monte Carlo rates in the rows of its run. Such a rate belongs
-    to the timestep before its row, thus one rule for all the rows gives an incorrect rate.
+    with a different PARTICLE_THERMALISATION_SCHEME changes the rule of its rows in either direction:
+
+    - an analytic channel differs from its emission_ana_ rate in a row of a Monte Carlo run;
+    - a Monte Carlo channel equals its emission_ana_ rate in each row of a timestep of an analytic run. Monte Carlo
+      noise makes that agreement impossible, unless the rates are zero.
+
+    A Monte Carlo rate belongs to the timestep before its row, thus one rule for all the rows gives an incorrect rate.
     """
     colnames = dfestim.collect_schema().names()
-    checkedchannels = [channel for channel in analyticchannels if f"emission_ana_{channel}" in colnames]
-    if not checkedchannels:
+    checkedanalytic = [channel for channel in analyticchannels if f"emission_ana_{channel}" in colnames]
+    checkedmontecarlo = [channel for channel in montecarlochannels if f"emission_ana_{channel}" in colnames]
+    if not checkedanalytic and not checkedmontecarlo:
         return
-    dfdisagree = dfestim.select(
+    dfanalytic = dfestim.select(
         pl.col("timestep").filter(~equals_analytic_rate(channel)).unique().sort().implode().alias(channel)
-        for channel in checkedchannels
+        for channel in checkedanalytic
     ).collect()
-    for channel in checkedchannels:
-        if timesteps := dfdisagree[channel].item().to_list():
+    dfmontecarlo = (
+        dfestim
+        .group_by("timestep")
+        .agg(
+            (equals_analytic_rate(channel).all() & (pl.col(f"emission_ana_{channel}") > 0.0).any()).alias(channel)
+            for channel in checkedmontecarlo
+        )
+        .collect()
+    )
+    for scheme, channel, timesteps in [
+        *(("an analytic", channel, dfanalytic[channel].item().to_list()) for channel in checkedanalytic),
+        *(
+            ("a Monte Carlo", channel, dfmontecarlo.filter(pl.col(channel))["timestep"].sort().to_list())
+            for channel in checkedmontecarlo
+        ),
+    ]:
+        if timesteps:
             msg = (
-                f"artisoptions.h gives an analytic rate for the deposition channel {channel}, but its rate differs"
-                f" from emission_ana_{channel} at the timesteps {timesteps[:10]}. A run of a different ARTIS build can"
-                " have a different PARTICLE_THERMALISATION_SCHEME, and one rule for the rows of all the runs gives an"
+                f"artisoptions.h gives {scheme} rate for the deposition channel {channel}, but the rows of the"
+                f" timesteps {timesteps[:10]} do not follow that rule. A run of a different ARTIS build can have a"
+                " different PARTICLE_THERMALISATION_SCHEME, and one rule for the rows of all the runs gives an"
                 " incorrect rate. Select the timesteps of one run with -timestep"
             )
             raise ValueError(msg)
@@ -267,7 +290,9 @@ def aggregate_deposition_rates(
     dfestim = dfestim.select(list(neededcolumns)).collect().lazy()
     if configuredanalyticchannels is not None:
         analyticchannels = [channel for channel in selectedchannels if channel in configuredanalyticchannels]
-        check_analytic_channels_of_each_run(dfestim, analyticchannels)
+        check_channels_of_each_run(
+            dfestim, analyticchannels, [channel for channel in selectedchannels if channel not in analyticchannels]
+        )
         analyticsource = "The options of the run give an analytic rate for these deposition channels"
     else:
         analyticchannels = get_analytic_deposition_channels(dfestim, selectedchannels)

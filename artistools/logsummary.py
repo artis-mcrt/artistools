@@ -7,6 +7,7 @@ with each number replaced by N, thus the same warning for different cells and ti
 
 import argparse
 import filecmp
+import itertools
 import re
 import typing as t
 from collections.abc import Sequence
@@ -27,6 +28,7 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_detail
 from artistools.misc import print_product
 from artistools.misc import zopen
+from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.modelinfo import get_dfrankassignments
 from artistools.misc.modelinfo import get_npts_model
 from artistools.misc.modelinfo import get_ranks_of_cells_in_layout
@@ -93,27 +95,34 @@ def get_logfiles(modelpath: Path, ranks: Sequence[int] | None, cells: Sequence[i
 
 
 def get_unique_logfiles(logfiles: Sequence[Path]) -> list[Path]:
-    """Return the logs with no copy: a link to a different log, or a file with the same bytes as a different log.
+    """Return the logs with no copy: a link to a different log, or a file with the same text as a different log.
 
     A model folder can hold a copy or a link of the log of its last run, e.g. output_0-0.txt, and its messages then
     counted two times. The run subfolders come first in get_run_subfolders, thus the log of the run stays. A copy has
-    the name of its log, thus only logs of one name need a comparison, and a run of 2000 ranks stays fast.
+    the name of its log, thus only logs of one name need a comparison, and a run of 2000 ranks stays fast. The copy
+    can have a different compression, e.g. output_0-0.txt.gz, thus the name leaves out that extension.
     """
     uniquelogs: list[Path] = []
     uniquelogsofname: dict[str, list[Path]] = {}
     for logfile in logfiles:
-        samename = uniquelogsofname.setdefault(logfile.name, [])
-        isfirstoccurrence = all(
-            logfile.resolve() != uniquelog.resolve()
-            and (
-                logfile.stat().st_size != uniquelog.stat().st_size or not filecmp.cmp(logfile, uniquelog, shallow=False)
-            )
-            for uniquelog in samename
-        )
-        if isfirstoccurrence:
+        samename = uniquelogsofname.setdefault(without_compressed_extension(logfile).name, [])
+        if all(not are_copies(logfile, uniquelog) for uniquelog in samename):
             samename.append(logfile)
             uniquelogs.append(logfile)
     return uniquelogs
+
+
+def are_copies(logfile: Path, otherlogfile: Path) -> bool:
+    """Return True if two logs are one file, or if they hold the same text after their decompression."""
+    if logfile.resolve() == otherlogfile.resolve():
+        return True
+    if logfile.suffix == otherlogfile.suffix:
+        # the same compression gives the same bytes for the same text, thus a different size is a different log
+        return logfile.stat().st_size == otherlogfile.stat().st_size and filecmp.cmp(
+            logfile, otherlogfile, shallow=False
+        )
+    with zopen(logfile) as flog, zopen(otherlogfile) as fotherlog:
+        return all(line == otherline for line, otherline in itertools.zip_longest(flog, fotherlog))
 
 
 def get_folder_ranks(

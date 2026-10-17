@@ -93,15 +93,17 @@ def lum_lsun_to_mag(lum_lsun: npt.NDArray[np.floating]) -> npt.NDArray[np.floati
         return Mbol_sun - (2.5 * np.log10(lum_lsun))
 
 
-def get_katz_integral(time_days: pl.Series, luminosity_erg_per_s: pl.Series) -> float:
-    """Return the integral of t L(t) dt in erg s, with the trapezoid rule over the given times.
+def get_katz_integral(time_days: pl.Series, luminosity_erg_per_s: pl.Series) -> tuple[float, float]:
+    """Return the integral of t L(t) dt in erg s with the trapezoid rule, and the days that it leaves out.
 
-    A null or NaN luminosity counts as zero. Katz B., Kushnir D., Dong S. (2013), arXiv:1301.6766, compare this
-    integral with the same integral of the deposition rate.
+    A null or NaN luminosity is not a zero, thus the integral leaves out each trapezoid with such an end. Katz B.,
+    Kushnir D., Dong S. (2013), arXiv:1301.6766, compare this integral with the same integral of the deposition rate.
     """
-    time_s = time_days.cast(pl.Float64).to_numpy() * day_to_s
-    integrand = (luminosity_erg_per_s.cast(pl.Float64).fill_null(0.0).fill_nan(0.0).to_numpy()) * time_s
-    return float(np.trapezoid(integrand, x=time_s))
+    time = time_days.cast(pl.Float64).to_numpy()
+    integrand = luminosity_erg_per_s.cast(pl.Float64).fill_null(np.nan).to_numpy() * time * day_to_s
+    segments = 0.5 * (integrand[:-1] + integrand[1:]) * np.diff(time) * day_to_s
+    isfinitesegment = np.isfinite(segments)
+    return float(segments[isfinitesegment].sum()), float(np.abs(np.diff(time))[~isfinitesegment].sum())
 
 
 @on_model_host
