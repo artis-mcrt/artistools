@@ -335,11 +335,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         x=pl.Series(convert_angstroms_to_unit(dfspectrum["lambda_angstroms"].to_numpy(), args.xunit))
     )
 
-    if args.binflux:
-        dfbinned = bin_spectrum(dfspectrum, 5, "x", timecolname)
-        axis.plot(dfbinned["x"], dfbinned[timecolname])
-    else:
-        axis.plot(dfspectrum["x"], dfspectrum[timecolname], label=linelabel)
+    dfdrawn = bin_spectrum(dfspectrum, 5, "x", timecolname) if args.binflux else dfspectrum
+    axis.plot(dfdrawn["x"], dfdrawn[timecolname], label=None if args.binflux else linelabel)
 
     if args.ymax is None:
         args.ymax = 0.5
@@ -356,6 +353,11 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis.set_xlabel(xlabel)
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     outpath = resolve_outputfile(args.outputfile, figname)
+    output_data(
+        args,
+        {"": dfdrawn.select(pl.col("x").alias(f"x_plotted_{args.xunit}"), pl.col(timecolname).alias(args.stokesparam))},
+        outpath,
+    )
     save_figure(fig, outpath, args=args)
 
 
@@ -1204,14 +1206,7 @@ def make_spectrum_plot(
                 nseriesplotted += 1
 
         if args.print_data or args.write_data:
-            dfothers.extend(
-                pl.DataFrame({
-                    "series": str(line.get_label()),
-                    f"x_plotted_{args.xunit}": np.asarray(line.get_xdata(), dtype=np.float64),
-                    f"{args.yvariable}_plotted": np.asarray(line.get_ydata(), dtype=np.float64),
-                })
-                for line in otherlines
-            )
+            dfothers.append(get_drawn_lines_table(otherlines, args))
         if (args.print_data or args.write_data) and seriesdata is not None:
             if dfalldata.is_empty():
                 dfalldata = pl.DataFrame({"lambda_angstroms": seriesdata["lambda_angstroms"]})
@@ -1260,7 +1255,7 @@ def make_spectrum_plot(
 
         set_plot_title(axis, args.title, args)
 
-    return dfalldata, pl.concat(dfothers) if dfothers else pl.DataFrame()
+    return dfalldata, pl.concat(dfothers, how="diagonal") if dfothers else pl.DataFrame()
 
 
 def get_xy_spectrum(
@@ -1548,9 +1543,13 @@ def plot_reference_spectra(
     args: argparse.Namespace,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
     scale_to_peak: float | None,
-) -> tuple[list[Artist], list[str], float]:
-    """Draw each reference spectrum of -specpath, and return the artists, the labels, and the maximum."""
+) -> tuple[list[Artist], list[str], float, pl.DataFrame]:
+    """Draw each reference spectrum of -specpath, and return the artists, the labels, the maximum, and the points.
+
+    The points have the form of get_drawn_lines_table.
+    """
     plotobjects: list[Artist] = []
+    reflines: list[Line2D] = []
     plotobjectlabels: list[str] = []
     ymaxrefall = 0.0
     plotkwargs: dict[str, t.Any] = {}
@@ -1581,9 +1580,30 @@ def plot_reference_spectra(
         ymaxrefall = max(ymaxrefall, ymaxref)
 
         plotobjects.append(plotobj)
+        reflines.append(plotobj)
         plotobjectlabels.append(serieslabel)
 
-    return plotobjects, plotobjectlabels, ymaxrefall
+    return plotobjects, plotobjectlabels, ymaxrefall, get_drawn_lines_table(reflines, args)
+
+
+def get_drawn_lines_table(lines: Sequence[Line2D], args: argparse.Namespace) -> pl.DataFrame:
+    """Return the drawn points of each line, e.g. of a reference spectrum, with one row for each point.
+
+    A reference spectrum or a code comparison spectrum has its own wavelength grid, thus its points do not go in the
+    table of the ARTIS spectra.
+    """
+    return pl.concat(
+        [
+            pl.DataFrame({
+                "series": str(line.get_label()),
+                f"x_plotted_{args.xunit}": np.asarray(line.get_xdata(), dtype=np.float64),
+                f"{args.yvariable}_plotted": np.asarray(line.get_ydata(), dtype=np.float64),
+            })
+            for line in lines
+        ]
+        or [pl.DataFrame()],
+        how="diagonal",
+    )
 
 
 def get_emission_plot_label(
@@ -1626,8 +1646,11 @@ def make_emissionabsorption_plot(
     args: argparse.Namespace,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     scale_to_peak: float | None = None,
-) -> tuple[list[Artist], list[str], pl.DataFrame]:
-    """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model."""
+) -> tuple[list[Artist], list[str], pl.DataFrame, pl.DataFrame]:
+    """Plot the emission and absorption contribution spectra, grouped by ion/line/term for an ARTIS model.
+
+    Return the artists, their labels, the data of the model, and the points of the reference spectra.
+    """
     modelname = get_series_label(args.label, 0, get_model_name(modelpath))
 
     print_heading(get_model_logname(modelpath, modelname))
@@ -1640,7 +1663,7 @@ def make_emissionabsorption_plot(
 
     if timestepmin == timestepmax == -1:
         print(f"Can't plot {get_model_logname(modelpath, modelname)}...skipping")
-        return [], [], pl.DataFrame()
+        return [], [], pl.DataFrame(), pl.DataFrame()
 
     check_time_range_is_valid(modelpath, timemin, timemax, args.plotinvalidpart)
 
@@ -1735,7 +1758,7 @@ def make_emissionabsorption_plot(
 
     plotobjectlabels.extend([contribution.linelabel for contribution in contributions_sorted_reduced])
 
-    refobjects, reflabels, ymaxrefall = plot_reference_spectra(axis, args, filterfunc, scale_to_peak)
+    refobjects, reflabels, ymaxrefall, dfreferences = plot_reference_spectra(axis, args, filterfunc, scale_to_peak)
     plotobjects.extend(refobjects)
     plotobjectlabels.extend(reflabels)
 
@@ -1750,7 +1773,7 @@ def make_emissionabsorption_plot(
     if args.ymin is None:
         axis.set_ylim(bottom=-scalefactor * max_absorption * (1.0 + YMARGIN))
 
-    return plotobjects, plotobjectlabels, dfaxisdata
+    return plotobjects, plotobjectlabels, dfaxisdata, dfreferences
 
 
 def check_residual_args(args: argparse.Namespace) -> None:
@@ -1824,7 +1847,6 @@ def draw_plot(
     key gives the ARTIS spectra, "_references" gives the reference and code comparison spectra, and "_residuals"
     gives the statistics of the residuals.
     """
-    dfothers = pl.DataFrame()
     dfresidualstats = pl.DataFrame()
     filterfunc = get_filterfunc(args)
 
@@ -1837,7 +1859,7 @@ def draw_plot(
     residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
     if args.showemission or args.showabsorption:
         legendncol = 2
-        plotobjects, plotobjectlabels, dfalldata = make_emissionabsorption_plot(
+        plotobjects, plotobjectlabels, dfalldata, dfothers = make_emissionabsorption_plot(
             modelpath=Path(args.modelspecpaths[0]),
             axis=axes[-1],
             filterfunc=filterfunc,

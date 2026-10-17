@@ -2696,6 +2696,25 @@ def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
     assert dottedgif.is_file(), f"no gif in {list((tmp_path / 'results.v1').iterdir())}"
 
 
+def test_frames_of_a_gif_print_one_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Each frame printed its own table with its own header, thus the output of a gif was not one table."""
+    gifpath = tmp_path / "movie.gif"
+    at.estimators.plotestimators.main(
+        argsraw=[],
+        modelpath=modelpath,
+        plotlist=[["Te"]],
+        timestep="40-42",
+        makegif=True,
+        outputfile=str(gifpath),
+        print_data=True,
+        write_data=True,
+    )
+    output = capsys.readouterr().out
+    assert output.count(" velocity_kmps ") == 1
+    dftable = pl.read_csv(tmp_path / "movie.txt", separator=" ", null_values="nan")
+    assert sorted(dftable["timestep"].unique().to_list()) == ["ts040", "ts041", "ts042"]
+
+
 def test_a_compact_ion_name_reads_the_ion_stage_in_upper_case() -> None:
     """The roman numeral of an ion stage is always in upper case, and the element symbol is not.
 

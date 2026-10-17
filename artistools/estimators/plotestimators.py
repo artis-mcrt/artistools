@@ -2020,14 +2020,15 @@ def make_figure(
         outfilename = format_frame_path(outpath, **framefields, format=args.format, **slicefields)
 
     save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
-    figuretable = (
-        get_line_figure_table(figuredata, args.x)
-        if isinstance(figuredata, LineFigureData)
-        else get_image_figure_table(figuredata)
-    )
-    output_data(args, {"": figuretable}, outfilename)
 
     return outfilename
+
+
+def get_figure_table(figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace) -> pl.DataFrame:
+    """Return the table of the plotted data of a figure, for --print_data and --write_data."""
+    if isinstance(figuredata, LineFigureData):
+        return get_line_figure_table(figuredata, args.x)
+    return get_image_figure_table(figuredata)
 
 
 def get_line_figure_table(figuredata: LineFigureData, xvariable: str) -> pl.DataFrame:
@@ -3301,7 +3302,13 @@ def write_snapshot_figures(
         gifduration=1000.0 if args.makegif else None,
     )
     outputfiles = [make_figure(figuredata, args, frameset) for figuredata in figures]
-    frameset.finish(outputfiles, args)
+    productpath = frameset.finish(outputfiles, args)
+    # the fields of each frame, e.g. the timestep, are columns, thus one table holds every frame and prints one header
+    output_data(
+        args,
+        {"": pl.concat([get_figure_table(figuredata, args) for figuredata in figures], how="diagonal_relaxed")},
+        productpath or outputfiles[0],
+    )
 
 
 def resolve_positional_args(args: argparse.Namespace) -> None:
@@ -3566,6 +3573,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     vars(args).update(changedargs)
 
     if args.x in TIME_XVARIABLES:
-        make_figure(figures[0], args)
+        outfilename = make_figure(figures[0], args)
+        output_data(args, {"": get_figure_table(figures[0], args)}, outfilename)
     else:
         write_snapshot_figures(args, figures, timesteps_included)
