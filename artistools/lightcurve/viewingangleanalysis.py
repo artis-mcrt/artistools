@@ -369,15 +369,19 @@ def set_scatterplot_plotkwargs(
     return plotkwargsviewingangles, plotkwargsangleaveraged
 
 
-def get_table_dirbins(dfdata: pl.DataFrame) -> list[int]:
+def get_table_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argparse.Namespace) -> list[int]:
     """Return the direction bin of each row of a viewing angle data file for the table of --print_data.
 
-    An older file holds no dirbin column, and its rows then take their row numbers. get_datafile_dirbins stops
-    with an error for such a file, but a plot with no colour bar needs no direction bin.
+    A file of the current version holds a dirbin column. For an older file, get_datafile_dirbins gives the bins of the
+    plot from the selection. It stops with an error if the selection does not give a bin for each row. A plot with no
+    colour bar needs no direction bin, thus the rows then take their row numbers.
     """
     if "dirbin" in dfdata.columns:
         return dfdata["dirbin"].cast(pl.Int64).to_list()
-    return list(range(dfdata.height))
+    try:
+        return get_datafile_dirbins(dfdata, datafilename, args)
+    except ValueError:
+        return list(range(dfdata.height))
 
 
 def get_datafile_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argparse.Namespace) -> list[int]:
@@ -487,7 +491,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
             pl.DataFrame(
                 [
                     *zip(
-                        get_table_dirbins(viewing_angle_plot_data),
+                        get_table_dirbins(viewing_angle_plot_data, datafilename, args),
                         xvalues_viewingangles,
                         band_peak_mag_viewing_angles,
                         strict=True,
@@ -595,7 +599,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         dfplotted.append(
             dfdata.select(
                 pl.lit(modelname).alias("model"),
-                pl.Series("dirbin", get_table_dirbins(viewing_angle_plot_data), dtype=pl.Int64),
+                pl.Series("dirbin", get_table_dirbins(viewing_angle_plot_data, datafilename, args), dtype=pl.Int64),
                 pl.all(),
             )
         )

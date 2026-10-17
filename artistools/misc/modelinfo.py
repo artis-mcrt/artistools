@@ -206,8 +206,9 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
 # a value option, e.g. "constexpr double MINTEMP = 3500.;" or a value on the next line, an option with no value, e.g.
 # "constexpr std::optional<double> GAMMA_USE_KAPPA_GREY;", and the start of a function option, e.g.
 # "constexpr bool LEVEL_IS_NLTE(int element_z, int ionstage, int level) {"
+# The type is the text up to the name, e.g. "std::array<int, 2>" or "const char*"
 ARTIS_OPTION_PATTERN = re.compile(
-    r"^[ \t]*constexpr\s+(?:enum\s+)?([\w:<>]+)\s+(\w+)\s*(\([^)]*\)\s*\{|=\s*[^;]*;|;)", re.MULTILINE
+    r"^[ \t]*constexpr\s+(?:enum\s+)?([^=;(\n]+?)[\s*&]+(\w+)\s*(\([^)]*\)\s*\{|=\s*[^;]*;|;)", re.MULTILINE
 )
 
 

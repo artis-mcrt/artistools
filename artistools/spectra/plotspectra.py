@@ -780,8 +780,11 @@ def plot_artis_spectrum(
     xunit: str = "angstrom",
     residualseries: list[ResidualSeries] | None = None,
     **plotkwargs: t.Any,
-) -> pl.DataFrame | None:
-    """Plot an ARTIS output spectrum. The data plotted are also returned as a DataFrame."""
+) -> list[pl.DataFrame] | None:
+    """Plot an ARTIS output spectrum, and return the plotted data with one table for each wavelength grid.
+
+    The function returns None if it draws no series, and an empty list if args asks for no data output.
+    """
     modelpath = Path(modelpath)
     if path_is_file(modelpath):  # handle e.g. modelpath = 'modelpath/spec.out'
         print_warning(f"ignoring filename of {modelpath.name}")
@@ -1056,28 +1059,42 @@ def plot_artis_spectrum(
         return None
 
     if not (args.print_data or args.write_data):
-        # the caller counts a frame that is not None as a drawn series, and the data output alone
-        # reads the columns. One table needs one wavelength grid, which a plot does not need
-        return pl.DataFrame()
+        # the caller counts a value that is not None as a drawn series, and the data output alone reads the tables
+        return []
 
     # f_lambda is per Angstrom at 1 Mpc. The plotted columns give the values of the plot, thus they follow
-    # -distmpc, --normalised, -xunit, and -yvariable
-    dfseriesdata = pl.DataFrame({
-        "lambda_angstroms": drawnseries[0][1]["lambda_angstroms"],
-        f"x_plotted_{args.xunit}": drawnseries[0][1]["x"],
-    })
+    # -distmpc, --normalised, -xunit, and -yvariable. --shownoise draws the band y * (1 +- relnoise)
+    xcolumn = f"x_plotted_{args.xunit}"
+    gridtables: list[pl.DataFrame] = []
     for seriessuffix, dfspectrum in drawnseries:
-        if not np.allclose(dfseriesdata["lambda_angstroms"], dfspectrum["lambda_angstroms"].to_numpy()):
-            exit_with_error(
-                "--print_data and --write_data give one table, and the drawn series have different wavelength grids",
-                "Remove --print_data and --write_data, or give one direction bin and one epoch",
-            )
-        dfseriesdata = dfseriesdata.with_columns(
-            dfspectrum["f_lambda"].alias(f"f_lambda{seriessuffix}"),
-            dfspectrum["y"].alias(f"{args.yvariable}_plotted{seriessuffix}"),
+        hasnoise = args.shownoise and "yrelnoise" in dfspectrum.columns
+        add_to_grid_tables(
+            gridtables,
+            dfspectrum.select(
+                "lambda_angstroms",
+                pl.col("x").alias(xcolumn),
+                pl.col("f_lambda").alias(f"f_lambda{seriessuffix}"),
+                pl.col("y").alias(f"{args.yvariable}_plotted{seriessuffix}"),
+                *([pl.col("yrelnoise").alias(f"{args.yvariable}_relnoise{seriessuffix}")] if hasnoise else []),
+            ),
+            xcolumn,
         )
 
-    return dfseriesdata
+    return gridtables
+
+
+def add_to_grid_tables(gridtables: list[pl.DataFrame], dfseries: pl.DataFrame, xcolumn: str) -> None:
+    """Add the columns of a series to the table of its wavelength grid, or start a table for a new grid.
+
+    Two models or two direction bins can have different wavelength grids, and one wide table holds one grid.
+    """
+    serieslambdas = dfseries["lambda_angstroms"].to_numpy()
+    for index, table in enumerate(gridtables):
+        tablelambdas = table["lambda_angstroms"].to_numpy()
+        if tablelambdas.shape == serieslambdas.shape and np.allclose(tablelambdas, serieslambdas):
+            gridtables[index] = table.with_columns(dfseries.drop("lambda_angstroms", xcolumn))
+            return
+    gridtables.append(dfseries)
 
 
 def check_codecomparison_args(args: argparse.Namespace) -> None:
@@ -1116,14 +1133,14 @@ def make_spectrum_plot(
     args: argparse.Namespace,
     scale_to_peak: float | None = None,
     residualseries: list[ResidualSeries] | None = None,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
+) -> tuple[list[pl.DataFrame], pl.DataFrame]:
     """Plot the reference spectra and the ARTIS spectra, and return the data of each type.
 
-    residualseries takes each drawn series for a residual panel. A reference spectrum, a code comparison spectrum, and
-    a filter curve of --showfilterfunctions have their own wavelength grids. Thus a second table holds their points,
-    with one row for each point.
+    The ARTIS spectra give one wide table for each wavelength grid. residualseries takes each drawn series for a
+    residual panel. A reference spectrum, a code comparison spectrum, and a filter curve of --showfilterfunctions have
+    their own wavelength grids. Thus a different table holds their points, with one row for each point.
     """
-    dfalldata = pl.DataFrame()
+    gridtables: list[pl.DataFrame] = []
     dfothers: list[pl.DataFrame] = []
     nseriesplotted = 0
 
@@ -1147,7 +1164,7 @@ def make_spectrum_plot(
 
         # only an ARTIS spectrum produces writable series data. Reset it every iteration, so that a reference
         # spectrum neither reads an unset variable nor re-writes the previous model's spectrum under its own name
-        seriesdata: pl.DataFrame | None = None
+        seriesdata: list[pl.DataFrame] | None = None
         otherlines: list[Line2D] = []
         if path_is_reference_spectrum(specpath):
             # reference spectrum
@@ -1213,35 +1230,24 @@ def make_spectrum_plot(
 
         if args.print_data or args.write_data:
             dfothers.append(get_drawn_lines_table(otherlines, args))
-        if (args.print_data or args.write_data) and seriesdata is not None:
-            if dfalldata.is_empty():
-                dfalldata = pl.DataFrame({"lambda_angstroms": seriesdata["lambda_angstroms"]})
-            else:
-                # one table holds one wavelength column, thus each model must give the same wavelengths
-                lambda_first = dfalldata["lambda_angstroms"].to_numpy()
-                lambda_this = seriesdata["lambda_angstroms"].to_numpy()
-                if lambda_first.shape != lambda_this.shape or not np.allclose(lambda_first, lambda_this):
-                    exit_with_error(
-                        f"--print_data and --write_data give one table, and {get_model_name(specpath)} has a different"
-                        " wavelength grid from the model before it",
-                        "Remove --print_data and --write_data, or give models with the same wavelength grid",
-                    )
-            # the plotted x column is the same for every model, thus the table holds it once
+        if seriesdata:
+            # one column for each model, direction bin, and panel, e.g. f_lambda.mymodel_dirbin05_300d
             xcolumn = f"x_plotted_{args.xunit}"
-            if xcolumn not in dfalldata.columns:
-                dfalldata = dfalldata.with_columns(seriesdata[xcolumn])
-
-            # one column for each direction bin and each panel, e.g. f_lambda.mymodel_dirbin05_300d
-            yplotted = f"{args.yvariable}_plotted"
-            dfalldata = dfalldata.with_columns(
-                seriesdata[colname].alias(
-                    f"f_lambda.{seriesname}{colname.removeprefix('f_lambda')}"
-                    if colname.startswith("f_lambda")
-                    else f"{yplotted}.{seriesname}{colname.removeprefix(yplotted)}"
+            for dfgrid in seriesdata:
+                add_to_grid_tables(
+                    gridtables,
+                    dfgrid.select(
+                        "lambda_angstroms",
+                        xcolumn,
+                        *(
+                            pl.col(colname).alias(f"{prefix}.{seriesname}{suffix}")
+                            for colname in dfgrid.columns
+                            if colname not in {"lambda_angstroms", xcolumn}
+                            for prefix, suffix in [split_series_column(colname, args.yvariable)]
+                        ),
+                    ),
+                    xcolumn,
                 )
-                for colname in seriesdata.columns
-                if colname not in {"lambda_angstroms", xcolumn}
-            )
 
     if nseriesplotted == 0:
         exit_with_error(
@@ -1267,7 +1273,15 @@ def make_spectrum_plot(
 
         set_plot_title(axis, args.title, args)
 
-    return dfalldata, pl.concat(dfothers, how="diagonal") if dfothers else pl.DataFrame()
+    return gridtables, pl.concat(dfothers, how="diagonal") if dfothers else pl.DataFrame()
+
+
+def split_series_column(colname: str, yvariable: str) -> tuple[str, str]:
+    """Return the quantity and the series suffix of a column of plot_artis_spectrum, e.g. ("f_lambda", "_dirbin05")."""
+    prefix = next(
+        prefix for prefix in ("f_lambda", f"{yvariable}_plotted", f"{yvariable}_relnoise") if colname.startswith(prefix)
+    )
+    return prefix, colname.removeprefix(prefix)
 
 
 def get_xy_spectrum(
@@ -1909,20 +1923,21 @@ def draw_plot(
     residualseries: list[ResidualSeries] | None = [] if residualaxis is not None else None
     if args.showemission or args.showabsorption:
         legendncol = 2
-        plotobjects, plotobjectlabels, dfalldata, dfothers = make_emissionabsorption_plot(
+        plotobjects, plotobjectlabels, dfemission, dfothers = make_emissionabsorption_plot(
             modelpath=Path(args.modelspecpaths[0]),
             axis=axes[-1],
             filterfunc=filterfunc,
             args=args,
             scale_to_peak=scale_to_peak,
         )
+        gridtables = [dfemission]
     else:
         legendncol = 1
 
         # the legend comes from the first axis that a plot used, which is axes[0] for
         # --multispecplot and axes[-1] otherwise
         specaxes = list(axes) if args.multispecplot else [axes[-1]]
-        dfalldata, dfothers = make_spectrum_plot(
+        gridtables, dfothers = make_spectrum_plot(
             args.specpath, specaxes, filterfunc, args, scale_to_peak=scale_to_peak, residualseries=residualseries
         )
         plotobjects, plotobjectlabels = specaxes[0].get_legend_handles_labels()
@@ -2004,7 +2019,13 @@ def draw_plot(
         for line in leg.get_lines():
             line.set_linewidth(2.0)
 
-    return {"": dfalldata, "_references": dfothers, "_residuals": dfresidualstats}
+    return {
+        "": gridtables[0] if gridtables else pl.DataFrame(),
+        # a model with a different wavelength grid gets its own table
+        **{f"_grid{index}": dfgrid for index, dfgrid in enumerate(gridtables[1:], start=2)},
+        "_references": dfothers,
+        "_residuals": dfresidualstats,
+    }
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

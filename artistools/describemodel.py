@@ -113,7 +113,13 @@ def get_output_lines(modelpath: Path) -> list[str]:
     lines = [f"run folders with estimators: {', '.join(runfoldernames) or 'none'}"]
     for kind, filenameformat in (("estimators", "estimators_{mpirank:04d}.out"), ("nlte", "nlte_{mpirank:04d}.out")):
         rankcount = sum(len(get_rank_outputfiles(folder, filenameformat)) for folder in runfolders)
-        lines.append(f"{kind}: {rankcount} rank files")
+        # a run can join the files of its ranks into one file, which the readers of the rank files also read
+        allrankscount = sum(
+            firstexisting_or_none(f"{kind}_allranks.out", folder=folder, search_subfolders=False) is not None
+            for folder in runfolders
+        )
+        alltext = f", {allrankscount} files of all ranks ({kind}_allranks.out)" if allrankscount else ""
+        lines.append(f"{kind}: {rankcount} rank files{alltext}")
 
     packetcount = count_packets_textfiles(modelpath)
     if packetcount == 0 and has_packets_files(modelpath):

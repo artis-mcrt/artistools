@@ -3034,23 +3034,51 @@ def test_filter_functions_take_the_unit_of_the_x_axis(mockplot: mock.MagicMock) 
     assert xvalues.max() < 1000.0
 
 
-def test_write_data_refuses_two_wavelength_grids(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """--write_data gives one wavelength column, thus two different grids need a message and not an AssertionError."""
+def test_write_data_gives_a_table_for_each_wavelength_grid(tmp_path: Path) -> None:
+    """--write_data stopped for two models with different wavelength grids, and the figure can draw both.
+
+    A wide table holds one grid, thus the second grid goes in its own table.
+    """
     lines = (modelpath / "spec.out").read_text(encoding="utf-8").splitlines()
     shiftedlines = [lines[0]] + [
         " ".join([f"{float(line.split()[0]) * 1.02:g}", *line.split()[1:]]) for line in lines[1:]
     ]
     shiftedmodel = make_model_with_a_new_spec_out(tmp_path / "shifted", modelpath, "\n".join(shiftedlines) + "\n")
 
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=[modelpath, shiftedmodel],
-            timedays=300,
-            write_data=True,
-            outputfile=tmp_path / "twogrids.pdf",
-        )
-    assert "different wavelength grid" in capsys.readouterr().err
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, shiftedmodel],
+        timedays=300,
+        write_data=True,
+        outputfile=tmp_path / "twogrids.pdf",
+    )
+    dffirst = pl.read_csv(tmp_path / "twogrids.txt", separator=" ", null_values="nan")
+    dfsecond = pl.read_csv(tmp_path / "twogrids_grid2.txt", separator=" ", null_values="nan")
+    # the copy of the model has the same plotlabel.txt, thus both columns have the same name
+    assert [col for col in dffirst.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
+    assert [col for col in dfsecond.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
+    assert not np.allclose(dffirst["lambda_angstroms"], dfsecond["lambda_angstroms"])
+
+
+@mock.patch.object(mplax.Axes, "fill_between", side_effect=mplax.Axes.fill_between, autospec=True)
+def test_write_data_gives_the_noise_of_shownoise(mockfill: mock.MagicMock, tmp_path: Path) -> None:
+    """--shownoise draws the band y * (1 +- r), and the table gave y alone, thus it could not give the band."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        timemin=4,
+        timemax=6.5,
+        frompackets=True,
+        shownoise=True,
+        write_data=True,
+        outputfile=tmp_path / "noise.pdf",
+    )
+    dftable = pl.read_csv(tmp_path / "noise.txt", separator=" ", null_values="nan")
+    modelname = at.get_model_name(modelpath_classic_3d)
+    y = dftable[f"flux_plotted.{modelname}"].to_numpy()
+    relnoise = np.nan_to_num(dftable[f"flux_relnoise.{modelname}"].to_numpy())
+    upper = np.asarray(mockfill.call_args.args[3], dtype=np.float64)
+    assert np.allclose(upper, y * (1 + relnoise), rtol=1e-6, atol=0)
 
 
 @pytest.mark.parametrize("zline", ["", "z: 0.1\n"])

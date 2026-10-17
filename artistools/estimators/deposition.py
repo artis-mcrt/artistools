@@ -16,6 +16,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import get_artis_options
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -78,6 +79,23 @@ def get_channel_sum_expression(channels: Sequence[str]) -> pl.Expr:
 def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] | None) -> pl.Expr:
     """Return the expression that gives the deposition rate of one cell in erg/s/cm3, for the channels or for all."""
     return get_channel_sum_expression(select_deposition_channels(colnames, channels))
+
+
+def get_configured_analytic_channels(modelpath: Path | str) -> list[str] | None:
+    """Return the deposition channels that hold an analytic rate, from the artisoptions.h of the model, or None.
+
+    ARTIS always gives the analytic rate for spontaneous fission. It also gives it for the positrons, the electrons,
+    and the alpha particles if PARTICLE_THERMALISATION_SCHEME is INSTANTFULLDEPOSITION. An ARTIS from before June
+    2024 names this option INSTANT_PARTICLE_DEPOSITION, and an ARTIS from before May 2022 has neither option.
+    """
+    options = get_artis_options(modelpath)
+    if "PARTICLE_THERMALISATION_SCHEME" in options:
+        instantdeposition = "INSTANTFULLDEPOSITION" in options["PARTICLE_THERMALISATION_SCHEME"]
+    elif "INSTANT_PARTICLE_DEPOSITION" in options:
+        instantdeposition = options["INSTANT_PARTICLE_DEPOSITION"] == "true"
+    else:
+        return None
+    return ["spfission", *(("positron", "electron", "alpha") if instantdeposition else ())]
 
 
 def get_analytic_deposition_channels(dfestim: pl.LazyFrame, channels: Sequence[str]) -> list[str]:
@@ -175,6 +193,7 @@ def aggregate_deposition_rates(
     timesteps: Sequence[int] | None = None,
     channels: Sequence[str] | None = None,
     yerange: tuple[float, float] | None = None,
+    configuredanalyticchannels: Sequence[str] | None = None,
 ) -> pl.DataFrame:
     """Return the deposition rate per unit volume, per ion, and per unit mass of each timestep.
 
@@ -188,6 +207,10 @@ def aggregate_deposition_rates(
     the volume, and the mass of a row cover one set of cells.
 
     An init_Ye range keeps the cells whose init_Ye is inside it. Both ends of the range count.
+
+    configuredanalyticchannels gives the analytic channels from the options of the run, see
+    get_configured_analytic_channels. Without it, a channel that equals its emission_ana_ column in each row is
+    analytic. A Monte Carlo channel can also agree, e.g. when both are zero in the selected rows.
     """
     colnames = dfestim.collect_schema().names()
     if "nntot" not in colnames:
@@ -213,12 +236,20 @@ def aggregate_deposition_rates(
         *(f"emission_ana_{channel}" for channel in selectedchannels if f"emission_ana_{channel}" in colnames),
     ])
     dfestim = dfestim.select(list(neededcolumns)).collect().lazy()
-    analyticchannels = get_analytic_deposition_channels(dfestim, selectedchannels)
+    if configuredanalyticchannels is not None:
+        analyticchannels = [channel for channel in selectedchannels if channel in configuredanalyticchannels]
+        analyticsource = "The options of the run give an analytic rate for these deposition channels"
+    else:
+        analyticchannels = get_analytic_deposition_channels(dfestim, selectedchannels)
+        analyticsource = (
+            "artisoptions.h gives no particle thermalisation scheme, and these deposition channels equal their"
+            " analytic emission"
+        )
     montecarlochannels = [channel for channel in selectedchannels if channel not in analyticchannels]
     if analyticchannels:
         print_detail(
-            "These deposition channels equal their analytic emission, thus each one gives the rate of the timestep of"
-            f" its own row: {', '.join(analyticchannels)}"
+            f"{analyticsource}, thus each one gives the rate of the timestep of its own row:"
+            f" {', '.join(analyticchannels)}"
         )
 
     dfrates_analytic = dfestim.select(
@@ -300,7 +331,9 @@ def get_deposition_rates(
     readtimesteps = None if timesteps is None else tuple({*timesteps} | {timestep + 1 for timestep in timesteps})
     dfestim = scan_estimators(modelpath, timestep=readtimesteps, join_modeldata=True, verbose=verbose)
 
-    return aggregate_deposition_rates(dfestim, timesteps, channels, yerange)
+    return aggregate_deposition_rates(
+        dfestim, timesteps, channels, yerange, configuredanalyticchannels=get_configured_analytic_channels(modelpath)
+    )
 
 
 def get_selected_timesteps(modelpath: Path | str, timedays: str | None, timestep: str | None) -> list[int] | None:

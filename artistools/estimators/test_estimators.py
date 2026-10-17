@@ -3208,6 +3208,40 @@ def test_analytic_deposition_channel_gives_the_rate_of_its_own_timestep() -> Non
     assert np.allclose(dfalpha["dep_per_volume"], np.array([7.0e-10, 6.0e-10]) / at.constants.EV_to_erg, rtol=1e-12)
 
 
+def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path: Path) -> None:
+    """A Monte Carlo channel can equal its analytic emission in the selected rows, e.g. if both are zero.
+
+    The numeric test then took it as an analytic channel, thus the options of the run decide when they exist.
+    """
+    configured = at.estimators.deposition.get_configured_analytic_channels
+    assert configured(tmp_path) is None
+    (tmp_path / "artisoptions.h").write_text(
+        "constexpr auto PARTICLE_THERMALISATION_SCHEME = ParticleThermalisationScheme::INSTANTFULLDEPOSITION;\n",
+        encoding="utf-8",
+    )
+    assert configured(tmp_path) == ["spfission", "positron", "electron", "alpha"]
+    (tmp_path / "artisoptions.h").write_text("constexpr bool INSTANT_PARTICLE_DEPOSITION = false;\n", encoding="utf-8")
+    assert configured(tmp_path) == ["spfission"]
+
+    dfestim = pl.LazyFrame({
+        "timestep": [0, 1],
+        "modelgridindex": [0, 0],
+        "tmid_days": [10.0, 11.0],
+        "nntot": [10.0, 9.0],
+        "volume": [2.0, 3.0],
+        "volume_prevtimestep": [None, 2.0],
+        "mass_g": [5.0, 5.0],
+        "deposition_alpha": [7.0e-10, 6.0e-10],
+        "emission_ana_alpha": [7.0e-10, 6.0e-10],
+    })
+    dfalpha = at.estimators.deposition.aggregate_deposition_rates(
+        dfestim, channels=["alpha"], configuredanalyticchannels=["spfission"]
+    )
+    # a Monte Carlo channel takes the rate of timestep 0 from the row of timestep 1, with the volume of timestep 0
+    assert dfalpha["timestep"].to_list() == [0]
+    assert np.isclose(dfalpha["dep_per_volume"].item(), 6.0e-10 / at.constants.EV_to_erg, rtol=1e-12)
+
+
 def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
     """The rates of a model must match a calculation that reads the estimators on its own.
 

@@ -3797,6 +3797,9 @@ def test_artis_option_function_keeps_its_nested_blocks() -> None:
         # an optional with no initialiser has no value, and the pattern gave no entry for it
         "constexpr std::optional<double> GAMMA_USE_KAPPA_GREY;\n"
         "constexpr std::int64_t NUM_PACKETS = 1e9;\n"
+        # a type with a comma, a space, or a pointer has more than one word
+        "constexpr std::array<int, 2> SELECTED_IONS = {26, 2};\n"
+        'constexpr const char *GRID_NAME = "cartesian";\n'
     )
     assert options == {
         "ION_NLEVELS_EXCITED_NLTE": (
@@ -3805,4 +3808,6 @@ def test_artis_option_function_keeps_its_nested_blocks() -> None:
         "MINTEMP": "3500.",
         "GAMMA_USE_KAPPA_GREY": "std::nullopt",
         "NUM_PACKETS": "1e9",
+        "SELECTED_IONS": "{26, 2}",
+        "GRID_NAME": '"cartesian"',
     }

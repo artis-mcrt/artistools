@@ -5994,6 +5994,16 @@ def test_describe_finds_the_light_curve_in_a_run_folder(tmp_path: Path) -> None:
     assert "light_curve.out: 12411848.slurm/light_curve.out" in lines
     assert "deposition.out: none" in lines
 
+    # a run can join the estimator files of its ranks into one file, and the summary counted the rank files alone
+    allranksmodel = tmp_path / "allranksmodel"
+    (allranksmodel / "12411848.slurm").mkdir(parents=True)
+    shutil.copy(modelpath / "input.txt", allranksmodel / "input.txt")
+    (allranksmodel / "12411848.slurm" / "estimators_allranks.out").write_text(
+        "timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e5\n\n", encoding="utf-8"
+    )
+    lines = get_output_lines(allranksmodel)
+    assert "estimators: 0 rank files, 1 files of all ranks (estimators_allranks.out)" in lines
+
 
 @pytest.mark.parametrize(
     "optionname", ["MULTIBIN_RADFIELD_FIRST_TIMESTEP", "FIRST_BINNED_RADFIELD_TIMESTEP", "FIRST_NLTE_RADFIELD_TIMESTEP"]

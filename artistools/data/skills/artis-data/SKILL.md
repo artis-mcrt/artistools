@@ -133,8 +133,11 @@ Possible errors:
 - ARTIS writes the Monte Carlo deposition rate of time step n into the row of time step n + 1. It divides the rate by
   the volume of time step n. Thus the row of n + 1 gives the rate of time step n in erg/s/cm^3. For the rate of the
   cell in erg/s, multiply that value by `volume_prevtimestep`. The last time step has no Monte Carlo rate.
-- `deposition_gamma` always holds a Monte Carlo rate. Another `deposition_` column that equals its `emission_ana_`
-  column in the same row holds an analytic rate. That rate is for the time step of its own row.
+- `deposition_gamma` always holds a Monte Carlo rate, and `deposition_spfission` always holds an analytic rate. An
+  analytic rate is for the time step of its own row. The positrons, the electrons, and the alpha particles have an
+  analytic rate if `PARTICLE_THERMALISATION_SCHEME` is `INSTANTFULLDEPOSITION`, or if `INSTANT_PARTICLE_DEPOSITION`
+  is true in an older ARTIS. `at.estimators.deposition.get_configured_analytic_channels(modelpath)` gives these
+  channels.
 - A statistic without a weight gives the same weight to a small outer cell and to a large inner cell. If the user
   asks for a typical value, also give a mean with the weight `mass_g`.
 
