@@ -886,6 +886,8 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         assert isinstance(axis, mplax.Axes)
 
         dfpoints: list[pl.DataFrame] = []
+        # the table has one row for each packet, which a large model has millions of, thus only a data output makes it
+        makestable = args.print_data or args.write_data
         for refdataindex, (refdatakeys, refdatatimes, refdatapoints) in enumerate(refdata):
             timeindex = int(np.abs(refdatatimes - tmid).argmin())
             timeindexb = int(np.abs(refdatatimes - tmid - 50).argmin())
@@ -901,28 +903,30 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                     lw=2,
                     label=reflabel,
                 )
-                dfpoints.append(
-                    get_emitting_region_table(
-                        reflabel,
-                        "reference",
-                        float(refdatatimes[drawnindex]),
-                        refdatapoints[drawnindex]["ne"],
-                        refdatapoints[drawnindex]["temp"],
+                if makestable:
+                    dfpoints.append(
+                        get_emitting_region_table(
+                            reflabel,
+                            "reference",
+                            float(refdatatimes[drawnindex]),
+                            refdatapoints[drawnindex]["ne"],
+                            refdatapoints[drawnindex]["temp"],
+                        )
                     )
-                )
 
         for modelindex, emdata in enumerate(emdata_all):
             emfeatures = get_labelandlineindices(args.modelpath[modelindex], tuple(args.emfeaturesearch))
-            dfpoints.extend(
-                get_emitting_region_table(
-                    get_model_name(args.modelpath[modelindex]),
-                    feature.colname,
-                    tmid,
-                    emdata[tmid, feature.colname]["em_log10nne"],
-                    emdata[tmid, feature.colname]["em_Te"],
+            if makestable:
+                dfpoints.extend(
+                    get_emitting_region_table(
+                        get_model_name(args.modelpath[modelindex]),
+                        feature.colname,
+                        tmid,
+                        emdata[tmid, feature.colname]["em_log10nne"],
+                        emdata[tmid, feature.colname]["em_Te"],
+                    )
+                    for feature in emfeatures
                 )
-                for feature in emfeatures
-            )
 
             em_log10nne = np.concatenate([emdata[tmid, feature.colname]["em_log10nne"] for feature in emfeatures])
             em_Te = np.concatenate([emdata[tmid, feature.colname]["em_Te"] for feature in emfeatures])

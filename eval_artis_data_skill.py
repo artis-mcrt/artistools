@@ -202,15 +202,16 @@ QUESTIONS = (
 
 
 def answer_is_correct(answer: str, expected: float | str, rtol: float) -> bool:
-    """Return True when the answer is the expected name, or its first number agrees with the expected number.
+    """Return True when the answer is the expected name, or its one number agrees with the expected number.
 
     A name must be the whole answer, because an answer such as "non-thermal, not photoionisation" names both
     choices. Quotes, backticks, and punctuation at the ends do not count.
     """
     if isinstance(expected, str):
         return answer.strip().strip("`'\".,;:").strip().lower() == expected.lower()
+    # the commas of a large number, e.g. 1,234, are not separators. An answer such as "5, not 7" gives two numbers
     numbers = RE_NUMBER.findall(answer.replace(",", ""))
-    return bool(numbers) and bool(np.isclose(float(numbers[0]), expected, rtol=rtol, atol=0.0))
+    return len(numbers) == 1 and bool(np.isclose(float(numbers[0]), expected, rtol=rtol, atol=0.0))
 
 
 def ask_agent(question: Question, workfolder: Path, model: str | None, env: dict[str, str]) -> dict[str, t.Any]:
