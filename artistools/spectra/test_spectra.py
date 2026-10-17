@@ -4080,7 +4080,7 @@ def test_host_merge_of_flux_contributions_keeps_the_plot(
 ) -> None:
     """The host merges the small series of emission.out into "Other", and the plot and its printed list must not change.
 
-    sort_and_reduce_flux_contribution_list prints the 20 largest other series, thus the host keeps them.
+    print_contribution_table names the 3 largest other series, thus the host keeps them.
     """
     rng = np.random.default_rng(1)
     arraylambda = np.linspace(3000.0, 9000.0, 5)
@@ -4092,8 +4092,8 @@ def test_host_merge_of_flux_contributions_keeps_the_plot(
     ]
 
     merged = atspectra.merge_other_flux_series(series, arraynu, 4, fixedionlist)
-    # the host sends the kept series, the 20 printed other series, and "Other"
-    assert len(merged) <= 4 + 20 + 1
+    # the host sends the kept series, the 3 named other series, and "Other"
+    assert len(merged) <= 4 + 3 + 1
 
     reduced_of_source = []
     totals = []

@@ -8,7 +8,6 @@ from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
-from operator import itemgetter
 from pathlib import Path
 from types import MappingProxyType
 
@@ -389,41 +388,6 @@ def print_spectrum_summary(
             f"luminosity of the drawn range {flux_onempc * 4 * math.pi * megaparsec_to_cm**2:.4g} erg/s",
         ],
     )
-
-
-def print_main_contributions(
-    modelname: str,
-    contributions: Sequence[FluxContributionTuple],
-    arraylambda_angstroms: npt.NDArray[np.floating],
-    xlimits: tuple[float, float],
-    args: argparse.Namespace,
-) -> None:
-    """Log the five drawn series with the largest share of the emission, and of the absorption, in the drawn range.
-
-    A share is the integral of f_lambda of the series over the drawn wavelengths divided by the sum of these integrals
-    of all the drawn series. The series "Other" holds the series that the plot does not draw alone.
-    """
-    lambda_min, lambda_max = convert_xlimits_to_lambda_range(*xlimits, args.xunit)
-    inrange = (arraylambda_angstroms >= lambda_min) & (arraylambda_angstroms <= lambda_max)
-    if inrange.sum() < 2:
-        return
-    lambdas = arraylambda_angstroms[inrange]
-    for kind, show in (("emission", args.showemission), ("absorption", args.showabsorption)):
-        if not show:
-            continue
-        integrals = {
-            contribution.linelabel: abs(
-                float(np.trapezoid(np.asarray(getattr(contribution, f"array_flambda_{kind}"))[inrange], x=lambdas))
-            )
-            for contribution in contributions
-        }
-        total = sum(integrals.values())
-        if total <= 0.0:
-            continue
-        largest = sorted(integrals.items(), key=itemgetter(1), reverse=True)[:5]
-        print_series_summary(
-            f"{kind} of {modelname}", [f"{plain_label(label)} {integral / total:.1%}" for label, integral in largest]
-        )
 
 
 def plot_reference_spectrum(
@@ -1843,8 +1807,6 @@ def make_emissionabsorption_plot(
             fixedionlist=args.fixedionlist,
             hideother=args.hideother,
         )
-
-    print_main_contributions(modelname, contributions_sorted_reduced, arraylambda_angstroms, (xmin, xmax), args)
 
     plotobjectlabels: list[str] = []
     plotobjects: list[Artist] = []

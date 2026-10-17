@@ -6102,16 +6102,16 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
     )
     assert np.isclose(float(spectrummatch.group(4)), expected_luminosity, rtol=1e-3)
 
-    # --showemission gives the five series with the largest share of the emission
+    # --showemission gives one line for each drawn series with its share, and none for a series with no flux
     at.spectra.plot(
         argsraw=[], specpath=[modelpath_classic_3d], timedays="5", showemission=True, outputfile=tmp_path / "em.pdf"
     )
-    emissionmatch = re.search(r"emission of test-classicmode_3d: (.*)", capsys.readouterr().out)
-    assert emissionmatch is not None
-    shares = [float(share.rstrip("%")) for share in re.findall(r"([\d.]+)%", emissionmatch.group(1))]
-    assert len(shares) == 5
-    assert shares == sorted(shares, reverse=True)
-    assert sum(shares) <= 100.0
+    out = capsys.readouterr().out
+    shares = [float(share) for share in re.findall(r"^    \S.*? emission [\d.e+-]+ \( *([\d.]+)%\)", out, re.MULTILINE)]
+    assert shares[:2] == [68.3, 21.6]
+    assert 99.0 < sum(shares) <= 100.0
+    assert "absorption 0.0" not in out
+    assert "drawn series have no emission and no absorption" in out
 
 
 def test_logsummary_reads_a_run_that_stopped_before_its_estimators(

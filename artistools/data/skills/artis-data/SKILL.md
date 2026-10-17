@@ -65,8 +65,9 @@ Read these lines before you calculate a value yourself. Examples are:
 - `B mymodel: 54 points from 250.4 to 299.3 d, peak -13.12 mag at 267.9 d, Δm15 0.248 mag`;
 - `mymodel: 518 points from 2500 to 1.9e+04 angstrom, peak flux 5.121e-16 at 4648 angstrom, luminosity of the drawn
   range 2.763e+40 erg/s`. The luminosity is for the drawn wavelengths alone, and not for the full spectrum;
-- `emission of mymodel: Co II 68.5%, free-free 21.7%, ...` with `--showemission`, the five series with the largest
-  share of the emission in the drawn range.
+- with `--showemission` or `--showabsorption`, one line for each drawn series with its integrated flux at 1 Mpc
+  and its share, e.g. `Co II      emission 3.48e-08 (68.3%)  absorption 1.50e-08 (96.7%)`, and one line for
+  the series in "Other".
 
 A line that starts with `WARNING:` gives a problem of the plot. Examples are:
 
