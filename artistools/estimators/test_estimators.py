@@ -3130,6 +3130,36 @@ def test_deposition_rates_read_the_next_timestep() -> None:
     )
 
 
+def test_analytic_deposition_channel_gives_the_rate_of_its_own_timestep() -> None:
+    """An analytic channel equals its emission_ana_ column, and ARTIS calculates it for the timestep of its own row.
+
+    The command moved each channel back one timestep, which is correct only for a Monte Carlo channel, e.g. gamma.
+    """
+    dfestim = pl.LazyFrame({
+        "timestep": [0, 1],
+        "modelgridindex": [0, 0],
+        "tmid_days": [10.0, 11.0],
+        "nntot": [10.0, 9.0],
+        "volume": [2.0, 3.0],
+        "volume_prevtimestep": [None, 2.0],
+        "mass_g": [5.0, 5.0],
+        "deposition_gamma": [0.0, 4.0e-9],
+        "deposition_alpha": [7.0e-10, 6.0e-10],
+        "emission_ana_alpha": [7.0e-10, 6.0e-10],
+    })
+
+    dftable = at.estimators.deposition.aggregate_deposition_rates(dfestim)
+    # timestep 0 takes gamma from the row of timestep 1, and alpha from its own row with its own volume
+    assert dftable["timestep"].to_list() == [0]
+    rate_erg_per_s = 4.0e-9 * 2.0 + 7.0e-10 * 2.0
+    assert np.isclose(dftable["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
+
+    # an analytic channel alone needs no later row, thus the last timestep has its rate too
+    dfalpha = at.estimators.deposition.aggregate_deposition_rates(dfestim, channels=["alpha"])
+    assert dfalpha["timestep"].to_list() == [0, 1]
+    assert np.allclose(dfalpha["dep_per_volume"], np.array([7.0e-10, 6.0e-10]) / at.constants.EV_to_erg, rtol=1e-12)
+
+
 def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
     """The rates of a model must match a calculation that reads the estimators on its own.
 

@@ -23,6 +23,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import parse_float_range
+from artistools.misc import print_detail
 from artistools.misc import print_product
 from artistools.misc import print_saved
 from artistools.misc import print_warning
@@ -42,8 +43,8 @@ def get_deposition_channels(colnames: Sequence[str]) -> list[str]:
     return sorted(name.removeprefix(DEPOSITIONPREFIX) for name in colnames if name.startswith(DEPOSITIONPREFIX))
 
 
-def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] | None) -> pl.Expr:
-    """Return the expression that gives the deposition rate of one cell in erg/s/cm3.
+def select_deposition_channels(colnames: Sequence[str], channels: Sequence[str] | None) -> list[str]:
+    """Return the deposition channels to add, e.g. gamma and alpha, or stop if the model has no rate of a channel.
 
     The command needs the rate of each cell, which the deposition_ columns hold. The estimators of a model from an
     older ARTIS version hold total_dep alone, and artistools derives that column from the heating rate. On the
@@ -63,9 +64,45 @@ def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] |
     if unknown := [channel for channel in channels if channel not in available]:
         msg = f"This model gives no deposition rate of {' and '.join(unknown)}. It holds {', '.join(available)}"
         raise ValueError(msg)
+    return channels
 
+
+def get_channel_sum_expression(channels: Sequence[str]) -> pl.Expr:
+    """Return the expression that gives the sum of the deposition rates of the channels of one cell in erg/s/cm3."""
+    if not channels:
+        return pl.lit(0.0)
     # a cell that reports no channel deposited nothing in it, thus the sum reads a null as zero
     return pl.sum_horizontal(pl.col(f"{DEPOSITIONPREFIX}{channel}") for channel in channels)
+
+
+def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] | None) -> pl.Expr:
+    """Return the expression that gives the deposition rate of one cell in erg/s/cm3, for the channels or for all."""
+    return get_channel_sum_expression(select_deposition_channels(colnames, channels))
+
+
+def get_analytic_deposition_channels(dfestim: pl.LazyFrame, channels: Sequence[str]) -> list[str]:
+    """Return the channels that hold an analytic rate, which is the rate of the timestep of their own row.
+
+    ARTIS gives the analytic rate for spontaneous fission. It also gives it for the positrons, the electrons, and the
+    alpha particles if the model sets PARTICLE_THERMALISATION_SCHEME to INSTANTFULLDEPOSITION. Then the channel equals
+    its emission_ana_ column in each row. A Monte Carlo channel, e.g. gamma, holds the rate of the timestep before its
+    row.
+    """
+    colnames = dfestim.collect_schema().names()
+    candidates = [channel for channel in channels if channel != "gamma" and f"emission_ana_{channel}" in colnames]
+    if not candidates:
+        return []
+    # ARTIS writes both columns with the format 11.5e, thus an analytic channel agrees to 6 significant digits
+    dfequal = dfestim.select(
+        (
+            (pl.col(f"{DEPOSITIONPREFIX}{channel}") - pl.col(f"emission_ana_{channel}")).abs()
+            <= 1e-5 * pl.col(f"emission_ana_{channel}").abs()
+        )
+        .all()
+        .alias(channel)
+        for channel in candidates
+    ).collect()
+    return [channel for channel in candidates if dfequal[channel].item()]
 
 
 def parse_ye_range(text: str) -> tuple[float, float]:
@@ -141,10 +178,11 @@ def aggregate_deposition_rates(
 ) -> pl.DataFrame:
     """Return the deposition rate per unit volume, per ion, and per unit mass of each timestep.
 
-    ARTIS writes the deposition rate of a timestep into the estimators of the next timestep. It
-    divides that rate by the volume of the timestep that took the energy. Thus the rate of timestep n
-    comes from the rows of timestep n + 1 and from the column volume_prevtimestep. The last timestep
-    gets no row, because only a later timestep holds that rate.
+    ARTIS writes the Monte Carlo deposition rate of a timestep into the estimators of the next timestep. It divides that
+    rate by the volume of the timestep that took the energy. Thus the rate of timestep n comes from the rows of timestep
+    n + 1 and from the column volume_prevtimestep. If the selection contains a Monte Carlo channel, the last timestep
+    gets no row, because only a later timestep holds that rate. An analytic channel, see
+    get_analytic_deposition_channels, holds the rate of its own row, and it takes the volume of that row.
 
     The join on the cell gives one row of one timestep to each cell. Thus the rate, the ion count,
     the volume, and the mass of a row cover one set of cells.
@@ -167,11 +205,36 @@ def aggregate_deposition_rates(
 
         dfestim = dfestim.filter(pl.col("init_Ye").is_between(yerange[0], yerange[1]))
 
-    dfrates = dfestim.select(
-        timestep=pl.col("timestep") - 1,
-        modelgridindex=pl.col("modelgridindex"),
-        dep_erg_per_s=get_deposition_expression(colnames, channels) * pl.col("volume_prevtimestep"),
+    selectedchannels = select_deposition_channels(colnames, channels)
+    analyticchannels = get_analytic_deposition_channels(dfestim, selectedchannels)
+    montecarlochannels = [channel for channel in selectedchannels if channel not in analyticchannels]
+    if analyticchannels:
+        print_detail(
+            "These deposition channels equal their analytic emission, thus each one gives the rate of the timestep of"
+            f" its own row: {', '.join(analyticchannels)}"
+        )
+
+    dfrates_analytic = dfestim.select(
+        "timestep", "modelgridindex", dep_analytic=get_channel_sum_expression(analyticchannels) * pl.col("volume")
     )
+    if montecarlochannels:
+        # each timestep needs the Monte Carlo rate from the row of the next timestep, thus the last timestep has none
+        dfrates = (
+            dfestim
+            .select(
+                timestep=pl.col("timestep") - 1,
+                modelgridindex=pl.col("modelgridindex"),
+                dep_erg_per_s=get_channel_sum_expression(montecarlochannels) * pl.col("volume_prevtimestep"),
+            )
+            .join(dfrates_analytic, on=("timestep", "modelgridindex"), how="left")
+            .select(
+                "timestep",
+                "modelgridindex",
+                dep_erg_per_s=pl.col("dep_erg_per_s") + pl.col("dep_analytic").fill_null(0.0),
+            )
+        )
+    else:
+        dfrates = dfrates_analytic.rename({"dep_analytic": "dep_erg_per_s"})
 
     # only a cell that holds matter has an ion. The filter also names is_finite, because a NaN
     # number density passes the comparison and gives no count
