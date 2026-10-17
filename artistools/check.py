@@ -34,9 +34,11 @@ from artistools.misc import get_model_folder
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
+from artistools.misc import path_is_dir
 from artistools.misc import print_detail
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc.remote import on_model_host
 
 STATUSES: t.Final = ("ok", "warning", "error", "not checked")
 
@@ -363,8 +365,12 @@ def run_check(checkfunction: Callable[[], tuple[str, str]]) -> tuple[str, str]:
     return status, " ".join(detail.split())
 
 
+@on_model_host
 def get_check_results(modelpath: Path, frompackets: bool = False) -> pl.DataFrame:
-    """Return one row for each check, with the columns check, status, and detail."""
+    """Return one row for each check, with the columns check, status, and detail.
+
+    The host of a remote model runs the checks, because each check reads files of the model folder.
+    """
     modelpath = get_model_folder(modelpath)
     if not modelpath.is_dir():
         msg = f"The model folder {modelpath} does not exist"
@@ -394,9 +400,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Check whether the results of an ARTIS model deserve trust, and give one row for each check."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    if not get_model_folder(args.modelpath).is_dir():
-        exit_with_error(f"The model folder {get_model_folder(args.modelpath)} does not exist", "Give a model folder")
-    dfresults = get_check_results(args.modelpath, frompackets=args.frompackets)
+    modelfolder = get_model_folder(args.modelpath)
+    if not path_is_dir(modelfolder):
+        exit_with_error(f"The model folder {modelfolder} does not exist", "Give a model folder")
+    dfresults = get_check_results(modelfolder, frompackets=args.frompackets)
     print_product(args, dfresults)
     for checkname, status, detail in dfresults.filter(pl.col("status").is_in(["warning", "error"])).iter_rows():
         print_warning(f"{checkname} ({status}): {detail}")

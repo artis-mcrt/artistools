@@ -447,6 +447,12 @@ def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> N
         make_colorbar_viewingangles(scaledmap, args, ax=axis)
 
 
+def filter_to_ylimits(dfplotted: pl.DataFrame, ycolumn: str, axis: mplax.Axes) -> pl.DataFrame:
+    """Keep the rows of a scatter table that lie inside the final y limits of the axis, e.g. from -ymin and -ymax."""
+    ylow, yhigh = sorted(axis.get_ylim())
+    return dfplotted.filter(pl.col(ycolumn).is_between(ylow, yhigh))
+
+
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     modelnames: Sequence[str], key: str, args: argparse.Namespace
 ) -> None:
@@ -555,7 +561,9 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         filename = f"{filestem}_risetime_peakmag.pdf"
     xcolumn = "risetime_days" if args.make_viewing_angle_peakmag_risetime_scatter_plot else "deltam15"
-    dftable = pl.concat(dfplotted).rename({"x": xcolumn}) if dfplotted else pl.DataFrame()
+    dftable = (
+        filter_to_ylimits(pl.concat(dfplotted).rename({"x": xcolumn}), "peakmag", ax) if dfplotted else pl.DataFrame()
+    )
     output_data(args, {"": dftable}, datafolder / filename)
     save_figure(fig, datafolder / filename, format="pdf", args=args)
 
@@ -634,7 +642,10 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     # the observations have their own columns, thus they go in a second table
     output_data(
         args,
-        {"": pl.concat(dfplotted) if dfplotted else pl.DataFrame(), "_observations": pl.DataFrame(sn_data)},
+        {
+            "": filter_to_ylimits(pl.concat(dfplotted), f"{bands[0]}max", ax) if dfplotted else pl.DataFrame(),
+            "_observations": pl.DataFrame(sn_data),
+        },
         plotname,
     )
     save_figure(fig, plotname, format="pdf", args=args)

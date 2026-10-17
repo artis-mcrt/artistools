@@ -177,6 +177,7 @@ def get_peak_columns(modelfolder: Path) -> dict[str, t.Any]:
     dflightcurve = scan_lightcurve(find_lightcurve_file(modelfolder))[-1]
     peaktime, peaklum = (
         dflightcurve
+        .filter(pl.col("time_days").is_finite() & pl.col("luminosity_erg/s").is_finite())
         .select(pl.col("time_days").get(pl.col("luminosity_erg/s").arg_max()), pl.col("luminosity_erg/s").max())
         .collect()
         .row(0)

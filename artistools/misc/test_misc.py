@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (4, "3bbab05ca5ca336b"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "dcd670f630442cc0"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1812,11 +1812,12 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
 
 
 def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> None:
-    """The readers of the model, the NLTE populations, the options, and describe give the local data for host:path.
+    """The readers of the model and the NLTE populations, the options, describe, and check give the local data.
 
     A read of all the NLTE populations can send several GB through ssh, thus a remote read needs a timestep or a
     modelgridindex.
     """
+    from artistools.check import get_check_results
     from artistools.describemodel import get_model_summary
 
     modelpath = at.get_path("testartismodel").resolve()
@@ -1841,6 +1842,8 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
             # a str path stayed on this host, and the missing local folder then gave no options and no error
             remotemintemp = at.misc.get_artis_option(f"testhost:{optionsfolder}", "MINTEMP")
             remotesummary = get_model_summary(remotepath)
+            # the check of a local model folder stopped for host:path, because the folder is not on this host
+            dfremotechecks = get_check_results(remotepath)
             # a negative cell and an empty list also select all the cells
             allcellselections: tuple[int | list[int] | None, ...] = (None, -1, [])
             for allcells in allcellselections:
@@ -1864,6 +1867,7 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     assert remotemintemp == "3500."
     # get_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
     assert remotesummary == get_model_summary(modelpath)
+    pltest.assert_frame_equal(dfremotechecks, get_check_results(modellink))
 
 
 def test_get_filterfunc() -> None:

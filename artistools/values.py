@@ -174,18 +174,37 @@ def get_method_lines(
 
 
 def warn_missing_rows(dfvalues: pl.DataFrame, timesteps: Sequence[int], modelgridindex: Sequence[int] | None) -> None:
-    """Warn about a selected cell or timestep that has no row, because a reader can expect one row for each."""
-    if modelgridindex is not None:
-        foundcells = set(dfvalues["modelgridindex"].to_list())
-        if missingcells := [cell for cell in modelgridindex if cell not in foundcells]:
+    """Warn about each selected pair of cell and timestep that has no row, because a reader can expect one for each.
+
+    With no -modelgridindex, the selected cells are the cells that have estimators at one or more selected timesteps.
+    """
+    cells = dfvalues["modelgridindex"].unique().to_list() if modelgridindex is None else list(modelgridindex)
+    pairschema = dfvalues.select("modelgridindex", "timestep").schema
+    dfmissing = (
+        pl
+        .DataFrame({"modelgridindex": cells})
+        .join(pl.DataFrame({"timestep": list(timesteps)}), how="cross")
+        .cast(pairschema)
+        .join(dfvalues.select("modelgridindex", "timestep"), on=["modelgridindex", "timestep"], how="anti")
+        .group_by("modelgridindex")
+        .agg(pl.col("timestep").sort())
+        .group_by("timestep")
+        .agg(pl.col("modelgridindex").sort())
+        .sort(pl.col("modelgridindex").list.first())
+    )
+    for missingtimesteps, missingcells in dfmissing.select("timestep", "modelgridindex").iter_rows():
+        if len(missingtimesteps) == len(timesteps):
             print_warning(
                 f"modelgridindex {format_range_list(missingcells)} has no estimators at the selected timesteps."
                 " ARTIS writes no estimators for a cell with no matter"
             )
-
-    foundtimesteps = set(dfvalues["timestep"].to_list())
-    if missingtimesteps := [timestep for timestep in timesteps if timestep not in foundtimesteps]:
-        print_warning(f"timestep {format_range_list(missingtimesteps)} has no estimators for the selected cells")
+        elif len(missingcells) == len(cells):
+            print_warning(f"timestep {format_range_list(missingtimesteps)} has no estimators for the selected cells")
+        else:
+            print_warning(
+                f"modelgridindex {format_range_list(missingcells)} has no estimators at timestep"
+                f" {format_range_list(missingtimesteps)}, but has estimators at the other selected timesteps"
+            )
 
 
 def require_model_folder(modelpath: Path) -> None:

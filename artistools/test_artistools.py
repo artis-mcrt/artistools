@@ -7054,6 +7054,19 @@ def test_values_of_a_range_of_cells_give_one_row_for_each_cell_and_timestep(
     assert any(line.startswith("# command:") for line in header)
 
 
+def test_values_warn_about_a_cell_with_no_estimators_at_one_timestep(capsys: pytest.CaptureFixture[str]) -> None:
+    """A cell that has estimators at one selected timestep and none at a second timestep gives a warning.
+
+    The check tested the cells and the timesteps apart, thus each cell and each timestep had a row and no warning came.
+    """
+    from artistools.values import warn_missing_rows
+
+    dfvalues = pl.DataFrame({"timestep": [0, 1, 0], "modelgridindex": [0, 0, 1], "Te[K]": [1e4, 1e4, 1e4]})
+    warn_missing_rows(dfvalues, [0, 1], modelgridindex=None)
+
+    assert "modelgridindex 1 has no estimators at timestep 1" in capsys.readouterr().err
+
+
 def test_values_with_quiet_print_only_the_table(capsys: pytest.CaptureFixture[str]) -> None:
     """--quiet must leave only the table on the standard output, thus a script can read it directly."""
     import artistools.__main__

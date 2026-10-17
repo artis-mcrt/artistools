@@ -385,6 +385,20 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
     dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
     assert dftable["dirbin"].to_list() == [-1, -1]
 
+    # the table holds only the points inside the y limits of the plot, and output_data writes no empty table
+    peakmag = dftable["peakmag"].max()
+    assert isinstance(peakmag, float)
+    tablepath.unlink()
+    at.lightcurve.plot(
+        argsraw=[],
+        make_viewing_angle_peakmag_risetime_scatter_plot=True,
+        ymin=peakmag + 1.0,
+        ymax=peakmag + 2.0,
+        write_data=True,
+        **commonargs,
+    )
+    assert not tablepath.exists()
+
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
 def test_viewing_angle_scatter_plot_colours_each_direction_bin_of_the_data_file(
