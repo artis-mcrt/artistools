@@ -45,8 +45,9 @@ cells. Do this for each process at the same time step.
 - `J` (erg/s/cm^2/sr), `J_nu_avg` (erg/s/cm^2/sr/Hz), and `nuJ`;
 - `T_R` (K) and `W`, the temperature and the dilution factor of the fit of the bin.
 
-A row with `bin_num` = -1 holds the fit of the full spectrum. A row with `bin_num` below -1 holds a line estimator,
-with the frequency of the line in `nu_lower`. ARTIS writes this file only with `MULTIBIN_RADFIELD_MODEL_ON`. The
+A row with `bin_num` = -1 holds the fit of the full spectrum. A row with `bin_num` below -1 holds a line estimator.
+`nu_lower` and `nu_upper` both hold the frequency of the line, `J_nu_avg` holds the estimator, and the other values are
+-1. ARTIS writes this file only with `MULTIBIN_RADFIELD_MODEL_ON`. The
 command `artistools plotradfield` plots the field of a cell.
 
 ## Non-thermal electrons

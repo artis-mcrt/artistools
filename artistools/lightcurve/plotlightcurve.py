@@ -429,6 +429,8 @@ def plot_bol_reflightcurve(
         refartists = [refline]
     if plottedpoints is not None:
         plottedpoints.append(dfplotted)
+    summaryparts, summarywarnings = get_peak_summary(time_days, yvalues, lumunit, ismagnitude=lumunit == "mag")
+    print_series_summary(plotlabel or str(lightcurvefilename), summaryparts, summarywarnings)
 
     # a marker and a line have different default zorders. With an equal zorder, matplotlib draws
     # the series in the order of the command line
@@ -919,11 +921,18 @@ def plot_artis_lightcurve(
             )
 
         (modelline,) = axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
-        summaryparts, summarywarnings = get_peak_summary(
-            lcdata_valid["time_days"], lcdata_valid[ycolumn], lumunit, ismagnitude=lumunit == "mag"
+        # the frame keeps the nearest point outside each end of -timemin and -timemax, and the axis does not show it
+        lcdata_inrange = lcdata_valid.filter(
+            pl.col("time_days").is_between(
+                -math.inf if args.timemin is None else args.timemin, math.inf if args.timemax is None else args.timemax
+            )
         )
+        summaryparts, summarywarnings = get_peak_summary(
+            lcdata_inrange["time_days"], lcdata_inrange[ycolumn], lumunit, ismagnitude=lumunit == "mag"
+        )
+        # a magnitude has no comoving-frame column, and its maximum is the faintest point
         cmfcolumn_summary = ycolumn.replace("luminosity_", "luminosity_cmf_")
-        if cmfcolumn_summary in lcdata.columns and lcdata.height > 4:
+        if ycolumn.startswith("luminosity_") and cmfcolumn_summary in lcdata.columns and lcdata.height > 4:
             # the observer-frame luminosity falls at the end, thus only the comoving frame shows a rise at the end
             cmfpeakindex = lcdata[cmfcolumn_summary].fill_nan(None).arg_max() or 0
             if cmfpeakindex > lcdata.height - 3:

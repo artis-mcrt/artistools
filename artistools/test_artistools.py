@@ -6057,6 +6057,32 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
         r"B TEST MODEL: 54 points .*, peak -13\.1\d mag at 267\.9 d, Δm15 0\.2\d+ mag", capsys.readouterr().out
     )
 
+    # the frame keeps the nearest point outside -timemin, and the summary counted that point
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], timemin=250.5, timemax=299.0, outputfile=tmp_path)
+    summarymatch = re.search(r"TEST MODEL: \d+ points from ([\d.]+) to", capsys.readouterr().out)
+    assert summarymatch is not None
+    assert float(summarymatch.group(1)) >= 250.5
+
+    # a magnitude has no comoving-frame column, and the check read the faintest magnitude as the maximum
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], magnitude=True, outputfile=tmp_path)
+    assert "comoving-frame" not in capsys.readouterr().err
+
+    # a reference light curve gave no summary
+    at.lightcurve.plot(argsraw=[], modelpath=["AT2017gfo_waxmanetal2018.txt"], outputfile=tmp_path)
+    assert re.search(r"AT2017gfo \(Waxman\+2018\): \d+ points .*, peak ", capsys.readouterr().out)
+
+    # the plot draws no point where the series has no value, and the x range counted such a point
+    from artistools.estimators.plotestimators import get_series_summary_query
+
+    dfseries = pl.LazyFrame({
+        "xvalue": [1.0, 2.0, 3.0, 4.0],
+        "xvalue_binned": [1.0, 2.0, 3.0, 4.0],
+        "yvalue": [None, 5.0, 6.0, float("nan")],
+        "celltsweight": [1.0, 1.0, 1.0, 1.0],
+    })
+    summary = get_series_summary_query(dfseries, {}).collect().row(0, named=True)
+    assert (summary["xmin"], summary["xmax"], summary["valuecount"], summary["emptybincount"]) == (2.0, 3.0, 2, 2)
+
 
 def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]

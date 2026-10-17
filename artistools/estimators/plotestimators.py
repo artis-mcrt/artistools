@@ -440,8 +440,9 @@ def get_series_summary_query(dfseries: pl.LazyFrame, temperaturelimits: Mapping[
         (pl.col("xvalue_binned").n_unique() - pl.col("xvalue_binned").filter(isvalid).n_unique()).alias(
             "emptybincount"
         ),
-        pl.col("xvalue").cast(pl.Float64).min().alias("xmin"),
-        pl.col("xvalue").cast(pl.Float64).max().alias("xmax"),
+        # the drawn line has no point where the series has no value, thus the range takes the points with a value
+        xvalid.min().alias("xmin"),
+        xvalid.max().alias("xmax"),
         yvalid.min().alias("ymin"),
         xvalid.sort_by(yvalid).first().alias("x_at_ymin"),
         yvalid.max().alias("ymax"),
@@ -2150,7 +2151,7 @@ def get_figure_table(figuredata: "LineFigureData | ImageFigureData", args: argpa
     """Return the table of the plotted data of a figure, for --print_data and --write_data."""
     if isinstance(figuredata, LineFigureData):
         return get_line_figure_table(figuredata, args)
-    return get_image_figure_table(figuredata)
+    return get_image_figure_table(figuredata, args)
 
 
 def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) -> pl.DataFrame:
@@ -2563,18 +2564,40 @@ def get_image_edges(
     return edges1, edges2
 
 
-def get_image_figure_table(figuredata: ImageFigureData) -> pl.DataFrame:
+def get_image_xlimits_on_c(args: argparse.Namespace) -> tuple[float | None, float | None]:
+    """Return -xmin and -xmax in units of c, which the horizontal axis of an image holds.
+
+    -x velocity takes km/s, and every other x variable takes v/c already.
+    """
+    xscale_to_c = km_to_cm / C_cm_per_s if args.x == "velocity" else 1.0
+    return (
+        None if args.xmin is None else args.xmin * xscale_to_c,
+        None if args.xmax is None else args.xmax * xscale_to_c,
+    )
+
+
+def get_image_figure_table(figuredata: ImageFigureData, args: argparse.Namespace) -> pl.DataFrame:
     """Return one table of the colour image, with one row for each cell of each panel that the image shows.
 
     The columns give the fields of the frame, the panel, its label, the velocity of the centre of the cell on each
-    axis of the image in units of c, and the value.
+    axis of the image in units of c, and the value. -xmin and -xmax cut the image, thus a cell outside them is not in
+    the table.
     """
     plotaxis1, plotaxis2 = figuredata.plotaxes
+    xmin_on_c, xmax_on_c = get_image_xlimits_on_c(args)
     dfpanels: list[pl.DataFrame] = []
     for panelindex, (style, grid) in enumerate(zip(figuredata.styles, figuredata.grids, strict=True)):
         edges1, edges2 = get_image_edges(figuredata, grid)
         centres2, centres1 = np.meshgrid((edges2[:-1] + edges2[1:]) / 2, (edges1[:-1] + edges1[1:]) / 2, indexing="ij")
-        isdrawn = ~np.ma.getmaskarray(get_drawn_image_values(grid, logscale=panel_has_log_colourscale(style, grid)))
+        # a cell is in the image if a part of it is inside the x range
+        lower1 = np.broadcast_to(edges1[:-1], grid.shape)
+        upper1 = np.broadcast_to(edges1[1:], grid.shape)
+        isinxrange = (upper1 > (-np.inf if xmin_on_c is None else xmin_on_c)) & (
+            lower1 < (np.inf if xmax_on_c is None else xmax_on_c)
+        )
+        isdrawn = isinxrange & ~np.ma.getmaskarray(
+            get_drawn_image_values(grid, logscale=panel_has_log_colourscale(style, grid))
+        )
         dfpanels.append(
             pl.DataFrame({
                 f"vel_{plotaxis1}_on_c": centres1[isdrawn],
@@ -2613,10 +2636,7 @@ def draw_image_figure(
     # together at the centre, and it gives each colour bar the height of its image
     fig.set_layout_engine("compressed")
     axesgrid = fig.subplots(nrows, ncols, squeeze=False)
-    # the axis of an image holds v/c. -x velocity takes km/s, and every other x variable takes v/c already
-    xscale_to_c = km_to_cm / C_cm_per_s if args.x == "velocity" else 1.0
-    xmin_on_c = None if args.xmin is None else args.xmin * xscale_to_c
-    xmax_on_c = None if args.xmax is None else args.xmax * xscale_to_c
+    xmin_on_c, xmax_on_c = get_image_xlimits_on_c(args)
     for ax, style, grid in zip(axesgrid.flat, figuredata.styles, figuredata.grids, strict=False):
         norm = get_colour_norm(style, grid)
         values = get_drawn_image_values(grid, logscale=isinstance(norm, mc.LogNorm))

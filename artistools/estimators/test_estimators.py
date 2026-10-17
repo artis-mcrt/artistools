@@ -2856,10 +2856,13 @@ def test_estimator_image_table_holds_only_the_drawn_cells() -> None:
         title="",
         framefields={"timestep": "8"},
     )
-    dftable = get_image_figure_table(figuredata)
+    dftable = get_image_figure_table(figuredata, argparse.Namespace(x="velocity", xmin=None, xmax=None))
     assert dftable.filter(pl.col("panel") == 0)["value"].to_list() == [1.0]
     assert dftable.filter(pl.col("panel") == 1)["value"].to_list() == [1.0, 0.0]
     assert dftable.filter(pl.col("panel") == 1)["vel_x_on_c"].to_list() == pytest.approx([-0.05, 0.05], rel=1e-9)
+    # -xmax cuts the image, thus the cell from 0 to 0.1c is not in the table
+    dfcut = get_image_figure_table(figuredata, argparse.Namespace(x="beta", xmin=None, xmax=-0.01))
+    assert dfcut.filter(pl.col("panel") == 1)["vel_x_on_c"].to_list() == pytest.approx([-0.05], rel=1e-9)
 
 
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_path: Path) -> None:
