@@ -264,6 +264,8 @@ class SeriesPlan(t.NamedTuple):
     plotkwargs: dict[str, t.Any]
     # the name of the series in its plot item, e.g. "Fe II" or "Te". A series style uses this name to find the series
     seriesname: str
+    # the weight of celltsweight in words for the log, e.g. "cell mass times time step duration"
+    weightname: str
 
 
 class SeriesData(t.NamedTuple):
@@ -417,20 +419,25 @@ def get_subplot_queries(
     pointqueries = [plan.dfseries.select("xvalue", "yvalue") for plan in plans] if args.markers else []
     summaryqueries = [
         get_series_summary_query(
-            plan.dfseries, (temperaturelimits or {}) if plan.seriesname in TEMPERATURENAMES else {}
+            plan.dfseries, plan.weightname, (temperaturelimits or {}) if plan.seriesname in TEMPERATURENAMES else {}
         )
         for plan in plans
     ]
     return [*linequeries, *pointqueries, *summaryqueries]
 
 
-def get_series_summary_query(dfseries: pl.LazyFrame, temperaturelimits: Mapping[str, float]) -> pl.LazyFrame:
+def get_series_summary_query(
+    dfseries: pl.LazyFrame, weightname: str, temperaturelimits: Mapping[str, float]
+) -> pl.LazyFrame:
     """Return a query of one row with the statistics of the points of a series, for the summary in the log.
 
-    The mean takes the weight of the drawn line, e.g. the mass of each cell. A temperature at MINTEMP or MAXTEMP is a
-    limit of ARTIS and not a physical value, thus the query counts these points.
+    The mean takes the weight of the drawn line, e.g. the mass of each cell times the duration of its time step.
+    weightname gives this weight in words, and the column meanweight gives the weight that the mean used. Weights with
+    a sum of 0 give a mean with equal weights. A temperature at MINTEMP or MAXTEMP is a limit of ARTIS and not a
+    physical value, thus the query counts these points.
     """
-    isvalid = pl.col("yvalue").is_not_null() & pl.col("yvalue").cast(pl.Float64).is_not_nan()
+    # matplotlib draws no point for an infinite value, e.g. a ratio with a divisor of 0. is_finite gives null for null
+    isvalid = pl.col("yvalue").cast(pl.Float64).is_finite().fill_null(value=False)
     yvalid = pl.col("yvalue").cast(pl.Float64).filter(isvalid)
     xvalid = pl.col("xvalue").cast(pl.Float64).filter(isvalid)
     weightvalid = pl.col("celltsweight").cast(pl.Float64).filter(isvalid)
@@ -452,6 +459,11 @@ def get_series_summary_query(dfseries: pl.LazyFrame, temperaturelimits: Mapping[
         .then((yvalid * weightvalid).sum() / weightvalid.sum())
         .otherwise(yvalid.mean())
         .alias("weightedmean"),
+        pl
+        .when(weightvalid.sum() != 0.0)
+        .then(pl.lit(weightname))
+        .otherwise(pl.lit("equal weights, because the weights have a sum of 0"))
+        .alias("meanweight"),
         *((yvalid == limit).sum().alias(f"at_{name}") for name, limit in temperaturelimits.items()),
     )
 
@@ -579,7 +591,15 @@ def plot_init_abundances(
         speciesplotkwargs: dict[str, t.Any] = {"linewidth": 1.5, "linestyle": linestyle} | plotkwargs
         speciesplotkwargs["color"] = get_elemcolor(atomic_number=atomic_number)
 
-        plans.append(SeriesPlan(label=linelabel, dfseries=series, plotkwargs=speciesplotkwargs, seriesname=speciesstr))
+        plans.append(
+            SeriesPlan(
+                label=linelabel,
+                dfseries=series,
+                plotkwargs=speciesplotkwargs,
+                seriesname=speciesstr,
+                weightname="cell mass times time step duration",
+            )
+        )
 
     return plans
 
@@ -632,7 +652,11 @@ def plot_average_ionisation(
 
         plans.append(
             SeriesPlan(
-                label=paramvalue, dfseries=dfplotdata, plotkwargs={"color": color} | plotkwargs, seriesname=paramvalue
+                label=paramvalue,
+                dfseries=dfplotdata,
+                plotkwargs={"color": color} | plotkwargs,
+                seriesname=paramvalue,
+                weightname=f"number of {elsymb} nuclei in the cell times time step duration",
             )
         )
 
@@ -690,6 +714,11 @@ def plot_average_excitation(
         # weights by the element population
         nnioncol = f"nnion_{get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"
         weightcol = pl.col(nnioncol) if nnioncol in estimatorcolumns else pl.lit(1.0)
+        weightname = (
+            f"number of {get_ionstring(atomic_number, ion_stage)} ions in the cell times time step duration"
+            if nnioncol in estimatorcolumns
+            else "cell volume times time step duration"
+        )
 
         dfplotdata = (
             estimators
@@ -704,6 +733,7 @@ def plot_average_excitation(
                 dfseries=dfplotdata,
                 plotkwargs={"color": get_elemcolor(atomic_number=atomic_number)} | plotkwargs,
                 seriesname=paramvalue,
+                weightname=weightname,
             )
         )
 
@@ -828,7 +858,15 @@ def plot_levelpop(
                 celltsweight=pl.lit(1.0),
             )
         )
-        plans.append(SeriesPlan(label=label, dfseries=dfseries, plotkwargs=plotkwargs.copy(), seriesname=paramvalue))
+        plans.append(
+            SeriesPlan(
+                label=label,
+                dfseries=dfseries,
+                plotkwargs=plotkwargs.copy(),
+                seriesname=paramvalue,
+                weightname="equal weights for each cell",
+            )
+        )
 
     return plans
 
@@ -1348,24 +1386,39 @@ def get_population_normfactor(seriestype: str, poptype: str, atomic_number: int)
 
 def get_ion_series_weight(
     seriestype: str, poptype: str, atomic_number: int, ion_stage: str | int, estimatorcolumns: Collection[str]
-) -> pl.Expr:
-    """Return the weight of a cell in the mean of an ion series, which multiplies the volume and the duration.
+) -> tuple[pl.Expr, str]:
+    """Return the weight of a cell in the mean of an ion series, and the name of the weight.
+
+    The weight multiplies the volume and the duration.
 
     A fraction of the element or of all the nuclei gives the ratio of the totals of a bin when the weight is its
     divisor. A rate for each ion, e.g. gamma_NT, takes the number of the ion as its weight, as averageexcitation does.
     The reader gives 0 for a rate in a cell that holds none of the element, and that weight leaves such a cell out.
     A population and a rate for each unit of volume, e.g. cooling_coll_Fe_II, take the volume alone.
     """
-    if seriestype == "populations":
-        return get_population_normfactor(seriestype, poptype, atomic_number)
-
-    if get_units(get_column_name(seriestype, atomic_number, ion_stage)[0], latex=False) == "erg/s/cm^3":
-        return pl.lit(1.0)
+    elsymbol = get_elsymbol(atomic_number)
+    if seriestype == "populations" and poptype == "elpop":
+        return get_population_normfactor(
+            seriestype, poptype, atomic_number
+        ), f"number of {elsymbol} nuclei in the cell times time step duration"
+    if seriestype == "populations" and poptype == "totalpop":
+        return get_population_normfactor(
+            seriestype, poptype, atomic_number
+        ), "number of nuclei in the cell times time step duration"
+    if seriestype == "populations" or (
+        get_units(get_column_name(seriestype, atomic_number, ion_stage)[0], latex=False) == "erg/s/cm^3"
+    ):
+        return pl.lit(1.0), "cell volume times time step duration"
 
     popcolumn = get_column_name("populations", atomic_number, ion_stage)[0]
-    if popcolumn not in estimatorcolumns:
-        popcolumn = f"nnelement_{get_elsymbol(atomic_number)}"
-    return pl.col(popcolumn) if popcolumn in estimatorcolumns else pl.lit(1.0)
+    if popcolumn in estimatorcolumns:
+        return pl.col(
+            popcolumn
+        ), f"number of {get_ionstring(atomic_number, ion_stage)} ions in the cell times time step duration"
+    elementcolumn = f"nnelement_{elsymbol}"
+    if elementcolumn in estimatorcolumns:
+        return pl.col(elementcolumn), f"number of {elsymbol} nuclei in the cell times time step duration"
+    return pl.lit(1.0), "cell volume times time step duration"
 
 
 def plot_multi_ion_series(
@@ -1425,6 +1478,7 @@ def plot_multi_ion_series(
     ionentries = [entry for entry in ionentries if entry[0] not in nocolumnions]
 
     lazyframes = []
+    weightnames: list[str] = []
     for (atomic_number, ion_stage), _ in ionentries:
         colname, ionstr = get_column_name(seriestype, atomic_number, ion_stage)
         expr_yvals = pl.col(colname)
@@ -1449,7 +1503,8 @@ def plot_multi_ion_series(
             # the sum is over the cells of one timestep, thus it must restart at each timestep
             expr_yvals = (expr_yvals * pl.col("volume")).cum_sum().over("timestep")
 
-        weight = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
+        weight, weightname = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
+        weightnames.append(weightname)
         lazyframes.append(
             estimators.select(
                 (pl.col("deltavol_deltat") * weight).alias("celltsweight"),
@@ -1466,8 +1521,8 @@ def plot_multi_ion_series(
     if args.colorbyion and not colorbyion:
         settings["elementcolours"] = True
     plans = []
-    for seriesindex, (((atomic_number, ion_stage), seriesname), dfseries) in enumerate(
-        zip(ionentries, lazyframes, strict=True)
+    for seriesindex, (((atomic_number, ion_stage), seriesname), dfseries, weightname) in enumerate(
+        zip(ionentries, lazyframes, weightnames, strict=True)
     ):
         plotlabel = str(
             ion_stage
@@ -1507,6 +1562,7 @@ def plot_multi_ion_series(
                 dfseries=dfseries,
                 plotkwargs={"linewidth": linewidth, "color": color} | plotkwargs,
                 seriesname=seriesname,
+                weightname=weightname,
             )
         )
 
@@ -1565,7 +1621,15 @@ def plot_series(
     plotkwargs.setdefault("linewidth", 1.5)
 
     print(f"  plotting {variablename}")
-    return [SeriesPlan(label=linelabel, dfseries=series, plotkwargs=plotkwargs, seriesname=variablename)]
+    return [
+        SeriesPlan(
+            label=linelabel,
+            dfseries=series,
+            plotkwargs=plotkwargs,
+            seriesname=variablename,
+            weightname="cell volume times time step duration",
+        )
+    ]
 
 
 def get_xlist(
@@ -1978,7 +2042,7 @@ def get_temperature_limits(modelpath: Path | str) -> dict[str, float]:
 def print_line_figure_summary(figuredata: "LineFigureData", args: argparse.Namespace) -> None:
     """Print one line with the statistics of the points of each drawn series, and a warning for each problem.
 
-    The mean takes the weight of the drawn line, e.g. the mass of each cell. A point is a cell at a timestep.
+    The mean takes the weight of the drawn line, which the line names. A point is a cell at a time step.
     """
     xunits = get_units(args.x, latex=False)
     xunitstext = f" {xunits}" if xunits else ""
@@ -2002,7 +2066,8 @@ def print_line_figure_summary(figuredata: "LineFigureData", args: argparse.Names
                     f"x {summary['xmin']:.4g} to {summary['xmax']:.4g}{xunitstext}",
                     f"min {summary['ymin']:.4g}{yunitstext} at x = {summary['x_at_ymin']:.4g}",
                     f"max {summary['ymax']:.4g}{yunitstext} at x = {summary['x_at_ymax']:.4g}",
-                    f"weighted mean {summary['weightedmean']:.4g}{yunitstext}",
+                    f"mean {summary['weightedmean']:.4g}{yunitstext}",
+                    f"weight of the mean: {summary['meanweight']}",
                 ]
             warnings = [
                 f"{summary[f'at_{name}']} points are at {name}, which is a limit of ARTIS and not a physical value"
@@ -2284,7 +2349,7 @@ def get_ion_panel_columns(
             else f"{ionlabel.replace('_', ' ')} {seriestype}{get_units_string(colname)}"
         )
         # 0/0 gives NaN for a cell that holds none of the element, and the mean leaves such a cell out
-        weight = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
+        weight, _ = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
         columns.append(((pl.col(colname) / normfactor).alias(colname), colname, label, weight))
 
     return columns

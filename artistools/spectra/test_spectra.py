@@ -3059,9 +3059,9 @@ def test_write_data_gives_a_table_for_each_wavelength_grid(tmp_path: Path) -> No
     )
     dffirst = pl.read_csv(tmp_path / "twogrids.txt", separator=" ", null_values="nan")
     dfsecond = pl.read_csv(tmp_path / "twogrids_grid2.txt", separator=" ", null_values="nan")
-    # the copy of the model has the same plotlabel.txt, thus both columns have the same name
+    # the copy of the model has the same plotlabel.txt, thus the name of its columns adds the index of the model
     assert [col for col in dffirst.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
-    assert [col for col in dfsecond.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
+    assert [col for col in dfsecond.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL_1"]
     assert not np.allclose(dffirst["lambda_angstroms"], dfsecond["lambda_angstroms"])
 
     # np.allclose took a grid that differs by 5 parts in a million as the same grid, and gave its values the
@@ -4414,3 +4414,18 @@ def test_interactive_time_field_takes_finite_numbers() -> None:
     for text in ("nan", "inf", "-inf", "abc"):
         with pytest.raises(ValueError, match=r"finite|could not convert"):
             interactive.read_finite_number(text)
+
+
+def test_spectrum_table_keeps_two_models_of_the_same_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Two models of the same name gave the same columns, and the second model replaced the first in the table."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, modelpath],
+        timedays="300",
+        outputfile=tmp_path / "samename.pdf",
+        write_data=True,
+    )
+    assert "gives the columns of" in capsys.readouterr().err
+    dftable = pl.read_csv(tmp_path / "samename.txt", separator=" ", null_values="nan")
+    fluxcolumns = [colname for colname in dftable.columns if colname.startswith("f_lambda.")]
+    assert len(fluxcolumns) == 2, dftable.columns

@@ -3806,6 +3806,9 @@ def test_artis_option_function_keeps_its_nested_blocks() -> None:
         # a string literal can hold a comment marker, and the removal of a comment cut the string
         'constexpr const char *URL = "https://example.org/*x*/"; // a comment\n'
         "constexpr int MAXITER = 4;\n"
+        # a string literal can hold a semicolon, and the value stopped at it
+        'constexpr const char *TEXT = "a;b";\n'
+        "constexpr int NCELLS = 1'000;\n"
     )
     assert options == {
         "ION_NLEVELS_EXCITED_NLTE": (
@@ -3818,4 +3821,6 @@ def test_artis_option_function_keeps_its_nested_blocks() -> None:
         "GRID_NAME": '"cartesian"',
         "URL": '"https://example.org/*x*/"',
         "MAXITER": "4",
+        "TEXT": '"a;b"',
+        "NCELLS": "1'000",
     }

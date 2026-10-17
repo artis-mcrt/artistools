@@ -308,6 +308,13 @@ def get_reflightcurve_yerr(
     return [np.where(hasmag, errside, 0.0) for errside in yerr], unbounded
 
 
+def is_in_time_range(colname: str, timemin: float | None, timemax: float | None) -> pl.Expr:
+    """Return an expression that is true for a time from timemin to timemax. None is no limit."""
+    return pl.col(colname).is_between(
+        -math.inf if timemin is None else timemin, math.inf if timemax is None else timemax
+    )
+
+
 def get_peak_summary(
     time_days: npt.ArrayLike, yvalues: npt.ArrayLike, unit: str, *, ismagnitude: bool, isband: bool = False
 ) -> tuple[list[str], list[str]]:
@@ -327,12 +334,12 @@ def get_peak_summary(
     peaktime, peakvalue = float(times[peakindex]), float(values[peakindex])
     parts = [
         f"{len(times)} points from {times.min():.4g} to {times.max():.4g} d",
-        f"peak {peakvalue:.4g} {unit} at {peaktime:.4g} d",
+        f"peak {peakvalue:.4g} {unit} at {peaktime:.4g} d ({'brightest' if ismagnitude else 'largest'} drawn point)",
     ]
     if isband:
         if peaktime + 15.0 <= times.max():
             deltam15 = float(np.interp(peaktime + 15.0, times, values)) - peakvalue
-            parts.append(f"Δm15 {deltam15:.3g} mag")
+            parts.append(f"Δm15 {deltam15:.3g} mag (linear interpolation of the magnitude at the peak time + 15 d)")
         else:
             parts.append("no Δm15, because the time range ends before 15 days after the peak")
     warnings = (
@@ -364,11 +371,7 @@ def plot_bol_reflightcurve(
     """
     dflightcurve, metadata = read_bol_reflightcurve_data(lightcurvefilename)
     # the points have no line between them, thus a point outside the time range has no part in the figure
-    dflightcurve = dflightcurve.filter(
-        pl.col("time_days").is_between(
-            -math.inf if timemin is None else timemin, math.inf if timemax is None else timemax
-        )
-    )
+    dflightcurve = dflightcurve.filter(is_in_time_range("time_days", timemin, timemax))
     # an empty label is a series deliberately left out of the legend, so only a missing one takes the metadata
     plotlabel = str(metadata.get("label", lightcurvefilename)) if label is None else label
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
@@ -929,13 +932,13 @@ def plot_artis_lightcurve(
                 f" {energy_released:.3e} [erg]"
             )
 
-        (modelline,) = axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
-        # the frame keeps the nearest point outside each end of -timemin and -timemax, and the axis does not show it
-        lcdata_inrange = lcdata_valid.filter(
-            pl.col("time_days").is_between(
-                -math.inf if args.timemin is None else args.timemin, math.inf if args.timemax is None else args.timemax
-            )
+        # a direction bin of a colour bar has no legend entry, thus its name holds the number of the bin
+        summaryname = label_with_tags or " ".join(part for part in (linelabel, f"direction bin {dirbin}") if part)
+        (modelline,) = axis.plot(
+            lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, gid=summaryname, **plotkwargs
         )
+        # the frame keeps the nearest point outside each end of -timemin and -timemax, and the axis does not show it
+        lcdata_inrange = lcdata_valid.filter(is_in_time_range("time_days", args.timemin, args.timemax))
         summaryparts, summarywarnings = get_peak_summary(
             lcdata_inrange["time_days"], lcdata_inrange[ycolumn], lumunit, ismagnitude=lumunit == "mag"
         )
@@ -949,7 +952,7 @@ def plot_artis_lightcurve(
                     "the comoving-frame luminosity has its maximum at the end, thus the true peak can be after the"
                     " time range"
                 )
-        print_series_summary(label_with_tags or linelabel or f"direction bin {dirbin}", summaryparts, summarywarnings)
+        print_series_summary(summaryname, summaryparts, summarywarnings)
         if residualseries is not None:
             residualseries.append(
                 ResidualSeries(
@@ -1394,11 +1397,12 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
                 # plotkwargs is reused for each model, thus a model with no -linealpha takes None, the default alpha
                 plotkwargs["alpha"] = args.linealpha[modelnumber]
 
-                (modelline,) = axis.plot(time, brightness_in_mag, **plotkwargs)
+                summaryname = f"{band_name} {plotkwargs['label'] or modelname}"
+                (modelline,) = axis.plot(time, brightness_in_mag, gid=summaryname, **plotkwargs)
                 summaryparts, summarywarnings = get_peak_summary(
                     time, brightness_in_mag, "mag", ismagnitude=True, isband=True
                 )
-                print_series_summary(f"{band_name} {plotkwargs['label'] or modelname}", summaryparts, summarywarnings)
+                print_series_summary(summaryname, summaryparts, summarywarnings)
                 if residualseries is not None:
                     residualseries.append(
                         ResidualSeries(
@@ -1423,6 +1427,8 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
             linewidth=args.linewidth[len(modelpaths) + refindex] or None,
             residualseries=residualseries,
             plottedpoints=dfbands,
+            timemin=args.timemin,
+            timemax=args.timemax,
         )
 
     if args.plot_hesma_model:
@@ -1576,6 +1582,8 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
                 plotnumber,
                 linewidth=args.linewidth[len(modelpaths) + refindex] or None,
                 plottedpoints=dfcolours,
+                timemin=args.timemin,
+                timemax=args.timemax,
             )
 
     for plotnumber, filters in enumerate(args.colour_evolution):
@@ -1643,11 +1651,13 @@ def plot_lightcurve_from_refdata(
     linewidth: float | None = None,
     residualseries: list[ResidualSeries] | None = None,
     plottedpoints: list[pl.DataFrame] | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label.
 
     The points have no line, thus -linewidth sets the size of each marker. plottedpoints takes the points of each band
-    in the form of get_magnitude_table.
+    in the form of get_magnitude_table. Only the points from timemin to timemax go into the figure and plottedpoints.
     """
     lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"]
@@ -1659,7 +1669,9 @@ def plot_lightcurve_from_refdata(
         axis = axes[axnumber]
         if filter_name_raw == "bol":
             continue
-        dfband = get_dereddened_band_data(lightcurve_data, metadata, filter_name_raw, filterdir)
+        dfband = get_dereddened_band_data(lightcurve_data, metadata, filter_name_raw, filterdir).filter(
+            is_in_time_range("time", timemin, timemax)
+        )
 
         (refline,) = axis.plot(
             dfband["time"],
@@ -1702,11 +1714,13 @@ def plot_color_evolution_from_data(
     plotnumber: int,
     linewidth: float | None = None,
     plottedpoints: list[pl.DataFrame] | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
 ) -> None:
     """Plot the observed colour evolution between two bands, dereddened with CCM89.
 
     The points have no line, thus -linewidth sets the size of each marker. plottedpoints takes the points in the form
-    of get_magnitude_table.
+    of get_magnitude_table. Only the points from timemin to timemax go into the figure and plottedpoints.
     """
     lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     filterdir = Path(get_path("artistools_dir"), "data/filters/")
@@ -1716,8 +1730,10 @@ def plot_color_evolution_from_data(
         for filter_name_raw in filter_names
     ]
 
-    merge_dataframes = filter_data[0].join(
-        filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left"
+    merge_dataframes = (
+        filter_data[0]
+        .join(filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left")
+        .filter(is_in_time_range("time", timemin, timemax))
     )
     axis = iter_axes(ax)[plotnumber]
     if plottedpoints is not None:

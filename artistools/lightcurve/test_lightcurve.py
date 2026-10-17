@@ -2,6 +2,7 @@ import argparse
 import dataclasses as dc
 import gzip
 import lzma
+import re
 import shlex
 import shutil
 import typing as t
@@ -1740,6 +1741,20 @@ def test_band_plot_colorbar_keeps_the_labels_it_does_not_name(mockplot: mock.Mag
     assert labels.count("My model") == 1, "the legend gives a custom -label one time only"
 
 
+def test_colorbar_direction_bin_warns_of_hidden_values(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A direction bin of a colour bar has no legend entry, and the check of the hidden values skipped its line."""
+    at.lightcurve.plot(
+        argsraw=["-ymax", "1e30"],
+        modelpath=[modelpath_classic_3d],
+        plotviewingangle=[0],
+        colorbarcostheta=True,
+        outputfile=tmp_path,
+    )
+    assert re.search(
+        r"does not show these values of '[^']*direction bin 0': values above the top", capsys.readouterr().err
+    )
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotcmf_leaves_the_next_direction_bin_alone(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """The comoving frame curve is thin and dashed, and the next direction bin keeps the rest-frame style.
@@ -2512,6 +2527,27 @@ def test_residual_baseline_counts_hesma_curve(
     dfbands = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan")
     assert dfbands["model"].unique(maintain_order=True).to_list() == ["TEST MODEL", "reference", "hesma"]
     assert np.allclose(dfbands.filter(pl.col("model") == "hesma")["magnitude"], [-13.5, -13.0, -12.5])
+
+
+def test_band_reference_table_has_only_the_time_range(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The band table of a reference curve holds only the points from -timemin to -timemax, as the axis shows."""
+    monkeypatch.chdir(tmp_path)
+    refdata = pl.DataFrame({"band": ["B"] * 3, "time": [265.0, 280.0, 300.0], "magnitude": [-13.0, -12.5, -12.0]})
+    with mock.patch.object(
+        at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "reference"})
+    ):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath],
+            filter=["B"],
+            reflightcurves=["reference.dat"],
+            timemin=270.0,
+            timemax=290.0,
+            write_data=True,
+            outputfile=tmp_path,
+        )
+    dfbands = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan")
+    assert dfbands.filter(pl.col("model") == "reference")["time_days"].to_list() == [280.0]
 
 
 @pytest.mark.parametrize("residualtype", [None, "absolute", "relative", "relativelog"])

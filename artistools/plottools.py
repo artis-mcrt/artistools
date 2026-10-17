@@ -1662,8 +1662,9 @@ def warn_hidden_values(axis: mplax.Axes) -> None:
     """Print a warning for each line of the axes that has values outside the y range, which the figure does not show.
 
     Call the function after the plot sets the limits of the axes, e.g. with -ymin and -ymax. The function reads these
-    limits. A log axis also hides each value of zero or below. The function reads only the lines that have a label. A
-    line with no label is a part of a different series, e.g. a repeated end point.
+    limits. A log axis also hides each value of zero or below. The function reads only the lines that have a gid or a
+    label, and the gid is the name of the series. A series with no legend entry, e.g. a direction bin of a colour bar,
+    has a gid. A line with neither is a part of a different series, e.g. a repeated end point.
     """
     import numpy as np
 
@@ -1671,7 +1672,7 @@ def warn_hidden_values(axis: mplax.Axes) -> None:
     xlow, xhigh = sorted(axis.get_xlim())
     islog = axis.get_yscale() == "log"
     for line in axis.get_lines():
-        label = str(line.get_label())
+        label = line.get_gid() or str(line.get_label())
         if not label or label.startswith("_"):
             continue
         xvalues = np.asarray(line.get_xdata(), dtype=np.float64)

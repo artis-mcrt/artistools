@@ -206,9 +206,14 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
 # a value option, e.g. "constexpr double MINTEMP = 3500.;" or a value on the next line, an option with no value, e.g.
 # "constexpr std::optional<double> GAMMA_USE_KAPPA_GREY;", and the start of a function option, e.g.
 # "constexpr bool LEVEL_IS_NLTE(int element_z, int ionstage, int level) {"
-# The type is the text up to the name, e.g. "std::array<int, 2>" or "const char*"
+# The type is the text up to the name, e.g. "std::array<int, 2>" or "const char*". A string literal in a value
+# can hold ";", e.g. "a;b", thus the value is a sequence of literals and other characters. A lone "'" is a digit
+# separator, e.g. 1'000
+CPP_LITERAL_PATTERN = r"\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'"
 ARTIS_OPTION_PATTERN = re.compile(
-    r"^[ \t]*constexpr\s+(?:enum\s+)?([^=;(\n]+?)[\s*&]+(\w+)\s*(\([^)]*\)\s*\{|=\s*[^;]*;|;)", re.MULTILINE
+    rf"^[ \t]*constexpr\s+(?:enum\s+)?([^=;(\n]+?)[\s*&]+(\w+)\s*"
+    rf"(\([^)]*\)\s*\{{|=(?:{CPP_LITERAL_PATTERN}|[^;\"])*;|;)",
+    re.MULTILINE,
 )
 
 
@@ -221,7 +226,7 @@ def parse_artis_options(text: str) -> dict[str, str]:
     # a disabled alternative can be in a comment, and it must not replace the option that ARTIS compiles. A string
     # literal can hold "//", e.g. a URL, thus the pattern finds the literals first and keeps them
     text = re.sub(
-        r"\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'|/\*.*?\*/|//[^\n]*",
+        rf"{CPP_LITERAL_PATTERN}|/\*.*?\*/|//[^\n]*",
         lambda match: match.group(0) if match.group(0)[0] in "\"'" else "",
         text,
         flags=re.DOTALL,

@@ -6054,7 +6054,9 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
 
     at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)
     assert re.search(
-        r"B TEST MODEL: 54 points .*, peak -13\.1\d mag at 267\.9 d, Δm15 0\.2\d+ mag", capsys.readouterr().out
+        r"B TEST MODEL: 54 points .*, peak -13\.1\d mag at 267\.9 d \(brightest drawn point\),"
+        r" Δm15 0\.2\d+ mag \(linear interpolation",
+        capsys.readouterr().out,
     )
 
     # the frame keeps the nearest point outside -timemin, and the summary counted that point
@@ -6077,36 +6079,49 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
         r"AT2017gfo \(Waxman\+2018\): \d+ points from 1 to .*, peak 6\.15e\+41 erg/s at 1 d", capsys.readouterr().out
     )
 
-    # the plot draws no point where the series has no value, and the x range counted such a point
+    # the plot draws no point where the series has no value or an infinite value, and the x range counted such a point
     from artistools.estimators.plotestimators import get_series_summary_query
 
     dfseries = pl.LazyFrame({
-        "xvalue": [1.0, 2.0, 3.0, 4.0],
-        "xvalue_binned": [1.0, 2.0, 3.0, 4.0],
-        "yvalue": [None, 5.0, 6.0, float("nan")],
-        "celltsweight": [1.0, 1.0, 1.0, 1.0],
+        "xvalue": [1.0, 2.0, 3.0, 4.0, 5.0],
+        "xvalue_binned": [1.0, 2.0, 3.0, 4.0, 5.0],
+        "yvalue": [None, 5.0, 6.0, float("nan"), float("inf")],
+        "celltsweight": [1.0, 1.0, 1.0, 1.0, 1.0],
     })
-    summary = get_series_summary_query(dfseries, {}).collect().row(0, named=True)
-    assert (summary["xmin"], summary["xmax"], summary["valuecount"], summary["emptybincount"]) == (2.0, 3.0, 2, 2)
+    summary = get_series_summary_query(dfseries, "cell volume", {}).collect().row(0, named=True)
+    assert (summary["xmin"], summary["xmax"], summary["valuecount"], summary["emptybincount"]) == (2.0, 3.0, 2, 3)
+    assert np.isclose(summary["ymax"], 6.0)
 
-    # the luminosity of the drawn range is 4 pi (1 Mpc)^2 times the integrated flux at 1 Mpc of the same rows
-    at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "spec.pdf")
-    out = capsys.readouterr().out
-    spectrummatch = re.search(
-        r"TEST MODEL [^:]*: (\d+) points from .* angstrom, peak flux ([\d.e+-]+) at ([\d.e+-]+) angstrom, luminosity of"
-        r" the drawn range ([\d.e+-]+) erg/s",
-        out,
-    )
-    assert spectrummatch is not None
-    dfspec = at.spectra.get_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect()
-    dfrange = dfspec.filter(pl.col("lambda_angstroms").is_between(2500, 19000)).sort("lambda_angstroms")
-    expected_luminosity = (
-        np.trapezoid(dfrange["f_lambda"].to_numpy(), x=dfrange["lambda_angstroms"].to_numpy())
-        * 4
-        * math.pi
-        * at.constants.megaparsec_to_cm**2
-    )
-    assert np.isclose(float(spectrummatch.group(4)), expected_luminosity, rtol=1e-3)
+    # the luminosity is 4 pi (1 Mpc)^2 times the integrated flux at 1 Mpc of the drawn line, which reaches each axis
+    # limit. The integral left out the segments between each axis limit and the nearest row inside it
+    dfspec = at.spectra.get_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect().sort("lambda_angstroms")
+    lambdas, flambdas = dfspec["lambda_angstroms"].to_numpy(), dfspec["f_lambda"].to_numpy()
+
+    def get_expected_luminosity(lambdamin: float, lambdamax: float) -> float:
+        isinside = (lambdas > lambdamin) & (lambdas < lambdamax)
+        xpoints = np.concatenate([[lambdamin], lambdas[isinside], [lambdamax]])
+        ypoints = np.interp(xpoints, lambdas, flambdas)
+        return float(np.trapezoid(ypoints, x=xpoints)) * 4 * math.pi * at.constants.megaparsec_to_cm**2
+
+    # a range between two rows has no row inside it, and the summary gave no luminosity for the drawn line
+    for xlimits in [(2600.0, 18000.0), (4000.5, 4001.0)]:
+        at.spectra.plot(
+            argsraw=[],
+            specpath=[modelpath],
+            timedays="300",
+            xmin=xlimits[0],
+            xmax=xlimits[1],
+            outputfile=tmp_path / "spec.pdf",
+        )
+        out = capsys.readouterr().out
+        spectrummatch = re.search(
+            r"TEST MODEL [^:]*: (?:\d+ points from .* angstrom, largest drawn flux [\d.e+-]+ at [\d.e+-]+ angstrom, )?"
+            r"luminosity ([\d.e+-]+) erg/s = 4π \(1 Mpc\)² ∫ f_λ dλ from ([\d.e+-]+) to [\d.e+-]+ Å \(trapezoidal",
+            out,
+        )
+        assert spectrummatch is not None, out
+        assert np.isclose(float(spectrummatch.group(2)), xlimits[0], rtol=1e-3)
+        assert np.isclose(float(spectrummatch.group(1)), get_expected_luminosity(*xlimits), rtol=1e-3)
 
     # --showemission gives one line for each drawn series with its share, and none for a series with no flux
     at.spectra.plot(

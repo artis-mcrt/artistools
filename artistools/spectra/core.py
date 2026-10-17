@@ -2580,7 +2580,10 @@ def print_contribution_table(
     drawn = [row.linelabel for row in kept if emission[row.linelabel] > 0.0 or absorption[row.linelabel] > 0.0]
     othernames = [row.linelabel for row in other if row.linelabel != "Other"]
     labelwidth = max((len(label) for label in [*drawn, "Other"]), default=5)
-    print("  integrated flux at 1 Mpc [erg/s/cm^2] of each series, and its share:")
+    print(
+        f"  flux at 1 Mpc [erg/s/cm^2] of each series = ∫ f_λ dλ from {arraylambda_angstroms.min():.5g} to"
+        f" {arraylambda_angstroms.max():.5g} Å (trapezoidal rule), and its share of the sum of all the series:"
+    )
     for label in drawn:
         print(f"    {label:<{labelwidth}}  {get_flux_text(label)}")
     if nodata := len(kept) - len(drawn):

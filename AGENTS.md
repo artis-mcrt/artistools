@@ -143,6 +143,8 @@ A test on a small model can pass with an incorrect unit or physical factor. Thus
 - Use cgs units. Put a different unit at the end of the name, e.g. `time_days` and `lambda_angstroms`.
 - Import each constant and conversion factor from `artistools/constants.py`. Do not write the number as a literal.
 - Log each physical assumption that a command applies, and its source.
+- Make the method of each number in the console output clear, e.g. the range, the weights, and the integration rule.
+  A reader must know how the command got the number, because the number is not useful for science without this.
 
 ## Model paths, model folders, and run folders
 

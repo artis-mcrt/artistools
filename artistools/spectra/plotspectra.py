@@ -366,28 +366,40 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
 def print_spectrum_summary(
     seriesname: str, dfspectrum: pl.DataFrame, xlimits: tuple[float, float], xunit: str, yvariable: str
 ) -> None:
-    """Log the peak of a drawn spectrum and the luminosity of the drawn range, from the rows inside the x range.
+    """Log the largest drawn point of a spectrum and the luminosity of the drawn range.
 
-    The frame of a spectrum keeps the nearest row outside each end of the x range, and the axis does not show it. The
-    luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc over the drawn wavelengths, thus it does not
-    depend on -distmpc or --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g. all the
-    packets, thus the summary does not give it.
+    The frame of a spectrum keeps the nearest row outside each end of the x range, and the axis does not show it. Thus
+    the largest point comes from the rows inside the x range, and the integral uses f_lambda and lambda interpolated
+    linearly in x at each axis limit. The luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc, thus it
+    does not depend on -distmpc or --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g.
+    all the packets, thus the summary does not give it.
     """
     xlow, xhigh = sorted(xlimits)
-    dfinrange = dfspectrum.filter(pl.col("x").is_between(xlow, xhigh)).sort("lambda_angstroms")
-    if dfinrange.is_empty():
+    dfsorted = dfspectrum.sort("x")
+    xvalues = dfsorted["x"].to_numpy()
+    if dfsorted.is_empty() or xhigh <= xvalues[0] or xlow >= xvalues[-1]:
         print_series_summary(seriesname, ["no point in the x range"])
         return
-    peakx, peaky = dfinrange.select(pl.col("x", "y").sort_by("y", descending=True).first()).row(0)
-    flux_onempc = abs(float(np.trapezoid(dfinrange["f_lambda"].to_numpy(), x=dfinrange["lambda_angstroms"].to_numpy())))
-    print_series_summary(
-        seriesname,
-        [
+    dfinrange = dfsorted.filter(pl.col("x").is_between(xlow, xhigh))
+    parts = []
+    if not dfinrange.is_empty():
+        peakx, peaky = dfinrange.select(pl.col("x", "y").sort_by("y", descending=True).first()).row(0)
+        parts += [
             f"{dfinrange.height} points from {dfinrange['x'].min():.4g} to {dfinrange['x'].max():.4g} {xunit}",
-            f"peak {yvariable} {peaky:.4g} at {peakx:.4g} {xunit}",
-            f"luminosity of the drawn range {flux_onempc * 4 * math.pi * megaparsec_to_cm**2:.4g} erg/s",
-        ],
+            f"largest drawn {yvariable} {peaky:.4g} at {peakx:.4g} {xunit}",
+        ]
+    # np.interp gives the end value outside the data, thus a limit outside the data is the end of the data
+    xlimitsinside = [max(xlow, float(xvalues[0])), min(xhigh, float(xvalues[-1]))]
+    lambdaends = np.interp(xlimitsinside, xvalues, dfsorted["lambda_angstroms"].to_numpy())
+    flambdaends = np.interp(xlimitsinside, xvalues, dfsorted["f_lambda"].to_numpy())
+    lambdas = np.concatenate([lambdaends[:1], dfinrange["lambda_angstroms"].to_numpy(), lambdaends[1:]])
+    flambdas = np.concatenate([flambdaends[:1], dfinrange["f_lambda"].to_numpy(), flambdaends[1:]])
+    luminosity = abs(float(np.trapezoid(flambdas, x=lambdas))) * 4 * math.pi * megaparsec_to_cm**2
+    parts.append(
+        f"luminosity {luminosity:.4g} erg/s = 4π (1 Mpc)² ∫ f_λ dλ from {lambdaends.min():.5g} to"
+        f" {lambdaends.max():.5g} Å (trapezoidal rule, f_λ interpolated linearly at the axis limits)"
     )
+    print_series_summary(seriesname, parts)
 
 
 def plot_reference_spectrum(
@@ -1056,13 +1068,8 @@ def plot_artis_spectrum(
             seriessuffix = f"_dirbin{dirbin:02d}" if dirbin >= 0 else ""
             if args.multispecplot:
                 seriessuffix += f"_{args.timedayslist[axindex]}d"
-            print_spectrum_summary(
-                f"{linelabel_withdirbin or get_model_name(modelpath)}{seriessuffix}",
-                dfspectrum,
-                (xmin, xmax),
-                xunit,
-                yvariable,
-            )
+            summaryname = f"{linelabel_withdirbin or get_model_name(modelpath)}{seriessuffix}"
+            print_spectrum_summary(summaryname, dfspectrum, (xmin, xmax), xunit, yvariable)
             xplot, yplot = dfspectrum["x"].to_numpy(), dfspectrum["y"].to_numpy()
             binedges = None
             if args.histogram:
@@ -1077,7 +1084,7 @@ def plot_artis_spectrum(
                 dfspectrum = dfspectrum.with_columns(x_lower=pl.Series(lower), x_upper=pl.Series(upper))
             drawnseries.append((seriessuffix, dfspectrum))
             (modelline,) = axis.plot(
-                xplot, yplot, label=linelabel_withdirbin if axindex == 0 else None, **panelplotkwargs
+                xplot, yplot, label=linelabel_withdirbin if axindex == 0 else None, gid=summaryname, **panelplotkwargs
             )
             if args.shownoise:
                 print_method_line(get_noise_method_text(yvariable))
@@ -1142,7 +1149,12 @@ def add_to_grid_tables(gridtables: list[pl.DataFrame], dfseries: pl.DataFrame, g
         tablelambdas = table["lambda_angstroms"].to_numpy()
         # a table gives one wavelength to each row, thus only an equal grid joins a table
         if np.array_equal(tablelambdas, serieslambdas):
-            gridtables[index] = table.with_columns(dfseries.drop(gridcolumns, strict=False))
+            dfseriesvalues = dfseries.drop(gridcolumns, strict=False)
+            if repeatedcolumns := set(dfseriesvalues.columns) & set(table.columns):
+                # with_columns replaces a column of the same name, thus a repeated name loses a series
+                msg = f"two series of the spectrum table have the same columns: {sorted(repeatedcolumns)}"
+                raise ValueError(msg)
+            gridtables[index] = table.with_columns(dfseriesvalues)
             return
     gridtables.append(dfseries)
 
@@ -1192,6 +1204,7 @@ def make_spectrum_plot(
     """
     gridtables: list[pl.DataFrame] = []
     dfothers: list[pl.DataFrame] = []
+    tableseriesnames: set[str] = set()
     nseriesplotted = 0
 
     set_prop_cycle_unusedcolors(axes, args.color)
@@ -1276,6 +1289,11 @@ def make_spectrum_plot(
 
             if seriesdata is not None:
                 seriesname = get_model_name(specpath)
+                if seriesname in tableseriesnames:
+                    # two models can have the same name, and the columns of the second replaced those of the first
+                    seriesname = f"{seriesname}_{seriesindex}"
+                    print_warning(f"the data table gives the columns of {specpath} the model name {seriesname}")
+                tableseriesnames.add(seriesname)
                 nseriesplotted += 1
 
         if args.print_data or args.write_data:

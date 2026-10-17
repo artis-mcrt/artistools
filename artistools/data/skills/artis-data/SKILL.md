@@ -60,14 +60,16 @@ space has quotes.
 Without `--quiet`, plotestimators, plotlightcurves, and plotspectra also log one summary line for each drawn series.
 Read these lines before you calculate a value yourself. Examples are:
 
-- `Te: subplot 0, 540 points, x 5009 to 2.878e+04 km/s, min 3500 K at x = 1.711e+04, ..., weighted mean 8.394e+04 K`.
-  A point is a cell at a time step, and the mean has the weight of the drawn line, e.g. the mass of each cell;
-- `B mymodel: 54 points from 250.4 to 299.3 d, peak -13.12 mag at 267.9 d, Δm15 0.248 mag`;
-- `mymodel: 518 points from 2500 to 1.9e+04 angstrom, peak flux 5.121e-16 at 4648 angstrom, luminosity of the drawn
-  range 2.763e+40 erg/s`. The luminosity is for the drawn wavelengths alone, and not for the full spectrum;
-- with `--showemission` or `--showabsorption`, one line for each drawn series with its integrated flux at 1 Mpc
-  and its share, e.g. `Co II      emission 3.48e-08 (68.3%)  absorption 1.50e-08 (96.7%)`, and one line for
-  the series in "Other".
+- `Te: subplot 0, 540 points, x 5009 to 2.878e+04 km/s, min 3500 K at x = 1.711e+04, ..., mean 8.394e+04 K, weight of
+  the mean: cell volume times time step duration`. A point is a cell at a time step, and the line names the weight;
+- `B mymodel: 54 points from 250.4 to 299.3 d, peak -13.12 mag at 267.9 d (brightest drawn point), Δm15 0.248 mag
+  (linear interpolation of the magnitude at the peak time + 15 d)`;
+- `mymodel: 518 points from 2500 to 1.9e+04 angstrom, largest drawn flux 5.121e-16 at 4648 angstrom, luminosity
+  2.763e+40 erg/s = 4π (1 Mpc)² ∫ f_λ dλ from 2500 to 19000 Å (trapezoidal rule, ...)`. The luminosity is for the
+  drawn wavelengths alone, and not for the full spectrum;
+- with `--showemission` or `--showabsorption`, a heading with the wavelength range and the integration rule, one line
+  for each drawn series with its flux at 1 Mpc and its share, e.g. `Co II      emission 3.48e-08 (68.3%)  absorption
+  1.50e-08 (96.7%)`, and one line for the series in "Other".
 
 A line that starts with `WARNING:` gives a problem of the plot. Examples are:
 
