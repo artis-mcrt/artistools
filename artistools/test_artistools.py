@@ -4793,9 +4793,15 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
             timebins_tstart=[4.0, 5.0],
             timebins_tend=[6.0, 7.0],
             outputfile=tmp_path / "emreg.pdf",
+            write_data=True,
         )
 
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]
+    # the model has no packets in the features, and the table left out the reference curve, thus it gave no file
+    dfpoints = pl.read_csv(tmp_path / "emreg_5.0d.txt", separator=" ", null_values="nan")
+    assert dfpoints.select("model", "feature", "log10nne", "Te").rows() == [
+        ("Flörs+2020 +5d", "reference", 5.0, 5000.0)
+    ]
 
 
 def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> None:

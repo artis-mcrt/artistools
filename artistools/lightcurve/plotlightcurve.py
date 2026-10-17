@@ -795,7 +795,6 @@ def plot_artis_lightcurve(
                     filterfunc, return_dtype=pl.self_dtype()
                 )
             )
-        plotteddataframes[dirbin] = lcdata
 
         label_with_tags: str | None = linelabel
         if dirbin != -1:
@@ -847,6 +846,14 @@ def plot_artis_lightcurve(
             else:
                 lcdata_before_valid = lcdata.filter(pl.col("time_days") <= lcdata_valid["time_days"].min())
                 lcdata_after_valid = lcdata.filter(pl.col("time_days") >= lcdata_valid["time_days"].max())
+
+        # the line of the luminosity shows only the valid range, and -plotinvalidpart and --plotcmf show each row.
+        # Thus the table keeps each row, and a column names the rows of the line
+        plotteddataframes[dirbin] = lcdata.drop("time_s").with_columns(
+            in_valid_range=pl.lit(value=False)
+            if validrange_start_days is None or validrange_end_days is None
+            else pl.col("time_days").is_between(validrange_start_days, validrange_end_days)
+        )
 
         if args.plotinvalidpart:
             plotkwargs_invalidrange = plotkwargs.copy()

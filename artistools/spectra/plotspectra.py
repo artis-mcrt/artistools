@@ -491,11 +491,14 @@ def plot_reference_spectrum_for_args(
     )
 
 
-def plot_filter_functions(axis: mplax.Axes, xunit: str, *, residualseries: list[ResidualSeries] | None = None) -> None:
-    """Plot the UBVI filter transmission curves on the flux axis, at the x values of the unit xunit.
+def plot_filter_functions(
+    axis: mplax.Axes, xunit: str, *, residualseries: list[ResidualSeries] | None = None
+) -> list[Line2D]:
+    """Plot the UBVI filter transmission curves on the flux axis, at the x values of the unit xunit, and return them.
 
     The transmission goes from 0 to 1, thus the curves agree with a spectrum of --normalised.
     """
+    filterlines: list[Line2D] = []
     filter_names = ["U", "B", "V", "I"]
     colours = ["r", "b", "g", "c", "m"]
 
@@ -511,6 +514,7 @@ def plot_filter_functions(axis: mplax.Axes, xunit: str, *, residualseries: list[
         xvalues = convert_angstroms_to_unit(filter_data["lambda_angstroms"].to_numpy(), xunit)
         yvalues = filter_data["flux_normalised"].to_numpy()
         (filterline,) = axis.plot(xvalues, yvalues, label=filter_name, color=colours[index], alpha=0.3)
+        filterlines.append(filterline)
         if residualseries is not None:
             residualseries.append(
                 ResidualSeries(
@@ -521,6 +525,7 @@ def plot_filter_functions(axis: mplax.Axes, xunit: str, *, residualseries: list[
                     line=filterline,
                 )
             )
+    return filterlines
 
 
 DELTALOGX_SCALES: t.Final = ("smallestscale", "largestscale")
@@ -1114,8 +1119,9 @@ def make_spectrum_plot(
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Plot the reference spectra and the ARTIS spectra, and return the data of each type.
 
-    residualseries takes each drawn series for a residual panel. A reference spectrum or a code comparison spectrum
-    has its own wavelength grid. Thus a second table holds its points, with one row for each point.
+    residualseries takes each drawn series for a residual panel. A reference spectrum, a code comparison spectrum, and
+    a filter curve of --showfilterfunctions have their own wavelength grids. Thus a second table holds their points,
+    with one row for each point.
     """
     dfalldata = pl.DataFrame()
     dfothers: list[pl.DataFrame] = []
@@ -1242,11 +1248,16 @@ def make_spectrum_plot(
             "no spectra were plotted. Check that each given path holds an ARTIS model or a reference spectrum"
         )
 
+    # each panel of --multispecplot gets the same filter curves, thus the table takes the curves of the first panel
+    tableneedsfilters = args.print_data or args.write_data
     for axis in axes:
         if args.showfilterfunctions:
             if not args.normalised:
                 print_warning("the filter functions plot normalised values, thus give --normalised as well")
-            plot_filter_functions(axis, args.xunit, residualseries=residualseries)
+            filterlines = plot_filter_functions(axis, args.xunit, residualseries=residualseries)
+            if tableneedsfilters:
+                dfothers.append(get_drawn_lines_table(filterlines, args))
+                tableneedsfilters = False
 
         # a flux of stokes I is not negative, and the y margin puts the bottom below zero. make_plot applies -ymin
         # and -ymax after this function returns, and -ymax alone keeps this bottom
@@ -1430,6 +1441,35 @@ def collect_emission_and_absorption(
     collected = pl.collect_all([*emissionqueries, *absorptionqueries])
 
     return collected[: len(emissionqueries)], collected[len(emissionqueries) :]
+
+
+def add_drawn_emission_columns(
+    dfaxisdata: pl.DataFrame,
+    dfspectotal: pl.DataFrame,
+    contributions: Sequence[FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    args: argparse.Namespace,
+    scalefactor: float,
+) -> pl.DataFrame:
+    """Add the drawn values of the emission plot to its table, in the units of -xunit and -yvariable.
+
+    The figure scales each value for --normalised, and it draws each absorption below zero. A stack draws the sum of
+    the contributions, and the table gives the height of each contribution in the stack.
+    """
+    emissionspectra, absorptionspectra = collect_emission_and_absorption(contributions, arraylambda_angstroms, args)
+    yplotted = f"{args.yvariable}_plotted"
+    return dfaxisdata.with_columns(
+        dfspectotal["x"].alias(f"x_plotted_{args.xunit}"),
+        *([] if args.hidenetspectrum else [(dfspectotal["y"] * scalefactor).alias(f"{yplotted}.Spectrum")]),
+        *(
+            (dfspec["y"] * scalefactor).alias(f"emission_{yplotted}.{contribution.linelabel}")
+            for contribution, dfspec in zip(contributions, emissionspectra, strict=False)
+        ),
+        *(
+            (-dfspec["y"] * scalefactor).alias(f"absorption_{yplotted}.{contribution.linelabel}")
+            for contribution, dfspec in zip(contributions, absorptionspectra, strict=False)
+        ),
+    )
 
 
 def plot_contributions_unstacked(
@@ -1743,6 +1783,10 @@ def make_emissionabsorption_plot(
                     name=f"absorption_flambda.{contribution.linelabel}", values=contribution.array_flambda_absorption
                 )
             )
+    if args.print_data or args.write_data:
+        dfaxisdata = add_drawn_emission_columns(
+            dfaxisdata, dfspectotal, contributions_sorted_reduced, arraylambda_angstroms, args, scalefactor
+        )
 
     max_absorption = 0.0
     if args.nostack:
@@ -1843,9 +1887,11 @@ def draw_plot(
     """Draw the spectra that args selects, and return the tables of the plotted data.
 
     The axes must be empty. This function writes no file, thus the viewer can call it again for each change
-    of a control. The keys of the tables are the ends of the names of the data files, see output_data. The empty
-    key gives the ARTIS spectra, "_references" gives the reference and code comparison spectra, and "_residuals"
-    gives the statistics of the residuals.
+    of a control. The keys of the tables are the ends of the names of the data files, see output_data:
+
+    - the empty key gives the ARTIS spectra;
+    - "_references" gives the reference spectra, the code comparison spectra, and the filter curves;
+    - "_residuals" gives the statistics of the residuals.
     """
     dfresidualstats = pl.DataFrame()
     filterfunc = get_filterfunc(args)

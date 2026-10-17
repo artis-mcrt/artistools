@@ -917,6 +917,32 @@ def test_spectraemissionplot_linewidth_arg(mockplot: mock.MagicMock, tmp_path: P
     assert dfreferences.height == len(mockplot.call_args_list[1].args[2])
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_emission_plot_data_gives_the_drawn_values(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The table gave f_lambda alone, and the figure scales it for --normalised and draws the absorption below zero."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        outputfile=tmp_path / "emission.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        showabsorption=True,
+        nostack=True,
+        normalised=True,
+        write_data=True,
+    )
+    dftable = pl.read_csv(tmp_path / "emission.txt", separator=" ", null_values="nan")
+    drawnlines = [np.asarray(call.args[2], dtype=np.float64) for call in mockplot.call_args_list]
+    emissioncolumns = [col for col in dftable.columns if col.startswith("emission_flux_plotted.")]
+    absorptioncolumns = [col for col in dftable.columns if col.startswith("absorption_flux_plotted.")]
+    assert emissioncolumns
+    assert len(absorptioncolumns) == len(emissioncolumns)
+    for column in [*emissioncolumns, *absorptioncolumns, "flux_plotted.Spectrum"]:
+        assert any(np.allclose(drawn, dftable[column].to_numpy(), rtol=1e-6, atol=0) for drawn in drawnlines), column
+    assert (dftable[absorptioncolumns[0]] <= 0).all()
+
+
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
 def test_spectraemissionplot_losvelocity_shells(mockstackplot: mock.MagicMock, tmp_path: Path) -> None:
     """The default line-of-sight shells run from -vmax to vmax, plus one shell to each corner."""
@@ -1445,6 +1471,19 @@ def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) ->
     pltest.assert_frame_equal(
         pl.read_csv(tmp_path / "refonly_references.txt", separator=" ", null_values="nan"), dfreferences
     )
+
+    # the filter curves of --showfilterfunctions have their own wavelength grids, and no table held them
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath],
+        outputfile=tmp_path / "filters.pdf",
+        timedays="300",
+        showfilterfunctions=True,
+        normalised=True,
+        write_data=True,
+    )
+    dffilters = pl.read_csv(tmp_path / "filters_references.txt", separator=" ", null_values="nan")
+    assert dffilters["series"].unique(maintain_order=True).to_list() == ["U", "B", "V", "I"]
 
 
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)

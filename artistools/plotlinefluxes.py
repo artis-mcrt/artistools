@@ -814,11 +814,40 @@ def set_emitting_regions_limits(
     )
 
 
+def get_emitting_region_table(
+    model: str,
+    feature: str,
+    time_days: float,
+    log10nne: Sequence[float] | npt.NDArray[np.floating],
+    te: Sequence[float] | npt.NDArray[np.floating],
+) -> pl.DataFrame:
+    """Return the drawn points of one series of the emitting regions, e.g. the packets of a feature or a reference.
+
+    A feature with no packet gives an empty frame, thus the schema gives the types of the columns.
+    """
+    return pl.DataFrame(
+        {
+            "model": model,
+            "feature": feature,
+            "time_days": time_days,
+            "log10nne": np.asarray(log10nne, dtype=np.float64),
+            "Te": np.asarray(te, dtype=np.float64),
+        },
+        schema={
+            "model": pl.String,
+            "feature": pl.String,
+            "time_days": pl.Float64,
+            "log10nne": pl.Float64,
+            "Te": pl.Float64,
+        },
+    )
+
+
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     """Plot the electron density and the temperature of the cells that emit each feature, and save the figure.
 
     --print_data and --write_data give one row for each packet in each figure. Each row holds the log10nne and the Te of
-    the cell that emitted the packet.
+    the cell that emitted the packet. The points of each reference curve have the feature "reference".
     """
     refdatafilenames: list[str] = [] if args.norefdata else ["floers_te_nne.json"]
     refdatalabels = ["Flörs+2020"]
@@ -855,46 +884,41 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         axis = axesgrid[0][0]
         assert isinstance(axis, mplax.Axes)
 
+        dfpoints: list[pl.DataFrame] = []
         for refdataindex, (refdatakeys, refdatatimes, refdatapoints) in enumerate(refdata):
             timeindex = int(np.abs(refdatatimes - tmid).argmin())
-            axis.plot(
-                refdatapoints[timeindex]["ne"],
-                refdatapoints[timeindex]["temp"],
-                color=refdatacolors[refdataindex],
-                lw=2,
-                label=f"{refdatalabels[refdataindex]} +{refdatakeys[timeindex]}d",
-            )
-
             timeindexb = int(np.abs(refdatatimes - tmid - 50).argmin())
+            drawncurves = [(timeindex, refdatacolors[refdataindex])]
             if timeindexb != timeindex:
+                drawncurves.append((timeindexb, "0.4"))
+            for drawnindex, colour in drawncurves:
+                reflabel = f"{refdatalabels[refdataindex]} +{refdatakeys[drawnindex]}d"
                 axis.plot(
-                    refdatapoints[timeindexb]["ne"],
-                    refdatapoints[timeindexb]["temp"],
-                    color="0.4",
+                    refdatapoints[drawnindex]["ne"],
+                    refdatapoints[drawnindex]["temp"],
+                    color=colour,
                     lw=2,
-                    label=f"{refdatalabels[refdataindex]} +{refdatakeys[timeindexb]}d",
+                    label=reflabel,
+                )
+                dfpoints.append(
+                    get_emitting_region_table(
+                        reflabel,
+                        "reference",
+                        float(refdatatimes[drawnindex]),
+                        refdatapoints[drawnindex]["ne"],
+                        refdatapoints[drawnindex]["temp"],
+                    )
                 )
 
-        dfpoints: list[pl.DataFrame] = []
         for modelindex, emdata in enumerate(emdata_all):
             emfeatures = get_labelandlineindices(args.modelpath[modelindex], tuple(args.emfeaturesearch))
-            # a feature with no packet gives an empty frame, thus the schema gives the types of its columns
             dfpoints.extend(
-                pl.DataFrame(
-                    {
-                        "model": get_model_name(args.modelpath[modelindex]),
-                        "feature": feature.colname,
-                        "time_days": tmid,
-                        "log10nne": np.asarray(emdata[tmid, feature.colname]["em_log10nne"], dtype=np.float64),
-                        "Te": np.asarray(emdata[tmid, feature.colname]["em_Te"], dtype=np.float64),
-                    },
-                    schema={
-                        "model": pl.String,
-                        "feature": pl.String,
-                        "time_days": pl.Float64,
-                        "log10nne": pl.Float64,
-                        "Te": pl.Float64,
-                    },
+                get_emitting_region_table(
+                    get_model_name(args.modelpath[modelindex]),
+                    feature.colname,
+                    tmid,
+                    emdata[tmid, feature.colname]["em_log10nne"],
+                    emdata[tmid, feature.colname]["em_Te"],
                 )
                 for feature in emfeatures
             )

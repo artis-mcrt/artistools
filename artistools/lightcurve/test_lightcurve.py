@@ -361,9 +361,14 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
         "outputfile": tmp_path,
     }
     at.lightcurve.plot(argsraw=[], save_viewing_angle_peakmag_risetime_delta_m15_to_file=True, **commonargs)
-    at.lightcurve.plot(argsraw=[], make_viewing_angle_peakmag_risetime_scatter_plot=True, **commonargs)
+    at.lightcurve.plot(argsraw=[], make_viewing_angle_peakmag_risetime_scatter_plot=True, write_data=True, **commonargs)
 
     assert list(tmp_path.glob("*risetime_peakmag.pdf"))
+    # the scatter plot wrote no table, because main returned before output_data
+    (tablepath,) = tmp_path.glob("*risetime_peakmag.txt")
+    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan")
+    assert dftable.columns == ["model", "dirbin", "risetime_days", "peakmag"]
+    assert dftable["dirbin"].to_list() == [0, -1]
 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
@@ -3074,6 +3079,8 @@ def test_lightcurve_data_gives_the_filtered_curve_and_the_energy_rates(
     })
     dfcompared = dfdrawn.join(dflc.select("time_days", "luminosity_erg/s"), on="time_days", how="inner")
     assert dfcompared.height == dfdrawn.height
+    # the line shows only the range of validity, thus the column in_valid_range names its rows
+    assert dflc.filter(pl.col("in_valid_range"))["time_days"].to_list() == dfdrawn["time_days"].to_list()
     assert np.allclose(dfcompared["luminosity_erg/s"], dfcompared["drawn"], rtol=1e-6, atol=0)
 
     dfrates = pl.read_csv(tmp_path / "lc_energyrates.txt", separator=" ", null_values="nan")
