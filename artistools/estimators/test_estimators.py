@@ -5723,3 +5723,17 @@ def test_estimator_print_data_gives_the_drawn_values(
     assert any(
         len(ydata) == dftable.height and np.allclose(ydata, dftable["value"], rtol=1e-6, atol=0) for ydata in drawnlines
     )
+
+
+def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.CaptureFixture[str]) -> None:
+    """A script or an agent needs the units of each column, and the listing for a reader gives them by family."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, print_data=True)
+    output = capsys.readouterr().out
+    dftable = pl.read_csv(io.StringIO(output[output.index("variable units description") :]), separator=" ")
+    units = dict(zip(dftable["variable"], dftable["units"], strict=True))
+    assert units["Te"] == "K"
+    assert units["gamma_NT_Fe_II"] == "s^-1"
+    assert units["nnion_Fe_II"] == "cm^-3"
+    descriptions = dict(zip(dftable["variable"], dftable["description"], strict=True))
+    # the ratio is in the family of the heating rates, but it is no rate
+    assert "fraction" in descriptions["heating_heating_dep/total_dep"]

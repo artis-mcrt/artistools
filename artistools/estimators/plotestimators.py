@@ -37,11 +37,14 @@ from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.estimators.core import get_averageexcitation
 from artistools.estimators.core import get_levelpop_modeldata
+from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_units
 from artistools.estimators.core import get_units_string
+from artistools.estimators.core import get_variable
 from artistools.estimators.core import get_variablelongunits
 from artistools.estimators.core import get_varname_formatted
 from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import PREFIX_GROUPS
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.estimators.core import VARIABLES
@@ -2516,10 +2519,54 @@ def filter_listed_columns(columns: Sequence[str], searchterms: Sequence[str]) ->
     return [column for column in columns if any(term in column.lower() for term in lowerterms)]
 
 
+# the descriptions of the table of --listvariables --print_data that the table VARIABLES does not give. A key that ends
+# with _ names a family of columns, e.g. nnion_Fe_II. The longest key that matches wins
+LISTING_DESCRIPTIONS: Mapping[str, str] = MappingProxyType({
+    "Te": "electron temperature",
+    "TR": "radiation temperature",
+    "TJ": "temperature of a black body with the mean intensity J",
+    "nne": "number density of the free electrons",
+    "tmid_days": "mid time of the timestep",
+    "heating_heating_dep/total_dep": "fraction of the deposited energy that heats the gas",
+    "nnelement_": "number density of an element",
+    "nnion_": "number density of an ion",
+    "nniso_": "number density of a nuclide",
+    "gamma_R_": "photoionisation rate of each ion of this ion",
+    "gamma_NT_": "non-thermal ionisation rate of each ion of this ion",
+    "Alpha_R_": "recombination coefficient of this ion to the ion below it",
+    "Alpha_R*nne_": "recombination rate of each ion of this ion to the ion below it",
+})
+
+
+def get_variables_table(columns: Sequence[str]) -> pl.DataFrame:
+    """Return one row for each estimator column, with its units and a description, for a reader of the output."""
+    descriptions = []
+    for column in columns:
+        info = get_variable(column)
+        prefix = get_prefix_group(column)
+        listingkey = max(
+            (key for key in LISTING_DESCRIPTIONS if column == key or (key.endswith("_") and column.startswith(key))),
+            key=len,
+            default=None,
+        )
+        descriptions.append(
+            (LISTING_DESCRIPTIONS[listingkey] if listingkey is not None else "")
+            or info.note
+            or (PREFIX_GROUPS[prefix] if prefix is not None else "")
+            or info.longlabel.split(" [")[0]
+        )
+    return pl.DataFrame({
+        "variable": list(columns),
+        "units": [get_units(column, latex=False) or "" for column in columns],
+        "description": descriptions,
+    })
+
+
 def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> None:
     """Print the estimator variables of the model, or the variables that hold a search term.
 
-    A search shows fewer variables than the full list. Thus the heading names the search terms.
+    A search shows fewer variables than the full list. Thus the heading names the search terms. With --print_data, the
+    listing is a table with one row for each column, thus a script reads the units of each column.
     """
     searchterms = [term for term in args.plotitems if term]
     listedcolumns = filter_listed_columns(estimatorcolumns, searchterms)
@@ -2528,6 +2575,9 @@ def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> 
             f"no estimator variable of this model holds {' or '.join(searchterms)}",
             suggest_names(searchterms[0], estimatorcolumns) or "Give no name to list every variable",
         )
+    if args.print_data:
+        print_product(args, get_variables_table(sorted(listedcolumns)))
+        return
 
     # the heading and the folder are progress, thus --quiet leaves the listing alone
     print(

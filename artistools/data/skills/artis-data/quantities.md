@@ -30,7 +30,8 @@ for each time step and cell. SKILL.md gives the main columns. The other column f
   holds the analytic rate of radiative and collisional ionisation. ARTIS writes them only with `USE_LUT_PHOTOION`;
 - `Alpha_R_<ion>` (cm^3/s): the recombination coefficient, in an output of an older ARTIS.
 
-`artistools plotestimators --listvariables <modelpath>` lists the columns of a model and their units.
+`artistools plotestimators --listvariables --print_data --quiet <modelpath>` gives a table of each column of a model,
+with its units and a description.
 
 To find the process that heats or cools the ejecta most, multiply each rate by `volume`, then add the values of all the
 cells. Do this for each process at the same time step.

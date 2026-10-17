@@ -91,7 +91,8 @@ main columns are:
 - `heating_<process>`, `cooling_<process>`, and `deposition_<particle>` (rates, erg/s/cm^3). A column with `/` in its
   name, e.g. `heating_heating_dep/total_dep`, is a ratio and not a rate.
 
-To list the columns of a model and their units, run `artistools plotestimators --listvariables <modelpath>`.
+To get a table of each column of a model with its units and a description, run
+`artistools plotestimators --listvariables --print_data --quiet <modelpath>`.
 `join_modeldata=True` adds these columns:
 
 - `tmid_days` (the mid time of the time step);
