@@ -1660,7 +1660,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (3, "fe46bcb9040be59a"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "b1a58a2149939e6e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -3715,3 +3715,17 @@ def test_output_data_prints_and_writes_each_table(tmp_path: Path, capsys: pytest
     assert (tmp_path / "myplot.txt").read_text(encoding="utf-8") == maintable
     assert (tmp_path / "myplot_residuals.txt").read_text(encoding="utf-8") == "rms\n0.5\n"
     assert not (tmp_path / "myplot_unused.txt").exists()
+
+
+def test_artis_option_comes_from_the_artisoptions_of_the_model_folder(tmp_path: Path) -> None:
+    """The model folder of an ARTIS test holds artisoptions.h, and the reader looked only in the folder artis.
+
+    For a local test, artis can link to the ARTIS repository, which holds a different preset. Thus the copy in the
+    model folder comes first.
+    """
+    (tmp_path / "artis").mkdir()
+    (tmp_path / "artis" / "artisoptions.h").write_text("constexpr double MINTEMP = 1000.;\n", encoding="utf-8")
+    assert at.misc.get_artis_option(tmp_path, "MINTEMP") == "1000."
+
+    (tmp_path / "artisoptions.h").write_text("constexpr double MINTEMP = 3500.;\n", encoding="utf-8")
+    assert at.misc.get_artis_option(tmp_path, "MINTEMP") == "3500."

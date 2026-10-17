@@ -1083,7 +1083,7 @@ def test_radfield_bin_with_no_fit_takes_the_full_spectrum_fit() -> None:
     assert np.allclose(j_nu[:200], j_nu_fullspec[:200], rtol=1e-10)
     assert np.allclose(j_nu[200:], j_nu_bins[200:], rtol=1e-10)
 
-    # before FIRST_NLTE_RADFIELD_TIMESTEP, ARTIS takes the full-spectrum fit for every bin
+    # before MULTIBIN_RADFIELD_FIRST_TIMESTEP, ARTIS takes the full-spectrum fit for every bin
     _, j_lambda_fullspec = get_fitted_field(radfielddata, modelgridindex=0, timestep=5, usebinfits=False)
     assert np.allclose(np.array(j_lambda_fullspec) * np.array(arr_lambda) / arr_nu, j_nu_fullspec, rtol=1e-10)
 
@@ -5861,3 +5861,14 @@ def test_describe_counts_the_cells_and_the_rank_files_of_each_run_folder(capsys:
     assert "estimators: 4 rank files" in output
     assert "nlte: 0 rank files" in output
     assert "Fe I to Fe V" in output
+    # the model folder of the classic-mode 3D test holds artisoptions.h and no folder artis
+    assert "artisoptions.h MINTEMP: 3500." in output
+
+
+@pytest.mark.parametrize(
+    "optionname", ["MULTIBIN_RADFIELD_FIRST_TIMESTEP", "FIRST_BINNED_RADFIELD_TIMESTEP", "FIRST_NLTE_RADFIELD_TIMESTEP"]
+)
+def test_radfield_first_timestep_takes_each_name_of_the_option(tmp_path: Path, optionname: str) -> None:
+    """ARTIS renamed the option two times on 2026-10-16, thus a current model gave no first timestep of the bin fits."""
+    (tmp_path / "artisoptions.h").write_text(f"constexpr int {optionname} = 6;\n", encoding="utf-8")
+    assert at.plotradfield.get_multibin_radfield_first_timestep(tmp_path) == (6, optionname)

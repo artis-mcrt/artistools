@@ -203,14 +203,26 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
     return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
+@on_model_host
 def get_artis_option(modelpath: Path | str, name: str) -> str | None:
-    """Return the value text of a constexpr option of artis/artisoptions.h in the model folder, or None.
+    """Return the value text of a constexpr option of the artisoptions.h of a model, or None.
 
-    A model with no such file, or a file with no such option, gives None. A commented line gives no value.
+    The model folder of an ARTIS test holds artisoptions.h. The model folder of a production model holds the ARTIS
+    source in the folder artis. For a local test, artis can be a link to the ARTIS repository, which holds a different
+    preset. Thus the copy in the model folder comes first. A model with no such file, or a file with no such option,
+    gives None. A commented line gives no value.
     """
-    optionstext = get_artis_source_text(modelpath, "artisoptions.h")
-    if optionstext is None:
+    optionspath = next(
+        (
+            path
+            for path in (Path(modelpath) / "artisoptions.h", Path(modelpath) / "artis" / "artisoptions.h")
+            if path.is_file()
+        ),
+        None,
+    )
+    if optionspath is None:
         return None
+    optionstext = optionspath.read_text(encoding="utf-8")
     match = re.search(rf"^\s*constexpr\s+\S+\s+{re.escape(name)}\s*=\s*([^;\n]*?)\s*;", optionstext, re.MULTILINE)
     return None if match is None else match.group(1)
 

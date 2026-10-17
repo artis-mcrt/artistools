@@ -95,10 +95,7 @@ def get_ion_lines(modelpath: Path) -> list[str]:
 
 def get_option_lines(modelpath: Path) -> list[str]:
     """Return one line for each main option of artisoptions.h, or a line that says that no file gives it."""
-    return [
-        f"artisoptions.h {name}: {get_artis_option(modelpath, name) or 'not found in artis/artisoptions.h'}"
-        for name in SUMMARYOPTIONS
-    ]
+    return [f"artisoptions.h {name}: {get_artis_option(modelpath, name) or 'not found'}" for name in SUMMARYOPTIONS]
 
 
 def get_model_summary(modelpath: Path) -> list[str]:

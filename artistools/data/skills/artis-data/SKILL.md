@@ -46,10 +46,9 @@ computer and not on the host. These readers read a remote model on its host:
 - `at.get_composition_data` and `at.get_deposition`;
 - `at.spectra.get_spectra` and `at.spectra.get_from_packets`;
 - `at.lightcurve.find_lightcurve_file`, `at.lightcurve.scan_lightcurve`, and `at.lightcurve.get_from_packets`;
-- `at.packets.get_packets_column_names`.
+- `at.packets.get_packets_column_names` and `at.misc.get_artis_option`.
 
-The other readers stop with an error, and `at.misc.get_artis_option` gives `None`. For these readers, run the script on
-the host.
+The other readers stop with an error. For these readers, run the script on the host.
 
 ## Terms
 
@@ -106,8 +105,9 @@ Possible errors:
 - The estimators hold only the cells that contain matter. Thus the number of rows can be less than the number of
   cells in `model.txt`. Give the number of cells that you used.
 - ARTIS limits Te and the other temperatures to the range from `MINTEMP` to `MAXTEMP`. A temperature at a limit is
-  not a physical value. Get the limits with `at.misc.get_artis_option(modelpath, "MINTEMP")`. If that gives `None`,
-  read `artisoptions.h` in the model folder. Give the number of cells at each limit.
+  not a physical value. Get the limits with `at.misc.get_artis_option(modelpath, "MINTEMP")`. It reads `artisoptions.h`
+  in the model folder. If that file does not exist, it reads `artis/artisoptions.h`. Give the number of cells at each
+  limit.
 - If a rate column of `heating_`, `cooling_`, or `deposition_` has no value, the rate is 0. ARTIS writes no value
   for a rate of 0. Do not include a ratio column in a sum of the rates.
 - ARTIS writes the Monte Carlo deposition rate of time step n into the row of time step n + 1. It divides the rate by
@@ -149,7 +149,7 @@ print(
 for limitname in ("MINTEMP", "MAXTEMP"):
     limit = at.misc.get_artis_option(modelpath, limitname)
     if limit is None:
-        print(f"artis/artisoptions.h gives no {limitname}. Read artisoptions.h in the model folder.")
+        print(f"The artisoptions.h of the model gives no {limitname}.")
     else:
         atlimitcount = dfcells.filter(pl.col(column) == float(limit)).height
         print(f"{limitname} = {limit}: {atlimitcount} cells")

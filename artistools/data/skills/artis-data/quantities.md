@@ -120,8 +120,10 @@ SKILL.md gives the light curves and `deposition.out`. Other readers:
 
 ## Logs and options
 
-- `at.misc.get_artis_option(modelpath, name)` reads an option of `artis/artisoptions.h`. A model folder can also hold
-  `artisoptions.h` itself. Read that file directly if the function gives `None`.
+- `at.misc.get_artis_option(modelpath, name)` reads an option of `artisoptions.h` in the model folder. If that file
+  does not exist, it reads `artis/artisoptions.h`. ARTIS renamed some options on 2026-10-16, e.g.
+  `MULTIBIN_RADFIELD_FIRST_TIMESTEP` was `FIRST_BINNED_RADFIELD_TIMESTEP` and, before that,
+  `FIRST_NLTE_RADFIELD_TIMESTEP`. For an older model, also try each older name.
 - `at.plotlogfiles.read_time_taken(at.plotlogfiles.read_logfiles(modelpath))` gives the time of each part of each time
   step, from the logs `output_*.txt`.
 - The log `output_0-0.txt` holds the messages of ARTIS for each time step. Search it for a message, e.g. a warning.

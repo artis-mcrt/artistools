@@ -159,7 +159,7 @@ def get_fitted_field(
 
     ARTIS radfield() takes the dilute blackbody fit of the bin. A bin with a negative W has no fit, and ARTIS
     then takes the full-spectrum dilute blackbody fit, which is bin -1 of the file. usebinfits=False gives every
-    bin the full-spectrum fit, as ARTIS does before FIRST_NLTE_RADFIELD_TIMESTEP.
+    bin the full-spectrum fit, as ARTIS does before MULTIBIN_RADFIELD_FIRST_TIMESTEP.
     """
     arr_lambda: list[float] = []
     j_lambda_fitted: list[float] = []
@@ -185,13 +185,25 @@ def get_fitted_field(
     return arr_lambda, j_lambda_fitted
 
 
-def get_first_nlte_radfield_timestep(modelpath: Path | str) -> int | None:
-    """Return FIRST_NLTE_RADFIELD_TIMESTEP of artis/artisoptions.h in the model folder, or None.
+# ARTIS renamed this option two times on 2026-10-16 (commits d056232a and d135c5b3), thus an older model gives an older
+# name. The newest name comes first
+MULTIBIN_RADFIELD_FIRST_TIMESTEP_NAMES = (
+    "MULTIBIN_RADFIELD_FIRST_TIMESTEP",
+    "FIRST_BINNED_RADFIELD_TIMESTEP",
+    "FIRST_NLTE_RADFIELD_TIMESTEP",
+)
+
+
+def get_multibin_radfield_first_timestep(modelpath: Path | str) -> tuple[int, str] | None:
+    """Return the first timestep of the fits of the bins, and the name of its option in artisoptions.h, or None.
 
     ARTIS uses the fits of the bins from this timestep. Before it, ARTIS uses the full-spectrum fit for every bin.
     """
-    value = get_artis_option(modelpath, "FIRST_NLTE_RADFIELD_TIMESTEP")
-    return int(value) if value is not None and value.isdigit() else None
+    for optionname in MULTIBIN_RADFIELD_FIRST_TIMESTEP_NAMES:
+        value = get_artis_option(modelpath, optionname)
+        if value is not None and value.isdigit():
+            return int(value), optionname
+    return None
 
 
 def plot_line_estimators(
@@ -312,11 +324,15 @@ def plot_celltimestep(
             [ymax] + [float(yval) for xval, yval in zip(arr_lambda, yvalues, strict=True) if xmin <= xval <= xmax]
         )
 
-    firstnlteradfieldtimestep = get_first_nlte_radfield_timestep(modelpath)
-    if firstnlteradfieldtimestep is None:
+    firstmultibin = get_multibin_radfield_first_timestep(modelpath)
+    firstnlteradfieldtimestep = None if firstmultibin is None else firstmultibin[0]
+    if firstmultibin is not None:
+        print(f"The artisoptions.h of the model gives {firstmultibin[1]} = {firstmultibin[0]}")
+    else:
         print(
-            "artis/artisoptions.h of the model gives no FIRST_NLTE_RADFIELD_TIMESTEP, thus the radiation field model"
-            " takes the fits of the bins. ARTIS takes the full-spectrum fit before that timestep"
+            "The artisoptions.h of the model gives no MULTIBIN_RADFIELD_FIRST_TIMESTEP and no older name of it, thus"
+            " the radiation field model takes the fits of the bins. ARTIS takes the full-spectrum fit before that"
+            " timestep"
         )
     arr_lambda_fitted, j_lambda_fitted = get_fitted_field(
         radfielddata,
