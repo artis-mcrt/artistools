@@ -135,6 +135,10 @@ class CommandSpec:
     """The folder below tests/data that the test of the examples gives in place of ".". None makes the test parse
     the examples and not run them. Use None only for a command that needs data that the test data does not have."""
 
+    exampleneeds: tuple[str, ...] = ()
+    """The optional packages that the examples need, e.g. plotly. A test environment with no such package parses the
+    examples and does not run them, because the extras are optional."""
+
     def get_description(self) -> str:
         """Return the description of the help of the command: the help text and the note."""
         return f"{self.helptext} {self.note}".strip()
@@ -517,6 +521,7 @@ subcommandtree: CommandTree = {
         note="The view holds an isosurface of the density and the direction bins.",
         examples=((".", "the 3D view of the density and the direction bins"),),
         exampletestfolder="test-classicmode_3d",
+        exampleneeds=("plotly",),
     ),
     "python": CommandSpec(
         "commands",

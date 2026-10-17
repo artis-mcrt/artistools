@@ -150,11 +150,17 @@ def get_output_lines(modelpath: Path) -> list[str]:
         alltext = f", {allrankscount} files of all ranks ({kind}_allranks.out)" if allrankscount else ""
         lines.append(f"{kind}: {rankcount} rank files{alltext}{get_reader_text(kind) if rankcount or alltext else ''}")
 
-    packetcount = count_packets_textfiles(modelpath)
+    packetcount, otherrankcount = count_packets_textfiles(modelpath)
     if packetcount == 0 and has_packets_files(modelpath):
         lines.append("packets: no text files, and the parquet cache of the packets")
     else:
         lines.append(f"packets: {packetcount} rank files{get_reader_text('packets') if packetcount else ''}")
+    if otherrankcount:
+        # a restart with fewer ranks leaves the files of the higher ranks of an earlier run
+        lines.append(
+            f"  {otherrankcount} more packets files have a rank above the ranks of input.txt, thus the readers do not"
+            " read them. They can come from an earlier run with more ranks"
+        )
 
     for filename in SINGLEOUTPUTFILES:
         # the readers of the light curves and the spectra also search the run folders, and get_deposition does not

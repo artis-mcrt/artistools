@@ -150,6 +150,16 @@ def check_temperature_limits(modelpath: Path) -> tuple[str, str]:
         # ARTIS writes a finite Te for each cell with matter, thus a NaN or an infinity shows a fault of the run
         detail += f"; {nonfinitecount} values of Te are NaN or infinite, and the fractions leave them out"
         return "error", detail
+    # artisoptions.h gives the limits of the current build, and an earlier run of a different build can have other
+    # limits. The options of an earlier build are not available, thus the check names the runs of other versions
+    versions = {fields.get("git version") for fields in get_run_versions(modelpath).values()} - {None}
+    if len(versions) > 1:
+        detail += (
+            f"; the runs used {len(versions)} ARTIS versions ({', '.join(sorted(v for v in versions if v))}), and"
+            " artisoptions.h gives the limits of the current build alone, thus a run of an earlier build can have"
+            " other limits"
+        )
+        return "warning", detail
     return ("warning" if overallfraction > TEMPERATURE_LIMIT_FRACTION_MAX else "ok"), detail
 
 

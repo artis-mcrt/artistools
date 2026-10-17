@@ -315,9 +315,9 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
     """Return the average line of a series in each x bin, with the minimum and the maximum of the bin."""
     dflinepoints = (
         dfseries
-        # a cell that reported no value must not pull the average to zero, and a NaN is not a null.
-        # A mask of the cell keeps the bin, which .drop_nans() on the aggregate took away
-        .filter(pl.col("yvalue").is_not_null() & pl.col("yvalue").cast(pl.Float64).is_not_nan())
+        # a cell with no value, a NaN, or an infinity, e.g. a ratio with a divisor of 0, must not change the mean of its
+        # bin. A mask of the cell keeps the bin, which .drop_nans() on the aggregate took away
+        .filter(pl.col("yvalue").cast(pl.Float64).is_finite().fill_null(value=False))
         .group_by("xvalue_binned")
         .agg(
             # every weight of a bin can be zero, e.g. an element that is absent from the bin has no mass.

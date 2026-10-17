@@ -4,6 +4,7 @@ import contextlib
 import datetime as dt
 import math
 import os
+import re
 import time
 import typing as t
 from collections.abc import Callable
@@ -526,13 +527,25 @@ def get_packets_textfilename(rank: int, virtual: bool) -> str:
     return f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out"
 
 
-def count_packets_textfiles(modelpath: Path) -> int:
-    """Return the number of ranks that have a packets text file in the folders that the reader searches.
+def count_packets_textfiles(modelpath: Path) -> tuple[int, int]:
+    """Return the number of packets text files that the reader reads, and the number of the other rank files.
 
     A run on a cluster writes its packets into a run folder, e.g. 12411848.slurm, and the reader also searches there.
+    The reader reads the ranks of input.txt. A restart can use fewer ranks, and the files of the higher ranks of an
+    earlier run then stay. The second number counts these files, thus a summary can name them.
     """
-    filenames = [get_packets_textfilename(rank, virtual=False) for rank in range(get_nprocs(modelpath))]
-    return len(find_packets_textsources(modelpath, filenames))
+    nprocs = get_nprocs(modelpath)
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    filenames = [get_packets_textfilename(rank, virtual=False) for rank in range(nprocs)]
+    readcount = len(find_packets_textsources(modelpath, filenames, folderlistings))
+    otherranks = {
+        int(namematch.group(1))
+        for listing in folderlistings.values()
+        for name in listing
+        if (namematch := re.fullmatch(r"packets00_(\d+)\.out(?:\.gz|\.xz|\.zst)?", name)) is not None
+        and int(namematch.group(1)) >= nprocs
+    }
+    return readcount, len(otherranks)
 
 
 def get_first_packets_file(modelpath: Path) -> Path | None:

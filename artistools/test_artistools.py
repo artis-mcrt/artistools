@@ -3497,11 +3497,14 @@ def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixtur
 
 
 @pytest.mark.parametrize(
-    ("example", "testfolder"),
-    [(commandline, spec.exampletestfolder) for commandline, _, spec in at.commands.get_example_specs()],
+    ("example", "testfolder", "needs"),
+    [
+        (commandline, spec.exampletestfolder, spec.exampleneeds)
+        for commandline, _, spec in at.commands.get_example_specs()
+    ],
 )
 def test_help_examples_run(
-    example: str, testfolder: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    example: str, testfolder: str | None, needs: tuple[str, ...], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Every example of the help text must run, thus no example can name an argument that went away.
 
@@ -3516,6 +3519,9 @@ def test_help_examples_run(
     args = artistools.__main__.build_parser().parse_args(at.misc.separate_trailing_folders(argv))
     if testfolder is None:
         return
+    # a CI job can have no optional packages, thus such an example only parses there
+    for package in needs:
+        pytest.importorskip(package)
 
     monkeypatch.chdir(tmp_path)
     outputargs = ["-o", str(tmp_path)] if hasattr(args, "outputkind") else []
@@ -6108,6 +6114,21 @@ def test_describe_gives_the_effect_of_the_physics_options() -> None:
     assert "analytic" in get_option_effects("thermalisation", nebular)[0]
 
 
+def test_describe_names_the_packets_files_of_an_earlier_run_with_more_ranks(tmp_path: Path) -> None:
+    """The count took the ranks of input.txt alone, thus it said nothing of the packets of an earlier run with more."""
+    from artistools.describemodel import get_output_lines
+
+    shutil.copy(modelpath_classic_3d / "input.txt", tmp_path / "input.txt")
+    nprocs = at.misc.get_nprocs(tmp_path)
+    (tmp_path / "100.slurm").mkdir()
+    for rank in [*range(nprocs), nprocs + 1]:
+        (tmp_path / "100.slurm" / f"packets00_{rank:04d}.out").write_text("", encoding="utf-8")
+
+    lines = get_output_lines(tmp_path)
+    assert any(line.startswith(f"packets: {nprocs} rank files") for line in lines)
+    assert "  1 more packets files have a rank above the ranks of input.txt" in "\n".join(lines)
+
+
 def test_describe_counts_the_direction_bins_of_the_file(tmp_path: Path) -> None:
     """ARTIS sets MABINS when it compiles, and the summary gave the 100 bins of artistools for a file of 2 bins."""
     from artistools.describemodel import get_selection_lines
@@ -6854,6 +6875,21 @@ def test_check_gives_an_error_for_a_te_that_is_not_finite() -> None:
     assert status == "error"
     assert "of the 2 cells with Te, 1 (50.0%) are at MINTEMP = 3500 K" in detail
     assert "2 values of Te are NaN or infinite" in detail
+
+
+def test_check_names_runs_of_other_builds_for_the_temperature_limits() -> None:
+    """artisoptions.h gives the limits of the current build, and a run of an earlier build can have other limits."""
+    from artistools.check import check_temperature_limits
+
+    dfte = pl.LazyFrame({"timestep": [0, 0], "Te": [3500.0, 5000.0]})
+    versions = {"job0": {"git version": "v2023.10"}, "job1": {"git version": "v2026.5"}}
+    with (
+        mock.patch("artistools.check.scan_estimators", return_value=dfte),
+        mock.patch("artistools.check.get_run_versions", return_value=versions),
+    ):
+        status, detail = check_temperature_limits(modelpath_classic_3d)
+    assert status == "warning"
+    assert "the runs used 2 ARTIS versions (v2023.10, v2026.5)" in detail
 
 
 def test_check_reads_each_log_once_and_finds_the_restarts() -> None:

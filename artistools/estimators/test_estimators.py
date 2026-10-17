@@ -3490,6 +3490,10 @@ def test_line_points_leave_a_cell_with_no_value_out_of_the_average() -> None:
 
     assert np.isclose(dflinepoints["yvalue_binned"].item(), 10.0)
 
+    # an infinite value, e.g. a ratio with a divisor of 0, made the mean of its bin infinite, and the plot drew no point
+    dfinfinite = dfseries.with_columns(yvalue=pl.Series([10.0, float("inf"), 10.0]))
+    assert np.isclose(get_line_points(dfinfinite, argparse.Namespace()).collect()["yvalue_binned"].item(), 10.0)
+
 
 def test_add_derived_estimator_columns_fills_absent_channels_with_zero() -> None:
     """A deposition, heating, or cooling channel that a rank omitted is zero, and a heating ratio keeps its null."""
