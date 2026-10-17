@@ -243,6 +243,8 @@ def repeat_endpoint(dflinepoints: pl.DataFrame, xvalue: float, *, atstart: bool)
     """
     end = dflinepoints.head(1) if atstart else dflinepoints.tail(1)
     row = end.with_columns(xvalue_binned=pl.lit(xvalue, dtype=dflinepoints.schema["xvalue_binned"]))
+    if "bin_centre" in row.columns:
+        row = row.with_columns(bin_centre=pl.lit(value=False))
 
     return pl.concat([row, dflinepoints] if atstart else [dflinepoints, row])
 
@@ -328,6 +330,36 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
     return dflinepoints
 
 
+def extend_line_to_its_ends(dflinepoints: pl.DataFrame, startfromzero: bool, xbinwidth: float | None) -> pl.DataFrame:
+    """Return the points of the drawn line, with its first point and its last point repeated at its ends.
+
+    A binned line runs through bin middles, thus it stops half a bin short. The value holds across the bin, thus the
+    line reaches the outer edges and leaves no gap. The bins of a line can have gaps, thus the space between the last
+    two points does not give the width of a bin. startfromzero takes the line to zero on the left.
+    """
+    xbinned = dflinepoints.get_column("xvalue_binned")
+    if xbinwidth and not xbinned.is_empty():
+        halfwidth = xbinwidth / 2.0
+        dflinepoints = repeat_endpoint(dflinepoints, xbinned[-1] + halfwidth, atstart=False)
+        # startfromzero takes the line further to the left, thus that end comes below
+        if not startfromzero:
+            dflinepoints = repeat_endpoint(dflinepoints, xbinned[0] - halfwidth, atstart=True)
+
+    if startfromzero:
+        dflinepoints = repeat_endpoint(dflinepoints, 0.0, atstart=True)
+    return dflinepoints
+
+
+def get_line_ends(figuredata: "LineFigureData", args: argparse.Namespace) -> tuple[bool, float | None]:
+    """Return whether the lines of the figure start from zero, and the width of each x bin or None."""
+    xvariable = args.x
+    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
+    # get_xlist divides the range of the x axis into the bins
+    xlow, xhigh = figuredata.xlimits
+    xbinwidth = (xhigh - xlow) / args.xbins if args.xbins and xlow is not None and xhigh is not None else None
+    return startfromzero, xbinwidth
+
+
 def draw_series(
     dflinepoints: pl.DataFrame | None,
     dfpoints: pl.DataFrame | None,
@@ -350,20 +382,7 @@ def draw_series(
         draw_points(ax, dfpoints, plotkwargs.get("color") or get_next_color(ax), plotkwargs, label=label)
         return
 
-    # a binned line runs through bin middles, thus it stops half a bin short. The value holds across
-    # the bin, thus reach the outer edges and leave no gap. The bins of a line can have gaps, thus the
-    # space between the last two points does not give the width of a bin
-    xbinned = dflinepoints.get_column("xvalue_binned")
-    if xbinwidth and not xbinned.is_empty():
-        halfwidth = xbinwidth / 2.0
-        dflinepoints = repeat_endpoint(dflinepoints, xbinned[-1] + halfwidth, atstart=False)
-        # startfromzero takes the line further to the left, thus that end comes below
-        if not startfromzero:
-            dflinepoints = repeat_endpoint(dflinepoints, xbinned[0] - halfwidth, atstart=True)
-
-    if startfromzero:
-        dflinepoints = repeat_endpoint(dflinepoints, 0.0, atstart=True)
-
+    dflinepoints = extend_line_to_its_ends(dflinepoints, startfromzero, xbinwidth)
     xvalues_binned = dflinepoints.get_column("xvalue_binned")
     yvalues_binned = dflinepoints.get_column("yvalue_binned")
 
@@ -1974,10 +1993,7 @@ def draw_line_figure(
 
     set_axis_properties(axes, args, xlimits=(*figuredata.xlimits, "-xmin"))
 
-    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
-    # get_xlist divides the range of the x axis into the bins
-    xlow, xhigh = figuredata.xlimits
-    xbinwidth = (xhigh - xlow) / args.xbins if args.xbins and xlow is not None and xhigh is not None else None
+    startfromzero, xbinwidth = get_line_ends(figuredata, args)
     # the data has no series styles, thus a change of style in the window needs no new data
     stylesofsubplots = get_styles_of_subplots(args, len(figuredata.subplots))
     for subplotindex, (ax, (series, settings), styles) in enumerate(
@@ -2027,31 +2043,37 @@ def make_figure(
 def get_figure_table(figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace) -> pl.DataFrame:
     """Return the table of the plotted data of a figure, for --print_data and --write_data."""
     if isinstance(figuredata, LineFigureData):
-        return get_line_figure_table(figuredata, args.x)
+        return get_line_figure_table(figuredata, args)
     return get_image_figure_table(figuredata)
 
 
-def get_line_figure_table(figuredata: LineFigureData, xvariable: str) -> pl.DataFrame:
+def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) -> pl.DataFrame:
     """Return one table of the plotted points, with one row for each point of each series of each subplot.
 
     A series with x bins gives the weighted mean of each bin and the range of the cells in the bin. A series with
     -xbins 0 gives each point. The fields of the frame, e.g. the timestep, are columns, thus each row names its time.
     The column "points" is "line" for a point of the line and "markers" for a point of --markers, because a series
-    with --markers draws both.
+    with --markers draws both. The drawn line repeats its first and its last value at its ends, and the column
+    bin_centre is false for these repeated points.
     """
-    xcolumn = {"velocity": "velocity_kmps", "time": "time_days"}.get(xvariable, xvariable)
+    xcolumn = {"velocity": "velocity_kmps", "time": "time_days"}.get(args.x, args.x)
+    startfromzero, xbinwidth = get_line_ends(figuredata, args)
     dfseriestables: list[pl.DataFrame] = []
     for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
         for series in seriesdatas:
             dfdrawn: list[tuple[str, pl.DataFrame]] = []
             if series.dflinepoints is not None:
+                dfdrawnline = extend_line_to_its_ends(
+                    series.dflinepoints.with_columns(bin_centre=pl.lit(value=True)), startfromzero, xbinwidth
+                )
                 dfdrawn.append((
                     "line",
-                    series.dflinepoints.select(
+                    dfdrawnline.select(
                         pl.col("xvalue_binned").alias(xcolumn),
                         value=pl.col("yvalue_binned"),
                         value_min=pl.col("yvalue_binned_min"),
                         value_max=pl.col("yvalue_binned_max"),
+                        bin_centre=pl.col("bin_centre"),
                     ),
                 ))
             if series.dfpoints is not None:
@@ -3303,12 +3325,14 @@ def write_snapshot_figures(
     )
     outputfiles = [make_figure(figuredata, args, frameset) for figuredata in figures]
     productpath = frameset.finish(outputfiles, args)
-    # the fields of each frame, e.g. the timestep, are columns, thus one table holds every frame and prints one header
-    output_data(
-        args,
-        {"": pl.concat([get_figure_table(figuredata, args) for figuredata in figures], how="diagonal_relaxed")},
-        productpath or outputfiles[0],
-    )
+    # a table of many frames, cells, and markers costs time and memory, thus only a data output makes it
+    if args.print_data or args.write_data:
+        # the fields of each frame, e.g. the timestep, are columns, thus one table holds every frame and one header
+        output_data(
+            args,
+            {"": pl.concat([get_figure_table(figuredata, args) for figuredata in figures], how="diagonal_relaxed")},
+            productpath or outputfiles[0],
+        )
 
 
 def resolve_positional_args(args: argparse.Namespace) -> None:
@@ -3574,6 +3598,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.x in TIME_XVARIABLES:
         outfilename = make_figure(figures[0], args)
-        output_data(args, {"": get_figure_table(figures[0], args)}, outfilename)
+        if args.print_data or args.write_data:
+            output_data(args, {"": get_figure_table(figures[0], args)}, outfilename)
     else:
         write_snapshot_figures(args, figures, timesteps_included)

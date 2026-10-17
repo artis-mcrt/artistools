@@ -113,8 +113,9 @@ SKILL.md gives the light curves and `deposition.out`. Other readers:
 
 ## Model input
 
-- `at.get_modeldata(modelpath)` reads `model.txt` and `abundances.txt`. `at.add_derived_cols_to_modeldata(...)` adds
-  derived columns, e.g. the mass of each cell.
+- `at.get_modeldata(modelpath)` reads `model.txt`. Give `get_elemabundances=True` to also read `abundances.txt`, which
+  gives the mass fraction of each element, e.g. `X_Fe`. `at.add_derived_cols_to_modeldata(...)` adds derived columns,
+  e.g. the mass of each cell.
 - `at.get_inputparams(modelpath)` reads `input.txt`: e.g. `tmin`, `tmax` (days), and `ntstep`.
 - `at.misc.get_vpkt_config(modelpath)` reads `vpkt.txt`, the observers of the virtual packets.
 - `at.misc.get_grid_mapping(modelpath)` reads `grid.out`, the cells of the propagation grid and of the model.

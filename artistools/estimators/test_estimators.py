@@ -5800,11 +5800,20 @@ def test_estimator_print_data_gives_the_drawn_values(
     dftable = pl.read_csv(io.StringIO(output[headerstart:]), separator=" ", null_values="nan")
 
     assert set(dftable["series"]) == {"Te"}
-    # the line repeats its first and its last bin out to the edges of the axis, thus the table holds the inner points
-    drawnlines = [np.asarray(call.args[2], dtype=np.float64)[1:-1] for call in mockplot.call_args_list]
+    # the line repeats its first and its last bin out to the edges of the axis, and the table held the inner points
+    drawnlines = [
+        (np.asarray(call.args[1], dtype=np.float64), np.asarray(call.args[2], dtype=np.float64))
+        for call in mockplot.call_args_list
+    ]
     assert any(
-        len(ydata) == dftable.height and np.allclose(ydata, dftable["value"], rtol=1e-6, atol=0) for ydata in drawnlines
+        len(ydata) == dftable.height
+        and np.allclose(xdata, dftable["velocity_kmps"], rtol=1e-6, atol=0)
+        and np.allclose(ydata, dftable["value"], rtol=1e-6, atol=0)
+        for xdata, ydata in drawnlines
     )
+    assert dftable["bin_centre"].to_list()[0] is False
+    assert dftable["bin_centre"].to_list()[-1] is False
+    assert dftable["bin_centre"].sum() == dftable.height - 2
 
     # --markers draws the line and a marker for each cell, and the table gave only the line
     at.estimators.plot(

@@ -474,10 +474,11 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
 
         a0 = ax.scatter(xvalues_viewingangles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
         # the angle average has the direction bin -1, as in the readers of the light curves
-        # the fit of the angle average gives an array of one value
+        # the fit of the angle average gives an array of one value. The error bars have the angle average as their
+        # centre, thus the table keeps that row while the plot draws its point or its error bars
         averagepoint = (
             []
-            if args.noangleaveraged
+            if args.noangleaveraged and args.noerrorbars
             else list(
                 zip(
                     itertools.repeat(-1),

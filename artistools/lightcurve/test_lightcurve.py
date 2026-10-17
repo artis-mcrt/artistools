@@ -371,6 +371,17 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
     # the data file of a run with no -plotviewingangle holds the angle average, which is the direction bin -1
     assert dftable["dirbin"].to_list() == [-1, -1]
 
+    # --noangleaveraged hides the point of the angle average, and its error bars keep it as their centre
+    at.lightcurve.plot(
+        argsraw=[],
+        make_viewing_angle_peakmag_risetime_scatter_plot=True,
+        noangleaveraged=True,
+        write_data=True,
+        **commonargs,
+    )
+    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan")
+    assert dftable["dirbin"].to_list() == [-1, -1]
+
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
 def test_viewing_angle_scatter_plot_colours_each_direction_bin_of_the_data_file(
