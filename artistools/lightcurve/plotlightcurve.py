@@ -353,13 +353,22 @@ def plot_bol_reflightcurve(
     linewidth: float | None = None,
     alpha: float | None = None,
     plottedpoints: list[pl.DataFrame] | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
     Return the label used in the plot legend, which comes from the file metadata unless label is given. plottedpoints
     takes the rows of the file, with the label as the model, "reference" as the escape type, and the plotted values.
+    Only the points from timemin to timemax go into the figure, the summary, and plottedpoints.
     """
     dflightcurve, metadata = read_bol_reflightcurve_data(lightcurvefilename)
+    # the points have no line between them, thus a point outside the time range has no part in the figure
+    dflightcurve = dflightcurve.filter(
+        pl.col("time_days").is_between(
+            -math.inf if timemin is None else timemin, math.inf if timemax is None else timemax
+        )
+    )
     # an empty label is a series deliberately left out of the legend, so only a missing one takes the metadata
     plotlabel = str(metadata.get("label", lightcurvefilename)) if label is None else label
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
@@ -1044,6 +1053,8 @@ def draw_plot(
                 linewidth=args.linewidth[lcindex] or None,
                 alpha=args.linealpha[lcindex],
                 plottedpoints=dflightcurves,
+                timemin=args.timemin,
+                timemax=args.timemax,
             )
             print_heading(lightcurvelabel)
             plottedsomething = True
@@ -1135,6 +1146,8 @@ def draw_plot(
                 linewidth=args.linewidth[len(modelpaths) + refindex] or None,
                 alpha=args.linealpha[len(modelpaths) + refindex],
                 plottedpoints=dflightcurves,
+                timemin=args.timemin,
+                timemax=args.timemax,
             )
             plottedsomething = True
 

@@ -6071,6 +6071,12 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
     at.lightcurve.plot(argsraw=[], modelpath=["AT2017gfo_waxmanetal2018.txt"], outputfile=tmp_path)
     assert re.search(r"AT2017gfo \(Waxman\+2018\): \d+ points .*, peak ", capsys.readouterr().out)
 
+    # the axis does not show the points before -timemin, and the summary gave the peak at 0.6 d
+    at.lightcurve.plot(argsraw=[], modelpath=["AT2017gfo_waxmanetal2018.txt"], timemin=1.0, outputfile=tmp_path)
+    assert re.search(
+        r"AT2017gfo \(Waxman\+2018\): \d+ points from 1 to .*, peak 6\.15e\+41 erg/s at 1 d", capsys.readouterr().out
+    )
+
     # the plot draws no point where the series has no value, and the x range counted such a point
     from artistools.estimators.plotestimators import get_series_summary_query
 
