@@ -1839,8 +1839,11 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
             # a str path stayed on this host, and the missing local folder then gave no options and no error
             remotemintemp = at.misc.get_artis_option(f"testhost:{optionsfolder}", "MINTEMP")
             remotesummary = get_model_summary(remotepath)
-            with pytest.raises(ValueError, match="Give a timestep or a modelgridindex"):
-                at.nltepops.read_nltepops(remotepath)
+            # a negative cell and an empty list also select all the cells
+            allcellselections: tuple[int | list[int] | None, ...] = (None, -1, [])
+            for allcells in allcellselections:
+                with pytest.raises(ValueError, match="Give a timestep or a modelgridindex"):
+                    at.nltepops.read_nltepops(remotepath, timestep=-1, modelgridindex=allcells)
         finally:
             assert process.stdin is not None
             process.stdin.close()
@@ -3780,3 +3783,20 @@ def test_artis_option_comes_from_the_artisoptions_of_the_model_folder(tmp_path: 
 
     (tmp_path / "artisoptions.h").write_text("constexpr double MINTEMP = 3500.;\n", encoding="utf-8")
     assert at.misc.get_artis_option(tmp_path, "MINTEMP") == "3500."
+
+
+def test_artis_option_function_keeps_its_nested_blocks() -> None:
+    """The body of ION_NLEVELS_EXCITED_NLTE holds an if block, and the pattern stopped at the brace of that block."""
+    from artistools.misc.modelinfo import parse_artis_options
+
+    options = parse_artis_options(
+        "constexpr int ION_NLEVELS_EXCITED_NLTE(int element_z, int ionstage) {\n"
+        "  if (element_z == 26 && ionstage == 2) {\n    return 197;\n  }\n  return 80;\n}\n"
+        "constexpr double MINTEMP = 3500.;\n"
+    )
+    assert options == {
+        "ION_NLEVELS_EXCITED_NLTE": (
+            "(int element_z, int ionstage) { if (element_z == 26 && ionstage == 2) { return 197; } return 80; }"
+        ),
+        "MINTEMP": "3500.",
+    }

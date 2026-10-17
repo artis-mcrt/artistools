@@ -16,6 +16,8 @@ Question: where does the deposited energy go, and does the luminosity agree with
     or less, thus such a cell often has a Te with few significant digits, e.g. 7000 K. With
     `NLTE_TIME_DEPENDENT_FIRST_TIMESTEP`, the change of the thermal energy also enters the balance, and the output
     does not give it.
+- With `WRITE_ION_HEATING_COOLING_RATES`, ARTIS also writes the part of each ion, e.g. `heating_coll_Fe_II`. The
+  total, e.g. `heating_coll`, already includes these parts, thus the recipe adds only the totals.
 - `heating_dep` is the part of the deposition that heats the electrons. The other part ionises and excites the ions.
 - A cell in LTE gives no heating and cooling rates. In an early time step, these cells can hold most of the deposition.
   Thus the sum of `heating_dep` can be much less than the deposition in `deposition.out`.
@@ -25,6 +27,8 @@ Question: where does the deposited energy go, and does the luminosity agree with
   deposition.
 
 ```python
+import re
+
 import artistools as at
 import polars as pl
 from artistools.constants import Lsun_to_erg_per_s
@@ -34,9 +38,9 @@ timestep = at.get_timestep_of_timedays(modelpath, 10)
 tmid_days = at.get_timestep_times(modelpath, loc="mid")[timestep]
 lfcells = at.scan_estimators(modelpath, timestep=timestep, join_modeldata=True)
 columns = lfcells.collect_schema().names()
-# a column with "/" in its name is a ratio and not a rate
-heatingcols = [col for col in columns if col.startswith("heating_") and "/" not in col]
-coolingcols = [col for col in columns if col.startswith("cooling_")]
+# a ratio, e.g. heating_heating_dep/total_dep, and the part of each ion, e.g. heating_coll_Fe_II, are not totals
+heatingcols = [col for col in columns if re.fullmatch(r"heating_[a-z]+", col)]
+coolingcols = [col for col in columns if re.fullmatch(r"cooling_[a-z]+", col)]
 temperaturelimits = [
     float(value) for name in ("MINTEMP", "MAXTEMP") if (value := at.misc.get_artis_option(modelpath, name)) is not None
 ]
@@ -100,6 +104,8 @@ Question: which process cools each region of the ejecta, and why is Te high or l
   cooling of a region with its heating.
 
 ```python
+import re
+
 import artistools as at
 import numpy as np
 import polars as pl
@@ -109,7 +115,8 @@ modelpath = "."
 timestep = at.get_timestep_of_timedays(modelpath, 10)
 nbins = 5
 lfcells = at.scan_estimators(modelpath, timestep=timestep, join_modeldata=True)
-coolingcols = [col for col in lfcells.collect_schema().names() if col.startswith("cooling_")]
+# the part of each ion, e.g. cooling_coll_Fe_II, is also in the total of its process, e.g. cooling_coll
+coolingcols = [col for col in lfcells.collect_schema().names() if re.fullmatch(r"cooling_[a-z]+", col)]
 temperaturelimits = [
     float(value) for name in ("MINTEMP", "MAXTEMP") if (value := at.misc.get_artis_option(modelpath, name)) is not None
 ]

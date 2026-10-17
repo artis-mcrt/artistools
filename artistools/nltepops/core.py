@@ -201,7 +201,14 @@ def read_nltepops(
         cells = tuple(int(mgi) for mgi in modelgridindex)
     else:
         cells = int(modelgridindex)
-    if timestep is None and cells is None and is_remote_path(modelpath):
+    # read_rank_outputfiles reads all the timesteps for a negative timestep, and all the cells for a negative cell or
+    # an empty list
+    selectstimestep = timestep is not None and timestep >= 0
+    if isinstance(cells, int):
+        selectscells = cells >= 0
+    else:
+        selectscells = cells is not None and len(cells) > 0 and all(mgi >= 0 for mgi in cells)
+    if not selectstimestep and not selectscells and is_remote_path(modelpath):
         msg = (
             f"Give a timestep or a modelgridindex to read the NLTE populations of {modelpath}. The populations of all"
             " the timesteps and cells of a remote model can be several GB"

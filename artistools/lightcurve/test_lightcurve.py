@@ -174,13 +174,23 @@ def test_lightcurve_of_a_virtual_observer_keeps_the_vpkt_window_and_ranges(
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 def test_lightcurve_plot_reflightcurves_keep_their_errorbars(mockerrorbar: mock.MagicMock) -> None:
-    """Reference light curves keep their error bars by either route, the model path list or -reflightcurves."""
+    """Reference light curves keep their error bars by either route, the model path list or -reflightcurves.
+
+    --write_data gave no table, because the table held only the ARTIS light curves.
+    """
     at.lightcurve.plot(
         argsraw=[],
         modelpath=["AT2017gfo_waxmanetal2018.txt"],
         reflightcurves=["AT2017gfo_smarttetal2017.txt"],
         outputfile=Path(outputpath, "lightcurve_reflightcurves.pdf"),
+        write_data=True,
     )
+    dftable = pl.read_csv(Path(outputpath, "lightcurve_reflightcurves.txt"), separator=" ", null_values="nan")
+    assert dftable["model"].unique(maintain_order=True).to_list() == [
+        "AT2017gfo (Waxman+2018)",
+        "AT2017gfo (Smartt+2017)",
+    ]
+    assert dftable["escape_type"].unique().to_list() == ["reference"]
 
     # one call for the reference light curve given as a model path, one for the -reflightcurves file
     assert mockerrorbar.call_count == 2
@@ -2470,6 +2480,10 @@ def test_residual_baseline_counts_hesma_curve(
     assert stats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
     assert (stats["npoints"] > 0).all()
     assert stats["rms_relative"].null_count() == 2
+    # the band table held only the bands of the models
+    dfbands = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan")
+    assert dfbands["model"].unique(maintain_order=True).to_list() == ["TEST MODEL", "reference", "hesma"]
+    assert np.allclose(dfbands.filter(pl.col("model") == "hesma")["magnitude"], [-13.5, -13.0, -12.5])
 
 
 @pytest.mark.parametrize("residualtype", [None, "absolute", "relative", "relativelog"])

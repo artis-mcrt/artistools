@@ -203,11 +203,32 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
     return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
-# a value option, e.g. "constexpr double MINTEMP = 3500.;" or a value on the next line, and a function option, e.g.
-# "constexpr bool LEVEL_IS_NLTE(int element_z, int ionstage, int level) { return false; }"
+# a value option, e.g. "constexpr double MINTEMP = 3500.;" or a value on the next line, and the start of a function
+# option, e.g. "constexpr bool LEVEL_IS_NLTE(int element_z, int ionstage, int level) {"
 ARTIS_OPTION_PATTERN = re.compile(
-    r"^[ \t]*constexpr\s+(?:enum\s+)?[\w:<>]+\s+(\w+)\s*(\([^)]*\)\s*\{[^}]*\}|=\s*[^;]*;)", re.MULTILINE
+    r"^[ \t]*constexpr\s+(?:enum\s+)?[\w:<>]+\s+(\w+)\s*(\([^)]*\)\s*\{|=\s*[^;]*;)", re.MULTILINE
 )
+
+
+def parse_artis_options(text: str) -> dict[str, str]:
+    """Return each constexpr option of the text of an artisoptions.h and the text of its value.
+
+    A function option gives its parameters and its body. The body of ION_NLEVELS_EXCITED_NLTE can hold an if block,
+    thus the body ends at the brace that closes its first brace.
+    """
+    options: dict[str, str] = {}
+    for match in ARTIS_OPTION_PATTERN.finditer(text):
+        name, valuetext = match.groups()
+        if valuetext.startswith("="):
+            value = valuetext.removeprefix("=").removesuffix(";")
+        else:
+            depth, end = 1, match.end()
+            while depth > 0 and end < len(text):
+                depth += {"{": 1, "}": -1}.get(text[end], 0)
+                end += 1
+            value = text[match.start(2) : end]
+        options[name] = " ".join(value.split())
+    return options
 
 
 def get_artis_options(modelpath: Path | str) -> dict[str, str]:
@@ -233,11 +254,7 @@ def read_artis_options(modelpath: Path) -> dict[str, str]:
     )
     if optionspath is None:
         return {}
-    options: dict[str, str] = {}
-    for name, valuetext in ARTIS_OPTION_PATTERN.findall(optionspath.read_text(encoding="utf-8")):
-        value = valuetext.removeprefix("=").removesuffix(";") if valuetext.startswith("=") else valuetext
-        options[name] = " ".join(value.split())
-    return options
+    return parse_artis_options(optionspath.read_text(encoding="utf-8"))
 
 
 def get_artis_option(modelpath: Path | str, name: str) -> str | None:

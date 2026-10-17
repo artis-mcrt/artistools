@@ -85,7 +85,7 @@ def get_main_cooling_process_6d(modelpath: Path) -> str:
     """Return the cooling column with the largest sum of rate times volume, for the cells with a thermal balance."""
     timestep = at.get_timestep_of_timedays(modelpath, 6)
     lfcells = at.scan_estimators(modelpath, timestep=timestep, join_modeldata=True)
-    coolingcols = [col for col in lfcells.collect_schema().names() if col.startswith("cooling_")]
+    coolingcols = [col for col in lfcells.collect_schema().names() if re.fullmatch(r"cooling_[a-z]+", col)]
     islte = (pl.col("W") == 1.0) & (pl.col("Te") == pl.col("TR")) & (pl.col("Te") == pl.col("TJ"))
     dfsums = (
         lfcells
