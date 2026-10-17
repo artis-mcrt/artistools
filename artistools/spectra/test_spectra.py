@@ -4,6 +4,7 @@ import functools
 import gzip
 import lzma
 import math
+import re
 import shlex
 import sys
 import typing as t
@@ -4429,3 +4430,21 @@ def test_spectrum_table_keeps_two_models_of_the_same_name(tmp_path: Path, capsys
     dftable = pl.read_csv(tmp_path / "samename.txt", separator=" ", null_values="nan")
     fluxcolumns = [colname for colname in dftable.columns if colname.startswith("f_lambda.")]
     assert len(fluxcolumns) == 2, dftable.columns
+
+
+def test_spectrum_summary_integrates_around_a_masked_band(capsys: pytest.CaptureFixture[str]) -> None:
+    """A masked telluric band holds NaN, and the luminosity of the summary was NaN for a range across the band."""
+    from artistools.spectra.plotspectra import print_spectrum_summary
+
+    lambdas = [1000.0, 2000.0, 3000.0, 4000.0, 5000.0]
+    flambdas = [1.0, 1.0, float("nan"), 1.0, 1.0]
+    dfspectrum = pl.DataFrame({"x": lambdas, "lambda_angstroms": lambdas, "f_lambda": flambdas, "y": flambdas})
+    print_spectrum_summary("masked", dfspectrum, (1000.0, 5000.0), "angstrom", "flux")
+    out = capsys.readouterr().out
+    # the two drawn segments each have a width of 1000 Å, and the two segments next to the NaN are left out
+    luminosity = 2000.0 * 4 * math.pi * at.constants.megaparsec_to_cm**2
+    match = re.search(r"luminosity ([\d.e+-]+) erg/s", out)
+    assert match is not None, out
+    assert np.isclose(float(match.group(1)), luminosity, rtol=1e-3)
+    assert "leaves out 2000 Å with no value of f_λ" in out
+    assert "largest drawn flux 1 at" in out

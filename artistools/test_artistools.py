@@ -6155,6 +6155,27 @@ def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
     assert dfsummary["first_timestep"].item() == 0
 
 
+def test_logsummary_all_ranks_reads_the_ranks_of_each_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A restart can use fewer ranks, and -ranks all read only the ranks of input.txt, which left out an error."""
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    for runfolder, rank, text in [
+        ("100.slurm", 7, "[error] cell 3 has no matter\n"),
+        ("200.slurm", 0, "[warning] cell 4 is cold\n"),
+    ]:
+        (modelfolder / runfolder).mkdir()
+        (modelfolder / runfolder / f"output_{rank}-0.txt").write_text(
+            f"timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n{text}", encoding="utf-8"
+        )
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-ranks", "all", "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert sorted(dfsummary["level"].to_list()) == ["error", "warning"]
+
+
 def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:
     """A log holds thousands of warnings of a few kinds, thus the table names each kind, its timesteps, and its cells.
 

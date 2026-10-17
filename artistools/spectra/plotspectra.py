@@ -382,8 +382,10 @@ def print_spectrum_summary(
         return
     dfinrange = dfsorted.filter(pl.col("x").is_between(xlow, xhigh))
     parts = []
-    if not dfinrange.is_empty():
-        peakx, peaky = dfinrange.select(pl.col("x", "y").sort_by("y", descending=True).first()).row(0)
+    # polars sorts NaN above each number, and a masked band, e.g. a telluric band, holds NaN
+    dfdrawnpoints = dfinrange.filter(pl.col("y").is_finite())
+    if not dfdrawnpoints.is_empty():
+        peakx, peaky = dfdrawnpoints.select(pl.col("x", "y").sort_by("y", descending=True).first()).row(0)
         parts += [
             f"{dfinrange.height} points from {dfinrange['x'].min():.4g} to {dfinrange['x'].max():.4g} {xunit}",
             f"largest drawn {yvariable} {peaky:.4g} at {peakx:.4g} {xunit}",
@@ -394,11 +396,17 @@ def print_spectrum_summary(
     flambdaends = np.interp(xlimitsinside, xvalues, dfsorted["f_lambda"].to_numpy())
     lambdas = np.concatenate([lambdaends[:1], dfinrange["lambda_angstroms"].to_numpy(), lambdaends[1:]])
     flambdas = np.concatenate([flambdaends[:1], dfinrange["f_lambda"].to_numpy(), flambdaends[1:]])
-    luminosity = abs(float(np.trapezoid(flambdas, x=lambdas))) * 4 * math.pi * megaparsec_to_cm**2
+    # the figure draws no segment with a NaN end, thus the integral leaves out such a segment
+    segmentintegrals = 0.5 * (flambdas[:-1] + flambdas[1:]) * np.diff(lambdas)
+    isdrawnsegment = np.isfinite(segmentintegrals)
+    luminosity = abs(float(segmentintegrals[isdrawnsegment].sum())) * 4 * math.pi * megaparsec_to_cm**2
     parts.append(
         f"luminosity {luminosity:.4g} erg/s = 4π (1 Mpc)² ∫ f_λ dλ from {lambdaends.min():.5g} to"
         f" {lambdaends.max():.5g} Å (trapezoidal rule, f_λ interpolated linearly at the axis limits)"
     )
+    if not isdrawnsegment.all():
+        gapwidth = float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum())
+        parts.append(f"the integral leaves out {gapwidth:.4g} Å with no value of f_λ, e.g. a masked telluric band")
     print_series_summary(seriesname, parts)
 
 

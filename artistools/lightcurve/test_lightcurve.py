@@ -824,7 +824,12 @@ def test_hesma_lightcurve_on_a_grid_with_more_panels_than_bands(tmp_path: Path) 
     hesmafile.write_text("# t U B V R\n1.0 1.0 2.0 3.0 4.0\n5.0 5.0 6.0 7.0 8.0\n", encoding="utf-8")
     fig, axesgrid = plt.subplots(2, 3)
     axes = list(axesgrid.flatten())
-    plot_hesma_lightcurve(axes, ["U", "B", "V", "R"], argparse.Namespace(plot_hesma_model=str(hesmafile)), None)
+    plot_hesma_lightcurve(
+        axes,
+        ["U", "B", "V", "R"],
+        argparse.Namespace(plot_hesma_model=str(hesmafile), timemin=None, timemax=None),
+        None,
+    )
 
     assert [len(axis.get_lines()) for axis in axes] == [1, 1, 1, 1, 0, 0]
     assert np.allclose(np.asarray(axes[3].get_lines()[0].get_ydata(), dtype=float), [4.0, 8.0])
@@ -2530,8 +2535,10 @@ def test_residual_baseline_counts_hesma_curve(
 
 
 def test_band_reference_table_has_only_the_time_range(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The band table of a reference curve holds only the points from -timemin to -timemax, as the axis shows."""
+    """The band table of a reference curve and of a HESMA curve holds only the points that the axis shows."""
     monkeypatch.chdir(tmp_path)
+    hesmafile = tmp_path / "hesma.dat"
+    hesmafile.write_text("# time B\n265 -13.5\n280 -13\n300 -12.5\n", encoding="utf-8")
     refdata = pl.DataFrame({"band": ["B"] * 3, "time": [265.0, 280.0, 300.0], "magnitude": [-13.0, -12.5, -12.0]})
     with mock.patch.object(
         at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "reference"})
@@ -2541,6 +2548,7 @@ def test_band_reference_table_has_only_the_time_range(tmp_path: Path, monkeypatc
             modelpath=[modelpath],
             filter=["B"],
             reflightcurves=["reference.dat"],
+            plot_hesma_model=hesmafile,
             timemin=270.0,
             timemax=290.0,
             write_data=True,
@@ -2548,6 +2556,7 @@ def test_band_reference_table_has_only_the_time_range(tmp_path: Path, monkeypatc
         )
     dfbands = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan")
     assert dfbands.filter(pl.col("model") == "reference")["time_days"].to_list() == [280.0]
+    assert dfbands.filter(pl.col("model") == "hesma")["time_days"].to_list() == [280.0]
 
 
 @pytest.mark.parametrize("residualtype", [None, "absolute", "relative", "relativelog"])

@@ -31,6 +31,7 @@ from artistools.misc import zopen
 RE_LEVEL = re.compile(r"\[(warning|error)\]|\b(WARNING|ERROR)\b")
 RE_TIMESTEP = re.compile(r"timestep (\d+): time before update grid")
 RE_CELL = re.compile(r"\b(?:modelcell|modelgridindex|cell) (\d+)")
+RE_LOGFILENAME = re.compile(r"output_(\d+)-0\.txt(?:\.gz|\.xz|\.zst)?")
 RE_NUMBER = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 
 MESSAGESCHEMA = {
@@ -70,19 +71,29 @@ def read_log_messages(logpath: Path) -> pl.DataFrame:
     return pl.DataFrame(rows, schema=MESSAGESCHEMA, orient="row")
 
 
-def get_logfiles(modelpath: Path, ranks: Sequence[int]) -> list[Path]:
-    """Return the log of each selected rank in each run folder.
+def get_logfiles(modelpath: Path, ranks: Sequence[int] | None) -> list[Path]:
+    """Return the log of each selected rank in each run folder, or of each rank of the folder if ranks is None.
 
     A run that stops before it writes an estimator file has no run folder in get_runfolders, but its log can hold the
-    error. Thus the search reads each subfolder of the model folder.
+    error. Thus the search reads each subfolder of the model folder. A restart can use a different number of ranks,
+    thus None finds the ranks of each folder from the names of its logs.
     """
     return [
         logpath
         for folder in get_run_subfolders(modelpath)
-        for rank in ranks
+        for rank in (get_folder_log_ranks(folder) if ranks is None else ranks)
         if (logpath := firstexisting_or_none(f"output_{rank}-0.txt", folder=folder, search_subfolders=False))
         is not None
     ]
+
+
+def get_folder_log_ranks(folder: Path) -> list[int]:
+    """Return the MPI rank of each log in a folder, from the file names, e.g. 12 for output_12-0.txt.gz."""
+    return sorted({
+        int(namematch.group(1))
+        for path in folder.glob("output_*-0.txt*")
+        if (namematch := RE_LOGFILENAME.fullmatch(path.name)) is not None
+    })
 
 
 def summarise_log_messages(dfmessages: pl.DataFrame) -> pl.DataFrame:
@@ -115,17 +126,23 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Count the warnings and the errors in the logs of an ARTIS model, by kind of message."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     modelpath = get_model_folder(args.modelpath)
+    ranks: list[int] | None
     if args.modelgridindex:
         ranks = list(get_mpiranklist(modelpath, modelgridindex=args.modelgridindex))
     elif args.ranks == "all":
-        ranks = list(get_mpiranklist(modelpath))
+        ranks = None
     else:
         ranks = parse_range_list(args.ranks)
 
     logfiles = get_logfiles(modelpath, ranks)
     if not logfiles:
         exit_with_error(f"{modelpath} has no log of the ranks {args.ranks}", "Give -ranks with ranks that ran")
-    print_detail(f"reading {len(logfiles)} logs of the ranks {', '.join(str(rank) for rank in ranks)}")
+    rankstext = (
+        "each rank that has a log in each run folder"
+        if ranks is None
+        else f"the ranks {', '.join(str(rank) for rank in ranks)}"
+    )
+    print_detail(f"reading {len(logfiles)} logs of {rankstext}")
 
     dfmessages = pl.concat(parallel_map(read_log_messages, logfiles, desc="logs", unit="log"))
     print_product(args, summarise_log_messages(dfmessages))

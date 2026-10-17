@@ -1473,22 +1473,25 @@ def plot_hesma_lightcurve(
 ) -> None:
     """Draw each band of the HESMA model of -plot_hesma_model on the panel of that band.
 
-    plottedpoints takes the points of each band in the form of get_magnitude_table.
+    plottedpoints takes the points of each band from -timemin to -timemax in the form of get_magnitude_table.
 
     The first column of the file holds the time, and a column with the name of a band holds its magnitudes. The grid
     of panels can hold more panels than bands, e.g. six panels for four bands.
     """
     hesma_model = read_hesma_lightcurve(args)
     timecolumn = hesma_model.columns[0]
+    hesma_model = df_filter_minmax_bracketed(
+        hesma_model, colname=timecolumn, minval=args.timemin, maxval=args.timemax
+    ).collect()
     label = Path(args.plot_hesma_model).stem
     for axis, band_name in zip(axes[: len(bandnames)], bandnames, strict=True):
         if band_name in hesma_model.columns:
             (hesmaline,) = axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
             if plottedpoints is not None:
+                # the line reaches each end of the axis, and the table gives only the points that the axis shows
+                dfinrange = hesma_model.filter(is_in_time_range(timecolumn, args.timemin, args.timemax))
                 plottedpoints.append(
-                    get_magnitude_table(
-                        label, None, ("band", band_name), hesma_model[timecolumn], hesma_model[band_name]
-                    )
+                    get_magnitude_table(label, None, ("band", band_name), dfinrange[timecolumn], dfinrange[band_name])
                 )
             if residualseries is not None:
                 residualseries.append(
