@@ -2348,16 +2348,34 @@ def get_image_values(
     return grids, (plotaxis1, plotaxis2)
 
 
-def get_colour_norm(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> mc.Normalize:
-    """Return the colour scale of a panel, which is log only when the panel holds a value above zero."""
-    colourscale = panel.colourscale or ("log" if wants_log_scale(grid.ravel()) else "linear")
+def asks_log_colourscale(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> bool:
+    """Return whether the directives of a panel or its values ask for a log colour scale."""
+    return (panel.colourscale or ("log" if wants_log_scale(grid.ravel()) else "linear")) == "log"
+
+
+def panel_has_log_colourscale(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> bool:
+    """Return whether a panel has a log colour scale, which needs a value above zero."""
     with np.errstate(invalid="ignore"):
         haspositive = bool((grid > 0.0).any())
-    if colourscale == "log" and not haspositive:
-        print_warning(f"'{panel.label}' holds no value above zero, thus its colour scale is linear")
-        colourscale = "linear"
+    return haspositive and asks_log_colourscale(panel, grid)
 
-    if colourscale == "log":
+
+def get_drawn_image_values(grid: "npt.NDArray[np.float64]", *, logscale: bool) -> "np.ma.MaskedArray[t.Any, t.Any]":
+    """Return the values of an image, with a mask on each cell that the image leaves empty.
+
+    A cell with no finite value is empty, and a log colour scale also cannot show a value of zero or below.
+    """
+    values = np.ma.masked_invalid(grid)
+    return np.ma.masked_less_equal(values, 0.0) if logscale else values
+
+
+def get_colour_norm(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> mc.Normalize:
+    """Return the colour scale of a panel, which is log only when the panel holds a value above zero."""
+    logscale = panel_has_log_colourscale(panel, grid)
+    if not logscale and asks_log_colourscale(panel, grid):
+        print_warning(f"'{panel.label}' holds no value above zero, thus its colour scale is linear")
+
+    if logscale:
         return mc.LogNorm(
             vmin=log_axis_limit(panel.vmin, logscale=True, argname="ymin="),
             vmax=log_axis_limit(panel.vmax, logscale=True, argname="ymax="),
@@ -2417,7 +2435,7 @@ def get_image_edges(
 
 
 def get_image_figure_table(figuredata: ImageFigureData) -> pl.DataFrame:
-    """Return one table of the colour image, with one row for each cell of each panel that has a value.
+    """Return one table of the colour image, with one row for each cell of each panel that the image shows.
 
     The columns give the fields of the frame, the panel, its label, the velocity of the centre of the cell on each
     axis of the image in units of c, and the value.
@@ -2427,15 +2445,13 @@ def get_image_figure_table(figuredata: ImageFigureData) -> pl.DataFrame:
     for panelindex, (style, grid) in enumerate(zip(figuredata.styles, figuredata.grids, strict=True)):
         edges1, edges2 = get_image_edges(figuredata, grid)
         centres2, centres1 = np.meshgrid((edges2[:-1] + edges2[1:]) / 2, (edges1[:-1] + edges1[1:]) / 2, indexing="ij")
+        isdrawn = ~np.ma.getmaskarray(get_drawn_image_values(grid, logscale=panel_has_log_colourscale(style, grid)))
         dfpanels.append(
-            pl
-            .DataFrame({
-                f"vel_{plotaxis1}_on_c": centres1.ravel(),
-                f"vel_{plotaxis2}_on_c": centres2.ravel(),
-                "value": grid.ravel(),
-            })
-            .filter(pl.col("value").is_not_nan())
-            .select(
+            pl.DataFrame({
+                f"vel_{plotaxis1}_on_c": centres1[isdrawn],
+                f"vel_{plotaxis2}_on_c": centres2[isdrawn],
+                "value": grid[isdrawn],
+            }).select(
                 *(pl.lit(fieldvalue).alias(fieldname) for fieldname, fieldvalue in figuredata.framefields.items()),
                 pl.lit(panelindex).alias("panel"),
                 pl.lit(style.label).alias("label"),
@@ -2474,10 +2490,7 @@ def draw_image_figure(
     xmax_on_c = None if args.xmax is None else args.xmax * xscale_to_c
     for ax, style, grid in zip(axesgrid.flat, figuredata.styles, figuredata.grids, strict=False):
         norm = get_colour_norm(style, grid)
-        values = np.ma.masked_invalid(grid)
-        if isinstance(norm, mc.LogNorm):
-            # a log colour scale cannot show a value of zero or below, thus such a cell stays empty
-            values = np.ma.masked_less_equal(values, 0.0)
+        values = get_drawn_image_values(grid, logscale=isinstance(norm, mc.LogNorm))
         edges1, edges2 = get_image_edges(figuredata, grid)
         # the grid of a 1D model has 80 000 points, which are slow and large as vector shapes
         image = ax.pcolormesh(edges1, edges2, values, norm=norm, rasterized=True)

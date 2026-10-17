@@ -82,14 +82,21 @@ def get_maxtemp_cellcount_6d(modelpath: Path) -> float:
 
 
 def get_main_cooling_process_6d(modelpath: Path) -> str:
-    """Return the cooling column with the largest sum of rate times volume, for the cells with a thermal balance."""
+    """Return the cooling column with the largest sum of rate times volume, for the cells with a thermal balance.
+
+    The test of the balance is the test of recipes.md: no LTE, no temperature limit, and heating and cooling that agree
+    to 1 %.
+    """
     timestep = at.get_timestep_of_timedays(modelpath, 6)
     lfcells = at.scan_estimators(modelpath, timestep=timestep, join_modeldata=True)
-    coolingcols = [col for col in lfcells.collect_schema().names() if re.fullmatch(r"cooling_[a-z]+", col)]
+    columns = lfcells.collect_schema().names()
+    heatingcols = [col for col in columns if re.fullmatch(r"heating_[a-z]+", col)]
+    coolingcols = [col for col in columns if re.fullmatch(r"cooling_[a-z]+", col)]
     islte = (pl.col("W") == 1.0) & (pl.col("Te") == pl.col("TR")) & (pl.col("Te") == pl.col("TJ"))
+    isunbalanced = ((pl.sum_horizontal(heatingcols) / pl.sum_horizontal(coolingcols)) - 1.0).abs() > 0.01
     dfsums = (
         lfcells
-        .filter(~islte & ~pl.col("Te").is_in(get_temperature_limits(modelpath)))
+        .filter(~islte, ~pl.col("Te").is_in(get_temperature_limits(modelpath)), ~isunbalanced)
         .select((pl.col(col).fill_null(0.0) * pl.col("volume")).sum() for col in coolingcols)
         .collect()
     )

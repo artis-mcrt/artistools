@@ -2822,6 +2822,27 @@ def test_estimator_slice_of_3d_model(tmp_path: Path, slicetext: str, layerindex:
     assert np.allclose(tegrid[(cellindex // 10) % 10, cellindex % 10], dfexpected["Te"].to_numpy())
 
 
+def test_estimator_image_table_holds_only_the_drawn_cells() -> None:
+    """The table took each cell that was not NaN, and the image of a log scale also leaves out zero and infinity."""
+    from artistools.estimators.plotestimators import get_image_figure_table
+    from artistools.estimators.plotestimators import ImageFigureData
+    from artistools.estimators.plotestimators import PanelStyle
+
+    grid = np.array([[1.0, 0.0], [np.nan, np.inf]])
+    figuredata = ImageFigureData(
+        grids=[grid, grid],
+        styles=[PanelStyle("Te", "log", None, None), PanelStyle("Te", "linear", None, None)],
+        plotaxes=("x", "y"),
+        vmax_cmps=0.1 * at.constants.C_cm_per_s,
+        title="",
+        framefields={"timestep": "8"},
+    )
+    dftable = get_image_figure_table(figuredata)
+    assert dftable.filter(pl.col("panel") == 0)["value"].to_list() == [1.0]
+    assert dftable.filter(pl.col("panel") == 1)["value"].to_list() == [1.0, 0.0]
+    assert dftable.filter(pl.col("panel") == 1)["vel_x_on_c"].to_list() == pytest.approx([-0.05, 0.05], rel=1e-9)
+
+
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_path: Path) -> None:
     """-dimensionreduce 2 gives the mean of the cells in each ring of cylindrical radius and z."""
     ((_, edges1, edges2, tegrid),) = get_image_panel_calls(
