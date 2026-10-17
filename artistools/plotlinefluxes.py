@@ -542,6 +542,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     tmax = -math.inf
     plotteddata: list[pl.DataFrame] = []
     dfcomparisons: list[pl.DataFrame] = []
+    tablemodelnames: set[str] = set()
 
     for modelindex, (modelpath, modellabel, modelcolor) in enumerate(
         zip(args.modelpath, args.label, args.color, strict=False)
@@ -592,7 +593,15 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
         axis.plot(dflcdata["time"], dflcdata["fratio"], label=modellabel, **plotkwargs)
 
-        plotteddata.append(dflcdata.select("time", "fratio").rename({"fratio": f"fratio_{get_model_name(modelpath)}"}))
+        tablemodelname = get_model_name(modelpath)
+        if tablemodelname in tablemodelnames:
+            # two models can have the same name, and the join of their columns stopped with a repeated column
+            tablemodelname = f"{tablemodelname}_{modelindex}"
+            print_warning(f"the data table gives the column of {modelpath} the model name {tablemodelname}")
+        tablemodelnames.add(tablemodelname)
+        plotteddata.append(
+            dflcdata.select("time", fratio=pl.col("fratio")).rename({"fratio": f"fratio_{tablemodelname}"})
+        )
 
         tmin = min(tmin, dflcdata.select(pl.col("time").min()).item())
         tmax = max(tmax, dflcdata.select(pl.col("time").max()).item())
@@ -629,13 +638,17 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     args.outputfile = resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
-    if plotteddata:
-        # a fit or an observation has its own times, thus the comparison series go in a second table
+    if plotteddata and (args.print_data or args.write_data):
+        # a fit or an observation has its own times, thus the comparison series go in a second table. The axis shows
+        # the times from -xmin to -xmax, and the points have no line, thus a point outside that range is not drawn
+        isvisible = pl.col("time").is_between(
+            -math.inf if args.xmin is None else args.xmin, math.inf if args.xmax is None else args.xmax
+        )
         output_data(
             args,
             {
-                "": get_plotted_data_table(plotteddata),
-                "_comparisons": pl.concat(dfcomparisons) if dfcomparisons else pl.DataFrame(),
+                "": get_plotted_data_table(plotteddata).filter(isvisible),
+                "_comparisons": pl.concat(dfcomparisons).filter(isvisible) if dfcomparisons else pl.DataFrame(),
             },
             args.outputfile,
         )

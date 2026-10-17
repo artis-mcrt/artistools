@@ -34,6 +34,7 @@ from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Mapping
 
 
@@ -769,23 +770,36 @@ def get_mpiranks_of_cells(modelpath: Path | str, cells: npt.NDArray[np.int64]) -
 
     A lookup for each cell took 18 to 81 us, thus 2 to 10 s for the 125 000 cells of a 3D snapshot.
     """
-    npts_model = get_npts_model(modelpath)
+    return get_ranks_of_cells_in_layout(
+        cells, get_npts_model(modelpath), get_rankassignments(modelpath), lambda: get_nprocs(Path(modelpath))
+    )
+
+
+def get_ranks_of_cells_in_layout(
+    cells: npt.NDArray[np.int64],
+    npts_model: int,
+    dfrankassignments: pl.DataFrame | None,
+    get_nprocs_of_layout: "Callable[[], int]",
+) -> npt.NDArray[np.int64]:
+    """Return the rank of each cell from modelgridrankassignments.out, or from the blocks of ARTIS for nprocs ranks.
+
+    A restart can use a different number of ranks, thus a run folder can give its own assignments and rank count.
+    """
     if outsidecells := [int(cell) for cell in cells if not 0 <= cell < npts_model]:
         # a model of one cell makes "1 cells" and "0 to 0" read badly, thus name the range alone
         msg = f"Cell {outsidecells[0]} is not in this model. Its cells are 0 to {npts_model - 1}"
         raise ValueError(msg)
 
-    dfrankassignments = get_rankassignments(modelpath)
     if dfrankassignments is not None:
         dfranks = dfrankassignments.filter(pl.col("ndo") > 0).sort("nstart")
         nstart = dfranks["nstart"].to_numpy()
         blockindex = np.searchsorted(nstart, cells, side="right") - 1
         if (cells >= nstart[blockindex] + dfranks["ndo"].to_numpy()[blockindex]).any():
-            msg = f"modelgridrankassignments.out of {modelpath} gives no rank to some of the cells"
+            msg = "modelgridrankassignments.out gives no rank to some of the cells"
             raise ValueError(msg)
         return dfranks["rank"].to_numpy().astype(np.int64)[blockindex]
 
-    nprocs = get_nprocs(modelpath)
+    nprocs = get_nprocs_of_layout()
     if nprocs > npts_model:
         return cells
 

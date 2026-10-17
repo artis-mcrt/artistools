@@ -23,6 +23,7 @@ from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -41,6 +42,7 @@ from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import parse_range_list
 from artistools.misc import read_rank_outputfiles
@@ -212,8 +214,11 @@ def plot_line_estimators(
     modelgridindex: int | None = None,
     timestep: int | None = None,
     **plotkwargs: t.Any,
-) -> float:
-    """Plot the Jblue_lu values from the detailed line estimators on a spectrum."""
+) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Plot the Jblue_lu values from the detailed line estimators on a spectrum, and return the drawn points.
+
+    The points are the wavelengths in Angstroms and J_lambda.
+    """
     # the detailed line estimators have bin_num < -1. Cell zero and timestep zero are falsy, so these filters must
     # test against None rather than truthiness
     radfielddataselected = select_radfield_subset(
@@ -221,24 +226,17 @@ def plot_line_estimators(
     ).select("nu_upper", "J_nu_avg")
     if radfielddataselected.is_empty():
         print("No line estimators to plot")
-        return 0.0
+        return np.array([]), np.array([])
 
     radfielddataselected = radfielddataselected.with_columns(
         lambda_angstroms=c_ang_per_s / pl.col("nu_upper"),
         Jb_lambda=pl.col("J_nu_avg") * (pl.col("nu_upper") ** 2) / c_ang_per_s,
     )
 
-    ymax = radfielddataselected["Jb_lambda"].max()
-    assert isinstance(ymax, float)
-
-    axis.scatter(
-        radfielddataselected["lambda_angstroms"],
-        radfielddataselected["Jb_lambda"],
-        label="Line estimators",
-        s=0.2,
-        **plotkwargs,
-    )
-    return ymax
+    arr_lambda = radfielddataselected["lambda_angstroms"].to_numpy()
+    arr_jb_lambda = radfielddataselected["Jb_lambda"].to_numpy()
+    axis.scatter(arr_lambda, arr_jb_lambda, label="Line estimators", s=0.2, **plotkwargs)
+    return arr_lambda, arr_jb_lambda
 
 
 def plot_specout(
@@ -248,8 +246,8 @@ def plot_specout(
     peak_value: float | None = None,
     scale_factor: float | None = None,
     **plotkwargs: t.Any,
-) -> None:
-    """Plot the ARTIS spectrum.
+) -> tuple[str, pl.Series, pl.Series]:
+    """Plot the ARTIS spectrum, and return the label, the wavelengths, and the drawn values.
 
     The caller gives the model path, because a run on a cluster writes spec.out to a subfolder of the
     model folder. The parent folder of that file is then the run folder and not the model folder.
@@ -265,6 +263,7 @@ def plot_specout(
         dfspectrum = dfspectrum.with_columns(pl.col("f_lambda") / pl.col("f_lambda").max() * peak_value)
 
     axis.plot(dfspectrum["lambda_angstroms"], dfspectrum["f_lambda"], label=label, **plotkwargs)
+    return label, dfspectrum["lambda_angstroms"], dfspectrum["f_lambda"]
 
 
 def get_binedges(radfielddata: pl.DataFrame) -> list[float]:
@@ -315,11 +314,13 @@ def plot_celltimestep(
 
     label = r"Dilute blackbody model "
     axis.plot(xlist, yvalues, label=label, color="purple", linewidth=1.5)
+    drawnseries: list[tuple[str, npt.ArrayLike, npt.ArrayLike]] = [(label.strip(), xlist, yvalues)]
     ymax = float(np.max(yvalues))
 
     if not args.nobandaverage:
         arr_lambda, yvalues = get_binaverage_field(radfielddata, modelgridindex=modelgridindex, timestep=timestep)
         axis.step(arr_lambda, yvalues, where="pre", label="Band-average field", color="green", linewidth=1.5)
+        drawnseries.append(("Band-average field", arr_lambda, yvalues))
         ymax = np.max(
             [ymax] + [float(yval) for xval, yval in zip(arr_lambda, yvalues, strict=True) if xmin <= xval <= xmax]
         )
@@ -345,12 +346,14 @@ def plot_celltimestep(
     )
 
     axis.plot(arr_lambda_fitted, j_lambda_fitted, label="Radiation field model", alpha=0.8, color="blue", linewidth=1.5)
+    drawnseries.append(("Radiation field model", arr_lambda_fitted, j_lambda_fitted))
 
-    ymax3 = plot_line_estimators(
+    arr_lambda_lines, jb_lambda_lines = plot_line_estimators(
         axis, radfielddata, modelgridindex=modelgridindex, timestep=timestep, zorder=-2, color="red"
     )
+    drawnseries.append(("Line estimators", arr_lambda_lines, jb_lambda_lines))
 
-    ymax = args.ymax if args.ymax is not None else max(ymax, ymax3)
+    ymax = args.ymax if args.ymax is not None else max(ymax, float(np.max(jb_lambda_lines, initial=0.0)))
     try:
         print(f"Plotting {firstexisting('spec.out', folder=modelpath, tryzipped=True)}")
     except FileNotFoundError:
@@ -373,7 +376,11 @@ def plot_celltimestep(
         else:
             plotkwargs["peak_value"] = ymax
 
-        plot_specout(axis, Path(modelpath), timestep, zorder=-1, color="black", alpha=0.6, linewidth=1.0, **plotkwargs)
+        drawnseries.append(
+            plot_specout(
+                axis, Path(modelpath), timestep, zorder=-1, color="black", alpha=0.6, linewidth=1.0, **plotkwargs
+            )
+        )
 
     if args.showbinedges:
         binedges = get_binedges(radfielddata)
@@ -397,9 +404,36 @@ def plot_celltimestep(
 
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
+    if getattr(args, "print_data", False) or getattr(args, "write_data", False):
+        output_data(args, {"": get_drawn_series_table(drawnseries)}, outputfile)
     # the suffix of the file name sets the format, e.g. .pdf or .png
     save_figure(fig, outputfile, args=args, isframe=isframe)
     return True
+
+
+def get_drawn_series_table(drawnseries: Sequence[tuple[str, npt.ArrayLike, npt.ArrayLike]]) -> pl.DataFrame:
+    """Return the drawn points of each series of a plot of one cell, with one row for each point.
+
+    Each series has its own wavelengths, thus a column gives the series of each row. The band-average field gives the
+    points of its step line. The value of each point applies from the point before it to that point.
+    """
+    # a series with no point, e.g. a cell with no line estimators, needs the schema for the types of its columns
+    schema = {
+        "series": pl.String,
+        "lambda_angstroms": pl.Float64,
+        "J_lambda_erg_per_s_per_cm2_per_angstrom": pl.Float64,
+    }
+    return pl.concat([
+        pl.DataFrame(
+            {
+                "series": label,
+                "lambda_angstroms": np.asarray(arr_lambda, dtype=np.float64),
+                "J_lambda_erg_per_s_per_cm2_per_angstrom": np.asarray(j_lambda, dtype=np.float64),
+            },
+            schema=schema,
+        )
+        for label, arr_lambda, j_lambda in drawnseries
+    ])
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -442,6 +476,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(
         parser, kind="file", helptext="Filename for the plot file. The suffix sets the format, e.g. .pdf or .png"
     )
+    addarg_data_output(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

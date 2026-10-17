@@ -58,10 +58,13 @@ Run `artistools describe <modelpath>` first. It gives these items:
 - the ions and the ARTIS version;
 - the physics options of the run, e.g. NLTE, non-thermal ionisation, and thermalisation.
 
-The physics options change the meaning of many outputs. The commands plotestimators, plotspectra, plotlightcurves, and plotlinefluxes print the
-plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te -t 300 <modelpath> --print_data
---quiet`. Use them to check a result, or for a quick answer with no Python. A value or a column name that contains a
-space has quotes.
+The physics options change the meaning of many outputs.
+
+Each plot command prints the plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te
+-t 300 <modelpath> --print_data --quiet`. Use it to check a result, or for a quick answer with no Python. A value or a
+column name that contains a space has quotes. `--write_data` writes the table to a file, and the file starts with "# "
+lines that give the command. Read such a file with `pl.read_csv(path, separator=" ", comment_prefix="#",
+null_values="nan")`.
 
 Without `--quiet`, plotestimators, plotlightcurves, and plotspectra also log one summary line for each drawn series.
 Read these lines before you calculate a value yourself. Examples are:

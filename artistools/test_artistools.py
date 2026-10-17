@@ -2901,9 +2901,33 @@ def test_linefluxes_lineflux_ratio_plot() -> None:
         write_data=True,
     )
     assert (funcoutpath / "linefluxes.pdf").is_file()
-    dfcomparisons = pl.read_csv(funcoutpath / "linefluxes_comparisons.txt", separator=" ", null_values="nan")
+    dfcomparisons = pl.read_csv(
+        funcoutpath / "linefluxes_comparisons.txt", separator=" ", null_values="nan", comment_prefix="#"
+    )
     assert dfcomparisons["series"].unique().to_list() == ["Flörs+2020 fit"]
     assert dfcomparisons.height == 3
+
+
+def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Three models of one name gave the same column, and the join stopped the plot with a repeated column.
+
+    The axis shows the times from -xmin to -xmax, and the table also gave the points outside that range.
+    """
+    at.plotlinefluxes.main(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d] * 3,
+        emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
+        xmin=4.5,
+        xmax=6.5,
+        outputfile=tmp_path / "linefluxes.pdf",
+        write_data=True,
+    )
+    assert "the data table gives the column of" in capsys.readouterr().err
+    dftable = read_data_file(tmp_path / "linefluxes.txt")
+    assert len([column for column in dftable.columns if column.startswith("fratio_")]) == 3
+    assert dftable["time"].is_between(4.5, 6.5).all()
+    assert dftable.height > 0
+    assert read_data_file(tmp_path / "linefluxes_comparisons.txt")["time"].is_between(4.5, 6.5).all()
 
 
 def test_linefluxes_floers_ratio_file_with_no_w7_model(tmp_path: Path) -> None:
@@ -4896,7 +4920,7 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
 
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]
     # the model has no packets in the features, and the table left out the reference curve, thus it gave no file
-    dfpoints = pl.read_csv(tmp_path / "emreg_5.0d.txt", separator=" ", null_values="nan")
+    dfpoints = pl.read_csv(tmp_path / "emreg_5.0d.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfpoints.select("model", "feature", "log10nne", "Te").rows() == [
         ("Flörs+2020 +5d", "reference", 5.0, 5000.0)
     ]
@@ -4920,7 +4944,9 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> N
         )
 
     for tmid in (5.0, 6.0):
-        dfpoints = pl.read_csv(tmp_path / f"emreg_{tmid:.1f}d.txt", separator=" ", null_values="nan")
+        dfpoints = pl.read_csv(
+            tmp_path / f"emreg_{tmid:.1f}d.txt", separator=" ", null_values="nan", comment_prefix="#"
+        )
         assert dfpoints.columns == ["model", "feature", "time_days", "log10nne", "Te"]
         assert dfpoints["time_days"].unique().to_list() == [tmid]
         assert dfpoints["log10nne"].to_list()[:2] == [5.0, 6.0]
@@ -6023,12 +6049,24 @@ def test_describe_counts_the_cells_and_the_rank_files_of_each_run_folder(capsys:
     assert "estimators: 4 rank files" in output
     assert "nlte: 0 rank files" in output
     assert "Fe I to Fe V" in output
-    assert "direction bins: 100 = 10 cos θ bins times 10 φ bins, from spec_res.out and light_curve_res.out" in output
+    assert "direction bins: 100 tables in light_curve_res.out = 10 cos θ bins times 10 φ bins" in output
     # the model folder of the classic-mode 3D test holds artisoptions.h and no folder artis
     assert "temperature limits: MINTEMP = 3500.; MAXTEMP = 140000." in output
     # an old ARTIS gave a different name to an option, e.g. NT_ON and not NT_SCHEME
     assert "non-thermal: NT_ON = false" in output
     assert "ARTIS of run folder job0: v2023.10-106-gfcb7e2c (branch develop)" in output
+
+
+def test_describe_counts_the_direction_bins_of_the_file(tmp_path: Path) -> None:
+    """ARTIS sets MABINS when it compiles, and the summary gave the 100 bins of artistools for a file of 2 bins."""
+    from artistools.describemodel import get_selection_lines
+
+    (tmp_path / "light_curve_res.out").write_text("1.0 1.0 1.0\n2.0 1.0 1.0\n" * 2, encoding="utf-8")
+    (selectionline,) = [line for line in get_selection_lines(tmp_path) if "direction bins" in line]
+    assert "direction bins: 2 tables in light_curve_res.out, and artistools gives the angles of 100 bins" in (
+        selectionline
+    )
+    assert "selects bin N of 0 to 1," in selectionline
 
 
 def test_describe_finds_the_light_curve_in_a_run_folder(tmp_path: Path) -> None:
@@ -6107,6 +6145,12 @@ def test_packet_summaries_give_the_monte_carlo_noise(capsys: pytest.CaptureFixtu
     assert match is not None, captured.out
     assert np.isclose(float(match.group(1)) / 100, 1 / math.sqrt(int(match.group(2))), rtol=0.05)
     assert "the peak point has a relative Monte Carlo noise of" in captured.err
+
+    # a filter combines the packets of neighbouring timesteps, and the line gave the noise of one unfiltered timestep
+    at.lightcurve.plot(argsraw=["-filtermovingavg", "3"], modelpath=[modelpath], frompackets=True, outputfile=tmp_path)
+    captured = capsys.readouterr()
+    assert "noise of the peak point" not in captured.out
+    assert "no noise estimate, because the filter combines the packets" in captured.out
 
     # spec.out has no packet count, thus the line gives no noise
     at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "s.pdf")
@@ -6224,7 +6268,7 @@ def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
     )
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan", comment_prefix="#")
     assert dfsummary["level"].to_list() == ["error"]
     assert dfsummary["first_timestep"].item() == 0
 
@@ -6246,8 +6290,34 @@ def test_logsummary_all_ranks_reads_the_ranks_of_each_run(tmp_path: Path, capsys
         )
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-ranks", "all", "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan", comment_prefix="#")
     assert sorted(dfsummary["level"].to_list()) == ["error", "warning"]
+
+
+def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A restart can use more ranks, and the rank of a cell in the current input.txt is a different cell in a run.
+
+    With 1000 cells, the blocks of ARTIS give cell 999 to rank 1 of 2 ranks, and to rank 3 of 4 ranks.
+    """
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    (modelfolder / "model.txt").write_text("1000\n", encoding="utf-8")
+    header = "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n"
+    for runfolder, rankcount, cellrank in [("100.slurm", 2, 1), ("200.slurm", 4, 3)]:
+        (modelfolder / runfolder).mkdir()
+        for rank in range(rankcount):
+            message = "[error] cell 999 has no matter\n" if rank == cellrank else "[warning] cell 5 is cold\n"
+            (modelfolder / runfolder / f"output_{rank}-0.txt").write_text(header + message, encoding="utf-8")
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-modelgridindex", "999", "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert dfsummary["level"].to_list() == ["error"]
+    assert dfsummary["count"].item() == 2
 
 
 def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:
@@ -6259,10 +6329,202 @@ def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[st
     import artistools.__main__
 
     artistools.__main__.main(argsraw=["logsummary", str(modelpath_classic_3d), "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan", comment_prefix="#")
     dfmaxtemp = dfsummary.filter(pl.col("kind").str.contains("T_e forced to be MAXTEMP"))
     assert dfmaxtemp.height == 1
     assert dfmaxtemp["count"].item() > 1000
     assert dfmaxtemp["first_timestep"].item() == 5
     assert dfmaxtemp["cells"].item() > 100
     assert dfsummary["count"].is_sorted(descending=True)
+
+
+def read_data_file(path: Path) -> pl.DataFrame:
+    """Read a table that --write_data wrote."""
+    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_logfiles_write_data_holds_the_plotted_times(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The table of --write_data must give each line of each page: the mpi ranks and the seconds of each stage."""
+    at.plotlogfiles.main(
+        argsraw=[], modelpath=[modelpath_classic_3d], outputfile=tmp_path / "logfiles.pdf", write_data=True
+    )
+
+    dftable = read_data_file(tmp_path / "logfiles.txt")
+    assert dftable.columns == ["timestep", "mpirank", "update_grid_s", "update_packets_s", "communicate_estimators_s"]
+    assert len(mockplot.call_args_list) == 3 * 30
+    for call in mockplot.call_args_list:
+        axis, mpirank, timetaken = call.args
+        timestep = int(axis.get_title().split()[-1])
+        dfpage = dftable.filter(pl.col("timestep") == timestep).sort("mpirank")
+        assert dfpage["mpirank"].to_list() == list(mpirank)
+        assert np.allclose(dfpage[f"{call.kwargs['label']}_s"].to_numpy(), timetaken, rtol=1e-12, atol=0)
+
+
+@mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
+def test_plotspherical_write_data_holds_the_drawn_maps(mockpcolormesh: mock.MagicMock, tmp_path: Path) -> None:
+    """The table of --write_data must give each pixel of each map after the smoothing, at the drawn coordinates.
+
+    The longitude of the map does not follow the ascending phi bins, and --phireverse changes its sign. Thus the
+    table must give the edges that the axes received, and not the edges of the phi bins.
+    """
+    ncosthetabins, nphibins = 4, 5
+    plotvars = ["luminosity", "emvelocityoverc"]
+    at.plotspherical.main(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=tmp_path / "map.pdf",
+        nphibins=nphibins,
+        ncosthetabins=ncosthetabins,
+        plotvars=plotvars,
+        gaussian_sigma=40,
+        phireverse=True,
+        write_data=True,
+    )
+
+    dftable = read_data_file(tmp_path / "map.txt")
+    assert dftable.columns[-2:] == ["luminosity_erg_per_s", "emvelocityoverc"]
+    # the colour bar draws a mesh of its own after each map
+    mapcalls = [call for call in mockpcolormesh.call_args_list if call.args[0].name == "mollweide"]
+    assert len(mapcalls) == len(plotvars)
+    for call, colname in zip(mapcalls, ["luminosity_erg_per_s", "emvelocityoverc"], strict=True):
+        _, meshgrid_phi, meshgrid_theta, data = call.args
+        drawn = np.asarray(data, dtype=np.float64)
+        assert drawn.shape == (ncosthetabins, nphibins + 1)
+        assert np.allclose(dftable[colname].to_numpy().reshape(drawn.shape), drawn, rtol=1e-6, atol=0, equal_nan=True)
+
+    longitude_edges = np.sort(meshgrid_phi[0])
+    assert np.allclose(dftable["longitude_lower_rad"].to_numpy()[: nphibins + 1], longitude_edges[:-1][::-1])
+    assert np.allclose(dftable["longitude_upper_rad"].to_numpy()[: nphibins + 1], longitude_edges[1:][::-1])
+    assert np.allclose(
+        dftable["costheta_lower"].to_numpy()[:: nphibins + 1], np.sin(meshgrid_theta[:-1, 0]), rtol=1e-12, atol=1e-15
+    )
+
+
+def test_plotviewingangles_write_data_holds_the_volume_and_the_lines(tmp_path: Path) -> None:
+    """The tables of --write_data must give the density of each cell of the volume and the points of each line."""
+    pytest.importorskip("plotly")
+    import plotly.express as px
+    import plotly.graph_objects as go
+
+    outputfile = tmp_path / "viewingangles.html"
+    with (
+        mock.patch.object(go, "Volume", side_effect=go.Volume) as mockvolume,
+        mock.patch.object(px, "line_3d", side_effect=px.line_3d) as mockline3d,
+    ):
+        at.plotviewingangles.main(argsraw=[str(modelpath_3d), "-o", str(outputfile), "--write_data"])
+
+    dfvolume = read_data_file(tmp_path / "viewingangles.txt")
+    volumekwargs = mockvolume.call_args.kwargs
+    for colname, kwarg in (
+        ("pos_x_mid_cm", "x"),
+        ("pos_y_mid_cm", "y"),
+        ("pos_z_mid_cm", "z"),
+        ("rho_g_per_cm3", "value"),
+    ):
+        assert np.allclose(dfvolume[colname].to_numpy(), volumekwargs[kwarg], rtol=1e-12, atol=0)
+
+    dflines = read_data_file(tmp_path / "viewingangles_directions.txt")
+    dfdrawnlines = mockline3d.call_args.args[0]
+    assert dflines["dirbin"].to_list() == [int(dirbin) for dirbin in dfdrawnlines["Angle-bin"]]
+    for axis in ("x", "y", "z"):
+        assert np.allclose(
+            dflines[f"{axis}_cm"].to_numpy(), dfdrawnlines[f"{axis}_coord"].to_numpy(), rtol=1e-12, atol=0
+        )
+
+
+@mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotopacity_writes_the_drawn_values(
+    mockplot: mock.MagicMock, mockaxhline: mock.MagicMock, tmp_path: Path
+) -> None:
+    """--write_data gives the drawn bins, the moving averages, the ratios, the line counts, and the Planck mean.
+
+    The moving average has one more point at each end of the range, thus it goes in a second table. With no moving
+    average, the ratios go in the table of the bins, with one value for each bin.
+    """
+    commonargs = ["-modelpath", str(modelpath), "-timestep", "40", "-xmin", "3000", "-xmax", "4000", "--write_data"]
+    at.plotopacity.main(argsraw=[*commonargs, "--showplanckmean", "--showlinecount", "-o", str(tmp_path / "opac.pdf")])
+    dfbins = read_data_file(tmp_path / "opac.txt")
+    dfaverages = read_data_file(tmp_path / "opac_movingaverage.txt")
+
+    axes = list(dict.fromkeys(call.args[0] for call in mockplot.call_args_list))
+    mainplots = [call.args for call in mockplot.call_args_list if call.args[0] is axes[0]]
+    ratioplots = [call.args for call in mockplot.call_args_list if call.args[0] is axes[1]]
+    (linecountplot,) = [call.args for call in mockplot.call_args_list if call.args[0] is axes[2]]
+    columns = ["exopac", "linebinned_cap1", "linebinned"]
+    # each opacity draws its bins, then its moving average. The line of each bin has a point at each edge and a NaN
+    for column, (_, binx, biny), (_, averagex, averagey) in zip(columns, mainplots[0::2], mainplots[1::2], strict=True):
+        assert np.allclose(dfbins["lambda_angstroms_lower"].to_numpy(), binx[0::3], rtol=1e-12, atol=0.0)
+        assert np.allclose(dfbins["lambda_angstroms_upper"].to_numpy(), binx[1::3], rtol=1e-12, atol=0.0)
+        assert np.allclose(dfbins[f"{column}_cm2_per_g"].to_numpy(), biny[0::3], rtol=1e-12, atol=0.0)
+        assert np.allclose(dfaverages["lambda_angstroms_bin_mid"].to_numpy(), averagex, rtol=1e-12, atol=0.0)
+        assert np.allclose(dfaverages[f"{column}_movingaverage_cm2_per_g"].to_numpy(), averagey, rtol=1e-12, atol=0.0)
+    for column, (_, ratiox, ratioy) in zip(columns[1:], ratioplots, strict=True):
+        assert np.allclose(dfaverages["lambda_angstroms_bin_mid"].to_numpy(), ratiox, rtol=1e-12, atol=0.0)
+        assert np.allclose(
+            dfaverages[f"ratio_{column}_to_exopac"].to_numpy(), ratioy, rtol=1e-12, atol=0.0, equal_nan=True
+        )
+    assert np.array_equal(dfbins["linecount"].to_numpy(), linecountplot[2][0::3])
+    assert np.allclose(dfbins["planckmean_exopac_cm2_per_g"], mockaxhline.call_args.args[1], rtol=1e-12, atol=0.0)
+
+    mockplot.reset_mock()
+    at.plotopacity.main(argsraw=[*commonargs, "-movingaveragewidth", "0", "-o", str(tmp_path / "noaverage.pdf")])
+    assert not (tmp_path / "noaverage_movingaverage.txt").exists()
+    dfbins = read_data_file(tmp_path / "noaverage.txt")
+    assert "planckmean_exopac_cm2_per_g" not in dfbins.columns
+    axes = list(dict.fromkeys(call.args[0] for call in mockplot.call_args_list))
+    ratioplots = [call.args for call in mockplot.call_args_list if call.args[0] is axes[1]]
+    for column, (_, ratiox, ratioy) in zip(columns[1:], ratioplots, strict=True):
+        assert np.allclose(dfbins["lambda_angstroms_lower"].to_numpy(), ratiox[0::3], rtol=1e-12, atol=0.0)
+        assert np.allclose(
+            dfbins[f"ratio_{column}_to_exopac"].to_numpy(), ratioy[0::3], rtol=1e-12, atol=0.0, equal_nan=True
+        )
+
+
+@mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotradfield_writes_the_drawn_values(
+    mockplot: mock.MagicMock, mockstep: mock.MagicMock, tmp_path: Path
+) -> None:
+    """--write_data gives the drawn points of each series in one long table, because each series has its own grid."""
+    at.plotradfield.main(
+        argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=40, outputfile=tmp_path / "rf.pdf", write_data=True
+    )
+    dftable = read_data_file(tmp_path / "rf.txt")
+
+    drawncalls = [*mockplot.call_args_list, *mockstep.call_args_list]
+    drawnseries = {str(call.kwargs["label"]).strip(): call.args for call in drawncalls if "label" in call.kwargs}
+    # the emergent spectrum has the scale of the specific intensity at the surface
+    assert set(drawnseries) == {
+        "Dilute blackbody model",
+        "Band-average field",
+        "Radiation field model",
+        "Emergent spectrum (scaled)",
+    }
+    assert set(dftable["series"]) == set(drawnseries)
+    for label, (_, drawnx, drawny) in drawnseries.items():
+        dfseries = dftable.filter(pl.col("series") == label)
+        assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx, rtol=1e-12, atol=0.0)
+        assert np.allclose(dfseries["J_lambda_erg_per_s_per_cm2_per_angstrom"].to_numpy(), drawny, rtol=1e-12, atol=0.0)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plottransitions_writes_the_drawn_values(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """--write_data gives one row for each ion, each series, and each wavelength, and the ion names the panel."""
+    at.plottransitions.main(
+        argsraw=[], modelpath=modelpath, timedays=300, T=[5000.0], outputfile=tmp_path / "trans.pdf", write_data=True
+    )
+    dftable = read_data_file(tmp_path / "trans.txt")
+
+    axes = list(dict.fromkeys(call.args[0] for call in mockplot.call_args_list))
+    ionlabels = list(dict.fromkeys(dftable["ion"]))
+    assert len(ionlabels) == len(axes) == 7
+    assert dftable.height == sum(len(call.args[1]) for call in mockplot.call_args_list)
+    for call in mockplot.call_args_list:
+        axis, drawnx, drawny = call.args
+        dfseries = dftable.filter(
+            pl.col("ion") == ionlabels[axes.index(axis)], pl.col("series") == call.kwargs["label"]
+        )
+        assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx, rtol=1e-12, atol=0.0)
+        assert np.allclose(dfseries["f_lambda_arbitrary"].to_numpy(), drawny, rtol=1e-12, atol=0.0)

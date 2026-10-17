@@ -40,6 +40,7 @@ ANSWERINSTRUCTION = (
     " unit."
 )
 RE_ANSWER = re.compile(r"^\s*\**ANSWER:\**\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
+RE_THOUSANDSCOMMA = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
 RE_NUMBER = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 
 
@@ -270,8 +271,9 @@ def answer_is_correct(answer: str, expected: float | str, rtol: float) -> bool:
     """
     if isinstance(expected, str):
         return answer.strip().strip("`'\".,;:").strip().lower() == expected.lower()
-    # the commas of a large number, e.g. 1,234, are not separators. An answer such as "5, not 7" gives two numbers
-    numbers = RE_NUMBER.findall(answer.replace(",", ""))
+    # a comma before a group of three digits, e.g. 1,234, is part of the number. Another comma separates two numbers,
+    # thus "5,7" and "5, not 7" give two numbers
+    numbers = RE_NUMBER.findall(RE_THOUSANDSCOMMA.sub("", answer))
     return len(numbers) == 1 and bool(np.isclose(float(numbers[0]), expected, rtol=rtol, atol=0.0))
 
 

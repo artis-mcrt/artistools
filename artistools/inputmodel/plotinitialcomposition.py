@@ -21,11 +21,13 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
 from artistools.misc import import_optional
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
@@ -177,6 +179,48 @@ def get_colorbar_label(colname: str, logcolorscale: bool) -> str:
     return f"log10({quantity})" if logcolorscale else quantity
 
 
+def get_table_column_name(colname: str, logcolorscale: bool) -> str:
+    """Return the name of the column of one panel in the data table, with the unit of the panel."""
+    if colname == "rho":
+        name = "rho_g_per_cm3"
+    elif colname.startswith("X_"):
+        # the panel of a mass fraction shows the density of that species, as the label of its colour bar says
+        name = f"rho_{colname.removeprefix('X_')}_g_per_cm3"
+    else:
+        name = colname
+    return f"log10_{name}" if logcolorscale else name
+
+
+def get_slice_table(
+    images: Sequence[AxesImage], colnames: Sequence[str], plotaxis1: str, plotaxis2: str, logcolorscale: bool
+) -> pl.DataFrame:
+    """Return one row for each pixel of the slice, with the velocities of the pixel centre and the value of each panel.
+
+    The values come from the images, thus they have the floor and the log10 of the colour scale. A cell that
+    --hideemptycells hides has a null value.
+    """
+    xmin, xmax, ymin, ymax = images[0].get_extent()
+    firstarray = images[0].get_array()
+    assert firstarray is not None
+    nrows, ncols = firstarray.shape[:2]
+    xedges = np.linspace(xmin, xmax, ncols + 1)
+    yedges = np.linspace(ymin, ymax, nrows + 1)
+    # origin="lower" puts row 0 of the array at ymin, and each row of the array holds one value of y
+    columns = [
+        pl.Series(f"vel_{plotaxis1}_on_c", np.tile((xedges[:-1] + xedges[1:]) / 2.0, nrows)),
+        pl.Series(f"vel_{plotaxis2}_on_c", np.repeat((yedges[:-1] + yedges[1:]) / 2.0, ncols)),
+    ]
+    for image, colname in zip(images, colnames, strict=True):
+        valuegrid = image.get_array()
+        assert valuegrid is not None
+        columns.append(
+            pl.Series(get_table_column_name(colname, logcolorscale), np.ma.getdata(valuegrid).ravel()).set(
+                pl.Series(np.ma.getmaskarray(valuegrid).ravel()), None
+            )
+        )
+    return pl.DataFrame(columns)
+
+
 def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) -> None:
     """Plot each of args.plotvars as a 2D slice through the model and save the figure."""
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
@@ -241,10 +285,12 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     # each panel has its own colour limits, e.g. a fixed range for rho and an automatic range for a mass fraction,
     # thus each panel gets its own colour bar
+    images: list[AxesImage] = []
     for column, (colname, ax) in enumerate(zip(colnames, axes, strict=True)):
         im = plot_slice_modelcolumn(
             ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
         )
+        images.append(im)
         cbar = fig.colorbar(im, cax=fig.add_subplot(gs[0, column]), location="top", use_gridspec=True)
         cbar.set_label(get_colorbar_label(colname, args.logcolorscale))
 
@@ -257,6 +303,9 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     defaultfilename = f"plotcomposition_{','.join(v.lower() for v in args.plotvars)}.pdf"
     outfilename = resolve_outputfile(args.outputfile, defaultfilename)
 
+    if getattr(args, "print_data", False) or getattr(args, "write_data", False):
+        dfslice = get_slice_table(images, colnames, plotaxis1, plotaxis2, args.logcolorscale)
+        output_data(args, {"": dfslice}, outfilename)
     save_figure(fig, outfilename, args=args, format="pdf")
 
 
@@ -371,6 +420,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
         help="Slice axis for 2D plots. Hint: for negative use e.g. -axis=-z",
     )
+    addarg_data_output(parser)
     addarg_show(parser)
     addarg_darkmode(parser)
 

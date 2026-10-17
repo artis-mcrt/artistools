@@ -369,19 +369,23 @@ def set_scatterplot_plotkwargs(
     return plotkwargsviewingangles, plotkwargsangleaveraged
 
 
-def get_table_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argparse.Namespace) -> list[int]:
+def get_table_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argparse.Namespace) -> list[int | None]:
     """Return the direction bin of each row of a viewing angle data file for the table of --print_data.
 
     A file of the current version holds a dirbin column. For an older file, get_datafile_dirbins gives the bins of the
-    plot from the selection. It stops with an error if the selection does not give a bin for each row. A plot with no
-    colour bar needs no direction bin, thus the rows then take their row numbers.
+    plot from the selection. If the selection does not give a bin for each row, the bins are not known. The row number
+    is not a bin, e.g. the rows of the bins 5 and 10 are rows 0 and 1, thus the table then gives no value.
     """
     if "dirbin" in dfdata.columns:
         return dfdata["dirbin"].cast(pl.Int64).to_list()
     try:
-        return get_datafile_dirbins(dfdata, datafilename, args)
+        return list(get_datafile_dirbins(dfdata, datafilename, args))
     except ValueError:
-        return list(range(dfdata.height))
+        print_warning(
+            f"{datafilename} has no dirbin column, and the selection gives no bin for each of its rows, thus the"
+            " column dirbin of the table has no values. Give the selection that wrote the file to get them"
+        )
+        return [None] * dfdata.height
 
 
 def get_datafile_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argparse.Namespace) -> list[int]:

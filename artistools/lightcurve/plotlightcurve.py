@@ -965,13 +965,19 @@ def plot_artis_lightcurve(
         lcdata_inrange = lcdata_valid.filter(is_in_time_range("time_days", args.timemin, args.timemax))
         # the relative noise of the timestep is the noise of the observer-frame luminosity and not of the comoving frame
         haspacketnoise = {"packetcount", "relnoise"}.issubset(lcdata_inrange.columns) and "cmf" not in ycolumn
+        # a filter combines the packets of neighbouring timesteps, thus the noise of one timestep is not its noise
+        isfiltered = filterfunc is not None
         summaryparts, summarywarnings = get_peak_summary(
             lcdata_inrange["time_days"],
             lcdata_inrange[ycolumn],
             lumunit,
             ismagnitude=lumunit == "mag",
-            packetnoise=(lcdata_inrange["packetcount"], lcdata_inrange["relnoise"]) if haspacketnoise else None,
+            packetnoise=(lcdata_inrange["packetcount"], lcdata_inrange["relnoise"])
+            if haspacketnoise and not isfiltered
+            else None,
         )
+        if haspacketnoise and isfiltered:
+            summaryparts.append("no noise estimate, because the filter combines the packets of neighbouring timesteps")
         # a magnitude has no comoving-frame column, and its maximum is the faintest point
         cmfcolumn_summary = ycolumn.replace("luminosity_", "luminosity_cmf_")
         if ycolumn.startswith("luminosity_") and cmfcolumn_summary in lcdata.columns and lcdata.height > 4:
@@ -1715,6 +1721,10 @@ def plot_lightcurve_from_refdata(
             label=linename,
             color=color,
         )
+        summaryparts, summarywarnings = get_peak_summary(
+            dfband["time"], dfband["magnitude"], "mag", ismagnitude=True, isband=True
+        )
+        print_series_summary(f"{filter_name_raw} {linename or lightcurvefilename}", summaryparts, summarywarnings)
         if plottedpoints is not None:
             plottedpoints.append(
                 get_magnitude_table(

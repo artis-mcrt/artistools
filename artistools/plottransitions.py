@@ -26,6 +26,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -42,6 +43,7 @@ from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_single_timestep
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_warning
@@ -219,8 +221,11 @@ def make_plot(
         print(figure_title)
     set_plot_title(axes[0], figure_title, args)
 
-    for seriesindex, temperature in enumerate(temperature_list):
-        serieslabel = "NLTE" if temperature == "NOTEMPNLTE" else f"LTE {temperature} = {vardict[temperature]:.0f} K"
+    serieslabels = [
+        "NLTE" if temperature == "NOTEMPNLTE" else f"LTE {temperature} = {vardict[temperature]:.0f} K"
+        for temperature in temperature_list
+    ]
+    for seriesindex, serieslabel in enumerate(serieslabels):
         for ion_index, axis in enumerate(axes):
             axis.plot(xvalues, yvalues[seriesindex][ion_index], linewidth=1.5, label=serieslabel)
 
@@ -247,8 +252,38 @@ def make_plot(
         axis.set_xlim(xmin, xmax)
         axis.set_ylabel(r"$\propto$ F$_\lambda$")
 
+    if getattr(args, "print_data", False) or getattr(args, "write_data", False):
+        ionlabels = [get_ionstring(Z, ion_stage, style="spectral") for Z, ion_stage in ionlist]
+        output_data(
+            args,
+            {"": get_ion_spectra_table(xvalues, yvalues, serieslabels, ionlabels, normalised=args.normalised)},
+            outputfilename,
+        )
     # the suffix of the file name sets the format, e.g. .pdf or .png
     save_figure(fig, outputfilename, args=args)
+
+
+def get_ion_spectra_table(
+    xvalues: npt.NDArray[np.floating] | npt.NDArray[np.integer],
+    yvalues: npt.NDArray[np.floating],
+    serieslabels: Sequence[str],
+    ionlabels: Sequence[str],
+    *,
+    normalised: bool,
+) -> pl.DataFrame:
+    """Return the plotted spectra, with one row for each ion, each series, and each wavelength.
+
+    The ion names the panel. yvalues has one spectrum for each series and each ion, in that order. The flux has an
+    arbitrary unit, and --normalised divides each spectrum by its peak.
+    """
+    seriescount, ioncount, pointcount = yvalues.shape
+    fluxcolumn = "f_lambda_normalised" if normalised else "f_lambda_arbitrary"
+    return pl.DataFrame({
+        "ion": np.repeat(ionlabels, seriescount * pointcount),
+        "series": np.tile(np.repeat(serieslabels, pointcount), ioncount),
+        "lambda_angstroms": np.tile(np.asarray(xvalues, dtype=np.float64), ioncount * seriescount),
+        fluxcolumn: yvalues.transpose(1, 0, 2).ravel(),
+    })
 
 
 def add_upper_lte_pop(
@@ -330,6 +365,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         defaultname=defaultoutputfile,
         helptext="Path/filename for the plot file. The suffix sets the format, e.g. .pdf or .png",
     )
+    addarg_data_output(parser)
     addarg_show(parser)
     addarg_darkmode(parser)
 

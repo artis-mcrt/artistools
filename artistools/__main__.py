@@ -4,6 +4,7 @@
 import argparse
 import contextlib
 import os
+import shlex
 import sys
 import typing as t
 from collections.abc import Sequence
@@ -100,6 +101,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # command line, e.g. plotspectra --interactive, reads argsraw. The first word names the subcommand
         if argsraw is not None:
             args.dispatcherargsraw = list(argsraw)
+        # a data file records the command that made it
+        args.commandline = shlex.join([
+            "artistools" if scriptparser is None else Path(sys.argv[0]).name,
+            *(sys.argv[1:] if argsraw is None else argsraw),
+        ])
 
     func = getattr(args, "func", None)
     if func is None:

@@ -3766,9 +3766,14 @@ def test_output_data_prints_and_writes_each_table(tmp_path: Path, capsys: pytest
     at.misc.output_data(args, tables, tmp_path / "myplot.pdf")
 
     maintable = 'x label\n1.0 "a b"\n2.0 nan\n'
+    # a pipe reads the standard output, thus only a file has the comment lines that tell how the command made it
     assert capsys.readouterr().out.startswith(f"{maintable}\nrms\n0.5\n")
-    assert (tmp_path / "myplot.txt").read_text(encoding="utf-8") == maintable
-    assert (tmp_path / "myplot_residuals.txt").read_text(encoding="utf-8") == "rms\n0.5\n"
+    filelines = (tmp_path / "myplot.txt").read_text(encoding="utf-8").splitlines(keepends=True)
+    assert filelines[0].startswith("# artistools ")
+    assert filelines[1] == f"# working folder: {Path.cwd()}\n"
+    assert filelines[2] == "# command: a Python call with the arguments print_data=True, write_data=True\n"
+    assert "".join(filelines[3:]) == maintable
+    assert (tmp_path / "myplot_residuals.txt").read_text(encoding="utf-8").endswith("\nrms\n0.5\n")
     assert not (tmp_path / "myplot_unused.txt").exists()
 
 

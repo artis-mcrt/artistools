@@ -16,6 +16,7 @@ from artistools.atomic import get_composition_data
 from artistools.atomic import get_ionstring
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
+from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_modelpath
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_options
@@ -144,16 +145,23 @@ def get_selection_lines(modelpath: Path) -> list[str]:
     An agent then gives a valid selection with no trial of the arguments.
     """
     lines = ["plot selections:"]
-    resfiles = [
-        filename
-        for filename in ("spec_res.out", "light_curve_res.out")
-        if firstexisting_or_none(filename, folder=modelpath) is not None
-    ]
-    if resfiles:
+    lcresfile = firstexisting_or_none("light_curve_res.out", folder=modelpath)
+    if lcresfile is not None:
+        # ARTIS sets MABINS when it compiles, thus the file and not artistools gives the count of the bins
+        bincount = len(scan_lightcurve(lcresfile, directionresolved=True))
+        geometrytext = (
+            f" = {get_viewingdirection_costhetabincount()} cos θ bins times {get_viewingdirection_phibincount()} φ bins"
+            if bincount == get_viewingdirectionbincount()
+            else f", and artistools gives the angles of {get_viewingdirectionbincount()} bins"
+        )
         lines.append(
-            f"  direction bins: {get_viewingdirectionbincount()} = {get_viewingdirection_costhetabincount()} cos θ"
-            f" bins times {get_viewingdirection_phibincount()} φ bins, from {' and '.join(resfiles)}."
-            " -plotviewingangle N selects bin N, and -1 is all the directions"
+            f"  direction bins: {bincount} tables in {lcresfile.relative_to(modelpath)}{geometrytext}."
+            f" -plotviewingangle N selects bin N of 0 to {bincount - 1}, and -1 is all the directions"
+        )
+    elif firstexisting_or_none("spec_res.out", folder=modelpath) is not None:
+        lines.append(
+            f"  direction bins: spec_res.out, with {get_viewingdirectionbincount()} bins if ARTIS has the default"
+            " MABINS. -plotviewingangle N selects bin N, and -1 is all the directions"
         )
     if Path(modelpath, "vpkt.txt").is_file():
         vpktconfig = get_vpkt_config(modelpath)

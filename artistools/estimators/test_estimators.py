@@ -2711,7 +2711,7 @@ def test_frames_of_a_gif_print_one_table(tmp_path: Path, capsys: pytest.CaptureF
     )
     output = capsys.readouterr().out
     assert output.count(" velocity_kmps ") == 1
-    dftable = pl.read_csv(tmp_path / "movie.txt", separator=" ", null_values="nan")
+    dftable = pl.read_csv(tmp_path / "movie.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert sorted(dftable["timestep"].unique().to_list()) == ["ts040", "ts041", "ts042"]
 
 
@@ -2873,7 +2873,7 @@ def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_
     assert len(list(tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.pdf"))) == 1
     # --write_data gave only a warning for a colour image, and no table of its cells
     (tablepath,) = tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.txt")
-    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan")
+    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
     assert dftable.height == int(np.isfinite(tegrid.filled(np.nan)).sum())
     assert np.isclose(dftable["vel_rcyl_on_c"].to_numpy().min(), (edges1[0] + edges1[1]) / 2)
     assert np.allclose(np.sort(dftable["value"].to_numpy()), np.sort(tegrid.compressed()), rtol=1e-6, atol=0)
@@ -3243,6 +3243,14 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
     # a Monte Carlo channel takes the rate of timestep 0 from the row of timestep 1, with the volume of timestep 0
     assert dfalpha["timestep"].to_list() == [0]
     assert np.isclose(dfalpha["dep_per_volume"].item(), 6.0e-10 / at.constants.EV_to_erg, rtol=1e-12)
+
+    # a restart with Monte Carlo alpha deposition gives the rows of its run a rate that is not the analytic rate, and
+    # the analytic rule of artisoptions.h took it as the rate of its own timestep
+    dfmixed = dfestim.with_columns(deposition_alpha=pl.Series([7.0e-10, 9.0e-10]))
+    with pytest.raises(ValueError, match=r"differs from emission_ana_alpha at the timesteps \[1\]"):
+        at.estimators.deposition.aggregate_deposition_rates(
+            dfmixed, channels=["alpha"], configuredanalyticchannels=["spfission", "alpha"]
+        )
 
 
 def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
@@ -5800,7 +5808,7 @@ def test_estimator_print_data_gives_the_drawn_values(
     )
     output = capsys.readouterr().out
     headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
-    dftable = pl.read_csv(io.StringIO(output[headerstart:]), separator=" ", null_values="nan")
+    dftable = pl.read_csv(io.StringIO(output[headerstart:]), separator=" ", null_values="nan", comment_prefix="#")
 
     assert set(dftable["series"]) == {"Te"}
     # the line repeats its first and its last bin out to the edges of the axis, and the table held the inner points
@@ -5830,7 +5838,7 @@ def test_estimator_print_data_gives_the_drawn_values(
     )
     output = capsys.readouterr().out
     headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
-    dfmarkertable = pl.read_csv(io.StringIO(output[headerstart:]), separator=" ", null_values="nan")
+    dfmarkertable = pl.read_csv(io.StringIO(output[headerstart:]), separator=" ", null_values="nan", comment_prefix="#")
     dfline = dfmarkertable.filter(pl.col("points") == "line")
     assert dfline.height == dftable.height
     assert np.allclose(dfline["value"], dftable["value"], rtol=1e-6, atol=0)

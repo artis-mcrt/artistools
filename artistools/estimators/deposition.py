@@ -111,16 +111,44 @@ def get_analytic_deposition_channels(dfestim: pl.LazyFrame, channels: Sequence[s
     if not candidates:
         return []
     # ARTIS writes both columns with the format 11.5e, thus an analytic channel agrees to 6 significant digits
-    dfequal = dfestim.select(
-        (
-            (pl.col(f"{DEPOSITIONPREFIX}{channel}") - pl.col(f"emission_ana_{channel}")).abs()
-            <= 1e-5 * pl.col(f"emission_ana_{channel}").abs()
-        )
-        .all()
-        .alias(channel)
-        for channel in candidates
-    ).collect()
+    dfequal = dfestim.select(equals_analytic_rate(channel).all().alias(channel) for channel in candidates).collect()
     return [channel for channel in candidates if dfequal[channel].item()]
+
+
+def equals_analytic_rate(channel: str) -> pl.Expr:
+    """Return an expression that is true where a channel equals its emission_ana_ column.
+
+    ARTIS writes both columns with the format 11.5e, thus an analytic channel agrees to 6 significant digits.
+    """
+    return (pl.col(f"{DEPOSITIONPREFIX}{channel}") - pl.col(f"emission_ana_{channel}")).abs() <= 1e-5 * pl.col(
+        f"emission_ana_{channel}"
+    ).abs()
+
+
+def check_analytic_channels_of_each_run(dfestim: pl.LazyFrame, analyticchannels: Sequence[str]) -> None:
+    """Stop if a channel that artisoptions.h makes analytic does not equal its analytic rate in each row.
+
+    The estimators join the rows of all the run folders, and artisoptions.h gives the options of one build. A restart
+    with a different PARTICLE_THERMALISATION_SCHEME gives Monte Carlo rates in the rows of its run. Such a rate belongs
+    to the timestep before its row, thus one rule for all the rows gives an incorrect rate.
+    """
+    colnames = dfestim.collect_schema().names()
+    checkedchannels = [channel for channel in analyticchannels if f"emission_ana_{channel}" in colnames]
+    if not checkedchannels:
+        return
+    dfdisagree = dfestim.select(
+        pl.col("timestep").filter(~equals_analytic_rate(channel)).unique().sort().implode().alias(channel)
+        for channel in checkedchannels
+    ).collect()
+    for channel in checkedchannels:
+        if timesteps := dfdisagree[channel].item().to_list():
+            msg = (
+                f"artisoptions.h gives an analytic rate for the deposition channel {channel}, but its rate differs"
+                f" from emission_ana_{channel} at the timesteps {timesteps[:10]}. A run of a different ARTIS build can"
+                " have a different PARTICLE_THERMALISATION_SCHEME, and one rule for the rows of all the runs gives an"
+                " incorrect rate. Select the timesteps of one run with -timestep"
+            )
+            raise ValueError(msg)
 
 
 def parse_ye_range(text: str) -> tuple[float, float]:
@@ -229,7 +257,8 @@ def aggregate_deposition_rates(
         dfestim = dfestim.filter(pl.col("init_Ye").is_between(yerange[0], yerange[1]))
 
     selectedchannels = select_deposition_channels(colnames, channels)
-    # the test of the analytic channels and the sum both read these columns, thus one .collect() reads them once
+    # the rates, the cells, and the test of the channels read the same columns. On a 3D model of 80 timesteps, one
+    # .collect() of these columns took 1.90 GB, and a lazy query that read them for each branch took 2.29 GB
     neededcolumns = dict.fromkeys([
         *("timestep", "modelgridindex", "tmid_days", "mass_g", "volume", "volume_prevtimestep", "nntot"),
         *(f"{DEPOSITIONPREFIX}{channel}" for channel in selectedchannels),
@@ -238,6 +267,7 @@ def aggregate_deposition_rates(
     dfestim = dfestim.select(list(neededcolumns)).collect().lazy()
     if configuredanalyticchannels is not None:
         analyticchannels = [channel for channel in selectedchannels if channel in configuredanalyticchannels]
+        check_analytic_channels_of_each_run(dfestim, analyticchannels)
         analyticsource = "The options of the run give an analytic rate for these deposition channels"
     else:
         analyticchannels = get_analytic_deposition_channels(dfestim, selectedchannels)

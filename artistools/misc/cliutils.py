@@ -1248,14 +1248,43 @@ def print_product(args: argparse.Namespace, *values: object) -> None:
     print(*values, file=productstream)
 
 
-def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO") -> None:
+def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", commentlines: Sequence[str] = ()) -> None:
     """Write a table as text with a space between the values and a header row of column names.
 
     The polars display of a table shows only some rows, thus a reader of the output does not get each value. A reader
     that splits on spaces moves each later value to the wrong column after an empty field. Thus a missing value is nan.
-    A value or a column name that contains a space has quotes, which polars and pandas read.
+    A value or a column name that contains a space has quotes, which polars and pandas read. Each line of commentlines
+    goes before the table with "# " at its start, which pl.read_csv(comment_prefix="#") and np.loadtxt skip.
     """
-    dfdata.write_csv(destination, separator=" ", null_value="nan")
+    if not commentlines:
+        dfdata.write_csv(destination, separator=" ", null_value="nan")
+        return
+    with contextlib.ExitStack() as stack:
+        stream = destination if not isinstance(destination, Path) else stack.enter_context(destination.open("w"))
+        stream.writelines(f"# {line}\n" for line in commentlines)
+        dfdata.write_csv(stream, separator=" ", null_value="nan")
+
+
+def get_provenance_lines(args: argparse.Namespace) -> list[str]:
+    """Return the lines that tell how a command made its data: the version, the time, the folder, and the command.
+
+    A relative model path in the command starts at the working folder, thus a line gives that folder too. A call from
+    Python has no command line, thus the line then gives each argument that holds a plain value.
+    """
+    import datetime as dt
+    from importlib.metadata import version
+
+    timetext = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+    commandline = getattr(args, "commandline", None)
+    if commandline is None:
+        plainvalues = (str, int, float, bool, Path, list, tuple, type(None))
+        argtexts = [f"{key}={value!r}" for key, value in sorted(vars(args).items()) if isinstance(value, plainvalues)]
+        commandline = f"a Python call with the arguments {', '.join(argtexts)}"
+    return [
+        f"artistools {version('artistools')}, {timetext}",
+        f"working folder: {Path.cwd()}",
+        f"command: {commandline}",
+    ]
 
 
 def addarg_data_output(parser: argparse.ArgumentParser) -> None:
@@ -1289,7 +1318,7 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
     if getattr(args, "write_data", False):
         for suffix, dfdata in tables.items():
             datafile = Path(outputfile).with_name(f"{Path(outputfile).stem}{suffix}.txt")
-            write_data_table(dfdata, datafile)
+            write_data_table(dfdata, datafile, commentlines=get_provenance_lines(args))
             print_saved(datafile)
 
 

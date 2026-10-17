@@ -7,6 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import numpy.typing as npt
 import polars as pl
 
 from artistools.atomic import decode_roman_numeral
@@ -16,6 +17,7 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
@@ -25,6 +27,7 @@ from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import resolve_outputfile
 from artistools.packets.core import filter_packets_dirbin
@@ -225,7 +228,31 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
 
     outfilename = resolve_outputfile(outputfile, start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf")
+    if getattr(args, "print_data", False) or getattr(args, "write_data", False):
+        assert args is not None
+        valuecolumn = "ln_emissivity_erg_per_s_per_cm3" if colorlogscale else "emissivity_erg_per_s_per_cm3"
+        output_data(args, {"": get_heatmap_table(z, xedges, yedges, valuecolumn)}, outfilename)
     save_figure(fig, outfilename, dpi=300, args=args)
+
+
+def get_heatmap_table(
+    image: np.ma.MaskedArray, xedges: npt.NDArray[np.floating], yedges: npt.NDArray[np.floating], valuecolumn: str
+) -> pl.DataFrame:
+    """Return one row for each bin of the image, with the velocity edges of the bin in units of c.
+
+    The image has one row for each v_z bin and one column for each v_r bin. A bin that the image leaves blank has no
+    value.
+    """
+    nzbins, nrbins = image.shape
+    # the Fortran order keeps the v_z bins of one v_r bin together
+    values = np.ma.filled(image.astype(np.float64), np.nan).ravel(order="F")
+    return pl.DataFrame({
+        "v_r_min_c": np.repeat(xedges[:-1], nzbins),
+        "v_r_max_c": np.repeat(xedges[1:], nzbins),
+        "v_z_min_c": np.tile(yedges[:-1], nrbins),
+        "v_z_max_c": np.tile(yedges[1:], nrbins),
+        valuecolumn: pl.Series(values, nan_to_null=True),
+    })
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -266,6 +293,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_output(parser, kind="file", helptext="Path/filename for the PDF file")
+    addarg_data_output(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
