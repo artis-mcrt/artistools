@@ -206,7 +206,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     heatmap = hist2D / Delta_t_secs / nprocs_read * inverse_solidangle_fraction
     heatmap = np.ma.masked_less_equal(heatmap, 0.0)
     if colorlogscale:
-        heatmap = np.ma.log(heatmap)
+        heatmap = np.ma.log10(heatmap)
 
     # an image with a colorbar keeps plt.subplots: fig.colorbar takes space that the
     # Divider of make_frame_figure gives back at draw time, and the two then overlap
@@ -220,7 +220,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_ylabel(r"$v_z$ [$c$]")
     cbar = fig.colorbar(im, ax=ax)
     if colorlogscale:
-        cbar.set_label(r"log volumetric emissivity [erg/(s cm$^3$)]")
+        cbar.set_label(r"log$_{10}$ volumetric emissivity [erg/(s cm$^3$)]")
     else:
         cbar.set_label(r"volumetric emissivity [erg/(s cm$^3$)]")
 
@@ -230,7 +230,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     outfilename = resolve_outputfile(outputfile, start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf")
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
         assert args is not None
-        valuecolumn = "ln_emissivity_erg_per_s_per_cm3" if colorlogscale else "emissivity_erg_per_s_per_cm3"
+        valuecolumn = "log10_emissivity_erg_per_s_per_cm3" if colorlogscale else "emissivity_erg_per_s_per_cm3"
         output_data(args, {"": get_heatmap_table(z, xedges, yedges, valuecolumn)}, outfilename)
     save_figure(fig, outfilename, dpi=300, args=args)
 
@@ -284,7 +284,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
-    parser.add_argument("--colorlogscale", action="store_true", help="Log scale for color bar in 2D plot")
+    parser.add_argument("--colorlogscale", action="store_true", help="Show the log10 of the emissivity in the 2D plot")
 
     parser.add_argument(
         "--use_thermalemissiontype",
