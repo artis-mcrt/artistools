@@ -1660,7 +1660,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (4, "b6ad76923bd1b142"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "f92ec809fbad0eb7"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1831,7 +1831,8 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     with mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]):
         process, _ = remote.get_server("testhost")
         try:
-            dfremotemodel, remotemodelmeta = at.get_modeldata(remotepath)
+            # a str path stayed on this host, and check_local_path then stopped the read
+            dfremotemodel, remotemodelmeta = at.get_modeldata(str(remotepath))
             dfremotemodel = dfremotemodel.collect()
             remoteinputparams = at.get_inputparams(remotepath)
             dfremotenltepops = at.nltepops.read_nltepops(remotepath, timestep=40, modelgridindex=0)

@@ -2020,10 +2020,12 @@ def make_figure(
         outfilename = format_frame_path(outpath, **framefields, format=args.format, **slicefields)
 
     save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
-    if isinstance(figuredata, LineFigureData):
-        output_data(args, {"": get_line_figure_table(figuredata, args.x)}, outfilename)
-    elif args.print_data or args.write_data:
-        print_warning("--print_data and --write_data give the data of a line plot, and a colour image gives none")
+    figuretable = (
+        get_line_figure_table(figuredata, args.x)
+        if isinstance(figuredata, LineFigureData)
+        else get_image_figure_table(figuredata)
+    )
+    output_data(args, {"": figuretable}, outfilename)
 
     return outfilename
 
@@ -2403,6 +2405,46 @@ def get_image_figure_data(
     )
 
 
+def get_image_edges(
+    figuredata: ImageFigureData, grid: "npt.NDArray[np.float64]"
+) -> "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]":
+    """Return the edges of the cells of an image on its two axes, in units of c."""
+    vmax_on_c = figuredata.vmax_cmps / C_cm_per_s
+    isplane = figuredata.plotaxes[0] != "rcyl"
+    edges1 = np.linspace(-vmax_on_c if isplane else 0.0, vmax_on_c, grid.shape[1] + 1)
+    edges2 = np.linspace(-vmax_on_c, vmax_on_c, grid.shape[0] + 1)
+    return edges1, edges2
+
+
+def get_image_figure_table(figuredata: ImageFigureData) -> pl.DataFrame:
+    """Return one table of the colour image, with one row for each cell of each panel that has a value.
+
+    The columns give the fields of the frame, the panel, its label, the velocity of the centre of the cell on each
+    axis of the image in units of c, and the value.
+    """
+    plotaxis1, plotaxis2 = figuredata.plotaxes
+    dfpanels: list[pl.DataFrame] = []
+    for panelindex, (style, grid) in enumerate(zip(figuredata.styles, figuredata.grids, strict=True)):
+        edges1, edges2 = get_image_edges(figuredata, grid)
+        centres2, centres1 = np.meshgrid((edges2[:-1] + edges2[1:]) / 2, (edges1[:-1] + edges1[1:]) / 2, indexing="ij")
+        dfpanels.append(
+            pl
+            .DataFrame({
+                f"vel_{plotaxis1}_on_c": centres1.ravel(),
+                f"vel_{plotaxis2}_on_c": centres2.ravel(),
+                "value": grid.ravel(),
+            })
+            .filter(pl.col("value").is_not_nan())
+            .select(
+                *(pl.lit(fieldvalue).alias(fieldname) for fieldname, fieldvalue in figuredata.framefields.items()),
+                pl.lit(panelindex).alias("panel"),
+                pl.lit(style.label).alias("label"),
+                pl.all(),
+            )
+        )
+    return pl.concat(dfpanels) if dfpanels else pl.DataFrame()
+
+
 def draw_image_figure(
     figuredata: ImageFigureData, args: argparse.Namespace, fig: "mplfig.Figure | None" = None
 ) -> "mplfig.Figure":
@@ -2426,7 +2468,6 @@ def draw_image_figure(
     # together at the centre, and it gives each colour bar the height of its image
     fig.set_layout_engine("compressed")
     axesgrid = fig.subplots(nrows, ncols, squeeze=False)
-    vmax_on_c = figuredata.vmax_cmps / C_cm_per_s
     # the axis of an image holds v/c. -x velocity takes km/s, and every other x variable takes v/c already
     xscale_to_c = km_to_cm / C_cm_per_s if args.x == "velocity" else 1.0
     xmin_on_c = None if args.xmin is None else args.xmin * xscale_to_c
@@ -2437,8 +2478,7 @@ def draw_image_figure(
         if isinstance(norm, mc.LogNorm):
             # a log colour scale cannot show a value of zero or below, thus such a cell stays empty
             values = np.ma.masked_less_equal(values, 0.0)
-        edges1 = np.linspace(-vmax_on_c if isplane else 0.0, vmax_on_c, grid.shape[1] + 1)
-        edges2 = np.linspace(-vmax_on_c, vmax_on_c, grid.shape[0] + 1)
+        edges1, edges2 = get_image_edges(figuredata, grid)
         # the grid of a 1D model has 80 000 points, which are slow and large as vector shapes
         image = ax.pcolormesh(edges1, edges2, values, norm=norm, rasterized=True)
         ax.set_label(get_panel_axes_label(style.subplotindex))

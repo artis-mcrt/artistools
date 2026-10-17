@@ -97,11 +97,11 @@ Question: which process cools each region of the ejecta, and why is Te high or l
   radiation, e.g. `cooling_coll` for the collisional excitation of lines.
 - Use the velocity of each cell to make the regions. The ejecta expand homologously, thus the velocity of a cell
   gives its position.
-- A cell in LTE gives no rates, and a cell at a temperature limit has no thermal balance. Thus the rates do not
-  explain the Te of these cells. The recipe does not include these cells. See "The energy budget at a time".
+- A cell with no thermal balance has rates that do not explain its Te. The recipe does not include these cells:
+  a cell in LTE, a cell at a temperature limit, and a cell with heating and cooling that differ by more than 1 %.
+  See "The energy budget at a time".
 - A region can have a high Te because its cooling is weak, e.g. because of a low density or few ions with strong
-  lines. Compare the
-  cooling of a region with its heating.
+  lines. Compare the cooling of a region with its heating.
 
 ```python
 import re
@@ -115,15 +115,18 @@ modelpath = "."
 timestep = at.get_timestep_of_timedays(modelpath, 10)
 nbins = 5
 lfcells = at.scan_estimators(modelpath, timestep=timestep, join_modeldata=True)
+columns = lfcells.collect_schema().names()
 # the part of each ion, e.g. cooling_coll_Fe_II, is also in the total of its process, e.g. cooling_coll
-coolingcols = [col for col in lfcells.collect_schema().names() if re.fullmatch(r"cooling_[a-z]+", col)]
+heatingcols = [col for col in columns if re.fullmatch(r"heating_[a-z]+", col)]
+coolingcols = [col for col in columns if re.fullmatch(r"cooling_[a-z]+", col)]
 temperaturelimits = [
     float(value) for name in ("MINTEMP", "MAXTEMP") if (value := at.misc.get_artis_option(modelpath, name)) is not None
 ]
 islte = (pl.col("W") == 1.0) & (pl.col("Te") == pl.col("TR")) & (pl.col("Te") == pl.col("TJ"))
-isleftout = islte | pl.col("Te").is_in(temperaturelimits)
+isunbalanced = ((pl.sum_horizontal(heatingcols) / pl.sum_horizontal(coolingcols)) - 1.0).abs() > 0.01
+isleftout = islte | pl.col("Te").is_in(temperaturelimits) | isunbalanced
 leftoutcount = lfcells.select(isleftout.sum()).collect().item()
-print(f"removed {leftoutcount} cells in LTE or at a temperature limit")
+print(f"removed {leftoutcount} cells in LTE, at a temperature limit, or with no thermal balance")
 vmax = lfcells.select(pl.col("vel_r_mid").max()).collect().item()
 dfregions = (
     lfcells

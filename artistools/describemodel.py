@@ -119,8 +119,9 @@ def get_output_lines(modelpath: Path) -> list[str]:
         lines.append(f"packets: {packetcount} rank files")
 
     for filename in SINGLEOUTPUTFILES:
-        filepath = firstexisting_or_none(filename, folder=modelpath, search_subfolders=False)
-        lines.append(f"{filename}: {filepath.name if filepath is not None else 'none'}")
+        # the readers of the light curves and the spectra also search the run folders, and get_deposition does not
+        filepath = firstexisting_or_none(filename, folder=modelpath, search_subfolders=filename != "deposition.out")
+        lines.append(f"{filename}: {filepath.relative_to(modelpath) if filepath is not None else 'none'}")
     return lines
 
 

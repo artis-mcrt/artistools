@@ -2886,7 +2886,11 @@ def test_linefluxes_rejects_emittingregions_without_enough_colours() -> None:
 
 
 def test_linefluxes_lineflux_ratio_plot() -> None:
-    """The line flux ratio plot must run with no arguments beyond the model path."""
+    """The line flux ratio plot must run with no arguments beyond the model path.
+
+    The plot of Fe II 7155 Å and 12570 Å also draws the fit of Flörs et al. (2020), and --write_data gave no table of
+    it.
+    """
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
     at.plotlinefluxes.main(
@@ -2894,8 +2898,12 @@ def test_linefluxes_lineflux_ratio_plot() -> None:
         modelpath=[modelpath_classic_3d],
         emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
         outputfile=funcoutpath / "linefluxes.pdf",
+        write_data=True,
     )
     assert (funcoutpath / "linefluxes.pdf").is_file()
+    dfcomparisons = pl.read_csv(funcoutpath / "linefluxes_comparisons.txt", separator=" ", null_values="nan")
+    assert dfcomparisons["series"].unique().to_list() == ["Flörs+2020 fit"]
+    assert dfcomparisons.height == 3
 
 
 def test_get_ion_tuple_rejects_missing_element() -> None:
@@ -5916,6 +5924,24 @@ def test_describe_counts_the_cells_and_the_rank_files_of_each_run_folder(capsys:
     # an old ARTIS gave a different name to an option, e.g. NT_ON and not NT_SCHEME
     assert "non-thermal: NT_ON = false" in output
     assert "ARTIS of run folder job0: v2023.10-106-gfcb7e2c (branch develop)" in output
+
+
+def test_describe_finds_the_light_curve_in_a_run_folder(tmp_path: Path) -> None:
+    """A run on a cluster writes light_curve.out into its run folder, and the summary searched only the model folder.
+
+    The light curve reader searches the run folders, and get_deposition reads only the model folder.
+    """
+    from artistools.describemodel import get_output_lines
+
+    modelfolder = tmp_path / "model"
+    (modelfolder / "12411848.slurm").mkdir(parents=True)
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+    (modelfolder / "12411848.slurm" / "light_curve.out").write_text("1.0 2.0 3.0\n", encoding="utf-8")
+    (modelfolder / "12411848.slurm" / "deposition.out").write_text("1.0 2.0 3.0\n", encoding="utf-8")
+
+    lines = get_output_lines(modelfolder)
+    assert "light_curve.out: 12411848.slurm/light_curve.out" in lines
+    assert "deposition.out: none" in lines
 
 
 @pytest.mark.parametrize(

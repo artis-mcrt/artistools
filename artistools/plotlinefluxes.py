@@ -475,8 +475,11 @@ def get_labelandlineindices_cached(
     return tuple(labelandlineindices)
 
 
-def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args: argparse.Namespace) -> None:
-    """Overplot the NIR/VIS ratios of the Flörs models from a CSV of columns file, epoch, NIR_VIS_ratio."""
+def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args: argparse.Namespace) -> pl.DataFrame:
+    """Overplot the NIR/VIS ratios of the Flörs models from a CSV of columns file, epoch, NIR_VIS_ratio.
+
+    Return the drawn points in the form of get_comparison_table, or an empty frame.
+    """
     if not floersmodelratiopath.is_file():
         msg = f"{floersmodelratiopath} not found"
         raise FileNotFoundError(msg)
@@ -499,7 +502,7 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     dfmodel = dffloers.filter(pl.col("modelname") == "w7").sort("epoch")
     if dfmodel.is_empty():
         print_warning(f"no rows for Flörs model w7 in {floersmodelratiopath}")
-        return
+        return pl.DataFrame()
 
     axis.plot(
         dfmodel["epoch"].to_list(),
@@ -511,6 +514,15 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
         markeredgewidth=2,
         lw=0,
         alpha=0.8,
+    )
+    return get_comparison_table("Flörs W7", dfmodel["epoch"].to_list(), dfmodel["NIR_VIS_ratio"].to_list())
+
+
+def get_comparison_table(series: str, time_days: Sequence[float], fratios: Sequence[float]) -> pl.DataFrame:
+    """Return the points of one comparison series of the line ratio plot, e.g. a fit of observations."""
+    return pl.DataFrame(
+        {"series": series, "time": time_days, "fratio": fratios},
+        schema={"series": pl.String, "time": pl.Float64, "fratio": pl.Float64},
     )
 
 
@@ -528,6 +540,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     tmin = math.inf
     tmax = -math.inf
     plotteddata: list[pl.DataFrame] = []
+    dfcomparisons: list[pl.DataFrame] = []
 
     for modelindex, (modelpath, modellabel, modelcolor) in enumerate(
         zip(args.modelpath, args.label, args.color, strict=False)
@@ -590,9 +603,10 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         arr_floersfit = [10 ** (0.0043 * timedays - 1.65) for timedays in arr_tdays]
         for ax in axes:
             ax.plot(arr_tdays, arr_floersfit, color="black", label="Flörs+2020 fit", lw=2.0)
+        dfcomparisons.append(get_comparison_table("Flörs+2020 fit", arr_tdays.tolist(), arr_floersfit))
 
         if args.floersmodelratiofile:
-            plot_floers_model_ratios(axis, Path(args.floersmodelratiofile), args)
+            dfcomparisons.append(plot_floers_model_ratios(axis, Path(args.floersmodelratiofile), args))
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
     m18_pew[26, 2, 7155] = np.array([618, 417, 406, 474])
@@ -602,6 +616,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         arr_fratio = m18_pew[args.emfeaturesearch[1][:3]] / m18_pew[args.emfeaturesearch[0][:3]]
         for ax in axes:
             ax.plot(m18_tdays, arr_fratio, color="black", label="Maguire et al. (2018)", lw=2.0, marker="s")
+        dfcomparisons.append(get_comparison_table("Maguire et al. (2018)", m18_tdays.tolist(), arr_fratio.tolist()))
 
     for ax in axes:
         ax.set_xlabel(r"Time [days]")
@@ -614,7 +629,15 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     args.outputfile = resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
     if plotteddata:
-        output_data(args, {"": get_plotted_data_table(plotteddata)}, args.outputfile)
+        # a fit or an observation has its own times, thus the comparison series go in a second table
+        output_data(
+            args,
+            {
+                "": get_plotted_data_table(plotteddata),
+                "_comparisons": pl.concat(dfcomparisons) if dfcomparisons else pl.DataFrame(),
+            },
+            args.outputfile,
+        )
 
     # the suffix of the file name sets the format, e.g. .pdf or .png
     save_figure(fig, args.outputfile, args=args)

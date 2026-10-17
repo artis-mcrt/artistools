@@ -2824,8 +2824,16 @@ def test_estimator_slice_of_3d_model(tmp_path: Path, slicetext: str, layerindex:
 
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_path: Path) -> None:
     """-dimensionreduce 2 gives the mean of the cells in each ring of cylindrical radius and z."""
-    ((_, edges1, edges2, tegrid),) = get_image_panel_calls({"plotlist": [["Te"]], "dimensionreduce": 2}, tmp_path)
+    ((_, edges1, edges2, tegrid),) = get_image_panel_calls(
+        {"plotlist": [["Te"]], "dimensionreduce": 2, "write_data": True}, tmp_path
+    )
     assert len(list(tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.pdf"))) == 1
+    # --write_data gave only a warning for a colour image, and no table of its cells
+    (tablepath,) = tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.txt")
+    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan")
+    assert dftable.height == int(np.isfinite(tegrid.filled(np.nan)).sum())
+    assert np.isclose(dftable["vel_rcyl_on_c"].to_numpy().min(), (edges1[0] + edges1[1]) / 2)
+    assert np.allclose(np.sort(dftable["value"].to_numpy()), np.sort(tegrid.compressed()), rtol=1e-6, atol=0)
     assert tegrid.shape == (10, 5)
     assert np.isclose(edges1[0], 0.0)
     assert np.isclose(edges1[-1], edges2[-1])
