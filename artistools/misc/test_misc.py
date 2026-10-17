@@ -3800,6 +3800,12 @@ def test_artis_option_function_keeps_its_nested_blocks() -> None:
         # a type with a comma, a space, or a pointer has more than one word
         "constexpr std::array<int, 2> SELECTED_IONS = {26, 2};\n"
         'constexpr const char *GRID_NAME = "cartesian";\n'
+        # a disabled alternative in a comment replaced the option that ARTIS compiles
+        "/*\nconstexpr double MINTEMP = 1000.;\n*/\n"
+        "// constexpr std::int64_t NUM_PACKETS = 5;\n"
+        # a string literal can hold a comment marker, and the removal of a comment cut the string
+        'constexpr const char *URL = "https://example.org/*x*/"; // a comment\n'
+        "constexpr int MAXITER = 4;\n"
     )
     assert options == {
         "ION_NLEVELS_EXCITED_NLTE": (
@@ -3810,4 +3816,6 @@ def test_artis_option_function_keeps_its_nested_blocks() -> None:
         "NUM_PACKETS": "1e9",
         "SELECTED_IONS": "{26, 2}",
         "GRID_NAME": '"cartesian"',
+        "URL": '"https://example.org/*x*/"',
+        "MAXITER": "4",
     }

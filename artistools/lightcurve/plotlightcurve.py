@@ -1137,8 +1137,11 @@ def draw_plot(
         invert_magnitude_yaxis(axis)
 
     dfresidualstats = pl.DataFrame()
+    dfresidualcurves: list[pl.DataFrame] = []
     if residualaxis is not None and residualseries is not None:
-        dfresidualstats = draw_residual_panel(residualaxis, axis, residualseries, args, ismagnitude=lumunit == "mag")
+        dfresidualstats = draw_residual_panel(
+            residualaxis, axis, residualseries, args, ismagnitude=lumunit == "mag", plottedpoints=dfresidualcurves
+        )
 
     if thermaxis is not None:
         set_axis_properties(thermaxis, args, setyaxis=False)
@@ -1152,7 +1155,12 @@ def draw_plot(
 
     dfplotted = pl.concat(dflightcurves, how="diagonal_relaxed") if dflightcurves else pl.DataFrame()
     dfrates = pl.concat(dfenergyrates) if dfenergyrates else pl.DataFrame()
-    return {"": dfplotted, "_energyrates": dfrates, "_residuals": dfresidualstats}
+    return {
+        "": dfplotted,
+        "_energyrates": dfrates,
+        "_residuals": dfresidualstats,
+        "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
+    }
 
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_] | mplax.Axes]:
@@ -1355,12 +1363,23 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
     invert_magnitude_yaxis(ax)
 
     dfresidualstats = pl.DataFrame()
+    dfresidualcurves: list[pl.DataFrame] = []
     if residualaxis is not None and residualseries is not None:
         assert isinstance(ax, mplax.Axes)
-        dfresidualstats = draw_residual_panel(residualaxis, ax, residualseries, args, ismagnitude=True)
+        dfresidualstats = draw_residual_panel(
+            residualaxis, ax, residualseries, args, ismagnitude=True, plottedpoints=dfresidualcurves
+        )
 
     dfplotted = pl.concat(dfbands) if dfbands else pl.DataFrame()
-    output_data(args, {"": dfplotted, "_residuals": dfresidualstats}, args.outputfile)
+    output_data(
+        args,
+        {
+            "": dfplotted,
+            "_residuals": dfresidualstats,
+            "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
+        },
+        args.outputfile,
+    )
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 

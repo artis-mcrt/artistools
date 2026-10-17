@@ -1103,7 +1103,8 @@ def add_to_grid_tables(gridtables: list[pl.DataFrame], dfseries: pl.DataFrame, g
     serieslambdas = dfseries["lambda_angstroms"].to_numpy()
     for index, table in enumerate(gridtables):
         tablelambdas = table["lambda_angstroms"].to_numpy()
-        if tablelambdas.shape == serieslambdas.shape and np.allclose(tablelambdas, serieslambdas):
+        # a table gives one wavelength to each row, thus only an equal grid joins a table
+        if np.array_equal(tablelambdas, serieslambdas):
             gridtables[index] = table.with_columns(dfseries.drop(gridcolumns, strict=False))
             return
     gridtables.append(dfseries)
@@ -1920,9 +1921,10 @@ def draw_plot(
 
     - the empty key gives the ARTIS spectra;
     - "_references" gives the reference spectra, the code comparison spectra, and the filter curves;
-    - "_residuals" gives the statistics of the residuals.
+    - "_residuals" gives the statistics of the residuals, and "_residualcurves" gives the drawn residual curves.
     """
     dfresidualstats = pl.DataFrame()
+    dfresidualcurves: list[pl.DataFrame] = []
     filterfunc = get_filterfunc(args)
 
     scale_to_peak = 1.0 if args.normalised else None
@@ -2006,7 +2008,9 @@ def draw_plot(
 
     # the panel shows a ratio below a log y axis, thus it follows the choice of -yscale auto
     if residualaxis is not None and residualseries is not None:
-        dfresidualstats = draw_residual_panel(residualaxis, axes[-1], residualseries, args)
+        dfresidualstats = draw_residual_panel(
+            residualaxis, axes[-1], residualseries, args, plottedpoints=dfresidualcurves
+        )
 
     leg = set_legend(
         axes[-1],
@@ -2036,6 +2040,7 @@ def draw_plot(
         **{f"_grid{index}": dfgrid for index, dfgrid in enumerate(gridtables[1:], start=2)},
         "_references": dfothers,
         "_residuals": dfresidualstats,
+        "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
     }
 
 

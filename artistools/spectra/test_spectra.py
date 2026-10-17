@@ -2118,6 +2118,11 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
     residual = np.asarray(mockplot.call_args_list[-1].args[2])
     assert (residual <= 0.0).all()
     assert (residual < 0.0).any()
+    # the table gave the statistics of the residual panel alone, and not its curve
+    dfcurves = pl.read_csv(tmp_path / "residuals_residualcurves.txt", separator=" ", null_values="nan")
+    assert dfcurves["reference"].unique().to_list() == ["fake observation"]
+    assert np.allclose(dfcurves["residual"].to_numpy(), residual, rtol=1e-6, atol=0, equal_nan=True)
+    assert np.allclose(dfcurves["x"].to_numpy(), np.asarray(mockplot.call_args_list[-1].args[1]), rtol=1e-9, atol=0)
 
     at.spectra.plot(
         argsraw=[],
@@ -3058,6 +3063,21 @@ def test_write_data_gives_a_table_for_each_wavelength_grid(tmp_path: Path) -> No
     assert [col for col in dffirst.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
     assert [col for col in dfsecond.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
     assert not np.allclose(dffirst["lambda_angstroms"], dfsecond["lambda_angstroms"])
+
+    # np.allclose took a grid that differs by 5 parts in a million as the same grid, and gave its values the
+    # wavelengths of the first grid
+    nearlines = [lines[0]] + [
+        " ".join([repr(float(line.split()[0]) * 1.000005), *line.split()[1:]]) for line in lines[1:]
+    ]
+    nearmodel = make_model_with_a_new_spec_out(tmp_path / "near", modelpath, "\n".join(nearlines) + "\n")
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, nearmodel],
+        timedays=300,
+        write_data=True,
+        outputfile=tmp_path / "neargrids.pdf",
+    )
+    assert (tmp_path / "neargrids_grid2.txt").is_file()
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

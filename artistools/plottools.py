@@ -1083,8 +1083,11 @@ def plot_residual_panel(
     selectedindices: Sequence[int] | None = None,
     ismagnitude: bool = False,
     residualtype: str = "absolute",
+    plottedpoints: list[pl.DataFrame] | None = None,
 ) -> pl.DataFrame:
     """Draw the selected residual type and return the statistics.
+
+    plottedpoints takes the drawn points of each residual curve, with the columns model, reference, x, and residual.
 
     An empty selection or None includes all series except the baseline.
     The relative and relativelog types draw series / baseline on a linear or logarithmic y axis.
@@ -1150,6 +1153,18 @@ def plot_residual_panel(
             if residualtype == "relativelog":
                 yvalues = np.where(yvalues > 0.0, yvalues, np.nan)
         draw_residual_series(axis, model, inrange, yvalues, yreference, ratio=ratio)
+        if plottedpoints is not None:
+            plottedpoints.append(
+                pl.DataFrame(
+                    {
+                        "model": model.label,
+                        "reference": reference.label,
+                        "x": np.asarray(model.x[inrange], dtype=np.float64),
+                        "residual": np.asarray(yvalues, dtype=np.float64),
+                    },
+                    schema={"model": pl.String, "reference": pl.String, "x": pl.Float64, "residual": pl.Float64},
+                )
+            )
 
         strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
         print_detail(
@@ -1180,8 +1195,11 @@ def draw_residual_panel(
     args: argparse.Namespace,
     *,
     ismagnitude: bool = False,
+    plottedpoints: list[pl.DataFrame] | None = None,
 ) -> pl.DataFrame:
     """Draw the selected residual type below the main frame and return the statistics.
+
+    plottedpoints takes the drawn points of each residual curve, see plot_residual_panel.
 
     The residual type sets the calculation and the y scale of the panel.
     Call it after the main frame has its labels and its x range.
@@ -1201,6 +1219,7 @@ def draw_residual_panel(
         selectedindices=args.residuals,
         ismagnitude=ismagnitude,
         residualtype=args.residualtype,
+        plottedpoints=plottedpoints,
     )
     set_axis_properties(residualaxis, args, setyaxis=False)
     if logscaley:

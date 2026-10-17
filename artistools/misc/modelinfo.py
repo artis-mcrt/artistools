@@ -218,8 +218,14 @@ def parse_artis_options(text: str) -> dict[str, str]:
     A function option gives its parameters and its body. The body of ION_NLEVELS_EXCITED_NLTE can hold an if block,
     thus the body ends at the brace that closes its first brace.
     """
-    # a disabled alternative can be in a comment, and it must not replace the option that ARTIS compiles
-    text = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.DOTALL)
+    # a disabled alternative can be in a comment, and it must not replace the option that ARTIS compiles. A string
+    # literal can hold "//", e.g. a URL, thus the pattern finds the literals first and keeps them
+    text = re.sub(
+        r"\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'|/\*.*?\*/|//[^\n]*",
+        lambda match: match.group(0) if match.group(0)[0] in "\"'" else "",
+        text,
+        flags=re.DOTALL,
+    )
     options: dict[str, str] = {}
     for match in ARTIS_OPTION_PATTERN.finditer(text):
         typename, name, valuetext = match.groups()

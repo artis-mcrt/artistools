@@ -61,7 +61,7 @@ Four plot commands give the plotted data as a table with a header row and a spac
 artistools plotestimators Te -t 300 mymodel --print_data --quiet > te.txt
 ```
 
-A plot can give more than one table, because a series with its own grid needs its own table. Examples are a reference spectrum in `<figure>_references.txt`, a model with a different wavelength grid in `<figure>_grid2.txt`, and the statistics of a residual panel in `<figure>_residuals.txt`. On the standard output, an empty line separates two tables.
+A plot can give more than one table, because a series with its own grid needs its own table. Examples are a reference spectrum in `<figure>_references.txt`, a model with a different wavelength grid in `<figure>_grid2.txt`, and the statistics and the curves of a residual panel in `<figure>_residuals.txt` and `<figure>_residualcurves.txt`. On the standard output, an empty line separates two tables.
 
 ### A model on a different host
 
