@@ -4777,7 +4777,10 @@ def test_codex_finds_the_claude_setup() -> None:
         pytest.skip("the hooks need jq")
     hookinput = json.dumps({
         "cwd": "/repo",
-        "tool_input": {"command": "*** Begin Patch\n*** Update File: a.py\n*** Update File: b.py\n*** Move to: c.py\n"},
+        "tool_input": {
+            "command": "*** Begin Patch\n*** Update File: a.py\n*** Update File: b.py\n*** Move to: c.py\n"
+            "*** Delete File: uv.lock\n"
+        },
     })
     # the command is a script of this repository with a fixed input, and no shell
     completed = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
@@ -4787,7 +4790,17 @@ def test_codex_finds_the_claude_setup() -> None:
         text=True,
         check=True,
     )
-    assert completed.stdout.splitlines() == ["/repo/a.py", "/repo/b.py", "/repo/c.py"]
+    assert completed.stdout.splitlines() == ["/repo/a.py", "/repo/b.py", "/repo/c.py", "/repo/uv.lock"]
+
+    # Codex reads a JSON object from the stdout of a Stop hook, and an empty stdout is not one
+    completed = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [repo / ".claude" / "hooks" / "verify-tree.sh"],
+        input=json.dumps({"stop_hook_active": True}),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(completed.stdout) == {}
 
 
 def test_artis_data_skill_names_each_function_that_exists() -> None:
@@ -5060,8 +5073,8 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]
     # the model has no packets in the features, and the table left out the reference curve, thus it gave no file
     dfpoints = pl.read_csv(tmp_path / "emreg_5.0d.txt", separator=" ", null_values="nan", comment_prefix="#")
-    assert dfpoints.select("model", "feature", "log10nne", "Te").rows() == [
-        ("Flörs+2020 +5d", "reference", 5.0, 5000.0)
+    assert dfpoints.select("modelpath", "label", "feature", "log10nne", "Te").rows() == [
+        (None, "Flörs+2020 +5d", "reference", 5.0, 5000.0)
     ]
 
 
@@ -5086,7 +5099,7 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> N
         dfpoints = pl.read_csv(
             tmp_path / f"emreg_{tmid:.1f}d.txt", separator=" ", null_values="nan", comment_prefix="#"
         )
-        assert dfpoints.columns == ["model", "feature", "time_days", "log10nne", "Te"]
+        assert dfpoints.columns == ["modelpath", "label", "feature", "time_days", "log10nne", "Te"]
         assert dfpoints["time_days"].unique().to_list() == [tmid]
         assert dfpoints["log10nne"].to_list()[:2] == [5.0, 6.0]
 
@@ -5106,6 +5119,32 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> N
     dfclipped = pl.read_csv(tmp_path / "emregclipped.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfclipped.height > 0
     assert dfclipped["Te"].min() == 5e3
+
+
+def test_linefluxes_emitting_regions_keep_two_models_with_one_label_apart(tmp_path: Path) -> None:
+    """The table named each model by its name alone, thus two models with one label gave rows with one key."""
+    import collections
+
+    # a second path to the same model folder gives a second model that has the line list
+    secondpath = tmp_path / "secondmodel"
+    secondpath.symlink_to(modelpath_classic_3d, target_is_directory=True)
+    emdata = collections.defaultdict(lambda: {"em_log10nne": np.array([5.0]), "em_Te": np.array([4e3])})
+    with mock.patch.object(at.plotlinefluxes, "get_emitting_regions_data", return_value=emdata):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d, secondpath],
+            label=["same", "same"],
+            plotemittingregions=True,
+            norefdata=True,
+            timebins_tstart=[4.0],
+            timebins_tend=[6.0],
+            outputfile=tmp_path / "emreg.pdf",
+            write_data=True,
+        )
+
+    dfpoints = pl.read_csv(tmp_path / "emreg.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert set(dfpoints["label"].to_list()) == {"same"}
+    assert set(dfpoints["modelpath"].to_list()) == {str(modelpath_classic_3d), str(secondpath)}
 
 
 def test_hidden_value_warning_names_a_horizontal_line_above_the_axes(capsys: pytest.CaptureFixture[str]) -> None:

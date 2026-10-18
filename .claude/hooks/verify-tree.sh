@@ -19,21 +19,29 @@ statefile="${TMPDIR:-/tmp}/artistools-claude-pystate-$(id -u)-$checkoutid"
 
 hookinput="$(cat)"
 
+# Codex reads a JSON object from the stdout of a Stop hook, and Claude Code accepts one too, thus each stop with no
+# error prints an empty object
+allow_stop() {
+    printf '{}\n'
+    exit 0
+}
+
 # a second block would repeat without end, thus stop after the first one
 if printf '%s' "$hookinput" | jq -e '.stop_hook_active == true' >/dev/null 2>&1; then
-    exit 0
+    allow_stop
 fi
 
-command -v uv >/dev/null 2>&1 || exit 0
-cd "$projectdir" || exit 0
+command -v uv >/dev/null 2>&1 || allow_stop
+cd "$projectdir" || allow_stop
 
 # The PostToolUse hook writes the marker after an Edit or a Write. A command of Bash can also change a Python file,
 # e.g. with sed or a script, and no hook sees that change. Thus the state also holds the commit and a checksum of the
 # Python changes, and a different state runs the check. The commits since the last check count only if they change
 # a Python file
 head="$(git rev-parse HEAD 2>/dev/null)"
-changes="$({ git diff HEAD -- '*.py'; git ls-files --others --exclude-standard -z -- '*.py' | xargs -0 cat 2>/dev/null; } \
-    | cksum | cut -d ' ' -f 1)"
+# a rename of an untracked file keeps its bytes, thus the names of the untracked files also go in the checksum
+changes="$({ git diff HEAD -- '*.py'; git ls-files --others --exclude-standard -- '*.py'; \
+    git ls-files --others --exclude-standard -z -- '*.py' | xargs -0 cat 2>/dev/null; } | cksum | cut -d ' ' -f 1)"
 state="$head $changes"
 laststate="$(cat -- "$statefile" 2>/dev/null)"
 lasthead="${laststate%% *}"
@@ -52,7 +60,7 @@ fi
 # the first stop of a checkout has no state. A command of Bash can commit a Python change before that stop, thus
 # the first stop runs the check
 [ -z "$laststate" ] && needscheck=1
-[ "$needscheck" -eq 1 ] || exit 0
+[ "$needscheck" -eq 1 ] || allow_stop
 
 run() { uv run --no-sync -- "$@"; }
 
@@ -73,7 +81,7 @@ pyreflycheck="$({ git ls-files -z -- '*.py' ':(exclude)* [0-9].py'; \
 pyreflycheck="$(printf '%s\n' "$pyreflycheck" | grep -v '^ *INFO ')"
 
 if [ "$lintstatus" -eq 0 ] && [ "$tystatus" -eq 0 ] && [ "$pyreflystatus" -eq 0 ]; then
-    exit 0
+    allow_stop
 fi
 
 {

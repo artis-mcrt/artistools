@@ -852,7 +852,8 @@ def set_emitting_regions_limits(
 
 
 def get_emitting_region_table(
-    model: str,
+    modelpath: str | None,
+    label: str,
     feature: str,
     time_days: float,
     log10nne: Sequence[float] | npt.NDArray[np.floating],
@@ -860,18 +861,21 @@ def get_emitting_region_table(
 ) -> pl.DataFrame:
     """Return the drawn points of one series of the emitting regions, e.g. the packets of a feature or a reference.
 
-    A feature with no packet gives an empty frame, thus the schema gives the types of the columns.
+    A feature with no packet gives an empty frame, thus the schema gives the types of the columns. Two models can
+    have one label, thus the model path identifies the model. A reference curve has no model path.
     """
     return pl.DataFrame(
         {
-            "model": model,
+            "modelpath": modelpath,
+            "label": label,
             "feature": feature,
             "time_days": time_days,
             "log10nne": np.asarray(log10nne, dtype=np.float64),
             "Te": np.asarray(te, dtype=np.float64),
         },
         schema={
-            "model": pl.String,
+            "modelpath": pl.String,
+            "label": pl.String,
             "feature": pl.String,
             "time_days": pl.Float64,
             "log10nne": pl.Float64,
@@ -887,7 +891,7 @@ def get_shown_emitting_region_rows(dfpoints: Sequence[pl.DataFrame], axis: mplax
     dfall = pl.concat(dfpoints)
     isreference = pl.col("feature") == "reference"
     return pl.concat([
-        filter_to_axis_limits(dfall.filter(isreference), axis, "log10nne", "Te", linecolumns=["model"]),
+        filter_to_axis_limits(dfall.filter(isreference), axis, "log10nne", "Te", linecolumns=["label"]),
         filter_to_axis_limits(dfall.filter(~isreference), axis, "log10nne", "Te"),
     ])
 
@@ -954,6 +958,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
                 if makestable:
                     dfpoints.append(
                         get_emitting_region_table(
+                            None,
                             reflabel,
                             "reference",
                             float(refdatatimes[drawnindex]),
@@ -964,10 +969,14 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
         for modelindex, emdata in enumerate(emdata_all):
             emfeatures = get_labelandlineindices(args.modelpath[modelindex], tuple(args.emfeaturesearch))
+            label = format_label_fields(
+                args.label[modelindex], timeavg=tmid, modeltag=args.modeltag[modelindex] or "all"
+            )
             if makestable:
                 dfpoints.extend(
                     get_emitting_region_table(
-                        get_model_name(args.modelpath[modelindex]),
+                        str(args.modelpath[modelindex]),
+                        label,
                         feature.colname,
                         tmid,
                         emdata[tmid, feature.colname]["em_log10nne"],
@@ -981,9 +990,6 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 
             # a circle has more area than a triangle, thus this factor decreases the marker size
             normtotalpackets = len(em_log10nne) * 8.0
-            label = format_label_fields(
-                args.label[modelindex], timeavg=tmid, modeltag=args.modeltag[modelindex] or "all"
-            )
             plot_nne_te_points(axis, label, em_log10nne, em_Te, normtotalpackets, args.color[modelindex], marker="s")
 
         # each time bin has its own figure, thus each figure needs its own legend
