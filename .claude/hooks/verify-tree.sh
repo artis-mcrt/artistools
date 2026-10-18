@@ -92,4 +92,7 @@ fi
     printf 'Correct these errors. Both type checkers must give no errors.\n'
 } >&2
 
+# the state above holds this tree, thus the next stop finds no change. The marker makes it check the tree again,
+# also in a new session, until the errors go
+touch "$marker" 2>/dev/null
 exit 2

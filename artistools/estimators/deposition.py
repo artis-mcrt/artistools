@@ -530,11 +530,12 @@ def warn_about_gaps(
             if len(missing) <= 6
             else f"{len(missing)} timesteps, from {missing[0]} to {missing[-1]}"
         )
-        # that rule explains the last timestep alone, thus a gap of a different cause gets no reason
+        # that rule explains the last timestep of a Monte Carlo rate alone. An analytic channel gives the rate of its
+        # own row, thus a gap of an analytic selection or of a different timestep gets no reason
         reason = (
             " The rate of a timestep arrives in the file of the next timestep, "
             "thus the last timestep of a model gives none."
-            if lasttimestep in missing
+            if lasttimestep in missing and not onlyanalytic
             else ""
         )
         print_warning(f"{modelname}: no deposition rate for {missingtext}.{reason}")

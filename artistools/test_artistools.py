@@ -4803,6 +4803,49 @@ def test_codex_finds_the_claude_setup() -> None:
     assert json.loads(completed.stdout) == {}
 
 
+def test_stop_hook_checks_a_failed_tree_again(tmp_path: Path) -> None:
+    """The hook wrote the state of a tree before a failed check, thus the next stop found no change and passed."""
+    gitpath = shutil.which("git")
+    if gitpath is None:
+        pytest.skip("the hook needs git")
+    repo = Path(at.__file__).resolve().parent.parent
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    (checkout / "module.py").write_text("x = 1\n", encoding="utf-8")
+    # the stand-in for uv makes each check fail fast, and it changes no file
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    (bindir / "uv").write_text("#!/bin/sh\necho 'an error'\nexit 1\n", encoding="utf-8")
+    (bindir / "uv").chmod(0o755)
+    env = {
+        **os.environ,
+        "CLAUDE_PROJECT_DIR": str(checkout),
+        "PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}",
+        "TMPDIR": str(tmp_path),
+    }
+    # the commands are git and a script of this repository with fixed arguments, and no shell
+    for gitargs in (
+        ["init", "-q"],
+        ["add", "module.py"],
+        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "a"],
+    ):
+        subprocess.run([gitpath, *gitargs], cwd=checkout, check=True, env=env)  # ruff:ignore[subprocess-without-shell-equals-true]
+
+    def run_stop_hook() -> int:
+        completed = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+            [repo / ".claude" / "hooks" / "verify-tree.sh"],
+            input="{}",
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        return completed.returncode
+
+    assert run_stop_hook() == 2
+    assert run_stop_hook() == 2
+
+
 def test_artis_data_skill_names_each_function_that_exists() -> None:
     """A rename needs no shim in artistools, thus a stale name in the skill gives an agent an error and no warning."""
     from artistools.installskill import get_skill_folder

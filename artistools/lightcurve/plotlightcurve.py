@@ -455,7 +455,10 @@ def plot_bol_reflightcurve(
     yvalues = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
     plotcolumn = get_plot_lum_column(lumunit)
     dfplotted = dflightcurve.select(
-        pl.lit(plotlabel).alias("model"), pl.lit("reference").alias("escape_type"), pl.all()
+        pl.lit(plotlabel).alias("model"),
+        pl.lit(plotlabel).alias("label"),
+        pl.lit("reference").alias("escape_type"),
+        pl.all(),
     ).with_columns(pl.Series(plotcolumn, yvalues, dtype=pl.Float64))
 
     residual_yerr = None
@@ -1075,10 +1078,13 @@ def plot_artis_lightcurve(
         # Thus the table keeps each row only with these options, and a column names the rows of the line
         cmfcolumn = ycolumn.replace("luminosity_", "luminosity_cmf_")
         showseachrow = args.plotinvalidpart or (args.plotcmf and cmfcolumn in lcdata.columns)
+        # a direction bin of a colour bar has no legend entry, thus its name holds the number of the bin
+        summaryname = label_with_tags or " ".join(part for part in (linelabel, f"direction bin {dirbin}") if part)
         dfplotted = lcdata.with_columns(
+            label=pl.lit(summaryname),
             in_valid_range=pl.lit(value=False)
             if validrange_start_days is None or validrange_end_days is None
-            else pl.col("time_days").is_between(validrange_start_days, validrange_end_days)
+            else pl.col("time_days").is_between(validrange_start_days, validrange_end_days),
         )
         plotteddataframes[dirbin] = dfplotted if showseachrow else dfplotted.filter(pl.col("in_valid_range"))
 
@@ -1103,8 +1109,6 @@ def plot_artis_lightcurve(
                 f" {energy_released:.3e} [erg]"
             )
 
-        # a direction bin of a colour bar has no legend entry, thus its name holds the number of the bin
-        summaryname = label_with_tags or " ".join(part for part in (linelabel, f"direction bin {dirbin}") if part)
         (modelline,) = axis.plot(
             lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, gid=summaryname, **plotkwargs
         )
@@ -1294,9 +1298,11 @@ def draw_plot(
                         summaryrows=summaryrows,
                     )
                     plottedthismodel = plottedthismodel or (lcdataframes is not None)
+                    # two models can have one name, thus the path names the model of each row
                     dflightcurves.extend(
                         dflc.select(
                             pl.lit(get_model_name(modelpath)).alias("model"),
+                            pl.lit(str(modelpath)).alias("modelpath"),
                             pl.lit(escape_type).alias("escape_type"),
                             *([pl.lit(pellet_nucname).alias("pellet_nucname")] if pellet_nucname is not None else []),
                             pl.lit(dirbin).alias("dirbin"),

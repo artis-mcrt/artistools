@@ -1891,7 +1891,7 @@ def test_lightcurve_print_data_survives_quiet(capsys: pytest.CaptureFixture[str]
     # an empty line separates the table of the light curve from the table _summary of the summary lines
     curvetext, summarytext = withdata.split("\n\n")
     datalines = curvetext.splitlines()
-    assert datalines[0].startswith("model escape_type dirbin time_days ")
+    assert datalines[0].startswith("model modelpath escape_type dirbin time_days ")
     # the figure draws only the valid range of the light curve, thus the table gives only these timesteps
     assert 10 < len(datalines) - 1 < len(at.get_timestep_times(modelpath))
     assert all(line.endswith(" true") for line in datalines[1:])
@@ -3731,8 +3731,11 @@ def test_scatter_table_keeps_an_angle_average_whose_error_bar_crosses_the_axes()
     assert shown["dirbin"].to_list() == [-1]
 
 
-def test_energy_rate_table_keeps_two_models_of_one_name_apart(tmp_path: Path) -> None:
-    """Two models of one name gave one value of the column model, and the filter took their rates for one line."""
+def test_lightcurve_tables_keep_two_models_of_one_name_apart(tmp_path: Path) -> None:
+    """Two models of one name gave one value of the column model, and the filter took their rates for one line.
+
+    The table of the light curves also gave the name alone, thus its rows had no model path and no -label.
+    """
     modelcopy = tmp_path / "copy" / modelpath_classic_3d.name
     modelcopy.mkdir(parents=True)
     for filepath in modelpath_classic_3d.iterdir():
@@ -3740,10 +3743,17 @@ def test_energy_rate_table_keeps_two_models_of_one_name_apart(tmp_path: Path) ->
     at.lightcurve.plot(
         argsraw=[],
         modelpath=[modelpath_classic_3d, modelcopy],
+        label=["first", "second"],
         deposition=["gamma"],
         write_data=True,
         outputfile=tmp_path / "lc.pdf",
     )
+    dflightcurves = pl.read_csv(tmp_path / "lc.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dflightcurves["model"].n_unique() == 1
+    assert dict(dflightcurves.select("modelpath", "label").unique().iter_rows()) == {
+        str(modelpath_classic_3d): "first",
+        str(modelcopy): "second",
+    }
     dfrates = pl.read_csv(tmp_path / "lc_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfrates["model"].n_unique() == 1
     assert sorted(dfrates["modelpath"].unique().to_list()) == sorted([str(modelpath_classic_3d), str(modelcopy)])

@@ -3245,7 +3245,10 @@ def test_deposition_gaps_expect_the_last_timestep_for_analytic_channels(capsys: 
     deposition = at.estimators.deposition
     dftable = pl.DataFrame({"timestep": [0, 1], "cellswithnorate": [0, 0]})
     deposition.warn_about_gaps(modelpath_classic_3d, dftable, None, 2, onlyanalytic=True)
-    assert "no deposition rate for timestep 2" in capsys.readouterr().err
+    warning = capsys.readouterr().err
+    assert "no deposition rate for timestep 2" in warning
+    # the rule of the next timestep applies to a Monte Carlo rate alone, thus it does not explain this gap
+    assert "next timestep" not in warning
     # a Monte Carlo channel gives no rate for the last timestep of any model
     deposition.warn_about_gaps(modelpath_classic_3d, dftable, None, 2)
     assert "no deposition rate" not in capsys.readouterr().err
