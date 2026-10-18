@@ -4990,7 +4990,7 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> N
 
 
 def test_filter_to_axis_limits_keeps_the_rows_of_each_visible_segment() -> None:
-    """A line keeps a point outside the axes when a segment to it can cross the axes. A marker outside goes."""
+    """A line keeps a point outside the axes when a segment to it crosses the axes. A marker outside goes."""
     fig = mplfig.Figure()
     axis = fig.add_subplot()
     axis.set_xlim(0.0, 10.0)
@@ -5005,6 +5005,12 @@ def test_filter_to_axis_limits_keeps_the_rows_of_each_visible_segment() -> None:
     # the line b has no point inside the axes, but its segment crosses them
     assert dfshown.rows() == [("a", -1.0, 0.5), ("a", 5.0, 0.5), ("a", 12.0, 0.5), ("b", 5.0, 2.0), ("b", 6.0, -1.0)]
     assert at.plottools.filter_to_axis_limits(dfdrawn, axis, "x", "y").rows() == [("a", 5.0, 0.5)]
+
+    # the bounding box of the segment of the line c overlaps the axes, but the segment passes beside a corner
+    dfcorner = pl.DataFrame({"x": [-1.0, 0.5], "y": [0.5, 2.0]})
+    axis.set_xlim(0.0, 1.0)
+    assert at.plottools.filter_to_axis_limits(dfcorner, axis, "x", "y", linecolumns=[]).is_empty()
+    axis.set_xlim(0.0, 10.0)
 
     # a log axis draws no zero, e.g. the mass fraction of a nuclide that a model does not hold, and no segment to it
     axis.set_yscale("log")
@@ -6169,6 +6175,29 @@ def test_describe_names_the_packets_files_of_an_earlier_run_with_more_ranks(tmp_
     assert any(line.startswith(f"packets: {nprocs} rank files") for line in lines)
     assert "  1 more packets files have a rank above the ranks of input.txt" in "\n".join(lines)
 
+    # the search stopped at the model folder when it held every rank, thus the count missed the run folder
+    for rank in range(nprocs):
+        (tmp_path / "100.slurm" / f"packets00_{rank:04d}.out").rename(tmp_path / f"packets00_{rank:04d}.out")
+    lines = get_output_lines(tmp_path)
+    assert "  1 more packets files have a rank above the ranks of input.txt" in "\n".join(lines)
+
+
+def test_run_versions_follow_the_runs_and_leave_out_a_copied_log(tmp_path: Path) -> None:
+    """A copy of the log of an earlier run in the model folder came last, thus the catalog gave its old version."""
+    from artistools.catalog import get_version_columns
+    from artistools.describemodel import get_run_versions
+
+    timestepline = "timestep {}: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n"
+    for foldername, version, firsttimestep in [("200.slurm", "newbuild", 10), ("100.slurm", "oldbuild", 0)]:
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "output_0-0.txt").write_text(
+            f"git version: {version}\n{timestepline.format(firsttimestep)}", encoding="utf-8"
+        )
+    shutil.copy(tmp_path / "100.slurm" / "output_0-0.txt", tmp_path / "output_0-0.txt")
+
+    assert list(get_run_versions(tmp_path)) == ["100.slurm", "200.slurm"]
+    assert get_version_columns(tmp_path) == {"artis_version": "newbuild"}
+
 
 def test_describe_counts_the_direction_bins_of_the_file(tmp_path: Path) -> None:
     """ARTIS sets MABINS when it compiles, and the summary gave the 100 bins of artistools for a file of 2 bins."""
@@ -7024,6 +7053,12 @@ def test_check_katz_ratio_agrees_with_a_direct_integration(tmp_path: Path) -> No
     assert statusofcheck["temperature limits"] == "not checked"
     assert statusofcheck["log messages"] == "not checked"
 
+    # a light curve that starts late has no NaN row for its first times, thus the check said that L covers each time
+    np.savetxt(tmp_path / "light_curve.out", lightcurve[3:])
+    detail = get_check_results(tmp_path).filter(pl.col("check") == "energy")["detail"].item()
+    omitteddays = lightcurve[3, 0] - deposition[:, 1].min()
+    assert f"leave out {omitteddays:.3g} d of L and 0 d of Q with no value or no row" in detail
+
 
 def test_check_that_fails_gives_an_error_row_and_the_other_checks_run() -> None:
     """An exception in one check gives a row of status error, and the other checks still run."""
@@ -7120,6 +7155,37 @@ def test_values_of_a_range_of_cells_give_one_row_for_each_cell_and_timestep(
     header = [line for line in outputfile.read_text(encoding="utf-8").splitlines() if line.startswith("#")]
     assert any("with no average" in line for line in header)
     assert any(line.startswith("# command:") for line in header)
+
+
+def test_values_give_the_time_of_volume_prevtimestep(tmp_path: Path) -> None:
+    """The method lines gave the mid time of the row for volume_prevtimestep, which takes the timestep before."""
+    from artistools.values import main
+
+    outputfile = tmp_path / "values.txt"
+    main(
+        argsraw=[
+            "volume",
+            "volume_prevtimestep",
+            "-ts",
+            "0-1",
+            "-cell",
+            "14",
+            "-o",
+            str(outputfile),
+            str(modelpath_classic_3d),
+        ]
+    )
+
+    text = outputfile.read_text(encoding="utf-8")
+    assert (
+        "volume_prevtimestep = init_volume (t_prev / t_model)^3, where t_prev is the mid time of the timestep before"
+        in text
+    )
+    dfwritten = pl.read_csv(outputfile, separator=" ", null_values="nan", comment_prefix="#").sort("timestep")
+    volumecolumn = next(column for column in dfwritten.columns if column.startswith("volume["))
+    prevcolumn = next(column for column in dfwritten.columns if column.startswith("volume_prevtimestep"))
+    assert dfwritten[prevcolumn].to_list()[0] is None
+    assert np.isclose(dfwritten[prevcolumn][1], dfwritten[volumecolumn][0], rtol=1e-6)
 
 
 def test_values_warn_about_a_cell_with_no_estimators_at_one_timestep(capsys: pytest.CaptureFixture[str]) -> None:

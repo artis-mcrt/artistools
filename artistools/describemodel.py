@@ -6,6 +6,8 @@ a model, and to know which physics the run had on.
 """
 
 import argparse
+import math
+import operator
 import re
 import typing as t
 from collections.abc import Mapping
@@ -20,11 +22,12 @@ from artistools.atomic import get_ionstring
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.lightcurve import scan_lightcurve
+from artistools.logsummary import get_logfiles
+from artistools.logsummary import RE_TIMESTEP
 from artistools.misc import addarg_modelpath
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_options
 from artistools.misc import get_model_folder
-from artistools.misc import get_run_subfolders
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
@@ -361,26 +364,32 @@ def get_option_effects(topic: str, options: Mapping[str, str]) -> list[str]:
 
 
 def get_run_versions(modelpath: Path) -> dict[str, dict[str, str]]:
-    """Return the git version and the git branch of ARTIS of each run folder with a log, from the start of its log.
+    """Return the git version and the git branch of ARTIS of each run folder with a log, in the order of the runs.
 
     A restarted run can use a different build of ARTIS, thus each run folder gives its own version. The key is the
-    name of the run folder, or "." for the model folder. A log can give only one of the two fields.
+    name of the run folder, or "." for the model folder. A log can give only one of the two fields. A copy of a log,
+    e.g. output_0-0.txt of the last run in the model folder, is not a run, thus it gives no version. A restart starts
+    at a later timestep, thus the first timestep of each log gives the order. A log with no timestep keeps its place
+    after the log before it in the order of the folders.
     """
-    versions: dict[str, dict[str, str]] = {}
-    for folder in get_run_subfolders(modelpath):
-        logpath = firstexisting_or_none("output_0-0.txt", folder=folder, search_subfolders=False)
-        if logpath is None:
-            continue
+    runs: list[tuple[float, str, dict[str, str]]] = []
+    for logpath in get_logfiles(modelpath, [0]):
         fields: dict[str, str] = {}
+        firsttimestep: int | None = None
         with zopen(logpath) as flog:
-            # ARTIS writes the git lines near the start of the log, thus the search reads only the first lines
-            for _, line in zip(range(500), flog, strict=False):
-                for key in ("git version", "git branch"):
-                    if f"{key}" in line and key not in fields:
-                        fields[key] = line.split(key, 1)[1].lstrip(": ").strip()
+            for linenumber, line in enumerate(flog):
+                # ARTIS writes the git lines near the start of the log, thus the search for them reads the first lines
+                if linenumber < 500:
+                    for key in ("git version", "git branch"):
+                        if key in line and key not in fields:
+                            fields[key] = line.split(key, 1)[1].lstrip(": ").strip()
+                if (timestepmatch := RE_TIMESTEP.search(line)) is not None:
+                    firsttimestep = int(timestepmatch.group(1))
+                    break
+        orderkey = float(firsttimestep) if firsttimestep is not None else (runs[-1][0] if runs else -math.inf)
         if fields:
-            versions["." if folder == modelpath else folder.name] = fields
-    return versions
+            runs.append((orderkey, "." if logpath.parent == modelpath else logpath.parent.name, fields))
+    return {foldername: fields for _, foldername, fields in sorted(runs, key=operator.itemgetter(0))}
 
 
 def get_version_lines(modelpath: Path) -> list[str]:

@@ -538,10 +538,16 @@ def count_packets_textfiles(modelpath: Path) -> tuple[int, int]:
     folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
     filenames = [get_packets_textfilename(rank, virtual=False) for rank in range(nprocs)]
     readcount = len(find_packets_textsources(modelpath, filenames, folderlistings))
+    # the search stops at the first folder that holds every rank, thus the files of an earlier run need a scan here
+    subfolders = [Path(entry.path) for entry in folderlistings[modelpath].values() if entry.is_dir()]
+    for folder in subfolders:
+        if folder not in folderlistings:
+            with os.scandir(folder) as entries:
+                folderlistings[folder] = {entry.name: entry for entry in entries}
     otherranks = {
         int(namematch.group(1))
-        for listing in folderlistings.values()
-        for name in listing
+        for folder in (modelpath, *subfolders)
+        for name in folderlistings[folder]
         if (namematch := re.fullmatch(r"packets00_(\d+)\.out(?:\.gz|\.xz|\.zst)?", name)) is not None
         and int(namematch.group(1)) >= nprocs
     }

@@ -161,9 +161,17 @@ def get_method_lines(
 
     if expanded := [variable for variable in variables if variable in EXPANDEDMODELCOLUMNS]:
         lines.append(
-            f"the values of {', '.join(expanded)} come from model.txt with homologous expansion to the mid time:"
-            " rho = init_rho (t_model / time_days)^3 and volume = init_volume (time_days / t_model)^3, where t_model"
-            " is the time of model.txt"
+            f"the values of {', '.join(expanded)} come from model.txt with homologous expansion, where t_model is the"
+            " time of model.txt"
+        )
+    if "rho" in variables:
+        lines.append("rho = init_rho (t_model / time_days)^3, at the mid time of the timestep")
+    if "volume" in variables:
+        lines.append("volume = init_volume (time_days / t_model)^3, at the mid time of the timestep")
+    if "volume_prevtimestep" in variables:
+        lines.append(
+            "volume_prevtimestep = init_volume (t_prev / t_model)^3, where t_prev is the mid time of the timestep"
+            " before, and not time_days. The first timestep of the model has no timestep before, thus its value is nan"
         )
     if fromfile := [variable for variable in variables if variable.startswith("init_")]:
         lines.append(

@@ -494,21 +494,27 @@ Possible errors:
 Example: the time and the luminosity of the peak, the rows near it, and a test of the edges of the time range.
 
 ```python
+import polars as pl
+
 import artistools as at
 
 modelpath = "."
 lcpath = at.lightcurve.find_lightcurve_file(modelpath)
 dflc = at.lightcurve.scan_lightcurve(lcpath)[-1].collect().with_row_index("row")
 print(lcpath)
-peakrow = dflc["luminosity_erg/s"].arg_max()
-cmfpeakrow = dflc["luminosity_cmf_erg/s"].arg_max()
+# a NaN or an infinite value is not a luminosity, thus each peak takes only the finite rows. "row" keeps the row number
+dffinite = dflc.filter(pl.col("time_days").is_finite() & pl.col("luminosity_erg/s").is_finite())
+dfcmffinite = dflc.filter(pl.col("time_days").is_finite() & pl.col("luminosity_cmf_erg/s").is_finite())
+print(f"{dffinite.height} of {dflc.height} rows have a finite time and luminosity")
+peakrow = dffinite["row"][dffinite["luminosity_erg/s"].arg_max()]
+cmfpeakrow = dfcmffinite["row"][dfcmffinite["luminosity_cmf_erg/s"].arg_max()]
 print(dflc.slice(max(peakrow - 2, 0), 5).select("row", "time_days", "luminosity_erg/s", "luminosity_cmf_erg/s", "mag"))
 peakluminosity = dflc["luminosity_erg/s"][peakrow]
-firstluminosity = dflc["luminosity_erg/s"][0]
-if peakrow < 2 or peakrow > dflc.height - 3:
+firstluminosity = dffinite["luminosity_erg/s"][0]
+if peakrow < dffinite["row"][0] + 2 or peakrow > dffinite["row"][-1] - 2:
     print("The maximum is at an edge of the time range, thus the true peak can be outside the range.")
 # the observer-frame luminosity falls at the end, thus only the comoving frame shows a curve that still rises
-elif cmfpeakrow > dflc.height - 3:
+elif cmfpeakrow > dfcmffinite["row"][-1] - 2:
     print("The comoving-frame luminosity has its maximum at the end, thus the true peak can be after the time range.")
 elif firstluminosity > 0.9 * peakluminosity:
     print(

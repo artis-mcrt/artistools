@@ -97,6 +97,7 @@ from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.remote import on_model_host
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
+from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import get_next_color
 from artistools.plottools import get_summary_table
 from artistools.plottools import get_unused_colors
@@ -605,6 +606,26 @@ def plot_energy_rates(
         dfcurves.extend(plot_thermalisation(thermaxis, depdata, modelpath, modelname, args, particlecolours, linewidth))
 
     return drewrate, pl.concat(dfcurves) if dfcurves else pl.DataFrame(schema=CURVESCHEMA)
+
+
+def get_shown_energy_rates(
+    dfenergyrates: Sequence[pl.DataFrame], axis: mplax.Axes, thermaxis: mplax.Axes | None
+) -> pl.DataFrame:
+    """Return the points of the energy rates and of the thermalisation ratios that the final limits of their panel show.
+
+    A thermalisation ratio has the unit "ratio" and goes on its own panel, with the fixed range 0 to 1.
+    """
+    if not dfenergyrates:
+        return pl.DataFrame()
+    dfrates = pl.concat(dfenergyrates)
+    isratio = pl.col("unit") == "ratio"
+    curvecolumns = ["model", "quantity"]
+    parts = [filter_to_axis_limits(dfrates.filter(~isratio), axis, "time_days", "value", linecolumns=curvecolumns)]
+    if thermaxis is not None:
+        parts.append(
+            filter_to_axis_limits(dfrates.filter(isratio), thermaxis, "time_days", "value", linecolumns=curvecolumns)
+        )
+    return pl.concat(parts)
 
 
 def get_magnitude_table(
@@ -1308,7 +1329,7 @@ def draw_plot(
         labelaxis.set_xlabel("")
 
     dfplotted = pl.concat(dflightcurves, how="diagonal_relaxed") if dflightcurves else pl.DataFrame()
-    dfrates = pl.concat(dfenergyrates) if dfenergyrates else pl.DataFrame()
+    dfrates = get_shown_energy_rates(dfenergyrates, axis, thermaxis)
     return {
         "": dfplotted,
         "_energyrates": dfrates,

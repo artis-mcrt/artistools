@@ -292,7 +292,17 @@ def check_energy(modelpath: Path) -> tuple[str, str]:
         .select("time_days", "luminosity_erg/s")
         .collect()
     )
-    lumintegral, lumomitted_days = get_katz_integral(dflightcurve["time_days"], dflightcurve["luminosity_erg/s"])
+    dffinitelc = dflightcurve.filter(pl.col("time_days").is_finite())
+    if dffinitelc.height < 2:
+        return "not checked", f"light_curve.out has fewer than two times from {tmindays:.2f} to {tmaxdays:.2f} d"
+    lumintegral, lumomitted_days = get_katz_integral(dffinitelc["time_days"], dffinitelc["luminosity_erg/s"])
+    # a time with no row of light_curve.out has no NaN either, thus the integral of L does not cover it
+    lcfirstday, lclastday = (
+        float(value) for value in dffinitelc.select(pl.min("time_days").alias("first"), pl.max("time_days")).row(0)
+    )
+    lumomitted_days += (lcfirstday - tmindays if lcfirstday > tmindays * (1 + 1e-4) else 0.0) + (
+        tmaxdays - lclastday if lclastday < tmaxdays * (1 - 1e-4) else 0.0
+    )
     depintegral, depomitted_days = get_katz_integral(
         dfdeposition["tmid_days"], dfdeposition[DEPOSITIONCOLUMN] * Lsun_to_erg_per_s
     )
@@ -305,8 +315,8 @@ def check_energy(modelpath: Path) -> tuple[str, str]:
     if lumomitted_days or depomitted_days:
         # a missing rate is not a zero, thus the integrals leave out its trapezoids, and the ratio can then be wrong
         detail += (
-            f". The integrals leave out {lumomitted_days:.3g} d of L and {depomitted_days:.3g} d of Q with no value,"
-            " thus the ratio covers different times"
+            f". The integrals leave out {lumomitted_days:.3g} d of L and {depomitted_days:.3g} d of Q with no value"
+            " or no row, thus the ratio covers different times"
         )
         return "warning", detail
     isinrange = KATZ_RATIO_RANGE[0] <= ratio <= KATZ_RATIO_RANGE[1]

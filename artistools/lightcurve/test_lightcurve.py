@@ -3196,6 +3196,23 @@ def test_lightcurve_data_gives_the_filtered_curve_and_the_energy_rates(
     assert dfrates["unit"].unique().to_list() == ["erg/s"]
     assert dfrates["model"].unique().to_list() == [modelname]
 
+    # the table held the rates after -timemax, which the figure does not show
+    ratetimes = dfrates["time_days"].to_list()
+    timemax = (ratetimes[2] + ratetimes[3]) / 2
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        deposition=["gamma"],
+        timemax=timemax,
+        write_data=True,
+        outputfile=tmp_path / "lcclipped.pdf",
+    )
+    dfclipped = pl.read_csv(
+        tmp_path / "lcclipped_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#"
+    )
+    # the line to the first time after -timemax is visible, thus that time stays
+    assert dfclipped["time_days"].to_list() == ratetimes[:4]
+
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_band_and_colour_data_give_the_filtered_magnitudes(mockplot: mock.MagicMock, tmp_path: Path) -> None:

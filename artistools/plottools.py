@@ -66,7 +66,9 @@ def get_drawn_values(ax: "AxesTree") -> "tuple[npt.NDArray[np.float64], npt.NDAr
                 xvalues = np.log10(np.where(xvalues > 0.0, xvalues, np.nan))
             # a point with no finite x covers no part of the axis
             gaps = np.nan_to_num(np.abs(np.diff(xvalues)), nan=0.0, posinf=0.0)
-            widthcolumns.append(0.5 * (np.concatenate([gaps, [0.0]]) + np.concatenate([[0.0], gaps])))
+            # a line with no point, e.g. a curve that ends before -timemin, gave one width and no value
+            widths = 0.5 * (np.concatenate([gaps, [0.0]]) + np.concatenate([[0.0], gaps])) if xvalues.size else gaps
+            widthcolumns.append(widths)
 
     if not ycolumns:
         return np.empty(0, dtype=np.float64), np.empty(0, dtype=np.float64)
@@ -1789,17 +1791,18 @@ def get_shown_on_axes(
     """Return an expression that is true for each row of a table of drawn points that the final axes show.
 
     With linecolumns, the rows of one line have the same values in these columns, in the order of the line. An empty
-    linecolumns gives one line. A row of a line is also true if the bounding box of a segment to it overlaps the axes,
-    because the axes can show that segment. A log axis draws no point at zero or below, and no segment to it.
+    linecolumns gives one line. A row of a line is also true if a segment to it crosses the axes, because the axes
+    show part of that segment. A log axis draws no point at zero or below, and no segment to it.
     """
-    xlow, xhigh = sorted(axis.get_xlim())
-    ylow, yhigh = sorted(axis.get_ylim())
+    xislog, yislog = axis.get_xscale() == "log", axis.get_yscale() == "log"
     x, y = pl.col(xcolumn), pl.col(ycolumn)
     isdrawn = x.is_not_null() & y.is_not_null()
-    if axis.get_xscale() == "log":
+    if xislog:
         isdrawn &= x > 0.0
-    if axis.get_yscale() == "log":
+    if yislog:
         isdrawn &= y > 0.0
+    xlow, xhigh = sorted(axis.get_xlim())
+    ylow, yhigh = sorted(axis.get_ylim())
     isinside = x.is_between(xlow, xhigh) & y.is_between(ylow, yhigh) & isdrawn
     if linecolumns is None:
         return isinside
@@ -1807,17 +1810,26 @@ def get_shown_on_axes(
     def shift_in_line(expr: pl.Expr, n: int) -> pl.Expr:
         return expr.shift(n).over(linecolumns) if linecolumns else expr.shift(n)
 
-    nextx, nexty = shift_in_line(x, -1), shift_in_line(y, -1)
-    segmentoverlaps = (
-        (pl.min_horizontal(x, nextx) <= xhigh)
-        & (pl.max_horizontal(x, nextx) >= xlow)
-        & (pl.min_horizontal(y, nexty) <= yhigh)
-        & (pl.max_horizontal(y, nexty) >= ylow)
-        & nextx.is_not_null()
-        & isdrawn
-        & shift_in_line(isdrawn, -1)
+    # a log axis draws a straight segment between the logarithms of its ends, thus the test takes those coordinates
+    def to_axis_coordinates(expr: pl.Expr, islog: bool) -> pl.Expr:
+        return expr.log10() if islog else expr
+
+    def to_axis_limit(limit: float, islog: bool) -> float:
+        return math.log10(limit) if islog else limit
+
+    x0, y0 = to_axis_coordinates(x, xislog), to_axis_coordinates(y, yislog)
+    dx, dy = shift_in_line(x0, -1) - x0, shift_in_line(y0, -1) - y0
+    xlow, xhigh = to_axis_limit(xlow, xislog), to_axis_limit(xhigh, xislog)
+    ylow, yhigh = to_axis_limit(ylow, yislog), to_axis_limit(yhigh, yislog)
+    # the Liang-Barsky clip: each edge of the axes limits the parameter of the segment from its start (0) to its end (1)
+    edges = [(-dx, x0 - xlow), (dx, xhigh - x0), (-dy, y0 - ylow), (dy, yhigh - y0)]
+    tstart = pl.max_horizontal(pl.lit(0.0), *(pl.when(pk < 0.0).then(qk / pk) for pk, qk in edges))
+    tend = pl.min_horizontal(pl.lit(1.0), *(pl.when(pk > 0.0).then(qk / pk) for pk, qk in edges))
+    isparalleloutside = pl.any_horizontal(*((pk == 0.0) & (qk < 0.0) for pk, qk in edges))
+    segmentisshown = (
+        (tstart <= tend) & ~isparalleloutside & isdrawn & shift_in_line(isdrawn, -1) & dx.is_not_null()
     ).fill_null(value=False)
-    return isinside | segmentoverlaps | shift_in_line(segmentoverlaps, 1).fill_null(value=False)
+    return isinside | segmentisshown | shift_in_line(segmentisshown, 1).fill_null(value=False)
 
 
 def filter_to_axis_limits(
