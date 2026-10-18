@@ -68,6 +68,7 @@ from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import get_vpkt_config
+from artistools.misc import is_in_range
 from artistools.misc import KeepGivenPaths
 from artistools.misc import make_output_folder
 from artistools.misc import makelist
@@ -94,11 +95,8 @@ from artistools.misc.timesteps import parse_timedays_range
 from artistools.packets import get_packets
 from artistools.packets import get_packets_column_names
 from artistools.plottools import draw_residual_panel
-from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
-from artistools.plottools import get_band_is_shown
-from artistools.plottools import get_shown_on_axes
 from artistools.plottools import get_summary_table
 from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
@@ -361,8 +359,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis.set_xlabel(xlabel)
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     outpath = resolve_outputfile(args.outputfile, figname)
-    # the axis shows -xmin to -xmax and -ymin to -ymax, and a segment that crosses an edge keeps its two ends
-    dfvisible = filter_to_axis_limits(dfdrawn, axis, "x", timecolname, linecolumns=[])
+    dfvisible = dfdrawn.filter(is_in_range("x", args.xmin, args.xmax))
     output_data(
         args,
         {
@@ -1242,83 +1239,6 @@ def plot_artis_spectrum(
     return gridtables
 
 
-def get_shown_on_spectrum_axes(
-    axis: mplax.Axes, dfgrid: pl.DataFrame, seriespart: str, args: argparse.Namespace
-) -> pl.Expr | pl.Series:
-    """Return the rows of a series of a spectrum table that the final axes show, as an expression or a series.
-
-    The line of the series shows a row, and --shownoise also draws the band y (1 +- relnoise) with fill_between. A
-    histogram draws each bin from its lower edge to its upper edge, thus the test takes these two points of each bin.
-    """
-    xcolumn = f"x_plotted_{args.xunit}"
-    plottedcolumn = f"{args.yvariable}_plotted{seriespart}"
-    noisecolumn = f"{args.yvariable}_relnoise{seriespart}"
-    hasnoise = noisecolumn in dfgrid.columns
-    lowercolumn, uppercolumn = f"x_lower_{args.xunit}", f"x_upper_{args.xunit}"
-    if lowercolumn in dfgrid.columns and uppercolumn in dfgrid.columns:
-        dfvertices = pl.DataFrame({
-            "row": np.repeat(np.arange(dfgrid.height), 2),
-            "x": np.column_stack([dfgrid[lowercolumn].to_numpy(), dfgrid[uppercolumn].to_numpy()]).ravel(),
-            "y": np.repeat(dfgrid[plottedcolumn].to_numpy(), 2),
-            "relnoise": np.repeat(dfgrid[noisecolumn].to_numpy(), 2) if hasnoise else np.zeros(2 * dfgrid.height),
-        })
-        isvertexshown = get_shown_on_axes(axis, "x", "y", linecolumns=[])
-        if hasnoise:
-            y, relnoise = pl.col("y"), pl.col("relnoise")
-            isvertexshown |= get_band_is_shown(axis, "x", y * (1.0 - relnoise), y * (1.0 + relnoise))
-        return (
-            dfvertices
-            .with_columns(isvertexshown.alias("isshown"))
-            .group_by("row", maintain_order=True)
-            .agg(pl.col("isshown").any())
-            .sort("row")["isshown"]
-        )
-    isshown = get_shown_on_axes(axis, xcolumn, plottedcolumn, linecolumns=[])
-    if hasnoise:
-        value, relnoise = pl.col(plottedcolumn), pl.col(noisecolumn)
-        isshown |= get_band_is_shown(axis, xcolumn, value * (1.0 - relnoise), value * (1.0 + relnoise))
-    return isshown
-
-
-def get_shown_spectrum_table(
-    dfgrid: pl.DataFrame, axes: Sequence[mplax.Axes], args: argparse.Namespace
-) -> pl.DataFrame:
-    """Return a table of the ARTIS spectra with null for each value that the final axes hide, e.g. with -ymin.
-
-    A row holds the values of each series at one wavelength, thus a row goes only if each series hides its value. A
-    point of a line stays if the axes show a segment to it. With --multispecplot, the columns of a series end with the
-    time of its panel, e.g. _300d. With --shownoise, the band of the noise also shows a row.
-    """
-    plottedprefix = f"{args.yvariable}_plotted"
-    seriesparts = [column.removeprefix(plottedprefix) for column in dfgrid.columns if column.startswith(plottedprefix)]
-    if not seriesparts:
-        return dfgrid
-
-    def get_axis_of_series(seriespart: str) -> mplax.Axes:
-        if not args.multispecplot:
-            return axes[-1]
-        return next(
-            axis for axis, timedays in zip(axes, args.timedayslist, strict=True) if seriespart.endswith(f"_{timedays}d")
-        )
-
-    shownnames = [f"isshown{index}" for index in range(len(seriesparts))]
-    return (
-        dfgrid
-        .with_columns(
-            get_shown_on_spectrum_axes(get_axis_of_series(part), dfgrid, part, args).alias(name)
-            for part, name in zip(seriesparts, shownnames, strict=True)
-        )
-        .filter(pl.any_horizontal(shownnames))
-        .with_columns(
-            pl.when(pl.col(name)).then(pl.col(f"{prefix}{part}")).alias(f"{prefix}{part}")
-            for part, name in zip(seriesparts, shownnames, strict=True)
-            for prefix in ("f_lambda", plottedprefix, f"{args.yvariable}_relnoise")
-            if f"{prefix}{part}" in dfgrid.columns
-        )
-        .drop(shownnames)
-    )
-
-
 def get_grid_columns(xunit: str) -> tuple[str, ...]:
     """Return the columns of a spectrum table that belong to its wavelength grid, and not to one series."""
     return ("lambda_angstroms", f"x_plotted_{xunit}", f"x_lower_{xunit}", f"x_upper_{xunit}")
@@ -1933,37 +1853,16 @@ def get_drawn_lines_table(
     )
 
 
-def get_shown_reference_rows(
-    dfothers: pl.DataFrame, axes: Sequence[mplax.Axes], args: argparse.Namespace
-) -> pl.DataFrame:
-    """Return the rows of the reference series that the final limits of their axes show, e.g. with -ymin.
+def get_tables_in_x_range(tables: dict[str, pl.DataFrame], args: argparse.Namespace) -> dict[str, pl.DataFrame]:
+    """Return the tables with the rows from -xmin to -xmax, for --print_data and --write_data.
 
-    The label of a series names its line on the axes. A line with no line style is a set of markers, and a line
-    keeps the end of each segment that crosses an edge. A series with no line of its label keeps each row.
+    A spectrum or a reference file can hold points outside the range, which the plot does not show.
     """
-    if dfothers.is_empty() or "series" not in dfothers.columns:
-        return dfothers
-    lineoflabel: dict[str, tuple[mplax.Axes, Line2D]] = {}
-    for axis in axes:
-        for line in axis.get_lines():
-            lineoflabel.setdefault(str(line.get_label()), (axis, line))
     xcolumn = f"x_plotted_{args.xunit}"
-    shown: list[pl.DataFrame] = []
-    for (label,), dfseries in dfothers.partition_by("series", maintain_order=True, as_dict=True).items():
-        axisandline = lineoflabel.get(str(label))
-        plottedcolumn = f"{args.yvariable}_plotted"
-        ycolumn = (
-            plottedcolumn
-            if plottedcolumn in dfseries.columns and dfseries[plottedcolumn].is_not_null().any()
-            else "transmission"
-        )
-        if axisandline is None or ycolumn not in dfseries.columns:
-            shown.append(dfseries)
-            continue
-        axis, line = axisandline
-        ismarkers = line.get_linestyle() in {"None", "none", "", " "}
-        shown.append(filter_to_axis_limits(dfseries, axis, xcolumn, ycolumn, linecolumns=None if ismarkers else []))
-    return pl.concat(shown, how="diagonal")
+    return {
+        suffix: dftable.filter(is_in_range(xcolumn, args.xmin, args.xmax)) if xcolumn in dftable.columns else dftable
+        for suffix, dftable in tables.items()
+    }
 
 
 def get_emission_plot_label(
@@ -2345,14 +2244,15 @@ def draw_plot(
         for line in leg.get_lines():
             line.set_linewidth(2.0)
 
-    if not (args.showemission or args.showabsorption):
-        gridtables = [get_shown_spectrum_table(dfgrid, list(axes), args) for dfgrid in gridtables]
-
-    return {
-        "": gridtables[0] if gridtables else pl.DataFrame(),
-        # a model with a different wavelength grid gets its own table
-        **{f"_grid{index}": dfgrid for index, dfgrid in enumerate(gridtables[1:], start=2)},
-        "_references": get_shown_reference_rows(dfothers, list(axes), args),
+    return get_tables_in_x_range(
+        {
+            "": gridtables[0] if gridtables else pl.DataFrame(),
+            # a model with a different wavelength grid gets its own table
+            **{f"_grid{index}": dfgrid for index, dfgrid in enumerate(gridtables[1:], start=2)},
+            "_references": dfothers,
+        },
+        args,
+    ) | {
         "_residuals": dfresidualstats,
         "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
         "_summary": get_summary_table(summaryrows),

@@ -48,6 +48,7 @@ from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
+from artistools.misc import is_in_range
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -61,9 +62,7 @@ from artistools.nltepops.core import add_lte_pops
 from artistools.nltepops.core import read_nltepops
 from artistools.nltepops.core import texifyconfiguration
 from artistools.nltepops.core import texifyterm
-from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import get_next_color
-from artistools.plottools import get_shown_on_axes
 from artistools.plottools import iter_axes
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -76,9 +75,6 @@ defaultoutputfile = "plotnltepops_{elsymbol}_cell{cell:05d}_ts{timestep:03d}_{ti
 # a plot against time covers a range of timesteps, and one against velocity a range of cells, so
 # neither can be named after the single cell and timestep that the default filename describes
 defaultoutputfile_timeorvelocity = "plotnltepops_{elsymbol}.pdf"
-
-# the columns of a subplot table of get_ion_subplot_table that name a level or the subplot, and not a series
-LEVELTABLEKEYCOLUMNS: t.Final = frozenset({"modelgridindex", "ion", "level", "config", "odd_parity"})
 
 # the name of the table column, the level indices, and the values of one series that a subplot draws
 type LevelSeries = tuple[str, Sequence[int] | pl.Series, Sequence[float] | npt.NDArray[np.floating] | pl.Series]
@@ -610,29 +606,6 @@ def get_ion_subplot_table(
     )
 
 
-def get_shown_level_table(dftable: pl.DataFrame, axis: mplax.Axes) -> pl.DataFrame:
-    """Return the table of a subplot of get_ion_subplot_table with null for each value that the final axes hide.
-
-    Each series is a marker with no line, e.g. -ymin hides a marker below it, and the log axis hides a population of
-    zero. A row goes if it has no shown value.
-    """
-    valuecolumns = [column for column in dftable.columns if column not in LEVELTABLEKEYCOLUMNS]
-    shownnames = [f"isshown{index}" for index in range(len(valuecolumns))]
-    return (
-        dftable
-        .with_columns(
-            get_shown_on_axes(axis, "level", column).fill_null(value=False).alias(name)
-            for column, name in zip(valuecolumns, shownnames, strict=True)
-        )
-        .filter(pl.any_horizontal(shownnames))
-        .with_columns(
-            pl.when(pl.col(name)).then(pl.col(column)).alias(column)
-            for column, name in zip(valuecolumns, shownnames, strict=True)
-        )
-        .drop(shownnames)
-    )
-
-
 def get_levelnames_of_ion(modelpath: Path | str, ions: Sequence[tuple[int, int]]) -> dict[tuple[int, int], list[str]]:
     """Return the names of the levels of each ion.
 
@@ -728,13 +701,10 @@ def make_plot_populations_with_time_or_velocity(
 
     outputfilename = str(args.outputfile).format(elsymbol=get_elsymbol(atomic_number))
     xcolumn = "time_days" if args.x == "time" else "vel_r_mid_kmps"
-    # each table holds one line, thus a line needs no column of its own
-    if seriestables := [
-        filter_to_axis_limits(dfseries, axis, xcolumn, "n_NLTE_per_cm3", linecolumns=[])
-        for axis, axistables in tablesofaxis
-        for dfseries in axistables
-    ]:
-        output_data(args, {"": pl.concat(seriestables)}, outputfilename)
+    if seriestables := [dfseries for _, axistables in tablesofaxis for dfseries in axistables]:
+        output_data(
+            args, {"": pl.concat(seriestables).filter(is_in_range(xcolumn, args.xmin, args.xmax))}, outputfilename
+        )
     save_figure(fig, outputfilename, format="pdf", args=args)
 
 
@@ -991,7 +961,7 @@ def make_singletimestep_plot(
     mgis_withdata = set(dfpop_allcells["modelgridindex"].to_list())
     lastmgi_withdata = next(mgi for mgi in reversed(mgilist) if mgi in mgis_withdata)
 
-    subplottables: list[tuple[mplax.Axes, pl.DataFrame]] = []
+    subplottables: list[pl.DataFrame] = []
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex, mgilastaxindex = get_subplot_block(mgilistindex, len(ion_stage_list))
 
@@ -1049,7 +1019,7 @@ def make_singletimestep_plot(
                 lastsubplot=lastsubplot,
             )
             if subplottable is not None:
-                subplottables.append((ax, subplottable))
+                subplottables.append(subplottable)
 
             ax.set_xlim(left=-1)
 
@@ -1090,11 +1060,7 @@ def make_singletimestep_plot(
         # a reference series of one ion gives a column that the other ions do not have
         output_data(
             args,
-            {
-                "": pl.concat(
-                    [get_shown_level_table(dftable, ax) for ax, dftable in subplottables], how="diagonal_relaxed"
-                )
-            },
+            {"": pl.concat(subplottables, how="diagonal_relaxed").filter(is_in_range("level", args.xmin, args.xmax))},
             outputfilename,
         )
     save_figure(fig, outputfilename, format="pdf", args=args)

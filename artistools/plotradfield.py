@@ -50,7 +50,6 @@ from artistools.misc import print_saved
 from artistools.misc import read_rank_outputfiles
 from artistools.misc import resolve_frameset_paths
 from artistools.misc.cliutils import format_range_list
-from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_exponent_label
@@ -407,58 +406,19 @@ def plot_celltimestep(
     set_legend(axis, args, loc="best", handlelength=2, frameon=False, numpoints=1)
 
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
-        output_data(args, {"": get_drawn_series_table(drawnseries, axis)}, outputfile)
+        output_data(args, {"": get_drawn_series_table(drawnseries, xmin, xmax)}, outputfile)
     # the suffix of the file name sets the format, e.g. .pdf or .png
     save_figure(fig, outputfile, args=args, isframe=isframe)
     return True
 
 
-# the series that the plot draws as markers with no line, and as a step with where="pre"
-SCATTERSERIES: t.Final = frozenset({"Line estimators"})
-STEPSERIES: t.Final = frozenset({"Band-average field"})
-
-
-def get_step_is_shown(axis: mplax.Axes, xcolumn: str, ycolumn: str) -> pl.Expr:
-    """Return an expression that is true for each point of a step of where="pre" that the final axes show.
-
-    The value of a point holds from the x of the point before it to the x of the point, and a vertical line joins two
-    values at the x of the point before. A log axis draws no value of zero or below.
-    """
-    xlow, xhigh = sorted(axis.get_xlim())
-    ylow, yhigh = sorted(axis.get_ylim())
-    x, y = pl.col(xcolumn), pl.col(ycolumn)
-    isdrawn = (x.is_finite() & y.is_finite()).fill_null(value=False)
-    if axis.get_yscale() == "log":
-        isdrawn &= y > 0.0
-    previousx, previousy, previousisdrawn = x.shift(1), y.shift(1), isdrawn.shift(1).fill_null(value=False)
-    pointisshown = isdrawn & x.is_between(xlow, xhigh) & y.is_between(ylow, yhigh)
-    horizontalisshown = (
-        isdrawn
-        & y.is_between(ylow, yhigh)
-        & (pl.min_horizontal(previousx, x) <= xhigh)
-        & (pl.max_horizontal(previousx, x) >= xlow)
-        & previousx.is_not_null()
-    ).fill_null(value=False)
-    verticalisshown = (
-        isdrawn
-        & previousisdrawn
-        & previousx.is_between(xlow, xhigh)
-        & (pl.min_horizontal(previousy, y) <= yhigh)
-        & (pl.max_horizontal(previousy, y) >= ylow)
-    ).fill_null(value=False)
-    # a vertical line ends at the point before, thus that point also stays
-    return pointisshown | horizontalisshown | verticalisshown | verticalisshown.shift(-1).fill_null(value=False)
-
-
 def get_drawn_series_table(
-    drawnseries: Sequence[tuple[str, npt.ArrayLike, npt.ArrayLike]], axis: mplax.Axes
+    drawnseries: Sequence[tuple[str, npt.ArrayLike, npt.ArrayLike]], xmin: float, xmax: float
 ) -> pl.DataFrame:
-    """Return the points of each series of a plot of one cell that the final axes show, with one row for each point.
+    """Return the points of each series of a plot of one cell from xmin to xmax, with one row for each point.
 
     Each series has its own wavelengths, thus a column gives the series of each row. The band-average field gives the
-    points of its step line. The value of each point applies from the point before it to that point. A line keeps
-    the points inside the axes, e.g. inside -ymin and -ymax, and the end of each segment that crosses an edge. The
-    line estimators are markers with no line, and the band-average field is a step, thus each has its own test.
+    points of its step line. The value of each point applies from the point before it to that point.
     """
     # a series with no point, e.g. a cell with no line estimators, needs the schema for the types of its columns
     schema = {
@@ -466,24 +426,20 @@ def get_drawn_series_table(
         "lambda_angstroms": pl.Float64,
         "J_lambda_erg_per_s_per_cm2_per_angstrom": pl.Float64,
     }
-    ycolumn = "J_lambda_erg_per_s_per_cm2_per_angstrom"
-    shownseries: list[pl.DataFrame] = []
-    for label, arr_lambda, j_lambda in drawnseries:
-        dfseries = pl.DataFrame(
+    dfseries = [
+        pl.DataFrame(
             {
                 "series": label,
                 "lambda_angstroms": np.asarray(arr_lambda, dtype=np.float64),
-                ycolumn: np.asarray(j_lambda, dtype=np.float64),
+                "J_lambda_erg_per_s_per_cm2_per_angstrom": np.asarray(j_lambda, dtype=np.float64),
             },
             schema=schema,
         )
-        if label in SCATTERSERIES:
-            shownseries.append(filter_to_axis_limits(dfseries, axis, "lambda_angstroms", ycolumn))
-        elif label in STEPSERIES:
-            shownseries.append(dfseries.filter(get_step_is_shown(axis, "lambda_angstroms", ycolumn)))
-        else:
-            shownseries.append(filter_to_axis_limits(dfseries, axis, "lambda_angstroms", ycolumn, linecolumns=[]))
-    return pl.concat(shownseries) if shownseries else pl.DataFrame(schema=schema)
+        for label, arr_lambda, j_lambda in drawnseries
+    ]
+    if not dfseries:
+        return pl.DataFrame(schema=schema)
+    return pl.concat(dfseries).filter(pl.col("lambda_angstroms").is_between(xmin, xmax))
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

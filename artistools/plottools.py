@@ -1182,8 +1182,7 @@ def draw_residual_panel(
 ) -> pl.DataFrame:
     """Draw the selected residual type below the main frame and return the statistics.
 
-    plottedpoints takes the points of each residual curve that the final limits of the panel show, see
-    plot_residual_panel.
+    plottedpoints takes the points of each residual curve in the x range of the main frame, see plot_residual_panel.
 
     The residual type sets the calculation and the y scale of the panel.
     Call it after the main frame has its labels and its x range.
@@ -1194,7 +1193,6 @@ def draw_residual_panel(
     # the shared x axis otherwise takes a new range with the default margin of the residual axis
     residualaxis.set_xmargin(mainaxis.get_xmargin())
     xlim = mainaxis.get_xlim()
-    firstcurveindex = len(plottedpoints) if plottedpoints is not None else 0
     dfresidualstats = plot_residual_panel(
         residualaxis,
         series,
@@ -1238,13 +1236,6 @@ def draw_residual_panel(
     if getattr(args, "hideyticklabels", False):
         residualaxis.tick_params(axis="y", which="both", labelleft=False)
         residualaxis.set_ylabel("")
-
-    if plottedpoints is not None:
-        # the limits of the panel are final now, e.g. after -residualymax, thus each curve keeps the points it shows
-        plottedpoints[firstcurveindex:] = [
-            filter_to_axis_limits(dfcurve, residualaxis, "x", "residual", linecolumns=[])
-            for dfcurve in plottedpoints[firstcurveindex:]
-        ]
 
     return dfresidualstats
 
@@ -1795,100 +1786,6 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
         return None
 
     return limit
-
-
-def to_scale_coordinates(axisobj: mplaxis.Axis, expr: pl.Expr) -> pl.Expr:
-    """Return an expression of the values in the coordinates of the scale of an axis, in which a segment is straight.
-
-    The scales are linear, log, and symlog. A different scale, e.g. logit, takes the values as they are.
-    """
-    scale = axisobj.get_scale()
-    transform: t.Any = axisobj.get_transform()
-    if scale == "log":
-        return expr.log(float(transform.base))
-    if scale == "symlog":
-        # the transform of matplotlib: linear inside the threshold, and logarithmic outside it
-        base, linthresh, linscale = float(transform.base), float(transform.linthresh), float(transform.linscale)
-        linscaleadjusted = linscale / (1.0 - 1.0 / base)
-        return (
-            pl
-            .when(expr.abs() <= linthresh)
-            .then(expr * linscaleadjusted)
-            .otherwise(expr.sign() * linthresh * (linscaleadjusted + (expr.abs() / linthresh).log(base)))
-        )
-    return expr
-
-
-def get_shown_on_axes(
-    axis: mplax.Axes, xcolumn: str, ycolumn: str, linecolumns: Sequence[str] | None = None
-) -> pl.Expr:
-    """Return an expression that is true for each row of a table of drawn points that the final axes show.
-
-    With linecolumns, the rows of one line have the same values in these columns, in the order of the line. An empty
-    linecolumns gives one line. A row of a line is also true if a segment to it crosses the axes, because the axes
-    show part of that segment. A log axis draws no point at zero or below, and no segment to it. The test of a segment
-    takes the coordinates of the scale of each axis, see to_scale_coordinates.
-    """
-    xislog, yislog = axis.get_xscale() == "log", axis.get_yscale() == "log"
-    x, y = pl.col(xcolumn), pl.col(ycolumn)
-    # matplotlib draws no point at a NaN or an infinite value, and no segment to it
-    isdrawn = (x.is_finite() & y.is_finite()).fill_null(value=False)
-    if xislog:
-        isdrawn &= x > 0.0
-    if yislog:
-        isdrawn &= y > 0.0
-    xlow, xhigh = sorted(axis.get_xlim())
-    ylow, yhigh = sorted(axis.get_ylim())
-    isinside = x.is_between(xlow, xhigh) & y.is_between(ylow, yhigh) & isdrawn
-    if linecolumns is None:
-        return isinside
-
-    def shift_in_line(expr: pl.Expr, n: int) -> pl.Expr:
-        return expr.shift(n).over(linecolumns) if linecolumns else expr.shift(n)
-
-    # matplotlib draws a straight segment in the coordinates of the scale, e.g. the logarithms on a log axis
-    x0, y0 = to_scale_coordinates(axis.xaxis, x), to_scale_coordinates(axis.yaxis, y)
-    dx, dy = shift_in_line(x0, -1) - x0, shift_in_line(y0, -1) - y0
-    xlow, xhigh = sorted(float(value) for value in axis.xaxis.get_transform().transform(np.array([xlow, xhigh])))
-    ylow, yhigh = sorted(float(value) for value in axis.yaxis.get_transform().transform(np.array([ylow, yhigh])))
-    # the Liang-Barsky clip: each edge of the axes limits the parameter of the segment from its start (0) to its end (1)
-    edges = [(-dx, x0 - xlow), (dx, xhigh - x0), (-dy, y0 - ylow), (dy, yhigh - y0)]
-    tstart = pl.max_horizontal(pl.lit(0.0), *(pl.when(pk < 0.0).then(qk / pk) for pk, qk in edges))
-    tend = pl.min_horizontal(pl.lit(1.0), *(pl.when(pk > 0.0).then(qk / pk) for pk, qk in edges))
-    isparalleloutside = pl.any_horizontal(*((pk == 0.0) & (qk < 0.0) for pk, qk in edges))
-    segmentisshown = (
-        (tstart <= tend) & ~isparalleloutside & isdrawn & shift_in_line(isdrawn, -1) & dx.is_not_null()
-    ).fill_null(value=False)
-    return isinside | segmentisshown | shift_in_line(segmentisshown, 1).fill_null(value=False)
-
-
-def get_band_is_shown(axis: mplax.Axes, xcolumn: str, lower: pl.Expr, upper: pl.Expr) -> pl.Expr:
-    """Return an expression that is true for each row of a table whose band of fill_between from lower to upper shows.
-
-    fill_between fills the area from each row to the next one. The test takes the bounding box of that area, thus a
-    row can stay when its area only passes near a corner of the axes.
-    """
-    xlow, xhigh = sorted(axis.get_xlim())
-    ylow, yhigh = sorted(axis.get_ylim())
-    x = pl.col(xcolumn)
-    bandlow, bandhigh = pl.min_horizontal(lower, upper), pl.max_horizontal(lower, upper)
-    nextx, nextlow, nexthigh = x.shift(-1), bandlow.shift(-1), bandhigh.shift(-1)
-    pointisshown = x.is_between(xlow, xhigh) & (bandlow <= yhigh) & (bandhigh >= ylow)
-    areaisshown = (
-        (pl.min_horizontal(x, nextx) <= xhigh)
-        & (pl.max_horizontal(x, nextx) >= xlow)
-        & (pl.min_horizontal(bandlow, nextlow) <= yhigh)
-        & (pl.max_horizontal(bandhigh, nexthigh) >= ylow)
-        & nextx.is_not_null()
-    ).fill_null(value=False)
-    return pointisshown.fill_null(value=False) | areaisshown | areaisshown.shift(1).fill_null(value=False)
-
-
-def filter_to_axis_limits(
-    dfdrawn: pl.DataFrame, axis: mplax.Axes, xcolumn: str, ycolumn: str, linecolumns: Sequence[str] | None = None
-) -> pl.DataFrame:
-    """Keep the rows of a table of drawn points that the final axes show, e.g. with -ymin (see get_shown_on_axes)."""
-    return dfdrawn.filter(get_shown_on_axes(axis, xcolumn, ycolumn, linecolumns))
 
 
 def set_axis_properties(

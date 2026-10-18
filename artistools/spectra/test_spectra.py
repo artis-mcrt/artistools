@@ -942,7 +942,14 @@ def test_emission_plot_data_gives_the_drawn_values(mockplot: mock.MagicMock, tmp
         write_data=True,
     )
     dftable = pl.read_csv(tmp_path / "emission.txt", separator=" ", null_values="nan", comment_prefix="#")
-    drawnlines = [np.asarray(call.args[2], dtype=np.float64) for call in mockplot.call_args_list]
+    # the line can hold a point outside -xmin and -xmax, and the table takes the points inside them
+    xlow, xhigh = dftable["x_plotted_angstrom"].min(), dftable["x_plotted_angstrom"].max()
+    drawnlines = [
+        np.asarray(call.args[2], dtype=np.float64)[
+            (np.asarray(call.args[1], dtype=np.float64) >= xlow) & (np.asarray(call.args[1], dtype=np.float64) <= xhigh)
+        ]
+        for call in mockplot.call_args_list
+    ]
     emissioncolumns = [col for col in dftable.columns if col.startswith("emission_flux_plotted.")]
     absorptioncolumns = [col for col in dftable.columns if col.startswith("absorption_flux_plotted.")]
     assert emissioncolumns
@@ -1467,22 +1474,6 @@ def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) ->
     dfreferences = pl.read_csv(tmp_path / "spec_references.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfreferences["series"].n_unique() == 1
     assert dfreferences.height > 100
-
-    # the table held the fluxes of the reference below -ymin, which the figure does not show
-    ymin = float(np.median(dfreferences["flux_plotted"].to_numpy()))
-    at.spectra.plot(
-        argsraw=[],
-        specpath=[modelpath, "2003du_20031213_3219_8822_00.txt"],
-        outputfile=tmp_path / "ymin.pdf",
-        timedays="300",
-        ymin=ymin,
-        write_data=True,
-    )
-    dfclipped = pl.read_csv(tmp_path / "ymin_references.txt", separator=" ", null_values="nan", comment_prefix="#")
-    isshown = pl.col("flux_plotted") >= ymin
-    hasshownneighbour = isshown.shift(1).fill_null(value=False) | isshown.shift(-1).fill_null(value=False)
-    assert 0 < dfclipped.height < dfreferences.height
-    assert dfclipped.select((isshown | hasshownneighbour).all()).item()
 
     at.spectra.plot(
         argsraw=[],
@@ -2774,15 +2765,15 @@ def test_polarisation_plot_writes_the_drawn_ratio(mockplot: mock.MagicMock, tmp_
     (tablepath,) = tmp_path.glob("plotpol_*.txt")
     dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
     assert dftable.columns == ["x_plotted_angstrom", "Q/I"]
-    axis, drawnx, drawny = mockplot.call_args.args
+    _, drawnx, drawny = mockplot.call_args.args
     drawnx, drawny = np.asarray(drawnx, dtype=np.float64), np.asarray(drawny, dtype=np.float64)
-    # the table holds the drawn points of the axis, and matplotlib draws no point at a NaN
-    xlow, xhigh = sorted(axis.get_xlim())
-    isinside = np.isfinite(drawny) & (drawnx >= xlow) & (drawnx <= xhigh)
-    assert np.isfinite(dftable["Q/I"].to_numpy()).all()
-    assert set(drawnx[isinside].round(6)) <= set(dftable["x_plotted_angstrom"].round(6).to_list())
+    # the line can hold a point outside -xmin and -xmax, and the table takes the points inside them
+    isinrange = (drawnx >= dftable["x_plotted_angstrom"].min()) & (drawnx <= dftable["x_plotted_angstrom"].max())
+    assert set(drawnx[np.isfinite(drawny) & isinrange].round(6)) <= set(
+        dftable["x_plotted_angstrom"].round(6).to_list()
+    )
 
-    # the axis shows -xmin to -xmax, and the table gave each wavelength of the spectrum
+    # the table takes the wavelengths from -xmin to -xmax
     mockplot.reset_mock()
     at.spectra.plot(
         argsraw=[],
@@ -2796,22 +2787,8 @@ def test_polarisation_plot_writes_the_drawn_ratio(mockplot: mock.MagicMock, tmp_
     )
     (tablepath,) = (tmp_path / "range").glob("plotpol_*.txt")
     wavelengths = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")["x_plotted_angstrom"]
-    assert (wavelengths < 4000.0).sum() <= 1
-    assert (wavelengths > 6000.0).sum() <= 1
-    assert wavelengths.is_between(4000.0, 6000.0).sum() > 0
-
-    # each ratio of the test model is 0.514 or less, thus the axis from 0.6 to 1 shows no point, and the table gave each
-    at.spectra.plot(
-        argsraw=[],
-        specpath=[modelpath_classic_3d],
-        timedays="5",
-        stokesparam="Q/I",
-        ymin=0.6,
-        ymax=1.0,
-        write_data=True,
-        outputfile=tmp_path / "ymin",
-    )
-    assert not list((tmp_path / "ymin").glob("plotpol_*.txt"))
+    assert wavelengths.is_between(4000.0, 6000.0).all()
+    assert wavelengths.len() > 0
 
 
 def test_emission_plot_takes_a_list_of_one_time(tmp_path: Path) -> None:
@@ -2840,66 +2817,6 @@ def test_write_data_gives_the_plotted_values(tmp_path: Path) -> None:
     plotted = [column for column in dfout.columns if column.startswith("flux_plotted")]
     assert len(plotted) == 1
     assert dfout[plotted[0]].max() == pytest.approx(1.0, rel=1e-6)
-
-    # the table held the values below -ymin, which the figure does not show
-    at.spectra.plot(
-        argsraw=[],
-        specpath=[modelpath],
-        timedays=300,
-        normalised=True,
-        ymin=0.5,
-        yscale="linear",
-        write_data=True,
-        outputfile=tmp_path / "ymin.pdf",
-    )
-    dfclipped = pl.read_csv(tmp_path / "ymin.txt", separator=" ", null_values="nan", comment_prefix="#")
-    values = dfclipped[plotted[0]]
-    # a row of one series with a hidden value has no shown value, thus the row goes
-    assert 0 < values.len() < dfout.height
-    # a value below -ymin stays only as the end of a segment that the axes show
-    isbelow = (values < 0.5).fill_null(value=False)
-    hasshownneighbour = (values.shift(1) >= 0.5).fill_null(value=False) | (values.shift(-1) >= 0.5).fill_null(
-        value=False
-    )
-    assert (~isbelow | hasshownneighbour).all()
-
-
-def test_spectrum_table_keeps_a_bin_whose_noise_band_shows() -> None:
-    """The line of each bin is above the axes, and the band of --shownoise reaches into them, and the rows went."""
-    import matplotlib.figure as mplfig
-
-    axis = mplfig.Figure().add_subplot()
-    axis.set_xlim(4000.0, 6000.0)
-    axis.set_ylim(0.0, 1.0)
-    dfgrid = pl.DataFrame({
-        "lambda_angstroms": [4500.0, 5000.0],
-        "x_plotted_angstrom": [4500.0, 5000.0],
-        "flux_plotted.mymodel": [2.0, 2.0],
-        "flux_relnoise.mymodel": [0.8, 0.8],
-    })
-    args = argparse.Namespace(xunit="angstrom", yvariable="flux", multispecplot=False)
-    dfshown = plotspectra.get_shown_spectrum_table(dfgrid, [axis], args)
-    assert dfshown["x_plotted_angstrom"].to_list() == [4500.0, 5000.0]
-    # with no noise column, the rows have no shown value
-    assert plotspectra.get_shown_spectrum_table(dfgrid.drop("flux_relnoise.mymodel"), [axis], args).is_empty()
-
-
-def test_spectrum_table_takes_the_edges_of_each_histogram_bin() -> None:
-    """A histogram draws each bin from its lower edge to its upper edge, and the line of the bin centres kept bin 0."""
-    import matplotlib.figure as mplfig
-
-    axis = mplfig.Figure().add_subplot()
-    axis.set_xlim(1.2, 1.8)
-    axis.set_ylim(0.0, 1.0)
-    dfgrid = pl.DataFrame({
-        "lambda_angstroms": [0.5, 1.5, 2.5],
-        "x_plotted_angstrom": [0.5, 1.5, 2.5],
-        "x_lower_angstrom": [0.0, 1.0, 2.0],
-        "x_upper_angstrom": [1.0, 2.0, 3.0],
-        "flux_plotted.mymodel": [2.0, 0.5, 2.0],
-    })
-    args = argparse.Namespace(xunit="angstrom", yvariable="flux", multispecplot=False)
-    assert plotspectra.get_shown_spectrum_table(dfgrid, [axis], args)["lambda_angstroms"].to_list() == [1.5]
 
 
 def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
@@ -3216,9 +3133,11 @@ def test_write_data_gives_the_edges_of_a_histogram(mockplot: mock.MagicMock, tmp
         outputfile=tmp_path / "histogram.pdf",
     )
     dftable = pl.read_csv(tmp_path / "histogram.txt", separator=" ", null_values="nan", comment_prefix="#")
-    drawnx = np.asarray(mockplot.call_args_list[0].args[1], dtype=np.float64)
+    drawnedges = np.asarray(mockplot.call_args_list[0].args[1], dtype=np.float64).reshape(-1, 2)
     edges = np.column_stack([dftable["x_lower_angstrom"].to_numpy(), dftable["x_upper_angstrom"].to_numpy()])
-    assert np.allclose(drawnx, edges.ravel(), rtol=1e-9, atol=0)
+    # the plot can draw a bin outside -xmin and -xmax, and the table takes the bins inside them
+    firstbin = int(np.argmin(np.abs(drawnedges[:, 0] - edges[0, 0])))
+    assert np.allclose(drawnedges[firstbin : firstbin + len(edges)], edges, rtol=1e-9, atol=0)
 
 
 @mock.patch.object(mplax.Axes, "fill_between", side_effect=mplax.Axes.fill_between, autospec=True)
@@ -3238,7 +3157,10 @@ def test_write_data_gives_the_noise_of_shownoise(mockfill: mock.MagicMock, tmp_p
     modelname = at.get_model_name(modelpath_classic_3d)
     y = dftable[f"flux_plotted.{modelname}"].to_numpy()
     relnoise = np.nan_to_num(dftable[f"flux_relnoise.{modelname}"].to_numpy())
-    upper = np.asarray(mockfill.call_args.args[3], dtype=np.float64)
+    # the band can hold a point outside -xmin and -xmax, and the table takes the points inside them
+    drawnx = np.asarray(mockfill.call_args.args[1], dtype=np.float64)
+    isinrange = (drawnx >= dftable["x_plotted_angstrom"].min()) & (drawnx <= dftable["x_plotted_angstrom"].max())
+    upper = np.asarray(mockfill.call_args.args[3], dtype=np.float64)[isinrange]
     assert np.allclose(upper, y * (1 + relnoise), rtol=1e-6, atol=0)
 
 

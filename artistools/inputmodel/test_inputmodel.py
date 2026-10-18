@@ -2201,13 +2201,8 @@ def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicM
         ylabel = call.args[0].get_ylabel()
         dftable, ycolumn = next(value for key, value in panels.items() if ylabel.startswith(key))
         dfcurve = dftable.filter(pl.col("model") == call.kwargs["label"])
-        # the table gives the points that the axis shows, and the end of each segment that crosses an edge
-        xlow, xhigh = call.args[0].get_xlim()
-        drawnx, drawny = np.asarray(call.args[1], dtype=float), np.asarray(call.args[2], dtype=float)
-        isinside = (drawnx >= xlow) & (drawnx <= xhigh)
-        isvisible = isinside | np.concatenate([[False], isinside[:-1]]) | np.concatenate([isinside[1:], [False]])
-        np.testing.assert_allclose(dfcurve["vel_r_on_c"], drawnx[isvisible], rtol=1e-12)
-        np.testing.assert_allclose(dfcurve[ycolumn], drawny[isvisible], rtol=1e-12, atol=0.0)
+        np.testing.assert_allclose(dfcurve["vel_r_on_c"], np.asarray(call.args[1], dtype=float), rtol=1e-12)
+        np.testing.assert_allclose(dfcurve[ycolumn], np.asarray(call.args[2], dtype=float), rtol=1e-12, atol=0.0)
         ncurves += 1
     # two models on each of the two mass panels, and one model with Ye on the Ye panel
     assert ncurves == 5
@@ -3668,10 +3663,7 @@ def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None
 
 
 def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Path) -> None:
-    """--write_data gives one table with the points of the curve of each model, which have different nuclides.
-
-    The axes start at an abundance of 1e-7, thus the table leaves out the lower points, which the figure does not show.
-    """
+    """--write_data gives one table with the points of the curve of each model, which have different nuclides."""
     with mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True) as mockplot:
         at.inputmodel.plotinitialabundances.main(
             argsraw=[str(modelpath), str(modelpath_classic_3d), "-x", "Z", "-y", "abundance", "-o", str(tmp_path)],
@@ -3685,11 +3677,8 @@ def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Pat
         dfcurve = dftable.filter(pl.col("model") == call.kwargs["label"])
         dfdrawn = pl.DataFrame({"Z": np.asarray(call.args[1]), "abundance": np.asarray(call.args[2], dtype=float)})
         dfdrawn = dfdrawn.cast(dfcurve.select("Z", "abundance").schema)
-        assert dfcurve.height > 0
+        assert dfcurve.height == dfdrawn.height > 0
         assert dfcurve.join(dfdrawn, on=["Z", "abundance"], how="anti").is_empty()
-        dfhidden = dfdrawn.join(dfcurve, on=["Z", "abundance"], how="anti")
-        assert (dfhidden["abundance"] < 1e-7).all()
-    assert dftable.height < sum(len(call.args[1]) for call in mockplot.call_args_list)
 
 
 def test_plotinitialabundances_table_keeps_two_models_of_one_name_apart(tmp_path: Path) -> None:

@@ -37,7 +37,6 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc.fileio import folder_holds_match
 from artistools.misc.fileio import resolve_modelpath
-from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
 from artistools.plottools import make_colorbar_viewingangles
@@ -611,42 +610,9 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         filename = f"{filestem}_risetime_peakmag.pdf"
     xcolumn = "risetime_days" if args.make_viewing_angle_peakmag_risetime_scatter_plot else "deltam15"
-    dftable = (
-        filter_to_markers_and_error_bars(
-            pl.concat(dfplotted).rename({"x": xcolumn, "x_err": f"{xcolumn}_err"}),
-            ax,
-            (xcolumn, f"{xcolumn}_err"),
-            ("peakmag", "peakmag_err"),
-        )
-        if dfplotted
-        else pl.DataFrame()
-    )
+    dftable = pl.concat(dfplotted).rename({"x": xcolumn, "x_err": f"{xcolumn}_err"}) if dfplotted else pl.DataFrame()
     output_data(args, {"": dftable}, datafolder / filename)
     save_figure(fig, datafolder / filename, format="pdf", args=args)
-
-
-def filter_to_markers_and_error_bars(
-    dfpoints: pl.DataFrame, axis: mplax.Axes, xcolumns: tuple[str, str], ycolumns: tuple[str, str]
-) -> pl.DataFrame:
-    """Keep the rows whose marker or error bars the final limits of the axes show.
-
-    xcolumns and ycolumns give the column of the value and the column of the half width of its error bar. A row with
-    no error bar has a null half width. A row has a horizontal bar and a vertical bar, thus it stays if a bar crosses
-    the axes.
-    """
-    xlow, xhigh = sorted(axis.get_xlim())
-    ylow, yhigh = sorted(axis.get_ylim())
-    x, xerr = pl.col(xcolumns[0]), pl.col(xcolumns[1]).fill_null(0.0)
-    y, yerr = pl.col(ycolumns[0]), pl.col(ycolumns[1]).fill_null(0.0)
-    xisinside, yisinside = x.is_between(xlow, xhigh), y.is_between(ylow, yhigh)
-    horizontalbarisshown = yisinside & (x - xerr <= xhigh) & (x + xerr >= xlow)
-    verticalbarisshown = xisinside & (y - yerr <= yhigh) & (y + yerr >= ylow)
-    return dfpoints.filter((horizontalbarisshown | verticalbarisshown).fill_null(value=False))
-
-
-def get_shown_observations(dfobservations: pl.DataFrame, axis: mplax.Axes) -> pl.DataFrame:
-    """Return the observed supernovae whose marker or error bars the final limits of the axes show."""
-    return filter_to_markers_and_error_bars(dfobservations, axis, ("(B-V)Bmax", "err_(B-V)Bmax"), ("MB", "err_MB"))
 
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
@@ -729,12 +695,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     # the observations have their own columns, thus they go in a second table
     output_data(
         args,
-        {
-            "": filter_to_axis_limits(pl.concat(dfplotted), ax, "peakcolour", f"{bands[0]}max")
-            if dfplotted
-            else pl.DataFrame(),
-            "_observations": get_shown_observations(pl.DataFrame(sn_data), ax),
-        },
+        {"": pl.concat(dfplotted) if dfplotted else pl.DataFrame(), "_observations": pl.DataFrame(sn_data)},
         plotname,
     )
     save_figure(fig, plotname, format="pdf", args=args)
@@ -924,7 +885,5 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         schema={"dirbin": pl.Int64, "costhetabin": pl.Int64, "phibin": pl.Int64, "luminosity_erg/s": pl.Float64},
         orient="row",
     ).with_columns(time_days=pl.lit(timetoplot))
-    # the log axis draws no luminosity of zero or below, thus the table gives only the points of the figure
-    xcolumn = "phibin" if args.colorbarcostheta else "costhetabin"
-    output_data(args, {"": filter_to_axis_limits(dfplotted, axis, xcolumn, "luminosity_erg/s")}, plotname)
+    output_data(args, {"": dfplotted}, plotname)
     save_figure(fig, plotname, format="pdf", args=args)

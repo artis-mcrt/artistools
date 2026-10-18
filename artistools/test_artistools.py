@@ -647,27 +647,6 @@ def test_residual_y_maximum_keeps_the_main_range(residualtype: str, ismagnitude:
     plt.close(fig)
 
 
-def test_residual_curves_keep_the_points_below_the_residual_maximum() -> None:
-    """The table _residualcurves held the residuals above -residualymax, which the panel does not show."""
-    x = np.arange(1.0, 11.0)
-    series = [
-        at.plottools.ResidualSeries("reference", x, np.ones(10), "k"),
-        at.plottools.ResidualSeries("model", x, x, "r"),
-    ]
-    args = argparse.Namespace(
-        logscaley=False, residualbaselineseries=0, residuals=None, residualtype="relative", residualymax=3.5
-    )
-    fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
-    mainaxis.set_xlim(1.0, 10.0)
-    plottedpoints: list[pl.DataFrame] = []
-    at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args, plottedpoints=plottedpoints)
-    plt.close(fig)
-
-    dfmodel = pl.concat(plottedpoints).filter(pl.col("model") == "model")
-    # the line to the first ratio above 3.5 is visible, thus the ratio 4 stays
-    assert dfmodel["residual"].to_list() == [1.0, 2.0, 3.0, 4.0]
-
-
 def test_residual_log_axis_ignores_a_non_positive_maximum(capsys: pytest.CaptureFixture[str]) -> None:
     """A log residual axis gives a warning and keeps its data range for a non-positive maximum."""
     x = np.array([1.0, 2.0])
@@ -3066,39 +3045,7 @@ def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: 
     assert len([column for column in dftable.columns if column.startswith("fratio_")]) == 3
     assert dftable["time"].is_between(4.5, 6.5).all()
     assert dftable.height > 0
-    # the points of a model have no line. The fit is a line, which keeps the end of each segment across an edge
-    dfcomparisons = read_data_file(tmp_path / "linefluxes_comparisons.txt")
-    isinside = pl.col("time").is_between(4.5, 6.5)
-    hasinsideneighbour = isinside.shift(1).fill_null(value=False) | isinside.shift(-1).fill_null(value=False)
-    assert dfcomparisons.select((isinside | hasinsideneighbour).all()).item()
-
-    # -linewidth alone draws a line between the points, thus the table keeps the end of each segment across an edge
-    with mock.patch.object(at.plotlinefluxes, "get_line_luminosities_from_packets", get_line_luminosities):
-        at.plotlinefluxes.main(
-            argsraw=[],
-            modelpath=[modelpath_classic_3d],
-            emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
-            xmin=4.5,
-            xmax=6.5,
-            ymin=0.001,
-            linewidth=[2.0],
-            outputfile=tmp_path / "linewidth.pdf",
-            write_data=True,
-        )
-    assert read_data_file(tmp_path / "linewidth.txt")["time"].to_list()[0] < 4.5
-
-    # each ratio of the models is 1, which -ymin 2 hides, and the table gave the ratios
-    (tmp_path / "linefluxes.txt").unlink()
-    with mock.patch.object(at.plotlinefluxes, "get_line_luminosities_from_packets", get_line_luminosities):
-        at.plotlinefluxes.main(
-            argsraw=[],
-            modelpath=[modelpath_classic_3d],
-            emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
-            ymin=2.0,
-            outputfile=tmp_path / "linefluxes.pdf",
-            write_data=True,
-        )
-    assert not (tmp_path / "linefluxes.txt").exists()
+    assert read_data_file(tmp_path / "linefluxes_comparisons.txt")["time"].is_between(4.5, 6.5).all()
 
 
 def test_linefluxes_floers_ratio_file_with_no_w7_model(tmp_path: Path) -> None:
@@ -5252,23 +5199,6 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> N
         assert dfpoints["time_days"].unique().to_list() == [tmid]
         assert dfpoints["log10nne"].to_list()[:2] == [5.0, 6.0]
 
-    # the table held the packets below -ymin, which the figure does not show
-    with mock.patch.object(at.plotlinefluxes, "get_emitting_regions_data", return_value=emdata):
-        at.plotlinefluxes.main(
-            argsraw=[],
-            modelpath=[modelpath_classic_3d],
-            plotemittingregions=True,
-            norefdata=True,
-            timebins_tstart=[4.0],
-            timebins_tend=[6.0],
-            ymin=4500.0,
-            outputfile=tmp_path / "emregclipped.pdf",
-            write_data=True,
-        )
-    dfclipped = pl.read_csv(tmp_path / "emregclipped.txt", separator=" ", null_values="nan", comment_prefix="#")
-    assert dfclipped.height > 0
-    assert dfclipped["Te"].min() == 5e3
-
 
 def test_linefluxes_emitting_regions_keep_two_models_with_one_label_apart(tmp_path: Path) -> None:
     """The table named each model by its name alone, thus two models with one label gave rows with one key."""
@@ -5304,44 +5234,6 @@ def test_hidden_value_warning_names_a_horizontal_line_above_the_axes(capsys: pyt
     axis.set_ylim(0.0, 1.0)
     at.plottools.warn_hidden_values(axis)
     assert "the figure does not show these values of 'Planck mean'" in capsys.readouterr().err
-
-
-def test_filter_to_axis_limits_keeps_the_rows_of_each_visible_segment() -> None:
-    """A line keeps a point outside the axes when a segment to it crosses the axes. A marker outside goes."""
-    fig = mplfig.Figure()
-    axis = fig.add_subplot()
-    axis.set_xlim(0.0, 10.0)
-    axis.set_ylim(0.0, 1.0)
-    dfdrawn = pl.DataFrame({
-        "line": ["a"] * 6 + ["b"] * 2,
-        "x": [-5.0, -1.0, 5.0, 12.0, 20.0, 30.0, 5.0, 6.0],
-        "y": [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2.0, -1.0],
-    })
-
-    dfshown = at.plottools.filter_to_axis_limits(dfdrawn, axis, "x", "y", linecolumns=["line"])
-    # the line b has no point inside the axes, but its segment crosses them
-    assert dfshown.rows() == [("a", -1.0, 0.5), ("a", 5.0, 0.5), ("a", 12.0, 0.5), ("b", 5.0, 2.0), ("b", 6.0, -1.0)]
-    assert at.plottools.filter_to_axis_limits(dfdrawn, axis, "x", "y").rows() == [("a", 5.0, 0.5)]
-
-    # the bounding box of the segment of the line c overlaps the axes, but the segment passes beside a corner
-    dfcorner = pl.DataFrame({"x": [-1.0, 0.5], "y": [0.5, 2.0]})
-    axis.set_xlim(0.0, 1.0)
-    assert at.plottools.filter_to_axis_limits(dfcorner, axis, "x", "y", linecolumns=[]).is_empty()
-    axis.set_xlim(0.0, 10.0)
-
-    # a log axis draws no zero, e.g. the mass fraction of a nuclide that a model does not hold, and no segment to it
-    axis.set_yscale("log")
-    axis.set_ylim(1e-5, 1.0)
-    dfzero = pl.DataFrame({"x": [1.0, 2.0, 3.0], "y": [0.0, 0.0, 0.1]})
-    assert at.plottools.filter_to_axis_limits(dfzero, axis, "x", "y", linecolumns=[]).rows() == [(3.0, 0.1)]
-
-    # a symlog axis draws the segment from (0, 1000) to (10, 1) as a curve of the data, and the axes from x = 8 to 9
-    # and y = 1.5 to 5 show a part of it. In the values of the data, the straight segment passes above the axes
-    axis.set_yscale("symlog", linthresh=1.0)
-    axis.set_xlim(8.0, 9.0)
-    axis.set_ylim(1.5, 5.0)
-    dfsymlog = pl.DataFrame({"x": [0.0, 10.0], "y": [1000.0, 1.0]})
-    assert at.plottools.filter_to_axis_limits(dfsymlog, axis, "x", "y", linecolumns=[]).height == 2
 
 
 def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission() -> None:
@@ -7050,37 +6942,6 @@ def test_plotviewingangles_write_data_holds_the_volume_and_the_lines(tmp_path: P
         )
 
 
-def test_plotopacity_tables_leave_out_a_zero_on_a_log_panel() -> None:
-    """The log axes of the ratios and of the line counts draw no zero, and the table gave each zero."""
-    from artistools.plotopacity import get_opacity_tables
-
-    fig = mplfig.Figure()
-    opacityaxis, ratioaxis, linecountaxis = (fig.add_subplot(3, 1, index) for index in (1, 2, 3))
-    for axis in (opacityaxis, ratioaxis, linecountaxis):
-        axis.set_yscale("log")
-        axis.set_ylim(1e-3, 1e3)
-    dfopacities = pl.DataFrame({
-        "lambda_angstroms_lower": [1000.0, 1020.0],
-        "lambda_angstroms_upper": [1020.0, 1040.0],
-        "exopac": [1.0, 2.0],
-        "linebinned": [3.0, 4.0],
-        "linecount": [0, 5],
-    })
-    args = argparse.Namespace(taucaps=[], showlinecount=True)
-    ratios = {"linebinned": np.array([0.0, 0.0, np.nan, 2.0, 2.0, np.nan])}
-    dfbins = get_opacity_tables(dfopacities, None, math.nan, ratios, (opacityaxis, ratioaxis, linecountaxis), args)[""]
-
-    assert dfbins["ratio_linebinned_to_exopac"].to_list() == [None, 2.0]
-    assert dfbins["linecount"].to_list() == [None, 5]
-    assert dfbins["exopac_cm2_per_g"].to_list() == [1.0, 2.0]
-
-    # the line of the Planck mean is above the panel, and each bin gave its value
-    tables = get_opacity_tables(dfopacities, None, 1e4, ratios, (opacityaxis, ratioaxis, linecountaxis), args)
-    assert "planckmean_exopac_cm2_per_g" not in tables[""].columns
-    tables = get_opacity_tables(dfopacities, None, 10.0, ratios, (opacityaxis, ratioaxis, linecountaxis), args)
-    assert tables[""]["planckmean_exopac_cm2_per_g"].to_list() == [10.0, 10.0]
-
-
 @mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotopacity_writes_the_drawn_values(
@@ -7101,14 +6962,21 @@ def test_plotopacity_writes_the_drawn_values(
     ratioplots = [call.args for call in mockplot.call_args_list if call.args[0] is axes[1]]
     (linecountplot,) = [call.args for call in mockplot.call_args_list if call.args[0] is axes[2]]
     columns = ["exopac", "linebinned_cap1", "linebinned"]
+    # the moving average draws one more point at each end of -xmin and -xmax, and the table takes the points inside
+    averagexvalues = np.asarray(mainplots[1][1], dtype=np.float64)
+    isinrange = (averagexvalues >= 3000.0) & (averagexvalues <= 4000.0)
     # each opacity draws its bins, then its moving average. The line of each bin has a point at each edge and a NaN
-    for column, (_, binx, biny), (_, averagex, averagey) in zip(columns, mainplots[0::2], mainplots[1::2], strict=True):
+    for column, (_, binx, biny), (_, averagexall, averageyall) in zip(
+        columns, mainplots[0::2], mainplots[1::2], strict=True
+    ):
         assert np.allclose(dfbins["lambda_angstroms_lower"].to_numpy(), binx[0::3], rtol=1e-12, atol=0.0)
         assert np.allclose(dfbins["lambda_angstroms_upper"].to_numpy(), binx[1::3], rtol=1e-12, atol=0.0)
         assert np.allclose(dfbins[f"{column}_cm2_per_g"].to_numpy(), biny[0::3], rtol=1e-12, atol=0.0)
+        averagex, averagey = np.asarray(averagexall)[isinrange], np.asarray(averageyall)[isinrange]
         assert np.allclose(dfaverages["lambda_angstroms_bin_mid"].to_numpy(), averagex, rtol=1e-12, atol=0.0)
         assert np.allclose(dfaverages[f"{column}_movingaverage_cm2_per_g"].to_numpy(), averagey, rtol=1e-12, atol=0.0)
-    for column, (_, ratiox, ratioy) in zip(columns[1:], ratioplots, strict=True):
+    for column, (_, ratioxall, ratioyall) in zip(columns[1:], ratioplots, strict=True):
+        ratiox, ratioy = np.asarray(ratioxall)[isinrange], np.asarray(ratioyall)[isinrange]
         assert np.allclose(dfaverages["lambda_angstroms_bin_mid"].to_numpy(), ratiox, rtol=1e-12, atol=0.0)
         assert np.allclose(
             dfaverages[f"ratio_{column}_to_exopac"].to_numpy(), ratioy, rtol=1e-12, atol=0.0, equal_nan=True
@@ -7128,39 +6996,6 @@ def test_plotopacity_writes_the_drawn_values(
         assert np.allclose(
             dfbins[f"ratio_{column}_to_exopac"].to_numpy(), ratioy[0::3], rtol=1e-12, atol=0.0, equal_nan=True
         )
-
-    # the table held the opacities below -ymin, which the figure does not show
-    ymin = float(np.median(dfbins["exopac_cm2_per_g"].to_numpy()))
-    at.plotopacity.main(
-        argsraw=[*commonargs, "-movingaveragewidth", "0", "-ymin", str(ymin), "-o", str(tmp_path / "ymin.pdf")]
-    )
-    dfclipped = read_data_file(tmp_path / "ymin.txt")
-    isshown = dfbins["exopac_cm2_per_g"] >= ymin
-    assert 0 < isshown.sum() < dfbins.height
-    assert dfclipped["exopac_cm2_per_g"].is_null().to_list() == (~isshown).to_list()
-    # the ratio panel has its own y range, thus each ratio stays
-    assert np.allclose(
-        dfclipped["ratio_linebinned_to_exopac"].to_numpy(),
-        dfbins["ratio_linebinned_to_exopac"].to_numpy(),
-        rtol=1e-12,
-        atol=0.0,
-        equal_nan=True,
-    )
-
-
-def test_plotradfield_table_takes_the_geometry_of_each_series() -> None:
-    """The line estimators are markers, and the test of a segment kept two of them outside the axes."""
-    from artistools.plotradfield import get_drawn_series_table
-
-    axis = mplfig.Figure().add_subplot()
-    axis.set_xlim(0.0, 10.0)
-    axis.set_ylim(0.0, 1.0)
-    # the segment from the first point to the second crosses the axes, and the plot draws no such segment
-    dftable = get_drawn_series_table([("Line estimators", [-5.0, 15.0], [0.5, 0.5])], axis)
-    assert dftable.is_empty()
-    # the step holds the value of the second point from x = -5 to x = 15, thus the axes show it
-    dfstep = get_drawn_series_table([("Band-average field", [-5.0, 15.0], [2.0, 0.5])], axis)
-    assert dfstep["lambda_angstroms"].to_list() == [15.0]
 
 
 def test_plotradfield_table_follows_the_sole_frame_to_the_product(tmp_path: Path) -> None:
@@ -7200,7 +7035,7 @@ def test_plotradfield_writes_the_drawn_values(
         "Emergent spectrum (scaled)",
     }
     assert set(dftable["series"]) == set(drawnseries)
-    # the axis shows 1000 to 20000 Å, and the table keeps the nearest point outside each end for the line to the edge
+    # the axis shows 1000 to 20000 Å, and the table takes the points of that range
     for label, (_, drawnxvalues, drawnyvalues) in drawnseries.items():
         dfseries = dftable.filter(pl.col("series") == label)
         drawnx, drawny = np.asarray(drawnxvalues, dtype=float), np.asarray(drawnyvalues, dtype=float)
@@ -7211,34 +7046,11 @@ def test_plotradfield_writes_the_drawn_values(
             assert set(drawnx[isinside].round(6)) <= set(dfseries["lambda_angstroms"].round(6).to_list())
             assert set(dfseries["lambda_angstroms"].round(6).to_list()) <= set(drawnx.round(6))
             continue
-        lowedge = drawnx[drawnx <= 1000.0].max(initial=-np.inf)
-        highedge = drawnx[drawnx >= 20000.0].min(initial=np.inf)
-        iskept = (drawnx >= lowedge) & (drawnx <= highedge)
+        iskept = (drawnx >= 1000.0) & (drawnx <= 20000.0)
         assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx[iskept], rtol=1e-12, atol=0.0)
         assert np.allclose(
             dfseries["J_lambda_erg_per_s_per_cm2_per_angstrom"].to_numpy(), drawny[iskept], rtol=1e-12, atol=0.0
         )
-        assert (dfseries["lambda_angstroms"] < 1000.0).sum() <= 1
-        assert (dfseries["lambda_angstroms"] > 20000.0).sum() <= 1
-
-    # the table held the values above -ymax, which the figure does not show
-    ymax = float(np.median(dftable["J_lambda_erg_per_s_per_cm2_per_angstrom"].to_numpy()))
-    at.plotradfield.main(
-        argsraw=[],
-        modelpath=modelpath,
-        modelgridindex=0,
-        timestep=40,
-        ymax=ymax,
-        outputfile=tmp_path / "rfclipped.pdf",
-        write_data=True,
-    )
-    dfclipped = read_data_file(tmp_path / "rfclipped.txt")
-    isshown = pl.col("J_lambda_erg_per_s_per_cm2_per_angstrom") <= ymax
-    hasshownneighbour = isshown.shift(1).over("series").fill_null(value=False) | isshown.shift(-1).over(
-        "series"
-    ).fill_null(value=False)
-    assert 0 < dfclipped.height < dftable.height
-    assert dfclipped.select((isshown | hasshownneighbour).all()).item()
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

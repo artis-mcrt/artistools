@@ -1328,7 +1328,9 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
             if dfdata.is_empty() and not os.path.lexists(datafile):
                 continue
             emptylines = (
-                ["the table has no rows, e.g. because the figure shows no point of it"] if dfdata.is_empty() else []
+                ["the table has no rows, e.g. because the plot has no point in the selected range"]
+                if dfdata.is_empty()
+                else []
             )
             commentlines = [*get_provenance_lines(args), *emptylines, *get_column_description_lines(dfdata.columns)]
             write_data_table(dfdata, datafile, commentlines=commentlines)

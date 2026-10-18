@@ -47,13 +47,13 @@ from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
+from artistools.misc import is_in_range
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.misc.general import get_progress_class
-from artistools.plottools import get_shown_on_axes
 from artistools.plottools import make_frame_figure
 from artistools.plottools import RESIDUALROWHEIGHT
 from artistools.plottools import save_figure
@@ -68,7 +68,6 @@ from artistools.spectra import parse_velocity_argument
 if t.TYPE_CHECKING:
     from collections.abc import Mapping
 
-    import matplotlib.axes as mplax
     import matplotlib.typing as mplt
     import numpy.typing as npt
 
@@ -342,11 +341,7 @@ def plot_opacities(
     set_legend(ax, args, title=get_smoothing_text(dfopacities, args.movingaveragewidth), alignment="left")
 
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
-        output_data(
-            args,
-            get_opacity_tables(dfopacities, dfmovingaverages, planckmean, ratios, (ax, ratioaxis, bottomaxis), args),
-            args.outputfile,
-        )
+        output_data(args, get_opacity_tables(dfopacities, dfmovingaverages, planckmean, ratios, args), args.outputfile)
     save_figure(fig, args.outputfile, args=args)
 
 
@@ -355,68 +350,37 @@ def get_opacity_tables(
     dfmovingaverages: pl.DataFrame | None,
     planckmean: float,
     ratios: "Mapping[str, npt.NDArray[np.float64]]",
-    panels: "tuple[mplax.Axes, mplax.Axes, mplax.Axes]",
     args: argparse.Namespace,
 ) -> dict[str, pl.DataFrame]:
     """Return the tables of the plotted opacities, with the keys of output_data.
 
     The empty key gives one row for each bin of the plot. A moving average has one more point at each end of the
-    range, thus "_movingaverage" gives the moving averages and the ratios at the middle of each bin. With no moving
-    average, the ratios go in the table of the bins. ratios holds the drawn ratio of each line-binned opacity.
-
-    panels gives the axes of the opacities, of the ratios, and of the line counts. A value that the final limits of its
-    panel hide is null, e.g. an opacity below -ymin, or a ratio or a line count of zero on a log axis. The column of
-    the Planck mean exists only if the panel shows its line.
+    range, thus "_movingaverage" gives the moving averages and the ratios at the middle of each bin from -xmin to
+    -xmax. With no moving average, the ratios go in the table of the bins. ratios holds the drawn ratio of each
+    line-binned opacity.
     """
-    opacityaxis, ratioaxis, linecountaxis = panels
     opacitycolumns = [column for column, _label, _linestyle in get_opacity_series(args.taucaps)]
-
-    def get_shown_bin_value(column: str, axis: "mplax.Axes") -> pl.Expr:
-        # each bin is a horizontal line, thus a bin in the x range of the plot shows if its value is inside the y range
-        ylow, yhigh = sorted(axis.get_ylim())
-        value = pl.col(column)
-        isshown = value.is_between(ylow, yhigh) & ((value > 0.0) if axis.get_yscale() == "log" else pl.lit(value=True))
-        return pl.when(isshown).then(value)
-
     dfbins = dfopacities.select(
         "lambda_angstroms_lower",
         "lambda_angstroms_upper",
-        *(get_shown_bin_value(column, opacityaxis).alias(f"{column}_cm2_per_g") for column in opacitycolumns),
-        *([get_shown_bin_value("linecount", linecountaxis).alias("linecount")] if args.showlinecount else []),
+        *(pl.col(column).alias(f"{column}_cm2_per_g") for column in opacitycolumns),
+        *(["linecount"] if args.showlinecount else []),
     )
-    # the Planck mean is a horizontal line across the panel of the opacities, thus it shows if it is inside the y range
-    ylow, yhigh = sorted(opacityaxis.get_ylim())
-    planckmeanisshown = ylow <= planckmean <= yhigh and (opacityaxis.get_yscale() != "log" or planckmean > 0.0)
-    if math.isfinite(planckmean) and planckmeanisshown:
+    # the Planck mean is a line of the plot only with --showplanckmean
+    if args.showplanckmean and math.isfinite(planckmean):
         dfbins = dfbins.with_columns(planckmean_exopac_cm2_per_g=pl.lit(planckmean))
     ratiocolumns = {f"ratio_{column}_to_exopac": values for column, values in ratios.items()}
     if dfmovingaverages is None:
         # the line of each bin has a point at the lower edge, a point at the upper edge, and a NaN
-        return {
-            "": dfbins.hstack(pl.DataFrame({name: values[::3] for name, values in ratiocolumns.items()})).with_columns(
-                get_shown_bin_value(name, ratioaxis).alias(name) for name in ratiocolumns
-            )
-        }
+        return {"": dfbins.hstack(pl.DataFrame({name: values[::3] for name, values in ratiocolumns.items()}))}
     dfaverages = (
         dfmovingaverages
         .select(
             "lambda_angstroms_bin_mid",
-            *(
-                pl
-                .when(get_shown_on_axes(opacityaxis, "lambda_angstroms_bin_mid", column, linecolumns=[]))
-                .then(pl.col(column))
-                .alias(f"{column}_movingaverage_cm2_per_g")
-                for column in opacitycolumns
-            ),
+            *(pl.col(column).alias(f"{column}_movingaverage_cm2_per_g") for column in opacitycolumns),
         )
         .hstack(pl.DataFrame(ratiocolumns))
-        .with_columns(
-            pl
-            .when(get_shown_on_axes(ratioaxis, "lambda_angstroms_bin_mid", name, linecolumns=[]))
-            .then(pl.col(name))
-            .alias(name)
-            for name in ratiocolumns
-        )
+        .filter(is_in_range("lambda_angstroms_bin_mid", args.xmin, args.xmax))
     )
     return {"": dfbins, "_movingaverage": dfaverages}
 

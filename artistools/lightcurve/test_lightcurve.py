@@ -395,20 +395,6 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
     dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
     assert dftable["dirbin"].to_list() == [-1, -1]
 
-    # the table holds only the points inside the y limits of the plot, and output_data writes no empty table
-    peakmag = dftable["peakmag"].max()
-    assert isinstance(peakmag, float)
-    tablepath.unlink()
-    at.lightcurve.plot(
-        argsraw=[],
-        make_viewing_angle_peakmag_risetime_scatter_plot=True,
-        ymin=peakmag + 1.0,
-        ymax=peakmag + 2.0,
-        write_data=True,
-        **commonargs,
-    )
-    assert not tablepath.exists()
-
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
 def test_viewing_angle_scatter_plot_colours_each_direction_bin_of_the_data_file(
@@ -3206,23 +3192,12 @@ def test_lightcurve_data_gives_the_filtered_curve_and_the_energy_rates(
     assert dflc["time_days"].to_list() == dfdrawn["time_days"].to_list()
     assert np.allclose(dfcompared["luminosity_erg/s"], dfcompared["drawn"], rtol=1e-6, atol=0)
 
-    # the table held the luminosities below -ymin, which the figure does not show
-    ymin = float(np.median(dflc["luminosity_erg/s"].to_numpy()))
-    at.lightcurve.plot(
-        argsraw=[], modelpath=[modelpath_classic_3d], ymin=ymin, write_data=True, outputfile=tmp_path / "lcymin.pdf"
-    )
-    dfclipped = pl.read_csv(tmp_path / "lcymin.txt", separator=" ", null_values="nan", comment_prefix="#")
-    isshown = pl.col("luminosity_erg/s") >= ymin
-    hasshownneighbour = isshown.shift(1).fill_null(value=False) | isshown.shift(-1).fill_null(value=False)
-    assert 0 < dfclipped.height < dflc.height
-    assert dfclipped.select((isshown | hasshownneighbour).all()).item()
-
     dfrates = pl.read_csv(tmp_path / "lc_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfrates["quantity"].unique().to_list() == ["gammadep_Lsun"]
     assert dfrates["unit"].unique().to_list() == ["erg/s"]
     assert dfrates["model"].unique().to_list() == [modelname]
 
-    # the table held the rates after -timemax, which the figure does not show
+    # the table held the rates after -timemax
     ratetimes = dfrates["time_days"].to_list()
     timemax = (ratetimes[2] + ratetimes[3]) / 2
     at.lightcurve.plot(
@@ -3236,8 +3211,8 @@ def test_lightcurve_data_gives_the_filtered_curve_and_the_energy_rates(
     dfclipped = pl.read_csv(
         tmp_path / "lcclipped_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#"
     )
-    # the line to the first time after -timemax is visible, thus that time stays
-    assert dfclipped["time_days"].to_list() == ratetimes[:4]
+    # the line goes to the first time after -timemax, and the table takes the times up to -timemax
+    assert dfclipped["time_days"].to_list() == ratetimes[:3]
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -3265,16 +3240,6 @@ def test_band_and_colour_data_give_the_filtered_magnitudes(mockplot: mock.MagicM
     assert table_is_drawn("plotBlightcurves.txt", "magnitude")
     at.lightcurve.plot(argsraw=[], colour_evolution=["B-V"], **commonoptions)
     assert table_is_drawn("plotcolorevolutionB-V.txt", "colour_mag")
-
-    # the table held the magnitudes below -ymin, which the figure does not show
-    dfband = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan", comment_prefix="#")
-    ymin = float(np.median(dfband["magnitude"].to_numpy()))
-    at.lightcurve.plot(argsraw=[], filter=["B"], ymin=ymin, ymax=0.0, **commonoptions)
-    dfclipped = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan", comment_prefix="#")
-    isshown = pl.col("magnitude") >= ymin
-    hasshownneighbour = isshown.shift(1).fill_null(value=False) | isshown.shift(-1).fill_null(value=False)
-    assert 0 < dfclipped.height < dfband.height
-    assert dfclipped.select((isshown | hasshownneighbour).all()).item()
 
 
 def test_band_data_of_several_models_names_the_model_of_each_row(tmp_path: Path) -> None:
@@ -3427,28 +3392,6 @@ def test_brightness_at_time_takes_the_output_folder_and_one_time(
     with pytest.raises(SystemExit):
         at.lightcurve.plot(argsraw=[], modelpath=[modelpath_classic_3d], brightnessattime=True, timedays="4-5")
     assert "takes one time" in capsys.readouterr().err
-
-    # the log axis draws no zero luminosity, and the table gave the row of that direction bin
-    from artistools.lightcurve import viewingangleanalysis
-
-    lightcurves = {
-        dirbin: pl.LazyFrame({"time_days": [5.0], "luminosity_erg/s": [0.0 if dirbin == 0 else 1e40]})
-        for dirbin in range(100)
-    }
-    with mock.patch.object(viewingangleanalysis, "scan_lightcurve", return_value=lightcurves):
-        at.lightcurve.plot(
-            argsraw=[],
-            modelpath=[modelpath_classic_3d],
-            brightnessattime=True,
-            timedays="5",
-            outputfile="sub/x.pdf",
-            write_data=True,
-        )
-    dftable = pl.read_csv(
-        tmp_path / "sub" / "plotviewinganglebrightnessat5.0days.txt", separator=" ", comment_prefix="#"
-    )
-    assert dftable.height == 99
-    assert 0 not in dftable["dirbin"].to_list()
 
 
 @pytest.mark.parametrize(
@@ -3719,69 +3662,6 @@ def test_viewing_angle_table_gives_no_bin_that_the_file_does_not_name(capsys: py
     assert "has no dirbin column" in capsys.readouterr().err
     args.plotviewingangle = [5, 10]
     assert get_table_dirbins(dfdata, Path("old_viewing_angle_data.txt"), args) == [5, 10]
-
-
-def test_colour_at_peak_observations_keep_the_rows_that_the_axes_show() -> None:
-    """The table _observations gave each observed supernova, also one that the axes leave out with its error bars."""
-    import matplotlib.figure as mplfig
-
-    from artistools.lightcurve.viewingangleanalysis import get_shown_observations
-
-    axis = mplfig.Figure().add_subplot()
-    axis.set_xlim(0.0, 1.0)
-    # a magnitude axis is inverted, and the test of the limits must not depend on the order
-    axis.set_ylim(-17.0, -20.0)
-    dfobservations = pl.DataFrame({
-        "(B-V)Bmax": [0.5, 1.2, 1.1, 2.0],
-        "err_(B-V)Bmax": [0.05, 0.3, 0.05, 0.1],
-        "MB": [-19.0, -18.0, -18.0, -18.0],
-        "err_MB": [0.1, 0.1, 0.1, 0.1],
-    })
-    # the second row has its marker outside the axes, and its bar of the colour reaches into them
-    assert get_shown_observations(dfobservations, axis)["(B-V)Bmax"].to_list() == [0.5, 1.2]
-
-
-def test_bolometric_table_keeps_a_reference_point_whose_error_bar_crosses_the_axis() -> None:
-    """A reference point above -ymax has an error bar that reaches into the axis, and the figure shows the bar."""
-    import matplotlib.figure as mplfig
-
-    from artistools.lightcurve.plotlightcurve import get_shown_lightcurve_rows
-
-    axis = mplfig.Figure().add_subplot()
-    axis.set_xlim(0.0, 10.0)
-    axis.set_ylim(0.0, 1.0)
-    dfreference = pl.DataFrame({
-        "model": "observed",
-        "escape_type": "reference",
-        "time_days": [2.0, 4.0, 6.0],
-        "luminosity_erg/s": [0.5, 1.5, 3.0],
-        "luminosity_erg/s_errlower": [0.1, 0.8, 0.5],
-        "luminosity_erg/s_errupper": [0.1, 0.1, 0.5],
-    })
-    dfshown = get_shown_lightcurve_rows([dfreference], axis, "erg/s", showscmf=False)
-    assert dfshown["time_days"].to_list() == [2.0, 4.0]
-
-
-def test_scatter_table_keeps_an_angle_average_whose_error_bar_crosses_the_axes() -> None:
-    """A point of the angle average outside the axes can have an error bar inside them, and the row went."""
-    import matplotlib.figure as mplfig
-
-    from artistools.lightcurve.viewingangleanalysis import filter_to_markers_and_error_bars
-
-    axis = mplfig.Figure().add_subplot()
-    axis.set_xlim(10.0, 20.0)
-    axis.set_ylim(-17.0, -16.0)
-    dfpoints = pl.DataFrame({
-        "dirbin": [3, -1],
-        "risetime_days": [15.0, 15.0],
-        "peakmag": [-18.0, -18.0],
-        "risetime_days_err": [None, 1.0],
-        "peakmag_err": [None, 1.5],
-    })
-    shown = filter_to_markers_and_error_bars(
-        dfpoints, axis, ("risetime_days", "risetime_days_err"), ("peakmag", "peakmag_err")
-    )
-    assert shown["dirbin"].to_list() == [-1]
 
 
 def test_lightcurve_tables_keep_two_models_of_one_name_apart(tmp_path: Path) -> None:

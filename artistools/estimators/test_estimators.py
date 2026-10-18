@@ -5926,53 +5926,6 @@ def test_estimator_print_data_gives_the_drawn_values(
     assert np.allclose(dfline["value"], dftable["value"], rtol=1e-6, atol=0)
     assert dfmarkertable.filter(pl.col("points") == "markers").height > dfline.height
 
-    # the table held the points below a ymin= directive, which the figure does not show
-    dfmarkers = dfmarkertable.filter(pl.col("points") == "markers")
-    ymin = float(np.median(dfmarkers["value"].to_numpy()))
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath_classic_3d,
-        outputfile=tmp_path,
-        timedays=5,
-        plotlist=[["Te", f"ymin={ymin}"]],
-        markers=True,
-        print_data=True,
-    )
-    output = capsys.readouterr().out
-    headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
-    dfclipped = pl.read_csv(
-        io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ", null_values="nan", comment_prefix="#"
-    )
-    dfclippedmarkers = dfclipped.filter(pl.col("points") == "markers")
-    assert dfclippedmarkers.height == (dfmarkers["value"] >= ymin).sum() < dfmarkers.height
-    # a point of the line below ymin stays only as the end of a segment that the axes show
-    clippedline = dfclipped.filter(pl.col("points") == "line")["value"].to_list()
-    assert all(
-        value >= ymin or max(clippedline[max(index - 1, 0) : index + 2]) >= ymin
-        for index, value in enumerate(clippedline)
-    )
-    assert len(clippedline) <= dfline.height
-
-
-def test_line_table_keeps_a_bin_whose_band_crosses_the_axes() -> None:
-    """The mean of a bin can be above the axes while the band of the cells of the bin is inside, and the row went."""
-    import matplotlib.figure as mplfig
-
-    from artistools.plottools import get_band_is_shown
-
-    axis = mplfig.Figure().add_subplot()
-    axis.set_xlim(0.0, 10.0)
-    axis.set_ylim(0.0, 1.0)
-    dfline = pl.DataFrame({
-        "velocity_kmps": [1.0, 2.0, 3.0],
-        "value": [2.0, 2.0, 2.0],
-        "value_min": [0.5, 1.5, 1.5],
-        "value_max": [3.0, 3.0, 3.0],
-    })
-    # the band of the first bin reaches into the axes, and so does the area from the first bin to the second
-    isshown = get_band_is_shown(axis, "velocity_kmps", pl.col("value_min"), pl.col("value_max"))
-    assert dfline.filter(isshown)["velocity_kmps"].to_list() == [1.0, 2.0]
-
 
 def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.CaptureFixture[str]) -> None:
     """A script or an agent needs the units of each column, and the listing for a reader gives them by family."""

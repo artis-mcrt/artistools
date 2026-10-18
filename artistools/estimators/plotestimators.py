@@ -108,11 +108,8 @@ from artistools.misc.remote import on_model_host
 from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
-from artistools.plottools import filter_to_axis_limits
-from artistools.plottools import get_band_is_shown
 from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
-from artistools.plottools import get_shown_on_axes
 from artistools.plottools import get_summary_table
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
@@ -2229,15 +2226,14 @@ def draw_line_figure(
 def make_figure(
     figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, frameset: "FrameSet | None" = None
 ) -> tuple[str, pl.DataFrame | None]:
-    """Draw the figure of the data, save it, and return the output filename and the table of the shown data.
+    """Draw the figure of the data, save it, and return the output filename and the table of the plotted data.
 
     A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
     and --open leave it alone. The caller opens the file that holds every frame. The table is None with no
     --print_data and no --write_data, because a table of many frames, cells, and markers costs time and memory.
     """
     fig = draw_figure_data(figuredata, args)
-    # the final limits of the axes exist only in the drawn figure, thus the table comes before the save
-    dftable = get_figure_table(figuredata, args, fig) if args.print_data or args.write_data else None
+    dftable = get_figure_table(figuredata, args) if args.print_data or args.write_data else None
     framefields = figuredata.framefields
     if isinstance(figuredata, ImageFigureData):
         assert frameset is not None
@@ -2263,34 +2259,26 @@ def make_figure(
     return outfilename, dftable
 
 
-def get_figure_table(
-    figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, fig: "mplfig.Figure"
-) -> pl.DataFrame:
-    """Return the table of the data that the drawn figure shows, for --print_data and --write_data."""
+def get_figure_table(figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace) -> pl.DataFrame:
+    """Return the table of the plotted data, for --print_data and --write_data."""
     if isinstance(figuredata, LineFigureData):
-        return get_line_figure_table(figuredata, args, fig.axes[: len(figuredata.subplots)])
+        return get_line_figure_table(figuredata, args)
     return get_image_figure_table(figuredata, args)
 
 
-def get_line_figure_table(
-    figuredata: LineFigureData, args: argparse.Namespace, axes: "Sequence[mplax.Axes]"
-) -> pl.DataFrame:
-    """Return one table of the shown points, with one row for each point of each series of each subplot.
+def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) -> pl.DataFrame:
+    """Return one table of the plotted points, with one row for each point of each series of each subplot.
 
-    The table leaves out a point outside the final limits of its axes, e.g. from a ymin= directive. A point of a line
-    stays if the axes can show a segment to it. The table _summary takes all the points of each series in the x range,
-    because a mean must not change with the y range of the figure.
-
-    A series with x bins gives the weighted mean of each bin and the range of the cells in the bin. A series with
-    -xbins 0 gives each point. The fields of the frame, e.g. the timestep, are columns, thus each row names its time.
-    The column "points" is "line" for a point of the line and "markers" for a point of --markers, because a series
-    with --markers draws both. The drawn line repeats its first and its last value at its ends, and the column
-    bin_centre is false for these repeated points.
+    The points are the points of each series in the x range of -xmin and -xmax. A series with x bins gives the
+    weighted mean of each bin and the range of the cells in the bin. A series with -xbins 0 gives each point. The
+    fields of the frame, e.g. the timestep, are columns, thus each row names its time. The column "points" is "line"
+    for a point of the line and "markers" for a point of --markers, because a series with --markers draws both. The
+    drawn line repeats its first and its last value at its ends, and the column bin_centre is false for these points.
     """
     xcolumn = get_table_xcolumn(args.x)
     startfromzero, xbinwidth = get_line_ends(figuredata, args)
     dfseriestables: list[pl.DataFrame] = []
-    for subplotindex, ((seriesdatas, _), axis) in enumerate(zip(figuredata.subplots, axes, strict=True)):
+    for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
         for series in seriesdatas:
             dfdrawn: list[tuple[str, pl.DataFrame]] = []
             if series.dflinepoints is not None:
@@ -2305,25 +2293,12 @@ def get_line_figure_table(
                         value_min=pl.col("yvalue_binned_min"),
                         value_max=pl.col("yvalue_binned_max"),
                         bin_centre=pl.col("bin_centre"),
-                    ).filter(
-                        get_shown_on_axes(axis, xcolumn, "value", linecolumns=[])
-                        # with no --markers, the plot also fills the range of the cells of each bin
-                        | (
-                            pl.lit(value=False)
-                            if args.markers
-                            else get_band_is_shown(axis, xcolumn, pl.col("value_min"), pl.col("value_max"))
-                        )
                     ),
                 ))
             if series.dfpoints is not None:
                 dfdrawn.append((
                     "markers",
-                    filter_to_axis_limits(
-                        series.dfpoints.select(pl.col("xvalue").alias(xcolumn), value=pl.col("yvalue")),
-                        axis,
-                        xcolumn,
-                        "value",
-                    ),
+                    series.dfpoints.select(pl.col("xvalue").alias(xcolumn), value=pl.col("yvalue")),
                 ))
             dfseriestables.extend(
                 dfpoints.select(

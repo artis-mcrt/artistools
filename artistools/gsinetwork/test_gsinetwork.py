@@ -188,7 +188,7 @@ def test_comparetogsinetwork_plots_the_global_qdot_with_no_cell(mockplot: mock.M
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_comparetogsinetwork_write_data_gives_the_drawn_series(mockplot: mock.MagicMock, tmp_path: Path) -> None:
-    """--write_data gives one row for each shown point of the Qdot figure and of the abundance figure of a cell.
+    """--write_data gives one row for each drawn point of the Qdot figure and of the abundance figure of a cell.
 
     The command had no data flags, and the rule of AGENTS.md gives them to each plot command.
     """
@@ -206,22 +206,19 @@ def test_comparetogsinetwork_write_data_gives_the_drawn_series(mockplot: mock.Ma
     def read_table(path: Path) -> pl.DataFrame:
         return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
 
-    # each heating rate of the test model is zero, which the log axis does not draw, thus the table gave no file
-    assert not (tmp_path / "gsinetwork_global-qdot.txt").exists()
+    # each heating rate of the test model is zero
+    assert (read_table(tmp_path / "gsinetwork_global-qdot.txt")["qdot_erg_per_s_per_g"] == 0.0).all()
     dfabund = read_table(tmp_path / f"gsinetwork_mgi{cell}-abundance.txt")
     drawncount = 0
     for callargs in mockplot.call_args_list:
-        axis, drawnx, drawny = callargs.args
+        _, drawnx, drawny = callargs.args
         if "dot{Q}" in callargs.kwargs["label"]:
-            assert not np.any(np.asarray(drawny) > 0.0)
             continue
-        xlow, xhigh = axis.get_xlim()
-        isvisible = (np.asarray(drawnx) >= xlow) & (np.asarray(drawnx) <= xhigh)
         # each series has its own rows, thus the rows of the series follow the order of the plot calls
-        dfseries = dfabund.slice(drawncount, int(isvisible.sum()))
-        assert np.allclose(dfseries["time_days"].to_numpy(), np.asarray(drawnx)[isvisible], rtol=1e-12, atol=0.0)
-        assert np.allclose(dfseries["massfraction"].to_numpy(), np.asarray(drawny)[isvisible], rtol=1e-12, atol=0.0)
-        drawncount += int(isvisible.sum())
+        dfseries = dfabund.slice(drawncount, len(drawnx))
+        assert np.allclose(dfseries["time_days"].to_numpy(), np.asarray(drawnx), rtol=1e-12, atol=0.0)
+        assert np.allclose(dfseries["massfraction"].to_numpy(), np.asarray(drawny), rtol=1e-12, atol=0.0)
+        drawncount += len(drawnx)
     assert drawncount == dfabund.height > 0
     assert set(dfabund["series"]) <= {"Fe", "Ni56"}
     assert set(dfabund["source"]) == {"ARTIS"}

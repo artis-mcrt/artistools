@@ -27,11 +27,11 @@ from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
+from artistools.misc import is_in_range
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import trim_or_pad
-from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -258,16 +258,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[0].set_ylim(bottom=0.0)
     axes[1].set_ylim(bottom=0.0)
 
-    # the axes show the velocities of xlimits, and a line keeps the end of each segment that crosses an edge
-    valuecolumns = {"": ("mass_enclosed_msun", axes[0]), "_massprofile": ("dmass_dv_msun_per_c", axes[1])}
+    # the bins cover the whole model, thus the tables take the velocities of -xmin and -xmax here
     output_data(
         args,
         {
-            suffix: dftable
-            if dftable.is_empty()
-            else filter_to_axis_limits(
-                dftable, valuecolumns[suffix][1], "vel_r_on_c", valuecolumns[suffix][0], linecolumns=["modelpath"]
-            )
+            suffix: dftable.filter(is_in_range("vel_r_on_c", args.xmin, args.xmax))
+            if not dftable.is_empty()
+            else dftable
             for suffix, dftable in tables.items()
         },
         args.outputfile,

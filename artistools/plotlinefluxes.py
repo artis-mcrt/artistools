@@ -43,6 +43,7 @@ from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
+from artistools.misc import is_in_range
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -55,7 +56,6 @@ from artistools.misc.general import get_bin_index_expr
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import get_packets
-from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
@@ -520,10 +520,6 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     return get_comparison_table("Flörs W7", dfmodel["epoch"].to_list(), dfmodel["NIR_VIS_ratio"].to_list())
 
 
-# the comparison series that the plot draws as markers with no line, e.g. the models of Flörs et al. (2020)
-MARKERCOMPARISONS: t.Final = frozenset({"Flörs W7"})
-
-
 def get_comparison_table(series: str, time_days: Sequence[float], fratios: Sequence[float]) -> pl.DataFrame:
     """Return the points of one comparison series of the line ratio plot, e.g. a fit of observations."""
     return pl.DataFrame(
@@ -546,7 +542,6 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     tmin = math.inf
     tmax = -math.inf
     plotteddata: list[pl.DataFrame] = []
-    plottedisline: list[bool] = []
     dfcomparisons: list[pl.DataFrame] = []
     tablemodelnames: set[str] = set()
 
@@ -608,10 +603,6 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         plotteddata.append(
             dflcdata.select("time", fratio=pl.col("fratio")).rename({"fratio": f"fratio_{tablemodelname}"})
         )
-        # matplotlib draws a line between the points if the line has a width and a style, e.g. -linewidth alone
-        plottedisline.append(
-            float(plotkwargs.get("lw", 0.0)) > 0.0 and plotkwargs.get("linestyle", "-") not in {"None", "none", "", " "}
-        )
 
         tmin = min(tmin, dflcdata.select(pl.col("time").min()).item())
         tmax = max(tmax, dflcdata.select(pl.col("time").max()).item())
@@ -649,29 +640,14 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     args.outputfile = resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
     if plotteddata and (args.print_data or args.write_data):
-        # a fit or an observation has its own times, thus the comparison series go in a second table. Each series
-        # keeps the points that the final axes show, e.g. inside -ymin and the fixed range of a pair of features
-        dfshownmodels = [
-            filter_to_axis_limits(
-                dfmodel, axis, "time", dfmodel.columns[-1], linecolumns=[] if isline else None
-            ).filter(pl.col(dfmodel.columns[-1]).is_not_null())
-            for dfmodel, isline in zip(plotteddata, plottedisline, strict=True)
-        ]
-        dfshowncomparisons = [
-            filter_to_axis_limits(
-                dfseries, axis, "time", "fratio", linecolumns=None if series in MARKERCOMPARISONS else []
-            )
-            for (series,), dfseries in (
-                pl.concat(dfcomparisons).partition_by("series", maintain_order=True, as_dict=True).items()
-                if dfcomparisons
-                else []
-            )
-        ]
+        # a fit or an observation has its own times, thus the comparison series go in a second table. Both tables
+        # take the times of -xmin and -xmax
+        intimerange = is_in_range("time", args.xmin, args.xmax)
         output_data(
             args,
             {
-                "": get_plotted_data_table(dfshownmodels),
-                "_comparisons": pl.concat(dfshowncomparisons) if dfshowncomparisons else pl.DataFrame(),
+                "": get_plotted_data_table(plotteddata).filter(intimerange),
+                "_comparisons": pl.concat(dfcomparisons).filter(intimerange) if dfcomparisons else pl.DataFrame(),
             },
             args.outputfile,
         )
@@ -884,18 +860,6 @@ def get_emitting_region_table(
     )
 
 
-def get_shown_emitting_region_rows(dfpoints: Sequence[pl.DataFrame], axis: mplax.Axes) -> pl.DataFrame:
-    """Return the packets and the points of the reference curves that the final limits of the axes show."""
-    if not dfpoints:
-        return pl.DataFrame()
-    dfall = pl.concat(dfpoints)
-    isreference = pl.col("feature") == "reference"
-    return pl.concat([
-        filter_to_axis_limits(dfall.filter(isreference), axis, "log10nne", "Te", linecolumns=["label"]),
-        filter_to_axis_limits(dfall.filter(~isreference), axis, "log10nne", "Te"),
-    ])
-
-
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     """Plot the electron density and the temperature of the cells that emit each feature, and save the figure.
 
@@ -1007,7 +971,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         # would replace the one before it
         if len(times_days) > 1 and "{timeavg" not in str(args.outputfile):
             outputfile = outputfile.with_stem(f"{outputfile.stem}_{tmid:.{ndecimals}f}d")
-        output_data(args, {"": get_shown_emitting_region_rows(dfpoints, axis)}, outputfile)
+        output_data(args, {"": pl.concat(dfpoints) if dfpoints else pl.DataFrame()}, outputfile)
         save_figure(fig, outputfile, args=args)
 
 
