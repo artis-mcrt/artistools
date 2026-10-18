@@ -217,6 +217,14 @@ else:
 
 Question: at which velocities do the packets of a spectral feature last interact, and which lines emit them?
 
+- `artistools plotlastpacketinteraction -modelpath <modelpath> -t <days> -groupby line -wavelen <Å> -binwidth <Å>`
+  plots the luminosity of each line of the last emission against the radial velocity of the last interaction.
+  `-groupby ion` and `-groupby element` give larger groups. `--absorption` selects the packets by the wavelength of
+  their last absorption. It also groups them by the element, the ion, or the line of that absorption. `--print_data` gives the values and the number of
+  packets in each bin.
+- `artistools plotlinecontributions -t <days> -lambdamin <Å> -lambdamax <Å> <modelpath>` plots the Sobolev emission
+  and the mean tau_sobolev of the strongest lines against velocity, from the level populations. `-rankby tau` selects
+  the lines with the largest tau_sobolev, e.g. for an absorption trough.
 - `em_posx`, `em_posy`, `em_posz`, and `em_time` give the place and the time of the last emission or scattering of a
   packet. `at.packets.get_emission_velocity_expr("em")` gives its radial velocity.
 - An `emissiontype` of 0 or more is the row of the line in `linelist.out`. Thus the packets of a line feature show

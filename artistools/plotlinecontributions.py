@@ -1,4 +1,4 @@
-"""Plot the Sobolev emission and the optical depth of the strongest lines in a wavelength range, against velocity."""
+"""Plot the Sobolev emission and the Sobolev optical depth of the strongest lines in a range, against velocity."""
 
 import argparse
 import typing as t
@@ -44,8 +44,8 @@ if t.TYPE_CHECKING:
 
 DEFAULTOUTPUTNAME = "plotlinecontributions.pdf"
 
-# a line with a tau_sobolev far below 1 has no effect on the spectrum, and a log axis down to such values hides the
-# range near 1
+# a line with a tau_sobolev far below 1 has no effect on the spectrum. A log axis down to such values makes the
+# range near 1 too small to read
 TAUAXISMIN = 1e-3
 
 
@@ -129,7 +129,7 @@ def plot_line_profiles(
     axes[1].set_yscale("log")
     if drawntau and np.nanmin(np.concatenate(drawntau), initial=np.inf) < TAUAXISMIN:
         axes[1].set_ylim(bottom=TAUAXISMIN)
-        print_detail(f"The lower panel does not show a tau_sobolev below {TAUAXISMIN:g}")
+        print_detail(f"The lower panel shows only a tau_sobolev of {TAUAXISMIN:g} or more")
     axes[0].set_ylim(bottom=0.0)
     axes[0].set_xlim(edges[0], edges[-1])
 
@@ -150,7 +150,8 @@ def print_ranked_lines(dfranked: pl.DataFrame, rankby: str) -> None:
     """Print the emission fraction, the mean velocity of the emission, and the maximum tau_sobolev of each line."""
     rankedby = "the most emission" if rankby == "emission" else "the largest tau_sobolev in a cell"
     print_detail(
-        f"The {dfranked.height} lines with {rankedby}. The mean velocity takes the emission of each cell as the weight:"
+        f"These are the {dfranked.height} lines with {rankedby}. The mean velocity takes the emission of each cell"
+        " as the weight:"
     )
     for row in dfranked.iter_rows(named=True):
         meanvelocity = row["velocity_kmps_emission_mean"]
@@ -191,7 +192,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " find the lines of an absorption feature"
         ),
     )
-    parser.add_argument("-nvelocitybins", type=int, default=25, help="Number of equal velocity bins")
+    parser.add_argument("-nvelocitybins", type=int, default=25, help="Number of velocity bins of equal width")
     parser.add_argument(
         "-velocitymax", type=float, help="Upper edge of the velocity bins in km/s. Default: the vmax of the model"
     )
@@ -204,7 +205,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot the Sobolev emission and the optical depth of the strongest lines against velocity."""
+    """Plot the Sobolev emission and the Sobolev optical depth of the strongest lines against velocity."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
         exit_with_error("give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
@@ -229,9 +230,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         f" km/s ({upperedgesource}). Each cell goes in the bin of the radial velocity of its centre"
     )
     print_detail(
-        "The upper panel gives the emission of the cells in each bin, divided by the width of the bin and by the"
-        " emission of the line in all the cells. The legend gives the fraction of the emission of all the lines. The"
-        " lower panel gives the mean tau_sobolev of the cells in each bin, with the volume of each cell as the weight"
+        "The upper panel gives the emission of the cells in each bin, divided by the width of the bin. The panel also"
+        " divides it by the emission of the line in all the cells. The legend gives the fraction of the emission of"
+        " all the lines. The lower panel gives the mean tau_sobolev of the cells in each bin, with the volume of each"
+        " cell as the weight"
     )
     totalemission = float(dfsummary["emission_erg_per_s"].sum())
     if totalemission > 0.0:

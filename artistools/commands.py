@@ -451,8 +451,19 @@ subcommandtree: CommandTree = {
     "plotlastpacketinteraction": CommandSpec(
         "packets.plotlastpacketinteraction",
         helptext="Plot the last interaction of a packet.",
-        note="The plot gives the properties of that interaction against the velocity of the ejecta.",
-        examples=(("-modelpath . -t 300", "the last interactions of the packets that arrive at 300 days"),),
+        note=(
+            "The plot gives the properties of that interaction against the velocity of the ejecta. -groupby gives the"
+            " luminosity of each element, ion, or line against the velocity, and plotlinecontributions gives the same"
+            " view from the level populations."
+        ),
+        examples=(
+            ("-modelpath . -t 7", "the last interactions of the packets that arrive at 7 days"),
+            (
+                "-modelpath . -t 7 -groupby ion -wavelen 4000 -binwidth 1000",
+                "the luminosity of each ion against the velocity, for the packets from 3500 to 4500 Å",
+            ),
+        ),
+        exampletestfolder="test-classicmode_3d",
     ),
     "plotlightcurves": CommandSpec(
         "lightcurve.plotlightcurve",
@@ -463,7 +474,7 @@ subcommandtree: CommandTree = {
     ),
     "plotlinecontributions": CommandSpec(
         "plotlinecontributions",
-        helptext="Plot the Sobolev emission and the optical depth of the strongest lines against velocity.",
+        helptext="Plot the Sobolev emission and the Sobolev optical depth of the strongest lines against velocity.",
         note=(
             "The values come from the estimators and the level populations, as in linecontributions."
             " plotlastpacketinteraction -groupby gives the same view from the packets."
@@ -475,7 +486,7 @@ subcommandtree: CommandTree = {
             ),
             (
                 ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau",
-                "where the lines with the largest optical depth from 6000 to 6400 Å form",
+                "where the lines with the largest tau_sobolev from 6000 to 6400 Å form at 7 days",
             ),
         ),
         exampletestfolder="test-classicmode_3d",

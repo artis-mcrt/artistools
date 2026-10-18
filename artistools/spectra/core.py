@@ -1641,6 +1641,72 @@ def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str,
     )
 
 
+def get_emission_type_labels(
+    modelpath: Path | str, typecodes: pl.Series, dflines: pl.DataFrame, groupby: str, emtypecolumn: str
+) -> pl.DataFrame:
+    """Return the label of each emission type code in typecodes, in the column emissiontype_str.
+
+    The dflines parameter comes from get_linelist_label_columns(). emtypecolumn names the column of the codes, e.g.
+    emissiontype, trueemissiontype, or pellet_nucindex. A code with no label is not in the frame.
+    """
+    if groupby == "nuc":
+        emtypelabels = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
+    elif groupby == "nucmass":
+        emtypelabels = get_nuclides(modelpath=modelpath).with_columns(
+            (pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))).alias(
+                "emissiontype_str"
+            )
+        )
+    elif emtypecolumn == "pellet_nucindex":
+        # the nuclide table gives "initial energy" as the element of the initial energy
+        emtypelabels = get_nuclides(modelpath=modelpath).rename({"elsymbol": "emissiontype_str"})
+    else:
+        bflabels = {
+            "element": pl.col("elsymbol") + " bound-free",
+            "ion": pl.col("ion_str") + " bound-free",
+            "line": pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel")),
+        }
+        bflist = get_bflist(modelpath)
+        if groupby == "element":
+            bflist = bflist.join(get_elsymbols_df(), on="atomic_number", how="left", maintain_order="left")
+
+        emtypelabels = pl.concat([
+            get_line_labels(dflines, typecodes, groupby, "emissiontype_str"),
+            pl.LazyFrame(
+                {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
+                schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
+                orient="col",
+            ),
+            bflist.select(
+                (-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn), bflabels[groupby].alias("emissiontype_str")
+            ),
+        ])
+
+    # Select only the key column and the label column. The nuclide table has more columns, and the join must
+    # not add them.
+    return emtypelabels.select(emtypecolumn, "emissiontype_str").collect()
+
+
+def get_absorption_type_labels(typecodes: pl.Series, dflines: pl.DataFrame, groupby: str) -> pl.DataFrame:
+    """Return the label of each absorption type code in typecodes, in the column absorptiontype_str.
+
+    A line absorption takes the label of its line, ion, or element. An absorption in an expansion opacity has no line
+    index, thus it has no element and no ion. A code of a continuum absorption has no label, and it is not in the
+    frame.
+    """
+    return pl.concat([
+        get_line_labels(dflines, typecodes, groupby, "absorptiontype_str"),
+        pl.LazyFrame(
+            {
+                "absorption_type": [ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY],
+                "absorptiontype_str": ["bound-bound (expansion opacity)"],
+            },
+            schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
+            orient="col",
+        ),
+    ]).collect()
+
+
 # the packet column of the last interaction and of the last thermal emission for each shell grouping
 SHELLCOLUMNS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
     "velocity": ("emission_velocity", "true_emission_velocity"),
@@ -2267,48 +2333,6 @@ def get_flux_contributions_from_packets(
             spectra[str(label)] = spectrum
         return spectra
 
-    def get_emission_labels(typecodes: pl.Series, linelist: pl.DataFrame) -> pl.DataFrame:
-        """Return the label of each emission type code, for the codes in typecodes."""
-        if groupby == "nuc":
-            emtypelabels = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
-        elif groupby == "nucmass":
-            emtypelabels = get_nuclides(modelpath=modelpath).with_columns(
-                (
-                    pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))
-                ).alias("emissiontype_str")
-            )
-        elif emtypecolumn == "pellet_nucindex":
-            # the nuclide table gives "initial energy" as the element of the initial energy
-            emtypelabels = get_nuclides(modelpath=modelpath).rename({"elsymbol": "emissiontype_str"})
-        else:
-            bflabels = {
-                "element": pl.col("elsymbol") + " bound-free",
-                "ion": pl.col("ion_str") + " bound-free",
-                "line": pl.format(
-                    "{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel")
-                ),
-            }
-            bflist = get_bflist(modelpath)
-            if groupby == "element":
-                bflist = bflist.join(get_elsymbols_df(), on="atomic_number", how="left", maintain_order="left")
-
-            emtypelabels = pl.concat([
-                get_line_labels(linelist, typecodes, groupby, "emissiontype_str"),
-                pl.LazyFrame(
-                    {emtypecolumn: [-9999999, -9999000], "emissiontype_str": ["free-free", "NOT SET"]},
-                    schema={emtypecolumn: pl.Int32, "emissiontype_str": pl.String},
-                    orient="col",
-                ),
-                bflist.select(
-                    (-1 - pl.col("bfindex").cast(pl.Int32)).alias(emtypecolumn),
-                    bflabels[groupby].alias("emissiontype_str"),
-                ),
-            ])
-
-        # Select only the key column and the label column. The nuclide table has more columns, and the join must
-        # not add them.
-        return emtypelabels.select(emtypecolumn, "emissiontype_str").collect()
-
     # the exclusion removes whole packets, thus the absorption of an excluded packet also leaves the plot
     if (
         getemission
@@ -2334,7 +2358,9 @@ def get_flux_contributions_from_packets(
             keptlabel = ((label == elsymb) | label.str.starts_with(f"{elsymb} ")).not_()
         if keptlabel is not None:
             # the filter drops a code with no label, as the filter of the labelled packets did
-            keptcodes = get_emission_labels(dfpackets[emtypecolumn], dflines).filter(keptlabel)[emtypecolumn]
+            keptcodes = get_emission_type_labels(
+                modelpath, dfpackets[emtypecolumn], dflines, groupby, emtypecolumn
+            ).filter(keptlabel)[emtypecolumn]
             dfpackets = dfpackets.filter(pl.col(emtypecolumn).is_in(keptcodes.implode()))
 
     # a shell index comes from the position of each packet, thus the index is the type of the packet
@@ -2359,25 +2385,14 @@ def get_flux_contributions_from_packets(
     # The code adds the labels after it bins the packets. Thus it finds a label only for a code that a packet uses.
     if dfemission is not None and groupby not in SHELLCOLUMNS:
         dfemission = dfemission.join(
-            get_emission_labels(dfemission[emtypecolumn], dflines), on=emtypecolumn, how="left"
+            get_emission_type_labels(modelpath, dfemission[emtypecolumn], dflines, groupby, emtypecolumn),
+            on=emtypecolumn,
+            how="left",
         ).drop(emtypecolumn)
 
     if dfabsorption is not None and groupby not in SHELLCOLUMNS:
-        # an absorption in an expansion opacity has no line index, thus it has no element and no ion
-        abstypelabels = pl.concat([
-            get_line_labels(dflines, dfabsorption["absorption_type"], groupby, "absorptiontype_str"),
-            pl.LazyFrame(
-                {
-                    "absorption_type": [ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY],
-                    "absorptiontype_str": ["bound-bound (expansion opacity)"],
-                },
-                schema={"absorption_type": pl.Int32, "absorptiontype_str": pl.String},
-                orient="col",
-            ),
-        ])
-        dfabsorption = dfabsorption.join(abstypelabels.collect(), on="absorption_type", how="left").drop(
-            "absorption_type"
-        )
+        abstypelabels = get_absorption_type_labels(dfabsorption["absorption_type"], dflines, groupby)
+        dfabsorption = dfabsorption.join(abstypelabels, on="absorption_type", how="left").drop("absorption_type")
 
     labelframes = {
         kind: sum_by_label(dfbinned, labelcolumn)

@@ -587,6 +587,66 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
     assert heatmap[0, 25] > 0.0
 
 
+@pytest.mark.parametrize("absorption", [False, True])
+def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_each_velocity_bin(
+    tmp_path: Path, absorption: bool
+) -> None:
+    """The group of a packet comes from its emission type, or with --absorption, from its absorption type.
+
+    The groups after -maxseriescount and the codes with no line join Other, and a packet above the bins is in no bin.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    tdays = 7.0
+    timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    delta_t_s = (at.get_timestep_times(modelpath, loc="end")[timestep] - t_start) * at.constants.day_to_s
+    emtime_s = 6.0 * at.constants.day_to_s
+    # rows 0 and 3 of the linelist are lines of Fe IV and Ni IV, and the last code is a free-free emission
+    typecodes = [0, 0, 0, 0, 3, -9999999]
+    velocities_kmps = [2000.0, 3000.0, 7000.0, 12000.0, 7000.0, 7000.0]
+    energies = [2e40, 2e40, 2e40, 2e40, 1e40, 0.5e40]
+    othertypecodes = [957] * len(typecodes)
+    dfpackets = pl.DataFrame({
+        "t_arrive_d": [t_start] * len(typecodes),
+        "e_rf": energies,
+        "emissiontype": othertypecodes if absorption else typecodes,
+        "absorption_type": typecodes if absorption else othertypecodes,
+        "em_posx": [velocity * at.constants.km_to_cm * emtime_s for velocity in velocities_kmps],
+        "em_posy": [0.0] * len(typecodes),
+        "em_posz": [0.0] * len(typecodes),
+        "em_time": [emtime_s] * len(typecodes),
+    })
+
+    with mock.patch.object(
+        plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
+    ):
+        plotlastpacketinteraction.main(
+            argsraw=[],
+            modelpath=modelpath,
+            timedays=tdays,
+            groupby="ion",
+            absorption=absorption,
+            maxseriescount=1,
+            nvelocitybins=2,
+            velocitymax=10000.0,
+            outputfile=tmp_path / "profile.pdf",
+            write_data=True,
+        )
+
+    dftable = pl.read_csv(tmp_path / "profile.txt", separator=" ", null_values="nan", comment_prefix="#")
+    luminosities = {
+        (label, xlower): luminosity
+        for label, xlower, luminosity in dftable.select("label", "x_lower_kmps", "luminosity_erg_per_s").iter_rows()
+    }
+    # an absorption has no free-free label, thus its code joins Other as a code with no line
+    expected = {("Fe IV", 0.0): 4e40, ("Fe IV", 5000.0): 2e40, ("Other", 0.0): 0.0, ("Other", 5000.0): 1.5e40}
+    assert luminosities.keys() == expected.keys()
+    for key, energy in expected.items():
+        assert np.isclose(luminosities[key], energy / delta_t_s, rtol=1e-6, atol=0.0), key
+
+
 def test_a_position_outside_the_grid_gets_no_cell() -> None:
     """A packet outside the 3D grid must get no cell, and a packet inside must get its own cell.
 

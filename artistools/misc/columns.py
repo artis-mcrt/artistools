@@ -143,8 +143,13 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("timemax_days", "the end of the range of arrival times of the map", "days"),
     (
         "luminosity_erg_per_s",
-        "the isotropic-equivalent luminosity in the observer frame, of a pixel of a map or of the drawn spectrum",
+        "the isotropic-equivalent luminosity in the observer frame of a map pixel, the spectrum, or a velocity bin",
         "erg/s",
+    ),
+    (
+        "luminosity_per_velocity_erg_per_s_per_kmps",
+        "the isotropic-equivalent luminosity of the packets of the velocity bin, divided by the width of the bin",
+        "erg/s/(km/s)",
     ),
     ("emvelocityoverc", "the energy-weighted mean speed of the packets at their last interaction", "c"),
     ("emvelocityoverc_sigma", "the energy-weighted standard deviation of the speed at the last interaction", "c"),
@@ -287,7 +292,10 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ),
     (
         "emission_fraction_per_kmps",
-        "the emission of the line in the velocity bin, divided by the width of the bin and the emission in all cells",
+        (
+            "the emission of the line in the velocity bin, divided by the width of the bin and by the emission in all"
+            " the cells"
+        ),
         "(km/s)^-1",
     ),
     (
@@ -295,7 +303,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "the mean tau_sobolev of the cells in the velocity bin, with the volume as the weight",
         "",
     ),
-    ("cellcount", "the number of cells in the velocity bin", ""),
+    ("cellcount", "the number of cells of the row, e.g. of a velocity bin", ""),
     # the logs of ARTIS
     ("mpirank", "the index of the MPI rank", ""),
     ("update_grid_s", "the time that the MPI rank took to update the grid in the timestep", "s"),

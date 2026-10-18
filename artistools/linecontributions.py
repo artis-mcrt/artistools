@@ -588,7 +588,7 @@ def get_line_contributions(
 
 
 def get_velocity_bin_edges_kmps(modelpath: Path | str, nbins: int, velocitymax_kmps: float | None) -> list[float]:
-    """Return the edges [km/s] of nbins equal bins from zero to velocitymax_kmps, or to the vmax of the model."""
+    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax_kmps or to the model vmax."""
     if velocitymax_kmps is None:
         _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
         velocitymax_kmps = modelmeta["vmax_cmps"] / km_to_cm
