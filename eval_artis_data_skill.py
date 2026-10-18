@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Ask a Claude Code agent questions about the test models, and compare each answer with the value from artistools.
+"""Ask a Claude Code or a Codex agent questions about the test models, and compare each answer with artistools.
 
 The script measures how well the artis-data skill lets an agent answer a question about a model. artistools
 calculates the expected answer of each question when the script runs. The agent must end its reply with a line
 "ANSWER: <value>". The script copies the test models into a temporary folder, thus the agent cannot change the files
-of the repository. Each question starts a new session of `claude -p`, which needs a login (`claude auth login`) and
-costs tokens.
+of the repository. Each question starts a new session of `claude -p` or `codex exec`. Each needs a login
+(`claude auth login` or `codex login`) and costs tokens.
 
 Run it from the repository root after `source ./setuptestdata.sh` in tests/data:
 
     uv run -- python eval_artis_data_skill.py
     uv run -- python eval_artis_data_skill.py -questions peaktime fe2fraction -model sonnet
+    uv run -- python eval_artis_data_skill.py -agent codex
 """
 
 import argparse
@@ -277,7 +278,43 @@ def answer_is_correct(answer: str, expected: float | str, rtol: float) -> bool:
     return len(numbers) == 1 and bool(np.isclose(float(numbers[0]), expected, rtol=rtol, atol=0.0))
 
 
-def ask_agent(question: Question, workfolder: Path, model: str | None, env: dict[str, str]) -> dict[str, t.Any]:
+def ask_codex(question: Question, workfolder: Path, model: str | None, env: dict[str, str]) -> dict[str, t.Any]:
+    """Run one session of `codex exec` in the work folder and return a result in the form of ask_claude.
+
+    codex exec writes its last message to the file of -o, and the JSON events give the number of tokens. The sandbox
+    lets the agent write in the work folder alone, e.g. a cache of a model.
+    """
+    lastmessagefile = workfolder / ".codex_last_message.txt"
+    command = [
+        *("codex", "exec", "--json", "--skip-git-repo-check", "--ephemeral", "--sandbox", "workspace-write"),
+        *("--output-last-message", str(lastmessagefile)),
+        *(("--model", model) if model else ()),
+        f"{question.text} {ANSWERINSTRUCTION}",
+    ]
+    # the command is the codex CLI with the fixed text of a question of this script, and no shell. codex exec reads
+    # stdin when it is open, thus the command gets none, or it waits
+    completed = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        command, cwd=workfolder, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False
+    )
+    events = []
+    for line in completed.stdout.splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    reply = lastmessagefile.read_text(encoding="utf-8") if lastmessagefile.is_file() else ""
+    lastmessagefile.unlink(missing_ok=True)
+    usage = [event.get("usage", {}) for event in events if event.get("type") == "turn.completed"]
+    return {
+        "is_error": completed.returncode != 0 or not reply,
+        "result": reply or completed.stdout[-2000:] + completed.stderr[-2000:],
+        "num_turns": sum(1 for event in events if event.get("type") == "item.completed"),
+        "total_cost_usd": None,
+        "tokens": sum(int(turn.get("input_tokens", 0)) + int(turn.get("output_tokens", 0)) for turn in usage),
+    }
+
+
+def ask_claude(question: Question, workfolder: Path, model: str | None, env: dict[str, str]) -> dict[str, t.Any]:
     """Run one session of `claude -p` in the work folder and return its JSON result."""
     command = [
         *("claude", "-p", f"{question.text} {ANSWERINSTRUCTION}"),
@@ -296,16 +333,17 @@ def ask_agent(question: Question, workfolder: Path, model: str | None, env: dict
 
 
 def make_workfolder(folder: Path, modelnames: set[str]) -> None:
-    """Copy the test models and give the folder a link to the skill of this checkout."""
+    """Copy the test models and give the folder a link to the skill of this checkout for each agent."""
     for modelname in sorted(modelnames):
         modelpath = at.get_path("testdata") / modelname
         if not modelpath.is_dir():
             msg = f"{modelpath} does not exist. Run setuptestdata.sh in tests/data"
             raise FileNotFoundError(msg)
         shutil.copytree(modelpath, folder / modelname)
-    skillsdir = folder / ".claude" / "skills"
-    skillsdir.mkdir(parents=True)
-    (skillsdir / "artis-data").symlink_to(get_skill_folder().resolve(), target_is_directory=True)
+    # Claude Code reads .claude/skills, and Codex reads .agents/skills
+    for skillsdir in (folder / ".claude" / "skills", folder / ".agents" / "skills"):
+        skillsdir.mkdir(parents=True)
+        (skillsdir / "artis-data").symlink_to(get_skill_folder().resolve(), target_is_directory=True)
 
 
 def get_agent_environment() -> dict[str, str]:
@@ -332,7 +370,12 @@ def main() -> None:
         choices=[question.name for question in QUESTIONS],
         help="The names of the questions to ask. The default is all the questions",
     )
-    parser.add_argument("-model", help="The model of the agent, e.g. sonnet. The default is the model of claude")
+    parser.add_argument(
+        "-agent", choices=["claude", "codex"], default="claude", help="The agent that answers the questions"
+    )
+    parser.add_argument(
+        "-model", help="The model of the agent, e.g. sonnet. The default is the model of the claude or codex command"
+    )
     args = parser.parse_args()
     questions = [question for question in QUESTIONS if args.questions is None or question.name in args.questions]
 
@@ -343,7 +386,8 @@ def main() -> None:
         env = get_agent_environment()
         for question in questions:
             expected = question.get_expected(workfolder / question.modelname)
-            result = ask_agent(question, workfolder, args.model, env)
+            askagent = ask_codex if args.agent == "codex" else ask_claude
+            result = askagent(question, workfolder, args.model, env)
             reply = str(result.get("result", ""))
             answers = RE_ANSWER.findall(reply)
             answer = answers[-1] if answers else ""
@@ -358,6 +402,7 @@ def main() -> None:
                 "answer": answer,
                 "turns": result.get("num_turns"),
                 "cost_usd": result.get("total_cost_usd"),
+                "tokens": result.get("tokens"),
             })
 
     dfresults = pl.DataFrame(rows)

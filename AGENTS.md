@@ -271,6 +271,7 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
 ## Repository rules
 
 - The file `pyproject.toml` holds all the tool configuration. Do not add a configuration file for one tool. Do not add an inline setting that repeats a value from `pyproject.toml`.
+- Claude Code and Codex use one set of agent files in `.claude`: the hooks, the skill link, and the reviewer. `.codex/hooks.json` and `.agents/skills/artis-data` are links to these files, and `.codex/agents/ste-style-reviewer.toml` points to the reviewer. Change the files in `.claude` only. Keep `.claude/settings.json` to the keys `hooks` and `description`, because Codex rejects a different key and then runs no hook. A hook reads the edited files with `.claude/hooks/get-edited-files.sh`, because Codex gives the text of a patch and not a file path. Codex runs the project hooks only after the user trusts them.
 - Add a dependency only if it is necessary. Put a run-time dependency in `[project.dependencies]`. Put a large optional dependency in `[project.optional-dependencies].extras`. Put a tool in `[dependency-groups].dev`. Then run `uv lock` and commit `uv.lock`.
 - Do not commit a plot file or a file larger than 1 MB. The pre-commit hook rejects a larger
   file. Simulation output below that limit is permitted, e.g. the small test models in `tests/data`.

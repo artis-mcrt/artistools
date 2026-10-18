@@ -4745,6 +4745,51 @@ def test_installskill_makes_no_link_into_the_uv_cache(tmp_path: Path, monkeypatc
     assert not (tmp_path / "skills" / "artis-data").is_symlink()
 
 
+def test_codex_finds_the_claude_setup() -> None:
+    """Codex reads the skill, the hooks, and the reviewer of Claude Code through links and one small file.
+
+    Codex rejects a key of hooks.json other than description and hooks, e.g. the attribution of Claude Code, and it
+    then runs no hook.
+    """
+    import json
+    import shutil
+    import subprocess
+    import tomllib
+
+    repo = Path(at.__file__).resolve().parent.parent
+    assert (repo / ".agents" / "skills" / "artis-data").resolve() == at.get_path(
+        "artistools_dir"
+    ) / "data" / "skills" / "artis-data"
+    assert (repo / ".codex" / "hooks.json").resolve() == (repo / ".claude" / "settings.json").resolve()
+    settings = json.loads((repo / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    assert set(settings) <= {"description", "hooks"}
+    # Codex sets no CLAUDE_PROJECT_DIR, thus each command finds the root of the checkout with git
+    commands = [hook["command"] for groups in settings["hooks"].values() for group in groups for hook in group["hooks"]]
+    assert all(command.startswith('"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"/') for command in commands)
+
+    agentrole = tomllib.loads((repo / ".codex" / "agents" / "ste-style-reviewer.toml").read_text(encoding="utf-8"))
+    agentmd = (repo / ".claude" / "agents" / "ste-style-reviewer.md").read_text(encoding="utf-8")
+    descriptionline = next(line for line in agentmd.splitlines() if line.startswith("description: "))
+    assert agentrole["description"] == descriptionline.removeprefix("description: ")
+
+    # Codex edits with apply_patch, and the hooks read the files from the text of the patch
+    if shutil.which("jq") is None:
+        pytest.skip("the hooks need jq")
+    hookinput = json.dumps({
+        "cwd": "/repo",
+        "tool_input": {"command": "*** Begin Patch\n*** Update File: a.py\n*** Update File: b.py\n*** Move to: c.py\n"},
+    })
+    # the command is a script of this repository with a fixed input, and no shell
+    completed = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+        [repo / ".claude" / "hooks" / "get-edited-files.sh"],
+        input=hookinput,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert completed.stdout.splitlines() == ["/repo/a.py", "/repo/b.py", "/repo/c.py"]
+
+
 def test_artis_data_skill_names_each_function_that_exists() -> None:
     """A rename needs no shim in artistools, thus a stale name in the skill gives an agent an error and no warning."""
     from artistools.installskill import get_skill_folder

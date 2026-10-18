@@ -6,12 +6,8 @@
 
 set -u
 
-filepath="$(jq -r '.tool_input.file_path // empty' 2>/dev/null)"
-
-case "$filepath" in
-    */uv.lock | uv.lock) ;;
-    *) exit 0 ;;
-esac
+# Claude Code and Codex both run this hook, see get-edited-files.sh
+"$(dirname -- "$0")/get-edited-files.sh" | grep -q '/uv\.lock$' || exit 0
 
 cat >&2 <<'MSG'
 Do not change uv.lock by hand. `uv lock` writes this file, and CI runs
