@@ -33,6 +33,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc.cliutils import get_provenance_lines
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_text_file_atomic
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
@@ -377,13 +378,25 @@ def get_report_files_in_folder(reportfolder: Path) -> list[str]:
     return sorted({path.name for pattern in patterns for path in reportfolder.glob(pattern)})
 
 
+def get_remote_model_folder_from_text(modelpath: Path) -> Path:
+    """Return the model folder of a remote model path from its text alone, with no question to the host.
+
+    A model path can name a file of the model folder, e.g. host:~/models/foo/light_curve.out. An output file of ARTIS
+    ends with .out, possibly with a compressed extension, and an input file of a model ends with .txt.
+    """
+    name = without_compressed_extension(modelpath).name
+    return modelpath.parent if name.endswith((".out", ".txt")) else modelpath
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make an HTML page with the summary, the health check, the log summary, and standard figures of a model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     # the refusal must come before the work starts, e.g. before a remote model starts its server. The test of a file
     # of a remote model asks its host, thus the default name of the folder takes the text of a remote model path
     givenpath = Path(args.modelpath)
-    namedfolder = givenpath if is_remote_path(givenpath) else get_model_folder(givenpath)
+    namedfolder = (
+        get_remote_model_folder_from_text(givenpath) if is_remote_path(givenpath) else get_model_folder(givenpath)
+    )
     reportfolder = Path(args.outputfile or f"{resolve_modelpath(namedfolder).name}_report")
     oldreportfiles = get_report_files_in_folder(reportfolder)
     confirm_overwrite([reportfolder], oldreportfiles, force=args.force)

@@ -32,6 +32,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import exit_with_error
 from artistools.misc import get_deposition
 from artistools.misc import get_model_folder
+from artistools.misc import get_run_subfolders
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
@@ -228,9 +229,17 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
 
     A restart with a different build of ARTIS or a different number of ranks can change the results between two runs.
     """
-    runfolders = get_runfolders(modelpath)
+    # a run that stops before it writes an estimator file has a log and no estimators, and it is still a restart. A
+    # copy of a log, e.g. in the model folder, is not a run, thus get_logfiles gives the folders of the logs
+    estimatorfolders = {folder.resolve() for folder in get_runfolders(modelpath)}
+    logfolders = {logfile.parent.resolve() for logfile in get_logfiles(modelpath, None)}
+    runfolders = [
+        folder
+        for folder in get_run_subfolders(modelpath)
+        if folder.resolve() in estimatorfolders or folder.resolve() in logfolders
+    ]
     if not runfolders:
-        return "not checked", "the model has no run folder with estimator files"
+        return "not checked", "the model has no run folder with estimator files or logs"
 
     versionofrun = {
         foldername: f"{fields.get('git version', 'unknown version')} (branch {fields.get('git branch', 'unknown')})"
@@ -279,9 +288,9 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
         else "no run folder holds a rank log"
     )
     runcounttext = (
-        f"{len(runfolders)} run folders with estimators ({get_names_text(runnames)})"
+        f"{len(runfolders)} run folders with estimators or logs ({get_names_text(runnames)})"
         if len(runfolders) > 1
-        else f"1 run folder with estimators ({runnames[0]}), thus no restart"
+        else f"1 run folder with estimators or logs ({runnames[0]}), thus no restart"
     )
 
     # a run with no data for a comparison is not checked, thus the agreement of the other runs is not enough

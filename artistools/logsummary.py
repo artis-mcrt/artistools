@@ -70,7 +70,9 @@ def read_log_messages(logpath: Path) -> pl.DataFrame:
                 continue
             message = line[levelmatch.start() :].strip()
             level = (levelmatch.group(1) or levelmatch.group(2)).lower()
-            cellmatch = RE_CELL.search(message)
+            # the progress text before the tag can name the cell, e.g. "Finding T_e in cell 4...[warning] ...", thus
+            # the search reads the message first and then the whole line
+            cellmatch = RE_CELL.search(message) or RE_CELL.search(line)
             rows.append((
                 level,
                 RE_NUMBER.sub("N", message),

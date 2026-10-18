@@ -3210,6 +3210,11 @@ def test_analytic_deposition_channel_gives_the_rate_of_its_own_timestep() -> Non
     assert dfalpha["timestep"].to_list() == [0, 1]
     assert np.allclose(dfalpha["dep_per_volume"], np.array([7.0e-10, 6.0e-10]) / at.constants.EV_to_erg, rtol=1e-12)
 
+    # ARTIS gives an analytic rate for spontaneous fission with each scheme, and a rate of zero made it Monte Carlo
+    dffission = dfestim.with_columns(deposition_spfission=pl.lit(0.0), emission_ana_spfission=pl.lit(0.0))
+    dffissionrates = at.estimators.deposition.aggregate_deposition_rates(dffission, channels=["spfission"])
+    assert dffissionrates["timestep"].to_list() == [0, 1]
+
     # a channel of zero equals its emission_ana_ column with either scheme, and the last timestep then got a rate of 0
     dfzero = dfestim.with_columns(deposition_alpha=pl.lit(0.0), emission_ana_alpha=pl.lit(0.0))
     assert at.estimators.deposition.get_analytic_deposition_channels(dfzero, ["alpha"]) == ([], ["alpha"])

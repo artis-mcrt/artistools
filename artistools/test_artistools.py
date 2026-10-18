@@ -6628,6 +6628,10 @@ def test_log_reader_finds_a_message_on_the_line_of_a_timestep(tmp_path: Path) ->
     dfmessages = read_log_messages(logfile)
     assert dfmessages.select("level", "timestep", "modelgridindex").rows() == [("error", 3, 7)]
 
+    # the progress text names the cell, and the text after the tag does not
+    logfile.write_text("Finding T_e in cell 4...[warning] the solver did not converge\n", encoding="utf-8")
+    assert read_log_messages(logfile).select("level", "modelgridindex").rows() == [("warning", 4)]
+
 
 def test_logsummary_keeps_identical_logs_of_two_run_folders(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Two retries can stop with the same error and write the same text, and the second retry counted as a copy."""
@@ -7155,6 +7159,15 @@ def test_report_replaces_a_link_at_the_page_and_leaves_its_target(tmp_path: Path
     assert not (reportfolder / "spectrum_timestep007.png").exists()
 
 
+def test_report_takes_the_model_folder_of_a_remote_file_path() -> None:
+    """A remote model path can name a file of the model, and the default report folder took the name of the file."""
+    from artistools.report import get_remote_model_folder_from_text
+
+    assert get_remote_model_folder_from_text(Path("host:~/models/foo/light_curve.out")).name == "foo"
+    assert get_remote_model_folder_from_text(Path("host:~/models/foo/spec.out.zst")).name == "foo"
+    assert get_remote_model_folder_from_text(Path("host:~/models/foo")).name == "foo"
+
+
 def test_report_provenance_keeps_a_remote_model_folder() -> None:
     """A local resolve put the working folder in front of host:path, which named a folder that does not exist."""
     from artistools.report import get_provenance_html
@@ -7309,6 +7322,23 @@ def test_check_restarts_takes_the_number_of_ranks_from_the_rank_0_log(tmp_path: 
     assert "100.slurm has no log of the ranks 2-3 of its 4 ranks" in detail
 
 
+def test_check_restarts_counts_a_run_that_stopped_before_its_estimators(tmp_path: Path) -> None:
+    """A run that stops before it writes an estimator has a log, and the check said that the model had no restart."""
+    from artistools.check import check_restarts
+
+    for foldername, version in [("100.slurm", "v1"), ("200.slurm", "v2")]:
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "output_0-0.txt").write_text(
+            f"git version: {version}\n  rank 0 of [0..0] in MPI_COMM_WORLD\n", encoding="utf-8"
+        )
+    # only the first run wrote estimators
+    with mock.patch("artistools.check.get_runfolders", return_value=[tmp_path / "100.slurm"]):
+        status, detail = check_restarts(tmp_path)
+    assert status == "warning"
+    assert "2 run folders with estimators or logs (100.slurm, 200.slurm)" in detail
+    assert "the ARTIS version changes from v1" in detail
+
+
 def test_check_restarts_warns_about_a_run_with_no_version() -> None:
     """A run with no version left the comparison, and the agreement of the other runs then gave the status ok."""
     from artistools.check import check_restarts
@@ -7335,7 +7365,7 @@ def test_check_reads_each_log_once_and_finds_the_restarts() -> None:
         "the rank-0 logs of 2 run folders (job0, job1) hold 0 errors and 7419 warnings" in detailofcheck["log messages"]
     )
     assert statusofcheck["restarts"] == "ok"
-    assert "2 run folders with estimators (job0, job1)" in detailofcheck["restarts"]
+    assert "2 run folders with estimators or logs (job0, job1)" in detailofcheck["restarts"]
     assert "v2023.10-106-gfcb7e2c" in detailofcheck["restarts"]
     assert statusofcheck["complete time steps"] == "ok"
     assert "30 of 30 time steps as complete" in detailofcheck["complete time steps"]

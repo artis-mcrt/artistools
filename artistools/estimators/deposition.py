@@ -309,10 +309,14 @@ def aggregate_deposition_rates(
         )
         analyticsource = "The options of the run give an analytic rate for these deposition channels"
     else:
-        analyticchannels, undecidedchannels = get_analytic_deposition_channels(dfestim, selectedchannels)
+        # ARTIS gives an analytic rate for spontaneous fission with each scheme, thus that channel needs no evidence
+        inferredchannels, undecidedchannels = get_analytic_deposition_channels(
+            dfestim, [channel for channel in selectedchannels if channel != "spfission"]
+        )
+        analyticchannels = [*(["spfission"] if "spfission" in selectedchannels else []), *inferredchannels]
         analyticsource = (
-            "artisoptions.h gives no particle thermalisation scheme, and these deposition channels equal their"
-            " analytic emission, which is not zero in each row"
+            "artisoptions.h gives no particle thermalisation scheme. ARTIS gives an analytic rate for spfission, and"
+            " the other channels here equal their analytic emission, which is not zero in each row"
         )
         if undecidedchannels:
             print_warning(
