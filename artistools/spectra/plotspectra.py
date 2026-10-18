@@ -1244,15 +1244,37 @@ def plot_artis_spectrum(
 
 def get_shown_on_spectrum_axes(
     axis: mplax.Axes, dfgrid: pl.DataFrame, seriespart: str, args: argparse.Namespace
-) -> pl.Expr:
-    """Return an expression that is true for each row of a series of a spectrum table that the final axes show.
+) -> pl.Expr | pl.Series:
+    """Return the rows of a series of a spectrum table that the final axes show, as an expression or a series.
 
-    The line of the series shows a row, and --shownoise also draws the band y (1 +- relnoise) with fill_between.
+    The line of the series shows a row, and --shownoise also draws the band y (1 +- relnoise) with fill_between. A
+    histogram draws each bin from its lower edge to its upper edge, thus the test takes these two points of each bin.
     """
     xcolumn = f"x_plotted_{args.xunit}"
     plottedcolumn = f"{args.yvariable}_plotted{seriespart}"
+    noisecolumn = f"{args.yvariable}_relnoise{seriespart}"
+    hasnoise = noisecolumn in dfgrid.columns
+    lowercolumn, uppercolumn = f"x_lower_{args.xunit}", f"x_upper_{args.xunit}"
+    if lowercolumn in dfgrid.columns and uppercolumn in dfgrid.columns:
+        dfvertices = pl.DataFrame({
+            "row": np.repeat(np.arange(dfgrid.height), 2),
+            "x": np.column_stack([dfgrid[lowercolumn].to_numpy(), dfgrid[uppercolumn].to_numpy()]).ravel(),
+            "y": np.repeat(dfgrid[plottedcolumn].to_numpy(), 2),
+            "relnoise": np.repeat(dfgrid[noisecolumn].to_numpy(), 2) if hasnoise else np.zeros(2 * dfgrid.height),
+        })
+        isvertexshown = get_shown_on_axes(axis, "x", "y", linecolumns=[])
+        if hasnoise:
+            y, relnoise = pl.col("y"), pl.col("relnoise")
+            isvertexshown |= get_band_is_shown(axis, "x", y * (1.0 - relnoise), y * (1.0 + relnoise))
+        return (
+            dfvertices
+            .with_columns(isvertexshown.alias("isshown"))
+            .group_by("row", maintain_order=True)
+            .agg(pl.col("isshown").any())
+            .sort("row")["isshown"]
+        )
     isshown = get_shown_on_axes(axis, xcolumn, plottedcolumn, linecolumns=[])
-    if (noisecolumn := f"{args.yvariable}_relnoise{seriespart}") in dfgrid.columns:
+    if hasnoise:
         value, relnoise = pl.col(plottedcolumn), pl.col(noisecolumn)
         isshown |= get_band_is_shown(axis, xcolumn, value * (1.0 - relnoise), value * (1.0 + relnoise))
     return isshown

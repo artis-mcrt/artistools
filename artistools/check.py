@@ -269,6 +269,11 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
                 incompletelogs.append(
                     f"{name} has no log of the ranks {format_range_list(missingranks)} of its {loggedcount} ranks"
                 )
+            if extraranks := sorted(set(logranks) - set(range(loggedcount))):
+                incompletelogs.append(
+                    f"{name} holds logs of the ranks {format_range_list(extraranks)}, above its {loggedcount} ranks,"
+                    " e.g. from an earlier run with more ranks"
+                )
         elif logranks:
             unknowncounts.append(name)
     changes = [

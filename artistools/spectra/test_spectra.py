@@ -2884,6 +2884,24 @@ def test_spectrum_table_keeps_a_bin_whose_noise_band_shows() -> None:
     assert plotspectra.get_shown_spectrum_table(dfgrid.drop("flux_relnoise.mymodel"), [axis], args).is_empty()
 
 
+def test_spectrum_table_takes_the_edges_of_each_histogram_bin() -> None:
+    """A histogram draws each bin from its lower edge to its upper edge, and the line of the bin centres kept bin 0."""
+    import matplotlib.figure as mplfig
+
+    axis = mplfig.Figure().add_subplot()
+    axis.set_xlim(1.2, 1.8)
+    axis.set_ylim(0.0, 1.0)
+    dfgrid = pl.DataFrame({
+        "lambda_angstroms": [0.5, 1.5, 2.5],
+        "x_plotted_angstrom": [0.5, 1.5, 2.5],
+        "x_lower_angstrom": [0.0, 1.0, 2.0],
+        "x_upper_angstrom": [1.0, 2.0, 3.0],
+        "flux_plotted.mymodel": [2.0, 0.5, 2.0],
+    })
+    args = argparse.Namespace(xunit="angstrom", yvariable="flux", multispecplot=False)
+    assert plotspectra.get_shown_spectrum_table(dfgrid, [axis], args)["lambda_angstroms"].to_list() == [1.5]
+
+
 def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
     """-xmin alone on a frequency axis must stay the lower limit.
 

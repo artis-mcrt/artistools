@@ -7381,6 +7381,7 @@ def test_check_restarts_takes_the_number_of_ranks_from_the_rank_0_log(tmp_path: 
         status, detail = check_restarts(tmp_path)
     assert status == "warning"
     assert "100.slurm has no log of the ranks 2-3 of its 4 ranks" in detail
+    assert "100.slurm holds logs of the ranks 4-5, above its 4 ranks" in detail
 
 
 def test_check_restarts_counts_a_run_that_stopped_before_its_estimators(tmp_path: Path) -> None:
