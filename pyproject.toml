@@ -165,7 +165,6 @@ exclude = [
     { path = "**/test_*.py", format = "wheel" },
     { path = "set_version.py", format = "sdist" },
     { path = "check_wheel.py", format = "sdist" },
-    { path = "eval_artis_data_skill.py", format = "sdist" },
 ]
 
 [tool.pyrefly]

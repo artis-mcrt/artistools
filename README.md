@@ -174,12 +174,6 @@ For Codex, Cursor, or OpenCode, give `-layout agents`. The command then makes th
 
 Start a new session of the agent after the installation. Then ask a question about a model. In Claude Code, you can also type `/artis-data`. In Codex, you can also type `$artis-data`.
 
-A clone of the repository holds `eval_artis_data_skill.py`. It asks Claude Code questions about the test models and compares each answer with the value from artistools. Use it to measure the effect of a change of the skill. Each question starts a new session of `claude -p`, thus a run needs a login and costs tokens:
-
-```sh
-uv run -- python eval_artis_data_skill.py
-```
-
 ## Example output
 
 ![Emission plot](https://github.com/artis-mcrt/artistools/raw/main/images/fig-emission.png)

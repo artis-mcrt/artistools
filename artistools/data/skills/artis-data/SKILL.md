@@ -67,8 +67,7 @@ The physics options change the meaning of many outputs. More commands help befor
 - `artistools catalog <folder>` gives one row for each model below a folder, e.g. the physics options and the peak;
 - `artistools report <modelpath>` makes an HTML page with the check, the summary, the logs, and standard figures.
 - `artistools values Te nne -t 300 -modelgridindex 12 <modelpath>` prints the raw estimators of cells and timesteps,
-  with no average and the unit in each column name. Use it for the value of one cell, in place of Python;
-- `artistools explain TJ gamma_NT_Fe_II` gives the meaning, the unit, the method, and the papers of each name.
+  with no average and the unit in each column name. Use it for the value of one cell, in place of Python.
 
 Each plot command prints the plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te
 -t 300 <modelpath> --print_data --quiet`. Use it to check a result, or for a quick answer with no Python. A value or a

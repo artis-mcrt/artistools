@@ -184,7 +184,6 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "check",
         "completions",
         "describe",
-        "explain",
         "getpath",
         "installskill",
         "logsummary",
@@ -261,17 +260,6 @@ subcommandtree: CommandTree = {
         helptext="Compute the opacities of the ejecta.",
         note="This gives the binned expansion opacities and the Planck-mean opacities.",
         examples=(("-modelpath . -t 300", "the opacities of the ejecta at 300 days"),),
-    ),
-    "explain": CommandSpec(
-        "explain",
-        helptext="Give the meaning, the unit, the method, and the papers of an ARTIS quantity, e.g. TJ.",
-        note=(
-            "The text comes from the artis-data skill of artistools. A model path also says whether the model has the"
-            " column."
-        ),
-        examples=(
-            ("TJ gamma_NT_Fe_II", "the meaning and the method of TJ and of the non-thermal ionisation rate of Fe II"),
-        ),
     ),
     "exportmassfractions": CommandSpec(
         "estimators.exportmassfractions",
