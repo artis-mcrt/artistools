@@ -5862,6 +5862,33 @@ def test_estimator_print_data_gives_the_drawn_values(
     assert np.allclose(dfline["value"], dftable["value"], rtol=1e-6, atol=0)
     assert dfmarkertable.filter(pl.col("points") == "markers").height > dfline.height
 
+    # the table held the points below a ymin= directive, which the figure does not show
+    dfmarkers = dfmarkertable.filter(pl.col("points") == "markers")
+    ymin = float(np.median(dfmarkers["value"].to_numpy()))
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        outputfile=tmp_path,
+        timedays=5,
+        plotlist=[["Te", f"ymin={ymin}"]],
+        markers=True,
+        print_data=True,
+    )
+    output = capsys.readouterr().out
+    headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
+    dfclipped = pl.read_csv(
+        io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ", null_values="nan", comment_prefix="#"
+    )
+    dfclippedmarkers = dfclipped.filter(pl.col("points") == "markers")
+    assert dfclippedmarkers.height == (dfmarkers["value"] >= ymin).sum() < dfmarkers.height
+    # a point of the line below ymin stays only as the end of a segment that the axes show
+    clippedline = dfclipped.filter(pl.col("points") == "line")["value"].to_list()
+    assert all(
+        value >= ymin or max(clippedline[max(index - 1, 0) : index + 2]) >= ymin
+        for index, value in enumerate(clippedline)
+    )
+    assert len(clippedline) <= dfline.height
+
 
 def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.CaptureFixture[str]) -> None:
     """A script or an agent needs the units of each column, and the listing for a reader gives them by family."""

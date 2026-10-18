@@ -33,6 +33,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc.cliutils import get_provenance_lines
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
     import polars as pl
@@ -155,18 +156,19 @@ def get_model_summary_html(modelfolder: Path) -> str:
     return "".join(parts)
 
 
-def get_log_summary_table(modelfolder: Path) -> "tuple[list[Path], pl.DataFrame | None]":
-    """Return the logs of rank 0 of each run folder, and the table of the kinds of their warnings and errors.
+@on_model_host
+def get_log_summary_table(modelfolder: Path) -> "tuple[list[str], pl.DataFrame | None]":
+    """Return the names of the logs of rank 0 in the model folder, and the table of the kinds of their messages.
 
-    The table is None if the model has no log of rank 0.
+    The table is None if the model has no log of rank 0. The host of a remote model gives the names, because it
+    expands "~" in the model folder and in the paths of the logs.
     """
     from artistools.logsummary import get_log_summary
     from artistools.logsummary import get_logfiles
 
     logfiles = get_logfiles(modelfolder, [0])
-    if not logfiles:
-        return logfiles, None
-    return logfiles, get_log_summary(logfiles)
+    lognames = [str(logfile.relative_to(modelfolder)) for logfile in logfiles]
+    return lognames, get_log_summary(logfiles) if logfiles else None
 
 
 def get_log_summary_html(modelfolder: Path) -> str:
@@ -174,14 +176,14 @@ def get_log_summary_html(modelfolder: Path) -> str:
     logresult, errortext, lines = run_captured(lambda: get_log_summary_table(modelfolder))
     parts = ['<h2 id="log-summary">Log summary of rank 0</h2>\n']
     if logresult is not None:
-        logfiles, dfsummary = logresult
+        lognames, dfsummary = logresult
         if dfsummary is None:
             parts.append("<p>The model has no log of rank 0.</p>\n")
         else:
-            lognames = ", ".join(html.escape(str(logfile.relative_to(modelfolder))) for logfile in logfiles)
+            lognamestext = ", ".join(html.escape(logname) for logname in lognames)
             methodtext = (
                 f"<p>The output of <code>artistools logsummary</code>. The table counts the warnings and the errors"
-                f" in {len(logfiles)} logs of rank 0, one log for each run folder: {lognames}. A kind of message is"
+                f" in {len(lognames)} logs of rank 0, one log for each run folder: {lognamestext}. A kind of message is"
                 " its text with each number replaced by N.</p>\n"
             )
             parts.extend((

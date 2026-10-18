@@ -45,6 +45,7 @@ from artistools.misc import output_data
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -294,16 +295,22 @@ def get_series_table(
 
 
 def output_drawn_series(
-    args: argparse.Namespace, drawnseries: Sequence[pl.DataFrame], axis: mplax.Axes, figurepath: Path | str
+    args: argparse.Namespace,
+    drawnseries: Sequence[tuple[mplax.Axes, pl.DataFrame]],
+    valuecolumn: str,
+    figurepath: Path | str,
 ) -> None:
-    """Print or write the drawn series of a figure, with only the times that the horizontal axis shows.
+    """Print or write the drawn series of a figure, with only the points that the final axes of each series show.
 
-    The series of ARTIS and of GSINET have different times, thus the table has one row for each drawn point.
+    The series of ARTIS and of GSINET have different times, thus the table has one row for each drawn point. A log
+    axis draws no rate of zero, e.g. of a decay channel outside its active time.
     """
     if not (getattr(args, "print_data", False) or getattr(args, "write_data", False)) or not drawnseries:
         return
-    timemin, timemax = sorted(axis.get_xlim())
-    dftable = pl.concat(drawnseries).filter(pl.col("time_days").is_between(timemin, timemax))
+    dftable = pl.concat(
+        filter_to_axis_limits(dfseries, axis, "time_days", valuecolumn, linecolumns=[])
+        for axis, dfseries in drawnseries
+    )
     output_data(args, {"": dftable}, figurepath)
 
 
@@ -356,7 +363,7 @@ def plot_qdot(
         ("hspof", "Qdotspfission_ana_erg/s/g", "dotted", r"$\dot{Q}_{sponfis}$", "spontaneous fission"),
     )
 
-    drawnseries: list[pl.DataFrame] = []
+    drawnseries: list[tuple[mplax.Axes, pl.DataFrame]] = []
     for gsicol, artiscol, linestyle, label, channel in qdotseries:
         if dfgsiglobalheating is not None:
             axis.plot(
@@ -367,15 +374,16 @@ def plot_qdot(
                 linestyle=linestyle,
                 label=f"{label} GSINET",
             )
-            drawnseries.append(
+            drawnseries.append((
+                axis,
                 get_series_table(
                     "GSINET",
                     channel,
                     dfgsiglobalheating["time_days"],
                     dfgsiglobalheating[gsicol],
                     "qdot_erg_per_s_per_g",
-                )
-            )
+                ),
+            ))
 
         if artiscol in depdata.columns:
             axis.plot(
@@ -386,16 +394,17 @@ def plot_qdot(
                 linestyle=linestyle,
                 label=f"{label} ARTIS",
             )
-            drawnseries.append(
-                get_series_table("ARTIS", channel, depdata["tmid_days"], depdata[artiscol], "qdot_erg_per_s_per_g")
-            )
+            drawnseries.append((
+                axis,
+                get_series_table("ARTIS", channel, depdata["tmid_days"], depdata[artiscol], "qdot_erg_per_s_per_g"),
+            ))
 
     set_legend(axis, args, ncol=3)
 
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
     axis.set_ymargin(0.02)
-    output_drawn_series(args, drawnseries, axis, pdfoutpath)
+    output_drawn_series(args, drawnseries, "qdot_erg_per_s_per_g", pdfoutpath)
     save_figure(fig, pdfoutpath, format="pdf", args=args)
 
 
@@ -439,7 +448,7 @@ def plot_cell_abund_evolution(
     axis = axes[0]
     print(f"{'':7s}  gsi_abund artis_abund")
 
-    drawnseries: list[pl.DataFrame] = []
+    drawnseries: list[tuple[mplax.Axes, pl.DataFrame]] = []
     for axis, strspecies in zip(axes, arr_species, strict=False):
         axis.set_ylabel("Mass fraction")
 
@@ -455,11 +464,12 @@ def plot_cell_abund_evolution(
                 label=f"{strnuc_latex} GSINET",
                 color="black",
             )
-            drawnseries.append(
+            drawnseries.append((
+                axis,
                 get_series_table(
                     "GSINET", strspecies, pl.Series(arr_time_gsi_days), df_gsi_abunds[strspecies], "massfraction"
-                )
-            )
+                ),
+            ))
 
         print(f"{strspecies:7s}  ", end="")
         if df_gsi_abunds is not None:
@@ -476,15 +486,16 @@ def plot_cell_abund_evolution(
                 label=f"{strnuc_latex} ARTIS",
                 color="red",
             )
-            drawnseries.append(
+            drawnseries.append((
+                axis,
                 get_series_table(
                     "ARTIS",
                     strspecies,
                     arr_abund_artis["tmid_days"],
                     arr_abund_artis[f"X_{strspecies}"],
                     "massfraction",
-                )
-            )
+                ),
+            ))
         else:
             print(" [no ARTIS data]")
 
@@ -496,7 +507,7 @@ def plot_cell_abund_evolution(
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
     axes[0].set_title(f"{get_model_name(modelpath)} {strcell}")
-    output_drawn_series(args, drawnseries, axes[0], pdfoutpath)
+    output_drawn_series(args, drawnseries, "massfraction", pdfoutpath)
     save_figure(fig, pdfoutpath, format="pdf", args=args)
 
 

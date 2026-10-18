@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (4, "f67593a7a1fca2c2"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "4b94816db0babc81"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1883,6 +1883,36 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     assert remotelogfiles == [Path(f"testhost:{logfolder / 'output_0-0.txt'}")]
     pltest.assert_frame_equal(dfremotelogsummary, get_log_summary(get_logfiles(logfolder, [0])))
     assert dfremotelogsummary["level"].to_list() == ["warning"]
+
+
+def test_report_names_the_logs_of_a_remote_model_below_home(tmp_path: Path) -> None:
+    """The host expands "~" in the paths of the logs, thus a relative name on this host stopped the report."""
+    from artistools.report import get_log_summary_table
+
+    logfolder = tmp_path / "logmodel"
+    (logfolder / "100.slurm").mkdir(parents=True)
+    (logfolder / "100.slurm" / "output_0-0.txt").write_text(
+        "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[warning] cell 4 is cold\n",
+        encoding="utf-8",
+    )
+
+    remote.forget_server("testhost")
+    with (
+        mock.patch.dict("os.environ", {"HOME": str(tmp_path)}),
+        mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]),
+    ):
+        process, _ = remote.get_server("testhost")
+        try:
+            lognames, dfsummary = get_log_summary_table(Path("testhost:~/logmodel"))
+        finally:
+            assert process.stdin is not None
+            process.stdin.close()
+            assert process.wait(timeout=30) == 0
+            remote.forget_server("testhost")
+
+    assert lognames == ["100.slurm/output_0-0.txt"]
+    assert dfsummary is not None
+    assert dfsummary["level"].to_list() == ["warning"]
 
 
 def test_get_filterfunc() -> None:

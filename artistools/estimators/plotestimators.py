@@ -108,6 +108,7 @@ from artistools.misc.remote import on_model_host
 from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
+from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
 from artistools.plottools import get_summary_table
@@ -2225,13 +2226,16 @@ def draw_line_figure(
 
 def make_figure(
     figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, frameset: "FrameSet | None" = None
-) -> str:
-    """Draw the figure of the data, save it, and return the output filename.
+) -> tuple[str, pl.DataFrame | None]:
+    """Draw the figure of the data, save it, and return the output filename and the table of the shown data.
 
     A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
-    and --open leave it alone. The caller opens the file that holds every frame.
+    and --open leave it alone. The caller opens the file that holds every frame. The table is None with no
+    --print_data and no --write_data, because a table of many frames, cells, and markers costs time and memory.
     """
     fig = draw_figure_data(figuredata, args)
+    # the final limits of the axes exist only in the drawn figure, thus the table comes before the save
+    dftable = get_figure_table(figuredata, args, fig) if args.print_data or args.write_data else None
     framefields = figuredata.framefields
     if isinstance(figuredata, ImageFigureData):
         assert frameset is not None
@@ -2254,18 +2258,26 @@ def make_figure(
         print_line_figure_summary(figuredata, args)
     save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
 
-    return outfilename
+    return outfilename, dftable
 
 
-def get_figure_table(figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace) -> pl.DataFrame:
-    """Return the table of the plotted data of a figure, for --print_data and --write_data."""
+def get_figure_table(
+    figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, fig: "mplfig.Figure"
+) -> pl.DataFrame:
+    """Return the table of the data that the drawn figure shows, for --print_data and --write_data."""
     if isinstance(figuredata, LineFigureData):
-        return get_line_figure_table(figuredata, args)
+        return get_line_figure_table(figuredata, args, fig.axes[: len(figuredata.subplots)])
     return get_image_figure_table(figuredata, args)
 
 
-def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) -> pl.DataFrame:
-    """Return one table of the plotted points, with one row for each point of each series of each subplot.
+def get_line_figure_table(
+    figuredata: LineFigureData, args: argparse.Namespace, axes: "Sequence[mplax.Axes]"
+) -> pl.DataFrame:
+    """Return one table of the shown points, with one row for each point of each series of each subplot.
+
+    The table leaves out a point outside the final limits of its axes, e.g. from a ymin= directive. A point of a line
+    stays if the axes can show a segment to it. The table _summary takes all the points of each series in the x range,
+    because a mean must not change with the y range of the figure.
 
     A series with x bins gives the weighted mean of each bin and the range of the cells in the bin. A series with
     -xbins 0 gives each point. The fields of the frame, e.g. the timestep, are columns, thus each row names its time.
@@ -2276,7 +2288,7 @@ def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) 
     xcolumn = get_table_xcolumn(args.x)
     startfromzero, xbinwidth = get_line_ends(figuredata, args)
     dfseriestables: list[pl.DataFrame] = []
-    for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
+    for subplotindex, ((seriesdatas, _), axis) in enumerate(zip(figuredata.subplots, axes, strict=True)):
         for series in seriesdatas:
             dfdrawn: list[tuple[str, pl.DataFrame]] = []
             if series.dflinepoints is not None:
@@ -2285,18 +2297,29 @@ def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) 
                 )
                 dfdrawn.append((
                     "line",
-                    dfdrawnline.select(
-                        pl.col("xvalue_binned").alias(xcolumn),
-                        value=pl.col("yvalue_binned"),
-                        value_min=pl.col("yvalue_binned_min"),
-                        value_max=pl.col("yvalue_binned_max"),
-                        bin_centre=pl.col("bin_centre"),
+                    filter_to_axis_limits(
+                        dfdrawnline.select(
+                            pl.col("xvalue_binned").alias(xcolumn),
+                            value=pl.col("yvalue_binned"),
+                            value_min=pl.col("yvalue_binned_min"),
+                            value_max=pl.col("yvalue_binned_max"),
+                            bin_centre=pl.col("bin_centre"),
+                        ),
+                        axis,
+                        xcolumn,
+                        "value",
+                        linecolumns=[],
                     ),
                 ))
             if series.dfpoints is not None:
                 dfdrawn.append((
                     "markers",
-                    series.dfpoints.select(pl.col("xvalue").alias(xcolumn), value=pl.col("yvalue")),
+                    filter_to_axis_limits(
+                        series.dfpoints.select(pl.col("xvalue").alias(xcolumn), value=pl.col("yvalue")),
+                        axis,
+                        xcolumn,
+                        "value",
+                    ),
                 ))
             dfseriestables.extend(
                 dfpoints.select(
@@ -3557,15 +3580,14 @@ def write_snapshot_figures(
         combines=len(figures) > 1 and (args.makegif or args.format == "pdf"),
         gifduration=1000.0 if args.makegif else None,
     )
-    outputfiles = [make_figure(figuredata, args, frameset) for figuredata in figures]
-    productpath = frameset.finish(outputfiles, args)
-    # a table of many frames, cells, and markers costs time and memory, thus only a data output makes it
+    outputfiles, dftables = zip(*(make_figure(figuredata, args, frameset) for figuredata in figures), strict=True)
+    productpath = frameset.finish(list(outputfiles), args)
     if args.print_data or args.write_data:
         # the fields of each frame, e.g. the timestep, are columns, thus one table holds every frame and one header
         output_data(
             args,
             {
-                "": pl.concat([get_figure_table(figuredata, args) for figuredata in figures], how="diagonal_relaxed"),
+                "": pl.concat([dftable for dftable in dftables if dftable is not None], how="diagonal_relaxed"),
                 "_summary": pl.concat(
                     [get_figure_summary_table(figuredata, args) for figuredata in figures], how="diagonal_relaxed"
                 ),
@@ -3842,12 +3864,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     vars(args).update(changedargs)
 
     if args.x in TIME_XVARIABLES:
-        outfilename = make_figure(figures[0], args)
-        if args.print_data or args.write_data:
-            output_data(
-                args,
-                {"": get_figure_table(figures[0], args), "_summary": get_figure_summary_table(figures[0], args)},
-                outfilename,
-            )
+        outfilename, dftable = make_figure(figures[0], args)
+        if dftable is not None:
+            output_data(args, {"": dftable, "_summary": get_figure_summary_table(figures[0], args)}, outfilename)
     else:
         write_snapshot_figures(args, figures, timesteps_included)
