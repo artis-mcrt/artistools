@@ -673,13 +673,14 @@ def get_shown_energy_rates(
 ) -> pl.DataFrame:
     """Return the points of the energy rates and of the thermalisation ratios that the final limits of their panel show.
 
-    A thermalisation ratio has the unit "ratio" and goes on its own panel, with the fixed range 0 to 1.
+    A thermalisation ratio has the unit "ratio" and goes on its own panel, with the fixed range 0 to 1. The path of the
+    model and the quantity name one curve, because two models can have one name.
     """
     if not dfenergyrates:
         return pl.DataFrame()
     dfrates = pl.concat(dfenergyrates)
     isratio = pl.col("unit") == "ratio"
-    curvecolumns = ["model", "quantity"]
+    curvecolumns = ["modelpath", "quantity"]
     parts = [filter_to_axis_limits(dfrates.filter(~isratio), axis, "time_days", "value", linecolumns=curvecolumns)]
     if thermaxis is not None:
         parts.append(
@@ -1319,7 +1320,14 @@ def draw_plot(
                     residualseries=residualseries,
                 )
                 plotteddeposition = plotteddeposition or drewrate
-                dfenergyrates.append(dfmodelrates.select(pl.lit(get_model_name(modelpath)).alias("model"), pl.all()))
+                # two models can have one name, thus the path names the model of each row and keeps the curves apart
+                dfenergyrates.append(
+                    dfmodelrates.select(
+                        pl.lit(get_model_name(modelpath)).alias("model"),
+                        pl.lit(str(modelpath)).alias("modelpath"),
+                        pl.all(),
+                    )
+                )
 
         print()
 

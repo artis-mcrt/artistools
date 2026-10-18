@@ -3731,6 +3731,25 @@ def test_scatter_table_keeps_an_angle_average_whose_error_bar_crosses_the_axes()
     assert shown["dirbin"].to_list() == [-1]
 
 
+def test_energy_rate_table_keeps_two_models_of_one_name_apart(tmp_path: Path) -> None:
+    """Two models of one name gave one value of the column model, and the filter took their rates for one line."""
+    modelcopy = tmp_path / "copy" / modelpath_classic_3d.name
+    modelcopy.mkdir(parents=True)
+    for filepath in modelpath_classic_3d.iterdir():
+        (modelcopy / filepath.name).symlink_to(filepath)
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d, modelcopy],
+        deposition=["gamma"],
+        write_data=True,
+        outputfile=tmp_path / "lc.pdf",
+    )
+    dfrates = pl.read_csv(tmp_path / "lc_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dfrates["model"].n_unique() == 1
+    assert sorted(dfrates["modelpath"].unique().to_list()) == sorted([str(modelpath_classic_3d), str(modelcopy)])
+    assert len(set(dfrates.group_by("modelpath").len()["len"].to_list())) == 1
+
+
 def test_peak_summary_sorts_the_times_of_a_reference_file() -> None:
     """A reference file can list its points in any order, and np.interp of Δm15 needs increasing times."""
     from artistools.lightcurve.plotlightcurve import get_peak_summary
