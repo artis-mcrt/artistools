@@ -2174,27 +2174,50 @@ def test_line_summary_joins_the_cells_of_a_line_with_different_population_method
 
 
 def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path: Path) -> None:
-    """The emission and the mean tau_sobolev of each bin agree with a sum by hand over the cells of the line."""
+    """The emission and the mean tau_sobolev of each bin agree with a sum by hand over the selected cells of the line.
+
+    -costhetamin selects the cells by the direction of their centre, thus the ranking and the emission of each line
+    also take only these cells.
+    """
     commonargs: dict[str, t.Any] = {"modelpath": modelpath_classic_3d, "lambdamin": 6000.0, "lambdamax": 6400.0}
     nbins = 6
+    costhetamin = 0.3
     at.plotlinecontributions.main(
         argsraw=[],
         timestep=25,
         nvelocitybins=nbins,
         maxlines=3,
         rankby="tau",
+        costhetamin=costhetamin,
         outputfile=tmp_path / "lines.pdf",
         write_data=True,
         **commonargs,
     )
     dfdrawn = pl.read_csv(tmp_path / "lines.txt", separator=" ", null_values="nan", comment_prefix="#")
 
-    dfcells = at.linecontributions.get_line_contributions(timestep=25, percell=True, **commonargs)
-    dfsummary = at.linecontributions.get_line_contributions(timestep=25, **commonargs)
-    dfranked = dfsummary.sort("tau_sobolev_max", descending=True).head(3)
-    assert dfdrawn.select("lambda_angstroms").unique().height == 3
+    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    dfdirections = (
+        at
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select("modelgridindex", costheta=pl.col("vel_z_mid") / pl.col("vel_r_mid"))
+        .collect()
+    )
+    dfcells = (
+        at.linecontributions
+        .get_line_contributions(timestep=25, percell=True, **commonargs)
+        .join(dfdirections, on="modelgridindex", how="left")
+        .filter(pl.col("costheta") >= costhetamin)
+    )
+    linekeys = list(at.linecontributions.LINEKEYS)
+    dfranked = (
+        dfcells
+        .group_by(linekeys)
+        .agg(pl.col("tau_sobolev").max(), pl.col("emission_erg_per_s").sum())
+        .sort("tau_sobolev", descending=True)
+        .head(3)
+    )
+    assert dfdrawn.select(linekeys).unique().sort(linekeys).equals(dfranked.select(linekeys).sort(linekeys))
 
-    _, modelmeta = at.get_modeldata(modelpath_classic_3d)
     # the default bins end at the corner of the 3D grid
     binwidth_kmps = modelmeta["vmax_cmps"] / at.constants.km_to_cm * math.sqrt(3) / nbins
     for line in dfranked.iter_rows(named=True):

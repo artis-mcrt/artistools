@@ -436,10 +436,12 @@ def get_cell_line_batches(
     lambdamax: float,
     ions: Collection[tuple[int, int]] | None = None,
     exctemperature: str = "auto",
+    costhetarange: tuple[float, float] | None = None,
 ) -> Iterator[pl.DataFrame]:
     """Yield the table of get_cell_line_table() for each batch of cells.
 
-    The method and the assumptions go to the log before the first batch.
+    costhetarange selects the cells with cos(theta) = v_z / |v| of the cell centre in the range, edges included. The z
+    axis is the polar axis of the direction bins. The method and the assumptions go to the log before the first batch.
     """
     time_days = get_timestep_time(modelpath, timestep)
     temperaturecolumn = get_excitation_temperature_column(
@@ -502,6 +504,20 @@ def get_cell_line_batches(
             "Give a different wavelength range, or different ions with -ions",
         )
 
+    if costhetarange is not None:
+        if "vel_z_mid" not in estimatorcolumns:
+            exit_with_error(
+                "a 1D model has no direction of a cell, thus -costhetamin and -costhetamax cannot select cells",
+                "Remove -costhetamin and -costhetamax",
+            )
+        # the cell at the centre of the grid has no direction, and the division gives NaN, thus no range holds it
+        costheta = pl.col("vel_z_mid") / pl.col("vel_r_mid")
+        lfestimators = lfestimators.filter(costheta.is_between(*costhetarange))
+        print_detail(
+            f"The cells have cos θ = v_z / |v| of the cell centre from {costhetarange[0]:g} to {costhetarange[1]:g}."
+            " The z axis is the polar axis of the direction bins"
+        )
+
     dfcells = (
         lfestimators
         .select(
@@ -521,6 +537,11 @@ def get_cell_line_batches(
         f"{dflines.height} lines of {len(levelsofion)} ions from {lambdamin:g} to {lambdamax:g} Å. The wavelengths are"
         " vacuum wavelengths from the level energies"
     )
+    if dfcells.is_empty():
+        exit_with_error(
+            "no cell with matter has its centre in the range of cos θ",
+            "Give a wider range of -costhetamin and -costhetamax",
+        )
     print_detail(f"{dfcells.height} cells at the mid time {time_days:.2f} d of timestep {timestep}")
     print_detail(
         "tau_sobolev = (A lambda^3 t / 8 pi) (g_u n_l / g_l - n_u) at the mid time t of the timestep. A is the Einstein"
@@ -705,16 +726,19 @@ def get_line_velocity_profiles(
     velocityedges_kmps: Sequence[float],
     ions: Collection[tuple[int, int]] | None = None,
     exctemperature: str = "auto",
+    costhetarange: tuple[float, float] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return the line summary, and the emission and the mean tau_sobolev of each line in each velocity bin.
 
     The bins have equal widths. The mean of tau_sobolev takes the volume of each cell as the weight. A cell outside the
-    bins is in the summary, but not in a bin.
+    bins is in the summary, but not in a bin. costhetarange selects the cells, see get_cell_line_batches().
     """
     summaries = []
     profiles = []
     tau = pl.col("tau_sobolev")
-    for dfcelllines in get_cell_line_batches(modelpath, timestep, lambdamin, lambdamax, ions, exctemperature):
+    for dfcelllines in get_cell_line_batches(
+        modelpath, timestep, lambdamin, lambdamax, ions, exctemperature, costhetarange
+    ):
         summaries.append(get_line_summary(dfcelllines))
         profiles.append(
             dfcelllines

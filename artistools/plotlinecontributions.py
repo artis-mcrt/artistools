@@ -184,6 +184,19 @@ def print_ranked_lines(dfranked: pl.DataFrame, rankby: str, unit: t.Literal["kmp
         print_detail(f"  {row['label']}: {emissiontext}, {tautext}")
 
 
+def get_costheta_range(costhetamin: float | None, costhetamax: float | None) -> tuple[float, float] | None:
+    """Return the range of cos θ of -costhetamin and -costhetamax, or None to keep each cell."""
+    if costhetamin is None and costhetamax is None:
+        return None
+    costhetarange = (-1.0 if costhetamin is None else costhetamin, 1.0 if costhetamax is None else costhetamax)
+    if not -1.0 <= costhetarange[0] < costhetarange[1] <= 1.0:
+        exit_with_error(
+            f"-costhetamin {costhetarange[0]:g} and -costhetamax {costhetarange[1]:g} give no range of cos θ",
+            "Give -1 ≤ -costhetamin < -costhetamax ≤ 1",
+        )
+    return costhetarange
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
@@ -207,6 +220,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     add_velocity_bin_args(parser)
+    parser.add_argument(
+        "-costhetamin",
+        type=float,
+        help=(
+            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole of -dirbin 90."
+            " Default: -1"
+        ),
+    )
+    parser.add_argument(
+        "-costhetamax",
+        type=float,
+        help=(
+            "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 for the equator with -costhetamin -0.2."
+            " Default: 1"
+        ),
+    )
     addarg_excitationtemperature(parser)
     addarg_output(parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path/filename for the plot file")
     addarg_figscale(parser)
@@ -228,8 +257,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     unit = get_velocity_unit(args.modelpath, args.velocityunit)
     velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax, unit)
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
+    costhetarange = get_costheta_range(args.costhetamin, args.costhetamax)
     dfsummary, dfprofiles = get_line_velocity_profiles(
-        args.modelpath, timestep, args.xmin, args.xmax, velocityedges_kmps, ions, args.exctemperature
+        args.modelpath, timestep, args.xmin, args.xmax, velocityedges_kmps, ions, args.exctemperature, costhetarange
     )
 
     print_detail(
@@ -263,9 +293,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[0].set_ylabel(rf"$\Delta L / \Delta v / L$ [{INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
     axes[1].set_ylabel(r"$\langle\tau_\mathrm{Sobolev}\rangle_V$")
     set_legend(axes[0], args)
-    set_plot_title(
-        axes[0], f"{get_model_name(args.modelpath)} {get_timestep_time(args.modelpath, timestep):.2f} d", args
-    )
+    title = f"{get_model_name(args.modelpath)} {get_timestep_time(args.modelpath, timestep):.2f} d"
+    if costhetarange is not None:
+        title += f", {costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}"
+    set_plot_title(axes[0], title, args)
 
     outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME)
     output_data(args, {"": dfdrawn}, outputfile)
