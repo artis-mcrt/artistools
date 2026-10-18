@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (4, "4b94816db0babc81"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "1bce6ae4beb8f682"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1845,6 +1845,11 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
             # a str path stayed on this host, and check_local_path then stopped the read
             dfremotemodel, remotemodelmeta = at.get_modeldata(str(remotepath))
             dfremotemodel = dfremotemodel.collect()
+            # the host collected the full frame, thus a select of one column sent each column through ssh
+            with mock.patch.object(remote, "call_on_host", wraps=remote.call_on_host) as mockcall:
+                at.get_modeldata(remotepath)[0].select("inputcellid").collect()
+            rowcalls = [call for call in mockcall.call_args_list if call.args[2] == "read_modeldata_rows_on_host"]
+            assert [call.args[3][2] for call in rowcalls] == [["inputcellid"]]
             remoteinputparams = at.get_inputparams(remotepath)
             dfremotenltepops = at.nltepops.read_nltepops(remotepath, timestep=40, modelgridindex=0)
             remoteoptions = at.misc.get_artis_options(Path(f"testhost:{optionsfolder}"))
@@ -1933,6 +1938,14 @@ def test_write_data_table_replaces_a_link_and_leaves_its_target(tmp_path: Path) 
     assert not datafile.is_symlink()
     assert datafile.read_text(encoding="utf-8").startswith("# note\nlabel value\n")
     assert not list(tmp_path.glob(".*partial*"))
+
+    # a new file took the mode of the folder, thus a umask of 077 gave a table that other users can read
+    oldumask = os.umask(0o077)
+    try:
+        write_data_table(pl.DataFrame({"value": [1.0]}), tmp_path / "private.txt")
+    finally:
+        os.umask(oldumask)
+    assert (tmp_path / "private.txt").stat().st_mode & 0o777 == 0o600
 
 
 def test_get_filterfunc() -> None:

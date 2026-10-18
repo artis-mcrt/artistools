@@ -2807,6 +2807,28 @@ def test_write_data_gives_the_plotted_values(tmp_path: Path) -> None:
     assert len(plotted) == 1
     assert dfout[plotted[0]].max() == pytest.approx(1.0, rel=1e-6)
 
+    # the table held the values below -ymin, which the figure does not show
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath],
+        timedays=300,
+        normalised=True,
+        ymin=0.5,
+        yscale="linear",
+        write_data=True,
+        outputfile=tmp_path / "ymin.pdf",
+    )
+    dfclipped = pl.read_csv(tmp_path / "ymin.txt", separator=" ", null_values="nan", comment_prefix="#")
+    values = dfclipped[plotted[0]]
+    # a row of one series with a hidden value has no shown value, thus the row goes
+    assert 0 < values.len() < dfout.height
+    # a value below -ymin stays only as the end of a segment that the axes show
+    isbelow = (values < 0.5).fill_null(value=False)
+    hasshownneighbour = (values.shift(1) >= 0.5).fill_null(value=False) | (values.shift(-1) >= 0.5).fill_null(
+        value=False
+    )
+    assert (~isbelow | hasshownneighbour).all()
+
 
 def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
     """-xmin alone on a frequency axis must stay the lower limit.

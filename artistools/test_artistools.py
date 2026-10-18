@@ -6181,6 +6181,11 @@ def test_describe_names_the_packets_files_of_an_earlier_run_with_more_ranks(tmp_
     lines = get_output_lines(tmp_path)
     assert "  1 more packets files have a rank above the ranks of input.txt" in "\n".join(lines)
 
+    # a second earlier run with the same rank gave one rank number, and the count gave one file for the two
+    (tmp_path / "200.slurm").mkdir()
+    (tmp_path / "200.slurm" / f"packets00_{nprocs + 1:04d}.out").write_text("", encoding="utf-8")
+    assert "  2 more packets files have a rank above the ranks of input.txt" in "\n".join(get_output_lines(tmp_path))
+
 
 def test_run_versions_follow_the_runs_and_leave_out_a_copied_log(tmp_path: Path) -> None:
     """A copy of the log of an earlier run in the model folder came last, thus the catalog gave its old version."""

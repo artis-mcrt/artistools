@@ -96,6 +96,7 @@ from artistools.packets import get_packets_column_names
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
+from artistools.plottools import get_shown_on_axes
 from artistools.plottools import get_summary_table
 from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
@@ -1239,6 +1240,46 @@ def plot_artis_spectrum(
     return gridtables
 
 
+def get_shown_spectrum_table(
+    dfgrid: pl.DataFrame, axes: Sequence[mplax.Axes], args: argparse.Namespace
+) -> pl.DataFrame:
+    """Return a table of the ARTIS spectra with null for each value that the final axes hide, e.g. with -ymin.
+
+    A row holds the values of each series at one wavelength, thus a row goes only if each series hides its value. A
+    point of a line stays if the axes show a segment to it. With --multispecplot, the columns of a series end with the
+    time of its panel, e.g. _300d.
+    """
+    xcolumn = f"x_plotted_{args.xunit}"
+    plottedprefix = f"{args.yvariable}_plotted"
+    seriesparts = [column.removeprefix(plottedprefix) for column in dfgrid.columns if column.startswith(plottedprefix)]
+    if not seriesparts:
+        return dfgrid
+
+    def get_axis_of_series(seriespart: str) -> mplax.Axes:
+        if not args.multispecplot:
+            return axes[-1]
+        return next(
+            axis for axis, timedays in zip(axes, args.timedayslist, strict=True) if seriespart.endswith(f"_{timedays}d")
+        )
+
+    shownnames = [f"isshown{index}" for index in range(len(seriesparts))]
+    return (
+        dfgrid
+        .with_columns(
+            get_shown_on_axes(get_axis_of_series(part), xcolumn, f"{plottedprefix}{part}", linecolumns=[]).alias(name)
+            for part, name in zip(seriesparts, shownnames, strict=True)
+        )
+        .filter(pl.any_horizontal(shownnames))
+        .with_columns(
+            pl.when(pl.col(name)).then(pl.col(f"{prefix}{part}")).alias(f"{prefix}{part}")
+            for part, name in zip(seriesparts, shownnames, strict=True)
+            for prefix in ("f_lambda", plottedprefix, f"{args.yvariable}_relnoise")
+            if f"{prefix}{part}" in dfgrid.columns
+        )
+        .drop(shownnames)
+    )
+
+
 def get_grid_columns(xunit: str) -> tuple[str, ...]:
     """Return the columns of a spectrum table that belong to its wavelength grid, and not to one series."""
     return ("lambda_angstroms", f"x_plotted_{xunit}", f"x_lower_{xunit}", f"x_upper_{xunit}")
@@ -2231,6 +2272,9 @@ def draw_plot(
 
         for line in leg.get_lines():
             line.set_linewidth(2.0)
+
+    if not (args.showemission or args.showabsorption):
+        gridtables = [get_shown_spectrum_table(dfgrid, list(axes), args) for dfgrid in gridtables]
 
     return {
         "": gridtables[0] if gridtables else pl.DataFrame(),

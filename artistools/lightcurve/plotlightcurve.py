@@ -340,6 +340,8 @@ def get_peak_summary(
     times = np.asarray(time_days, dtype=np.float64)
     values = np.asarray(yvalues, dtype=np.float64)
     hasvalue = np.isfinite(values) & np.isfinite(times)
+    # the plot draws no line across a time with no value, thus an interpolation must not cross such a time
+    gaptimes = times[np.isfinite(times) & ~np.isfinite(values)]
     if not hasvalue.any():
         return {"point_count": 0}, ["no finite value"], []
     # a reference file can list its points in any order, and the interpolation of Δm15 and the test of the ends need
@@ -366,8 +368,15 @@ def get_peak_summary(
                 **({"peak_noise_mag": 2.5 / math.log(10) * peakrelnoise} if ismagnitude else {}),
                 "noise_method": "sqrt(Σ e²) / Σ e",
             }
+    deltam15gap: tuple[float, float] | None = None
     if isband:
-        hasdeltam15 = fields["peak_time_days"] + 15.0 <= fields["time_max_days"]
+        targettime = fields["peak_time_days"] + 15.0
+        hasdeltam15 = targettime <= fields["time_max_days"]
+        if hasdeltam15:
+            lowertime, uppertime = times[times <= targettime].max(), times[times >= targettime].min()
+            if np.any((gaptimes > lowertime) & (gaptimes < uppertime)):
+                deltam15gap = (float(lowertime), float(uppertime))
+                hasdeltam15 = False
         fields |= {
             "deltam15_mag": float(np.interp(fields["peak_time_days"] + 15.0, times, values)) - fields[peakkey]
             if hasdeltam15
@@ -394,6 +403,11 @@ def get_peak_summary(
     if isband:
         if fields["deltam15_mag"] is not None:
             parts.append(f"Δm15 {fields['deltam15_mag']:.3g} mag ({fields['deltam15_method']})")
+        elif deltam15gap is not None:
+            parts.append(
+                f"no Δm15, because the magnitude has no value between {deltam15gap[0]:.4g} and {deltam15gap[1]:.4g} d,"
+                " which hold the time 15 days after the peak"
+            )
         else:
             parts.append("no Δm15, because the time range ends before 15 days after the peak")
     if len(times) > 4 and (peakindex < 2 or peakindex > len(times) - 3):

@@ -3637,6 +3637,18 @@ def test_peak_summary_sorts_the_times_of_a_reference_file() -> None:
     assert not warnings
 
 
+def test_peak_summary_gives_no_deltam15_across_a_missing_magnitude() -> None:
+    """A NaN magnitude near 15 days after the peak left the finite points, and np.interp then bridged the gap."""
+    from artistools.lightcurve.plotlightcurve import get_peak_summary
+
+    times = np.array([0.0, 10.0, 20.0, 25.0, 30.0, 40.0])
+    magnitudes = np.array([-14.0, -15.0, -14.5, np.nan, -14.0, -13.5])
+    fields, parts, _ = get_peak_summary(times, magnitudes, "mag", ismagnitude=True, isband=True)
+
+    assert fields["deltam15_mag"] is None
+    assert "no Δm15, because the magnitude has no value between 20 and 30 d" in parts[2]
+
+
 def test_katz_integral_leaves_out_a_missing_luminosity() -> None:
     """A null or NaN luminosity counted as zero, and the trapezoids on both sides of it added an invented energy."""
     from artistools.lightcurve import get_katz_integral

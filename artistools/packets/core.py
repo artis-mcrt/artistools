@@ -544,14 +544,15 @@ def count_packets_textfiles(modelpath: Path) -> tuple[int, int]:
         if folder not in folderlistings:
             with os.scandir(folder) as entries:
                 folderlistings[folder] = {entry.name: entry for entry in entries}
-    otherranks = {
-        int(namematch.group(1))
+    # two earlier runs can each leave a file of one rank, thus the count takes each pair of folder and rank
+    otherrankfiles = {
+        (folder, int(namematch.group(1)))
         for folder in (modelpath, *subfolders)
         for name in folderlistings[folder]
         if (namematch := re.fullmatch(r"packets00_(\d+)\.out(?:\.gz|\.xz|\.zst)?", name)) is not None
         and int(namematch.group(1)) >= nprocs
     }
-    return readcount, len(otherranks)
+    return readcount, len(otherrankfiles)
 
 
 def get_first_packets_file(modelpath: Path) -> Path | None:
