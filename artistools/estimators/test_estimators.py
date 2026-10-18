@@ -3240,6 +3240,19 @@ def test_deposition_rate_keeps_a_cell_with_no_row_at_the_next_timestep() -> None
     assert dftable["cellswithnorate"].item() == 1
 
 
+def test_deposition_gaps_expect_the_last_timestep_for_analytic_channels(capsys: pytest.CaptureFixture[str]) -> None:
+    """An analytic channel gives the rate of the last timestep, and a run with no row there gave no warning."""
+    deposition = at.estimators.deposition
+    dftable = pl.DataFrame({"timestep": [0, 1], "cellswithnorate": [0, 0]})
+    deposition.warn_about_gaps(modelpath_classic_3d, dftable, None, 2, onlyanalytic=True)
+    assert "no deposition rate for timestep 2" in capsys.readouterr().err
+    # a Monte Carlo channel gives no rate for the last timestep of any model
+    deposition.warn_about_gaps(modelpath_classic_3d, dftable, None, 2)
+    assert "no deposition rate" not in capsys.readouterr().err
+    assert deposition.selects_only_analytic_channels(["deposition_spfission"], ["spfission"], None)
+    assert not deposition.selects_only_analytic_channels(["deposition_alpha"], ["alpha"], None)
+
+
 def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path: Path) -> None:
     """The options of the run decide which deposition channels hold an analytic rate, when the options exist.
 
@@ -5942,7 +5955,7 @@ def test_line_table_keeps_a_bin_whose_band_crosses_the_axes() -> None:
     """The mean of a bin can be above the axes while the band of the cells of the bin is inside, and the row went."""
     import matplotlib.figure as mplfig
 
-    from artistools.estimators.plotestimators import get_band_is_shown
+    from artistools.plottools import get_band_is_shown
 
     axis = mplfig.Figure().add_subplot()
     axis.set_xlim(0.0, 10.0)
@@ -5954,7 +5967,8 @@ def test_line_table_keeps_a_bin_whose_band_crosses_the_axes() -> None:
         "value_max": [3.0, 3.0, 3.0],
     })
     # the band of the first bin reaches into the axes, and so does the area from the first bin to the second
-    assert dfline.filter(get_band_is_shown(axis, "velocity_kmps"))["velocity_kmps"].to_list() == [1.0, 2.0]
+    isshown = get_band_is_shown(axis, "velocity_kmps", pl.col("value_min"), pl.col("value_max"))
+    assert dfline.filter(isshown)["velocity_kmps"].to_list() == [1.0, 2.0]
 
 
 def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.CaptureFixture[str]) -> None:

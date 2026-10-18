@@ -399,6 +399,17 @@ def aggregate_deposition_rates(
     )
 
 
+def selects_only_analytic_channels(
+    colnames: Sequence[str], channels: Sequence[str] | None, configuredanalyticchannels: Sequence[str] | None
+) -> bool:
+    """Return whether each selected channel holds an analytic rate, which is the rate of the timestep of its own row.
+
+    With no options of the run, only spfission is analytic for certain, because ARTIS gives it with each scheme.
+    """
+    analyticchannels = configuredanalyticchannels if configuredanalyticchannels is not None else ["spfission"]
+    return all(channel in analyticchannels for channel in select_deposition_channels(colnames, channels))
+
+
 def get_deposition_rates(
     modelpath: Path | str,
     timesteps: Sequence[int] | None = None,
@@ -415,12 +426,12 @@ def get_deposition_rates(
     readtimesteps = None if timesteps is None else tuple({*timesteps} | {timestep + 1 for timestep in timesteps})
     dfestim = scan_estimators(modelpath, timestep=readtimesteps, join_modeldata=True, verbose=verbose)
     configuredanalyticchannels = get_configured_analytic_channels(modelpath)
-    if timesteps is not None and configuredanalyticchannels is not None:
-        selectedchannels = select_deposition_channels(dfestim.collect_schema().names(), channels)
-        # an analytic channel gives the rate of its own row, thus a later row of a restart with another scheme must
-        # not stop the command when no selected channel needs it
-        if all(channel in configuredanalyticchannels for channel in selectedchannels):
-            dfestim = dfestim.filter(pl.col("timestep").is_in(list(timesteps)))
+    # an analytic channel gives the rate of its own row, thus a later row of a restart with another scheme must not
+    # stop the command when no selected channel needs it
+    if timesteps is not None and selects_only_analytic_channels(
+        dfestim.collect_schema().names(), channels, configuredanalyticchannels
+    ):
+        dfestim = dfestim.filter(pl.col("timestep").is_in(list(timesteps)))
 
     return aggregate_deposition_rates(
         dfestim, timesteps, channels, yerange, configuredanalyticchannels=configuredanalyticchannels
@@ -495,17 +506,23 @@ def format_deposition_table(
 
 
 def warn_about_gaps(
-    modelpath: Path | str, dftable: pl.DataFrame, timesteps: Sequence[int] | None, lasttimestep: int
+    modelpath: Path | str,
+    dftable: pl.DataFrame,
+    timesteps: Sequence[int] | None,
+    lasttimestep: int,
+    *,
+    onlyanalytic: bool = False,
 ) -> None:
     """Print a warning for each timestep that got no row, and for the cells that gave no rate.
 
-    A model always gives no rate for its last timestep, thus a selection of every timestep asks for the
-    timesteps in front of that one alone. A complete model then gives no warning, and a model that
-    stopped early still gives one.
+    A Monte Carlo rate arrives in the row of the next timestep, thus a model gives no such rate for its last timestep.
+    A selection of every timestep then asks for the timesteps in front of that one alone. An analytic channel gives
+    the rate of its own row, thus a selection of analytic channels alone also asks for the last timestep. A complete
+    model then gives no warning, and a model that stopped early still gives one.
     """
     modelname = get_model_logname(modelpath)
     gotrows = set(dftable["timestep"].to_list())
-    wanted = set(timesteps) if timesteps is not None else set(range(lasttimestep))
+    wanted = set(timesteps) if timesteps is not None else set(range(lasttimestep + 1 if onlyanalytic else lasttimestep))
     if missing := sorted(wanted - gotrows):
         # a long list of timesteps hides the message, thus many of them give the count and the ends
         missingtext = (
@@ -582,7 +599,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         else:
             timesteps = get_selected_timesteps(modelpath, args.timedays, args.timestep)
             dftable = get_deposition_rates(modelpath, timesteps, channels, yerange, verbose=args.verbose)
-            warn_about_gaps(modelpath, dftable, timesteps, len(get_timestep_times(modelpath, loc="mid")) - 1)
+            onlyanalytic = selects_only_analytic_channels(
+                scan_estimators(modelpath, verbose=args.verbose).collect_schema().names(),
+                channels,
+                get_configured_analytic_channels(modelpath),
+            )
+            warn_about_gaps(
+                modelpath,
+                dftable,
+                timesteps,
+                len(get_timestep_times(modelpath, loc="mid")) - 1,
+                onlyanalytic=onlyanalytic,
+            )
             tables.append(format_deposition_table(modelpath, dftable, channels, yerange, yecells))
 
         print_product(args, tables[-1])

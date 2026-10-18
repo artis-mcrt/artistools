@@ -1797,6 +1797,28 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
     return limit
 
 
+def to_scale_coordinates(axisobj: mplaxis.Axis, expr: pl.Expr) -> pl.Expr:
+    """Return an expression of the values in the coordinates of the scale of an axis, in which a segment is straight.
+
+    The scales are linear, log, and symlog. A different scale, e.g. logit, takes the values as they are.
+    """
+    scale = axisobj.get_scale()
+    transform: t.Any = axisobj.get_transform()
+    if scale == "log":
+        return expr.log(float(transform.base))
+    if scale == "symlog":
+        # the transform of matplotlib: linear inside the threshold, and logarithmic outside it
+        base, linthresh, linscale = float(transform.base), float(transform.linthresh), float(transform.linscale)
+        linscaleadjusted = linscale / (1.0 - 1.0 / base)
+        return (
+            pl
+            .when(expr.abs() <= linthresh)
+            .then(expr * linscaleadjusted)
+            .otherwise(expr.sign() * linthresh * (linscaleadjusted + (expr.abs() / linthresh).log(base)))
+        )
+    return expr
+
+
 def get_shown_on_axes(
     axis: mplax.Axes, xcolumn: str, ycolumn: str, linecolumns: Sequence[str] | None = None
 ) -> pl.Expr:
@@ -1804,7 +1826,8 @@ def get_shown_on_axes(
 
     With linecolumns, the rows of one line have the same values in these columns, in the order of the line. An empty
     linecolumns gives one line. A row of a line is also true if a segment to it crosses the axes, because the axes
-    show part of that segment. A log axis draws no point at zero or below, and no segment to it.
+    show part of that segment. A log axis draws no point at zero or below, and no segment to it. The test of a segment
+    takes the coordinates of the scale of each axis, see to_scale_coordinates.
     """
     xislog, yislog = axis.get_xscale() == "log", axis.get_yscale() == "log"
     x, y = pl.col(xcolumn), pl.col(ycolumn)
@@ -1823,17 +1846,11 @@ def get_shown_on_axes(
     def shift_in_line(expr: pl.Expr, n: int) -> pl.Expr:
         return expr.shift(n).over(linecolumns) if linecolumns else expr.shift(n)
 
-    # a log axis draws a straight segment between the logarithms of its ends, thus the test takes those coordinates
-    def to_axis_coordinates(expr: pl.Expr, islog: bool) -> pl.Expr:
-        return expr.log10() if islog else expr
-
-    def to_axis_limit(limit: float, islog: bool) -> float:
-        return math.log10(limit) if islog else limit
-
-    x0, y0 = to_axis_coordinates(x, xislog), to_axis_coordinates(y, yislog)
+    # matplotlib draws a straight segment in the coordinates of the scale, e.g. the logarithms on a log axis
+    x0, y0 = to_scale_coordinates(axis.xaxis, x), to_scale_coordinates(axis.yaxis, y)
     dx, dy = shift_in_line(x0, -1) - x0, shift_in_line(y0, -1) - y0
-    xlow, xhigh = to_axis_limit(xlow, xislog), to_axis_limit(xhigh, xislog)
-    ylow, yhigh = to_axis_limit(ylow, yislog), to_axis_limit(yhigh, yislog)
+    xlow, xhigh = sorted(float(value) for value in axis.xaxis.get_transform().transform(np.array([xlow, xhigh])))
+    ylow, yhigh = sorted(float(value) for value in axis.yaxis.get_transform().transform(np.array([ylow, yhigh])))
     # the Liang-Barsky clip: each edge of the axes limits the parameter of the segment from its start (0) to its end (1)
     edges = [(-dx, x0 - xlow), (dx, xhigh - x0), (-dy, y0 - ylow), (dy, yhigh - y0)]
     tstart = pl.max_horizontal(pl.lit(0.0), *(pl.when(pk < 0.0).then(qk / pk) for pk, qk in edges))
@@ -1843,6 +1860,28 @@ def get_shown_on_axes(
         (tstart <= tend) & ~isparalleloutside & isdrawn & shift_in_line(isdrawn, -1) & dx.is_not_null()
     ).fill_null(value=False)
     return isinside | segmentisshown | shift_in_line(segmentisshown, 1).fill_null(value=False)
+
+
+def get_band_is_shown(axis: mplax.Axes, xcolumn: str, lower: pl.Expr, upper: pl.Expr) -> pl.Expr:
+    """Return an expression that is true for each row of a table whose band of fill_between from lower to upper shows.
+
+    fill_between fills the area from each row to the next one. The test takes the bounding box of that area, thus a
+    row can stay when its area only passes near a corner of the axes.
+    """
+    xlow, xhigh = sorted(axis.get_xlim())
+    ylow, yhigh = sorted(axis.get_ylim())
+    x = pl.col(xcolumn)
+    bandlow, bandhigh = pl.min_horizontal(lower, upper), pl.max_horizontal(lower, upper)
+    nextx, nextlow, nexthigh = x.shift(-1), bandlow.shift(-1), bandhigh.shift(-1)
+    pointisshown = x.is_between(xlow, xhigh) & (bandlow <= yhigh) & (bandhigh >= ylow)
+    areaisshown = (
+        (pl.min_horizontal(x, nextx) <= xhigh)
+        & (pl.max_horizontal(x, nextx) >= xlow)
+        & (pl.min_horizontal(bandlow, nextlow) <= yhigh)
+        & (pl.max_horizontal(bandhigh, nexthigh) >= ylow)
+        & nextx.is_not_null()
+    ).fill_null(value=False)
+    return pointisshown.fill_null(value=False) | areaisshown | areaisshown.shift(1).fill_null(value=False)
 
 
 def filter_to_axis_limits(

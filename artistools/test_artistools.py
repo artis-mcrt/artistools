@@ -5102,6 +5102,14 @@ def test_filter_to_axis_limits_keeps_the_rows_of_each_visible_segment() -> None:
     dfzero = pl.DataFrame({"x": [1.0, 2.0, 3.0], "y": [0.0, 0.0, 0.1]})
     assert at.plottools.filter_to_axis_limits(dfzero, axis, "x", "y", linecolumns=[]).rows() == [(3.0, 0.1)]
 
+    # a symlog axis draws the segment from (0, 1000) to (10, 1) as a curve of the data, and the axes from x = 8 to 9
+    # and y = 1.5 to 5 show a part of it. In the values of the data, the straight segment passes above the axes
+    axis.set_yscale("symlog", linthresh=1.0)
+    axis.set_xlim(8.0, 9.0)
+    axis.set_ylim(1.5, 5.0)
+    dfsymlog = pl.DataFrame({"x": [0.0, 10.0], "y": [1000.0, 1.0]})
+    assert at.plottools.filter_to_axis_limits(dfsymlog, axis, "x", "y", linecolumns=[]).height == 2
+
 
 def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission() -> None:
     """The cell and the timestep of the emitting regions must come from the same event.

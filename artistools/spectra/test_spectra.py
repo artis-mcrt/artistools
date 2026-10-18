@@ -2864,6 +2864,26 @@ def test_write_data_gives_the_plotted_values(tmp_path: Path) -> None:
     assert (~isbelow | hasshownneighbour).all()
 
 
+def test_spectrum_table_keeps_a_bin_whose_noise_band_shows() -> None:
+    """The line of each bin is above the axes, and the band of --shownoise reaches into them, and the rows went."""
+    import matplotlib.figure as mplfig
+
+    axis = mplfig.Figure().add_subplot()
+    axis.set_xlim(4000.0, 6000.0)
+    axis.set_ylim(0.0, 1.0)
+    dfgrid = pl.DataFrame({
+        "lambda_angstroms": [4500.0, 5000.0],
+        "x_plotted_angstrom": [4500.0, 5000.0],
+        "flux_plotted.mymodel": [2.0, 2.0],
+        "flux_relnoise.mymodel": [0.8, 0.8],
+    })
+    args = argparse.Namespace(xunit="angstrom", yvariable="flux", multispecplot=False)
+    dfshown = plotspectra.get_shown_spectrum_table(dfgrid, [axis], args)
+    assert dfshown["x_plotted_angstrom"].to_list() == [4500.0, 5000.0]
+    # with no noise column, the rows have no shown value
+    assert plotspectra.get_shown_spectrum_table(dfgrid.drop("flux_relnoise.mymodel"), [axis], args).is_empty()
+
+
 def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
     """-xmin alone on a frequency axis must stay the lower limit.
 

@@ -97,6 +97,7 @@ from artistools.plottools import draw_residual_panel
 from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
+from artistools.plottools import get_band_is_shown
 from artistools.plottools import get_shown_on_axes
 from artistools.plottools import get_summary_table
 from artistools.plottools import label_dirbin_series
@@ -1241,6 +1242,22 @@ def plot_artis_spectrum(
     return gridtables
 
 
+def get_shown_on_spectrum_axes(
+    axis: mplax.Axes, dfgrid: pl.DataFrame, seriespart: str, args: argparse.Namespace
+) -> pl.Expr:
+    """Return an expression that is true for each row of a series of a spectrum table that the final axes show.
+
+    The line of the series shows a row, and --shownoise also draws the band y (1 +- relnoise) with fill_between.
+    """
+    xcolumn = f"x_plotted_{args.xunit}"
+    plottedcolumn = f"{args.yvariable}_plotted{seriespart}"
+    isshown = get_shown_on_axes(axis, xcolumn, plottedcolumn, linecolumns=[])
+    if (noisecolumn := f"{args.yvariable}_relnoise{seriespart}") in dfgrid.columns:
+        value, relnoise = pl.col(plottedcolumn), pl.col(noisecolumn)
+        isshown |= get_band_is_shown(axis, xcolumn, value * (1.0 - relnoise), value * (1.0 + relnoise))
+    return isshown
+
+
 def get_shown_spectrum_table(
     dfgrid: pl.DataFrame, axes: Sequence[mplax.Axes], args: argparse.Namespace
 ) -> pl.DataFrame:
@@ -1248,9 +1265,8 @@ def get_shown_spectrum_table(
 
     A row holds the values of each series at one wavelength, thus a row goes only if each series hides its value. A
     point of a line stays if the axes show a segment to it. With --multispecplot, the columns of a series end with the
-    time of its panel, e.g. _300d.
+    time of its panel, e.g. _300d. With --shownoise, the band of the noise also shows a row.
     """
-    xcolumn = f"x_plotted_{args.xunit}"
     plottedprefix = f"{args.yvariable}_plotted"
     seriesparts = [column.removeprefix(plottedprefix) for column in dfgrid.columns if column.startswith(plottedprefix)]
     if not seriesparts:
@@ -1267,7 +1283,7 @@ def get_shown_spectrum_table(
     return (
         dfgrid
         .with_columns(
-            get_shown_on_axes(get_axis_of_series(part), xcolumn, f"{plottedprefix}{part}", linecolumns=[]).alias(name)
+            get_shown_on_spectrum_axes(get_axis_of_series(part), dfgrid, part, args).alias(name)
             for part, name in zip(seriesparts, shownnames, strict=True)
         )
         .filter(pl.any_horizontal(shownnames))
