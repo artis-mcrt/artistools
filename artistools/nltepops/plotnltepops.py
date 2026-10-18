@@ -61,6 +61,7 @@ from artistools.nltepops.core import add_lte_pops
 from artistools.nltepops.core import read_nltepops
 from artistools.nltepops.core import texifyconfiguration
 from artistools.nltepops.core import texifyterm
+from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import get_next_color
 from artistools.plottools import iter_axes
 from artistools.plottools import make_frame_figure
@@ -656,13 +657,16 @@ def make_plot_populations_with_time_or_velocity(
     fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols, aspect=0.847, sharey=True)
     ax = axesgrid.flatten() if args.subplots else axesgrid[0][0]
 
-    seriestables: list[pl.DataFrame] = []
+    tablesofaxis: list[tuple[mplax.Axes, list[pl.DataFrame]]] = []
     for plotnumber, timedays in enumerate(timedayslist):
         axis = ax[plotnumber] if args.subplots else ax
         assert isinstance(axis, mplax.Axes)
-        seriestables += plot_populations_with_time_or_velocity(
-            axis, modelpaths, timedays, args.levels, levelnames_of_ion, args=args, showtime=showtime
-        )
+        tablesofaxis.append((
+            axis,
+            plot_populations_with_time_or_velocity(
+                axis, modelpaths, timedays, args.levels, levelnames_of_ion, args=args, showtime=showtime
+            ),
+        ))
 
     # the axis label size comes from the artistools matplotlibrc
     labelfontsize = None
@@ -696,7 +700,13 @@ def make_plot_populations_with_time_or_velocity(
     set_axis_properties(ax, args)
 
     outputfilename = str(args.outputfile).format(elsymbol=get_elsymbol(atomic_number))
-    if seriestables:
+    xcolumn = "time_days" if args.x == "time" else "vel_r_mid_kmps"
+    # each table holds one line, thus a line needs no column of its own
+    if seriestables := [
+        filter_to_axis_limits(dfseries, axis, xcolumn, "n_NLTE_per_cm3", linecolumns=[])
+        for axis, axistables in tablesofaxis
+        for dfseries in axistables
+    ]:
         output_data(args, {"": pl.concat(seriestables)}, outputfilename)
     save_figure(fig, outputfilename, format="pdf", args=args)
 

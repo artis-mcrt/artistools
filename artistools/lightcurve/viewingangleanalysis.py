@@ -35,6 +35,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc.fileio import folder_holds_match
+from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
 from artistools.plottools import make_colorbar_viewingangles
@@ -447,12 +448,6 @@ def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> N
         make_colorbar_viewingangles(scaledmap, args, ax=axis)
 
 
-def filter_to_ylimits(dfplotted: pl.DataFrame, ycolumn: str, axis: mplax.Axes) -> pl.DataFrame:
-    """Keep the rows of a scatter table that lie inside the final y limits of the axis, e.g. from -ymin and -ymax."""
-    ylow, yhigh = sorted(axis.get_ylim())
-    return dfplotted.filter(pl.col(ycolumn).is_between(ylow, yhigh))
-
-
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     modelnames: Sequence[str], key: str, args: argparse.Namespace
 ) -> None:
@@ -562,7 +557,9 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         filename = f"{filestem}_risetime_peakmag.pdf"
     xcolumn = "risetime_days" if args.make_viewing_angle_peakmag_risetime_scatter_plot else "deltam15"
     dftable = (
-        filter_to_ylimits(pl.concat(dfplotted).rename({"x": xcolumn}), "peakmag", ax) if dfplotted else pl.DataFrame()
+        filter_to_axis_limits(pl.concat(dfplotted).rename({"x": xcolumn}), ax, xcolumn, "peakmag")
+        if dfplotted
+        else pl.DataFrame()
     )
     output_data(args, {"": dftable}, datafolder / filename)
     save_figure(fig, datafolder / filename, format="pdf", args=args)
@@ -643,7 +640,9 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     output_data(
         args,
         {
-            "": filter_to_ylimits(pl.concat(dfplotted), f"{bands[0]}max", ax) if dfplotted else pl.DataFrame(),
+            "": filter_to_axis_limits(pl.concat(dfplotted), ax, "peakcolour", f"{bands[0]}max")
+            if dfplotted
+            else pl.DataFrame(),
             "_observations": pl.DataFrame(sn_data),
         },
         plotname,

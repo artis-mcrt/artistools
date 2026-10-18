@@ -32,6 +32,7 @@ from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.modelinfo import get_dfrankassignments
 from artistools.misc.modelinfo import get_npts_model
 from artistools.misc.modelinfo import get_ranks_of_cells_in_layout
+from artistools.misc.remote import on_model_host
 
 # the current ARTIS tags a message with [warning] or [error], and an older ARTIS writes WARNING or ERROR
 RE_LEVEL = re.compile(r"\[(warning|error)\]|\b(WARNING|ERROR)\b")
@@ -77,13 +78,14 @@ def read_log_messages(logpath: Path) -> pl.DataFrame:
     return pl.DataFrame(rows, schema=MESSAGESCHEMA, orient="row")
 
 
+@on_model_host
 def get_logfiles(modelpath: Path, ranks: Sequence[int] | None, cells: Sequence[int] | None = None) -> list[Path]:
     """Return the log of each selected rank in each run folder, or of each rank of the folder if ranks is None.
 
     A run that stops before it writes an estimator file has no run folder in get_runfolders, but its log can hold the
     error. Thus the search reads each subfolder of the model folder. A restart can use a different number of ranks,
     thus None finds the ranks of each folder from the names of its logs, and cells finds the ranks of these cells in
-    the layout of each folder.
+    the layout of each folder. The host of a remote model finds the logs.
     """
     return get_unique_logfiles([
         logpath
@@ -198,11 +200,13 @@ def read_log_summary(logfile: Path) -> pl.DataFrame:
     return get_partial_log_summary(read_log_messages(logfile))
 
 
-def get_log_summary(logfiles: Sequence[Path]) -> pl.DataFrame:
+@on_model_host
+def get_log_summary(logfiles: list[Path]) -> pl.DataFrame:
     """Return the summary of the messages of the logs.
 
     A run of 2000 ranks can repeat a warning of each cell at each timestep, thus the messages of all the logs did not
-    fit in the memory. Each log gives its own summary first, and the summaries then combine.
+    fit in the memory. Each log gives its own summary first, and the summaries then combine. The host of remote logs
+    reads them, because only the summary goes through ssh.
     """
     return combine_log_summaries(parallel_map(read_log_summary, logfiles, desc="logs", unit="log"))
 

@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (4, "dcd670f630442cc0"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "f67593a7a1fca2c2"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1819,6 +1819,8 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     """
     from artistools.check import get_check_results
     from artistools.describemodel import get_model_summary
+    from artistools.logsummary import get_log_summary
+    from artistools.logsummary import get_logfiles
 
     modelpath = at.get_path("testartismodel").resolve()
     modellink = tmp_path / "testmodel"
@@ -1828,6 +1830,13 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     optionsfolder = tmp_path / "optionsmodel"
     optionsfolder.mkdir()
     (optionsfolder / "artisoptions.h").write_text("constexpr double MINTEMP = 3500.;\n", encoding="utf-8")
+    # the test model has no log, thus a folder of its own holds one
+    logfolder = tmp_path / "logmodel"
+    logfolder.mkdir()
+    (logfolder / "output_0-0.txt").write_text(
+        "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[warning] cell 4 is cold\n",
+        encoding="utf-8",
+    )
 
     remote.forget_server("testhost")
     with mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]):
@@ -1844,6 +1853,9 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
             remotesummary = get_model_summary(remotepath)
             # the check of a local model folder stopped for host:path, because the folder is not on this host
             dfremotechecks = get_check_results(remotepath)
+            # the logs of host:path were not found, because the search ran on this host
+            remotelogfiles = get_logfiles(Path(f"testhost:{logfolder}"), [0])
+            dfremotelogsummary = get_log_summary(remotelogfiles)
             # a negative cell and an empty list also select all the cells
             allcellselections: tuple[int | list[int] | None, ...] = (None, -1, [])
             for allcells in allcellselections:
@@ -1868,6 +1880,9 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     # get_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
     assert remotesummary == get_model_summary(modelpath)
     pltest.assert_frame_equal(dfremotechecks, get_check_results(modellink))
+    assert remotelogfiles == [Path(f"testhost:{logfolder / 'output_0-0.txt'}")]
+    pltest.assert_frame_equal(dfremotelogsummary, get_log_summary(get_logfiles(logfolder, [0])))
+    assert dfremotelogsummary["level"].to_list() == ["warning"]
 
 
 def test_get_filterfunc() -> None:

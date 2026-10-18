@@ -1783,6 +1783,43 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
     return limit
 
 
+def filter_to_axis_limits(
+    dfdrawn: pl.DataFrame, axis: mplax.Axes, xcolumn: str, ycolumn: str, linecolumns: Sequence[str] | None = None
+) -> pl.DataFrame:
+    """Keep the rows of a table of drawn points that the final limits of the axes show, e.g. from -ymin and -ymax.
+
+    With linecolumns, the rows of one line have the same values in these columns, in the order of the line. An empty
+    linecolumns gives one line. A row of a line also stays if the bounding box of a segment to it overlaps the axes,
+    because the axes can show that segment.
+    """
+    xlow, xhigh = sorted(axis.get_xlim())
+    ylow, yhigh = sorted(axis.get_ylim())
+    x, y = pl.col(xcolumn), pl.col(ycolumn)
+    isinside = x.is_between(xlow, xhigh) & y.is_between(ylow, yhigh)
+    if linecolumns is None:
+        return dfdrawn.filter(isinside)
+
+    def shift_in_line(expr: pl.Expr, n: int) -> pl.Expr:
+        return expr.shift(n).over(linecolumns) if linecolumns else expr.shift(n)
+
+    nextx, nexty = shift_in_line(x, -1), shift_in_line(y, -1)
+    segmentoverlaps = (
+        (pl.min_horizontal(x, nextx) <= xhigh)
+        & (pl.max_horizontal(x, nextx) >= xlow)
+        & (pl.min_horizontal(y, nexty) <= yhigh)
+        & (pl.max_horizontal(y, nexty) >= ylow)
+        & nextx.is_not_null()
+    )
+    return (
+        dfdrawn
+        .with_columns(segmentoverlaps.fill_null(value=False).alias("segmentoverlaps"))
+        .filter(
+            isinside | pl.col("segmentoverlaps") | shift_in_line(pl.col("segmentoverlaps"), 1).fill_null(value=False)
+        )
+        .drop("segmentoverlaps")
+    )
+
+
 def set_axis_properties(
     ax: AxesTree,
     args: argparse.Namespace,

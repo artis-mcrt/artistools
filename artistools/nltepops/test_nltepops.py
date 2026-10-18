@@ -723,3 +723,26 @@ def test_nltepops_time_or_velocity_write_data_gives_the_plotted_series(
         assert dfseries.height == len(xarr) > 0
         assert np.allclose(dfseries[xcolumn].to_numpy(), xarr, rtol=1e-12, atol=0.0)
         assert np.allclose(dfseries["n_NLTE_per_cm3"].to_numpy(), yarr, rtol=1e-12, atol=0.0)
+
+
+def test_nltepops_versus_time_write_data_gives_the_points_inside_xmax(tmp_path: Path) -> None:
+    """The table held the timesteps after -xmax, which the figure does not show."""
+    commonargs: dict[str, t.Any] = {
+        "modelpath": modelpath,
+        "x": "time",
+        "timedays": "270-290",
+        "cell": 0,
+        "ion_stages": [2],
+        "levels": [0],
+        "write_data": True,
+    }
+    at.nltepops.plot(argsraw=[], outputfile=tmp_path / "all", **commonargs)
+    dfall = pl.read_csv(tmp_path / "all" / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
+    times = dfall["time_days"].to_list()
+    assert len(times) > 3
+
+    at.nltepops.plot(argsraw=[], outputfile=tmp_path, xmax=(times[1] + times[2]) / 2, **commonargs)
+
+    dftable = pl.read_csv(tmp_path / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
+    # the line to the first timestep after -xmax is visible, thus that timestep stays
+    assert dftable["time_days"].to_list() == times[:3]

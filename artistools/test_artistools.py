@@ -4971,6 +4971,41 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> N
         assert dfpoints["time_days"].unique().to_list() == [tmid]
         assert dfpoints["log10nne"].to_list()[:2] == [5.0, 6.0]
 
+    # the table held the packets below -ymin, which the figure does not show
+    with mock.patch.object(at.plotlinefluxes, "get_emitting_regions_data", return_value=emdata):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            plotemittingregions=True,
+            norefdata=True,
+            timebins_tstart=[4.0],
+            timebins_tend=[6.0],
+            ymin=4500.0,
+            outputfile=tmp_path / "emregclipped.pdf",
+            write_data=True,
+        )
+    dfclipped = pl.read_csv(tmp_path / "emregclipped.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dfclipped.height > 0
+    assert dfclipped["Te"].min() == 5e3
+
+
+def test_filter_to_axis_limits_keeps_the_rows_of_each_visible_segment() -> None:
+    """A line keeps a point outside the axes when a segment to it can cross the axes. A marker outside goes."""
+    fig = mplfig.Figure()
+    axis = fig.add_subplot()
+    axis.set_xlim(0.0, 10.0)
+    axis.set_ylim(0.0, 1.0)
+    dfdrawn = pl.DataFrame({
+        "line": ["a"] * 6 + ["b"] * 2,
+        "x": [-5.0, -1.0, 5.0, 12.0, 20.0, 30.0, 5.0, 6.0],
+        "y": [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 2.0, -1.0],
+    })
+
+    dfshown = at.plottools.filter_to_axis_limits(dfdrawn, axis, "x", "y", linecolumns=["line"])
+    # the line b has no point inside the axes, but its segment crosses them
+    assert dfshown.rows() == [("a", -1.0, 0.5), ("a", 5.0, 0.5), ("a", 12.0, 0.5), ("b", 5.0, 2.0), ("b", 6.0, -1.0)]
+    assert at.plottools.filter_to_axis_limits(dfdrawn, axis, "x", "y").rows() == [("a", 5.0, 0.5)]
+
 
 def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission() -> None:
     """The cell and the timestep of the emitting regions must come from the same event.

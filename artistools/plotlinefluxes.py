@@ -55,6 +55,7 @@ from artistools.misc.general import get_bin_index_expr
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import get_packets
+from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
@@ -857,6 +858,18 @@ def get_emitting_region_table(
     )
 
 
+def get_shown_emitting_region_rows(dfpoints: Sequence[pl.DataFrame], axis: mplax.Axes) -> pl.DataFrame:
+    """Return the packets and the points of the reference curves that the final limits of the axes show."""
+    if not dfpoints:
+        return pl.DataFrame()
+    dfall = pl.concat(dfpoints)
+    isreference = pl.col("feature") == "reference"
+    return pl.concat([
+        filter_to_axis_limits(dfall.filter(isreference), axis, "log10nne", "Te", linecolumns=["model"]),
+        filter_to_axis_limits(dfall.filter(~isreference), axis, "log10nne", "Te"),
+    ])
+
+
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     """Plot the electron density and the temperature of the cells that emit each feature, and save the figure.
 
@@ -966,7 +979,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         # would replace the one before it
         if len(times_days) > 1 and "{timeavg" not in str(args.outputfile):
             outputfile = outputfile.with_stem(f"{outputfile.stem}_{tmid:.{ndecimals}f}d")
-        output_data(args, {"": pl.concat(dfpoints) if dfpoints else pl.DataFrame()}, outputfile)
+        output_data(args, {"": get_shown_emitting_region_rows(dfpoints, axis)}, outputfile)
         save_figure(fig, outputfile, args=args)
 
 
