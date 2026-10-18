@@ -154,6 +154,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "plotdensity",
         "plotestimators",
         "plotinitialcomposition",
+        "plotlastinteractionvelocity",
         "plotlastpacketinteraction",
         "plotlightcurves",
         "plotlinecontributions",
@@ -448,6 +449,22 @@ subcommandtree: CommandTree = {
         examples=(("rho Fe .", "the density and the mass fraction of Fe in a slice of a 3D model"),),
         exampletestfolder="test-classicmode_3d",
     ),
+    "plotlastinteractionvelocity": CommandSpec(
+        "packets.plotlastinteractionvelocity",
+        helptext="Plot the velocity of the last interaction of the escaped packets in a wavelength range against time.",
+        note=(
+            "In a range with no strong line, the median is an estimate of the velocity of the photosphere. Give it to"
+            " plotlinecontributions -photospherevelocity."
+        ),
+        examples=(
+            (". -lambdamin 7000 -lambdamax 8000", "the median and the quartiles for all the directions"),
+            (
+                ". -lambdamin 7000 -lambdamax 8000 -dirbin 0 50 90",
+                "the same for the two poles and the bin above the equator",
+            ),
+        ),
+        exampletestfolder="test-classicmode_3d",
+    ),
     "plotlastpacketinteraction": CommandSpec(
         "packets.plotlastpacketinteraction",
         helptext="Plot the last interaction of a packet.",
@@ -487,6 +504,10 @@ subcommandtree: CommandTree = {
             (
                 ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau",
                 "where the lines with the largest tau_sobolev from 6000 to 6400 Å form at 7 days",
+            ),
+            (
+                ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau -troughdirbin 90 -photospherevelocity 15000",
+                "the same, with a Sobolev estimate of the trough for the observer at the pole",
             ),
         ),
         exampletestfolder="test-classicmode_3d",

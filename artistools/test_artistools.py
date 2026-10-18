@@ -2241,6 +2241,54 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
             )
 
 
+def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
+    """A shell of constant tau_sobolev from v_ph to 0.9 vmax gives the depth that the geometry of the photosphere gives.
+
+    For a line-of-sight velocity u above v_ph, each ray in front of the disk crosses the shell, thus the depth is
+    1 - exp(-tau). For u below v_ph, only the ring of the disk with an impact parameter above sqrt(v_ph^2 - u^2) is in
+    front, thus the depth is (1 - exp(-tau)) u^2 / v_ph^2, as a mean over the bin. A shell gives the same depth for
+    each direction.
+    """
+    from artistools.linecontributions import CellLineInputs
+    from artistools.linecontributions import get_sobolev_trough
+    from artistools.linecontributions import LineVelocityProfiles
+
+    ncells, vmax_kmps, vph_kmps, tau = 64, 1.0e4, 4000.0, 2.0
+    cellwidth_kmps = 2 * vmax_kmps / ncells
+    centres = -vmax_kmps + cellwidth_kmps * (np.arange(ncells) + 0.5)
+    vx, vy, vz = (axis.ravel() for axis in np.meshgrid(centres, centres, centres, indexing="ij"))
+    speed = np.sqrt(vx**2 + vy**2 + vz**2)
+    time_days = 1.0
+    cellvolume = (cellwidth_kmps * at.constants.km_to_cm * time_days * at.constants.day_to_s) ** 3
+    line = {"ion": "X I", "lambda_angstroms": 5000.0, "lower": 0, "upper": 1, "A_per_s": 1.0}
+    modelgridindex = np.arange(ncells**3)
+    dfrankedcells = pl.DataFrame({
+        **{key: [value] * ncells**3 for key, value in line.items()},
+        "modelgridindex": modelgridindex,
+        "volume": np.full(ncells**3, cellvolume),
+        "tau_sobolev": np.where((speed > vph_kmps) & (speed < 0.9 * vmax_kmps), tau, 0.0),
+    })
+    dfcells = pl.DataFrame({
+        "modelgridindex": modelgridindex,
+        **{f"vel_{axis}_mid": values * at.constants.km_to_cm for axis, values in zip("xyz", (vx, vy, vz), strict=True)},
+    })
+    profiles = LineVelocityProfiles(pl.DataFrame(), pl.DataFrame([line]), pl.DataFrame(), pl.DataFrame(), dfrankedcells)
+    inputs = CellLineInputs(dfcells, pl.DataFrame(), {}, pl.DataFrame(), time_days)
+    edges = [1000.0 * index for index in range(9)]
+    absorbed = -math.expm1(-tau)
+    expected = [
+        absorbed * (upper**3 - lower**3) / (3 * (upper - lower) * vph_kmps**2) if upper <= vph_kmps else absorbed
+        for lower, upper in itertools.pairwise(edges)
+    ]
+    for dirbin in (90, 50):
+        dfdepths, dfblend = get_sobolev_trough(profiles, inputs, dirbin, vph_kmps, edges)
+        assert np.allclose(dfdepths["trough_depth"].to_numpy(), expected, rtol=0.0, atol=0.01), dirbin
+        deepest = dfblend.top_k(1, by="trough_depth").row(0, named=True)
+        assert np.isclose(deepest["trough_depth"], absorbed, rtol=0.01, atol=0.0)
+        # the plateau from 4000 to 8000 km/s gives the wavelengths of the relativistic Doppler shift of 5000 Å
+        assert 4868.0 < deepest["lambda_angstroms"] < 4934.0
+
+
 def test_linecontributions_writes_a_file_only_with_the_output_option(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

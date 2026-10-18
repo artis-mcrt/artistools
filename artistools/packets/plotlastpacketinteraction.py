@@ -1,7 +1,6 @@
 """Plot 2D histograms of where in the ejecta packets were last emitted or scattered."""
 
 import argparse
-import math
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -18,15 +17,6 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.linecontributions import add_velocity_bin_args
-from artistools.linecontributions import convert_velocity_columns
-from artistools.linecontributions import format_velocity
-from artistools.linecontributions import get_velocity_bin_edges_kmps
-from artistools.linecontributions import get_velocity_bin_index_expr
-from artistools.linecontributions import get_velocity_unit
-from artistools.linecontributions import INVERSE_VELOCITYUNIT_AXISLABELS
-from artistools.linecontributions import KMPS_PER_VELOCITYUNIT
-from artistools.linecontributions import VELOCITYUNIT_AXISLABELS
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
@@ -39,6 +29,7 @@ from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
@@ -48,11 +39,20 @@ from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_emission_velocity_expr
 from artistools.packets.core import get_packets
+from artistools.plottools import addarg_velocitybins
+from artistools.plottools import convert_velocity_columns
+from artistools.plottools import format_velocity
 from artistools.plottools import get_next_color
+from artistools.plottools import get_velocity_bin_edges_kmps
+from artistools.plottools import get_velocity_bin_index_expr
+from artistools.plottools import get_velocity_unit
+from artistools.plottools import INVERSE_VELOCITYUNIT_AXISLABELS
+from artistools.plottools import KMPS_PER_VELOCITYUNIT
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 from artistools.plottools import set_mpl_style
+from artistools.plottools import VELOCITYUNIT_AXISLABELS
 from artistools.rustext import get_bin_indices
 from artistools.rustext import sum_weights_in_bins
 
@@ -391,8 +391,9 @@ def plot_velocity_profiles_by_group(
         dfpackets, typecolumn, dflabels, velocityedges_kmps, maxseriescount
     )
     luminosity_factor = inverse_solidangle_fraction / (delta_t_s * nprocs_read)
+    dfgroupsummary = get_group_summary(dfpackets, typecolumn, dflabels, drawnnames, luminosity_factor)
     print_group_profile_method(
-        dfprofiles, dfpackets.height, position, typecolumn, t_min, t_max, velocityedges_kmps, luminosity_factor, unit
+        dfprofiles, dfpackets.height, position, typecolumn, t_min, t_max, velocityedges_kmps, dfgroupsummary, unit
     )
 
     dftable = get_group_profile_table(dfprofiles, velocityedges_kmps, luminosity_factor, [*drawnnames, "Other"])
@@ -418,7 +419,11 @@ def plot_velocity_profiles_by_group(
         outputfile, f"{start_of_filename}{kind}_by{groupby}_ts{timestep}_into_dirbin{dirbin}.pdf"
     )
     if args is not None:
-        output_data(args, {"": convert_velocity_columns(dftable, unit)}, outfilename)
+        output_data(
+            args,
+            {"": convert_velocity_columns(dftable, unit), "_summary": convert_velocity_columns(dfgroupsummary, unit)},
+            outfilename,
+        )
     save_figure(fig, outfilename, args=args)
 
 
@@ -430,13 +435,10 @@ def print_group_profile_method(
     t_min: float,
     t_max: float,
     velocityedges_kmps: Sequence[float],
-    luminosity_factor: float,
+    dfgroupsummary: pl.DataFrame,
     unit: t.Literal["kmps", "c"],
 ) -> None:
-    """Print the method of the profiles, and the luminosity, the mean velocity, and the number of packets of each group.
-
-    The mean velocity takes the energy of each bin as the weight and the centre of each bin as the velocity.
-    """
+    """Print the method of the profiles, and the luminosity, velocity quartiles, and packet count of each group."""
     print_detail(
         f"{packetcount} escaped r-packets arrive from {t_min:.2f} to {t_max:.2f} d. The group of a packet is the"
         f" {typecolumn} of the packet"
@@ -464,35 +466,61 @@ def print_group_profile_method(
             " the energy have a velocity outside the bins, or no record of the position"
         )
 
-    bincentres = pl.col("velocitybin").cast(pl.Float64).add(0.5) * binwidth_kmps
-    dfgroups = (
-        dfprofiles
-        .group_by("label")
-        .agg(
-            energy=pl.col("energy").sum(),
-            packetcount=pl.col("packetcount").sum(),
-            meanvelocity=(pl.col("energy") * bincentres).filter(bincentres.is_not_null()).sum()
-            / pl.col("energy").filter(bincentres.is_not_null()).sum(),
-        )
-        .sort("energy", descending=True)
-    )
     print_detail(
-        "These are the groups, with the mean velocity of their bins. The mean takes the energy of each bin as the"
-        " weight:"
+        "These are the groups. The quartiles of the velocity take the energy of each packet as the weight, and they"
+        " include the packets outside the bins:"
     )
-    for label, energy, groupcount, meanvelocity in dfgroups.select(
-        "label", "energy", "packetcount", "meanvelocity"
-    ).iter_rows():
-        # a group with all its packets outside the bins has no mean velocity
+    for row in dfgroupsummary.iter_rows(named=True):
+        quartiles = [row[f"velocity_luminosity_q{quantile}_kmps"] for quantile in (25, 50, 75)]
         velocitytext = (
-            f"mean velocity {format_velocity(meanvelocity, unit)}"
-            if math.isfinite(meanvelocity)
-            else "no packet in the bins"
+            "velocity quartiles " + " ".join(format_velocity(value, unit) for value in quartiles)
+            if None not in quartiles
+            else "no record of the position"
         )
         print_detail(
-            f"  {label}: {energy * luminosity_factor:.3e} erg/s ({energy / totalenergy:.1%}), {velocitytext},"
-            f" {groupcount} packets"
+            f"  {row['label']}: {row['luminosity_erg_per_s']:.3e} erg/s ({row['luminosity_fraction']:.1%}),"
+            f" {velocitytext}, {row['packetcount']} packets"
         )
+
+
+def get_group_summary(
+    dfpackets: pl.DataFrame,
+    typecolumn: str,
+    dflabels: pl.DataFrame,
+    drawnnames: Sequence[str],
+    luminosity_factor: float,
+) -> pl.DataFrame:
+    """Return one row for each drawn group and for "Other", with the luminosity, the packet count, and the quartiles.
+
+    The quartiles take the energy of each packet as the weight. A packet with no record of the position has no
+    velocity, thus it is in the luminosity but not in the quartiles.
+    """
+    luminosity = pl.col("luminosity_erg_per_s")
+    return (
+        dfpackets
+        .join(dflabels, on=typecolumn, how="left", maintain_order="left")
+        .with_columns(label=pl.when(pl.col("label").is_in(list(drawnnames))).then("label").otherwise(pl.lit("Other")))
+        .group_by("label")
+        .agg(
+            luminosity_erg_per_s=pl.col("e_rf").cast(pl.Float64).sum() * luminosity_factor,
+            packetcount=pl.len(),
+            **{
+                f"velocity_luminosity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
+                    "velocity_kmps", "e_rf", quantile
+                )
+                for quantile in (0.25, 0.5, 0.75)
+            },
+        )
+        .with_columns(luminosity_fraction=luminosity / luminosity.sum())
+        .sort("luminosity_erg_per_s", "label", descending=[True, False])
+        .select(
+            "label",
+            "luminosity_erg_per_s",
+            "luminosity_fraction",
+            "packetcount",
+            pl.exclude("label", "luminosity_erg_per_s", "luminosity_fraction", "packetcount"),
+        )
+    )
 
 
 def get_group_profile_table(
@@ -613,7 +641,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=8,
         help='Number of groups that -groupby draws. The other groups join the group "Other"',
     )
-    add_velocity_bin_args(parser, " of -groupby")
+    addarg_velocitybins(parser, " of -groupby")
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument("--colorlogscale", action="store_true", help="Show the log10 of the emissivity in the 2D plot")
 

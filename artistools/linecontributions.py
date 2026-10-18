@@ -8,10 +8,10 @@ from collections.abc import Iterator
 from collections.abc import Sequence
 from itertools import starmap
 from pathlib import Path
-from types import MappingProxyType
 
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
@@ -26,7 +26,6 @@ from artistools.ejectaopacity import get_excitation_temperature_column
 from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.ejectaopacity import get_selected_timestep
 from artistools.estimators import scan_estimators
-from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -36,6 +35,8 @@ from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
 from artistools.misc import get_timestep_time
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
 from artistools.misc import print_detail
@@ -48,8 +49,10 @@ from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import get_provenance_lines
 from artistools.misc.cliutils import write_data_table
 from artistools.misc.columns import get_column_description_lines
+from artistools.misc.dirbins import get_costheta_bins
 from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
+from artistools.plottools import get_velocity_bin_index_expr
 
 DEFAULTOUTPUTNAME = "linecontributions.txt"
 
@@ -429,7 +432,17 @@ def parse_ions(iontexts: Sequence[str], optionname: str) -> list[tuple[int, int]
     return ions
 
 
-def get_cell_line_batches(
+class CellLineInputs(t.NamedTuple):
+    """The data that get_cell_line_batches() reads for each batch of cells."""
+
+    dfcells: pl.DataFrame
+    dflines: pl.DataFrame
+    levelsofion: dict[tuple[int, int], pl.DataFrame]
+    dfnltepops: pl.DataFrame
+    time_days: float
+
+
+def get_cell_line_inputs(
     modelpath: Path | str,
     timestep: int,
     lambdamin: float,
@@ -437,11 +450,11 @@ def get_cell_line_batches(
     ions: Collection[tuple[int, int]] | None = None,
     exctemperature: str = "auto",
     costhetarange: tuple[float, float] | None = None,
-) -> Iterator[pl.DataFrame]:
-    """Yield the table of get_cell_line_table() for each batch of cells.
+) -> CellLineInputs:
+    """Read the data of the cells and of the lines in the wavelength range for get_cell_line_batches().
 
-    costhetarange selects the cells with cos(theta) = v_z / |v| of the cell centre in the range, edges included. The z
-    axis is the polar axis of the direction bins. The method and the assumptions go to the log before the first batch.
+    costhetarange selects the cells with cos θ = v_z / |v| of the cell centre in the range, edges included. The z axis
+    is the polar axis of the direction bins. The function logs the method and the assumptions.
     """
     time_days = get_timestep_time(modelpath, timestep)
     temperaturecolumn = get_excitation_temperature_column(
@@ -527,6 +540,8 @@ def get_cell_line_batches(
             "volume",
             pl.col(temperaturecolumn).alias("T_exc"),
             pl.col("^nnion_.*$"),
+            # the trough estimate needs the velocity vector of the cell centre. Only a 2D or 3D model has it
+            cs.by_name("vel_x_mid", "vel_y_mid", "vel_z_mid", require_all=False),
             velocity_kmps=pl.col("vel_r_mid_on_c") * C_cm_per_s / km_to_cm,
         )
         .sort("modelgridindex")
@@ -566,10 +581,21 @@ def get_cell_line_batches(
         "    - LTE: the population of the nnion_ estimator at T_exc."
     )
 
-    maxlevelcount = max(levels.height for levels in levelsofion.values())
-    cellsperbatch = max(1, ROWSPERBATCH // max(dflines.height, maxlevelcount))
-    for firstcell in range(0, dfcells.height, cellsperbatch):
-        yield get_cell_line_table(dfcells.slice(firstcell, cellsperbatch), dflines, levelsofion, dfnltepops, time_days)
+    return CellLineInputs(dfcells, dflines, levelsofion, dfnltepops, time_days)
+
+
+def get_cell_line_batches(inputs: CellLineInputs) -> Iterator[pl.DataFrame]:
+    """Yield the table of get_cell_line_table() for each batch of cells."""
+    maxlevelcount = max(levels.height for levels in inputs.levelsofion.values())
+    cellsperbatch = max(1, ROWSPERBATCH // max(inputs.dflines.height, maxlevelcount))
+    for firstcell in range(0, inputs.dfcells.height, cellsperbatch):
+        yield get_cell_line_table(
+            inputs.dfcells.slice(firstcell, cellsperbatch),
+            inputs.dflines,
+            inputs.levelsofion,
+            inputs.dfnltepops,
+            inputs.time_days,
+        )
 
 
 def warn_about_line_summary(dfsummary: pl.DataFrame) -> None:
@@ -599,7 +625,8 @@ def get_line_contributions(
     """
     celltables = []
     summaries = []
-    for dfcelllines in get_cell_line_batches(modelpath, timestep, lambdamin, lambdamax, ions, exctemperature):
+    inputs = get_cell_line_inputs(modelpath, timestep, lambdamin, lambdamax, ions, exctemperature)
+    for dfcelllines in get_cell_line_batches(inputs):
         summaries.append(get_line_summary(dfcelllines))
         if percell:
             celltables.append(dfcelllines)
@@ -609,179 +636,216 @@ def get_line_contributions(
     return pl.concat(celltables) if percell else dfsummary
 
 
-# the number of km/s in each unit of the velocity axis
-KMPS_PER_VELOCITYUNIT: t.Final = MappingProxyType({"kmps": 1.0, "c": C_cm_per_s / km_to_cm})
-VELOCITYUNIT_LABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "c"})
-# the axis labels of a velocity and of the inverse of a velocity, as matplotlib text
-VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "$c$"})
-INVERSE_VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "(km/s)$^{-1}$", "c": "$c^{-1}$"})
+def get_ranked_lines(dfsummary: pl.DataFrame, rankby: t.Literal["emission", "tau"], maxlines: int) -> pl.DataFrame:
+    """Return the summary rows of the maxlines lines with the most emission or the largest tau_sobolev in a cell."""
+    sortcolumn = "emission_erg_per_s" if rankby == "emission" else "tau_sobolev_max"
+    return dfsummary.sort(sortcolumn, "lambda_angstroms", descending=[True, False], nulls_last=True).head(maxlines)
 
 
-def add_velocity_bin_args(parser: argparse.ArgumentParser, usetext: str = "") -> None:
-    """Add -nvelocitybins, -velocitymax, and -velocityunit. usetext ends each help text, e.g. " of -groupby"."""
-    parser.add_argument("-nvelocitybins", type=int, default=25, help=f"Number of velocity bins of equal width{usetext}")
-    parser.add_argument(
-        "-velocitymax",
-        type=float,
-        help=f"Upper edge of the velocity bins{usetext}, in the unit of -velocityunit. Default: the corner of the grid",
-    )
-    parser.add_argument(
-        "-velocityunit",
-        choices=["auto", "kmps", "c"],
-        default="auto",
-        help=(
-            f"Unit of the velocity axis{usetext}: km/s or c. The value auto takes c for a model with a vmax of 0.2 c"
-            " or more, e.g. a kilonova, and km/s for a different model"
-        ),
-    )
+class LineVelocityProfiles(t.NamedTuple):
+    """The summary of all the lines, the ranked lines, and the velocity profiles. See get_line_velocity_profiles()."""
 
-
-def get_velocity_unit(modelpath: Path | str, choice: str) -> t.Literal["kmps", "c"]:
-    """Return the unit of the velocity axis that -velocityunit selects, and log the reason for the value auto."""
-    if choice == "kmps":
-        return "kmps"
-    if choice == "c":
-        return "c"
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-    vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
-    unit: t.Literal["kmps", "c"] = "c" if vmax_on_c >= 0.2 else "kmps"
-    print_detail(
-        f"The velocity axis takes units of {VELOCITYUNIT_LABELS[unit]}, because the vmax of the model is"
-        f" {vmax_on_c:.3f} c (-velocityunit auto takes c for a vmax of 0.2 c or more)"
-    )
-    return unit
-
-
-def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
-    """Return the text of a velocity in the unit of the velocity axis."""
-    if unit == "c":
-        return f"{velocity_kmps / KMPS_PER_VELOCITYUNIT['c']:.3f} c"
-    return f"{velocity_kmps:.0f} km/s"
-
-
-def get_velocity_bin_edges_kmps(
-    modelpath: Path | str, nbins: int, velocitymax: float | None, unit: t.Literal["kmps", "c"]
-) -> list[float]:
-    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax or to the grid corner.
-
-    velocitymax is in the unit of the velocity axis. The corner of a 2D grid or a 3D grid is outside vmax. A cell in a
-    corner can hold much of the emission or the optical depth, e.g. in the fast ejecta of a kilonova.
-    """
-    if nbins < 1:
-        exit_with_error(f"-nvelocitybins {nbins} gives no bins", "Give a number of 1 or more")
-    if velocitymax is not None:
-        if velocitymax <= 0.0:
-            exit_with_error(f"-velocitymax {velocitymax} gives no range", "Give a velocity above 0")
-        if unit == "c" and velocitymax > 1.0:
-            exit_with_error(
-                f"-velocitymax {velocitymax} is above the speed of light, and the velocity axis takes units of c",
-                "Give -velocitymax in units of c, or give -velocityunit kmps",
-            )
-        velocitymax_kmps = velocitymax * KMPS_PER_VELOCITYUNIT[unit]
-    else:
-        _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-        velocitymax_kmps = modelmeta["vmax_cmps"] / km_to_cm * math.sqrt(modelmeta["dimensions"])
-        print_detail(
-            f"The velocity bins end at {format_velocity(velocitymax_kmps, unit)}, the corner of the model grid. This"
-            f" is vmax times the square root of the number of dimensions ({modelmeta['dimensions']})"
-        )
-    return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
-
-
-def convert_velocity_columns(dftable: pl.DataFrame, unit: t.Literal["kmps", "c"]) -> pl.DataFrame:
-    """Return the table with each velocity column and each value per unit velocity in the unit of the axis.
-
-    The code calculates in km/s. A column x_lower_kmps becomes x_lower_c, and a column that ends in _per_kmps becomes
-    a column that ends in _per_c.
-    """
-    if unit == "kmps":
-        return dftable
-    kmpsperunit = KMPS_PER_VELOCITYUNIT[unit]
-    return dftable.select(
-        (pl.col(column) / kmpsperunit).alias(column.removesuffix("_kmps") + f"_{unit}")
-        if column in {"x_lower_kmps", "x_upper_kmps"}
-        else (pl.col(column) * kmpsperunit).alias(column.removesuffix("_per_kmps") + f"_per_{unit}")
-        if column.endswith("_per_kmps")
-        else pl.col(column)
-        for column in dftable.columns
-    )
-
-
-def get_velocity_bin_index_expr(velocity_kmps: pl.Expr, velocityedges_kmps: Sequence[float]) -> pl.Expr:
-    """Return the index of the velocity bin, or null for a velocity outside the bins.
-
-    A bin holds its lower edge, and the last bin also holds its upper edge.
-    """
-    nbins = len(velocityedges_kmps) - 1
-    lower, upper = velocityedges_kmps[0], velocityedges_kmps[-1]
-    binindex = ((velocity_kmps - lower) / (upper - lower) * nbins).floor().cast(pl.Int64).clip(upper_bound=nbins - 1)
-    return pl.when(velocity_kmps.is_between(lower, upper)).then(binindex)
+    dfsummary: pl.DataFrame
+    dfranked: pl.DataFrame
+    dfalllines: pl.DataFrame
+    dfprofiles: pl.DataFrame
+    dfrankedcells: pl.DataFrame
 
 
 def get_line_velocity_profiles(
-    modelpath: Path | str,
-    timestep: int,
-    lambdamin: float,
-    lambdamax: float,
-    velocityedges_kmps: Sequence[float],
-    ions: Collection[tuple[int, int]] | None = None,
-    exctemperature: str = "auto",
-    costhetarange: tuple[float, float] | None = None,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Return the line summary, and the emission and the mean tau_sobolev of each line in each velocity bin.
+    inputs: CellLineInputs, velocityedges_kmps: Sequence[float], rankby: t.Literal["emission", "tau"], maxlines: int
+) -> LineVelocityProfiles:
+    """Return the line summary, the ranked lines, and the velocity profiles of all the lines and of each ranked line.
 
-    The bins have equal widths. The mean of tau_sobolev takes the volume of each cell as the weight. A cell outside the
-    bins is in the summary, but not in a bin. costhetarange selects the cells, see get_cell_line_batches().
+    The bins have equal widths. The first pass over the cells gives the summary of all the lines and the emission of
+    all the lines in each bin. The second pass gives one row for each cell and ranked line (dfrankedcells), because a
+    median needs the values of all the cells. The profile of a ranked line gives in each bin:
+    - the emission and the number of cells;
+    - the mean and the median of tau_sobolev, with the volume of each cell as the weight;
+    - the volume fraction of the cells with a tau_sobolev above 1.
+    A cell outside the bins is in the summary, but not in a bin.
     """
+    velocitybin = get_velocity_bin_index_expr(pl.col("velocity_kmps"), velocityedges_kmps)
     summaries = []
-    profiles = []
-    tau = pl.col("tau_sobolev")
-    for dfcelllines in get_cell_line_batches(
-        modelpath, timestep, lambdamin, lambdamax, ions, exctemperature, costhetarange
-    ):
+    alllinesbins = []
+    for dfcelllines in get_cell_line_batches(inputs):
         summaries.append(get_line_summary(dfcelllines))
-        profiles.append(
+        alllinesbins.append(
             dfcelllines
             .lazy()
-            .with_columns(velocitybin=get_velocity_bin_index_expr(pl.col("velocity_kmps"), velocityedges_kmps))
+            .select("emission_erg_per_s", velocitybin=velocitybin)
             .filter(pl.col("velocitybin").is_not_null())
-            .group_by(*LINEKEYS, "velocitybin")
-            .agg(
-                emission_erg_per_s=pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0).sum(),
-                tau_times_volume=(tau * pl.col("volume")).filter(tau.is_not_null()).sum(),
-                volume_with_tau=pl.col("volume").filter(tau.is_not_null()).sum(),
-                cellcount=pl.len(),
-            )
+            .group_by("velocitybin")
+            .agg(pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0).sum())
             .collect()
         )
-
     dfsummary = get_line_summary_of_batches(summaries)
     warn_about_line_summary(dfsummary)
-    binwidth_kmps = (velocityedges_kmps[-1] - velocityedges_kmps[0]) / (len(velocityedges_kmps) - 1)
+    dfalllines = pl.concat(alllinesbins).group_by("velocitybin").agg(pl.col("emission_erg_per_s").sum())
+
+    dfranked = get_ranked_lines(dfsummary, rankby, maxlines)
+    rankedinputs = inputs._replace(
+        dflines=inputs.dflines.join(dfranked.select(LINEKEYS), on=list(LINEKEYS), how="semi", maintain_order="left")
+    )
+    dfrankedcells = pl.concat(get_cell_line_batches(rankedinputs)).with_columns(velocitybin=velocitybin)
+
+    binindices = list(range(len(velocityedges_kmps) - 1))
+    binwidth_kmps = (velocityedges_kmps[-1] - velocityedges_kmps[0]) / len(binindices)
+    tau = pl.col("tau_sobolev")
+    volumewithtau = pl.col("volume").filter(tau.is_not_null())
     dfprofiles = (
-        pl
-        .concat(profiles)
+        dfrankedcells
+        .filter(pl.col("velocitybin").is_not_null())
         .group_by(*LINEKEYS, "velocitybin")
-        .agg(pl.col("emission_erg_per_s", "tau_times_volume", "volume_with_tau", "cellcount").sum())
-        .select(
-            *LINEKEYS,
-            "velocitybin",
+        .agg(
+            emission_erg_per_s=pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0).sum(),
+            tau_sobolev_volume_mean=(tau * pl.col("volume")).filter(tau.is_not_null()).sum() / volumewithtau.sum(),
+            tau_sobolev_volume_median=get_weighted_quantile_expr("tau_sobolev", "volume", 0.5),
+            volume_fraction_tau_sobolev_above_1=pl.col("volume").filter(tau > 1.0).sum() / volumewithtau.sum(),
+            cellcount=pl.len(),
+        )
+        .with_columns(
             x_lower_kmps=pl.col("velocitybin").replace_strict(
-                list(range(len(velocityedges_kmps) - 1)), velocityedges_kmps[:-1], return_dtype=pl.Float64
+                binindices, velocityedges_kmps[:-1], return_dtype=pl.Float64
             ),
             x_upper_kmps=pl.col("velocitybin").replace_strict(
-                list(range(len(velocityedges_kmps) - 1)), velocityedges_kmps[1:], return_dtype=pl.Float64
+                binindices, velocityedges_kmps[1:], return_dtype=pl.Float64
             ),
-            emission_erg_per_s=pl.col("emission_erg_per_s"),
             emission_per_velocity_erg_per_s_per_kmps=pl.col("emission_erg_per_s") / binwidth_kmps,
-            tau_sobolev_volume_mean=pl.when(pl.col("volume_with_tau") > 0).then(
-                pl.col("tau_times_volume") / pl.col("volume_with_tau")
-            ),
-            cellcount=pl.col("cellcount"),
         )
         .sort(*LINEKEYS, "velocitybin")
     )
-    return dfsummary, dfprofiles
+    return LineVelocityProfiles(dfsummary, dfranked, dfalllines, dfprofiles, dfrankedcells)
+
+
+def get_ranked_line_summary(profiles: LineVelocityProfiles) -> pl.DataFrame:
+    """Return one row for each ranked line, with the velocities of its emission and of a median tau_sobolev above 1.
+
+    The quartiles of the velocity take the emission of each cell as the weight. The range where the median
+    tau_sobolev is above 1 starts at the lower edge of the first such bin. It ends at the upper edge of the last such
+    bin. Thus the range can hold a bin with a median of 1 or less.
+    """
+    dfquartiles = profiles.dfrankedcells.group_by(LINEKEYS).agg(**{
+        f"velocity_emission_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
+            "velocity_kmps", "emission_erg_per_s", quantile
+        )
+        for quantile in (0.25, 0.5, 0.75)
+    })
+    dftauranges = (
+        profiles.dfprofiles
+        .filter(pl.col("tau_sobolev_volume_median") > 1.0)
+        .group_by(LINEKEYS)
+        .agg(
+            velocity_median_tau_above_1_min_kmps=pl.col("x_lower_kmps").min(),
+            velocity_median_tau_above_1_max_kmps=pl.col("x_upper_kmps").max(),
+        )
+    )
+    return (
+        profiles.dfranked
+        .select(
+            *LINEKEYS,
+            "emission_erg_per_s",
+            "emission_fraction",
+            "tau_sobolev_max",
+            "velocity_kmps_at_tau_sobolev_max",
+            "cellcount_tau_sobolev_above_1",
+        )
+        .join(dfquartiles, on=list(LINEKEYS), how="left", maintain_order="left")
+        .join(dftauranges, on=list(LINEKEYS), how="left", maintain_order="left")
+    )
+
+
+def get_sobolev_trough(
+    profiles: LineVelocityProfiles,
+    inputs: CellLineInputs,
+    dirbin: int,
+    photospherevelocity_kmps: float,
+    velocityedges_kmps: Sequence[float],
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Return the Sobolev absorption depth of each ranked line against the line-of-sight velocity, and of their blend.
+
+    The observer is at the centre cos θ of the direction bin, and the depth is the mean over the centres of the phi
+    bins. The photosphere is a sphere at v_ph = photospherevelocity_kmps. A cell absorbs if its centre is on the near
+    side of the photosphere, inside the cylinder of the photospheric disk. The depth at a line-of-sight velocity u is
+    sum((1 - exp(-tau)) V_v) / (du pi v_ph^2). V_v is the volume of the cell in velocity space, and du is the width of
+    the bin. Thus the depth is the fraction of the flux of a uniform disk that the line removes.
+
+    The estimate has no emission of the line and no limb darkening. The blend is 1 - prod(1 - depth) of the lines at
+    each wavelength, from the relativistic Doppler shift of the bin centres.
+    """
+    nphibins = get_viewingdirection_phibincount()
+    costhetalower, costhetaupper, _ = get_costheta_bins(usedegrees=False)
+    costhetabin = dirbin // nphibins
+    costheta = (costhetalower[costhetabin] + costhetaupper[costhetabin]) / 2.0
+    sintheta = math.sqrt(1.0 - costheta**2)
+    dfphi = pl.DataFrame({"phi": [2.0 * math.pi * (index + 0.5) / nphibins for index in range(nphibins)]})
+
+    time_s = inputs.time_days * day_to_s
+    vph = photospherevelocity_kmps * km_to_cm
+    nbins = len(velocityedges_kmps) - 1
+    binwidth_cmps = (velocityedges_kmps[-1] - velocityedges_kmps[0]) / nbins * km_to_cm
+    vlos = (
+        pl.col("vel_x_mid") * sintheta * pl.col("phi").cos()
+        + pl.col("vel_y_mid") * sintheta * pl.col("phi").sin()
+        + pl.col("vel_z_mid") * costheta
+    )
+    impactsquared = pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2 + pl.col("vel_z_mid") ** 2 - vlos**2
+    isinfront = (impactsquared < vph**2) & (vlos > (vph**2 - impactsquared).clip(lower_bound=0.0).sqrt())
+    # a negative tau_sobolev is a population inversion. The estimate takes such a line as transparent
+    absorbedfraction = 1.0 - (-pl.col("tau_sobolev").fill_null(0.0).clip(lower_bound=0.0)).exp()
+    binindices = list(range(nbins))
+    dflines = (
+        profiles.dfrankedcells
+        .select(*LINEKEYS, "modelgridindex", "volume", "tau_sobolev")
+        .join(
+            inputs.dfcells.select("modelgridindex", "vel_x_mid", "vel_y_mid", "vel_z_mid"),
+            on="modelgridindex",
+            how="left",
+        )
+        .join(dfphi, how="cross")
+        .with_columns(vlos=vlos)
+        .filter(isinfront)
+        .with_columns(velocitybin=get_velocity_bin_index_expr(pl.col("vlos") / km_to_cm, velocityedges_kmps))
+        .filter(pl.col("velocitybin").is_not_null())
+        .group_by(*LINEKEYS, "velocitybin")
+        .agg(
+            trough_depth=(absorbedfraction * pl.col("volume")).sum()
+            / time_s**3
+            / (binwidth_cmps * math.pi * vph**2 * nphibins)
+        )
+    )
+    # the cross join gives a row for each ranked line and each bin, thus a bin with no cell in front of the disk has a
+    # depth of zero
+    dfdepths = (
+        profiles.dfranked
+        .select(LINEKEYS)
+        .join(pl.DataFrame({"velocitybin": binindices}, schema={"velocitybin": pl.Int64}), how="cross")
+        .join(dflines, on=[*LINEKEYS, "velocitybin"], how="left", maintain_order="left")
+        .with_columns(
+            pl.col("trough_depth").fill_null(0.0),
+            x_lower_kmps=pl.col("velocitybin").replace_strict(
+                binindices, velocityedges_kmps[:-1], return_dtype=pl.Float64
+            ),
+            x_upper_kmps=pl.col("velocitybin").replace_strict(
+                binindices, velocityedges_kmps[1:], return_dtype=pl.Float64
+            ),
+        )
+    )
+
+    bincentres_on_c = (
+        (np.array(velocityedges_kmps[:-1]) + np.array(velocityedges_kmps[1:])) / 2.0 * km_to_cm / C_cm_per_s
+    )
+    dopplerfactors = np.sqrt((1.0 - bincentres_on_c) / (1.0 + bincentres_on_c))
+    lambdarestvalues = profiles.dfranked["lambda_angstroms"].to_numpy()
+    lambdagrid = np.linspace(lambdarestvalues.min() * dopplerfactors.min(), lambdarestvalues.max(), 400)
+    transmission = np.ones_like(lambdagrid)
+    for lambdarest, dfline in zip(lambdarestvalues, dfdepths.partition_by(LINEKEYS, maintain_order=True), strict=True):
+        # np.interp needs increasing x, and a larger velocity gives a shorter wavelength
+        linelambdas = lambdarest * dopplerfactors[::-1]
+        depths = dfline.sort("velocitybin")["trough_depth"].to_numpy()[::-1]
+        transmission *= 1.0 - np.clip(np.interp(lambdagrid, linelambdas, depths, left=0.0, right=0.0), 0.0, 1.0)
+    dfblend = pl.DataFrame({"lambda_angstroms": lambdagrid, "trough_depth": 1.0 - transmission})
+    return dfdepths.drop("velocitybin"), dfblend
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

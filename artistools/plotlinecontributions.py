@@ -5,22 +5,18 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
+import matplotlib.colors as mplcolors
 import numpy as np
 import polars as pl
 
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import get_selected_timestep
-from artistools.linecontributions import add_velocity_bin_args
-from artistools.linecontributions import convert_velocity_columns
-from artistools.linecontributions import format_velocity
+from artistools.linecontributions import get_cell_line_inputs
 from artistools.linecontributions import get_line_velocity_profiles
-from artistools.linecontributions import get_velocity_bin_edges_kmps
-from artistools.linecontributions import get_velocity_unit
-from artistools.linecontributions import INVERSE_VELOCITYUNIT_AXISLABELS
-from artistools.linecontributions import KMPS_PER_VELOCITYUNIT
+from artistools.linecontributions import get_ranked_line_summary
+from artistools.linecontributions import get_sobolev_trough
 from artistools.linecontributions import LINEKEYS
 from artistools.linecontributions import parse_ions
-from artistools.linecontributions import VELOCITYUNIT_AXISLABELS
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -33,21 +29,34 @@ from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_time
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
+from artistools.misc.dirbins import get_dirbin_labels
+from artistools.plottools import addarg_velocitybins
+from artistools.plottools import convert_velocity_columns
+from artistools.plottools import format_velocity
+from artistools.plottools import get_velocity_bin_edges_kmps
+from artistools.plottools import get_velocity_unit
+from artistools.plottools import INVERSE_VELOCITYUNIT_AXISLABELS
+from artistools.plottools import KMPS_PER_VELOCITYUNIT
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
+from artistools.plottools import VELOCITYUNIT_AXISLABELS
 
 if t.TYPE_CHECKING:
     import matplotlib.axes as mplax
     import numpy.typing as npt
+
+    from artistools.linecontributions import LineVelocityProfiles
 
 DEFAULTOUTPUTNAME = "plotlinecontributions.pdf"
 
@@ -67,31 +76,20 @@ def get_line_label() -> pl.Expr:
     )
 
 
-def get_ranked_lines(dfsummary: pl.DataFrame, rankby: t.Literal["emission", "tau"], maxlines: int) -> pl.DataFrame:
-    """Return the summary rows of the maxlines lines with the most emission or the largest tau_sobolev in a cell."""
-    sortcolumn = "emission_erg_per_s" if rankby == "emission" else "tau_sobolev_max"
-    return (
-        dfsummary
-        .sort(sortcolumn, "lambda_angstroms", descending=[True, False], nulls_last=True)
-        .head(maxlines)
-        .with_columns(label=get_line_label())
-    )
-
-
 def plot_line_profiles(
     axes: "npt.NDArray[np.object_] | Sequence[mplax.Axes]",
-    dfsummary: pl.DataFrame,
-    dfprofiles: pl.DataFrame,
+    profiles: "LineVelocityProfiles",
     dfranked: pl.DataFrame,
     velocityedges_kmps: Sequence[float],
     unit: t.Literal["kmps", "c"],
-) -> pl.DataFrame:
-    """Draw the emission profile and the mean tau_sobolev of each ranked line, and return the drawn data.
+) -> tuple[pl.DataFrame, dict[str, str]]:
+    """Draw the emission profile and the median tau_sobolev of each ranked line, and return the data and the colours.
 
     The emission profile of a line is its emission per unit velocity, divided by the emission of the line in all the
     cells. Thus a weak line and a strong line have profiles of the same size, and the legend gives the strength. The
-    emission panel also draws the profile of the sum of all the lines in the wavelength range. The axis and the drawn
-    data take the velocity unit unit.
+    emission panel also draws the profile of the sum of all the lines in the wavelength range. The median of
+    tau_sobolev takes the volume of each cell as the weight. A few dense cells can make the mean much larger than the
+    median, thus the table gives both. The axis and the drawn data take the velocity unit unit.
     """
     kmpsperunit = KMPS_PER_VELOCITYUNIT[unit]
     edges = np.array(velocityedges_kmps) / kmpsperunit
@@ -103,9 +101,10 @@ def plot_line_profiles(
         return values
 
     profilecolumn = "emission_fraction_per_kmps"
-    alllinesemission = float(dfsummary["emission_erg_per_s"].sum())
-    dfalllines = dfprofiles.group_by("velocitybin").agg(
-        (pl.col("emission_per_velocity_erg_per_s_per_kmps").sum() / alllinesemission).alias(profilecolumn)
+    binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
+    alllinesemission = float(profiles.dfsummary["emission_erg_per_s"].sum())
+    dfalllines = profiles.dfalllines.with_columns(
+        (pl.col("emission_erg_per_s") / binwidth_kmps / alllinesemission).alias(profilecolumn)
     )
     axes[0].stairs(
         get_bin_values(dfalllines, profilecolumn, 0.0) * kmpsperunit,
@@ -115,7 +114,7 @@ def plot_line_profiles(
         linewidth=1.5,
     )
 
-    dfdrawn = dfprofiles.join(
+    dfdrawn = profiles.dfprofiles.join(
         dfranked.select(*LINEKEYS, "label", lineemission="emission_erg_per_s"), on=list(LINEKEYS), how="inner"
     ).with_columns(
         pl
@@ -123,65 +122,117 @@ def plot_line_profiles(
         .then(pl.col("emission_per_velocity_erg_per_s_per_kmps") / pl.col("lineemission"))
         .alias(profilecolumn)
     )
+    colours: dict[str, str] = {}
     drawntau = []
     for label, emissionfraction in dfranked.select("label", "emission_fraction").iter_rows():
         dfline = dfdrawn.filter(pl.col("label") == label)
         stairs = axes[0].stairs(
             get_bin_values(dfline, profilecolumn, 0.0) * kmpsperunit, edges, label=f"{label} ({emissionfraction:.1%})"
         )
-        tauvalues = get_bin_values(dfline, "tau_sobolev_volume_mean", np.nan)
+        colours[label] = mplcolors.to_hex(stairs.get_edgecolor())
+        tauvalues = get_bin_values(dfline, "tau_sobolev_volume_median", np.nan)
         # a log axis cannot show a population inversion, i.e. a negative tau_sobolev
         tauvalues = np.where(tauvalues > 0.0, tauvalues, np.nan)
-        axes[1].stairs(tauvalues, edges, baseline=None, color=stairs.get_edgecolor())
+        axes[1].stairs(tauvalues, edges, baseline=None, color=colours[label])
         drawntau.append(tauvalues)
 
     axes[1].axhline(1.0, color="grey", linestyle="dashed", linewidth=1.0)
     axes[1].set_yscale("log")
     if drawntau and np.nanmin(np.concatenate(drawntau), initial=np.inf) < TAUAXISMIN:
         axes[1].set_ylim(bottom=TAUAXISMIN)
-        print_detail(f"The lower panel shows only a tau_sobolev of {TAUAXISMIN:g} or more")
+        print_detail(f"The tau_sobolev panel shows only a median tau_sobolev of {TAUAXISMIN:g} or more")
     axes[0].set_ylim(bottom=0.0)
     axes[0].set_xlim(edges[0], edges[-1])
 
-    return convert_velocity_columns(
-        dfdrawn.select(
-            "label",
-            *LINEKEYS,
-            "x_lower_kmps",
-            "x_upper_kmps",
-            "emission_erg_per_s",
-            "emission_per_velocity_erg_per_s_per_kmps",
-            profilecolumn,
-            "tau_sobolev_volume_mean",
-            "cellcount",
-        ).sort("label", "x_lower_kmps"),
-        unit,
-    )
+    dftable = dfdrawn.select(
+        "label",
+        *LINEKEYS,
+        "x_lower_kmps",
+        "x_upper_kmps",
+        "emission_erg_per_s",
+        "emission_per_velocity_erg_per_s_per_kmps",
+        profilecolumn,
+        "tau_sobolev_volume_median",
+        "tau_sobolev_volume_mean",
+        "volume_fraction_tau_sobolev_above_1",
+        "cellcount",
+    ).sort("label", "x_lower_kmps")
+    return convert_velocity_columns(dftable, unit), colours
 
 
-def print_ranked_lines(dfranked: pl.DataFrame, rankby: str, unit: t.Literal["kmps", "c"]) -> None:
-    """Print the emission fraction, the mean velocity of the emission, and the maximum tau_sobolev of each line."""
+def plot_trough(
+    ax: "mplax.Axes",
+    dfdepths: pl.DataFrame,
+    dfranked: pl.DataFrame,
+    colours: dict[str, str],
+    unit: t.Literal["kmps", "c"],
+    photospherevelocity_kmps: float,
+) -> None:
+    """Draw the Sobolev absorption depth of each ranked line against the line-of-sight velocity."""
+    kmpsperunit = KMPS_PER_VELOCITYUNIT[unit]
+    dflabelled = dfdepths.join(dfranked.select(*LINEKEYS, "label"), on=list(LINEKEYS), how="inner")
+    for label in dfranked["label"]:
+        dfline = dflabelled.filter(pl.col("label") == label).sort("x_lower_kmps")
+        edges = np.append(dfline["x_lower_kmps"].to_numpy(), dfline["x_upper_kmps"][-1]) / kmpsperunit
+        ax.stairs(dfline["trough_depth"].to_numpy(), edges, color=colours[label])
+    ax.axvline(photospherevelocity_kmps / kmpsperunit, color="grey", linestyle="dotted", linewidth=1.0)
+    ax.set_ylim(0.0, 1.0)
+
+
+def print_ranked_lines(dflinesummary: pl.DataFrame, rankby: str, unit: t.Literal["kmps", "c"]) -> None:
+    """Print the emission fraction, the velocity quartiles of the emission, and the range of a median tau above 1."""
     rankedby = "the most emission" if rankby == "emission" else "the largest tau_sobolev in a cell"
     print_detail(
-        f"These are the {dfranked.height} lines with {rankedby}. The mean velocity takes the emission of each cell"
-        " as the weight:"
+        f"These are the {dflinesummary.height} lines with {rankedby}. The quartiles of the velocity take the emission"
+        " of each cell as the weight:"
     )
-    for row in dfranked.iter_rows(named=True):
-        meanvelocity = row["velocity_kmps_emission_mean"]
+    for row in dflinesummary.iter_rows(named=True):
+        quartiles = [row[f"velocity_emission_q{quantile}_kmps"] for quantile in (25, 50, 75)]
         emissiontext = (
-            f"{row['emission_fraction']:.1%} of the emission of the lines, mean velocity"
-            f" {format_velocity(meanvelocity, unit)}"
-            if meanvelocity is not None
+            f"{row['emission_fraction']:.1%} of the emission of the lines, velocity quartiles"
+            f" {' '.join(format_velocity(value, unit) for value in quartiles)}"
+            if None not in quartiles
             else "no emission"
         )
-        taumax = row["tau_sobolev_max"]
+        taumin, taumax = row["velocity_median_tau_above_1_min_kmps"], row["velocity_median_tau_above_1_max_kmps"]
+        taurangetext = (
+            f"median tau_sobolev above 1 from {format_velocity(taumin, unit)} to {format_velocity(taumax, unit)}"
+            if taumin is not None
+            else "median tau_sobolev of 1 or less in each bin"
+        )
         tautext = (
-            f"maximum tau_sobolev {taumax:.3g} at {format_velocity(row['velocity_kmps_at_tau_sobolev_max'], unit)},"
-            f" {row['cellcount_tau_sobolev_above_1']} cells with tau_sobolev above 1"
-            if taumax is not None
+            f"maximum tau_sobolev {row['tau_sobolev_max']:.3g} at"
+            f" {format_velocity(row['velocity_kmps_at_tau_sobolev_max'], unit)}"
+            if row["tau_sobolev_max"] is not None
             else "no tau_sobolev"
         )
-        print_detail(f"  {row['label']}: {emissiontext}, {tautext}")
+        print_detail(f"  {row['label']}: {emissiontext}, {taurangetext}, {tautext}")
+
+
+def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) -> tuple[int, float] | None:
+    """Return the direction bin and the velocity of the photosphere [km/s] for the trough estimate, or None."""
+    if args.troughdirbin is None:
+        if args.photospherevelocity is not None:
+            exit_with_error("-photospherevelocity applies only to the trough estimate", "Give -troughdirbin too")
+        return None
+    nphibins = get_viewingdirection_phibincount()
+    ndirbins = get_viewingdirectionbincount()
+    if not (0 <= args.troughdirbin < ndirbins and args.troughdirbin % nphibins == 0):
+        exit_with_error(
+            f"-troughdirbin {args.troughdirbin} is not the first direction bin of a costheta bin",
+            f"Give a multiple of {nphibins} from 0 to {ndirbins - nphibins}, e.g. 90 for the pole at +z",
+        )
+    if args.photospherevelocity is None or args.photospherevelocity <= 0.0:
+        exit_with_error(
+            "the trough estimate needs the velocity of the photosphere",
+            "Give -photospherevelocity, e.g. the median of plotlastinteractionvelocity for a range with no strong line",
+        )
+    if args.costhetamin is not None or args.costhetamax is not None:
+        exit_with_error(
+            "the trough estimate needs all the cells in front of the photosphere",
+            "Remove -costhetamin and -costhetamax, or remove -troughdirbin",
+        )
+    return args.troughdirbin, args.photospherevelocity * KMPS_PER_VELOCITYUNIT[unit]
 
 
 def get_costheta_range(costhetamin: float | None, costhetamax: float | None) -> tuple[float, float] | None:
@@ -219,7 +270,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " find the lines of an absorption feature"
         ),
     )
-    add_velocity_bin_args(parser)
+    addarg_velocitybins(parser)
     parser.add_argument(
         "-costhetamin",
         type=float,
@@ -234,6 +285,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 for the equator with -costhetamin -0.2."
             " Default: 1"
+        ),
+    )
+    parser.add_argument(
+        "-troughdirbin",
+        type=int,
+        help=(
+            "Add a Sobolev estimate of the absorption trough for an observer in the costheta bin of this direction bin,"
+            " e.g. 90 for the pole at +z. The estimate takes the mean over the phi bins"
+        ),
+    )
+    parser.add_argument(
+        "-photospherevelocity",
+        type=float,
+        help=(
+            "Velocity of the photosphere of -troughdirbin, in the unit of -velocityunit. plotlastinteractionvelocity"
+            " gives an estimate"
         ),
     )
     addarg_excitationtemperature(parser)
@@ -255,12 +322,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print_modelpath(args.modelpath)
 
     unit = get_velocity_unit(args.modelpath, args.velocityunit)
+    troughsettings = get_trough_settings(args, unit)
     velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax, unit)
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
     costhetarange = get_costheta_range(args.costhetamin, args.costhetamax)
-    dfsummary, dfprofiles = get_line_velocity_profiles(
-        args.modelpath, timestep, args.xmin, args.xmax, velocityedges_kmps, ions, args.exctemperature, costhetarange
+    inputs = get_cell_line_inputs(
+        args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, costhetarange
     )
+    if troughsettings is not None and "vel_z_mid" not in inputs.dfcells.columns:
+        exit_with_error(
+            "the cells of a 1D model have no direction, thus the trough estimate is not possible",
+            "Remove -troughdirbin",
+        )
+    profiles = get_line_velocity_profiles(inputs, velocityedges_kmps, args.rankby, args.maxlines)
 
     print_detail(
         f"{args.nvelocitybins} velocity bins of {format_velocity(velocityedges_kmps[1], unit)} from 0 to"
@@ -268,30 +342,54 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         " centre"
     )
     print_detail(
-        "The upper panel gives the emission of the cells in each bin, divided by the width of the bin. The panel also"
-        " divides it by the emission of the line in all the cells. The legend gives the fraction of the emission of"
-        " all the lines. The lower panel gives the mean tau_sobolev of the cells in each bin, with the volume of each"
-        " cell as the weight"
+        "The emission panel gives the emission of the cells in each bin, divided by the width of the bin. The panel"
+        " also divides it by the emission of the line in all the cells. The legend gives the fraction of the emission"
+        " of all the lines. The tau_sobolev panel gives the median tau_sobolev of the cells in each bin, with the"
+        " volume of each cell as the weight"
     )
-    totalemission = float(dfsummary["emission_erg_per_s"].sum())
+    totalemission = float(profiles.dfsummary["emission_erg_per_s"].sum())
     if totalemission > 0.0:
-        binnedfraction = float(dfprofiles["emission_erg_per_s"].sum()) / totalemission
+        binnedfraction = float(profiles.dfalllines["emission_erg_per_s"].sum()) / totalemission
         if binnedfraction < 1.0 - 1e-6:
             print_detail(
                 f"The bins hold {binnedfraction:.1%} of the emission of the lines. The rest is outside the bins"
             )
 
-    dfranked = get_ranked_lines(dfsummary, args.rankby, args.maxlines)
-    print_ranked_lines(dfranked, args.rankby, unit)
+    dfranked = profiles.dfranked.with_columns(label=get_line_label())
+    dflinesummary = get_ranked_line_summary(profiles).with_columns(label=get_line_label())
+    print_ranked_lines(dflinesummary, args.rankby, unit)
 
-    fig, axesgrid = make_frame_figure(args, rows=2, aspect=0.45)
+    fig, axesgrid = make_frame_figure(args, rows=3 if troughsettings else 2, aspect=0.45)
     axes = axesgrid[:, 0]
-    dfdrawn = plot_line_profiles(axes, dfsummary, dfprofiles, dfranked, velocityedges_kmps, unit)
+    dfdrawn, colours = plot_line_profiles(axes, profiles, dfranked, velocityedges_kmps, unit)
+    tables = {
+        "": dfdrawn,
+        "_summary": convert_velocity_columns(dflinesummary.select("label", pl.exclude("label")), unit),
+    }
+    if troughsettings is not None:
+        dirbin, photospherevelocity_kmps = troughsettings
+        dfdepths, dfblend = get_sobolev_trough(profiles, inputs, dirbin, photospherevelocity_kmps, velocityedges_kmps)
+        plot_trough(axes[2], dfdepths, dfranked, colours, unit, photospherevelocity_kmps)
+        print_trough_method(dirbin, photospherevelocity_kmps, unit, dfranked.height, dfblend)
+        axes[2].set_ylabel("Trough depth")
+        tables["_trough"] = convert_velocity_columns(
+            dfdepths.join(dfranked.select(*LINEKEYS, "label"), on=list(LINEKEYS), how="left").select(
+                "label", pl.exclude("label")
+            ),
+            unit,
+        )
+        tables["_troughblend"] = dfblend
+
     # -xmin and -xmax give the wavelength range of the lines, thus they do not set the limits of the velocity axis
     set_axis_properties(axes[0], args, xlimits=(None, None, "-xmin"), setyaxis=False)
-    axes[1].set_xlabel(f"Radial velocity [{VELOCITYUNIT_AXISLABELS[unit]}]")
+    unitlabel = VELOCITYUNIT_AXISLABELS[unit]
+    axes[-1].set_xlabel(
+        f"Velocity [{unitlabel}]: radial, and line of sight in the trough panel"
+        if troughsettings
+        else f"Radial velocity [{unitlabel}]"
+    )
     axes[0].set_ylabel(rf"$\Delta L / \Delta v / L$ [{INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
-    axes[1].set_ylabel(r"$\langle\tau_\mathrm{Sobolev}\rangle_V$")
+    axes[1].set_ylabel(r"median $\tau_\mathrm{Sobolev}$")
     set_legend(axes[0], args)
     title = f"{get_model_name(args.modelpath)} {get_timestep_time(args.modelpath, timestep):.2f} d"
     if costhetarange is not None:
@@ -299,5 +397,31 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     set_plot_title(axes[0], title, args)
 
     outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME)
-    output_data(args, {"": dfdrawn}, outputfile)
+    output_data(args, tables, outputfile)
     save_figure(fig, outputfile, args=args)
+
+
+def print_trough_method(
+    dirbin: int, photospherevelocity_kmps: float, unit: t.Literal["kmps", "c"], linecount: int, dfblend: pl.DataFrame
+) -> None:
+    """Print the method and the assumptions of the trough estimate, and the deepest point of the blend."""
+    directionlabel = get_dirbin_labels([dirbin], average_over_phi=True, usedegrees=True)[dirbin]
+    print_detail(
+        f"The trough panel is a Sobolev estimate for an observer at the centre cos θ of direction bin {dirbin}"
+        f" ({directionlabel}), as the mean over the phi bins. The photosphere is a sphere at"
+        f" {format_velocity(photospherevelocity_kmps, unit)}"
+    )
+    print_detail(
+        "The depth at a line-of-sight velocity u is the sum of (1 - exp(-tau)) V_v / (du pi v_ph^2) over the cells on"
+        " the near side of the photosphere, inside the cylinder of its disk. V_v is the volume of the cell in velocity"
+        " space, du is the width of the velocity bin, and v_ph is the velocity of the photosphere"
+    )
+    print_detail(
+        f"The estimate has no emission of the lines, no limb darkening, and only the {linecount} ranked lines. The"
+        " blend of the lines is 1 - prod(1 - depth) at each wavelength"
+    )
+    deepest = dfblend.top_k(1, by="trough_depth").row(0, named=True)
+    print_detail(
+        f"The blend has its largest depth {deepest['trough_depth']:.3f} at {deepest['lambda_angstroms']:.0f} Å"
+        " (rest frame of the observer)"
+    )

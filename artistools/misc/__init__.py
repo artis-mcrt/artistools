@@ -111,6 +111,7 @@ from artistools.misc.fileio import zopen as zopen
 from artistools.misc.fileio import zopenpl as zopenpl
 from artistools.misc.general import df_filter_minmax_bracketed as df_filter_minmax_bracketed
 from artistools.misc.general import gaussian_filter_wrap as gaussian_filter_wrap
+from artistools.misc.general import get_weighted_quantile_expr as get_weighted_quantile_expr
 from artistools.misc.general import import_optional as import_optional
 from artistools.misc.general import is_in_range as is_in_range
 from artistools.misc.general import parallel_map as parallel_map

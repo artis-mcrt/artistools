@@ -54,6 +54,19 @@ def get_bin_index_expr(value: pl.Expr, edges: Iterable[float], right_closed: boo
     return pl.when(value.is_not_nan()).then(binindex)
 
 
+def get_weighted_quantile_expr(value: str, weight: str, quantile: float) -> pl.Expr:
+    """Return an aggregation that gives the weighted quantile of a column, e.g. 0.5 for the weighted median.
+
+    The result is the smallest value whose cumulative weight, in the order of the values, reaches the quantile of the
+    total weight. A null or NaN value, and a value with a weight of zero or null, have no effect. Use the expression in
+    group_by().agg(). A group with no valid value gives null.
+    """
+    isvalid = pl.col(value).is_not_null() & pl.col(value).cast(pl.Float64).is_not_nan()
+    values = pl.col(value).filter(isvalid)
+    weights = pl.col(weight).filter(isvalid).fill_null(0.0)
+    return values.sort().filter(weights.sort_by(values).cum_sum() >= quantile * weights.sum()).first()
+
+
 @functools.lru_cache
 def savgol_coeffs(window_length: int, polyorder: int) -> npt.NDArray[np.float64]:
     """Return the Savitzky-Golay smoothing coefficients for a centred window."""

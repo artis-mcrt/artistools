@@ -321,7 +321,68 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "the mean tau_sobolev of the cells in the velocity bin, with the volume as the weight",
         "",
     ),
+    (
+        "tau_sobolev_volume_median",
+        "the median tau_sobolev of the cells in the velocity bin, with the volume as the weight",
+        "",
+    ),
+    (
+        "volume_fraction_tau_sobolev_above_1",
+        "the volume of the cells with a tau_sobolev above 1 in the velocity bin, divided by the volume of the bin",
+        "",
+    ),
+    ("velocity_c_at_tau_sobolev_max", "the radial velocity of the cell with the maximum tau_sobolev", "c"),
+    (
+        "velocity_emission_q(25|50|75)_kmps",
+        "the radial velocity at the {0}% quantile of the emission of the line in the cells",
+        "km/s",
+    ),
+    (
+        "velocity_emission_q(25|50|75)_c",
+        "the radial velocity at the {0}% quantile of the emission of the line in the cells",
+        "c",
+    ),
+    (
+        "velocity_median_tau_above_1_(min|max)_kmps",
+        "the {0}imum velocity of the velocity bins where the median tau_sobolev of the line is above 1",
+        "km/s",
+    ),
+    (
+        "velocity_median_tau_above_1_(min|max)_c",
+        "the {0}imum velocity of the velocity bins where the median tau_sobolev of the line is above 1",
+        "c",
+    ),
     ("cellcount", "the number of cells of the row, e.g. of a velocity bin", ""),
+    # the trough estimate of plotlinecontributions
+    (
+        "trough_depth",
+        "the Sobolev estimate of the fraction of the flux of the photospheric disk that the line or the blend removes",
+        "",
+    ),
+    # the groups of plotlastpacketinteraction -groupby and the series of plotlastinteractionvelocity
+    ("luminosity_fraction", "the luminosity of the group divided by the luminosity of all the groups", ""),
+    (
+        "velocity_luminosity_q(25|50|75)_kmps",
+        "the radial velocity of the last interaction at the {0}% quantile of the packet energy of the group",
+        "km/s",
+    ),
+    (
+        "velocity_luminosity_q(25|50|75)_c",
+        "the radial velocity of the last interaction at the {0}% quantile of the packet energy of the group",
+        "c",
+    ),
+    (
+        "velocity_q(25|50|75)_kmps",
+        "the radial velocity of the last interaction at the {0}% quantile of the packet energy of the timestep",
+        "km/s",
+    ),
+    (
+        "velocity_q(25|50|75)_c",
+        "the radial velocity of the last interaction at the {0}% quantile of the packet energy of the timestep",
+        "c",
+    ),
+    ("velocity_q50_(min|max)_kmps", "the {0}imum median velocity of the timesteps of the series", "km/s"),
+    ("velocity_q50_(min|max)_c", "the {0}imum median velocity of the timesteps of the series", "c"),
     # the logs of ARTIS
     ("mpirank", "the index of the MPI rank", ""),
     ("update_grid_s", "the time that the MPI rank took to update the grid in the timestep", "s"),

@@ -657,6 +657,63 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
         assert np.isclose(luminosity, energy / delta_t_s, rtol=1e-6, atol=0.0), key
         assert np.isclose(perunitvelocity, energy / delta_t_s / binwidth, rtol=1e-6, atol=0.0), key
 
+    # the summary includes the Fe IV packet above the bins, and the median velocity takes the energy as the weight
+    dfsummary = pl.read_csv(tmp_path / "profile_summary.txt", separator=" ", null_values="nan", comment_prefix="#")
+    summaryrows = {row["label"]: row for row in dfsummary.iter_rows(named=True)}
+    assert summaryrows.keys() == {"Fe IV", "Other"}
+    assert summaryrows["Fe IV"]["packetcount"] == 4
+    assert np.isclose(summaryrows["Fe IV"]["luminosity_erg_per_s"], 8e40 / delta_t_s, rtol=1e-6, atol=0.0)
+    for label, median_kmps in (("Fe IV", 3000.0), ("Other", 7000.0)):
+        median = summaryrows[label][f"velocity_luminosity_q50_{velocityunit}"]
+        assert np.isclose(median * kmps_per_unit, median_kmps, rtol=1e-6, atol=0.0), label
+
+
+def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_timestep(tmp_path: Path) -> None:
+    """A packet takes the timestep of its arrival time, and the quartiles take the energy of each packet as the weight.
+
+    A packet at the start time of a timestep is in that timestep, and a packet outside the wavelength range is in no
+    timestep.
+    """
+    from artistools.packets import plotlastinteractionvelocity
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    tstarts = at.get_timestep_times(modelpath, loc="start")
+    emtime_s = 5.0 * at.constants.day_to_s
+    # three packets of timestep 25, one of timestep 26 at its start time, and one packet outside the wavelength range
+    velocities_kmps = [3000.0, 5000.0, 9000.0, 7000.0, 1000.0]
+    lambdas_angstroms = [7500.0, 7500.0, 7500.0, 7500.0, 9000.0]
+    dfpackets = pl.DataFrame({
+        "t_arrive_d": [tstarts[25] + 0.01] * 3 + [tstarts[26], tstarts[25] + 0.01],
+        "e_rf": [1e40, 2e40, 1e40, 1e40, 5e40],
+        "nu_rf": [at.constants.c_ang_per_s / lambda_angstroms for lambda_angstroms in lambdas_angstroms],
+        "em_posx": [velocity * at.constants.km_to_cm * emtime_s for velocity in velocities_kmps],
+        "em_posy": [0.0] * 5,
+        "em_posz": [0.0] * 5,
+        "em_time": [emtime_s] * 5,
+    })
+    with mock.patch.object(plotlastinteractionvelocity, "get_packets", return_value=(1, dfpackets.lazy())):
+        plotlastinteractionvelocity.main(
+            argsraw=[],
+            modelpath=[modelpath],
+            xmin=7000.0,
+            xmax=8000.0,
+            velocityunit="kmps",
+            outputfile=tmp_path / "velocity.pdf",
+            write_data=True,
+        )
+
+    dftable = pl.read_csv(tmp_path / "velocity.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dftable["timestep"].to_list() == [25, 26]
+    assert dftable["packetcount"].to_list() == [3, 1]
+    # the histogram bins of the test model are 25 km/s wide, and each velocity takes the centre of its bin
+    expected = {
+        "velocity_q25_kmps": [3000.0, 7000.0],
+        "velocity_q50_kmps": [5000.0, 7000.0],
+        "velocity_q75_kmps": [5000.0, 7000.0],
+    }
+    for column, values in expected.items():
+        assert np.allclose(dftable[column].to_numpy(), values, rtol=0.0, atol=15.0), column
+
 
 def test_a_position_outside_the_grid_gets_no_cell() -> None:
     """A packet outside the 3D grid must get no cell, and a packet inside must get its own cell.
