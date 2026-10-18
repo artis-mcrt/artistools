@@ -286,7 +286,7 @@ def get_cell_line_table(
             escape_probability=pl.when(tau.abs() < SMALLTAU).then(1.0 - tau / 2.0).otherwise((1.0 - (-tau).exp()) / tau)
         )
         .with_columns(
-            emissivity_erg_per_s_per_cm3=pl.col("n_upper_per_cm3")
+            line_emissivity_erg_per_s_per_cm3=pl.col("n_upper_per_cm3")
             * pl.col("A_per_s")
             * h_erg_s
             * C_cm_per_s
@@ -294,7 +294,7 @@ def get_cell_line_table(
             / pl.col("lambda_angstroms")
             * pl.col("escape_probability")
         )
-        .with_columns(emission_erg_per_s=pl.col("emissivity_erg_per_s_per_cm3") * pl.col("volume"))
+        .with_columns(emission_erg_per_s=pl.col("line_emissivity_erg_per_s_per_cm3") * pl.col("volume"))
         .select(
             "modelgridindex",
             "velocity_kmps",
@@ -312,7 +312,7 @@ def get_cell_line_table(
             "n_upper_source",
             "tau_sobolev",
             "escape_probability",
-            "emissivity_erg_per_s_per_cm3",
+            "line_emissivity_erg_per_s_per_cm3",
             "emission_erg_per_s",
         )
     )

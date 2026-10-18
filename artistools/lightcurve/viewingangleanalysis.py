@@ -111,8 +111,9 @@ def get_viewing_angle_data_folder(args: argparse.Namespace) -> Path:
 def get_viewing_angle_data_names(modelpaths: Sequence[Path | str]) -> list[str]:
     """Return the name of each model in the names of its viewing angle data files.
 
-    A model takes its model name. Two folders with one model name also take the last parent folders that differ, e.g.
-    "model (run1)", thus each model writes its own files. A later run with the same models then finds the same files.
+    A model takes its model name. Two folders with one model name also take the last parts of their paths that differ,
+    e.g. "model (run1)", thus each model writes its own files. A later run with the same models then finds the same
+    files. Folders of one folder name leave that name out, and a plotlabel.txt can give one name to sibling folders.
     """
     modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
     datanames = list(modelnames)
@@ -122,7 +123,9 @@ def get_viewing_angle_data_names(modelpaths: Sequence[Path | str]) -> list[str]:
         # one folder given two times gives the same data two times, thus it needs no other name
         if len(set(folders)) < 2:
             continue
-        reversedparents = [folder.parent.parts[::-1] for folder in folders]
+        # the folder name is the model name when the folders have no plotlabel.txt, thus it says nothing then
+        hasonefoldername = len({folder.name for folder in folders}) == 1
+        reversedparents = [(folder.parent if hasonefoldername else folder).parts[::-1] for folder in folders]
         depth = next(
             (
                 depth
@@ -688,13 +691,14 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(
             modelnumber, viewing_angle_plot_data, datafilename, args
         )
-        plotkwargsviewingangles["label"] = modelname
+        linelabel = get_series_label(args.label, modelnumber, modelname)
+        plotkwargsviewingangles["label"] = linelabel
         ax.scatter(dfdata["peakcolour"], y=dfdata[f"{bands[0]}max"], **plotkwargsviewingangles)
         dfplotted.append(
             dfdata.select(
                 pl.lit(modelname).alias("model"),
                 pl.lit(str(modelpath)).alias("modelpath"),
-                pl.lit(modelname).alias("label"),
+                pl.lit(linelabel).alias("label"),
                 pl.Series("dirbin", get_table_dirbins(viewing_angle_plot_data, datafilename, args), dtype=pl.Int64),
                 pl.all(),
             )

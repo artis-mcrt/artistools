@@ -6969,6 +6969,15 @@ def test_logfiles_write_data_holds_the_plotted_times(mockplot: mock.MagicMock, t
         assert np.allclose(dfpage[f"{call.kwargs['label']}_s"].to_numpy(), timetaken, rtol=1e-12, atol=0)
 
 
+def test_logfiles_with_no_timing_data_replace_the_table_of_an_earlier_run(tmp_path: Path) -> None:
+    """Logs with no timing line returned before the data output, thus the table of an earlier run stayed."""
+    tablefile = tmp_path / "logfiles.txt"
+    tablefile.write_text("timestep mpirank update_grid_s\n5 0 1.0\n", encoding="utf-8")
+    args = argparse.Namespace(print_data=False, write_data=True)
+    at.plotlogfiles.make_plot({}, tmp_path / "logfiles.pdf", args=args)
+    assert "the table has no rows" in tablefile.read_text(encoding="utf-8")
+
+
 @mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
 def test_plotspherical_write_data_holds_the_drawn_maps(mockpcolormesh: mock.MagicMock, tmp_path: Path) -> None:
     """The table of --write_data must give each pixel of each map after the smoothing, at the drawn coordinates.

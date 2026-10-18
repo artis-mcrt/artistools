@@ -133,6 +133,8 @@ def make_plot(
     timesteps = sorted(set().union(*(set(bytimestep) for bytimestep in logfiledict.values())))
     if not timesteps:
         print(f"No timing data found in the log files of {modellogname or modelname}")
+        # the empty table replaces the file of an earlier run, thus that file cannot seem to hold the data of this run
+        output_data(args, {"": get_time_taken_table([])}, outputfile)
         return
 
     with PdfPages(outputfile) as pdf:

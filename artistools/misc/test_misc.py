@@ -3896,6 +3896,14 @@ def test_output_data_prints_and_writes_each_table(tmp_path: Path, capsys: pytest
     assert not (tmp_path / "myplot_unused.txt").exists()
 
 
+def test_column_families_have_distinct_patterns() -> None:
+    """Two families with one pattern hid the second one, e.g. the line emissivity of linecontributions."""
+    from artistools.misc.columns import COLUMN_FAMILIES
+
+    patterns = [pattern for pattern, _, _ in COLUMN_FAMILIES]
+    assert len(patterns) == len(set(patterns))
+
+
 def test_column_description_lines_give_the_meaning_and_the_unit_of_each_known_column() -> None:
     """The columns come from tables that the plot commands write, and an unknown column must get no line.
 

@@ -260,7 +260,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("cellcount_tau_sobolev_above_1", "the number of cells where the line has a tau_sobolev above 1", ""),
     ("escape_probability", "the Sobolev escape probability (1 - exp(-tau)) / tau of the line in the cell", ""),
     (
-        "emissivity_erg_per_s_per_cm3",
+        "line_emissivity_erg_per_s_per_cm3",
         (
             "the energy that leaves a unit volume of the cell in the line each second, n_u A h nu times the escape"
             " probability"

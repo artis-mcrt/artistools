@@ -3318,6 +3318,12 @@ def test_viewing_angle_data_names_keep_two_models_of_one_name_apart(tmp_path: Pa
     assert get_viewing_angle_data_names(folders) == ["model (a/run1)", "model (b/run1)", "other"]
     # one folder given two times gives the same data two times
     assert get_viewing_angle_data_names([folders[0], folders[0]]) == ["model", "model"]
+    # a plotlabel.txt can give one name to two sibling folders, thus their own folder names tell them apart
+    siblings = [tmp_path / "runs" / "a", tmp_path / "runs" / "b"]
+    for sibling in siblings:
+        sibling.mkdir(parents=True)
+        (sibling / "plotlabel.txt").write_text("same label\n", encoding="utf-8")
+    assert get_viewing_angle_data_names(siblings) == ["same label (a)", "same label (b)"]
 
     modelcopies = [tmp_path / name / modelpath_classic_3d.name for name in ("first", "second")]
     for modelcopy in modelcopies:
