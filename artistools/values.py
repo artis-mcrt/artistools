@@ -28,6 +28,7 @@ from artistools.misc import artis_subfolders
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import folder_is_artis_model
+from artistools.misc import get_model_folder
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
@@ -275,7 +276,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for variable in dict.fromkeys(resolve_positional_modelpath(args, "variables"))
         if variable not in INDEXCOLUMNS
     ]
-    modelpath = Path(args.modelpath)
+    # a model path can name a file of the model, e.g. mymodel/light_curve.out
+    modelpath = get_model_folder(args.modelpath)
     require_model_folder(modelpath)
     if not variables:
         exit_with_error(

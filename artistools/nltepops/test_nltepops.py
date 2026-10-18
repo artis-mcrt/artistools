@@ -693,6 +693,15 @@ def test_nltepops_singletimestep_write_data_gives_the_plotted_series(
 
     assert dftable.filter(pl.col("n_Floers_per_cm3").is_not_null())["ion"].unique().to_list() == ["Fe II"]
 
+    # the table held the populations below -ymin, which the subplots do not show
+    ymin = float(np.median(dftable["n_NLTE_per_cm3"].drop_nulls().to_numpy()))
+    at.nltepops.plot(
+        argsraw=[], modelpath=modeldir, outputfile=tmp_path / "ymin.pdf", timestep=40, ymin=ymin, write_data=True
+    )
+    dfclipped = pl.read_csv(tmp_path / "ymin.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert (dfclipped["n_NLTE_per_cm3"].drop_nulls() >= ymin).all()
+    assert 0 < dfclipped["n_NLTE_per_cm3"].drop_nulls().len() < dftable["n_NLTE_per_cm3"].drop_nulls().len()
+
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.parametrize(

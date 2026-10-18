@@ -2893,10 +2893,12 @@ def test_linefluxes_lineflux_ratio_plot() -> None:
     """
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
+    # the fit is near 0.02 at the 3 to 7 days of the test model, which the fixed bottom of 0.05 hides
     at.plotlinefluxes.main(
         argsraw=[],
         modelpath=[modelpath_classic_3d],
         emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
+        ymin=0.001,
         outputfile=funcoutpath / "linefluxes.pdf",
         write_data=True,
     )
@@ -2911,23 +2913,50 @@ def test_linefluxes_lineflux_ratio_plot() -> None:
 def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Three models of one name gave the same column, and the join stopped the plot with a repeated column.
 
-    The axis shows the times from -xmin to -xmax, and the table also gave the points outside that range.
+    The axis shows the times from -xmin to -xmax, and the table also gave the points outside that range. The test model
+    has no packets of these lines, thus the ratio of each time is NaN, and the test gives each line a luminosity.
     """
-    at.plotlinefluxes.main(
-        argsraw=[],
-        modelpath=[modelpath_classic_3d] * 3,
-        emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
-        xmin=4.5,
-        xmax=6.5,
-        outputfile=tmp_path / "linefluxes.pdf",
-        write_data=True,
-    )
+
+    def get_line_luminosities(
+        _emtypecolumn: str, emfeatures: Sequence[t.Any], _modelpath: Path, **_kwargs: t.Any
+    ) -> pl.DataFrame:
+        times = np.linspace(3.0, 8.0, 11)
+        return pl.DataFrame({"time": times, **{feature.colname: np.full(len(times), 1e38) for feature in emfeatures}})
+
+    with mock.patch.object(at.plotlinefluxes, "get_line_luminosities_from_packets", get_line_luminosities):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d] * 3,
+            emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
+            xmin=4.5,
+            xmax=6.5,
+            ymin=0.001,
+            outputfile=tmp_path / "linefluxes.pdf",
+            write_data=True,
+        )
     assert "the data table gives the column of" in capsys.readouterr().err
     dftable = read_data_file(tmp_path / "linefluxes.txt")
     assert len([column for column in dftable.columns if column.startswith("fratio_")]) == 3
     assert dftable["time"].is_between(4.5, 6.5).all()
     assert dftable.height > 0
-    assert read_data_file(tmp_path / "linefluxes_comparisons.txt")["time"].is_between(4.5, 6.5).all()
+    # the points of a model have no line. The fit is a line, which keeps the end of each segment across an edge
+    dfcomparisons = read_data_file(tmp_path / "linefluxes_comparisons.txt")
+    isinside = pl.col("time").is_between(4.5, 6.5)
+    hasinsideneighbour = isinside.shift(1).fill_null(value=False) | isinside.shift(-1).fill_null(value=False)
+    assert dfcomparisons.select((isinside | hasinsideneighbour).all()).item()
+
+    # each ratio of the models is 1, which -ymin 2 hides, and the table gave the ratios
+    (tmp_path / "linefluxes.txt").unlink()
+    with mock.patch.object(at.plotlinefluxes, "get_line_luminosities_from_packets", get_line_luminosities):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
+            ymin=2.0,
+            outputfile=tmp_path / "linefluxes.pdf",
+            write_data=True,
+        )
+    assert not (tmp_path / "linefluxes.txt").exists()
 
 
 def test_linefluxes_floers_ratio_file_with_no_w7_model(tmp_path: Path) -> None:
@@ -7080,6 +7109,17 @@ def test_check_names_runs_of_other_builds_for_the_temperature_limits() -> None:
     assert "the runs used 2 ARTIS versions (v2023.10, v2026.5)" in detail
 
 
+def test_check_complete_timesteps_finds_a_missing_row() -> None:
+    """The last row gave the last complete time step, thus a row that a bad restart left out gave the status ok."""
+    from artistools.check import check_complete_timesteps
+
+    dfdeposition = pl.LazyFrame({"timestep": [0, 2]})
+    with mock.patch("artistools.check.get_deposition", return_value=dfdeposition):
+        status, detail = check_complete_timesteps(modelpath_classic_3d)
+    assert status == "warning"
+    assert "deposition.out has no row for the time steps 1" in detail
+
+
 def test_check_restarts_warns_about_a_run_with_no_version() -> None:
     """A run with no version left the comparison, and the agreement of the other runs then gave the status ok."""
     from artistools.check import check_restarts
@@ -7288,6 +7328,16 @@ def test_values_give_the_time_of_volume_prevtimestep(tmp_path: Path) -> None:
     prevcolumn = next(column for column in dfwritten.columns if column.startswith("volume_prevtimestep"))
     assert dfwritten[prevcolumn].to_list()[0] is None
     assert np.isclose(dfwritten[prevcolumn][1], dfwritten[volumecolumn][0], rtol=1e-6)
+
+
+def test_values_take_a_file_of_the_model_as_the_model_path(tmp_path: Path) -> None:
+    """A model path can name a file of the model, and the command stopped because the file holds no input.txt."""
+    from artistools.values import main
+
+    outputfile = tmp_path / "values.txt"
+    main(argsraw=["Te", "-ts", "28", "-cell", "14", "-o", str(outputfile), str(modelpath_classic_3d / "input.txt")])
+    dfwritten = pl.read_csv(outputfile, separator=" ", comment_prefix="#")
+    assert dfwritten.select("timestep", "modelgridindex").rows() == [(28, 14)]
 
 
 def test_values_warn_about_a_cell_with_no_estimators_at_one_timestep(capsys: pytest.CaptureFixture[str]) -> None:

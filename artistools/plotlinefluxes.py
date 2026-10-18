@@ -520,6 +520,10 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     return get_comparison_table("Flörs W7", dfmodel["epoch"].to_list(), dfmodel["NIR_VIS_ratio"].to_list())
 
 
+# the comparison series that the plot draws as markers with no line, e.g. the models of Flörs et al. (2020)
+MARKERCOMPARISONS: t.Final = frozenset({"Flörs W7"})
+
+
 def get_comparison_table(series: str, time_days: Sequence[float], fratios: Sequence[float]) -> pl.DataFrame:
     """Return the points of one comparison series of the line ratio plot, e.g. a fit of observations."""
     return pl.DataFrame(
@@ -542,6 +546,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     tmin = math.inf
     tmax = -math.inf
     plotteddata: list[pl.DataFrame] = []
+    plottedisline: list[bool] = []
     dfcomparisons: list[pl.DataFrame] = []
     tablemodelnames: set[str] = set()
 
@@ -603,6 +608,8 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         plotteddata.append(
             dflcdata.select("time", fratio=pl.col("fratio")).rename({"fratio": f"fratio_{tablemodelname}"})
         )
+        # the points of a model have no line unless -linestyle gives one
+        plottedisline.append(bool(args.linestyle[modelindex]))
 
         tmin = min(tmin, dflcdata.select(pl.col("time").min()).item())
         tmax = max(tmax, dflcdata.select(pl.col("time").max()).item())
@@ -640,16 +647,29 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     args.outputfile = resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
     if plotteddata and (args.print_data or args.write_data):
-        # a fit or an observation has its own times, thus the comparison series go in a second table. The axis shows
-        # the times from -xmin to -xmax, and the points have no line, thus a point outside that range is not drawn
-        isvisible = pl.col("time").is_between(
-            -math.inf if args.xmin is None else args.xmin, math.inf if args.xmax is None else args.xmax
-        )
+        # a fit or an observation has its own times, thus the comparison series go in a second table. Each series
+        # keeps the points that the final axes show, e.g. inside -ymin and the fixed range of a pair of features
+        dfshownmodels = [
+            filter_to_axis_limits(
+                dfmodel, axis, "time", dfmodel.columns[-1], linecolumns=[] if isline else None
+            ).filter(pl.col(dfmodel.columns[-1]).is_not_null())
+            for dfmodel, isline in zip(plotteddata, plottedisline, strict=True)
+        ]
+        dfshowncomparisons = [
+            filter_to_axis_limits(
+                dfseries, axis, "time", "fratio", linecolumns=None if series in MARKERCOMPARISONS else []
+            )
+            for (series,), dfseries in (
+                pl.concat(dfcomparisons).partition_by("series", maintain_order=True, as_dict=True).items()
+                if dfcomparisons
+                else []
+            )
+        ]
         output_data(
             args,
             {
-                "": get_plotted_data_table(plotteddata).filter(isvisible),
-                "_comparisons": pl.concat(dfcomparisons).filter(isvisible) if dfcomparisons else pl.DataFrame(),
+                "": get_plotted_data_table(dfshownmodels),
+                "_comparisons": pl.concat(dfshowncomparisons) if dfshowncomparisons else pl.DataFrame(),
             },
             args.outputfile,
         )

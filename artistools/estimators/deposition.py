@@ -98,21 +98,26 @@ def get_configured_analytic_channels(modelpath: Path | str) -> list[str] | None:
     return ["spfission", *(("positron", "electron", "alpha") if instantdeposition else ())]
 
 
-def get_analytic_deposition_channels(dfestim: pl.LazyFrame, channels: Sequence[str]) -> list[str]:
-    """Return the channels that hold an analytic rate, which is the rate of the timestep of their own row.
+def get_analytic_deposition_channels(dfestim: pl.LazyFrame, channels: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Return the channels that hold an analytic rate, and the channels with no evidence of their scheme.
 
     ARTIS gives the analytic rate for spontaneous fission. It also gives it for the positrons, the electrons, and the
     alpha particles if the model sets PARTICLE_THERMALISATION_SCHEME to INSTANTFULLDEPOSITION. Then the channel equals
-    its emission_ana_ column in each row. A Monte Carlo channel, e.g. gamma, holds the rate of the timestep before its
-    row.
+    its emission_ana_ column in each row. An analytic rate is the rate of the timestep of its own row. A Monte Carlo
+    channel, e.g. gamma, holds the rate of the timestep before its row. A channel that is zero in each row equals its
+    emission_ana_ column with either scheme, thus that agreement is no evidence.
     """
     colnames = dfestim.collect_schema().names()
     candidates = [channel for channel in channels if channel != "gamma" and f"emission_ana_{channel}" in colnames]
     if not candidates:
-        return []
-    # ARTIS writes both columns with the format 11.5e, thus an analytic channel agrees to 6 significant digits
-    dfequal = dfestim.select(equals_analytic_rate(channel).all().alias(channel) for channel in candidates).collect()
-    return [channel for channel in candidates if dfequal[channel].item()]
+        return [], []
+    dfevidence = dfestim.select(
+        *(equals_analytic_rate(channel).all().alias(f"equal_{channel}") for channel in candidates),
+        *((pl.col(f"emission_ana_{channel}") != 0.0).any().alias(f"nonzero_{channel}") for channel in candidates),
+    ).collect()
+    agrees = [channel for channel in candidates if dfevidence[f"equal_{channel}"].item()]
+    analytic = [channel for channel in agrees if dfevidence[f"nonzero_{channel}"].item()]
+    return analytic, [channel for channel in agrees if channel not in analytic]
 
 
 def equals_analytic_rate(channel: str) -> pl.Expr:
@@ -295,11 +300,17 @@ def aggregate_deposition_rates(
         )
         analyticsource = "The options of the run give an analytic rate for these deposition channels"
     else:
-        analyticchannels = get_analytic_deposition_channels(dfestim, selectedchannels)
+        analyticchannels, undecidedchannels = get_analytic_deposition_channels(dfestim, selectedchannels)
         analyticsource = (
             "artisoptions.h gives no particle thermalisation scheme, and these deposition channels equal their"
-            " analytic emission"
+            " analytic emission, which is not zero in each row"
         )
+        if undecidedchannels:
+            print_warning(
+                "artisoptions.h gives no particle thermalisation scheme, and the deposition channels"
+                f" {', '.join(undecidedchannels)} are zero in each selected row. Thus the scheme is not known, and"
+                " each one takes the Monte Carlo scheme, which gives no rate for the last timestep"
+            )
     montecarlochannels = [channel for channel in selectedchannels if channel not in analyticchannels]
     if analyticchannels:
         print_detail(

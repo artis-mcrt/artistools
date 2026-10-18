@@ -38,6 +38,7 @@ from artistools.misc import path_is_dir
 from artistools.misc import print_detail
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc.cliutils import format_range_list
 from artistools.misc.remote import on_model_host
 
 STATUSES: t.Final = ("ok", "warning", "error", "not checked")
@@ -186,6 +187,15 @@ def check_complete_timesteps(modelpath: Path) -> tuple[str, str]:
         f"deposition.out gives {lastcomplete + 1} of {len(tmids)} time steps as complete"
         f" (the last row of deposition.out is the last complete time step)"
     )
+    # a bad restart or a merge of two files can leave out a row, and the time step of that row is then not complete
+    if missingtimesteps := sorted(set(range(lastcomplete + 1)) - set(dfdeposition["timestep"].to_list())):
+        return (
+            "warning",
+            (
+                f"{completetext}, but deposition.out has no row for the time steps"
+                f" {format_range_list(missingtimesteps)}, thus their output can be partial"
+            ),
+        )
     if lastcomplete + 1 >= len(tmids):
         return "ok", f"{completetext}, to {tmids[-1]:.2f} d"
     return (
