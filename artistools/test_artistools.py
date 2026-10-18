@@ -6867,6 +6867,21 @@ def test_plotopacity_writes_the_drawn_values(
     )
 
 
+def test_plotradfield_table_takes_the_geometry_of_each_series() -> None:
+    """The line estimators are markers, and the test of a segment kept two of them outside the axes."""
+    from artistools.plotradfield import get_drawn_series_table
+
+    axis = mplfig.Figure().add_subplot()
+    axis.set_xlim(0.0, 10.0)
+    axis.set_ylim(0.0, 1.0)
+    # the segment from the first point to the second crosses the axes, and the plot draws no such segment
+    dftable = get_drawn_series_table([("Line estimators", [-5.0, 15.0], [0.5, 0.5])], axis)
+    assert dftable.is_empty()
+    # the step holds the value of the second point from x = -5 to x = 15, thus the axes show it
+    dfstep = get_drawn_series_table([("Band-average field", [-5.0, 15.0], [2.0, 0.5])], axis)
+    assert dfstep["lambda_angstroms"].to_list() == [15.0]
+
+
 def test_plotradfield_table_follows_the_sole_frame_to_the_product(tmp_path: Path) -> None:
     """Two timesteps with data for one timestep alone gave one figure, and the table kept the name of the frame."""
     # the test model has no radiation field data before timestep 10
@@ -6908,6 +6923,13 @@ def test_plotradfield_writes_the_drawn_values(
     for label, (_, drawnxvalues, drawnyvalues) in drawnseries.items():
         dfseries = dftable.filter(pl.col("series") == label)
         drawnx, drawny = np.asarray(drawnxvalues, dtype=float), np.asarray(drawnyvalues, dtype=float)
+        if label == "Band-average field":
+            # a step of where="pre" shows the value of a point between the point before it and the point, thus the
+            # first point outside the axis has no part in the figure
+            isinside = (drawnx > 1000.0) & (drawnx < 20000.0)
+            assert set(drawnx[isinside].round(6)) <= set(dfseries["lambda_angstroms"].round(6).to_list())
+            assert set(dfseries["lambda_angstroms"].round(6).to_list()) <= set(drawnx.round(6))
+            continue
         lowedge = drawnx[drawnx <= 1000.0].max(initial=-np.inf)
         highedge = drawnx[drawnx >= 20000.0].min(initial=np.inf)
         iskept = (drawnx >= lowedge) & (drawnx <= highedge)
@@ -7337,6 +7359,23 @@ def test_check_restarts_counts_a_run_that_stopped_before_its_estimators(tmp_path
     assert status == "warning"
     assert "2 run folders with estimators or logs (100.slurm, 200.slurm)" in detail
     assert "the ARTIS version changes from v1" in detail
+
+
+def test_check_restarts_gives_no_rank_count_from_the_names_of_the_logs(tmp_path: Path) -> None:
+    """With no line of MPI_COMM_WORLD, the number of the logs stood for the number of ranks, also with a log missing."""
+    from artistools.check import check_restarts
+
+    runfolders = []
+    for foldername in ("100.slurm", "200.slurm"):
+        folder = tmp_path / foldername
+        folder.mkdir()
+        runfolders.append(folder)
+        for rank in range(3):
+            (folder / f"output_{rank}-0.txt").write_text("git version: v1\n", encoding="utf-8")
+    with mock.patch("artistools.check.get_runfolders", return_value=runfolders):
+        status, detail = check_restarts(tmp_path)
+    assert status == "warning"
+    assert "gives no line of MPI_COMM_WORLD, thus the number of its ranks is not known" in detail
 
 
 def test_check_restarts_warns_about_a_run_with_no_version() -> None:

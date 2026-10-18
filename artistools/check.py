@@ -255,6 +255,8 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
     # the logs of the highest ranks can be missing, thus the rank-0 log gives the number of ranks if it can
     logcounts: list[tuple[str, int]] = []
     incompletelogs: list[str] = []
+    # the names of the logs do not give the number of ranks, because the logs of the highest ranks can be missing
+    unknowncounts: list[str] = []
     for name, folder in zip(runnames, runfolders, strict=True):
         logranks = get_folder_log_ranks(folder)
         loggedcount = get_logged_rank_count(folder)
@@ -266,7 +268,7 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
                     f"{name} has no log of the ranks {format_range_list(missingranks)} of its {loggedcount} ranks"
                 )
         elif logranks:
-            logcounts.append((name, len(logranks)))
+            unknowncounts.append(name)
     changes = [
         f"the ARTIS version changes from {previousvalue} in {previousname} to {value} in {name}"
         for (previousname, previousvalue), (name, value) in itertools.pairwise(versions)
@@ -282,10 +284,10 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
         else "no rank-0 log gives the ARTIS version"
     )
     logcounttext = (
-        f"each run folder with a log has {' or '.join(str(count) for count in sorted({c for _, c in logcounts}))}"
-        " ranks (from the line of MPI_COMM_WORLD in the rank-0 log, or else the number of logs output_N-0.txt)"
+        f"the rank-0 logs give {' or '.join(str(count) for count in sorted({c for _, c in logcounts}))} ranks (from"
+        " the line of MPI_COMM_WORLD)"
         if logcounts
-        else "no run folder holds a rank log"
+        else "no rank-0 log gives the number of ranks"
     )
     runcounttext = (
         f"{len(runfolders)} run folders with estimators or logs ({get_names_text(runnames)})"
@@ -301,7 +303,7 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
     gaps: list[str] = []
     if len(runfolders) > 1:
         versionnames = {name for name, _ in versions}
-        logcountnames = {name for name, _ in logcounts}
+        logcountnames = {name for name, _ in logcounts} | set(unknowncounts)
         if noversion := [name for name in runnames if name not in versionnames]:
             gaps.append(
                 f"{get_some_names_text(noversion)} {'gives' if len(noversion) == 1 else 'give'} no ARTIS version,"
@@ -311,6 +313,11 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
             gaps.append(
                 f"{get_some_names_text(nologs)} {'holds' if len(nologs) == 1 else 'hold'} no rank log, thus the check"
                 " cannot compare the number of ranks"
+            )
+        if unknowncounts:
+            gaps.append(
+                f"the rank-0 log of {get_some_names_text(unknowncounts)} gives no line of MPI_COMM_WORLD, thus the"
+                " number of its ranks is not known, and the check cannot compare it"
             )
     gaps.extend(incompletelogs)
     summary = f"{runcounttext}: {versiontext}, and {logcounttext}"

@@ -413,6 +413,43 @@ def plot_celltimestep(
     return True
 
 
+# the series that the plot draws as markers with no line, and as a step with where="pre"
+SCATTERSERIES: t.Final = frozenset({"Line estimators"})
+STEPSERIES: t.Final = frozenset({"Band-average field"})
+
+
+def get_step_is_shown(axis: mplax.Axes, xcolumn: str, ycolumn: str) -> pl.Expr:
+    """Return an expression that is true for each point of a step of where="pre" that the final axes show.
+
+    The value of a point holds from the x of the point before it to the x of the point, and a vertical line joins two
+    values at the x of the point before. A log axis draws no value of zero or below.
+    """
+    xlow, xhigh = sorted(axis.get_xlim())
+    ylow, yhigh = sorted(axis.get_ylim())
+    x, y = pl.col(xcolumn), pl.col(ycolumn)
+    isdrawn = (x.is_finite() & y.is_finite()).fill_null(value=False)
+    if axis.get_yscale() == "log":
+        isdrawn &= y > 0.0
+    previousx, previousy, previousisdrawn = x.shift(1), y.shift(1), isdrawn.shift(1).fill_null(value=False)
+    pointisshown = isdrawn & x.is_between(xlow, xhigh) & y.is_between(ylow, yhigh)
+    horizontalisshown = (
+        isdrawn
+        & y.is_between(ylow, yhigh)
+        & (pl.min_horizontal(previousx, x) <= xhigh)
+        & (pl.max_horizontal(previousx, x) >= xlow)
+        & previousx.is_not_null()
+    ).fill_null(value=False)
+    verticalisshown = (
+        isdrawn
+        & previousisdrawn
+        & previousx.is_between(xlow, xhigh)
+        & (pl.min_horizontal(previousy, y) <= yhigh)
+        & (pl.max_horizontal(previousy, y) >= ylow)
+    ).fill_null(value=False)
+    # a vertical line ends at the point before, thus that point also stays
+    return pointisshown | horizontalisshown | verticalisshown | verticalisshown.shift(-1).fill_null(value=False)
+
+
 def get_drawn_series_table(
     drawnseries: Sequence[tuple[str, npt.ArrayLike, npt.ArrayLike]], axis: mplax.Axes
 ) -> pl.DataFrame:
@@ -420,7 +457,8 @@ def get_drawn_series_table(
 
     Each series has its own wavelengths, thus a column gives the series of each row. The band-average field gives the
     points of its step line. The value of each point applies from the point before it to that point. A line keeps
-    the points inside the axes, e.g. inside -ymin and -ymax, and the end of each segment that crosses an edge.
+    the points inside the axes, e.g. inside -ymin and -ymax, and the end of each segment that crosses an edge. The
+    line estimators are markers with no line, and the band-average field is a step, thus each has its own test.
     """
     # a series with no point, e.g. a cell with no line estimators, needs the schema for the types of its columns
     schema = {
@@ -428,20 +466,24 @@ def get_drawn_series_table(
         "lambda_angstroms": pl.Float64,
         "J_lambda_erg_per_s_per_cm2_per_angstrom": pl.Float64,
     }
-    dfdrawn = pl.concat([
-        pl.DataFrame(
+    ycolumn = "J_lambda_erg_per_s_per_cm2_per_angstrom"
+    shownseries: list[pl.DataFrame] = []
+    for label, arr_lambda, j_lambda in drawnseries:
+        dfseries = pl.DataFrame(
             {
                 "series": label,
                 "lambda_angstroms": np.asarray(arr_lambda, dtype=np.float64),
-                "J_lambda_erg_per_s_per_cm2_per_angstrom": np.asarray(j_lambda, dtype=np.float64),
+                ycolumn: np.asarray(j_lambda, dtype=np.float64),
             },
             schema=schema,
         )
-        for label, arr_lambda, j_lambda in drawnseries
-    ])
-    return filter_to_axis_limits(
-        dfdrawn, axis, "lambda_angstroms", "J_lambda_erg_per_s_per_cm2_per_angstrom", linecolumns=["series"]
-    )
+        if label in SCATTERSERIES:
+            shownseries.append(filter_to_axis_limits(dfseries, axis, "lambda_angstroms", ycolumn))
+        elif label in STEPSERIES:
+            shownseries.append(dfseries.filter(get_step_is_shown(axis, "lambda_angstroms", ycolumn)))
+        else:
+            shownseries.append(filter_to_axis_limits(dfseries, axis, "lambda_angstroms", ycolumn, linecolumns=[]))
+    return pl.concat(shownseries) if shownseries else pl.DataFrame(schema=schema)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
