@@ -4625,6 +4625,26 @@ def test_closest_network_timesteps_agree_with_a_filter_of_each_time(trajectory_c
     assert get_closest_network_timesteps(trajectory_copy, 114511, times[-1:], cond="greaterorequal") == [None]
 
 
+def test_plotdensity_table_keeps_two_models_of_one_label_apart(tmp_path: Path) -> None:
+    """Two models of one label gave one value of the column model, and the filter took them for one line."""
+    modelcopy = tmp_path / "copy"
+    modelcopy.mkdir()
+    for filepath in modelpath.iterdir():
+        (modelcopy / filepath.name).symlink_to(filepath)
+    at.inputmodel.plotdensity.main(
+        argsraw=[],
+        modelpath=[modelpath, modelcopy],
+        label=["same", "same"],
+        outputpath=tmp_path,
+        write_data=True,
+        quiet=True,
+    )
+    for filename in ("densityprofile.txt", "densityprofile_massprofile.txt"):
+        dftable = read_data_table(tmp_path / filename)
+        assert sorted(dftable["modelpath"].unique().to_list()) == sorted([str(modelpath), str(modelcopy)]), filename
+        assert len(set(dftable.group_by("modelpath").len()["len"].to_list())) == 1, filename
+
+
 def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(tmp_path: Path) -> None:
     """The axis shows the velocities from -xmin to -xmax, and the tables also gave the points far outside the axis.
 

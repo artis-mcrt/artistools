@@ -189,14 +189,18 @@ def plot_density_profiles(
             axes[2].plot(binned_xvals, binned_yevals, label=label, color=color)
 
         if makestable:
+            # two models can have one label, thus the path names the model of each row and keeps the lines apart
+            pathcolumn = pl.lit(str(modelpath)).alias("modelpath")
             dfenclosedmass.append(
                 pl.DataFrame(
                     {"model": label, "vel_r_on_c": enclosed_xvals, "mass_enclosed_msun": enclosed_yvals},
                     schema={"model": pl.String, "vel_r_on_c": pl.Float64, "mass_enclosed_msun": pl.Float64},
-                )
+                ).select("model", pathcolumn, pl.exclude("model"))
             )
             dfmassprofiles.append(
-                get_mass_profile_table(label, massprofile_xvals, massprofile_yvals, binned_yevals if plotye else None)
+                get_mass_profile_table(
+                    label, massprofile_xvals, massprofile_yvals, binned_yevals if plotye else None
+                ).select("model", pathcolumn, pl.exclude("model"))
             )
 
     tables = {
@@ -262,7 +266,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             suffix: dftable
             if dftable.is_empty()
             else filter_to_axis_limits(
-                dftable, valuecolumns[suffix][1], "vel_r_on_c", valuecolumns[suffix][0], linecolumns=["model"]
+                dftable, valuecolumns[suffix][1], "vel_r_on_c", valuecolumns[suffix][0], linecolumns=["modelpath"]
             )
             for suffix, dftable in tables.items()
         },

@@ -1702,7 +1702,10 @@ def warn_hidden_values(axis: mplax.Axes) -> None:
             continue
         xvalues = np.asarray(line.get_xdata(), dtype=np.float64)
         yvalues = np.asarray(line.get_ydata(), dtype=np.float64)
-        yvalues = yvalues[(xvalues >= xlow) & (xvalues <= xhigh) & np.isfinite(yvalues)]
+        # an axhline gives x in the coordinates of the axes, 0 to 1, and it crosses each x range of the data
+        xisdata, _ = line.get_transform().contains_branch_seperately(axis.transData)
+        isinxrange = (xvalues >= xlow) & (xvalues <= xhigh) if xisdata else np.ones(len(xvalues), dtype=bool)
+        yvalues = yvalues[isinxrange & np.isfinite(yvalues)]
         hidden = [
             f"{kind}: {count}"
             for count, kind in (

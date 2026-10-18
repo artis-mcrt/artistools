@@ -5063,6 +5063,16 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> N
     assert dfclipped["Te"].min() == 5e3
 
 
+def test_hidden_value_warning_names_a_horizontal_line_above_the_axes(capsys: pytest.CaptureFixture[str]) -> None:
+    """An axhline gives x from 0 to 1 in the coordinates of the axes, and the x range of the data left it out."""
+    axis = mplfig.Figure().add_subplot()
+    axis.axhline(5.0, label="Planck mean")
+    axis.set_xlim(1000.0, 2000.0)
+    axis.set_ylim(0.0, 1.0)
+    at.plottools.warn_hidden_values(axis)
+    assert "the figure does not show these values of 'Planck mean'" in capsys.readouterr().err
+
+
 def test_filter_to_axis_limits_keeps_the_rows_of_each_visible_segment() -> None:
     """A line keeps a point outside the axes when a segment to it crosses the axes. A marker outside goes."""
     fig = mplfig.Figure()
@@ -7408,6 +7418,13 @@ def test_check_restarts_warns_about_a_run_with_no_version() -> None:
         status, detail = check_restarts(modelpath_classic_3d)
     assert status == "warning"
     assert "job1 gives no ARTIS version, thus the check cannot compare the versions" in detail
+
+    # a branch alone does not name the build, and two runs of one branch gave the status ok
+    branches = {"job0": {"git branch": "main"}, "job1": {"git branch": "main"}}
+    with mock.patch("artistools.check.get_run_versions", return_value=branches):
+        status, detail = check_restarts(modelpath_classic_3d)
+    assert status == "warning"
+    assert "job0, job1 give no ARTIS version" in detail
 
 
 def test_check_reads_each_log_once_and_finds_the_restarts() -> None:
