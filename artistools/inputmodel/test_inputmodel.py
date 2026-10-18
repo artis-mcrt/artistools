@@ -3667,7 +3667,10 @@ def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None
 
 
 def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Path) -> None:
-    """--write_data gives one table with the points of the curve of each model, which have different nuclides."""
+    """--write_data gives one table with the points of the curve of each model, which have different nuclides.
+
+    The axes start at an abundance of 1e-7, thus the table leaves out the lower points, which the figure does not show.
+    """
     with mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True) as mockplot:
         at.inputmodel.plotinitialabundances.main(
             argsraw=[str(modelpath), str(modelpath_classic_3d), "-x", "Z", "-y", "abundance", "-o", str(tmp_path)],
@@ -3679,9 +3682,13 @@ def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Pat
     assert mockplot.call_count == 2
     for call in mockplot.call_args_list:
         dfcurve = dftable.filter(pl.col("model") == call.kwargs["label"])
-        np.testing.assert_array_equal(dfcurve["Z"], np.asarray(call.args[1]))
-        np.testing.assert_allclose(dfcurve["abundance"], np.asarray(call.args[2], dtype=float), rtol=1e-12, atol=0.0)
-    assert dftable.height == sum(len(call.args[1]) for call in mockplot.call_args_list)
+        dfdrawn = pl.DataFrame({"Z": np.asarray(call.args[1]), "abundance": np.asarray(call.args[2], dtype=float)})
+        dfdrawn = dfdrawn.cast(dfcurve.select("Z", "abundance").schema)
+        assert dfcurve.height > 0
+        assert dfcurve.join(dfdrawn, on=["Z", "abundance"], how="anti").is_empty()
+        dfhidden = dfdrawn.join(dfcurve, on=["Z", "abundance"], how="anti")
+        assert (dfhidden["abundance"] < 1e-7).all()
+    assert dftable.height < sum(len(call.args[1]) for call in mockplot.call_args_list)
 
 
 def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

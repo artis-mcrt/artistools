@@ -5006,6 +5006,12 @@ def test_filter_to_axis_limits_keeps_the_rows_of_each_visible_segment() -> None:
     assert dfshown.rows() == [("a", -1.0, 0.5), ("a", 5.0, 0.5), ("a", 12.0, 0.5), ("b", 5.0, 2.0), ("b", 6.0, -1.0)]
     assert at.plottools.filter_to_axis_limits(dfdrawn, axis, "x", "y").rows() == [("a", 5.0, 0.5)]
 
+    # a log axis draws no zero, e.g. the mass fraction of a nuclide that a model does not hold, and no segment to it
+    axis.set_yscale("log")
+    axis.set_ylim(1e-5, 1.0)
+    dfzero = pl.DataFrame({"x": [1.0, 2.0, 3.0], "y": [0.0, 0.0, 0.1]})
+    assert at.plottools.filter_to_axis_limits(dfzero, axis, "x", "y", linecolumns=[]).rows() == [(3.0, 0.1)]
+
 
 def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission() -> None:
     """The cell and the timestep of the emitting regions must come from the same event.
@@ -6659,6 +6665,24 @@ def test_plotopacity_writes_the_drawn_values(
             dfbins[f"ratio_{column}_to_exopac"].to_numpy(), ratioy[0::3], rtol=1e-12, atol=0.0, equal_nan=True
         )
 
+    # the table held the opacities below -ymin, which the figure does not show
+    ymin = float(np.median(dfbins["exopac_cm2_per_g"].to_numpy()))
+    at.plotopacity.main(
+        argsraw=[*commonargs, "-movingaveragewidth", "0", "-ymin", str(ymin), "-o", str(tmp_path / "ymin.pdf")]
+    )
+    dfclipped = read_data_file(tmp_path / "ymin.txt")
+    isshown = dfbins["exopac_cm2_per_g"] >= ymin
+    assert 0 < isshown.sum() < dfbins.height
+    assert dfclipped["exopac_cm2_per_g"].is_null().to_list() == (~isshown).to_list()
+    # the ratio panel has its own y range, thus each ratio stays
+    assert np.allclose(
+        dfclipped["ratio_linebinned_to_exopac"].to_numpy(),
+        dfbins["ratio_linebinned_to_exopac"].to_numpy(),
+        rtol=1e-12,
+        atol=0.0,
+        equal_nan=True,
+    )
+
 
 @mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -6851,6 +6875,15 @@ def test_report_holds_each_part_and_its_figures(tmp_path: Path) -> None:
     # a second run asks before it overwrites the report, and stdin of pytest is no terminal
     with pytest.raises(SystemExit):
         main(argsraw=[], modelpath=modelpath_classic_3d, outputfile=reportfolder)
+
+
+def test_report_provenance_keeps_a_remote_model_folder() -> None:
+    """A local resolve put the working folder in front of host:path, which named a folder that does not exist."""
+    from artistools.report import get_provenance_html
+
+    provenance = get_provenance_html(argparse.Namespace(), Path("testhost:~/mymodel"))
+
+    assert "model folder: testhost:~/mymodel" in provenance
 
 
 def test_report_of_model_with_no_estimators_names_each_error(tmp_path: Path) -> None:

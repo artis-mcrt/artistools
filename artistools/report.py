@@ -32,6 +32,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc.cliutils import get_provenance_lines
+from artistools.misc.fileio import resolve_modelpath
 
 if t.TYPE_CHECKING:
     import polars as pl
@@ -118,7 +119,7 @@ def get_table_html(dftable: "pl.DataFrame", statuscolumn: str | None = None) -> 
 
 def get_provenance_html(args: argparse.Namespace, modelfolder: Path) -> str:
     """Return the section that tells how artistools made the page: the version, the time, the folders, the command."""
-    lines = [*get_provenance_lines(args), f"model folder: {modelfolder.resolve()}"]
+    lines = [*get_provenance_lines(args), f"model folder: {resolve_modelpath(modelfolder)}"]
     return '<h2 id="provenance">Provenance</h2>\n' + get_lines_html(lines)
 
 
@@ -284,7 +285,8 @@ def get_light_curve_html(modelfolder: Path, reportfolder: Path) -> str:
     return '<h2 id="light-curve">Bolometric light curve</h2>\n' + get_figure_html(
         reportfolder,
         LIGHTCURVEFILENAME,
-        f"The bolometric luminosity of the model {modelfolder.resolve().name} against time, from light_curve.out",
+        f"The bolometric luminosity of the model {resolve_modelpath(modelfolder).name} against time,"
+        " from light_curve.out",
         ("plotlightcurves", plotlightcurves),
         [str(modelfolder)],
     )
@@ -302,7 +304,7 @@ def get_spectra_html(modelfolder: Path, reportfolder: Path, timesteps: Sequence[
             get_figure_html(
                 reportfolder,
                 SPECTRUMFILENAME.format(timestep=timestep),
-                f"The flux of the model {modelfolder.resolve().name} against wavelength at {timesteptext},"
+                f"The flux of the model {resolve_modelpath(modelfolder).name} against wavelength at {timesteptext},"
                 " from spec.out",
                 ("plotspectra", plotspectra),
                 [str(modelfolder), "-timestep", str(timestep)],
@@ -323,7 +325,7 @@ def get_temperature_html(modelfolder: Path, reportfolder: Path, timesteps: Seque
             get_figure_html(
                 reportfolder,
                 TEMPERATUREFILENAME.format(timestep=timestep),
-                f"The electron temperature Te of the model {modelfolder.resolve().name} against velocity at"
+                f"The electron temperature Te of the model {resolve_modelpath(modelfolder).name} against velocity at"
                 f" {timesteptext}, from the estimators",
                 ("plotestimators", plotestimators),
                 ["Te", str(modelfolder), "-timestep", str(timestep)],
@@ -358,7 +360,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Make an HTML page with the summary, the health check, the log summary, and standard figures of a model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     modelfolder = get_model_folder(args.modelpath)
-    modelname = modelfolder.resolve().name
+    modelname = resolve_modelpath(modelfolder).name
     reportfolder = Path(args.outputfile or f"{modelname}_report")
 
     timesteps, method = get_report_timesteps(modelfolder)

@@ -1783,21 +1783,26 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
     return limit
 
 
-def filter_to_axis_limits(
-    dfdrawn: pl.DataFrame, axis: mplax.Axes, xcolumn: str, ycolumn: str, linecolumns: Sequence[str] | None = None
-) -> pl.DataFrame:
-    """Keep the rows of a table of drawn points that the final limits of the axes show, e.g. from -ymin and -ymax.
+def get_shown_on_axes(
+    axis: mplax.Axes, xcolumn: str, ycolumn: str, linecolumns: Sequence[str] | None = None
+) -> pl.Expr:
+    """Return an expression that is true for each row of a table of drawn points that the final axes show.
 
     With linecolumns, the rows of one line have the same values in these columns, in the order of the line. An empty
-    linecolumns gives one line. A row of a line also stays if the bounding box of a segment to it overlaps the axes,
-    because the axes can show that segment.
+    linecolumns gives one line. A row of a line is also true if the bounding box of a segment to it overlaps the axes,
+    because the axes can show that segment. A log axis draws no point at zero or below, and no segment to it.
     """
     xlow, xhigh = sorted(axis.get_xlim())
     ylow, yhigh = sorted(axis.get_ylim())
     x, y = pl.col(xcolumn), pl.col(ycolumn)
-    isinside = x.is_between(xlow, xhigh) & y.is_between(ylow, yhigh)
+    isdrawn = x.is_not_null() & y.is_not_null()
+    if axis.get_xscale() == "log":
+        isdrawn &= x > 0.0
+    if axis.get_yscale() == "log":
+        isdrawn &= y > 0.0
+    isinside = x.is_between(xlow, xhigh) & y.is_between(ylow, yhigh) & isdrawn
     if linecolumns is None:
-        return dfdrawn.filter(isinside)
+        return isinside
 
     def shift_in_line(expr: pl.Expr, n: int) -> pl.Expr:
         return expr.shift(n).over(linecolumns) if linecolumns else expr.shift(n)
@@ -1809,15 +1814,17 @@ def filter_to_axis_limits(
         & (pl.min_horizontal(y, nexty) <= yhigh)
         & (pl.max_horizontal(y, nexty) >= ylow)
         & nextx.is_not_null()
-    )
-    return (
-        dfdrawn
-        .with_columns(segmentoverlaps.fill_null(value=False).alias("segmentoverlaps"))
-        .filter(
-            isinside | pl.col("segmentoverlaps") | shift_in_line(pl.col("segmentoverlaps"), 1).fill_null(value=False)
-        )
-        .drop("segmentoverlaps")
-    )
+        & isdrawn
+        & shift_in_line(isdrawn, -1)
+    ).fill_null(value=False)
+    return isinside | segmentoverlaps | shift_in_line(segmentoverlaps, 1).fill_null(value=False)
+
+
+def filter_to_axis_limits(
+    dfdrawn: pl.DataFrame, axis: mplax.Axes, xcolumn: str, ycolumn: str, linecolumns: Sequence[str] | None = None
+) -> pl.DataFrame:
+    """Keep the rows of a table of drawn points that the final axes show, e.g. with -ymin (see get_shown_on_axes)."""
+    return dfdrawn.filter(get_shown_on_axes(axis, xcolumn, ycolumn, linecolumns))
 
 
 def set_axis_properties(

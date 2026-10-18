@@ -27,6 +27,7 @@ from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
+from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -138,7 +139,12 @@ def make_plot(args: argparse.Namespace) -> None:
     namesuffix = "".join(f"_{label.replace('=', '')}" for label in selectionlabels)
     outpath = resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{xcolumn}{namesuffix}.pdf")
     # the models can hold different nuclides, thus one table in long form gives each curve on its own grid
-    output_data(args, {"": pl.concat(dfcurves) if dfcurves else pl.DataFrame()}, outpath)
+    dfshown = (
+        filter_to_axis_limits(pl.concat(dfcurves), ax, xcolumn, ycolumn, linecolumns=["model"])
+        if dfcurves
+        else pl.DataFrame()
+    )
+    output_data(args, {"": dfshown}, outpath)
     save_figure(fig, outpath, args=args, dpi=300)
 
 
