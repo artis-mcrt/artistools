@@ -384,10 +384,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     reportfolder = Path(args.outputfile or f"{modelname}_report")
 
     # the refusal must come before the work starts, e.g. before a remote model starts its server
-    confirm_overwrite([reportfolder], get_report_files_in_folder(reportfolder), force=args.force)
+    oldreportfiles = get_report_files_in_folder(reportfolder)
+    confirm_overwrite([reportfolder], oldreportfiles, force=args.force)
     timesteps, method = get_report_timesteps(modelfolder)
     print_detail(method)
     reportfolder.mkdir(parents=True, exist_ok=True)
+    # the new report can take other timesteps, and a figure of the earlier report must not seem to belong to it. The
+    # user agreed to replace these files, and unlink removes a link and not its target
+    for filename in oldreportfiles:
+        (reportfolder / filename).unlink(missing_ok=True)
 
     sections = [
         get_provenance_html(args, modelfolder),

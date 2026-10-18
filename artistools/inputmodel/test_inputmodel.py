@@ -4624,6 +4624,18 @@ def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(tmp_path: 
         assert dftable.select((isinside | hasinsideneighbour).all()).item(), filename
 
 
+def test_isosurface_table_leaves_out_a_level_with_no_surface() -> None:
+    """A level of -surfaces3d outside the range of the data gives no surface, and the table gave it."""
+    pv = pytest.importorskip("pyvista")
+    from artistools.inputmodel.plotinitialcomposition import get_levels_with_surface
+
+    x, y, z = np.meshgrid(*[np.arange(4.0)] * 3, indexing="ij")
+    mesh = pv.StructuredGrid(x, y, z)
+    mesh["value"] = (x + y + z).ravel(order="F")
+    surf = mesh.contour([1.5, 4.0, 20.0], scalars="value")
+    assert get_levels_with_surface(surf, "value", [1.5, 4.0, 20.0]).tolist() == [1.5, 4.0]
+
+
 def test_plotinitialcomposition_3d_tables_follow_the_order_of_the_cells() -> None:
     """--plot3d gave no table. The cells of a model change x first, thus each row must keep the velocity of its cell."""
     from artistools.inputmodel.plotinitialcomposition import get_3d_tables

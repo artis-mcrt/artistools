@@ -6741,6 +6741,12 @@ def test_plotopacity_tables_leave_out_a_zero_on_a_log_panel() -> None:
     assert dfbins["linecount"].to_list() == [None, 5]
     assert dfbins["exopac_cm2_per_g"].to_list() == [1.0, 2.0]
 
+    # the line of the Planck mean is above the panel, and each bin gave its value
+    tables = get_opacity_tables(dfopacities, None, 1e4, ratios, (opacityaxis, ratioaxis, linecountaxis), args)
+    assert "planckmean_exopac_cm2_per_g" not in tables[""].columns
+    tables = get_opacity_tables(dfopacities, None, 10.0, ratios, (opacityaxis, ratioaxis, linecountaxis), args)
+    assert tables[""]["planckmean_exopac_cm2_per_g"].to_list() == [10.0, 10.0]
+
 
 @mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -7070,6 +7076,17 @@ def test_report_replaces_a_link_at_the_page_and_leaves_its_target(tmp_path: Path
     assert target.read_text(encoding="utf-8") == "keep\n"
     assert not (reportfolder / "index.html").is_symlink()
     assert "<html" in (reportfolder / "index.html").read_text(encoding="utf-8")
+
+    # a figure of a timestep of the earlier report stayed and seemed to belong to the new report
+    (reportfolder / "spectrum_timestep007.png").write_bytes(b"")
+    with (
+        mock.patch.object(report, "get_report_timesteps", return_value=([], "no timesteps")),
+        mock.patch.multiple(report, **dict.fromkeys(sectionnames, mock.DEFAULT)) as mocksections,
+    ):
+        for mocksection in mocksections.values():
+            mocksection.return_value = ""
+        report.main(argsraw=[str(modelpath_classic_3d), "-o", str(reportfolder), "--force"])
+    assert not (reportfolder / "spectrum_timestep007.png").exists()
 
 
 def test_report_provenance_keeps_a_remote_model_folder() -> None:

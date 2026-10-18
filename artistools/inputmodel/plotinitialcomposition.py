@@ -333,6 +333,17 @@ def get_3d_tables(
     }
 
 
+def get_levels_with_surface(surf: t.Any, scalarname: str, levels: npt.ArrayLike) -> npt.NDArray[np.floating]:
+    """Return the levels of a contour of pyvista that give a surface, e.g. not a level outside the range of the data.
+
+    Each point of the contour holds the value of its level, thus a level with no point gives no surface.
+    """
+    surfacevalues = np.unique(np.asarray(surf[scalarname], dtype=float)) if surf.n_points else np.empty(0)
+    levelarray = np.asarray(levels, dtype=float)
+    hassurface = [bool(np.any(np.isclose(surfacevalues, level, rtol=1e-6, atol=0.0))) for level in levelarray]
+    return levelarray[np.asarray(hassurface, dtype=bool)]
+
+
 def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     """Render an isosurface of the 3D model with pyvista, coloured by the first of args.plotvars."""
     pv = import_optional("pyvista")
@@ -381,7 +392,12 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
         output_data(
             args,
-            get_3d_tables(xgrid, surfacecolorscale, coloursurfaceby, np.asarray(surfacepositions, dtype=float)),
+            get_3d_tables(
+                xgrid,
+                surfacecolorscale,
+                coloursurfaceby,
+                get_levels_with_surface(surf, coloursurfaceby, surfacepositions),
+            ),
             modelpath / "3Dplot.png",
         )
 

@@ -365,7 +365,8 @@ def get_opacity_tables(
     average, the ratios go in the table of the bins. ratios holds the drawn ratio of each line-binned opacity.
 
     panels gives the axes of the opacities, of the ratios, and of the line counts. A value that the final limits of its
-    panel hide is null, e.g. an opacity below -ymin, or a ratio or a line count of zero on a log axis.
+    panel hide is null, e.g. an opacity below -ymin, or a ratio or a line count of zero on a log axis. The column of
+    the Planck mean exists only if the panel shows its line.
     """
     opacityaxis, ratioaxis, linecountaxis = panels
     opacitycolumns = [column for column, _label, _linestyle in get_opacity_series(args.taucaps)]
@@ -383,7 +384,10 @@ def get_opacity_tables(
         *(get_shown_bin_value(column, opacityaxis).alias(f"{column}_cm2_per_g") for column in opacitycolumns),
         *([get_shown_bin_value("linecount", linecountaxis).alias("linecount")] if args.showlinecount else []),
     )
-    if math.isfinite(planckmean):
+    # the Planck mean is a horizontal line across the panel of the opacities, thus it shows if it is inside the y range
+    ylow, yhigh = sorted(opacityaxis.get_ylim())
+    planckmeanisshown = ylow <= planckmean <= yhigh and (opacityaxis.get_yscale() != "log" or planckmean > 0.0)
+    if math.isfinite(planckmean) and planckmeanisshown:
         dfbins = dfbins.with_columns(planckmean_exopac_cm2_per_g=pl.lit(planckmean))
     ratiocolumns = {f"ratio_{column}_to_exopac": values for column, values in ratios.items()}
     if dfmovingaverages is None:
