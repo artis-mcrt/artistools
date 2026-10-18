@@ -2154,6 +2154,94 @@ def test_plotinitialcomposition(tmp_path: Path) -> None:
     assert (tmp_path / "plotcomposition_rho,fe.pdf").is_file()
 
 
+def read_data_table(path: Path) -> pl.DataFrame:
+    """Read a table of --write_data, which starts with comment lines and gives a missing value as nan."""
+    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """--write_data gives the points of each curve of each panel, and a model with no Ye has a null Ye.
+
+    The enclosed mass and the dM/dv profile have different velocity grids, thus each one has its own table.
+    """
+    yemodelpath = tmp_path / "yemodel"
+    dfyemodel = pl.DataFrame({
+        "inputcellid": [1, 2, 3, 4],
+        "vel_r_max_kmps": [5000.0, 10000.0, 15000.0, 20000.0],
+        "logrho": [-10.0, -10.5, -11.0, -12.0],
+        "X_Fegroup": [1.0, 1.0, 1.0, 1.0],
+        "X_Ni56": [0.5, 0.4, 0.3, 0.2],
+        "X_Co56": [0.0, 0.0, 0.0, 0.0],
+        "X_Fe52": [0.0, 0.0, 0.0, 0.0],
+        "X_Cr48": [0.0, 0.0, 0.0, 0.0],
+        "Ye": [0.25, 0.3, 0.35, 0.45],
+    })
+    at.inputmodel.save_modeldata(dfyemodel, outpath=yemodelpath, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
+
+    at.inputmodel.plotdensity.main(
+        argsraw=[],
+        modelpath=[yemodelpath, modelpath],
+        label=["withye", "noye"],
+        outputpath=tmp_path,
+        plotye=True,
+        write_data=True,
+        quiet=True,
+    )
+
+    dfenclosed = read_data_table(tmp_path / "densityprofile.txt")
+    dfprofile = read_data_table(tmp_path / "densityprofile_massprofile.txt")
+    assert dfprofile.filter(pl.col("model") == "noye")["Ye"].is_null().all()
+
+    # main names the axes after it draws on them, thus the label of the axes gives the panel of each call
+    panels = {"Mass Enclosed": (dfenclosed, "mass_enclosed_msun"), r"$\Delta$M": (dfprofile, "dmass_dv_msun_per_c")}
+    panels["Electron fraction"] = (dfprofile.drop_nulls("Ye"), "Ye")
+    ncurves = 0
+    for call in mockplot.call_args_list:
+        ylabel = call.args[0].get_ylabel()
+        dftable, ycolumn = next(value for key, value in panels.items() if ylabel.startswith(key))
+        dfcurve = dftable.filter(pl.col("model") == call.kwargs["label"])
+        np.testing.assert_allclose(dfcurve["vel_r_on_c"], np.asarray(call.args[1], dtype=float), rtol=1e-12)
+        np.testing.assert_allclose(dfcurve[ycolumn], np.asarray(call.args[2], dtype=float), rtol=1e-12, atol=0.0)
+        ncurves += 1
+    # two models on each of the two mass panels, and one model with Ye on the Ye panel
+    assert ncurves == 5
+
+
+def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_path: Path) -> None:
+    """--write_data gives one row for each pixel, with the velocities of the cell and the value of each panel.
+
+    The values are the values of the images, thus they have the log10 of the colour scale, and a hidden empty cell
+    has a null value.
+    """
+    from artistools.inputmodel.plotinitialcomposition import get_2D_slice_through_3d_model
+
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=["rho", "Fe", str(modelpath_3d), "-o", str(tmp_path), "--logcolorscale", "--hideemptycells"],
+            write_data=True,
+        )
+
+    dftable = read_data_table(tmp_path / "plotcomposition_rho,fe.txt")
+    assert mockimshow.call_count == 2
+    for call, column in zip(mockimshow.call_args_list, ["log10_rho_g_per_cm3", "log10_rho_Fe_g_per_cm3"], strict=True):
+        valuegrid = call.args[1]
+        isshown = ~np.ma.getmaskarray(valuegrid).ravel()
+        assert not isshown.all(), "the 3D test model holds an empty cell to hide"
+        np.testing.assert_array_equal(dftable[column].is_not_null().to_numpy(), isshown)
+        np.testing.assert_allclose(dftable[column].to_numpy()[isshown], np.ma.getdata(valuegrid).ravel()[isshown])
+
+    # the default slice is the layer above the origin along z, which shows x against y
+    dfmodel, modelmeta = get_derived_modeldata(modelpath_3d)
+    dfslice = get_2D_slice_through_3d_model(dfmodel.collect(), "z")
+    t_model_s = modelmeta["t_model_init_days"] * day_to_s
+    for axis in ("x", "y"):
+        vel_mid_on_c = (
+            (dfslice[f"pos_{axis}_min"] + dfslice[f"pos_{axis}_max"]) / 2.0 / t_model_s / at.constants.C_cm_per_s
+        )
+        np.testing.assert_allclose(dftable[f"vel_{axis}_on_c"], vel_mid_on_c, rtol=1e-5)
+
+
 @pytest.mark.benchmark
 def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True)
@@ -3074,8 +3162,10 @@ def test_describeinputmodel_prints_the_selected_cell(capsys: pytest.CaptureFixtu
     output = capsys.readouterr().out
     assert "Selected single cell mgi 0:" in output
     assert "naive plan" not in output
-    # a collected frame prints its shape, and the one cell gives one row
-    assert "shape: (1," in output
+    # the table has a header row and one row for the one cell
+    tablelines = output.split("Selected single cell mgi 0:\n", 1)[1].splitlines()
+    assert tablelines[0].startswith("inputcellid ")
+    assert tablelines[1].split()[0] == "1"
 
 
 def test_plotinitialcomposition_reads_the_model_folder_last(tmp_path: Path) -> None:
@@ -3570,6 +3660,42 @@ def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None
     assert np.allclose(plotted_x, expected["A"])
     assert np.allclose(plotted_y, expected["massfraction"])
     assert (tmp_path / "plotinitialabundances_XvsA_vmax0.02_thetamin90.0.pdf").is_file()
+
+
+def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Path) -> None:
+    """--write_data gives one table with the points of the curve of each model, which have different nuclides."""
+    with mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True) as mockplot:
+        at.inputmodel.plotinitialabundances.main(
+            argsraw=[str(modelpath), str(modelpath_classic_3d), "-x", "Z", "-y", "abundance", "-o", str(tmp_path)],
+            write_data=True,
+        )
+
+    dftable = read_data_table(tmp_path / "plotinitialabundances_abundancevsZ.txt")
+    assert dftable.columns == ["model", "modelpath", "Z", "abundance"]
+    assert mockplot.call_count == 2
+    for call in mockplot.call_args_list:
+        dfcurve = dftable.filter(pl.col("model") == call.kwargs["label"])
+        dfdrawn = pl.DataFrame({"Z": np.asarray(call.args[1]), "abundance": np.asarray(call.args[2], dtype=float)})
+        dfdrawn = dfdrawn.cast(dfcurve.select("Z", "abundance").schema)
+        assert dfcurve.height == dfdrawn.height > 0
+        assert dfcurve.join(dfdrawn, on=["Z", "abundance"], how="anti").is_empty()
+
+
+def test_plotinitialabundances_table_keeps_two_models_of_one_name_apart(tmp_path: Path) -> None:
+    """Two models of one name gave one value of the column model, and the filter took them for one line."""
+    modelcopy = tmp_path / "copy" / modelpath.name
+    modelcopy.mkdir(parents=True)
+    for filepath in modelpath.iterdir():
+        if filepath.name != "plotlabel.txt":
+            (modelcopy / filepath.name).symlink_to(filepath)
+    at.inputmodel.plotinitialabundances.main(
+        argsraw=[str(modelpath), str(modelcopy), "-x", "Z", "-y", "abundance", "-o", str(tmp_path)], write_data=True
+    )
+
+    dftable = read_data_table(tmp_path / "plotinitialabundances_abundancevsZ.txt")
+    assert sorted(dftable["modelpath"].unique().to_list()) == sorted([str(modelpath), str(modelcopy)])
+    curvesizes = dftable.group_by("modelpath").len()["len"].to_list()
+    assert len(set(curvesizes)) == 1
 
 
 def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -4486,3 +4612,65 @@ def test_closest_network_timesteps_agree_with_a_filter_of_each_time(trajectory_c
     ]
     assert get_closest_network_timesteps(trajectory_copy, 114511, times[:1], cond="lessorequal") == [None]
     assert get_closest_network_timesteps(trajectory_copy, 114511, times[-1:], cond="greaterorequal") == [None]
+
+
+def test_plotdensity_table_keeps_two_models_of_one_label_apart(tmp_path: Path) -> None:
+    """Two models of one label gave one value of the column model, and the filter took them for one line."""
+    modelcopy = tmp_path / "copy"
+    modelcopy.mkdir()
+    for filepath in modelpath.iterdir():
+        (modelcopy / filepath.name).symlink_to(filepath)
+    at.inputmodel.plotdensity.main(
+        argsraw=[],
+        modelpath=[modelpath, modelcopy],
+        label=["same", "same"],
+        outputpath=tmp_path,
+        write_data=True,
+        quiet=True,
+    )
+    for filename in ("densityprofile.txt", "densityprofile_massprofile.txt"):
+        dftable = read_data_table(tmp_path / filename)
+        assert sorted(dftable["modelpath"].unique().to_list()) == sorted([str(modelpath), str(modelcopy)]), filename
+        assert len(set(dftable.group_by("modelpath").len()["len"].to_list())) == 1, filename
+
+
+def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(tmp_path: Path) -> None:
+    """The axis shows the velocities from -xmin to -xmax, and the tables also gave the points far outside the axis.
+
+    A point outside the axis stays only as the end of a segment that crosses an edge of the axis.
+    """
+    at.inputmodel.plotdensity.main(
+        argsraw=[], modelpath=[modelpath], outputpath=tmp_path, xmin=0.01, xmax=0.05, write_data=True, quiet=True
+    )
+    for filename in ("densityprofile.txt", "densityprofile_massprofile.txt"):
+        dftable = read_data_table(tmp_path / filename)
+        isinside = pl.col("vel_r_on_c").is_between(0.01, 0.05)
+        hasinsideneighbour = isinside.shift(1).fill_null(value=False) | isinside.shift(-1).fill_null(value=False)
+        assert dftable.filter(isinside).height > 0, filename
+        assert dftable.select((isinside | hasinsideneighbour).all()).item(), filename
+
+
+def test_isosurface_table_leaves_out_a_level_with_no_surface() -> None:
+    """A level of -surfaces3d outside the range of the data gives no surface, and the table gave it."""
+    pv = pytest.importorskip("pyvista")
+    from artistools.inputmodel.plotinitialcomposition import get_levels_with_surface
+
+    x, y, z = np.meshgrid(*[np.arange(4.0)] * 3, indexing="ij")
+    mesh = pv.StructuredGrid(x, y, z)
+    mesh["value"] = (x + y + z).ravel(order="F")
+    surf = mesh.contour([1.5, 4.0, 20.0], scalars="value")
+    assert get_levels_with_surface(surf, "value", [1.5, 4.0, 20.0]).tolist() == [1.5, 4.0]
+
+
+def test_plotinitialcomposition_3d_tables_follow_the_order_of_the_cells() -> None:
+    """--plot3d gave no table. The cells of a model change x first, thus each row must keep the velocity of its cell."""
+    from artistools.inputmodel.plotinitialcomposition import get_3d_tables
+
+    xgrid = np.array([-0.2, 0.0])
+    cellvalues = np.arange(8.0)
+    tables = get_3d_tables(xgrid, cellvalues.reshape((2, 2, 2), order="F"), "rho", np.array([1.0, 5.0]))
+    dfcells = tables[""]
+    assert dfcells["rho"].to_list() == cellvalues.tolist()
+    assert dfcells["vel_x_min_on_c"].to_list() == [-0.2, 0.0] * 4
+    assert dfcells["vel_z_min_on_c"].to_list() == [-0.2] * 4 + [0.0] * 4
+    assert tables["_isosurfaces"]["rho_of_isosurface"].to_list() == [1.0, 5.0]

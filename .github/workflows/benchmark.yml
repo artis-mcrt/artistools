@@ -22,7 +22,7 @@ jobs:
         if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login
             != 'dependabot[bot]')
         timeout-minutes: 180
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-26.04-arm
         permissions:
             contents: read # required for actions/checkout
             id-token: write # required for OIDC authentication with CodSpeed
@@ -56,9 +56,11 @@ jobs:
                   key: ${{ steps.setup-uv.outputs.python-version }}
 
             - name: Install artistools
+              # valgrind of the CodSpeed simulation needs the debug info of libc for accurate results, and the
+              # runner image does not have it
               run: |
                   sudo apt-get update
-                  sudo apt-get install liblzma-dev
+                  sudo apt-get install liblzma-dev libc6-dbg
                   uv sync --compile-bytecode
 
             - name: Download/extract test data

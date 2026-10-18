@@ -27,6 +27,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_maxpacketfiles
@@ -42,10 +43,11 @@ from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
+from artistools.misc import is_in_range
 from artistools.misc import normalize_path_list
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
-from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
@@ -474,8 +476,11 @@ def get_labelandlineindices_cached(
     return tuple(labelandlineindices)
 
 
-def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args: argparse.Namespace) -> None:
-    """Overplot the NIR/VIS ratios of the Flörs models from a CSV of columns file, epoch, NIR_VIS_ratio."""
+def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args: argparse.Namespace) -> pl.DataFrame:
+    """Overplot the NIR/VIS ratios of the Flörs models from a CSV of columns file, epoch, NIR_VIS_ratio.
+
+    Return the drawn points in the form of get_comparison_table, which has no row if the file has no W7 model.
+    """
     if not floersmodelratiopath.is_file():
         msg = f"{floersmodelratiopath} not found"
         raise FileNotFoundError(msg)
@@ -498,7 +503,8 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     dfmodel = dffloers.filter(pl.col("modelname") == "w7").sort("epoch")
     if dfmodel.is_empty():
         print_warning(f"no rows for Flörs model w7 in {floersmodelratiopath}")
-        return
+        # an empty frame of the comparison schema concatenates with the other comparison series
+        return get_comparison_table("Flörs W7", [], [])
 
     axis.plot(
         dfmodel["epoch"].to_list(),
@@ -510,6 +516,15 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
         markeredgewidth=2,
         lw=0,
         alpha=0.8,
+    )
+    return get_comparison_table("Flörs W7", dfmodel["epoch"].to_list(), dfmodel["NIR_VIS_ratio"].to_list())
+
+
+def get_comparison_table(series: str, time_days: Sequence[float], fratios: Sequence[float]) -> pl.DataFrame:
+    """Return the points of one comparison series of the line ratio plot, e.g. a fit of observations."""
+    return pl.DataFrame(
+        {"series": series, "time": time_days, "fratio": fratios},
+        schema={"series": pl.String, "time": pl.Float64, "fratio": pl.Float64},
     )
 
 
@@ -527,6 +542,8 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     tmin = math.inf
     tmax = -math.inf
     plotteddata: list[pl.DataFrame] = []
+    dfcomparisons: list[pl.DataFrame] = []
+    tablemodelnames: set[str] = set()
 
     for modelindex, (modelpath, modellabel, modelcolor) in enumerate(
         zip(args.modelpath, args.label, args.color, strict=False)
@@ -577,7 +594,15 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
         axis.plot(dflcdata["time"], dflcdata["fratio"], label=modellabel, **plotkwargs)
 
-        plotteddata.append(dflcdata.select("time", "fratio").rename({"fratio": f"fratio_{get_model_name(modelpath)}"}))
+        tablemodelname = get_model_name(modelpath)
+        if tablemodelname in tablemodelnames:
+            # two models can have the same name, and the join of their columns stopped with a repeated column
+            tablemodelname = f"{tablemodelname}_{modelindex}"
+            print_warning(f"the data table gives the column of {modelpath} the model name {tablemodelname}")
+        tablemodelnames.add(tablemodelname)
+        plotteddata.append(
+            dflcdata.select("time", fratio=pl.col("fratio")).rename({"fratio": f"fratio_{tablemodelname}"})
+        )
 
         tmin = min(tmin, dflcdata.select(pl.col("time").min()).item())
         tmax = max(tmax, dflcdata.select(pl.col("time").max()).item())
@@ -589,9 +614,10 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         arr_floersfit = [10 ** (0.0043 * timedays - 1.65) for timedays in arr_tdays]
         for ax in axes:
             ax.plot(arr_tdays, arr_floersfit, color="black", label="Flörs+2020 fit", lw=2.0)
+        dfcomparisons.append(get_comparison_table("Flörs+2020 fit", arr_tdays.tolist(), arr_floersfit))
 
         if args.floersmodelratiofile:
-            plot_floers_model_ratios(axis, Path(args.floersmodelratiofile), args)
+            dfcomparisons.append(plot_floers_model_ratios(axis, Path(args.floersmodelratiofile), args))
     m18_tdays = np.array([206, 229, 303, 339])
     m18_pew = {}
     m18_pew[26, 2, 7155] = np.array([618, 417, 406, 474])
@@ -601,6 +627,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         arr_fratio = m18_pew[args.emfeaturesearch[1][:3]] / m18_pew[args.emfeaturesearch[0][:3]]
         for ax in axes:
             ax.plot(m18_tdays, arr_fratio, color="black", label="Maguire et al. (2018)", lw=2.0, marker="s")
+        dfcomparisons.append(get_comparison_table("Maguire et al. (2018)", m18_tdays.tolist(), arr_fratio.tolist()))
 
     for ax in axes:
         ax.set_xlabel(r"Time [days]")
@@ -612,22 +639,30 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
 
     args.outputfile = resolve_outputfile(args.outputfile, "linefluxes.pdf")
 
-    if args.write_data and plotteddata:
-        write_plotted_data(plotteddata, args.outputfile)
+    if plotteddata and (args.print_data or args.write_data):
+        # a fit or an observation has its own times, thus the comparison series go in a second table. Both tables
+        # take the times of -xmin and -xmax
+        intimerange = is_in_range("time", args.xmin, args.xmax)
+        output_data(
+            args,
+            {
+                "": get_plotted_data_table(plotteddata).filter(intimerange),
+                "_comparisons": pl.concat(dfcomparisons).filter(intimerange) if dfcomparisons else pl.DataFrame(),
+            },
+            args.outputfile,
+        )
 
     # the suffix of the file name sets the format, e.g. .pdf or .png
     save_figure(fig, args.outputfile, args=args)
 
 
-def write_plotted_data(plotteddata: Sequence[pl.DataFrame], outputfile: Path | str) -> None:
-    """Write one column of times and one column for each model to a CSV file in the folder of the figure."""
+def get_plotted_data_table(plotteddata: Sequence[pl.DataFrame]) -> pl.DataFrame:
+    """Return one table with one column of times and one column for each model."""
     dfalldata = plotteddata[0]
     for dfmodel in plotteddata[1:]:
         dfalldata = dfalldata.join(dfmodel, on="time", how="full", coalesce=True)
 
-    datafilenameout = Path(outputfile).with_suffix(".txt")
-    dfalldata.sort("time").write_csv(datafilenameout, separator=" ")
-    print_saved(datafilenameout)
+    return dfalldata.sort("time")
 
 
 def plot_nne_te_points(
@@ -792,8 +827,45 @@ def set_emitting_regions_limits(
     )
 
 
+def get_emitting_region_table(
+    modelpath: str | None,
+    label: str,
+    feature: str,
+    time_days: float,
+    log10nne: Sequence[float] | npt.NDArray[np.floating],
+    te: Sequence[float] | npt.NDArray[np.floating],
+) -> pl.DataFrame:
+    """Return the drawn points of one series of the emitting regions, e.g. the packets of a feature or a reference.
+
+    A feature with no packet gives an empty frame, thus the schema gives the types of the columns. Two models can
+    have one label, thus the model path identifies the model. A reference curve has no model path.
+    """
+    return pl.DataFrame(
+        {
+            "modelpath": modelpath,
+            "label": label,
+            "feature": feature,
+            "time_days": time_days,
+            "log10nne": np.asarray(log10nne, dtype=np.float64),
+            "Te": np.asarray(te, dtype=np.float64),
+        },
+        schema={
+            "modelpath": pl.String,
+            "label": pl.String,
+            "feature": pl.String,
+            "time_days": pl.Float64,
+            "log10nne": pl.Float64,
+            "Te": pl.Float64,
+        },
+    )
+
+
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
-    """Plot the electron density and temperature of the cells emitting each feature, and save the figure."""
+    """Plot the electron density and the temperature of the cells that emit each feature, and save the figure.
+
+    --print_data and --write_data give one row for each packet in each figure. Each row holds the log10nne and the Te of
+    the cell that emitted the packet. The points of each reference curve have the feature "reference".
+    """
     refdatafilenames: list[str] = [] if args.norefdata else ["floers_te_nne.json"]
     refdatalabels = ["Flörs+2020"]
     refdatacolors = ["0.0", "C1", "C2", "C4"]
@@ -829,37 +901,59 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         axis = axesgrid[0][0]
         assert isinstance(axis, mplax.Axes)
 
+        dfpoints: list[pl.DataFrame] = []
+        # the table has one row for each packet, which a large model has millions of, thus only a data output makes it
+        makestable = args.print_data or args.write_data
         for refdataindex, (refdatakeys, refdatatimes, refdatapoints) in enumerate(refdata):
             timeindex = int(np.abs(refdatatimes - tmid).argmin())
-            axis.plot(
-                refdatapoints[timeindex]["ne"],
-                refdatapoints[timeindex]["temp"],
-                color=refdatacolors[refdataindex],
-                lw=2,
-                label=f"{refdatalabels[refdataindex]} +{refdatakeys[timeindex]}d",
-            )
-
             timeindexb = int(np.abs(refdatatimes - tmid - 50).argmin())
+            drawncurves = [(timeindex, refdatacolors[refdataindex])]
             if timeindexb != timeindex:
+                drawncurves.append((timeindexb, "0.4"))
+            for drawnindex, colour in drawncurves:
+                reflabel = f"{refdatalabels[refdataindex]} +{refdatakeys[drawnindex]}d"
                 axis.plot(
-                    refdatapoints[timeindexb]["ne"],
-                    refdatapoints[timeindexb]["temp"],
-                    color="0.4",
+                    refdatapoints[drawnindex]["ne"],
+                    refdatapoints[drawnindex]["temp"],
+                    color=colour,
                     lw=2,
-                    label=f"{refdatalabels[refdataindex]} +{refdatakeys[timeindexb]}d",
+                    label=reflabel,
                 )
+                if makestable:
+                    dfpoints.append(
+                        get_emitting_region_table(
+                            None,
+                            reflabel,
+                            "reference",
+                            float(refdatatimes[drawnindex]),
+                            refdatapoints[drawnindex]["ne"],
+                            refdatapoints[drawnindex]["temp"],
+                        )
+                    )
 
         for modelindex, emdata in enumerate(emdata_all):
             emfeatures = get_labelandlineindices(args.modelpath[modelindex], tuple(args.emfeaturesearch))
+            label = format_label_fields(
+                args.label[modelindex], timeavg=tmid, modeltag=args.modeltag[modelindex] or "all"
+            )
+            if makestable:
+                dfpoints.extend(
+                    get_emitting_region_table(
+                        str(args.modelpath[modelindex]),
+                        label,
+                        feature.colname,
+                        tmid,
+                        emdata[tmid, feature.colname]["em_log10nne"],
+                        emdata[tmid, feature.colname]["em_Te"],
+                    )
+                    for feature in emfeatures
+                )
 
             em_log10nne = np.concatenate([emdata[tmid, feature.colname]["em_log10nne"] for feature in emfeatures])
             em_Te = np.concatenate([emdata[tmid, feature.colname]["em_Te"] for feature in emfeatures])
 
             # a circle has more area than a triangle, thus this factor decreases the marker size
             normtotalpackets = len(em_log10nne) * 8.0
-            label = format_label_fields(
-                args.label[modelindex], timeavg=tmid, modeltag=args.modeltag[modelindex] or "all"
-            )
             plot_nne_te_points(axis, label, em_log10nne, em_Te, normtotalpackets, args.color[modelindex], marker="s")
 
         # each time bin has its own figure, thus each figure needs its own legend
@@ -877,6 +971,7 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         # would replace the one before it
         if len(times_days) > 1 and "{timeavg" not in str(args.outputfile):
             outputfile = outputfile.with_stem(f"{outputfile.stem}_{tmid:.{ndecimals}f}d")
+        output_data(args, {"": pl.concat(dfpoints) if dfpoints else pl.DataFrame()}, outputfile)
         save_figure(fig, outputfile, args=args)
 
 
@@ -956,7 +1051,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_figscale(parser)
 
-    parser.add_argument("--write_data", action="store_true", help="Save data used to generate the plot in a CSV file")
+    addarg_data_output(parser)
 
     parser.add_argument(
         "--plotemittingregions",

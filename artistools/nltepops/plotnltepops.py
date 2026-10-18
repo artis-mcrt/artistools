@@ -30,6 +30,7 @@ from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_labelfontsize
 from artistools.misc import addarg_legend
@@ -47,7 +48,9 @@ from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
+from artistools.misc import is_in_range
 from artistools.misc import normalize_path_list
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
@@ -72,6 +75,9 @@ defaultoutputfile = "plotnltepops_{elsymbol}_cell{cell:05d}_ts{timestep:03d}_{ti
 # a plot against time covers a range of timesteps, and one against velocity a range of cells, so
 # neither can be named after the single cell and timestep that the default filename describes
 defaultoutputfile_timeorvelocity = "plotnltepops_{elsymbol}.pdf"
+
+# the name of the table column, the level indices, and the values of one series that a subplot draws
+type LevelSeries = tuple[str, Sequence[int] | pl.Series, Sequence[float] | npt.NDArray[np.floating] | pl.Series]
 
 
 def annotate_emission_line(ax: mplax.Axes, y: float, upperlevel: int, lowerlevel: int, label: str) -> None:
@@ -102,8 +108,12 @@ def plot_reference_data(
     estimators_celltimestep: dict[str, t.Any],
     dfpopthision: pl.DataFrame,
     annotatelines: bool,
-) -> None:
-    """Overplot the CHIANTI level populations for the same conditions, when a level map file is available."""
+) -> list[LevelSeries]:
+    """Overplot the CHIANTI level populations for the same conditions, and return the series that the axes draw.
+
+    The function draws a series only when a level map file is available.
+    """
+    drawnseries: list[LevelSeries] = []
     nne, Te, TR, W = (estimators_celltimestep[s] for s in ("nne", "Te", "TR", "W"))
     # comparison to Chianti file
     elsym = get_elsymbol(atomic_number)
@@ -159,6 +169,7 @@ def plot_reference_data(
                         marker=marker,
                         zorder=-1,
                     )
+                    drawnseries.append((f"{depfilepath.stem}_depcoeff_over_first", levelnums, depcoeffs))
 
         if annotatelines and atomic_number == 28 and ion_stage == 2:
             annotate_emission_line(ax=ax, y=0.04, upperlevel=6, lowerlevel=0, label=r"7378$~\mathrm{{\AA}}$")
@@ -168,6 +179,8 @@ def plot_reference_data(
     if annotatelines and atomic_number == 26 and ion_stage == 2:
         annotate_emission_line(ax=ax, y=0.66, upperlevel=9, lowerlevel=0, label=r"12570$~\mathrm{{\AA}}$")
         annotate_emission_line(ax=ax, y=0.53, upperlevel=16, lowerlevel=5, label=r"7155$~\mathrm{{\AA}}$")
+
+    return drawnseries
 
 
 def get_floers_data(
@@ -324,8 +337,12 @@ def plot_reference_populations(
     T_R: float,
     ionpopulation: float,
     args: argparse.Namespace,
-) -> str:
-    """Draw the LTE curves and the reference data, and return the column that holds the ARTIS series."""
+) -> tuple[str, list[LevelSeries]]:
+    """Draw the LTE curves and the reference data.
+
+    Return the column of dfpopthision that holds the ARTIS series, and the series that the function draws.
+    """
+    drawnseries: list[LevelSeries] = []
     if args.departuremode:
         ax.axhline(y=1.0, color="0.7", linestyle="dashed", linewidth=1.5)
         ax.set_ylabel("Departure coefficient")
@@ -345,16 +362,12 @@ def plot_reference_populations(
                 for level, levelpop in zip(floers_levelnums, floers_levelpop_values, strict=True)
                 if level in lte_of_level
             ]
-            ax.plot(
-                [level for level, _ in departurecoeff_pairs],
-                [departurecoeff for _, departurecoeff in departurecoeff_pairs],
-                linewidth=1.5,
-                label="Flörs NLTE",
-                linestyle="None",
-                marker="*",
-            )
+            floerslevels = [level for level, _ in departurecoeff_pairs]
+            floerscoeffs = [departurecoeff for _, departurecoeff in departurecoeff_pairs]
+            ax.plot(floerslevels, floerscoeffs, linewidth=1.5, label="Flörs NLTE", linestyle="None", marker="*")
+            drawnseries.append(("departure_coeff_Floers", floerslevels, floerscoeffs))
 
-        return "departure_coeff"
+        return "departure_coeff", drawnseries
 
     ax.set_ylabel(r"Level population [cm$^{-3}$]")
     ax.plot(
@@ -365,12 +378,14 @@ def plot_reference_populations(
         linestyle="None",
         marker="*",
     )
+    drawnseries.append(("n_LTE_T_e_per_cm3", dfpopthision["level"], dfpopthision["n_LTE_T_e_normed"]))
 
     if floers_levelnums is not None:
         assert floers_levelpop_values is not None
         ax.plot(
             floers_levelnums, floers_levelpop_values, linewidth=1.5, label="Flörs NLTE", linestyle="None", marker="*"
         )
+        drawnseries.append(("n_Floers_per_cm3", floers_levelnums, floers_levelpop_values))
 
     if not args.hide_lte_tr:
         # the T_R curve also matches the ion population, thus the two LTE curves differ in shape alone
@@ -383,8 +398,9 @@ def plot_reference_populations(
             linestyle="None",
             marker="*",
         )
+        drawnseries.append(("n_LTE_T_R_per_cm3", dfpopthision["level"], n_LTE_T_R_normed))
 
-    return "n_NLTE"
+    return "n_NLTE", drawnseries
 
 
 def get_keptlevelcount_of_element(modelpath: Path) -> dict[int, int | None]:
@@ -414,8 +430,11 @@ def make_ionsubplot(
     timestep: int,
     args: argparse.Namespace,
     lastsubplot: bool | np.bool,
-) -> None:
-    """Plot the level populations of one ion, in one cell, at one timestep."""
+) -> pl.DataFrame | None:
+    """Plot the level populations of one ion, in one cell, at one timestep.
+
+    With --print_data or --write_data, return the table of the subplot. Otherwise, return None.
+    """
     ion_data = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).row(0, named=True)
 
     dfpopthision = dfpop.filter(
@@ -431,7 +450,7 @@ def make_ionsubplot(
             f"cell {modelgridindex} at timestep {timestep} holds no population of"
             f" {get_ionstring(atomic_number, ion_stage, style='spectral')}"
         )
-        return
+        return None
 
     lte_columns: list[tuple[str, float]] = [("n_LTE_T_e", T_e)]
     if not args.hide_lte_tr:
@@ -514,18 +533,17 @@ def make_ionsubplot(
     floers_levelnums, floers_levelpop_values = get_floers_data(
         dfpopthision, ionpopulation_alllevels, atomic_number, ion_stage, modelpath, T_e, modelgridindex
     )
-    ycolumnname = plot_reference_populations(
+    ycolumnname, referenceseries = plot_reference_populations(
         ax, dfpopthision, floers_levelnums, floers_levelpop_values, T_e, T_R, ionpopulation, args
     )
 
-    ax.plot(
+    artisseries: LevelSeries = (
+        "departure_coeff" if args.departuremode else "n_NLTE_per_cm3",
         dfpopthision["level"],
         dfpopthision[ycolumnname],
-        linewidth=1.5,
-        linestyle="None",
-        marker="x",
-        label="ARTIS NLTE",
-        color="black",
+    )
+    ax.plot(
+        artisseries[1], artisseries[2], linewidth=1.5, linestyle="None", marker="x", label="ARTIS NLTE", color="black"
     )
 
     dfpopthisionoddlevels = dfpopthision.filter(pl.col("parity") == 1)
@@ -556,9 +574,36 @@ def make_ionsubplot(
 
     # a comparison with reference data needs the estimator values of the cell, thus skip it if they are absent
     if args.plotrefdata and (timestep, modelgridindex) in estimators:
-        plot_reference_data(
+        referenceseries += plot_reference_data(
             ax, atomic_number, ion_stage, estimators[timestep, modelgridindex], dfpopthision, annotatelines=True
         )
+
+    if not (args.print_data or args.write_data):
+        return None
+
+    return get_ion_subplot_table(dfpopthision, get_ionstring(atomic_number, ion_stage), [artisseries, *referenceseries])
+
+
+def get_ion_subplot_table(
+    dfpopthision: pl.DataFrame, ionstring: str, drawnseries: Sequence[LevelSeries]
+) -> pl.DataFrame:
+    """Return one row for each level of one subplot, with one column for each series that the subplot draws.
+
+    The columns modelgridindex and ion name the subplot. A series with no point at a level has no value in that row,
+    e.g. a reference file with fewer levels. The Odd parity series takes the ARTIS values of the levels of odd_parity.
+    """
+    modelgridindex = dfpopthision["modelgridindex"].item(0)
+    dftable = dfpopthision.select(pl.col("level").cast(pl.Int64), "config", odd_parity=pl.col("parity") == 1)
+    for columnname, levels, values in drawnseries:
+        dfseries = pl.DataFrame({
+            "level": pl.Series(levels, dtype=pl.Int64),
+            columnname: pl.Series(values, dtype=pl.Float64),
+        })
+        dftable = dftable.join(dfseries, on="level", how="full", coalesce=True, maintain_order="left_right")
+
+    return dftable.sort("level").select(
+        pl.lit(modelgridindex, dtype=pl.Int64).alias("modelgridindex"), pl.lit(ionstring).alias("ion"), pl.all()
+    )
 
 
 def get_levelnames_of_ion(modelpath: Path | str, ions: Sequence[tuple[int, int]]) -> dict[tuple[int, int], list[str]]:
@@ -612,12 +657,16 @@ def make_plot_populations_with_time_or_velocity(
     fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols, aspect=0.847, sharey=True)
     ax = axesgrid.flatten() if args.subplots else axesgrid[0][0]
 
+    tablesofaxis: list[tuple[mplax.Axes, list[pl.DataFrame]]] = []
     for plotnumber, timedays in enumerate(timedayslist):
         axis = ax[plotnumber] if args.subplots else ax
         assert isinstance(axis, mplax.Axes)
-        plot_populations_with_time_or_velocity(
-            axis, modelpaths, timedays, args.levels, levelnames_of_ion, args=args, showtime=showtime
-        )
+        tablesofaxis.append((
+            axis,
+            plot_populations_with_time_or_velocity(
+                axis, modelpaths, timedays, args.levels, levelnames_of_ion, args=args, showtime=showtime
+            ),
+        ))
 
     # the axis label size comes from the artistools matplotlibrc
     labelfontsize = None
@@ -651,6 +700,11 @@ def make_plot_populations_with_time_or_velocity(
     set_axis_properties(ax, args)
 
     outputfilename = str(args.outputfile).format(elsymbol=get_elsymbol(atomic_number))
+    xcolumn = "time_days" if args.x == "time" else "vel_r_mid_kmps"
+    if seriestables := [dfseries for _, axistables in tablesofaxis for dfseries in axistables]:
+        output_data(
+            args, {"": pl.concat(seriestables).filter(is_in_range(xcolumn, args.xmin, args.xmax))}, outputfilename
+        )
     save_figure(fig, outputfilename, format="pdf", args=args)
 
 
@@ -668,11 +722,14 @@ def plot_populations_with_time_or_velocity(
     levelnames_of_ion: Mapping[tuple[int, int], Sequence[str]],
     args: argparse.Namespace,
     showtime: bool = False,
-) -> None:
+) -> list[pl.DataFrame]:
     """Plot one series for each level of each ion, against time or velocity as selected by args.x.
 
-    The label of a series names its ion if the plot shows more than one ion, and its time if showtime is true.
+    The label of a series names its ion if the plot shows more than one ion, and its time if showtime is true. With
+    --print_data or --write_data, return one table for each series. Otherwise, return an empty list.
     """
+    makestable = args.print_data or args.write_data
+    seriestables: list[pl.DataFrame] = []
     velocity: pl.Series | None = None
     if args.x == "time":
         timesteps = list(range(args.timestepmin, args.timestepmax + 1))
@@ -706,7 +763,7 @@ def plot_populations_with_time_or_velocity(
             ionlabel = f"{get_ionstring(Z, ion_stage)} " if len(levelnames_of_ion) > 1 else ""
             timelabel = f" at {timedays:.0f}d" if showtime else ""
             for ionlevel in ionlevels:
-                plot_level_population(
+                dfseries = plot_level_population(
                     ax,
                     modelpath,
                     populations,
@@ -714,7 +771,22 @@ def plot_populations_with_time_or_velocity(
                     velocity,
                     marker=markers[modelnumber],
                     label=f"{ionlabel}{get_level_label(levelnames, ionlevel)}{timelabel}",
+                    makestable=makestable,
                 )
+                if makestable:
+                    seriestables.append(
+                        dfseries.select(
+                            # two models can have one name, thus the path names the model of each row
+                            pl.lit(get_model_name(modelpath)).alias("model"),
+                            pl.lit(str(modelpath)).alias("modelpath"),
+                            pl.lit(get_ionstring(Z, ion_stage)).alias("ion"),
+                            pl.lit(ionlevel, dtype=pl.Int64).alias("level"),
+                            pl.lit(get_level_label(levelnames, ionlevel)).alias("levelname"),
+                            pl.all(),
+                        )
+                    )
+
+    return seriestables
 
 
 def get_level_populations(
@@ -768,24 +840,39 @@ def plot_level_population(
     velocity: pl.Series | None,
     marker: str,
     label: str,
-) -> None:
+    makestable: bool = False,
+) -> pl.DataFrame:
     """Plot the population of one level against time, or against the velocity of each cell if velocity is given.
 
-    populations is the result of get_level_populations. velocity gives the velocity of each cell in km/s.
+    populations is the result of get_level_populations. velocity gives the velocity of each cell in km/s. If makestable
+    is true, return one row for each point that the axes receive. Otherwise, return an empty table.
     """
     keys = [(ts, mgi) for ts, level, mgi in populations if level == ionlevel]
     plotpopulations = np.array([populations[ts, ionlevel, mgi] for ts, mgi in keys])
 
     if velocity is None:
-        timedayslist = [get_timestep_time(modelpath, ts) for ts, _mgi in keys]
-        ax.plot(timedayslist, plotpopulations, marker=marker, label=label)
-        return
+        xcolumn = "time_days"
+        xvalues = np.array([get_timestep_time(modelpath, ts) for ts, _mgi in keys])
+        pointorder = np.arange(len(keys))
+    else:
+        xcolumn = "vel_r_mid_kmps"
+        xvalues = np.array([float(velocity[mgi]) for _ts, mgi in keys])
+        # a 2D or a 3D model numbers its cells by position and not by speed, thus the line joins the
+        # cells in the order of their speed
+        pointorder = np.argsort(xvalues, kind="stable")
 
-    plotvelocities = np.array([float(velocity[mgi]) for _ts, mgi in keys])
-    # a 2D or a 3D model numbers its cells by position and not by speed, thus the line joins the
-    # cells in the order of their speed
-    velocityorder = np.argsort(plotvelocities, kind="stable")
-    ax.plot(plotvelocities[velocityorder], plotpopulations[velocityorder], marker=marker, label=label)
+    xdrawn, ydrawn = xvalues[pointorder], plotpopulations[pointorder]
+    ax.plot(xdrawn, ydrawn, marker=marker, label=label)
+
+    if not makestable:
+        return pl.DataFrame()
+
+    return pl.DataFrame({
+        "timestep": pl.Series([keys[index][0] for index in pointorder], dtype=pl.Int64),
+        "modelgridindex": pl.Series([keys[index][1] for index in pointorder], dtype=pl.Int64),
+        xcolumn: pl.Series(xdrawn, dtype=pl.Float64),
+        "n_NLTE_per_cm3": pl.Series(ydrawn, dtype=pl.Float64),
+    })
 
 
 def get_subplot_block(mgilistindex: int, nionstages: int) -> tuple[int, int]:
@@ -874,6 +961,7 @@ def make_singletimestep_plot(
     mgis_withdata = set(dfpop_allcells["modelgridindex"].to_list())
     lastmgi_withdata = next(mgi for mgi in reversed(mgilist) if mgi in mgis_withdata)
 
+    subplottables: list[pl.DataFrame] = []
     for mgilistindex, modelgridindex in enumerate(mgilist):
         mgifirstaxindex, mgilastaxindex = get_subplot_block(mgilistindex, len(ion_stage_list))
 
@@ -915,7 +1003,7 @@ def make_singletimestep_plot(
 
         for ax, ion_stage in zip(axes[mgifirstaxindex : mgilastaxindex + 1], ion_stage_list, strict=False):
             lastsubplot = modelgridindex == lastmgi_withdata and ion_stage == ion_stage_list[-1]
-            make_ionsubplot(
+            subplottable = make_ionsubplot(
                 ax,
                 modelpath,
                 atomic_number,
@@ -930,6 +1018,8 @@ def make_singletimestep_plot(
                 args,
                 lastsubplot=lastsubplot,
             )
+            if subplottable is not None:
+                subplottables.append(subplottable)
 
             ax.set_xlim(left=-1)
 
@@ -966,6 +1056,13 @@ def make_singletimestep_plot(
     outputfilename = format_frame_path(
         args.outputfile, elsymbol=get_elsymbol(atomic_number), cell=mgilist[0], timestep=timestep, timedays=time_days
     )
+    if subplottables:
+        # a reference series of one ion gives a column that the other ions do not have
+        output_data(
+            args,
+            {"": pl.concat(subplottables, how="diagonal_relaxed").filter(is_in_range("level", args.xmin, args.xmax))},
+            outputfilename,
+        )
     save_figure(fig, outputfilename, format="pdf", args=args)
 
 
@@ -1056,6 +1153,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     # no default here: which one applies depends on -x, so main chooses it when resolving the path
     addarg_output(parser, kind="file", helptext="Path/filename for PDF file")
+    addarg_data_output(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

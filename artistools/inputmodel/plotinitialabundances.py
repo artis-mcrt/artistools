@@ -15,6 +15,7 @@ from artistools.inputmodel.core import get_cell_selection
 from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import get_selection_labels
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
@@ -22,6 +23,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import get_model_name
 from artistools.misc import normalize_path_list
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
@@ -104,19 +106,25 @@ def make_plot(args: argparse.Namespace) -> None:
     fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
 
+    xcolumn = "A" if args.xaxis == "massnumber" else "Z"
+    ycolumn = "massfraction" if args.yaxis == "massfraction" else "abundance"
+    makestable = getattr(args, "print_data", False) or getattr(args, "write_data", False)
+    dfcurves: list[pl.DataFrame] = []
     for model_path, dfnuclides in zip(args.modelpath, dfmodels, strict=True):
-        df = (
-            dfnuclides
-            .select(
-                xvalue="A" if args.xaxis == "massnumber" else "Z",
-                yvalue="massfraction" if args.yaxis == "massfraction" else "abundance",
-            )
-            .group_by("xvalue")
-            .agg(pl.col("yvalue").sum())
-            .sort("xvalue")
-        )
+        df = dfnuclides.group_by(xcolumn).agg(pl.col(ycolumn).sum()).sort(xcolumn)
 
-        ax.plot(df["xvalue"], df["yvalue"], label=get_model_name(model_path))
+        modelname = get_model_name(model_path)
+        ax.plot(df[xcolumn], df[ycolumn], label=modelname)
+        if makestable:
+            # two models can have one name, thus the path names the model of each row
+            dfcurves.append(
+                df.select(
+                    pl.lit(modelname).alias("model"),
+                    pl.lit(str(model_path)).alias("modelpath"),
+                    pl.col(xcolumn),
+                    pl.col(ycolumn),
+                )
+            )
 
     ax.set_xlabel("Mass number" if args.xaxis == "massnumber" else "Atomic number")
     ax.set_ylabel("Mass fraction" if args.yaxis == "massfraction" else "Number abundance")
@@ -133,11 +141,12 @@ def make_plot(args: argparse.Namespace) -> None:
 
     set_legend(ax, args)
 
-    strxaxis = "A" if args.xaxis == "massnumber" else "Z"
     stryaxis = "X" if args.yaxis == "massfraction" else "abundance"
     # the default file name records the selection, thus a second run with a range keeps the earlier figure
     namesuffix = "".join(f"_{label.replace('=', '')}" for label in selectionlabels)
-    outpath = resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{strxaxis}{namesuffix}.pdf")
+    outpath = resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{xcolumn}{namesuffix}.pdf")
+    # the models can hold different nuclides, thus one table in long form gives each curve on its own grid
+    output_data(args, {"": pl.concat(dfcurves) if dfcurves else pl.DataFrame()}, outpath)
     save_figure(fig, outpath, args=args, dpi=300)
 
 
@@ -180,6 +189,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-thetamax", type=float, default=None, help="Maximum polar angle of a cell from the z axis [degrees]"
     )
 
+    addarg_data_output(parser)
     addarg_show(parser)
     addarg_darkmode(parser)
 

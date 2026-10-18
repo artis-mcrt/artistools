@@ -143,6 +143,8 @@ A test on a small model can pass with an incorrect unit or physical factor. Thus
 - Use cgs units. Put a different unit at the end of the name, e.g. `time_days` and `lambda_angstroms`.
 - Import each constant and conversion factor from `artistools/constants.py`. Do not write the number as a literal.
 - Log each physical assumption that a command applies, and its source.
+- Make the method of each number in the console output clear, e.g. the range, the weights, and the integration rule.
+  A reader must know how the command got the number, because the number is not useful for science without this.
 
 ## Model paths, model folders, and run folders
 
@@ -190,6 +192,7 @@ Use the shared functions to build a parser and to find a path. Import them from 
 - `addarg_modelpath(parser)` adds a `-modelpath` argument or a positional model path.
 - `addarg_positional_items(parser, ...)` adds the positional arguments of a command that names its items on the command line, e.g. the estimator variables of `plotestimators`. `resolve_positional_modelpath(args, dest)` then removes the model path from the end. Such a command adds `-modelpath` with the default of `addarg_modelpath`, which is `None`. A value that is not `None` then shows that the user gave `-modelpath`.
 - `normalize_path_list(args.modelpath)` applies the default and returns a `list[Path]`. Do not write `if not args.modelpath: args.modelpath = Path()`.
+- `addarg_data_output(parser)` adds `--print_data` and `--write_data` to a plot command. `output_data(args, tables, outputfile)` then prints or writes the plotted data. Give each plot command these two flags. Use `output_data` for each data output of a plot command.
 - `at.get_timestep_times(modelpath, loc="mid")` gives the mid-point times. Do not calculate the mean of the `start` array and the `end` array.
 - `at.plottools.set_axis_properties` and `at.plottools.set_axis_labels` set the usual axis and tick properties. You can use `artistools/plottools.py` only as `at.plottools.*`, because the top level re-exports none of its names. Read that module before you write new plot code.
 
@@ -268,6 +271,8 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
 ## Repository rules
 
 - The file `pyproject.toml` holds all the tool configuration. Do not add a configuration file for one tool. Do not add an inline setting that repeats a value from `pyproject.toml`.
+- Claude Code and Codex use one set of agent files in `.claude`: the hooks, the skill link, and the reviewer. `.codex/hooks.json` and `.agents/skills/artis-data` are links to these files, and `.codex/agents/ste-style-reviewer.toml` points to the reviewer. Change the files in `.claude` only. Keep `.claude/settings.json` to the keys `hooks` and `description`, because Codex rejects a different key and then runs no hook. A hook reads the edited files with `.claude/hooks/get-edited-files.sh`, because Codex gives the text of a patch and not a file path. Codex runs the project hooks only after the user trusts them.
+- Run each GitHub Actions job on an arm64 runner, e.g. `ubuntu-26.04-arm`. An arm64 runner costs less and is faster than an x86 runner. Use an x86 runner only for a job that needs one, e.g. the x86_64 wheel or a container image that exists for x86_64 alone. Give the reason in a comment beside `runs-on`.
 - Add a dependency only if it is necessary. Put a run-time dependency in `[project.dependencies]`. Put a large optional dependency in `[project.optional-dependencies].extras`. Put a tool in `[dependency-groups].dev`. Then run `uv lock` and commit `uv.lock`.
 - Do not commit a plot file or a file larger than 1 MB. The pre-commit hook rejects a larger
   file. Simulation output below that limit is permitted, e.g. the small test models in `tests/data`.

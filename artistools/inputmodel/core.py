@@ -36,13 +36,17 @@ from artistools.misc import zopen
 from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import MTIME_TOLERANCE_S
+from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import with_compressed_extension
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_zstd_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.modelinfo import parse_npts_line
-from artistools.misc.remote import check_local_path
+from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
+
+if t.TYPE_CHECKING:
+    from collections.abc import Iterator
 
 CREATED_COMMENT_PREFIX = "created:"
 CREATED_TIME_FORMAT = "%Y-%m-%d %H:%M:%S UTC"
@@ -705,8 +709,81 @@ def get_modeldata(
         if True, print warnings but skip informational progress messages
 
     """
-    check_local_path(modelpath)
-    inputpath = Path(modelpath)
+    path = resolve_modelpath(modelpath)
+    if is_remote_path(path):
+        return scan_remote_modeldata(path, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
+    return read_modeldata(path, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
+
+
+@on_model_host
+def get_remote_modeldata_schema(
+    modelpath: Path, get_elemabundances: bool, printwarningsonly: bool
+) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
+    """Return an empty frame with the columns of the model data of a remote model, and the metadata of the model."""
+    dfmodel, modelmeta = read_modeldata(
+        modelpath, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly
+    )
+    return dfmodel.clear().collect(), modelmeta
+
+
+@on_model_host
+def read_modeldata_rows_on_host(
+    modelpath: Path,
+    get_elemabundances: bool,
+    with_columns: list[str] | None,
+    predicate: bytes | None,
+    n_rows: int | None,
+) -> pl.DataFrame:
+    """Return the rows and the columns that a query of the client reads from the model data of a remote model.
+
+    The predicate is a serialised polars expression. The client and the server have the same polars, see start_server.
+    """
+    import io
+
+    dfmodel, _ = read_modeldata(modelpath, get_elemabundances=get_elemabundances, printwarningsonly=True)
+    if predicate is not None:
+        dfmodel = dfmodel.filter(pl.Expr.deserialize(io.BytesIO(predicate)))
+    if with_columns is not None:
+        dfmodel = dfmodel.select(with_columns)
+    return (dfmodel if n_rows is None else dfmodel.head(n_rows)).collect()
+
+
+def read_remote_modeldata_rows(
+    modelpath: Path,
+    get_elemabundances: bool,
+    with_columns: list[str] | None,
+    predicate: pl.Expr | None,
+    n_rows: int | None,
+    batch_size: int | None,
+) -> "Iterator[pl.DataFrame]":
+    """Yield the rows of a query of the model data of a remote model, for the polars IO source of the model.
+
+    polars gives the projection, the filter, and the row limit of the query. The host applies them, and only the rows
+    and the columns of the query come back through ssh. A kilonova model can have thousands of nuclide columns.
+    """
+    del batch_size
+    predicatedata = None if predicate is None else predicate.meta.serialize()
+    yield read_modeldata_rows_on_host(modelpath, get_elemabundances, with_columns, predicatedata, n_rows)
+
+
+def scan_remote_modeldata(
+    modelpath: Path, get_elemabundances: bool, printwarningsonly: bool
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Return a LazyFrame of the model data of a remote model, and the metadata of the model."""
+    import functools
+
+    from polars.io.plugins import register_io_source
+
+    template, modelmeta = get_remote_modeldata_schema(modelpath, get_elemabundances, printwarningsonly)
+    reader = functools.partial(read_remote_modeldata_rows, modelpath, get_elemabundances)
+    return register_io_source(reader, schema=template.schema, is_pure=True), modelmeta
+
+
+def read_modeldata(
+    modelpath: Path, get_elemabundances: bool = False, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Read model.txt, and abundances.txt with get_elemabundances, for a local path that get_modeldata resolved."""
+    inputpath = modelpath
 
     if inputpath.is_dir():
         modelpath = inputpath

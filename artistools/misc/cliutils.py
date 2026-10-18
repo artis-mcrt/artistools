@@ -6,6 +6,7 @@ import dataclasses as dc
 import itertools
 import math
 import operator
+import os
 import re
 import sys
 import typing as t
@@ -16,9 +17,14 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import MappingProxyType
 
+import matplotlib.colors as mplcolors
+
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
+from artistools.misc.columns import get_column_description_lines
 from artistools.misc.fileio import get_file_copies
+from artistools.misc.fileio import print_saved
+from artistools.misc.fileio import write_text_file_atomic
 from artistools.misc.remote import model_path_from_text
 
 if t.TYPE_CHECKING:
@@ -26,6 +32,7 @@ if t.TYPE_CHECKING:
 
     import numpy as np
     import numpy.typing as npt
+    import polars as pl
 
 # a path argument arrives as a scalar, as a sequence, or as a nested sequence from repeated -modelpath
 type PathArg = Path | str | Sequence[PathArg] | None
@@ -841,8 +848,6 @@ def color_arg(value: str) -> str:
     The colours are compared and resolved long before anything is drawn, so a typo caught here names the
     argument that caused it instead of surfacing from inside a plotting helper.
     """
-    import matplotlib.colors as mplcolors
-
     if not mplcolors.is_color_like(value):
         msg = f"not a matplotlib color: {value}"
         raise argparse.ArgumentTypeError(msg)
@@ -1235,7 +1240,101 @@ def print_product(args: argparse.Namespace, *values: object) -> None:
     of --print_data or the listing of --listvariables, must reach the standard output even so. A script
     then reads that product with no progress message around it.
     """
-    print(*values, file=getattr(args, "productstream", None) or sys.stdout)
+    productstream = getattr(args, "productstream", None) or sys.stdout
+    if len(values) == 1 and not isinstance(values[0], str):
+        import polars as pl
+
+        if isinstance(values[0], pl.DataFrame):
+            write_data_table(values[0], productstream)
+            return
+
+    print(*values, file=productstream)
+
+
+def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", commentlines: Sequence[str] = ()) -> None:
+    """Write a table as text with a space between the values and a header row of column names.
+
+    The polars display of a table shows only some rows, thus a reader of the output does not get each value. A reader
+    that splits on spaces moves each later value to the wrong column after an empty field. Thus a missing value is nan.
+    A value or a column name that contains a space has quotes, which polars and pandas read. Each line of commentlines
+    goes before the table with "# " at its start, which pl.read_csv(comment_prefix="#") and np.loadtxt skip. A file
+    replaces a symbolic link at its path, because write_text_file_atomic does not write through a link.
+    """
+
+    def write_to_stream(stream: t.TextIO) -> None:
+        stream.writelines(f"# {line}\n" for line in commentlines)
+        dfdata.write_csv(stream, separator=" ", null_value="nan")
+
+    if isinstance(destination, Path):
+        write_text_file_atomic(destination, write_to_stream)
+    else:
+        write_to_stream(destination)
+
+
+def get_provenance_lines(args: argparse.Namespace) -> list[str]:
+    """Return the lines that tell how a command made its data: the version, the time, the folder, and the command.
+
+    A relative model path in the command starts at the working folder, thus a line gives that folder too. A call from
+    Python has no command line, thus the line then gives each argument that holds a plain value.
+    """
+    import datetime as dt
+    from importlib.metadata import version
+
+    timetext = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+    commandline = getattr(args, "commandline", None)
+    if commandline is None:
+        plainvalues = (str, int, float, bool, Path, list, tuple, type(None))
+        argtexts = [f"{key}={value!r}" for key, value in sorted(vars(args).items()) if isinstance(value, plainvalues)]
+        commandline = f"a Python call with the arguments {', '.join(argtexts)}"
+    return [
+        f"artistools {version('artistools')}, {timetext}",
+        f"working folder: {Path.cwd()}",
+        f"command: {commandline}",
+    ]
+
+
+def addarg_data_output(parser: argparse.ArgumentParser) -> None:
+    """Add the --print_data and --write_data arguments, which give the plotted data as text."""
+    group = arggroup(parser, "output")
+    group.add_argument(
+        "--print_data",
+        action="store_true",
+        help="Print the plotted data to the standard output, with a space between the values",
+    )
+    group.add_argument(
+        "--write_data",
+        action="store_true",
+        help="Write the plotted data to a .txt file beside the figure, with a space between the values",
+    )
+
+
+def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", outputfile: Path | str) -> None:
+    """Print the plotted data, write it to files, or both, as --print_data and --write_data ask.
+
+    Each key of tables is the end of a file name, e.g. "_residuals" gives myplot_residuals.txt for myplot.pdf, and an
+    empty key gives myplot.txt. The standard output gives the tables in the same order, with an empty line between two
+    tables. The function skips an empty table. A file starts with comment lines that tell how the command made the data
+    and what each column holds. A pipe reads the standard output, thus it gets no comment lines. An empty table replaces
+    the file of an earlier run, thus that file cannot seem to hold the data of this run.
+    """
+    if getattr(args, "print_data", False):
+        for tableindex, dfdata in enumerate(dfdata for dfdata in tables.values() if not dfdata.is_empty()):
+            if tableindex > 0:
+                print_product(args, "")
+            print_product(args, dfdata)
+    if getattr(args, "write_data", False):
+        for suffix, dfdata in tables.items():
+            datafile = Path(outputfile).with_name(f"{Path(outputfile).stem}{suffix}.txt")
+            if dfdata.is_empty() and not os.path.lexists(datafile):
+                continue
+            emptylines = (
+                ["the table has no rows, e.g. because the plot has no point in the selected range"]
+                if dfdata.is_empty()
+                else []
+            )
+            commentlines = [*get_provenance_lines(args), *emptylines, *get_column_description_lines(dfdata.columns)]
+            write_data_table(dfdata, datafile, commentlines=commentlines)
+            print_saved(datafile)
 
 
 def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:

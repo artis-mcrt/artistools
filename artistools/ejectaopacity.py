@@ -312,7 +312,7 @@ def get_selected_timestep(modelpath: Path | str, timestep: str | int | None, tim
 
 
 def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:
-    """Return LTEPOP_EXCITATION_USE_TJ of artis/artisoptions.h in the model folder.
+    """Return LTEPOP_EXCITATION_USE_TJ of the artisoptions.h of the model.
 
     A model with no such file, or a file with no such option, gives None.
     """
@@ -320,27 +320,27 @@ def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:
     return value == "true" if value in {"true", "false"} else None
 
 
-def get_excitation_temperature_column(modelpath: Path | str, selection: str) -> str:
+def get_excitation_temperature_column(
+    modelpath: Path | str, selection: str, usetext: str = "The level populations are LTE populations at"
+) -> str:
     """Return the estimator column that gives T_exc, and log the column and the reason for it.
 
-    A selection of "auto" takes the temperature that ARTIS used for the LTE level populations of the model.
+    A selection of "auto" takes the temperature that ARTIS used for the LTE level populations of the model. usetext
+    starts the log line, and it names what takes T_exc.
     """
     if selection != "auto":
         column, reason = selection, f"-exctemperature {selection}"
     elif (usestj := get_artis_excitation_uses_tj(modelpath)) is None:
         column, reason = "Te", "the default"
         print_warning(
-            "artis/artisoptions.h of the model gives no LTEPOP_EXCITATION_USE_TJ, thus the level populations take Te."
+            "The artisoptions.h of the model gives no LTEPOP_EXCITATION_USE_TJ, thus the level populations take Te."
             " Give -exctemperature TJ or -exctemperature Te to select the temperature"
         )
     else:
         column = "TJ" if usestj else "Te"
-        reason = f"ARTIS used it, because artis/artisoptions.h sets LTEPOP_EXCITATION_USE_TJ = {str(usestj).lower()}"
+        reason = f"ARTIS used it, because artisoptions.h sets LTEPOP_EXCITATION_USE_TJ = {str(usestj).lower()}"
 
-    print_detail(
-        f"The level populations are LTE populations at T_exc = {column}, {EXCITATIONTEMPERATURE_NAMES[column]} of"
-        f" each cell ({reason})"
-    )
+    print_detail(f"{usetext} T_exc = {column}, {EXCITATIONTEMPERATURE_NAMES[column]} of each cell ({reason})")
     return column
 
 
@@ -446,7 +446,7 @@ def addarg_excitationtemperature(parser: argparse.ArgumentParser) -> None:
         help=(
             "Estimator temperature of the LTE level populations: "
             + " or ".join(f"{column}, {name}" for column, name in EXCITATIONTEMPERATURE_NAMES.items())
-            + ". auto takes the temperature that ARTIS used, from LTEPOP_EXCITATION_USE_TJ in artis/artisoptions.h of"
+            + ". auto takes the temperature that ARTIS used, from LTEPOP_EXCITATION_USE_TJ in the artisoptions.h of"
             " the model, or Te if the model has no such option"
         ),
     )

@@ -31,6 +31,7 @@ from artistools.ejectaopacity import print_planck_mean_method
 from artistools.inputmodel import get_cell_selection
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -46,6 +47,8 @@ from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
+from artistools.misc import is_in_range
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
@@ -63,6 +66,8 @@ from artistools.spectra import get_velocity_label
 from artistools.spectra import parse_velocity_argument
 
 if t.TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import matplotlib.typing as mplt
     import numpy.typing as npt
 
@@ -296,11 +301,13 @@ def plot_opacities(
         )
 
     linex, expansion = get_line("exopac")
+    ratios: dict[str, npt.NDArray[np.float64]] = {}
     for column, _label, linestyle in opacityseries[1:]:
         _, opacities = get_line(column)
+        ratios[column] = np.divide(opacities, expansion, out=np.full_like(opacities, np.nan), where=expansion != 0.0)
         ratioaxis.plot(
             linex,
-            np.divide(opacities, expansion, out=np.full_like(opacities, np.nan), where=expansion != 0.0),
+            ratios[column],
             linewidth=OPACITYLINE_WIDTH,
             linestyle=linestyle,
             color=colors[column],
@@ -333,7 +340,49 @@ def plot_opacities(
     set_plot_title(ax, title, args)
     set_legend(ax, args, title=get_smoothing_text(dfopacities, args.movingaveragewidth), alignment="left")
 
+    if getattr(args, "print_data", False) or getattr(args, "write_data", False):
+        output_data(args, get_opacity_tables(dfopacities, dfmovingaverages, planckmean, ratios, args), args.outputfile)
     save_figure(fig, args.outputfile, args=args)
+
+
+def get_opacity_tables(
+    dfopacities: pl.DataFrame,
+    dfmovingaverages: pl.DataFrame | None,
+    planckmean: float,
+    ratios: "Mapping[str, npt.NDArray[np.float64]]",
+    args: argparse.Namespace,
+) -> dict[str, pl.DataFrame]:
+    """Return the tables of the plotted opacities, with the keys of output_data.
+
+    The empty key gives one row for each bin of the plot. A moving average has one more point at each end of the
+    range, thus "_movingaverage" gives the moving averages and the ratios at the middle of each bin from -xmin to
+    -xmax. With no moving average, the ratios go in the table of the bins. ratios holds the drawn ratio of each
+    line-binned opacity.
+    """
+    opacitycolumns = [column for column, _label, _linestyle in get_opacity_series(args.taucaps)]
+    dfbins = dfopacities.select(
+        "lambda_angstroms_lower",
+        "lambda_angstroms_upper",
+        *(pl.col(column).alias(f"{column}_cm2_per_g") for column in opacitycolumns),
+        *(["linecount"] if args.showlinecount else []),
+    )
+    # the Planck mean is a line of the plot only with --showplanckmean
+    if args.showplanckmean and math.isfinite(planckmean):
+        dfbins = dfbins.with_columns(planckmean_exopac_cm2_per_g=pl.lit(planckmean))
+    ratiocolumns = {f"ratio_{column}_to_exopac": values for column, values in ratios.items()}
+    if dfmovingaverages is None:
+        # the line of each bin has a point at the lower edge, a point at the upper edge, and a NaN
+        return {"": dfbins.hstack(pl.DataFrame({name: values[::3] for name, values in ratiocolumns.items()}))}
+    dfaverages = (
+        dfmovingaverages
+        .select(
+            "lambda_angstroms_bin_mid",
+            *(pl.col(column).alias(f"{column}_movingaverage_cm2_per_g") for column in opacitycolumns),
+        )
+        .hstack(pl.DataFrame(ratiocolumns))
+        .filter(is_in_range("lambda_angstroms_bin_mid", args.xmin, args.xmax))
+    )
+    return {"": dfbins, "_movingaverage": dfaverages}
 
 
 def get_smoothing_text(dfopacities: pl.DataFrame, movingaveragewidth: float) -> str | None:
@@ -531,6 +580,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_show(parser)
     addarg_darkmode(parser)
     addarg_output(parser, kind="file", defaultname="plotopacity.pdf", helptext="Path/filename for PDF file")
+    addarg_data_output(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

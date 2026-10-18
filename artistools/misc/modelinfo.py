@@ -34,6 +34,7 @@ from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Mapping
 
 
@@ -203,16 +204,123 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
     return sourcepath.read_text(encoding="utf-8") if sourcepath.is_file() else None
 
 
-def get_artis_option(modelpath: Path | str, name: str) -> str | None:
-    """Return the value text of a constexpr option of artis/artisoptions.h in the model folder, or None.
+# a value option, e.g. "constexpr double MINTEMP = 3500.;" or a value on the next line, an option with no value, e.g.
+# "constexpr std::optional<double> GAMMA_USE_KAPPA_GREY;", and the start of a function option, e.g.
+# "constexpr bool LEVEL_IS_NLTE(int element_z, int ionstage, int level) {"
+# C++ also permits a direct initialisation of a value, e.g. "constexpr int MAXITER{4};" or "constexpr int MAXITER(4);".
+# The type is the text up to the name, e.g. "std::array<int, 2>" or "const char*". A string literal in a value
+# can hold ";", e.g. "a;b", thus the value is a sequence of literals and other characters. A lone "'" is a digit
+# separator, e.g. 1'000. The pattern tries the function option before the parenthesis form, because both start with
+# "(". The parenthesis form holds no "{", thus a function with a trailing return type is not a value
+CPP_LITERAL_PATTERN = r"\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'"
+ARTIS_OPTION_PATTERN = re.compile(
+    rf"^[ \t]*constexpr\s+(?:enum\s+)?([^=;(\n{{]+?)[\s*&]+(\w+)\s*"
+    rf"(\([^)]*\)\s*\{{|\((?:{CPP_LITERAL_PATTERN}|[^;\"{{])*\)\s*;|\{{|=(?:{CPP_LITERAL_PATTERN}|[^;\"])*;|;)",
+    re.MULTILINE,
+)
+# an optional value in a constructor form, e.g. "std::optional<int>{12}" or "std::make_optional(12)"
+OPTIONAL_CONSTRUCTOR_PATTERN = re.compile(r"(?:std::optional\s*<.*>|std::make_optional)\s*(\{.*\}|\(.*\))", re.DOTALL)
 
-    A model with no such file, or a file with no such option, gives None. A commented line gives no value.
+
+def get_value_without_outer_brackets(value: str) -> str:
+    """Return the value inside one outer pair of braces or parentheses, e.g. "12" for "{12}", or the value itself.
+
+    A list of more than one element, e.g. "{26, 2}" of a std::array, keeps its braces, because the braces are part of
+    the value. A comma inside a string literal or inside an inner bracket does not separate two elements. The first
+    and the last bracket must be one pair, thus "(a) * (b)" stays as it is.
     """
-    optionstext = get_artis_source_text(modelpath, "artisoptions.h")
-    if optionstext is None:
-        return None
-    match = re.search(rf"^\s*constexpr\s+\S+\s+{re.escape(name)}\s*=\s*([^;\n]*?)\s*;", optionstext, re.MULTILINE)
-    return None if match is None else match.group(1)
+    if len(value) < 2 or (value[0], value[-1]) not in {("{", "}"), ("(", ")")}:
+        return value
+    inner = value[1:-1]
+    depth = 0
+    for char in re.sub(CPP_LITERAL_PATTERN, "", inner):
+        if char in "{([":
+            depth += 1
+        elif char in "})]":
+            depth -= 1
+        if depth < 0 or (char == "," and depth == 0):
+            return value
+    return inner.strip()
+
+
+def get_artis_option_value(typename: str, initialiser: str) -> str:
+    """Return the text of the value of an option from its initialiser, in one form for each meaning.
+
+    The initialiser is the text after the name, e.g. "= 12", "{12}", "(12)", "= {12}", or "" for no initialiser. All
+    of these forms give "12". A std::optional with no value gives "std::nullopt", e.g. for "", "{}", or "= {}". Any
+    other type with no initialiser or with empty brackets gives "{}", its value-initialised state.
+    """
+    value = get_value_without_outer_brackets(" ".join(initialiser.removeprefix("=").split()))
+    is_optional = typename.startswith("std::optional")
+    if match := OPTIONAL_CONSTRUCTOR_PATTERN.fullmatch(value):
+        is_optional = True
+        value = get_value_without_outer_brackets(match.group(1))
+    if value in {"", "{}", "()"}:
+        return "std::nullopt" if is_optional else "{}"
+    return value
+
+
+def parse_artis_options(text: str) -> dict[str, str]:
+    """Return each constexpr option of the text of an artisoptions.h and the text of its value.
+
+    A function option gives its parameters and its body. The body of ION_NLEVELS_EXCITED_NLTE can hold an if block,
+    thus the body ends at the brace that closes its first brace.
+    """
+    # a disabled alternative can be in a comment, and it must not replace the option that ARTIS compiles. A string
+    # literal can hold "//", e.g. a URL, thus the pattern finds the literals first and keeps them
+    text = re.sub(
+        rf"{CPP_LITERAL_PATTERN}|/\*.*?\*/|//[^\n]*",
+        lambda match: match.group(0) if match.group(0)[0] in "\"'" else "",
+        text,
+        flags=re.DOTALL,
+    )
+    options: dict[str, str] = {}
+    for match in ARTIS_OPTION_PATTERN.finditer(text):
+        typename, name, valuetext = match.groups()
+        if valuetext.endswith("{"):
+            # a function body or a brace initialiser ends at the brace that closes its first brace
+            depth, end = 1, match.end()
+            while depth > 0 and end < len(text):
+                depth += {"{": 1, "}": -1}.get(text[end], 0)
+                end += 1
+            if valuetext == "{":
+                options[name] = get_artis_option_value(typename.strip(), text[match.start(3) : end])
+            else:
+                options[name] = " ".join(text[match.start(3) : end].split())
+        else:
+            options[name] = get_artis_option_value(typename.strip(), valuetext.removesuffix(";"))
+    return options
+
+
+def get_artis_options(modelpath: Path | str) -> dict[str, str]:
+    """Return each constexpr option of the artisoptions.h of a model and the text of its value, or an empty dict.
+
+    on_model_host finds a remote path only in a Path argument, thus a str path becomes a Path first.
+    """
+    return read_artis_options(resolve_modelpath(modelpath))
+
+
+@on_model_host
+def read_artis_options(modelpath: Path) -> dict[str, str]:
+    """Return each constexpr option of the artisoptions.h in a model folder and the text of its value.
+
+    The model folder of an ARTIS test holds artisoptions.h. The model folder of a production model holds the ARTIS
+    source in the folder artis. For a local test, artis can be a link to the ARTIS repository, which holds a different
+    preset. Thus the copy in the model folder comes first. A commented line gives no option. A function option, e.g.
+    LEVEL_IS_NLTE, gives its parameters and its body.
+    """
+    optionspath = next(
+        (path for path in (modelpath / "artisoptions.h", modelpath / "artis" / "artisoptions.h") if path.is_file()),
+        None,
+    )
+    if optionspath is None:
+        return {}
+    return parse_artis_options(optionspath.read_text(encoding="utf-8"))
+
+
+def get_artis_option(modelpath: Path | str, name: str) -> str | None:
+    """Return the value text of one constexpr option of the artisoptions.h of a model, or None."""
+    return get_artis_options(modelpath).get(name)
 
 
 @lru_cache(maxsize=16)
@@ -289,6 +397,7 @@ def get_nprocs(modelpath: Path) -> int:
 
 
 @modelpath_cache(maxsize=8)
+@on_model_host
 def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     """Return the parameters that input.txt gives.
 
@@ -703,23 +812,36 @@ def get_mpiranks_of_cells(modelpath: Path | str, cells: npt.NDArray[np.int64]) -
 
     A lookup for each cell took 18 to 81 us, thus 2 to 10 s for the 125 000 cells of a 3D snapshot.
     """
-    npts_model = get_npts_model(modelpath)
+    return get_ranks_of_cells_in_layout(
+        cells, get_npts_model(modelpath), get_rankassignments(modelpath), lambda: get_nprocs(Path(modelpath))
+    )
+
+
+def get_ranks_of_cells_in_layout(
+    cells: npt.NDArray[np.int64],
+    npts_model: int,
+    dfrankassignments: pl.DataFrame | None,
+    get_nprocs_of_layout: "Callable[[], int]",
+) -> npt.NDArray[np.int64]:
+    """Return the rank of each cell from modelgridrankassignments.out, or from the blocks of ARTIS for nprocs ranks.
+
+    A restart can use a different number of ranks, thus a run folder can give its own assignments and rank count.
+    """
     if outsidecells := [int(cell) for cell in cells if not 0 <= cell < npts_model]:
         # a model of one cell makes "1 cells" and "0 to 0" read badly, thus name the range alone
         msg = f"Cell {outsidecells[0]} is not in this model. Its cells are 0 to {npts_model - 1}"
         raise ValueError(msg)
 
-    dfrankassignments = get_rankassignments(modelpath)
     if dfrankassignments is not None:
         dfranks = dfrankassignments.filter(pl.col("ndo") > 0).sort("nstart")
         nstart = dfranks["nstart"].to_numpy()
         blockindex = np.searchsorted(nstart, cells, side="right") - 1
         if (cells >= nstart[blockindex] + dfranks["ndo"].to_numpy()[blockindex]).any():
-            msg = f"modelgridrankassignments.out of {modelpath} gives no rank to some of the cells"
+            msg = "modelgridrankassignments.out gives no rank to some of the cells"
             raise ValueError(msg)
         return dfranks["rank"].to_numpy().astype(np.int64)[blockindex]
 
-    nprocs = get_nprocs(modelpath)
+    nprocs = get_nprocs_of_layout()
     if nprocs > npts_model:
         return cells
 

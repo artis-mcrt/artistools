@@ -13,6 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -1481,9 +1482,9 @@ def merge_other_flux_series(
     maxseriescount: int,
     fixedionlist: Sequence[str] | None,
 ) -> list[FluxSeries]:
-    """Return the series that rank_flux_series_names keeps, the 20 largest other series, and one "Other" series.
+    """Return the series that rank_flux_series_names keeps, the 3 largest other series, and one "Other" series.
 
-    sort_and_reduce_flux_contribution_list prints the 20 largest other series, thus they stay. "Other" sums the rest.
+    print_contribution_table names the 3 largest other series, thus they stay. "Other" sums the rest.
     The ranking takes the f_nu with no filter. A filter of a plot is linear, thus the filter of the sum is the sum of
     the filtered series.
     """
@@ -1491,7 +1492,7 @@ def merge_other_flux_series(
     keptnames, othernames = rank_flux_series_names(
         {name: get_series_flux(row, arraynu) for name, row in seriesofname.items()}, maxseriescount, fixedionlist
     )
-    printednames = [name for name in othernames if name != "Other"][:20]
+    printednames = [name for name in othernames if name != "Other"][:3]
     kept = [seriesofname[name] for name in (*keptnames, *printednames)]
     other = [seriesofname[name] for name in othernames if name not in printednames]
     if not other:
@@ -2501,8 +2502,6 @@ def sort_and_reduce_flux_contribution_list(
     kept = [rowofname[name] for name in keptnames]
     other = [rowofname[name] for name in othernames]
 
-    import matplotlib.pyplot as plt
-
     from artistools.plottools import glasbey_category20_nogreys
     from artistools.plottools import remove_greys
 
@@ -2514,15 +2513,7 @@ def sort_and_reduce_flux_contribution_list(
 
     color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
 
-    for row in kept:
-        print_contribution(row, arraylambda_angstroms)
-
-    maxnumotherprinted = 20
-    othernamed = [row for row in other if row.linelabel != "Other"]
-    if othernamed:
-        print(f"  Other (top {maxnumotherprinted}):")
-        for row in othernamed[:maxnumotherprinted]:
-            print_contribution(row, arraylambda_angstroms)
+    print_contribution_table(kept, other, arraylambda_angstroms)
 
     # a long -fixedionlist holds more entries than the colour list, thus the index wraps around
     contribution_list_out = [
@@ -2533,10 +2524,7 @@ def sort_and_reduce_flux_contribution_list(
     if not fixedionlist:
         plotted_ion_list = [row.linelabel for row in kept]
         cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
-        print("To reuse this ion/process contribution list, pass the following command-line argument: ")
-        print(f"     -fixedionlist {cmdarg}")
-        print("Or in python: ")
-        print(f"     fixedionlist={plotted_ion_list}")
+        print(f"  -fixedionlist {cmdarg} gives this list of series again")
 
     remainder_fluxcontrib = sum(row.fluxcontrib for row in other)
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
@@ -2559,19 +2547,55 @@ def sort_and_reduce_flux_contribution_list(
     return contribution_list_out
 
 
-def print_contribution(row: FluxContributionTuple, arraylambda_angstroms: npt.NDArray[np.floating]) -> None:
-    """Print the integrated emission and absorption of one series."""
-    integemiss = abs(np.trapezoid(row.array_flambda_emission, x=arraylambda_angstroms))
-    integabsorp = abs(np.trapezoid(-row.array_flambda_absorption, x=arraylambda_angstroms))
-    if integabsorp > 0.0 and integemiss > 0.0:
-        print(
-            f"{row.fluxcontrib:.1e}, emission {integemiss:.1e}, "
-            f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'"
-        )
-    elif integemiss > 0.0:
-        print(f"  emission {integemiss:.1e} [erg/s/cm^2]: '{row.linelabel}'")
-    else:
-        print(f"absorption {integabsorp:.1e} [erg/s/cm^2]: '{row.linelabel}'")
+def print_contribution_table(
+    kept: Sequence[FluxContributionTuple],
+    other: Sequence[FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+) -> None:
+    """Print one aligned line for each drawn series with its integrated flux and its share, and one line for Other.
+
+    The share is a part of the emission or of the absorption of all the series. A series with no emission and no
+    absorption gets no line of its own, thus a person and an agent can read the table at a glance.
+    """
+
+    def integrate(values: npt.NDArray[np.floating]) -> float:
+        return abs(float(np.trapezoid(values, x=arraylambda_angstroms)))
+
+    emission = {row.linelabel: integrate(row.array_flambda_emission) for row in [*kept, *other]}
+    absorption = {row.linelabel: integrate(row.array_flambda_absorption) for row in [*kept, *other]}
+    totalemission, totalabsorption = sum(emission.values()), sum(absorption.values())
+
+    def get_flux_text(label: str) -> str:
+        parts = [
+            f"{kind} {flux:.2e} ({flux / total:5.1%})"
+            for kind, flux, total in (
+                ("emission", emission[label], totalemission),
+                ("absorption", absorption[label], totalabsorption),
+            )
+            if flux > 0.0 and total > 0.0
+        ]
+        return "  ".join(parts)
+
+    drawn = [row.linelabel for row in kept if emission[row.linelabel] > 0.0 or absorption[row.linelabel] > 0.0]
+    othernames = [row.linelabel for row in other if row.linelabel != "Other"]
+    labelwidth = max((len(label) for label in [*drawn, "Other"]), default=5)
+    print(
+        f"  flux at 1 Mpc [erg/s/cm^2] of each series = ∫ f_λ dλ from {arraylambda_angstroms.min():.5g} to"
+        f" {arraylambda_angstroms.max():.5g} Å (trapezoidal rule), and its share of the sum of all the series:"
+    )
+    for label in drawn:
+        print(f"    {label:<{labelwidth}}  {get_flux_text(label)}")
+    if nodata := len(kept) - len(drawn):
+        print(f"    {nodata} drawn series have no emission and no absorption")
+    # the host of a remote model merges the small series into one row "Other" before it sends them, thus the flux of
+    # "Other" adds each row of other, and the line gives no number of series
+    emission["Other"] = sum(emission[row.linelabel] for row in other)
+    absorption["Other"] = sum(absorption[row.linelabel] for row in other)
+    if emission["Other"] > 0.0 or absorption["Other"] > 0.0:
+        # merge_other_flux_series keeps these 3 series of a remote model
+        largest = sorted(othernames, key=lambda name: emission[name] + absorption[name], reverse=True)[:3]
+        largesttext = f"  (the largest are {', '.join(largest)})" if largest else ""
+        print(f"    {'Other':<{labelwidth}}  {get_flux_text('Other')}{largesttext}")
 
 
 def print_integrated_flux(

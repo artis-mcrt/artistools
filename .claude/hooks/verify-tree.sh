@@ -2,7 +2,8 @@
 # Stop hook: check the full Python tree after a change.
 #
 # The PostToolUse hook examines one file. A change to a signature can cause an
-# error in a different file, and only a check of the full tree finds it.
+# error in a different file, and only a check of the full tree finds it. The
+# hook also finds a Python change that a command of Bash made, see the state below.
 # AGENTS.md makes both type checkers necessary. prek runs ty, but pyrefly runs
 # only in CI, thus this hook is the one place where both run before a push.
 #
@@ -11,21 +12,55 @@
 set -u
 
 projectdir="${CLAUDE_PROJECT_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)}"
-marker="${TMPDIR:-/tmp}/artistools-claude-pyedit-$(id -u)"
+# two sessions can work in two checkouts, e.g. a worktree, thus each checkout has its own marker and state
+checkoutid="$(printf '%s' "$projectdir" | cksum | cut -d ' ' -f 1)"
+marker="${TMPDIR:-/tmp}/artistools-claude-pyedit-$(id -u)-$checkoutid"
+statefile="${TMPDIR:-/tmp}/artistools-claude-pystate-$(id -u)-$checkoutid"
 
 hookinput="$(cat)"
 
+# Codex reads a JSON object from the stdout of a Stop hook, and Claude Code accepts one too, thus each stop with no
+# error prints an empty object
+allow_stop() {
+    printf '{}\n'
+    exit 0
+}
+
 # a second block would repeat without end, thus stop after the first one
 if printf '%s' "$hookinput" | jq -e '.stop_hook_active == true' >/dev/null 2>&1; then
-    exit 0
+    allow_stop
 fi
 
-# the PostToolUse hook writes the marker, thus no Python change means no check
-[ -f "$marker" ] || exit 0
-rm -f "$marker"
+command -v uv >/dev/null 2>&1 || allow_stop
+cd "$projectdir" || allow_stop
 
-command -v uv >/dev/null 2>&1 || exit 0
-cd "$projectdir" || exit 0
+# The PostToolUse hook writes the marker after an Edit or a Write. A command of Bash can also change a Python file,
+# e.g. with sed or a script, and no hook sees that change. Thus the state also holds the commit and a checksum of the
+# Python changes, and a different state runs the check. The commits since the last check count only if they change
+# a Python file
+head="$(git rev-parse HEAD 2>/dev/null)"
+# a rename of an untracked file keeps its bytes, thus the names of the untracked files also go in the checksum
+changes="$({ git diff HEAD -- '*.py'; git ls-files --others --exclude-standard -- '*.py'; \
+    git ls-files --others --exclude-standard -z -- '*.py' | xargs -0 cat 2>/dev/null; } | cksum | cut -d ' ' -f 1)"
+state="$head $changes"
+laststate="$(cat -- "$statefile" 2>/dev/null)"
+lasthead="${laststate%% *}"
+printf '%s' "$state" >"$statefile" 2>/dev/null
+
+needscheck=0
+[ -f "$marker" ] && needscheck=1
+rm -f "$marker"
+if [ -n "$laststate" ] && [ "$state" != "$laststate" ]; then
+    if [ "${laststate#* }" != "$changes" ]; then
+        needscheck=1
+    elif [ -n "$(git diff --name-only "$lasthead" "$head" -- '*.py' 2>/dev/null)" ]; then
+        needscheck=1
+    fi
+fi
+# the first stop of a checkout has no state. A command of Bash can commit a Python change before that stop, thus
+# the first stop runs the check
+[ -z "$laststate" ] && needscheck=1
+[ "$needscheck" -eq 1 ] || allow_stop
 
 run() { uv run --no-sync -- "$@"; }
 
@@ -46,7 +81,7 @@ pyreflycheck="$({ git ls-files -z -- '*.py' ':(exclude)* [0-9].py'; \
 pyreflycheck="$(printf '%s\n' "$pyreflycheck" | grep -v '^ *INFO ')"
 
 if [ "$lintstatus" -eq 0 ] && [ "$tystatus" -eq 0 ] && [ "$pyreflystatus" -eq 0 ]; then
-    exit 0
+    allow_stop
 fi
 
 {
@@ -57,4 +92,7 @@ fi
     printf 'Correct these errors. Both type checkers must give no errors.\n'
 } >&2
 
+# the state above holds this tree, thus the next stop finds no change. The marker makes it check the tree again,
+# also in a new session, until the errors go
+touch "$marker" 2>/dev/null
 exit 2

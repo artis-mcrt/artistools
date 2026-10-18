@@ -10,17 +10,25 @@ from collections.abc import Sequence
 from functools import cache
 from functools import partial
 
+import matplotlib as mpl
 import matplotlib.artist as mplartist
 import matplotlib.axes as mplax
 import matplotlib.axis as mplaxis
 import matplotlib.cm as mplcm
+import matplotlib.collections as mplcollections
 import matplotlib.colors as mplcolors
+import matplotlib.container as mplcontainer
 import matplotlib.figure as mplfig
+import matplotlib.legend as mpllegend
 import matplotlib.lines as mpllines
 import matplotlib.markers as mplmarkers
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mplticker
+import numpy as np
 import polars as pl
+from matplotlib.collections import Collection
+from matplotlib.patches import Patch
+from matplotlib.text import Text
 
 from artistools.commands import get_path
 from artistools.misc import exit_with_error
@@ -47,8 +55,6 @@ def get_drawn_values(ax: "AxesTree") -> "tuple[npt.NDArray[np.float64], npt.NDAr
     A point covers half the distance to each of its neighbours, in the scale of the x axis. Thus a light curve at
     times in a geometric sequence gives most of a linear time axis to its late points, which are few.
     """
-    import numpy as np
-
     ycolumns: list[npt.NDArray[np.float64]] = []
     widthcolumns: list[npt.NDArray[np.float64]] = []
     for axis in iter_axes(ax):
@@ -60,7 +66,9 @@ def get_drawn_values(ax: "AxesTree") -> "tuple[npt.NDArray[np.float64], npt.NDAr
                 xvalues = np.log10(np.where(xvalues > 0.0, xvalues, np.nan))
             # a point with no finite x covers no part of the axis
             gaps = np.nan_to_num(np.abs(np.diff(xvalues)), nan=0.0, posinf=0.0)
-            widthcolumns.append(0.5 * (np.concatenate([gaps, [0.0]]) + np.concatenate([[0.0], gaps])))
+            # a line with no point, e.g. a curve that ends before -timemin, gave one width and no value
+            widths = 0.5 * (np.concatenate([gaps, [0.0]]) + np.concatenate([[0.0], gaps])) if xvalues.size else gaps
+            widthcolumns.append(widths)
 
     if not ycolumns:
         return np.empty(0, dtype=np.float64), np.empty(0, dtype=np.float64)
@@ -78,8 +86,6 @@ def wants_log_scale(values: "npt.NDArray[np.float64]", xwidths: "npt.NDArray[np.
 
     A value of zero or below has no place on a log axis, thus many of them keep the linear one.
     """
-    import numpy as np
-
     # a mask costs one byte per value, thus this counts them without a copy
     isfinite = np.isfinite(values)
     ispositive = isfinite & (values > 0.0)
@@ -124,11 +130,9 @@ if t.TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    import matplotlib.legend as mpllegend
     import matplotlib.legend_handler as mpllegendhandler
     import matplotlib.transforms as mpltransforms
     import matplotlib.typing as mplt
-    import numpy as np
     import numpy.typing as npt
     from matplotlib.backend_bases import RendererBase
 
@@ -555,8 +559,6 @@ def make_frame_figure(
         fig.set_size_inches(figwidth, figheight, forward=True)
     divider = Divider(fig, (0.0, 0.0, 1.0, 1.0), horizontal, vertical, aspect=False)
 
-    import numpy as np
-
     axes = np.empty((rows, cols), dtype=object)
     for row in range(rows):
         for col in range(cols):
@@ -666,8 +668,6 @@ def get_fitted_legend_columns(ax: mplax.Axes, legendkwargs: dict[str, t.Any]) ->
 
     A legend that would become wider than the frame keeps the columns before that.
     """
-    import matplotlib.legend as mpllegend
-
     fig = ax.get_figure(root=True)
     get_renderer = getattr(fig.canvas, "get_renderer", None) if fig is not None else None
     if get_renderer is None:
@@ -735,8 +735,6 @@ def get_polyline_yrange(points: "npt.NDArray[np.float64]", xlow: float, xhigh: f
     The points are in the fractions of the axes. A segment that crosses a side of the range counts at that side, thus
     a line with few points under a legend still counts. The part of the line outside the axes does not count.
     """
-    import numpy as np
-
     x, y = points[:, 0], points[:, 1]
     candidates = [y[(x >= xlow) & (x <= xhigh)]]
     if len(x) > 1:
@@ -758,9 +756,6 @@ def get_data_fraction_range(ax: mplax.Axes, xlow: float, xhigh: float) -> tuple[
     An artist with a position in the fractions of the axes on one axis does not count. For example, axvline covers
     each height, and the span of a Shift-drag covers each x.
     """
-    import matplotlib.collections as mplcollections
-    import numpy as np
-
     toaxes = ax.transAxes.inverted()
     scatterpoints: list[npt.NDArray[np.float64]] = []
 
@@ -849,8 +844,6 @@ def make_room_for_legend(
         if yrange is None:
             return
 
-    import numpy as np
-
     scale = ax.yaxis.get_transform()
     bottom, top = ax.get_ylim()
     if (bottom, top) != ax.yaxis.limit_range_for_scale(bottom, top):
@@ -882,8 +875,6 @@ def get_legend_entries_in_draw_order(
     series with markers moves below each model line, and the legend shows a different order from the
     command line.
     """
-    import matplotlib.container as mplcontainer
-
     handles, labels = ax.get_legend_handles_labels(handler_map)
     children = ax.get_children()
 
@@ -931,8 +922,6 @@ def set_prop_cycle_unusedcolors(axes: Iterable[mplax.Axes], seriescolors: Sequen
 @cache
 def read_mpl_style() -> dict[str, t.Any]:
     """Read the bundled matplotlibrc one time and return its settings."""
-    import matplotlib as mpl
-
     rcparams = mpl.rc_params_from_file(get_path("artistools_dir") / "matplotlibrc", use_default_template=False)
     return dict(rcparams.items())
 
@@ -1009,8 +998,6 @@ def get_residuals(
     A reference value of NaN keeps a gap in the residual panel.
     A reference with one point accepts only model points at the same x value.
     """
-    import numpy as np
-
     # Keep non-finite reference values as gaps instead of interpolating across them.
     hasx = np.isfinite(reference.x)
     referencex = reference.x[hasx]
@@ -1037,8 +1024,6 @@ def draw_residual_series(
     ratio: bool,
 ) -> None:
     """Draw the residual points with the line properties and error bars of the main frame."""
-    import numpy as np
-
     xvalues = model.x[inrange]
     (line,) = axis.plot(xvalues, yvalues, color=model.color, linewidth=0.8)
     if model.line is not None:
@@ -1083,8 +1068,11 @@ def plot_residual_panel(
     selectedindices: Sequence[int] | None = None,
     ismagnitude: bool = False,
     residualtype: str = "absolute",
+    plottedpoints: list[pl.DataFrame] | None = None,
 ) -> pl.DataFrame:
     """Draw the selected residual type and return the statistics.
+
+    plottedpoints takes the drawn points of each residual curve, with the columns model, reference, x, and residual.
 
     An empty selection or None includes all series except the baseline.
     The relative and relativelog types draw series / baseline on a linear or logarithmic y axis.
@@ -1093,8 +1081,6 @@ def plot_residual_panel(
     The table gives the number of points and the root mean square (RMS) of each residual.
     It also gives the ratio of the RMS to the mean baseline value, which has no meaning for a magnitude.
     """
-    import numpy as np
-
     if residualtype not in {"absolute", "relative", "relativelog"}:
         exit_with_error(
             f"Unknown residual type: {residualtype}", "Give absolute, relative, or relativelog with -residualtype"
@@ -1150,6 +1136,18 @@ def plot_residual_panel(
             if residualtype == "relativelog":
                 yvalues = np.where(yvalues > 0.0, yvalues, np.nan)
         draw_residual_series(axis, model, inrange, yvalues, yreference, ratio=ratio)
+        if plottedpoints is not None:
+            plottedpoints.append(
+                pl.DataFrame(
+                    {
+                        "model": model.label,
+                        "reference": reference.label,
+                        "x": np.asarray(model.x[inrange], dtype=np.float64),
+                        "residual": np.asarray(yvalues, dtype=np.float64),
+                    },
+                    schema={"model": pl.String, "reference": pl.String, "x": pl.Float64, "residual": pl.Float64},
+                )
+            )
 
         strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
         print_detail(
@@ -1180,8 +1178,11 @@ def draw_residual_panel(
     args: argparse.Namespace,
     *,
     ismagnitude: bool = False,
+    plottedpoints: list[pl.DataFrame] | None = None,
 ) -> pl.DataFrame:
     """Draw the selected residual type below the main frame and return the statistics.
+
+    plottedpoints takes the points of each residual curve in the x range of the main frame, see plot_residual_panel.
 
     The residual type sets the calculation and the y scale of the panel.
     Call it after the main frame has its labels and its x range.
@@ -1201,6 +1202,7 @@ def draw_residual_panel(
         selectedindices=args.residuals,
         ismagnitude=ismagnitude,
         residualtype=args.residualtype,
+        plottedpoints=plottedpoints,
     )
     set_axis_properties(residualaxis, args, setyaxis=False)
     if logscaley:
@@ -1236,16 +1238,6 @@ def draw_residual_panel(
         residualaxis.set_ylabel("")
 
     return dfresidualstats
-
-
-def write_residual_stats(dfresidualstats: pl.DataFrame, outputfile: "Path | str") -> None:
-    """Write the statistics of a residual panel to a file of comma-separated values next to the figure."""
-    from pathlib import Path
-
-    if not dfresidualstats.is_empty():
-        residualfile = Path(outputfile).with_name(f"{Path(outputfile).stem}_residuals.csv")
-        dfresidualstats.write_csv(residualfile)
-        print_saved(residualfile)
 
 
 def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:
@@ -1321,9 +1313,6 @@ def apply_dark_colours(fig: mplfig.Figure, background: str, foreground: str) -> 
     The other colours stay, e.g. the colours of the series and of an image. A dark colour of a series, e.g. the dark
     red of sulphur, is not grey, thus it stays.
     """
-    from matplotlib.collections import Collection
-    from matplotlib.patches import Patch
-    from matplotlib.text import Text
 
     def get_one_light_grey(
         colours: "mplt.ColorType | Sequence[mplt.ColorType]",
@@ -1439,9 +1428,14 @@ def save_figure(
 
     With --darkmode, the figure has white text and frames. A PDF file or an SVG file has a transparent background,
     and a file in a different format has a black background.
+
+    The function warns about each value that a line of the figure has outside the y range of its axes, see
+    warn_hidden_values. Each plot command saves its figure with this function, thus each command gives this warning.
     """
     from pathlib import Path
 
+    for axis in fig.axes:
+        warn_hidden_values(axis)
     show = args is not None and getattr(args, "show", False)
     openfile = args is not None and not isframe and getattr(args, "open", False)
 
@@ -1632,6 +1626,91 @@ class PrunedLogLocator(mplticker.LogLocator):
 
         # a log axis of many decades carries few major ticks, thus keep them all rather than leave too few
         return keep if self.minticks <= len(keep) < len(inview) else ticks
+
+
+def warn_direction_bin_noise(source: str, *, average_over_phi: bool, average_over_theta: bool) -> None:
+    """Print a warning that a direction bin holds a small part of the packets, and thus has a larger noise.
+
+    A file of the direction bins, e.g. spec_res.out, gives no packet count. If the packets escape in all directions
+    alike, a bin of the n bins holds 1/n of the packets, and its relative noise is sqrt(n) times that of the average.
+    """
+    bincount = get_viewingdirection_costhetabincount() * get_viewingdirection_phibincount()
+    if average_over_phi:
+        bincount = get_viewingdirection_costhetabincount()
+    elif average_over_theta:
+        bincount = get_viewingdirection_phibincount()
+    print_warning(
+        f"each direction bin of {source} holds about 1/{bincount} of the escaped packets, if they escape in all"
+        f" directions alike. Thus its Monte Carlo noise is about {math.sqrt(bincount):.3g} times the noise of the"
+        f" angle average. {source} gives no packet count, and --frompackets gives the noise of each bin"
+    )
+
+
+def print_series_summary(
+    seriesname: str,
+    parts: Sequence[str],
+    warnings: Sequence[str] = (),
+    *,
+    fields: Mapping[str, t.Any] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
+) -> None:
+    """Print one line that summarises a drawn series, and print each warning about the series.
+
+    An agent or a script reads the line, thus each plot command gives its summary in this one form. The caller makes
+    the parts from fields. If summaryrows is a list, the function adds the series name and fields to it as one row of
+    the table _summary of --print_data and --write_data. Thus the line and the table always agree.
+    """
+    print_detail(f"{plain_label(seriesname)}: {', '.join(parts)}")
+    for warning in warnings:
+        print_warning(f"{plain_label(seriesname)}: {warning}")
+    if summaryrows is not None:
+        summaryrows.append({"series": plain_label(seriesname), **(fields or {})})
+
+
+def get_summary_table(summaryrows: Sequence[Mapping[str, t.Any]]) -> pl.DataFrame:
+    """Return the table _summary, with one row for each drawn series and one column for each field.
+
+    Two series can have different fields, e.g. only a light curve from packets has a noise. A field that a series does
+    not have is null in its row.
+    """
+    return pl.DataFrame(summaryrows, infer_schema_length=None) if summaryrows else pl.DataFrame()
+
+
+def warn_hidden_values(axis: mplax.Axes) -> None:
+    """Print a warning for each line of the axes that has values outside the y range, which the figure does not show.
+
+    Call the function after the plot sets the limits of the axes, e.g. with -ymin and -ymax. The function reads these
+    limits. A log axis also hides each value of zero or below. The function reads only the lines that have a gid or a
+    label, and the gid is the name of the series. A series with no legend entry, e.g. a direction bin of a colour bar,
+    has a gid. A line with neither is a part of a different series, e.g. a repeated end point.
+    """
+    ylow, yhigh = sorted(axis.get_ylim())
+    xlow, xhigh = sorted(axis.get_xlim())
+    islog = axis.get_yscale() == "log"
+    for line in axis.get_lines():
+        label = line.get_gid() or str(line.get_label())
+        if not label or label.startswith("_"):
+            continue
+        xvalues = np.asarray(line.get_xdata(), dtype=np.float64)
+        yvalues = np.asarray(line.get_ydata(), dtype=np.float64)
+        # an axhline gives x in the coordinates of the axes, 0 to 1, and it crosses each x range of the data
+        xisdata, _ = line.get_transform().contains_branch_seperately(axis.transData)
+        isinxrange = (xvalues >= xlow) & (xvalues <= xhigh) if xisdata else np.ones(len(xvalues), dtype=bool)
+        yvalues = yvalues[isinxrange & np.isfinite(yvalues)]
+        hidden = [
+            f"{kind}: {count}"
+            for count, kind in (
+                (int((yvalues > yhigh).sum()), f"values above the top of the axis ({yhigh:.4g})"),
+                (
+                    int(((yvalues < ylow) & ((yvalues > 0.0) | (not islog))).sum()),
+                    f"values below the bottom of the axis ({ylow:.4g})",
+                ),
+                (int((yvalues <= 0.0).sum()) if islog else 0, "values of zero or below on the log axis"),
+            )
+            if count > 0
+        ]
+        if hidden:
+            print_warning(f"the figure does not show these values of '{plain_label(label)}': {'; '.join(hidden)}")
 
 
 def plain_label(label: str) -> str:
@@ -1838,8 +1917,6 @@ def make_colorbar_viewingangles(
     scaledmap: t.Any, args: argparse.Namespace, fig: mplfig.Figure | None = None, ax: AxesTree | None = None
 ) -> None:
     """Add a colorbar labelled with the cos(theta) or phi viewing angle bin boundaries."""
-    import numpy as np
-
     if args.colorbarphi:
         print("Reordered phi bins")
         nbins = get_viewingdirection_phibincount()

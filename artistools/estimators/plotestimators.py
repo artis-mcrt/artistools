@@ -16,8 +16,10 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
+import matplotlib as mpl
 import matplotlib.axes as mplax
 import matplotlib.colors as mc
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 from polars import selectors as cs
@@ -37,11 +39,15 @@ from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.estimators.core import get_averageexcitation
 from artistools.estimators.core import get_levelpop_modeldata
+from artistools.estimators.core import get_prefix_group
+from artistools.estimators.core import get_temperature_limits
 from artistools.estimators.core import get_units
 from artistools.estimators.core import get_units_string
+from artistools.estimators.core import get_variable
 from artistools.estimators.core import get_variablelongunits
 from artistools.estimators.core import get_varname_formatted
 from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import PREFIX_GROUPS
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.estimators.core import VARIABLES
@@ -51,6 +57,7 @@ from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axi
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
@@ -79,8 +86,10 @@ from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_timesteps
 from artistools.misc import item_names_a_folder
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
+from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
@@ -101,8 +110,11 @@ from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
+from artistools.plottools import get_summary_table
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
+from artistools.plottools import plain_label
+from artistools.plottools import print_series_summary
 from artistools.plottools import prune_log_ticks
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
@@ -238,6 +250,8 @@ def repeat_endpoint(dflinepoints: pl.DataFrame, xvalue: float, *, atstart: bool)
     """
     end = dflinepoints.head(1) if atstart else dflinepoints.tail(1)
     row = end.with_columns(xvalue_binned=pl.lit(xvalue, dtype=dflinepoints.schema["xvalue_binned"]))
+    if "bin_centre" in row.columns:
+        row = row.with_columns(bin_centre=pl.lit(value=False))
 
     return pl.concat([row, dflinepoints] if atstart else [dflinepoints, row])
 
@@ -254,6 +268,8 @@ class SeriesPlan(t.NamedTuple):
     plotkwargs: dict[str, t.Any]
     # the name of the series in its plot item, e.g. "Fe II" or "Te". A series style uses this name to find the series
     seriesname: str
+    # the weight of celltsweight in words for the log, e.g. "cell mass times time step duration"
+    weightname: str
 
 
 class SeriesData(t.NamedTuple):
@@ -269,6 +285,8 @@ class SeriesData(t.NamedTuple):
     dfpoints: pl.DataFrame | None
     # the default keeps the data of a host that runs an older release, which gives no name. Then no style applies
     seriesname: str = ""
+    # the statistics of the points of the series, see get_series_summary_query. A host of an older release gives none
+    summary: dict[str, t.Any] | None = None
 
 
 class SubplotSettings(t.TypedDict, total=False):
@@ -297,9 +315,9 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
     """Return the average line of a series in each x bin, with the minimum and the maximum of the bin."""
     dflinepoints = (
         dfseries
-        # a cell that reported no value must not pull the average to zero, and a NaN is not a null.
-        # A mask of the cell keeps the bin, which .drop_nans() on the aggregate took away
-        .filter(pl.col("yvalue").is_not_null() & pl.col("yvalue").cast(pl.Float64).is_not_nan())
+        # a cell with no value, a NaN, or an infinity, e.g. a ratio with a divisor of 0, must not change the mean of its
+        # bin. A mask of the cell keeps the bin, which .drop_nans() on the aggregate took away
+        .filter(pl.col("yvalue").cast(pl.Float64).is_finite().fill_null(value=False))
         .group_by("xvalue_binned")
         .agg(
             # every weight of a bin can be zero, e.g. an element that is absent from the bin has no mass.
@@ -321,6 +339,36 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
         )
 
     return dflinepoints
+
+
+def extend_line_to_its_ends(dflinepoints: pl.DataFrame, startfromzero: bool, xbinwidth: float | None) -> pl.DataFrame:
+    """Return the points of the drawn line, with its first point and its last point repeated at its ends.
+
+    A binned line runs through bin middles, thus it stops half a bin short. The value holds across the bin, thus the
+    line reaches the outer edges and leaves no gap. The bins of a line can have gaps, thus the space between the last
+    two points does not give the width of a bin. startfromzero takes the line to zero on the left.
+    """
+    xbinned = dflinepoints.get_column("xvalue_binned")
+    if xbinwidth and not xbinned.is_empty():
+        halfwidth = xbinwidth / 2.0
+        dflinepoints = repeat_endpoint(dflinepoints, xbinned[-1] + halfwidth, atstart=False)
+        # startfromzero takes the line further to the left, thus that end comes below
+        if not startfromzero:
+            dflinepoints = repeat_endpoint(dflinepoints, xbinned[0] - halfwidth, atstart=True)
+
+    if startfromzero:
+        dflinepoints = repeat_endpoint(dflinepoints, 0.0, atstart=True)
+    return dflinepoints
+
+
+def get_line_ends(figuredata: "LineFigureData", args: argparse.Namespace) -> tuple[bool, float | None]:
+    """Return whether the lines of the figure start from zero, and the width of each x bin or None."""
+    xvariable = args.x
+    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
+    # get_xlist divides the range of the x axis into the bins
+    xlow, xhigh = figuredata.xlimits
+    xbinwidth = (xhigh - xlow) / args.xbins if args.xbins and xlow is not None and xhigh is not None else None
+    return startfromzero, xbinwidth
 
 
 def draw_series(
@@ -345,20 +393,7 @@ def draw_series(
         draw_points(ax, dfpoints, plotkwargs.get("color") or get_next_color(ax), plotkwargs, label=label)
         return
 
-    # a binned line runs through bin middles, thus it stops half a bin short. The value holds across
-    # the bin, thus reach the outer edges and leave no gap. The bins of a line can have gaps, thus the
-    # space between the last two points does not give the width of a bin
-    xbinned = dflinepoints.get_column("xvalue_binned")
-    if xbinwidth and not xbinned.is_empty():
-        halfwidth = xbinwidth / 2.0
-        dflinepoints = repeat_endpoint(dflinepoints, xbinned[-1] + halfwidth, atstart=False)
-        # startfromzero takes the line further to the left, thus that end comes below
-        if not startfromzero:
-            dflinepoints = repeat_endpoint(dflinepoints, xbinned[0] - halfwidth, atstart=True)
-
-    if startfromzero:
-        dflinepoints = repeat_endpoint(dflinepoints, 0.0, atstart=True)
-
+    dflinepoints = extend_line_to_its_ends(dflinepoints, startfromzero, xbinwidth)
     xvalues_binned = dflinepoints.get_column("xvalue_binned")
     yvalues_binned = dflinepoints.get_column("yvalue_binned")
 
@@ -379,12 +414,63 @@ def draw_series(
         )
 
 
-def get_subplot_queries(plans: Sequence[SeriesPlan], args: argparse.Namespace) -> list[pl.LazyFrame]:
-    """Return the queries of the average lines and then of the points of every series of the subplot."""
+def get_subplot_queries(
+    plans: Sequence[SeriesPlan], args: argparse.Namespace, temperaturelimits: Mapping[str, float] | None = None
+) -> list[pl.LazyFrame]:
+    """Return the queries of the average lines, of the points, and of the summaries of every series of the subplot."""
     # -xbins 0 draws the points alone, thus it needs no average line
     linequeries = [get_line_points(plan.dfseries, args) for plan in plans] if args.xbins != 0 else []
     pointqueries = [plan.dfseries.select("xvalue", "yvalue") for plan in plans] if args.markers else []
-    return [*linequeries, *pointqueries]
+    summaryqueries = [
+        get_series_summary_query(
+            plan.dfseries, plan.weightname, (temperaturelimits or {}) if plan.seriesname in TEMPERATURENAMES else {}
+        )
+        for plan in plans
+    ]
+    return [*linequeries, *pointqueries, *summaryqueries]
+
+
+def get_series_summary_query(
+    dfseries: pl.LazyFrame, weightname: str, temperaturelimits: Mapping[str, float]
+) -> pl.LazyFrame:
+    """Return a query of one row with the statistics of the points of a series, for the summary in the log.
+
+    The mean takes the weight of the drawn line, e.g. the mass of each cell times the duration of its time step.
+    weightname gives this weight in words, and the column meanweight gives the weight that the mean used. Weights with
+    a sum of 0 give a mean with equal weights. A temperature at MINTEMP or MAXTEMP is a limit of ARTIS and not a
+    physical value, thus the query counts these points.
+    """
+    # matplotlib draws no point for an infinite value, e.g. a ratio with a divisor of 0. is_finite gives null for null
+    isvalid = pl.col("yvalue").cast(pl.Float64).is_finite().fill_null(value=False)
+    yvalid = pl.col("yvalue").cast(pl.Float64).filter(isvalid)
+    xvalid = pl.col("xvalue").cast(pl.Float64).filter(isvalid)
+    weightvalid = pl.col("celltsweight").cast(pl.Float64).filter(isvalid)
+    return dfseries.select(
+        pl.len().alias("pointcount"),
+        isvalid.sum().alias("valuecount"),
+        (pl.col("xvalue_binned").n_unique() - pl.col("xvalue_binned").filter(isvalid).n_unique()).alias(
+            "emptybincount"
+        ),
+        # the drawn line has no point where the series has no value, thus the range takes the points with a value
+        xvalid.min().alias("xmin"),
+        xvalid.max().alias("xmax"),
+        yvalid.min().alias("ymin"),
+        # many cells can be at a limit of Te, and the order of tied values is not fixed, thus a tie takes the smallest x
+        xvalid.sort_by([yvalid, xvalid]).first().alias("x_at_ymin"),
+        yvalid.max().alias("ymax"),
+        xvalid.sort_by([yvalid, xvalid], descending=[True, False]).first().alias("x_at_ymax"),
+        pl
+        .when(weightvalid.sum() != 0.0)
+        .then((yvalid * weightvalid).sum() / weightvalid.sum())
+        .otherwise(yvalid.mean())
+        .alias("weightedmean"),
+        pl
+        .when(weightvalid.sum() != 0.0)
+        .then(pl.lit(weightname))
+        .otherwise(pl.lit("equal weights, because the weights have a sum of 0"))
+        .alias("meanweight"),
+        *((yvalid == limit).sum().alias(f"at_{name}") for name, limit in temperaturelimits.items()),
+    )
 
 
 def get_series_data(
@@ -392,11 +478,15 @@ def get_series_data(
 ) -> list[SeriesData]:
     """Return the data of each series of the subplot, from the frames of the queries of get_subplot_queries."""
     linecount = len(plans) if args.xbins != 0 else 0
+    pointcount = len(plans) if args.markers else 0
     dflinepoints_of_plan: Sequence[pl.DataFrame | None] = frames[:linecount] or [None] * len(plans)
-    dfpoints_of_plan: Sequence[pl.DataFrame | None] = frames[linecount:] or [None] * len(plans)
+    dfpoints_of_plan: Sequence[pl.DataFrame | None] = frames[linecount : linecount + pointcount] or [None] * len(plans)
+    summaries = [dfsummary.row(0, named=True) for dfsummary in frames[linecount + pointcount :]]
     return [
-        SeriesData(plan.label, plan.plotkwargs, dflinepoints, dfpoints, plan.seriesname)
-        for plan, dflinepoints, dfpoints in zip(plans, dflinepoints_of_plan, dfpoints_of_plan, strict=True)
+        SeriesData(plan.label, plan.plotkwargs, dflinepoints, dfpoints, plan.seriesname, summary)
+        for plan, dflinepoints, dfpoints, summary in zip(
+            plans, dflinepoints_of_plan, dfpoints_of_plan, summaries, strict=True
+        )
     ]
 
 
@@ -506,7 +596,15 @@ def plot_init_abundances(
         speciesplotkwargs: dict[str, t.Any] = {"linewidth": 1.5, "linestyle": linestyle} | plotkwargs
         speciesplotkwargs["color"] = get_elemcolor(atomic_number=atomic_number)
 
-        plans.append(SeriesPlan(label=linelabel, dfseries=series, plotkwargs=speciesplotkwargs, seriesname=speciesstr))
+        plans.append(
+            SeriesPlan(
+                label=linelabel,
+                dfseries=series,
+                plotkwargs=speciesplotkwargs,
+                seriesname=speciesstr,
+                weightname="cell mass times time step duration",
+            )
+        )
 
     return plans
 
@@ -559,7 +657,11 @@ def plot_average_ionisation(
 
         plans.append(
             SeriesPlan(
-                label=paramvalue, dfseries=dfplotdata, plotkwargs={"color": color} | plotkwargs, seriesname=paramvalue
+                label=paramvalue,
+                dfseries=dfplotdata,
+                plotkwargs={"color": color} | plotkwargs,
+                seriesname=paramvalue,
+                weightname=f"number of {elsymb} nuclei in the cell times time step duration",
             )
         )
 
@@ -617,6 +719,11 @@ def plot_average_excitation(
         # weights by the element population
         nnioncol = f"nnion_{get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"
         weightcol = pl.col(nnioncol) if nnioncol in estimatorcolumns else pl.lit(1.0)
+        weightname = (
+            f"number of {get_ionstring(atomic_number, ion_stage)} ions in the cell times time step duration"
+            if nnioncol in estimatorcolumns
+            else "cell volume times time step duration"
+        )
 
         dfplotdata = (
             estimators
@@ -631,6 +738,7 @@ def plot_average_excitation(
                 dfseries=dfplotdata,
                 plotkwargs={"color": get_elemcolor(atomic_number=atomic_number)} | plotkwargs,
                 seriesname=paramvalue,
+                weightname=weightname,
             )
         )
 
@@ -755,7 +863,15 @@ def plot_levelpop(
                 celltsweight=pl.lit(1.0),
             )
         )
-        plans.append(SeriesPlan(label=label, dfseries=dfseries, plotkwargs=plotkwargs.copy(), seriesname=paramvalue))
+        plans.append(
+            SeriesPlan(
+                label=label,
+                dfseries=dfseries,
+                plotkwargs=plotkwargs.copy(),
+                seriesname=paramvalue,
+                weightname="equal weights for each cell",
+            )
+        )
 
     return plans
 
@@ -998,8 +1114,6 @@ def get_styled_series(
     A line style of the item replaces the dash pattern of the plot, e.g. of an ion. A dash pattern of the item replaces
     the line style.
     """
-    import matplotlib as mpl
-
     plotkwargs = series.plotkwargs.copy()
     if "color" in style:
         plotkwargs["color"] = style["color"]
@@ -1275,24 +1389,39 @@ def get_population_normfactor(seriestype: str, poptype: str, atomic_number: int)
 
 def get_ion_series_weight(
     seriestype: str, poptype: str, atomic_number: int, ion_stage: str | int, estimatorcolumns: Collection[str]
-) -> pl.Expr:
-    """Return the weight of a cell in the mean of an ion series, which multiplies the volume and the duration.
+) -> tuple[pl.Expr, str]:
+    """Return the weight of a cell in the mean of an ion series, and the name of the weight.
+
+    The weight multiplies the volume and the duration.
 
     A fraction of the element or of all the nuclei gives the ratio of the totals of a bin when the weight is its
     divisor. A rate for each ion, e.g. gamma_NT, takes the number of the ion as its weight, as averageexcitation does.
     The reader gives 0 for a rate in a cell that holds none of the element, and that weight leaves such a cell out.
     A population and a rate for each unit of volume, e.g. cooling_coll_Fe_II, take the volume alone.
     """
-    if seriestype == "populations":
-        return get_population_normfactor(seriestype, poptype, atomic_number)
-
-    if get_units(get_column_name(seriestype, atomic_number, ion_stage)[0], latex=False) == "erg/s/cm^3":
-        return pl.lit(1.0)
+    elsymbol = get_elsymbol(atomic_number)
+    if seriestype == "populations" and poptype == "elpop":
+        return get_population_normfactor(
+            seriestype, poptype, atomic_number
+        ), f"number of {elsymbol} nuclei in the cell times time step duration"
+    if seriestype == "populations" and poptype == "totalpop":
+        return get_population_normfactor(
+            seriestype, poptype, atomic_number
+        ), "number of nuclei in the cell times time step duration"
+    if seriestype == "populations" or (
+        get_units(get_column_name(seriestype, atomic_number, ion_stage)[0], latex=False) == "erg/s/cm^3"
+    ):
+        return pl.lit(1.0), "cell volume times time step duration"
 
     popcolumn = get_column_name("populations", atomic_number, ion_stage)[0]
-    if popcolumn not in estimatorcolumns:
-        popcolumn = f"nnelement_{get_elsymbol(atomic_number)}"
-    return pl.col(popcolumn) if popcolumn in estimatorcolumns else pl.lit(1.0)
+    if popcolumn in estimatorcolumns:
+        return pl.col(
+            popcolumn
+        ), f"number of {get_ionstring(atomic_number, ion_stage)} ions in the cell times time step duration"
+    elementcolumn = f"nnelement_{elsymbol}"
+    if elementcolumn in estimatorcolumns:
+        return pl.col(elementcolumn), f"number of {elsymbol} nuclei in the cell times time step duration"
+    return pl.lit(1.0), "cell volume times time step duration"
 
 
 def plot_multi_ion_series(
@@ -1352,6 +1481,7 @@ def plot_multi_ion_series(
     ionentries = [entry for entry in ionentries if entry[0] not in nocolumnions]
 
     lazyframes = []
+    weightnames: list[str] = []
     for (atomic_number, ion_stage), _ in ionentries:
         colname, ionstr = get_column_name(seriestype, atomic_number, ion_stage)
         expr_yvals = pl.col(colname)
@@ -1376,7 +1506,8 @@ def plot_multi_ion_series(
             # the sum is over the cells of one timestep, thus it must restart at each timestep
             expr_yvals = (expr_yvals * pl.col("volume")).cum_sum().over("timestep")
 
-        weight = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
+        weight, weightname = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
+        weightnames.append(weightname)
         lazyframes.append(
             estimators.select(
                 (pl.col("deltavol_deltat") * weight).alias("celltsweight"),
@@ -1393,8 +1524,8 @@ def plot_multi_ion_series(
     if args.colorbyion and not colorbyion:
         settings["elementcolours"] = True
     plans = []
-    for seriesindex, (((atomic_number, ion_stage), seriesname), dfseries) in enumerate(
-        zip(ionentries, lazyframes, strict=True)
+    for seriesindex, (((atomic_number, ion_stage), seriesname), dfseries, weightname) in enumerate(
+        zip(ionentries, lazyframes, weightnames, strict=True)
     ):
         plotlabel = str(
             ion_stage
@@ -1434,6 +1565,7 @@ def plot_multi_ion_series(
                 dfseries=dfseries,
                 plotkwargs={"linewidth": linewidth, "color": color} | plotkwargs,
                 seriesname=seriesname,
+                weightname=weightname,
             )
         )
 
@@ -1492,7 +1624,15 @@ def plot_series(
     plotkwargs.setdefault("linewidth", 1.5)
 
     print(f"  plotting {variablename}")
-    return [SeriesPlan(label=linelabel, dfseries=series, plotkwargs=plotkwargs, seriesname=variablename)]
+    return [
+        SeriesPlan(
+            label=linelabel,
+            dfseries=series,
+            plotkwargs=plotkwargs,
+            seriesname=variablename,
+            weightname="cell volume times time step duration",
+        )
+    ]
 
 
 def get_xlist(
@@ -1888,6 +2028,104 @@ class LineFigureData(t.NamedTuple):
     framefields: dict[str, int | str]
 
 
+# the temperatures that ARTIS limits to the range from MINTEMP to MAXTEMP
+TEMPERATURENAMES: t.Final = frozenset({"Te", "TR", "TJ"})
+
+
+def get_table_xcolumn(xvariable: str) -> str:
+    """Return the name of the column of the x values in a data table, which gives the unit of a velocity or a time."""
+    return {"velocity": "velocity_kmps", "time": "time_days"}.get(xvariable, xvariable)
+
+
+def get_line_figure_summary_rows(figuredata: "LineFigureData", args: argparse.Namespace) -> list[dict[str, t.Any]]:
+    """Return the fields of the summary of each drawn series, with one dict for each series.
+
+    The keys of the x values name the x variable and its unit as the columns of the table of the points do, e.g.
+    velocity_kmps_min. The y values have the unit of the column "units". The column "method" gives the weight of the
+    mean. A field is None when the series has no point with a value.
+    """
+    xcolumn = get_table_xcolumn(args.x)
+    rows: list[dict[str, t.Any]] = []
+    for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
+        for series in seriesdatas:
+            summary = series.summary
+            if summary is None:
+                continue
+            hasvalue = summary["valuecount"] > 0
+            rows.append({
+                # the label of the legend can hold the units or the model, thus the row gives the name of the series
+                "series": plain_label(series.seriesname or series.label or ""),
+                "subplot": subplotindex,
+                "point_count": summary["pointcount"],
+                "value_count": summary["valuecount"],
+                f"{xcolumn}_min": summary["xmin"],
+                f"{xcolumn}_max": summary["xmax"],
+                "value_min": summary["ymin"],
+                f"{xcolumn}_at_value_min": summary["x_at_ymin"],
+                "value_max": summary["ymax"],
+                f"{xcolumn}_at_value_max": summary["x_at_ymax"],
+                "value_mean": summary["weightedmean"] if hasvalue else None,
+                "method": summary["meanweight"] if hasvalue else None,
+                "units": get_units(series.seriesname, latex=False) if series.seriesname else None,
+                "empty_bin_count": summary["emptybincount"],
+                **{
+                    f"{name.lower()}_point_count": summary[f"at_{name}"]
+                    for name in ("MINTEMP", "MAXTEMP")
+                    if f"at_{name}" in summary
+                },
+            })
+    return rows
+
+
+def print_line_figure_summary(figuredata: "LineFigureData", args: argparse.Namespace) -> None:
+    """Print one line with the statistics of the points of each drawn series, and a warning for each problem.
+
+    The line takes the fields of get_line_figure_summary_rows, thus it agrees with the table _summary. The mean takes
+    the weight of the drawn line, which the line names. A point is a cell at a time step.
+    """
+    xcolumn = get_table_xcolumn(args.x)
+    xunits = get_units(args.x, latex=False)
+    xunitstext = f" {xunits}" if xunits else ""
+    for row in get_line_figure_summary_rows(figuredata, args):
+        yunitstext = f" {row['units']}" if row["units"] else ""
+        pointstext = (
+            f"{row['value_count']} points"
+            if row["value_count"] == row["point_count"]
+            else f"{row['value_count']} of {row['point_count']} points with a value"
+        )
+        parts = [f"subplot {row['subplot']}", pointstext]
+        if row["value_count"]:
+            parts += [
+                f"x {row[f'{xcolumn}_min']:.4g} to {row[f'{xcolumn}_max']:.4g}{xunitstext}",
+                f"min {row['value_min']:.4g}{yunitstext} at x = {row[f'{xcolumn}_at_value_min']:.4g}",
+                f"max {row['value_max']:.4g}{yunitstext} at x = {row[f'{xcolumn}_at_value_max']:.4g}",
+                f"mean {row['value_mean']:.4g}{yunitstext}",
+                f"weight of the mean: {row['method']}",
+            ]
+        warnings = [
+            f"{row[f'{name.lower()}_point_count']} points are at {name}, which is a limit of ARTIS and not a physical"
+            " value"
+            for name in ("MINTEMP", "MAXTEMP")
+            if row.get(f"{name.lower()}_point_count")
+        ]
+        if row["empty_bin_count"]:
+            warnings.append(f"{row['empty_bin_count']} x bins have no value, thus the line has a gap or ends early")
+        print_series_summary(row["series"], parts, warnings)
+
+
+def get_figure_summary_table(figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace) -> pl.DataFrame:
+    """Return the table _summary of a figure, with one row for each series and the fields of the frame as columns.
+
+    An image has no summary line, thus its table is empty.
+    """
+    if not isinstance(figuredata, LineFigureData):
+        return pl.DataFrame()
+    dfsummary = get_summary_table(get_line_figure_summary_rows(figuredata, args))
+    return dfsummary.select(
+        *(pl.lit(fieldvalue).alias(fieldname) for fieldname, fieldvalue in figuredata.framefields.items()), pl.all()
+    )
+
+
 def get_line_figure_data(
     modelpath: Path | str,
     timestepslist: Collection[int] | None,
@@ -1909,7 +2147,8 @@ def get_line_figure_data(
     subplotplans = [
         get_subplot_plans(timestepslist, plotitems, mgilist, modelpath, estimators, args) for plotitems in plotlist
     ]
-    queries = [get_subplot_queries(plans, args) for plans, _ in subplotplans]
+    temperaturelimits = get_temperature_limits(modelpath)
+    queries = [get_subplot_queries(plans, args, temperaturelimits) for plans, _ in subplotplans]
     # one collect_all runs the series of all the subplots in parallel
     frames = pl.collect_all([query for subplotqueries in queries for query in subplotqueries])
     subplots: list[tuple[list[SeriesData], SubplotSettings]] = []
@@ -1969,10 +2208,7 @@ def draw_line_figure(
 
     set_axis_properties(axes, args, xlimits=(*figuredata.xlimits, "-xmin"))
 
-    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
-    # get_xlist divides the range of the x axis into the bins
-    xlow, xhigh = figuredata.xlimits
-    xbinwidth = (xhigh - xlow) / args.xbins if args.xbins and xlow is not None and xhigh is not None else None
+    startfromzero, xbinwidth = get_line_ends(figuredata, args)
     # the data has no series styles, thus a change of style in the window needs no new data
     stylesofsubplots = get_styles_of_subplots(args, len(figuredata.subplots))
     for subplotindex, (ax, (series, settings), styles) in enumerate(
@@ -1989,13 +2225,15 @@ def draw_line_figure(
 
 def make_figure(
     figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, frameset: "FrameSet | None" = None
-) -> str:
-    """Draw the figure of the data, save it, and return the output filename.
+) -> tuple[str, pl.DataFrame | None]:
+    """Draw the figure of the data, save it, and return the output filename and the table of the plotted data.
 
     A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
-    and --open leave it alone. The caller opens the file that holds every frame.
+    and --open leave it alone. The caller opens the file that holds every frame. The table is None with no
+    --print_data and no --write_data, because a table of many frames, cells, and markers costs time and memory.
     """
     fig = draw_figure_data(figuredata, args)
+    dftable = get_figure_table(figuredata, args) if args.print_data or args.write_data else None
     framefields = figuredata.framefields
     if isinstance(figuredata, ImageFigureData):
         assert frameset is not None
@@ -2014,9 +2252,66 @@ def make_figure(
         outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, framename)
         outfilename = format_frame_path(outpath, **framefields, format=args.format, **slicefields)
 
+    if isinstance(figuredata, LineFigureData):
+        print_line_figure_summary(figuredata, args)
     save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
 
-    return outfilename
+    return outfilename, dftable
+
+
+def get_figure_table(figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace) -> pl.DataFrame:
+    """Return the table of the plotted data, for --print_data and --write_data."""
+    if isinstance(figuredata, LineFigureData):
+        return get_line_figure_table(figuredata, args)
+    return get_image_figure_table(figuredata, args)
+
+
+def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) -> pl.DataFrame:
+    """Return one table of the plotted points, with one row for each point of each series of each subplot.
+
+    The points are the points of each series in the x range of -xmin and -xmax. A series with x bins gives the
+    weighted mean of each bin and the range of the cells in the bin. A series with -xbins 0 gives each point. The
+    fields of the frame, e.g. the timestep, are columns, thus each row names its time. The column "points" is "line"
+    for a point of the line and "markers" for a point of --markers, because a series with --markers draws both. The
+    drawn line repeats its first and its last value at its ends, and the column bin_centre is false for these points.
+    """
+    xcolumn = get_table_xcolumn(args.x)
+    startfromzero, xbinwidth = get_line_ends(figuredata, args)
+    dfseriestables: list[pl.DataFrame] = []
+    for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
+        for series in seriesdatas:
+            dfdrawn: list[tuple[str, pl.DataFrame]] = []
+            if series.dflinepoints is not None:
+                dfdrawnline = extend_line_to_its_ends(
+                    series.dflinepoints.with_columns(bin_centre=pl.lit(value=True)), startfromzero, xbinwidth
+                )
+                dfdrawn.append((
+                    "line",
+                    dfdrawnline.select(
+                        pl.col("xvalue_binned").alias(xcolumn),
+                        value=pl.col("yvalue_binned"),
+                        value_min=pl.col("yvalue_binned_min"),
+                        value_max=pl.col("yvalue_binned_max"),
+                        bin_centre=pl.col("bin_centre"),
+                    ),
+                ))
+            if series.dfpoints is not None:
+                dfdrawn.append((
+                    "markers",
+                    series.dfpoints.select(pl.col("xvalue").alias(xcolumn), value=pl.col("yvalue")),
+                ))
+            dfseriestables.extend(
+                dfpoints.select(
+                    *(pl.lit(fieldvalue).alias(fieldname) for fieldname, fieldvalue in figuredata.framefields.items()),
+                    pl.lit(subplotindex).alias("subplot"),
+                    pl.lit(series.seriesname).alias("series"),
+                    pl.lit(pointkind).alias("points"),
+                    pl.all(),
+                )
+                for pointkind, dfpoints in dfdrawn
+            )
+
+    return pl.concat(dfseriestables, how="diagonal_relaxed") if dfseriestables else pl.DataFrame()
 
 
 def draw_figure_data(
@@ -2101,7 +2396,7 @@ def get_ion_panel_columns(
             else f"{ionlabel.replace('_', ' ')} {seriestype}{get_units_string(colname)}"
         )
         # 0/0 gives NaN for a cell that holds none of the element, and the mean leaves such a cell out
-        weight = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
+        weight, _ = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
         columns.append(((pl.col(colname) / normfactor).alias(colname), colname, label, weight))
 
     return columns
@@ -2295,16 +2590,34 @@ def get_image_values(
     return grids, (plotaxis1, plotaxis2)
 
 
-def get_colour_norm(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> mc.Normalize:
-    """Return the colour scale of a panel, which is log only when the panel holds a value above zero."""
-    colourscale = panel.colourscale or ("log" if wants_log_scale(grid.ravel()) else "linear")
+def asks_log_colourscale(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> bool:
+    """Return whether the directives of a panel or its values ask for a log colour scale."""
+    return (panel.colourscale or ("log" if wants_log_scale(grid.ravel()) else "linear")) == "log"
+
+
+def panel_has_log_colourscale(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> bool:
+    """Return whether a panel has a log colour scale, which needs a value above zero."""
     with np.errstate(invalid="ignore"):
         haspositive = bool((grid > 0.0).any())
-    if colourscale == "log" and not haspositive:
-        print_warning(f"'{panel.label}' holds no value above zero, thus its colour scale is linear")
-        colourscale = "linear"
+    return haspositive and asks_log_colourscale(panel, grid)
 
-    if colourscale == "log":
+
+def get_drawn_image_values(grid: "npt.NDArray[np.float64]", *, logscale: bool) -> "np.ma.MaskedArray[t.Any, t.Any]":
+    """Return the values of an image, with a mask on each cell that the image leaves empty.
+
+    A cell with no finite value is empty, and a log colour scale also cannot show a value of zero or below.
+    """
+    values = np.ma.masked_invalid(grid)
+    return np.ma.masked_less_equal(values, 0.0) if logscale else values
+
+
+def get_colour_norm(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> mc.Normalize:
+    """Return the colour scale of a panel, which is log only when the panel holds a value above zero."""
+    logscale = panel_has_log_colourscale(panel, grid)
+    if not logscale and asks_log_colourscale(panel, grid):
+        print_warning(f"'{panel.label}' holds no value above zero, thus its colour scale is linear")
+
+    if logscale:
         return mc.LogNorm(
             vmin=log_axis_limit(panel.vmin, logscale=True, argname="ymin="),
             vmax=log_axis_limit(panel.vmax, logscale=True, argname="ymax="),
@@ -2352,6 +2665,66 @@ def get_image_figure_data(
     )
 
 
+def get_image_edges(
+    figuredata: ImageFigureData, grid: "npt.NDArray[np.float64]"
+) -> "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]":
+    """Return the edges of the cells of an image on its two axes, in units of c."""
+    vmax_on_c = figuredata.vmax_cmps / C_cm_per_s
+    isplane = figuredata.plotaxes[0] != "rcyl"
+    edges1 = np.linspace(-vmax_on_c if isplane else 0.0, vmax_on_c, grid.shape[1] + 1)
+    edges2 = np.linspace(-vmax_on_c, vmax_on_c, grid.shape[0] + 1)
+    return edges1, edges2
+
+
+def get_image_xlimits_on_c(args: argparse.Namespace) -> tuple[float | None, float | None]:
+    """Return -xmin and -xmax in units of c, which the horizontal axis of an image holds.
+
+    -x velocity takes km/s, and every other x variable takes v/c already.
+    """
+    xscale_to_c = km_to_cm / C_cm_per_s if args.x == "velocity" else 1.0
+    return (
+        None if args.xmin is None else args.xmin * xscale_to_c,
+        None if args.xmax is None else args.xmax * xscale_to_c,
+    )
+
+
+def get_image_figure_table(figuredata: ImageFigureData, args: argparse.Namespace) -> pl.DataFrame:
+    """Return one table of the colour image, with one row for each cell of each panel that the image shows.
+
+    The columns give the fields of the frame, the panel, its label, the velocity of the centre of the cell on each
+    axis of the image in units of c, and the value. -xmin and -xmax cut the image, thus a cell outside them is not in
+    the table.
+    """
+    plotaxis1, plotaxis2 = figuredata.plotaxes
+    xmin_on_c, xmax_on_c = get_image_xlimits_on_c(args)
+    dfpanels: list[pl.DataFrame] = []
+    for panelindex, (style, grid) in enumerate(zip(figuredata.styles, figuredata.grids, strict=True)):
+        edges1, edges2 = get_image_edges(figuredata, grid)
+        centres2, centres1 = np.meshgrid((edges2[:-1] + edges2[1:]) / 2, (edges1[:-1] + edges1[1:]) / 2, indexing="ij")
+        # a cell is in the image if a part of it is inside the x range
+        lower1 = np.broadcast_to(edges1[:-1], grid.shape)
+        upper1 = np.broadcast_to(edges1[1:], grid.shape)
+        isinxrange = (upper1 > (-np.inf if xmin_on_c is None else xmin_on_c)) & (
+            lower1 < (np.inf if xmax_on_c is None else xmax_on_c)
+        )
+        isdrawn = isinxrange & ~np.ma.getmaskarray(
+            get_drawn_image_values(grid, logscale=panel_has_log_colourscale(style, grid))
+        )
+        dfpanels.append(
+            pl.DataFrame({
+                f"vel_{plotaxis1}_on_c": centres1[isdrawn],
+                f"vel_{plotaxis2}_on_c": centres2[isdrawn],
+                "value": grid[isdrawn],
+            }).select(
+                *(pl.lit(fieldvalue).alias(fieldname) for fieldname, fieldvalue in figuredata.framefields.items()),
+                pl.lit(panelindex).alias("panel"),
+                pl.lit(style.label).alias("label"),
+                pl.all(),
+            )
+        )
+    return pl.concat(dfpanels) if dfpanels else pl.DataFrame()
+
+
 def draw_image_figure(
     figuredata: ImageFigureData, args: argparse.Namespace, fig: "mplfig.Figure | None" = None
 ) -> "mplfig.Figure":
@@ -2359,8 +2732,6 @@ def draw_image_figure(
 
     If the caller gives an empty figure as fig, the function draws on it, e.g. for a window that stays open.
     """
-    import matplotlib.pyplot as plt
-
     set_mpl_style()
     plotaxis1, plotaxis2 = figuredata.plotaxes
     isplane = plotaxis1 != "rcyl"
@@ -2375,19 +2746,11 @@ def draw_image_figure(
     # together at the centre, and it gives each colour bar the height of its image
     fig.set_layout_engine("compressed")
     axesgrid = fig.subplots(nrows, ncols, squeeze=False)
-    vmax_on_c = figuredata.vmax_cmps / C_cm_per_s
-    # the axis of an image holds v/c. -x velocity takes km/s, and every other x variable takes v/c already
-    xscale_to_c = km_to_cm / C_cm_per_s if args.x == "velocity" else 1.0
-    xmin_on_c = None if args.xmin is None else args.xmin * xscale_to_c
-    xmax_on_c = None if args.xmax is None else args.xmax * xscale_to_c
+    xmin_on_c, xmax_on_c = get_image_xlimits_on_c(args)
     for ax, style, grid in zip(axesgrid.flat, figuredata.styles, figuredata.grids, strict=False):
         norm = get_colour_norm(style, grid)
-        values = np.ma.masked_invalid(grid)
-        if isinstance(norm, mc.LogNorm):
-            # a log colour scale cannot show a value of zero or below, thus such a cell stays empty
-            values = np.ma.masked_less_equal(values, 0.0)
-        edges1 = np.linspace(-vmax_on_c if isplane else 0.0, vmax_on_c, grid.shape[1] + 1)
-        edges2 = np.linspace(-vmax_on_c, vmax_on_c, grid.shape[0] + 1)
+        values = get_drawn_image_values(grid, logscale=isinstance(norm, mc.LogNorm))
+        edges1, edges2 = get_image_edges(figuredata, grid)
         # the grid of a 1D model has 80 000 points, which are slow and large as vector shapes
         image = ax.pcolormesh(edges1, edges2, values, norm=norm, rasterized=True)
         ax.set_label(get_panel_axes_label(style.subplotindex))
@@ -2477,10 +2840,54 @@ def filter_listed_columns(columns: Sequence[str], searchterms: Sequence[str]) ->
     return [column for column in columns if any(term in column.lower() for term in lowerterms)]
 
 
+# the descriptions of the table of --listvariables --print_data that the table VARIABLES does not give. A key that ends
+# with _ names a family of columns, e.g. nnion_Fe_II. The longest key that matches wins
+LISTING_DESCRIPTIONS: Mapping[str, str] = MappingProxyType({
+    "Te": "electron temperature",
+    "TR": "radiation temperature",
+    "TJ": "temperature of a black body with the mean intensity J",
+    "nne": "number density of the free electrons",
+    "tmid_days": "mid time of the timestep",
+    "heating_heating_dep/total_dep": "fraction of the deposited energy that heats the gas",
+    "nnelement_": "number density of an element",
+    "nnion_": "number density of an ion",
+    "nniso_": "number density of a nuclide",
+    "gamma_R_": "photoionisation rate of each ion of this ion",
+    "gamma_NT_": "non-thermal ionisation rate of each ion of this ion",
+    "Alpha_R_": "recombination coefficient of this ion to the ion below it",
+    "Alpha_R*nne_": "recombination rate of each ion of this ion to the ion below it",
+})
+
+
+def get_variables_table(columns: Sequence[str]) -> pl.DataFrame:
+    """Return one row for each estimator column, with its units and a description, for a reader of the output."""
+    descriptions = []
+    for column in columns:
+        info = get_variable(column)
+        prefix = get_prefix_group(column)
+        listingkey = max(
+            (key for key in LISTING_DESCRIPTIONS if column == key or (key.endswith("_") and column.startswith(key))),
+            key=len,
+            default=None,
+        )
+        descriptions.append(
+            (LISTING_DESCRIPTIONS[listingkey] if listingkey is not None else "")
+            or info.note
+            or (PREFIX_GROUPS[prefix] if prefix is not None else "")
+            or info.longlabel.split(" [")[0]
+        )
+    return pl.DataFrame({
+        "variable": list(columns),
+        "units": [get_units(column, latex=False) or "" for column in columns],
+        "description": descriptions,
+    })
+
+
 def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> None:
     """Print the estimator variables of the model, or the variables that hold a search term.
 
-    A search shows fewer variables than the full list. Thus the heading names the search terms.
+    A search shows fewer variables than the full list. Thus the heading names the search terms. With --print_data, the
+    listing is a table with one row for each column, thus a script reads the units of each column.
     """
     searchterms = [term for term in args.plotitems if term]
     listedcolumns = filter_listed_columns(estimatorcolumns, searchterms)
@@ -2489,6 +2896,9 @@ def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> 
             f"no estimator variable of this model holds {' or '.join(searchterms)}",
             suggest_names(searchterms[0], estimatorcolumns) or "Give no name to list every variable",
         )
+    if args.print_data:
+        print_product(args, get_variables_table(sorted(listedcolumns)))
+        return
 
     # the heading and the folder are progress, thus --quiet leaves the listing alone
     print(
@@ -2652,6 +3062,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_dpi(parser, default=600)
 
     addarg_output(parser, kind="file", default=Path(), helptext="Filename for PDF file")
+    addarg_data_output(parser)
 
     parser.add_argument(
         "--colorbyion",
@@ -3148,8 +3559,20 @@ def write_snapshot_figures(
         combines=len(figures) > 1 and (args.makegif or args.format == "pdf"),
         gifduration=1000.0 if args.makegif else None,
     )
-    outputfiles = [make_figure(figuredata, args, frameset) for figuredata in figures]
-    frameset.finish(outputfiles, args)
+    outputfiles, dftables = zip(*(make_figure(figuredata, args, frameset) for figuredata in figures), strict=True)
+    productpath = frameset.finish(list(outputfiles), args)
+    if args.print_data or args.write_data:
+        # the fields of each frame, e.g. the timestep, are columns, thus one table holds every frame and one header
+        output_data(
+            args,
+            {
+                "": pl.concat([dftable for dftable in dftables if dftable is not None], how="diagonal_relaxed"),
+                "_summary": pl.concat(
+                    [get_figure_summary_table(figuredata, args) for figuredata in figures], how="diagonal_relaxed"
+                ),
+            },
+            productpath or outputfiles[0],
+        )
 
 
 def resolve_positional_args(args: argparse.Namespace) -> None:
@@ -3247,6 +3670,12 @@ def add_plot_columns(
     # the average around the z axis reads all the cells, and it applies the limit of the cylindrical radius itself
     if args.modelgridindex is None and args.dimensionreduce == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
+        if modelmeta["dimensions"] == 3:
+            # the corners of the cube hold matter, thus a mean of the plot differs from a mean of all the cells
+            print_detail(
+                f"the plot leaves out each cell with vel_r_mid above vmax = {modelmeta['vmax_cmps'] / km_to_cm:.5g}"
+                " km/s. These cells are the corners of the 3D grid, and the velocity of the model ends at vmax"
+            )
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
     return estimators, estimators.collect_schema().names()
@@ -3414,6 +3843,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     vars(args).update(changedargs)
 
     if args.x in TIME_XVARIABLES:
-        make_figure(figures[0], args)
+        outfilename, dftable = make_figure(figures[0], args)
+        if dftable is not None:
+            output_data(args, {"": dftable, "_summary": get_figure_summary_table(figures[0], args)}, outfilename)
     else:
         write_snapshot_figures(args, figures, timesteps_included)

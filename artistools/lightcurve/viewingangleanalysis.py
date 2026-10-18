@@ -1,6 +1,7 @@
 """Measure and plot how peak magnitude, rise time, and decline rate vary with viewing angle."""
 
 import argparse
+import itertools
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -28,11 +29,14 @@ from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import match_closest_time
+from artistools.misc import output_data
 from artistools.misc import path_is_file
+from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc.fileio import folder_holds_match
+from artistools.misc.fileio import resolve_modelpath
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
 from artistools.plottools import make_colorbar_viewingangles
@@ -103,6 +107,37 @@ def get_viewing_angle_data_folder(args: argparse.Namespace) -> Path:
     return resolve_outputfile(args.outputfile, "viewingangledata.txt").parent
 
 
+def get_viewing_angle_data_names(modelpaths: Sequence[Path | str]) -> list[str]:
+    """Return the name of each model in the names of its viewing angle data files.
+
+    A model takes its model name. Two folders with one model name also take the last parts of their paths that differ,
+    e.g. "model (run1)", thus each model writes its own files. A later run with the same models then finds the same
+    files. Folders of one folder name leave that name out, and a plotlabel.txt can give one name to sibling folders.
+    """
+    modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
+    datanames = list(modelnames)
+    for modelname in set(modelnames):
+        indices = [index for index, name in enumerate(modelnames) if name == modelname]
+        folders = [resolve_modelpath(modelpaths[index]) for index in indices]
+        # one folder given two times gives the same data two times, thus it needs no other name
+        if len(set(folders)) < 2:
+            continue
+        # the folder name is the model name when the folders have no plotlabel.txt, thus it says nothing then
+        hasonefoldername = len({folder.name for folder in folders}) == 1
+        reversedparents = [(folder.parent if hasonefoldername else folder).parts[::-1] for folder in folders]
+        depth = next(
+            (
+                depth
+                for depth in range(1, max(len(parts) for parts in reversedparents) + 1)
+                if len({parts[:depth] for parts in reversedparents}) == len(set(folders))
+            ),
+            max(len(parts) for parts in reversedparents),
+        )
+        for index, parts in zip(indices, reversedparents, strict=True):
+            datanames[index] = f"{modelname} ({'/'.join(parts[:depth][::-1])})"
+    return datanames
+
+
 def get_viewing_angle_data_filename(band_name: str, modelname: str) -> str:
     """Return the name of the file that holds the peak magnitudes of each direction bin of one band and one model."""
     return f"{get_filename_part(band_name)}band_{get_filename_part(modelname)}_viewing_angle_data.txt"
@@ -124,14 +159,17 @@ def save_viewing_angle_data_for_plotting(
         if args.include_delta_m40:
             columns.append(args.band_deltam40_polyfit)
             header += " deltam40_polyfit"
+        datafile = get_viewing_angle_data_folder(args) / get_viewing_angle_data_filename(band_name, modelname)
         np.savetxt(
-            get_viewing_angle_data_folder(args) / get_viewing_angle_data_filename(band_name, modelname),
+            datafile,
             np.column_stack(columns),
             delimiter=" ",
             fmt=["%d", *["%.18e"] * (len(columns) - 1)],
             header=header,
             comments="",
         )
+        # two models of one name give files with the names of their folders, thus the log gives each name
+        print_saved(datafile)
 
     elif wants_angle_averaged_data(args) and band_name == (args.filter[0] if args.filter else "lightcurve"):
         # the angle-averaged writers index these lists by model, thus the first band alone gives one entry
@@ -367,6 +405,25 @@ def set_scatterplot_plotkwargs(
     return plotkwargsviewingangles, plotkwargsangleaveraged
 
 
+def get_table_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argparse.Namespace) -> list[int | None]:
+    """Return the direction bin of each row of a viewing angle data file for the table of --print_data.
+
+    A file of the current version holds a dirbin column. For an older file, get_datafile_dirbins gives the bins of the
+    plot from the selection. If the selection does not give a bin for each row, the bins are not known. The row number
+    is not a bin, e.g. the rows of the bins 5 and 10 are rows 0 and 1, thus the table then gives no value.
+    """
+    if "dirbin" in dfdata.columns:
+        return dfdata["dirbin"].cast(pl.Int64).to_list()
+    try:
+        return list(get_datafile_dirbins(dfdata, datafilename, args))
+    except ValueError:
+        print_warning(
+            f"{datafilename} has no dirbin column, and the selection gives no bin for each of its rows, thus the"
+            " column dirbin of the table has no values. Give the selection that wrote the file to get them"
+        )
+        return [None] * dfdata.height
+
+
 def get_datafile_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argparse.Namespace) -> list[int]:
     """Return the direction bin of each row of a viewing angle data file.
 
@@ -427,15 +484,18 @@ def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> N
 
 
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
-    modelnames: Sequence[str], key: str, args: argparse.Namespace
+    modelpaths: Sequence[Path | str], key: str, args: argparse.Namespace
 ) -> None:
     """Scatter plot peak magnitude against rise time or decline rate, one point per direction bin per model."""
     fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
 
     datafolder = get_viewing_angle_data_folder(args)
+    dfplotted: list[pl.DataFrame] = []
+    modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
+    datanames = get_viewing_angle_data_names(modelpaths)
     for ii, modelname in enumerate(modelnames):
-        datafilename = datafolder / get_viewing_angle_data_filename(key, modelname)
+        datafilename = datafolder / get_viewing_angle_data_filename(key, datanames[ii])
         viewing_angle_plot_data = read_wsv(datafilename)
 
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()
@@ -455,6 +515,53 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
             xvalues_angleaveraged = args.band_risetime_angle_averaged_polyfit[ii]
 
         a0 = ax.scatter(xvalues_viewingangles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
+        # the angle average has the direction bin -1, as in the readers of the light curves
+        # the fit of the angle average gives an array of one value. The error bars have the angle average as their
+        # centre, thus the table keeps that row while the plot draws its point or its error bars
+        # the error bars give the standard deviation over the direction bins, thus the row of the average holds them
+        xerr = None if args.noerrorbars else float(np.std(xvalues_viewingangles))
+        yerr = None if args.noerrorbars else float(np.std(band_peak_mag_viewing_angles))
+        averagepoint = (
+            []
+            if args.noangleaveraged and args.noerrorbars
+            else [
+                (-1, float(xaverage), float(yaverage), xerr, yerr)
+                for xaverage, yaverage in zip(
+                    np.ravel(xvalues_angleaveraged),
+                    np.ravel(args.band_peakmag_angle_averaged_polyfit[ii]),
+                    strict=False,
+                )
+            ]
+        )
+        dfplotted.append(
+            pl.DataFrame(
+                [
+                    *zip(
+                        get_table_dirbins(viewing_angle_plot_data, datafilename, args),
+                        xvalues_viewingangles,
+                        band_peak_mag_viewing_angles,
+                        itertools.repeat(None),
+                        itertools.repeat(None),
+                        strict=False,
+                    ),
+                    *averagepoint,
+                ],
+                schema={
+                    "dirbin": pl.Int64,
+                    "x": pl.Float64,
+                    "peakmag": pl.Float64,
+                    "x_err": pl.Float64,
+                    "peakmag_err": pl.Float64,
+                },
+                orient="row",
+            ).select(
+                # two models can have one name, thus the path names the model of each row
+                pl.lit(modelname).alias("model"),
+                pl.lit(str(modelpaths[ii])).alias("modelpath"),
+                pl.lit(get_series_label(args.label, ii, modelname)).alias("label"),
+                pl.all(),
+            )
+        )
 
         if not args.noangleaveraged:
             p0 = ax.scatter(
@@ -497,11 +604,14 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     ax.set_ylabel(rf"M$_{{\mathrm{{{key}}}}}$, max")
     set_scatterplot_plot_params(ax, args)
 
-    filestem = f"{get_filename_part(key)}_band_{get_filename_part(modelnames[0])}"
+    filestem = f"{get_filename_part(key)}_band_{get_filename_part(datanames[0])}"
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
         filename = f"{filestem}_dm15_peakmag.pdf"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         filename = f"{filestem}_risetime_peakmag.pdf"
+    xcolumn = "risetime_days" if args.make_viewing_angle_peakmag_risetime_scatter_plot else "deltam15"
+    dftable = pl.concat(dfplotted).rename({"x": xcolumn, "x_err": f"{xcolumn}_err"}) if dfplotted else pl.DataFrame()
+    output_data(args, {"": dftable}, datafolder / filename)
     save_figure(fig, datafolder / filename, format="pdf", args=args)
 
 
@@ -516,13 +626,17 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     sn_data, label = get_phillips_relation_data()
     fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
+    dfplotted: list[pl.DataFrame] = []
 
+    datanames = get_viewing_angle_data_names(args.modelpath)
     for modelnumber, modelpath in enumerate(args.modelpath):
         modelname = get_model_name(modelpath)
 
         bands = [args.filter[0], args.filter[1]]
 
-        datafilename = get_viewing_angle_data_folder(args) / get_viewing_angle_data_filename(bands[0], modelname)
+        datafilename = get_viewing_angle_data_folder(args) / get_viewing_angle_data_filename(
+            bands[0], datanames[modelnumber]
+        )
         viewing_angle_plot_data = read_wsv(datafilename)
         data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()}
         data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].cast(pl.Float64).to_numpy()
@@ -543,8 +657,18 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         plotkwargsviewingangles, _ = set_scatterplot_plotkwargs(
             modelnumber, viewing_angle_plot_data, datafilename, args
         )
-        plotkwargsviewingangles["label"] = modelname
+        linelabel = get_series_label(args.label, modelnumber, modelname)
+        plotkwargsviewingangles["label"] = linelabel
         ax.scatter(dfdata["peakcolour"], y=dfdata[f"{bands[0]}max"], **plotkwargsviewingangles)
+        dfplotted.append(
+            dfdata.select(
+                pl.lit(modelname).alias("model"),
+                pl.lit(str(modelpath)).alias("modelpath"),
+                pl.lit(linelabel).alias("label"),
+                pl.Series("dirbin", get_table_dirbins(viewing_angle_plot_data, datafilename, args), dtype=pl.Int64),
+                pl.all(),
+            )
+        )
 
     ax.errorbar(
         x=sn_data["(B-V)Bmax"],
@@ -567,6 +691,12 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     plotname = (
         get_viewing_angle_data_folder(args)
         / f"plotviewinganglecolour{get_filename_part(bands[0])}-{get_filename_part(bands[1])}.pdf"
+    )
+    # the observations have their own columns, thus they go in a second table
+    output_data(
+        args,
+        {"": pl.concat(dfplotted) if dfplotted else pl.DataFrame(), "_observations": pl.DataFrame(sn_data)},
+        plotname,
     )
     save_figure(fig, plotname, format="pdf", args=args)
 
@@ -624,15 +754,13 @@ def peakmag_risetime_declinerate_init(
     args.band_peakmag_angle_averaged_polyfit = []
     args.band_delta_m15_angle_averaged_polyfit = []
 
-    modelnames = []  # save names of models
+    # two models of one name need two data files, thus each file takes the data name of its model
+    datanames = get_viewing_angle_data_names(modelpaths)
 
     # a band light curve comes from the spectra, and the bolometric light curve from light_curve.out
     plottinglist: list[str] = list(args.filter) if args.filter else ["lightcurve"]
 
-    for modelpath in modelpaths:
-        modelname = get_model_name(modelpath)
-        # one entry per model, matching the per-model style lists and the one data file written per model
-        modelnames.append(modelname)
+    for modelpath, dataname in zip(modelpaths, datanames, strict=True):
         lcdataframes: dict[int, pl.LazyFrame] = {}
 
         # check if doing viewing angle stuff, and if so define which data to use
@@ -694,17 +822,17 @@ def peakmag_risetime_declinerate_init(
                     time = lightcurve_data["time_days"].to_list()
 
                 # Calculating band peak time, peak magnitude and delta m15
-                calculate_peak_time_mag_deltam15(time, brightness, modelname, dirbin, band_name, args)
+                calculate_peak_time_mag_deltam15(time, brightness, dataname, dirbin, band_name, args)
 
             # write the data of this band to a file. A later plot then reads the file in place of the slow fit
-            save_viewing_angle_data_for_plotting(band_name, modelname, dirbins, args)
+            save_viewing_angle_data_for_plotting(band_name, dataname, dirbins, args)
 
     # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
     # as it takes relatively long to run this for all viewing angles
-    write_viewing_angle_data(plottinglist[0], modelnames, args)
+    write_viewing_angle_data(plottinglist[0], datanames, args)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot or args.make_viewing_angle_peakmag_risetime_scatter_plot:
-        make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, plottinglist[0], args)
+        make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelpaths, plottinglist[0], args)
         return
 
 
@@ -729,6 +857,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     # the colorbar shows one angle, thus the x axis shows the other one
     xlabels = phi_viewing_angle_bins if args.colorbarcostheta else costheta_viewing_angle_bins
+    plottedrows: list[tuple[int, int, int, float]] = []
     for angleindex, lcdata in lcdataframes.items():
         plotkwargs, _ = get_viewinganglecolor_for_colorbar(angleindex, scaledmap, plotkwargs, args)
 
@@ -738,6 +867,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         xvalues = phiindex if args.colorbarcostheta else costhetaindex
 
         axis.scatter(xvalues, brightness, **plotkwargs)
+        plottedrows.append((angleindex, costhetaindex, phiindex, brightness))
 
     axis.set_xticks(ticks=np.arange(len(xlabels)), labels=xlabels, rotation=30, ha="right")
 
@@ -750,4 +880,10 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
     set_plot_title(axis, f"time = {args.timedays} days", args)
     # -o names the folder, as for the other plots of the viewing angles
     plotname = get_viewing_angle_data_folder(args) / f"plotviewinganglebrightnessat{args.timedays}days.pdf"
+    dfplotted = pl.DataFrame(
+        plottedrows,
+        schema={"dirbin": pl.Int64, "costhetabin": pl.Int64, "phibin": pl.Int64, "luminosity_erg/s": pl.Float64},
+        orient="row",
+    ).with_columns(time_days=pl.lit(timetoplot))
+    output_data(args, {"": dfplotted}, plotname)
     save_figure(fig, plotname, format="pdf", args=args)

@@ -116,6 +116,7 @@ jobs:
         timeout-minutes: 15
         name: Test upload to TestPyPI
         needs: [build_wheels, build_sdist]
+        # pypa/gh-action-pypi-publish runs a container image that exists for x86_64 alone
         runs-on: ubuntu-26.04
         environment:
             name: test
@@ -143,6 +144,7 @@ jobs:
         timeout-minutes: 15
         name: Upload to PyPI
         needs: [build_wheels, build_sdist]
+        # pypa/gh-action-pypi-publish runs a container image that exists for x86_64 alone
         runs-on: ubuntu-26.04
         environment:
             name: release

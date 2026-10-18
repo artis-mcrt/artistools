@@ -15,6 +15,11 @@ if t.TYPE_CHECKING:
     from types import ModuleType
 
 
+def is_in_range(colname: str, minval: float | None, maxval: float | None) -> pl.Expr:
+    """Return an expression that is true for a value of the column from minval to maxval. None is no limit."""
+    return pl.col(colname).is_between(-np.inf if minval is None else minval, np.inf if maxval is None else maxval)
+
+
 def df_filter_minmax_bracketed(
     df: pl.LazyFrame | pl.DataFrame, colname: str, minval: float | None, maxval: float | None
 ) -> pl.LazyFrame:

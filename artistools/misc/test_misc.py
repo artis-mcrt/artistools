@@ -32,6 +32,7 @@ from artistools.misc import fileio
 from artistools.misc import modelinfo
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
+from artistools.misc.columns import get_column_description_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.viewertools.core import run_command_step_with_warning
 
@@ -1660,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (3, "fe46bcb9040be59a"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (4, "1bce6ae4beb8f682"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1808,6 +1809,165 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
         at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")[-1].collect(),
         abs_tol=0.0,
     )
+
+
+def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> None:
+    """The readers of the model and the NLTE populations, the options, describe, and check give the local data.
+
+    A read of all the NLTE populations can send several GB through ssh, thus a remote read needs a timestep or a
+    modelgridindex.
+    """
+    from artistools.check import get_check_results
+    from artistools.describemodel import get_model_summary
+    from artistools.logsummary import get_log_summary
+    from artistools.logsummary import get_logfiles
+
+    modelpath = at.get_path("testartismodel").resolve()
+    modellink = tmp_path / "testmodel"
+    modellink.symlink_to(modelpath)
+    remotepath = Path(f"testhost:{modellink}")
+    # the 1D test model has no artisoptions.h, thus a folder of its own holds one
+    optionsfolder = tmp_path / "optionsmodel"
+    optionsfolder.mkdir()
+    (optionsfolder / "artisoptions.h").write_text("constexpr double MINTEMP = 3500.;\n", encoding="utf-8")
+    # the test model has no log, thus a folder of its own holds one
+    logfolder = tmp_path / "logmodel"
+    logfolder.mkdir()
+    (logfolder / "output_0-0.txt").write_text(
+        "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[warning] cell 4 is cold\n",
+        encoding="utf-8",
+    )
+
+    remote.forget_server("testhost")
+    with mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]):
+        process, _ = remote.get_server("testhost")
+        try:
+            # a str path stayed on this host, and check_local_path then stopped the read
+            dfremotemodel, remotemodelmeta = at.get_modeldata(str(remotepath))
+            dfremotemodel = dfremotemodel.collect()
+            # the host collected the full frame, thus a select of one column sent each column through ssh
+            with mock.patch.object(remote, "call_on_host", wraps=remote.call_on_host) as mockcall:
+                at.get_modeldata(remotepath)[0].select("inputcellid").collect()
+            rowcalls = [call for call in mockcall.call_args_list if call.args[2] == "read_modeldata_rows_on_host"]
+            assert [call.args[3][2] for call in rowcalls] == [["inputcellid"]]
+            remoteinputparams = at.get_inputparams(remotepath)
+            dfremotenltepops = at.nltepops.read_nltepops(remotepath, timestep=40, modelgridindex=0)
+            remoteoptions = at.misc.get_artis_options(Path(f"testhost:{optionsfolder}"))
+            # a str path stayed on this host, and the missing local folder then gave no options and no error
+            remotemintemp = at.misc.get_artis_option(f"testhost:{optionsfolder}", "MINTEMP")
+            remotesummary = get_model_summary(remotepath)
+            # the check of a local model folder stopped for host:path, because the folder is not on this host
+            dfremotechecks = get_check_results(remotepath)
+            # the logs of host:path were not found, because the search ran on this host
+            remotelogfiles = get_logfiles(Path(f"testhost:{logfolder}"), [0])
+            dfremotelogsummary = get_log_summary(remotelogfiles)
+            # a negative cell and an empty list also select all the cells
+            allcellselections: tuple[int | list[int] | None, ...] = (None, -1, [])
+            for allcells in allcellselections:
+                with pytest.raises(ValueError, match="Give a timestep or a modelgridindex"):
+                    at.nltepops.read_nltepops(remotepath, timestep=-1, modelgridindex=allcells)
+        finally:
+            assert process.stdin is not None
+            process.stdin.close()
+            assert process.wait(timeout=30) == 0
+            remote.forget_server("testhost")
+
+    dflocalmodel, localmodelmeta = at.get_modeldata(modelpath)
+    pltest.assert_frame_equal(dfremotemodel, dflocalmodel.collect(), abs_tol=0.0)
+    assert remotemodelmeta == localmodelmeta
+    assert remoteinputparams == at.get_inputparams(modelpath)
+    pltest.assert_frame_equal(
+        dfremotenltepops, at.nltepops.read_nltepops(modelpath, timestep=40, modelgridindex=0), abs_tol=0.0
+    )
+    assert dfremotenltepops.height > 0
+    assert remoteoptions == {"MINTEMP": "3500."}
+    assert remotemintemp == "3500."
+    # get_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
+    assert remotesummary == get_model_summary(modelpath)
+    pltest.assert_frame_equal(dfremotechecks, get_check_results(modellink))
+    assert remotelogfiles == [Path(f"testhost:{logfolder / 'output_0-0.txt'}")]
+    pltest.assert_frame_equal(dfremotelogsummary, get_log_summary(get_logfiles(logfolder, [0])))
+    assert dfremotelogsummary["level"].to_list() == ["warning"]
+
+
+def test_report_names_the_logs_of_a_remote_model_below_home(tmp_path: Path) -> None:
+    """The host expands "~" in the paths of the logs, thus a relative name on this host stopped the report."""
+    from artistools.report import get_log_summary_table
+
+    logfolder = tmp_path / "logmodel"
+    (logfolder / "100.slurm").mkdir(parents=True)
+    (logfolder / "100.slurm" / "output_0-0.txt").write_text(
+        "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[warning] cell 4 is cold\n",
+        encoding="utf-8",
+    )
+
+    remote.forget_server("testhost")
+    with (
+        mock.patch.dict("os.environ", {"HOME": str(tmp_path)}),
+        mock.patch.object(remote, "get_server_argv", return_value=[sys.executable, "-m", "artistools", "server"]),
+    ):
+        process, _ = remote.get_server("testhost")
+        try:
+            lognames, dfsummary = get_log_summary_table(Path("testhost:~/logmodel"))
+        finally:
+            assert process.stdin is not None
+            process.stdin.close()
+            assert process.wait(timeout=30) == 0
+            remote.forget_server("testhost")
+
+    assert lognames == ["100.slurm/output_0-0.txt"]
+    assert dfsummary is not None
+    assert dfsummary["level"].to_list() == ["warning"]
+
+
+def test_output_data_replaces_the_file_of_a_table_that_is_now_empty(tmp_path: Path) -> None:
+    """An empty table wrote no file, thus the file of an earlier run stayed and seemed to hold the data of this run."""
+    from artistools.misc import output_data
+
+    args = argparse.Namespace(write_data=True, print_data=False)
+    stalefile = tmp_path / "plot_residuals.txt"
+    stalefile.write_text("model value\nold 1.0\n", encoding="utf-8")
+
+    output_data(
+        args,
+        {"": pl.DataFrame({"value": [2.0]}), "_residuals": pl.DataFrame(), "_other": pl.DataFrame()},
+        tmp_path / "plot.pdf",
+    )
+
+    staletext = stalefile.read_text(encoding="utf-8")
+    assert "old 1.0" not in staletext
+    assert "the table has no rows" in staletext
+    # an empty table with no earlier file gives no file
+    assert not (tmp_path / "plot_other.txt").exists()
+    assert (tmp_path / "plot.txt").is_file()
+
+
+def test_write_data_table_replaces_a_link_and_leaves_its_target(tmp_path: Path) -> None:
+    """A model folder of a different user can hold a link with the name of a data file, e.g. to ~/.bashrc.
+
+    The table went through the link into its target, thus a label of the model could reach a file of the user.
+    """
+    from artistools.misc.cliutils import write_data_table
+
+    target = tmp_path / "bashrc"
+    target.write_text("export KEEP=1\n", encoding="utf-8")
+    datafile = tmp_path / "densityprofile.txt"
+    datafile.symlink_to(target)
+
+    write_data_table(pl.DataFrame({"label": ["$(touch pwned)"], "value": [1.0]}), datafile, commentlines=["note"])
+
+    assert target.read_text(encoding="utf-8") == "export KEEP=1\n"
+    assert not datafile.is_symlink()
+    assert datafile.read_text(encoding="utf-8").startswith("# note\nlabel value\n")
+    assert not list(tmp_path.glob(".*partial*"))
+
+    # a new file took the mode of the folder, thus a umask of 077 gave a table that other users can read
+    oldumask = os.umask(0o077)
+    try:
+        write_data_table(pl.DataFrame({"value": [1.0]}), tmp_path / "private.txt")
+    finally:
+        os.umask(oldumask)
+    assert (tmp_path / "private.txt").stat().st_mode & 0o777 == 0o600
 
 
 def test_get_filterfunc() -> None:
@@ -3695,3 +3855,198 @@ def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
     assert dirbins.get_dirbin_labels([10], average_over_phi=True) == {
         10: dirbins.get_costheta_bins(usedegrees=False)[2][1]
     }
+
+
+def test_output_data_prints_and_writes_each_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A reader that splits on spaces moves each later value of a row with an empty field, thus a null must be nan.
+
+    Two tables on the standard output need an empty line between them, and an empty table gives no file.
+    """
+    args = argparse.Namespace(print_data=True, write_data=True)
+    tables = {
+        "": pl.DataFrame({"x": [1.0, 2.0], "label": ["a b", None]}),
+        "_residuals": pl.DataFrame({"rms": [0.5]}),
+        "_unused": pl.DataFrame(),
+    }
+    at.misc.output_data(args, tables, tmp_path / "myplot.pdf")
+
+    maintable = 'x label\n1.0 "a b"\n2.0 nan\n'
+    # a pipe reads the standard output, thus only a file has the comment lines that tell how the command made it
+    stdout = capsys.readouterr().out
+    assert stdout.startswith(f"{maintable}\nrms\n0.5\n")
+    assert "# " not in stdout
+    filelines = (tmp_path / "myplot.txt").read_text(encoding="utf-8").splitlines(keepends=True)
+    assert filelines[0].startswith("# artistools ")
+    assert filelines[1] == f"# working folder: {Path.cwd()}\n"
+    assert filelines[2] == "# command: a Python call with the arguments print_data=True, write_data=True\n"
+    assert filelines[3:5] == [
+        "# column x: the horizontal value of the point, in the unit of the horizontal axis\n",
+        "# column label: the label of the plotted series or panel\n",
+    ]
+    assert "".join(filelines[5:]) == maintable
+    residuallines = (tmp_path / "myplot_residuals.txt").read_text(encoding="utf-8").splitlines(keepends=True)
+    assert residuallines[3:] == [
+        (
+            "# column rms: the root mean square of the series minus the reference series, in the unit of the plotted"
+            " values\n"
+        ),
+        "rms\n",
+        "0.5\n",
+    ]
+    assert not (tmp_path / "myplot_unused.txt").exists()
+
+
+def test_column_families_have_distinct_patterns() -> None:
+    """Two families with one pattern hid the second one, e.g. the line emissivity of linecontributions."""
+    from artistools.misc.columns import COLUMN_FAMILIES
+
+    patterns = [pattern for pattern, _, _ in COLUMN_FAMILIES]
+    assert len(patterns) == len(set(patterns))
+
+
+def test_column_description_lines_give_the_meaning_and_the_unit_of_each_known_column() -> None:
+    """The columns come from tables that the plot commands write, and an unknown column must get no line.
+
+    A family with a model suffix, e.g. f_lambda.<model>, must take the description of its family, and a longer family,
+    e.g. emission_flux_plotted, must win over a shorter one. An estimator variable takes the unit of the estimator
+    table, and a log10_ column takes the description of the column without the prefix.
+    """
+    columns = [
+        "lambda_angstroms",
+        "x_plotted_nm",
+        "f_lambda.TEST MODEL_dirbin05",
+        "flux_plotted.TEST MODEL",
+        "emission_flux_plotted.Fe II bound-free",
+        "luminosity_erg/s",
+        "mag_errlower",
+        "log10_rho_Fe_g_per_cm3",
+        "Te",
+        "nnion_Fe_II",
+        "log_lbol",
+    ]
+    fluxperx = "flux per unit of x_plotted, at the distance of -distmpc"
+    assert get_column_description_lines(columns) == [
+        "column lambda_angstroms: the wavelength, in the rest frame of the source for an emergent spectrum [Å]",
+        (
+            "column x_plotted_nm: the plotted horizontal value: the rest-frame wavelength, frequency, or photon"
+            " energy [nm]"
+        ),
+        "column f_lambda.TEST MODEL_dirbin05: the flux per unit wavelength at 1 Mpc [erg/s/cm^2/Å]",
+        (
+            f"column flux_plotted.TEST MODEL: the plotted {fluxperx}, or divided by the peak with --normalised"
+            " [erg/s/cm^2/(unit of x_plotted)]"
+        ),
+        (
+            f"column emission_flux_plotted.Fe II bound-free: the plotted {fluxperx}, from the packets with their last"
+            " emission in the suffix group [erg/s/cm^2/(unit of x_plotted)]"
+        ),
+        (
+            "column luminosity_erg/s: the luminosity in the observer frame. A direction bin gives the"
+            " isotropic-equivalent luminosity [erg/s]"
+        ),
+        "column mag_errlower: the lower error bar of the magnitude of the reference data [mag]",
+        (
+            "column log10_rho_Fe_g_per_cm3: the base-10 logarithm of the density of Fe in the cell at the time of"
+            " the model snapshot [log10(g/cm^3)]"
+        ),
+        "column Te: the electron temperature of the cell [K]",
+        "column nnion_Fe_II: the number density of the ion Fe_II [cm^-3]",
+    ]
+
+
+def test_artis_option_comes_from_the_artisoptions_of_the_model_folder(tmp_path: Path) -> None:
+    """The model folder of an ARTIS test holds artisoptions.h, and the reader looked only in the folder artis.
+
+    For a local test, artis can link to the ARTIS repository, which holds a different preset. Thus the copy in the
+    model folder comes first.
+    """
+    (tmp_path / "artis").mkdir()
+    (tmp_path / "artis" / "artisoptions.h").write_text("constexpr double MINTEMP = 1000.;\n", encoding="utf-8")
+    assert at.misc.get_artis_option(tmp_path, "MINTEMP") == "1000."
+
+    (tmp_path / "artisoptions.h").write_text("constexpr double MINTEMP = 3500.;\n", encoding="utf-8")
+    assert at.misc.get_artis_option(tmp_path, "MINTEMP") == "3500."
+
+
+def test_artis_option_function_keeps_its_nested_blocks() -> None:
+    """The body of ION_NLEVELS_EXCITED_NLTE holds an if block, and the pattern stopped at the brace of that block."""
+    from artistools.misc.modelinfo import parse_artis_options
+
+    options = parse_artis_options(
+        "constexpr int ION_NLEVELS_EXCITED_NLTE(int element_z, int ionstage) {\n"
+        "  if (element_z == 26 && ionstage == 2) {\n    return 197;\n  }\n  return 80;\n}\n"
+        "constexpr double MINTEMP = 3500.;\n"
+        # an optional with no initialiser has no value, and the pattern gave no entry for it
+        "constexpr std::optional<double> GAMMA_USE_KAPPA_GREY;\n"
+        "constexpr std::int64_t NUM_PACKETS = 1e9;\n"
+        # a type with a comma, a space, or a pointer has more than one word
+        "constexpr std::array<int, 2> SELECTED_IONS = {26, 2};\n"
+        'constexpr const char *GRID_NAME = "cartesian";\n'
+        # a disabled alternative in a comment replaced the option that ARTIS compiles
+        "/*\nconstexpr double MINTEMP = 1000.;\n*/\n"
+        "// constexpr std::int64_t NUM_PACKETS = 5;\n"
+        # a string literal can hold a comment marker, and the removal of a comment cut the string
+        'constexpr const char *URL = "https://example.org/*x*/"; // a comment\n'
+        "constexpr int MAXITER = 4;\n"
+        # a string literal can hold a semicolon, and the value stopped at it
+        'constexpr const char *TEXT = "a;b";\n'
+        "constexpr int NCELLS = 1'000;\n"
+    )
+    assert options == {
+        "ION_NLEVELS_EXCITED_NLTE": (
+            "(int element_z, int ionstage) { if (element_z == 26 && ionstage == 2) { return 197; } return 80; }"
+        ),
+        "MINTEMP": "3500.",
+        "GAMMA_USE_KAPPA_GREY": "std::nullopt",
+        "NUM_PACKETS": "1e9",
+        "SELECTED_IONS": "{26, 2}",
+        "GRID_NAME": '"cartesian"',
+        "URL": '"https://example.org/*x*/"',
+        "MAXITER": "4",
+        "TEXT": '"a;b"',
+        "NCELLS": "1'000",
+    }
+
+
+@pytest.mark.parametrize(
+    ("optionline", "expectedvalue"),
+    [
+        ("constexpr std::optional<int> X;", "std::nullopt"),
+        ("constexpr std::optional<int> X = 12;", "12"),
+        ("constexpr std::optional<int> X{12};", "12"),
+        ("constexpr std::optional<int> X = {12};", "12"),
+        ("constexpr std::optional<int> X(12);", "12"),
+        ("constexpr std::optional<double> X {\n  1e-9\n};", "1e-9"),
+        ("constexpr std::optional<int> X{};", "std::nullopt"),
+        ("constexpr std::optional<int> X = {};", "std::nullopt"),
+        ("constexpr std::optional<int> X = std::nullopt;", "std::nullopt"),
+        ("constexpr std::optional<int> X{std::nullopt};", "std::nullopt"),
+        ("constexpr std::optional<int> X = std::optional<int>{12};", "12"),
+        ("constexpr std::optional<int> X = std::make_optional(12);", "12"),
+        ("constexpr auto X = std::optional<int>{12};", "12"),
+        ("constexpr auto X = std::optional<int>{};", "std::nullopt"),
+        ("constexpr bool X{true};", "true"),
+        ("constexpr int X{};", "{}"),
+        # a list of more than one element keeps its braces, also with a comma in a string literal of one element
+        ("constexpr std::array<int, 2> X{26, 2};", "{26, 2}"),
+        ('constexpr const char *X{"a,b"};', '"a,b"'),
+        # the first and the last parenthesis are not one pair
+        ("constexpr int X = (1) * (2);", "(1) * (2)"),
+    ],
+)
+def test_artis_option_initialisation_forms(optionline: str, expectedvalue: str) -> None:
+    """Each form of the initialisation of a C++ option gives one value for each meaning.
+
+    An option in the brace or the parenthesis form gave no entry, and "= {12}" gave "{12}", which a caller
+    took as a value that is not a number.
+    """
+    from artistools.misc.modelinfo import parse_artis_options
+
+    assert parse_artis_options(f"{optionline}\n") == {"X": expectedvalue}
+
+
+def test_artis_option_function_with_trailing_return_type_is_not_a_value() -> None:
+    """The parenthesis form of a value must not take the parameters and the body of a function."""
+    from artistools.misc.modelinfo import parse_artis_options
+
+    assert parse_artis_options("constexpr auto F(int a) -> bool { return f(a); }\n") == {}

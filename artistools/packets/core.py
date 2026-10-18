@@ -4,6 +4,7 @@ import contextlib
 import datetime as dt
 import math
 import os
+import re
 import time
 import typing as t
 from collections.abc import Callable
@@ -524,6 +525,34 @@ def get_packets_rankbatch_parquetpath(
 def get_packets_textfilename(rank: int, virtual: bool) -> str:
     """Return the name of the text file of the packets of a rank."""
     return f"vpackets_{rank:04d}.out" if virtual else f"packets00_{rank:04d}.out"
+
+
+def count_packets_textfiles(modelpath: Path) -> tuple[int, int]:
+    """Return the number of packets text files that the reader reads, and the number of the other rank files.
+
+    A run on a cluster writes its packets into a run folder, e.g. 12411848.slurm, and the reader also searches there.
+    The reader reads the ranks of input.txt. A restart can use fewer ranks, and the files of the higher ranks of an
+    earlier run then stay. The second number counts these files, thus a summary can name them.
+    """
+    nprocs = get_nprocs(modelpath)
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    filenames = [get_packets_textfilename(rank, virtual=False) for rank in range(nprocs)]
+    readcount = len(find_packets_textsources(modelpath, filenames, folderlistings))
+    # the search stops at the first folder that holds every rank, thus the files of an earlier run need a scan here
+    subfolders = [Path(entry.path) for entry in folderlistings[modelpath].values() if entry.is_dir()]
+    for folder in subfolders:
+        if folder not in folderlistings:
+            with os.scandir(folder) as entries:
+                folderlistings[folder] = {entry.name: entry for entry in entries}
+    # two earlier runs can each leave a file of one rank, thus the count takes each pair of folder and rank
+    otherrankfiles = {
+        (folder, int(namematch.group(1)))
+        for folder in (modelpath, *subfolders)
+        for name in folderlistings[folder]
+        if (namematch := re.fullmatch(r"packets00_(\d+)\.out(?:\.gz|\.xz|\.zst)?", name)) is not None
+        and int(namematch.group(1)) >= nprocs
+    }
+    return readcount, len(otherrankfiles)
 
 
 def get_first_packets_file(modelpath: Path) -> Path | None:

@@ -112,7 +112,7 @@ jobs:
                 include:
                     - python-version: '3.14'
                       syncextras: --all-extras
-        runs-on: ubuntu-26.04${{ !endsWith(matrix.python-version, 't') && '-arm' || '' }}
+        runs-on: ubuntu-26.04-arm
         name: pytest python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
@@ -172,7 +172,7 @@ jobs:
         needs: pytest
         if: ${{ !cancelled() && needs.pytest.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name
             == github.repository) }}
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-26.04-arm
         permissions:
             contents: read
             code-quality: write

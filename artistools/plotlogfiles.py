@@ -8,8 +8,11 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import polars as pl
+from matplotlib.backends.backend_pdf import PdfPages
 
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -19,6 +22,7 @@ from artistools.misc import get_model_name
 from artistools.misc import get_mpiranklist
 from artistools.misc import get_runfolders
 from artistools.misc import normalize_path_list
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
 from artistools.misc import print_warning
@@ -96,6 +100,22 @@ def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, d
     return timetaken
 
 
+def get_time_taken_table(dfdrawnlines: Sequence[pl.DataFrame]) -> pl.DataFrame:
+    """Return one row for each timestep and mpi rank, with one column of seconds for each stage.
+
+    A stage that has no time for a rank or a timestep gives a null value.
+    """
+    if not dfdrawnlines:
+        return pl.DataFrame()
+    return (
+        pl
+        .concat(dfdrawnlines)
+        .with_columns(stage=pl.col("stage") + "_s")
+        .pivot(on="stage", index=["timestep", "mpirank"], values="time_s")
+        .sort(["timestep", "mpirank"])
+    )
+
+
 def make_plot(
     logfiledict: dict[str, dict[int, dict[int, float]]],
     outputfile: Path | str,
@@ -105,13 +125,16 @@ def make_plot(
     args: argparse.Namespace,
 ) -> None:
     """Write one page per timestep of stage duration versus mpi rank to a multi-page PDF."""
-    from matplotlib.backends.backend_pdf import PdfPages
+    makestable = getattr(args, "print_data", False) or getattr(args, "write_data", False)
+    dfdrawnlines: list[pl.DataFrame] = []
 
     # plot every timestep that has data for at least one stage, so a log format
     # missing one stage entirely still yields plots of the others
     timesteps = sorted(set().union(*(set(bytimestep) for bytimestep in logfiledict.values())))
     if not timesteps:
         print(f"No timing data found in the log files of {modellogname or modelname}")
+        # the empty table replaces the file of an earlier run, thus that file cannot seem to hold the data of this run
+        output_data(args, {"": get_time_taken_table([])}, outputfile)
         return
 
     with PdfPages(outputfile) as pdf:
@@ -123,6 +146,15 @@ def make_plot(
                     continue
                 mpirank, timetaken = zip(*sorted(bytimestep[timestep].items()), strict=True)
                 axis.plot(mpirank, timetaken, label=stage)
+                if makestable:
+                    dfdrawnlines.append(
+                        pl.DataFrame(
+                            {"mpirank": mpirank, "time_s": timetaken},
+                            schema={"mpirank": pl.Int64, "time_s": pl.Float64},
+                        ).select(
+                            pl.lit(timestep, dtype=pl.Int64).alias("timestep"), pl.lit(stage).alias("stage"), pl.all()
+                        )
+                    )
             axis.set_xlabel("mpi rank")
             axis.set_ylabel("Time [s]")
             axis.set_title(f"{modelname} timestep {timestep}" if modelname else f"timestep {timestep}")
@@ -134,6 +166,7 @@ def make_plot(
             plt.close(fig)
 
     print_saved(outputfile)
+    output_data(args, {"": get_time_taken_table(dfdrawnlines)}, outputfile)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -144,6 +177,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
     )
     addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
+    addarg_data_output(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

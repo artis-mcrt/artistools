@@ -4,6 +4,7 @@ import functools
 import gzip
 import lzma
 import math
+import re
 import shlex
 import sys
 import typing as t
@@ -18,6 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.testing as pltest
 import pytest
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from pytest_codspeed.plugin import BenchmarkFixture
@@ -906,10 +908,55 @@ def test_spectraemissionplot_linewidth_arg(mockplot: mock.MagicMock, tmp_path: P
         groupby="velocity",
         velocityshells=["0c", "0.04c", "0.06c", "0.1c"],
         linewidth=[0.5, 7.0],
+        write_data=True,
     )
 
     # the net spectrum of the model is the first line, and the reference spectrum is the second line
     assert [callargs.kwargs.get("linewidth") for callargs in mockplot.call_args_list] == [0.5, 7.0]
+    # the emission plot gave no table of the reference spectrum, because only make_spectrum_plot made one
+    dfreferences = pl.read_csv(
+        tmp_path / "emission_linewidth_references.txt", separator=" ", null_values="nan", comment_prefix="#"
+    )
+    # the table holds the points that the axes show, and the reference has negative fluxes below the bottom of 0
+    axis, drawnx, drawny = mockplot.call_args_list[1].args
+    drawnx, drawny = np.asarray(drawnx, dtype=float), np.asarray(drawny, dtype=float)
+    (xlow, xhigh), (ylow, yhigh) = sorted(axis.get_xlim()), sorted(axis.get_ylim())
+    isinside = (drawnx >= xlow) & (drawnx <= xhigh) & (drawny >= ylow) & (drawny <= yhigh)
+    assert 0 < dfreferences.height <= len(drawny)
+    assert set(drawnx[isinside].round(4)) <= set(dfreferences["x_plotted_angstrom"].round(4).to_list())
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_emission_plot_data_gives_the_drawn_values(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The table gave f_lambda alone, and the figure scales it for --normalised and draws the absorption below zero."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        outputfile=tmp_path / "emission.pdf",
+        timemin=4,
+        timemax=6.5,
+        showemission=True,
+        showabsorption=True,
+        nostack=True,
+        normalised=True,
+        write_data=True,
+    )
+    dftable = pl.read_csv(tmp_path / "emission.txt", separator=" ", null_values="nan", comment_prefix="#")
+    # the line can hold a point outside -xmin and -xmax, and the table takes the points inside them
+    xlow, xhigh = dftable["x_plotted_angstrom"].min(), dftable["x_plotted_angstrom"].max()
+    drawnlines = [
+        np.asarray(call.args[2], dtype=np.float64)[
+            (np.asarray(call.args[1], dtype=np.float64) >= xlow) & (np.asarray(call.args[1], dtype=np.float64) <= xhigh)
+        ]
+        for call in mockplot.call_args_list
+    ]
+    emissioncolumns = [col for col in dftable.columns if col.startswith("emission_flux_plotted.")]
+    absorptioncolumns = [col for col in dftable.columns if col.startswith("absorption_flux_plotted.")]
+    assert emissioncolumns
+    assert len(absorptioncolumns) == len(emissioncolumns)
+    for column in [*emissioncolumns, *absorptioncolumns, "flux_plotted.Spectrum"]:
+        assert any(np.allclose(drawn, dftable[column].to_numpy(), rtol=1e-6, atol=0) for drawn in drawnlines), column
+    assert (dftable[absorptioncolumns[0]] <= 0).all()
 
 
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
@@ -1407,11 +1454,12 @@ def test_spectra_multispec_outputfile(tmp_path: Path) -> None:
     assert (tmp_path / "custom_multispec.pdf").is_file()
 
 
-def test_write_data_skips_reference_spectra(tmp_path: Path) -> None:
-    """--write_data must write one column per ARTIS model and nothing for a reference spectrum.
+def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) -> None:
+    """--write_data must write one column for each ARTIS model, and the drawn points of a reference spectrum in a table.
 
     Only the ARTIS branch produces series data, so an unset variable used to raise UnboundLocalError for a
-    reference spectrum alone, and to re-write the preceding model's spectrum as a bogus extra column after it.
+    reference spectrum alone, and to write the spectrum of the preceding model again as an incorrect extra column. A
+    reference spectrum has its own wavelength grid, and the table then left it out.
     """
     at.spectra.plot(
         argsraw=[],
@@ -1421,10 +1469,14 @@ def test_write_data_skips_reference_spectra(tmp_path: Path) -> None:
         write_data=True,
     )
 
-    dfout = pl.read_csv(tmp_path / "spec.txt", separator=" ")
+    dfout = pl.read_csv(tmp_path / "spec.txt", separator=" ", comment_prefix="#")
     assert [col for col in dfout.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
+    dfreferences = pl.read_csv(tmp_path / "spec_references.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dfreferences["series"].n_unique() == 1
+    # two reference files can have one label, thus each row names its file
+    assert dfreferences["specpath"].unique().to_list() == ["2003du_20031213_3219_8822_00.txt"]
+    assert dfreferences.height > 100
 
-    # a reference spectrum on its own has nothing to write, but must still plot without error
     at.spectra.plot(
         argsraw=[],
         specpath=["2003du_20031213_3219_8822_00.txt"],
@@ -1433,6 +1485,25 @@ def test_write_data_skips_reference_spectra(tmp_path: Path) -> None:
         write_data=True,
     )
     assert (tmp_path / "refonly.pdf").is_file()
+    assert not (tmp_path / "refonly.txt").exists()
+    pltest.assert_frame_equal(
+        pl.read_csv(tmp_path / "refonly_references.txt", separator=" ", null_values="nan", comment_prefix="#"),
+        dfreferences,
+    )
+
+    # the filter curves of --showfilterfunctions have their own wavelength grids, and no table held them
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath],
+        outputfile=tmp_path / "filters.pdf",
+        timedays="300",
+        showfilterfunctions=True,
+        normalised=True,
+        write_data=True,
+    )
+    dffilters = pl.read_csv(tmp_path / "filters_references.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dffilters["series"].unique(maintain_order=True).to_list() == ["U", "B", "V", "I"]
+    assert (dffilters["transmission"] <= 1.0).all()
 
 
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
@@ -2055,7 +2126,7 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
         write_data=True,
         outputfile=tmp_path / "residuals.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "residuals_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "residuals_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfstats.height == 1
     assert dfstats["reference"].item() == "fake observation"
     assert dfstats["npoints"].item() > 100
@@ -2066,6 +2137,13 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
     residual = np.asarray(mockplot.call_args_list[-1].args[2])
     assert (residual <= 0.0).all()
     assert (residual < 0.0).any()
+    # the table gave the statistics of the residual panel alone, and not its curve
+    dfcurves = pl.read_csv(
+        tmp_path / "residuals_residualcurves.txt", separator=" ", null_values="nan", comment_prefix="#"
+    )
+    assert dfcurves["reference"].unique().to_list() == ["fake observation"]
+    assert np.allclose(dfcurves["residual"].to_numpy(), residual, rtol=1e-6, atol=0, equal_nan=True)
+    assert np.allclose(dfcurves["x"].to_numpy(), np.asarray(mockplot.call_args_list[-1].args[1]), rtol=1e-9, atol=0)
 
     at.spectra.plot(
         argsraw=[],
@@ -2094,7 +2172,7 @@ def test_spectra_residual_panel_compares_series_of_the_same_type(tmp_path: Path,
         write_data=True,
         outputfile=tmp_path / "same_type.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "same_type_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "same_type_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfstats["model"].item() == "comparison"
     assert dfstats["reference"].item() == "baseline"
     assert np.isclose(dfstats["rms"].item(), 0.0)
@@ -2112,7 +2190,7 @@ def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path) -
         write_data=True,
         outputfile=tmp_path / "selected.pdf",
     )
-    stats = pl.read_csv(tmp_path / "selected_residuals.csv")
+    stats = pl.read_csv(tmp_path / "selected_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert stats["model"].to_list() == ["comparison"]
     assert stats["reference"].to_list() == ["baseline"]
     assert np.isclose(stats["rms"].item(), 0.0)
@@ -2150,7 +2228,7 @@ def test_residual_baseline_counts_codecomparison_spectra(tmp_path: Path, baselin
         assert np.allclose(item.x, np.asarray(line.get_xdata(), dtype=np.float64))
         assert np.allclose(item.y, np.asarray(line.get_ydata(), dtype=np.float64), atol=0.0)
         assert item.color == line.get_color()
-    stats = pl.read_csv(tmp_path / "codecomparison_residuals.csv")
+    stats = pl.read_csv(tmp_path / "codecomparison_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert stats["reference"].to_list() == [series[baselineindex].label] * 2
     assert stats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
     assert (stats["npoints"] > 0).all()
@@ -2180,7 +2258,7 @@ def test_residual_baseline_counts_filter_curves(tmp_path: Path, baselineindex: i
         assert np.allclose(item.x, np.asarray(line.get_xdata(), dtype=np.float64))
         assert np.allclose(item.y, np.asarray(line.get_ydata(), dtype=np.float64))
         assert item.color == line.get_color()
-    stats = pl.read_csv(tmp_path / "filters_residuals.csv")
+    stats = pl.read_csv(tmp_path / "filters_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert stats["reference"].to_list() == [series[baselineindex].label] * stats.height
     assert stats.height > 0
     if baselineindex == 0:
@@ -2300,7 +2378,7 @@ def test_plotspectra_write_data_names_each_direction_bin(tmp_path: Path) -> None
         write_data=True,
     )
 
-    columns = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ").columns
+    columns = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", comment_prefix="#").columns
     assert sum(column.startswith("f_lambda") and column.endswith("_dirbin00") for column in columns) == 1
     assert sum(column.startswith("f_lambda") and column.endswith("_dirbin05") for column in columns) == 1
 
@@ -2545,7 +2623,7 @@ def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
         plotspectra.addargs, None, None, [str(modelpath), "-t", "300", "--normalised", "-yscale", "log"]
     )
     plotspectra.resolve_plot_args(args)
-    fig, axes, _, _ = plotspectra.make_plot(args)
+    fig, axes, _ = plotspectra.make_plot(args)
     fig.canvas.draw()
     assert axes[0].get_yscale() == "log"
     assert axes[0].get_ylim()[1] > 1.02
@@ -2675,6 +2753,46 @@ def test_polarisation_plot_refuses_a_y_range_that_is_not_in_order(
     assert "must be less than -ymax" in capsys.readouterr().err
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_polarisation_plot_writes_the_drawn_ratio(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The plot of a Stokes ratio returned before output_data, thus --write_data gave no table."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        timedays="5",
+        stokesparam="Q/I",
+        write_data=True,
+        outputfile=tmp_path,
+    )
+    (tablepath,) = tmp_path.glob("plotpol_*.txt")
+    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
+    assert dftable.columns == ["x_plotted_angstrom", "Q/I"]
+    _, drawnx, drawny = mockplot.call_args.args
+    drawnx, drawny = np.asarray(drawnx, dtype=np.float64), np.asarray(drawny, dtype=np.float64)
+    # the line can hold a point outside -xmin and -xmax, and the table takes the points inside them
+    isinrange = (drawnx >= dftable["x_plotted_angstrom"].min()) & (drawnx <= dftable["x_plotted_angstrom"].max())
+    assert set(drawnx[np.isfinite(drawny) & isinrange].round(6)) <= set(
+        dftable["x_plotted_angstrom"].round(6).to_list()
+    )
+
+    # the table takes the wavelengths from -xmin to -xmax
+    mockplot.reset_mock()
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        timedays="5",
+        stokesparam="Q/I",
+        xmin=4000.0,
+        xmax=6000.0,
+        write_data=True,
+        outputfile=tmp_path / "range",
+    )
+    (tablepath,) = (tmp_path / "range").glob("plotpol_*.txt")
+    wavelengths = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")["x_plotted_angstrom"]
+    assert wavelengths.is_between(4000.0, 6000.0).all()
+    assert wavelengths.len() > 0
+
+
 def test_emission_plot_takes_a_list_of_one_time(tmp_path: Path) -> None:
     """A -timedayslist of one time names one time, thus an emission plot takes it as -timedays."""
     outputfile = tmp_path / "emission.pdf"
@@ -2697,7 +2815,7 @@ def test_write_data_gives_the_plotted_values(tmp_path: Path) -> None:
         write_data=True,
         outputfile=tmp_path / "normalised.pdf",
     )
-    dfout = pl.read_csv(tmp_path / "normalised.txt", separator=" ")
+    dfout = pl.read_csv(tmp_path / "normalised.txt", separator=" ", comment_prefix="#")
     plotted = [column for column in dfout.columns if column.startswith("flux_plotted")]
     assert len(plotted) == 1
     assert dfout[plotted[0]].max() == pytest.approx(1.0, rel=1e-6)
@@ -2964,23 +3082,88 @@ def test_filter_functions_take_the_unit_of_the_x_axis(mockplot: mock.MagicMock) 
     assert xvalues.max() < 1000.0
 
 
-def test_write_data_refuses_two_wavelength_grids(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """--write_data gives one wavelength column, thus two different grids need a message and not an AssertionError."""
+def test_write_data_gives_a_table_for_each_wavelength_grid(tmp_path: Path) -> None:
+    """--write_data stopped for two models with different wavelength grids, and the figure can draw both.
+
+    A wide table holds one grid, thus the second grid goes in its own table.
+    """
     lines = (modelpath / "spec.out").read_text(encoding="utf-8").splitlines()
     shiftedlines = [lines[0]] + [
         " ".join([f"{float(line.split()[0]) * 1.02:g}", *line.split()[1:]]) for line in lines[1:]
     ]
     shiftedmodel = make_model_with_a_new_spec_out(tmp_path / "shifted", modelpath, "\n".join(shiftedlines) + "\n")
 
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=[modelpath, shiftedmodel],
-            timedays=300,
-            write_data=True,
-            outputfile=tmp_path / "twogrids.pdf",
-        )
-    assert "different wavelength grid" in capsys.readouterr().err
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, shiftedmodel],
+        timedays=300,
+        write_data=True,
+        outputfile=tmp_path / "twogrids.pdf",
+    )
+    dffirst = pl.read_csv(tmp_path / "twogrids.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfsecond = pl.read_csv(tmp_path / "twogrids_grid2.txt", separator=" ", null_values="nan", comment_prefix="#")
+    # the copy of the model has the same plotlabel.txt, thus the name of its columns adds the index of the model
+    assert [col for col in dffirst.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
+    assert [col for col in dfsecond.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL_1"]
+    assert not np.allclose(dffirst["lambda_angstroms"], dfsecond["lambda_angstroms"])
+
+    # np.allclose took a grid that differs by 5 parts in a million as the same grid, and gave its values the
+    # wavelengths of the first grid
+    nearlines = [lines[0]] + [
+        " ".join([repr(float(line.split()[0]) * 1.000005), *line.split()[1:]]) for line in lines[1:]
+    ]
+    nearmodel = make_model_with_a_new_spec_out(tmp_path / "near", modelpath, "\n".join(nearlines) + "\n")
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, nearmodel],
+        timedays=300,
+        write_data=True,
+        outputfile=tmp_path / "neargrids.pdf",
+    )
+    assert (tmp_path / "neargrids_grid2.txt").is_file()
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_write_data_gives_the_edges_of_a_histogram(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """--histogram draws each bin from its lower edge to its upper edge, and the table gave the centre alone."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath],
+        timedays="300",
+        histogram=True,
+        write_data=True,
+        outputfile=tmp_path / "histogram.pdf",
+    )
+    dftable = pl.read_csv(tmp_path / "histogram.txt", separator=" ", null_values="nan", comment_prefix="#")
+    drawnedges = np.asarray(mockplot.call_args_list[0].args[1], dtype=np.float64).reshape(-1, 2)
+    edges = np.column_stack([dftable["x_lower_angstrom"].to_numpy(), dftable["x_upper_angstrom"].to_numpy()])
+    # the plot can draw a bin outside -xmin and -xmax, and the table takes the bins inside them
+    firstbin = int(np.argmin(np.abs(drawnedges[:, 0] - edges[0, 0])))
+    assert np.allclose(drawnedges[firstbin : firstbin + len(edges)], edges, rtol=1e-9, atol=0)
+
+
+@mock.patch.object(mplax.Axes, "fill_between", side_effect=mplax.Axes.fill_between, autospec=True)
+def test_write_data_gives_the_noise_of_shownoise(mockfill: mock.MagicMock, tmp_path: Path) -> None:
+    """--shownoise draws the band y * (1 +- r), and the table gave y alone, thus it could not give the band."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        timemin=4,
+        timemax=6.5,
+        frompackets=True,
+        shownoise=True,
+        write_data=True,
+        outputfile=tmp_path / "noise.pdf",
+    )
+    dftable = pl.read_csv(tmp_path / "noise.txt", separator=" ", null_values="nan", comment_prefix="#")
+    modelname = at.get_model_name(modelpath_classic_3d)
+    y = dftable[f"flux_plotted.{modelname}"].to_numpy()
+    relnoise = np.nan_to_num(dftable[f"flux_relnoise.{modelname}"].to_numpy())
+    # the band can hold a point outside -xmin and -xmax, and the table takes the points inside them
+    drawnx = np.asarray(mockfill.call_args.args[1], dtype=np.float64)
+    isinrange = (drawnx >= dftable["x_plotted_angstrom"].min()) & (drawnx <= dftable["x_plotted_angstrom"].max())
+    upper = np.asarray(mockfill.call_args.args[3], dtype=np.float64)[isinrange]
+    assert np.allclose(upper, y * (1 + relnoise), rtol=1e-6, atol=0)
 
 
 @pytest.mark.parametrize("zline", ["", "z: 0.1\n"])
@@ -3805,7 +3988,7 @@ def test_absorption_plot_keeps_a_linear_axis() -> None:
     plotspectra.resolve_plot_args(args)
     # the automatic rule then asks for a log axis for every set of values
     with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
-        fig, axes, _, _ = plotspectra.make_plot(args)
+        fig, axes, _ = plotspectra.make_plot(args)
     assert axes[0].get_yscale() == "linear"
     assert axes[0].get_ylim()[0] < 0.0
     plt.close(fig)
@@ -3945,7 +4128,7 @@ def test_host_merge_of_flux_contributions_keeps_the_plot(
 ) -> None:
     """The host merges the small series of emission.out into "Other", and the plot and its printed list must not change.
 
-    sort_and_reduce_flux_contribution_list prints the 20 largest other series, thus the host keeps them.
+    print_contribution_table names the 3 largest other series, thus the host keeps them.
     """
     rng = np.random.default_rng(1)
     arraylambda = np.linspace(3000.0, 9000.0, 5)
@@ -3957,8 +4140,8 @@ def test_host_merge_of_flux_contributions_keeps_the_plot(
     ]
 
     merged = atspectra.merge_other_flux_series(series, arraynu, 4, fixedionlist)
-    # the host sends the kept series, the 20 printed other series, and "Other"
-    assert len(merged) <= 4 + 20 + 1
+    # the host sends the kept series, the 3 named other series, and "Other"
+    assert len(merged) <= 4 + 3 + 1
 
     reduced_of_source = []
     totals = []
@@ -4150,7 +4333,7 @@ def test_emission_plot_file_name_holds_the_vspecpol_observer(tmp_path: Path) -> 
 
     with (
         mock.patch.object(at.spectra.plotspectra, "save_figure", save_figure),
-        mock.patch.object(at.spectra.plotspectra, "draw_plot", return_value=(pl.DataFrame(), pl.DataFrame())),
+        mock.patch.object(at.spectra.plotspectra, "draw_plot", return_value={}),
     ):
         for observer in (0, 1):
             at.spectra.plot(
@@ -4279,3 +4462,114 @@ def test_interactive_time_field_takes_finite_numbers() -> None:
     for text in ("nan", "inf", "-inf", "abc"):
         with pytest.raises(ValueError, match=r"finite|could not convert"):
             interactive.read_finite_number(text)
+
+
+def test_spectrum_table_keeps_two_models_of_the_same_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Two models of the same name gave the same columns, and the second model replaced the first in the table."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, modelpath],
+        timedays="300",
+        outputfile=tmp_path / "samename.pdf",
+        write_data=True,
+    )
+    assert "gives the columns of" in capsys.readouterr().err
+    dftable = pl.read_csv(tmp_path / "samename.txt", separator=" ", null_values="nan", comment_prefix="#")
+    fluxcolumns = [colname for colname in dftable.columns if colname.startswith("f_lambda.")]
+    assert len(fluxcolumns) == 2, dftable.columns
+
+
+def test_spectrum_summary_integrates_around_a_masked_band(capsys: pytest.CaptureFixture[str]) -> None:
+    """A masked telluric band holds NaN, and the luminosity of the summary was NaN for a range across the band."""
+    from artistools.spectra.plotspectra import print_spectrum_summary
+
+    lambdas = [1000.0, 2000.0, 3000.0, 4000.0, 5000.0]
+    flambdas = [1.0, 1.0, float("nan"), 1.0, 1.0]
+    dfspectrum = pl.DataFrame({"x": lambdas, "lambda_angstroms": lambdas, "f_lambda": flambdas, "y": flambdas})
+    print_spectrum_summary("masked", dfspectrum, (1000.0, 5000.0), "angstrom", "flux")
+    out = capsys.readouterr().out
+    # the two drawn segments each have a width of 1000 Å, and the two segments next to the NaN are left out
+    luminosity = 2000.0 * 4 * math.pi * at.constants.megaparsec_to_cm**2
+    match = re.search(r"luminosity ([\d.e+-]+) erg/s", out)
+    assert match is not None, out
+    assert np.isclose(float(match.group(1)), luminosity, rtol=1e-3)
+    assert "leaves out 2000 Å with no value of f_λ" in out
+    assert "largest drawn flux 1 at" in out
+
+    # a masked point at the end of the range is not drawn, and the summary counted it in the points and the x range
+    dfendmasked = dfspectrum.with_columns(
+        f_lambda=pl.Series([1.0, 1.0, 1.0, 1.0, float("nan")]), y=pl.Series([1.0, 1.0, 1.0, 1.0, float("nan")])
+    )
+    print_spectrum_summary("endmasked", dfendmasked, (1000.0, 5000.0), "angstrom", "flux")
+    assert "endmasked: 4 points from 1000 to 4000 angstrom" in capsys.readouterr().out
+
+    # a filter combines the packets of neighbouring bins, and the summary gave the noise of the unfiltered bins
+    dfpackets = dfspectrum.with_columns(
+        packetcount=pl.Series([10, 10, 10, 10, 10]), relnoise=0.3, delta_lambda=1000.0, f_lambda=1.0, y=1.0
+    )
+    print_spectrum_summary("filtered", dfpackets, (1000.0, 5000.0), "angstrom", "flux", isfiltered=True)
+    out = capsys.readouterr().out
+    assert "no noise estimate, because the filter combines the packets" in out
+    assert "relative noise of the luminosity" not in out
+
+
+def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
+
+    The luminosity must also agree with 4π (1 Mpc)² times the trapezoid integral of f_λ in the table of the spectrum. A
+    reference spectrum has no packets, thus its row has no noise.
+    """
+    plotspectra.main(
+        argsraw=[],
+        specpath=[modelpath, "sn2011fe_PTF11kly_20120822_norm.txt"],
+        timedays="300",
+        frompackets=True,
+        outputfile=tmp_path / "spec.pdf",
+        write_data=True,
+    )
+    output = capsys.readouterr().out
+    readargs: dict[str, t.Any] = {"separator": " ", "null_values": "nan", "comment_prefix": "#"}
+    dfsummary = pl.read_csv(tmp_path / "spec_summary.txt", **readargs)
+    assert dfsummary.height == 2
+    for row in dfsummary.iter_rows(named=True):
+        match = re.search(
+            rf"{re.escape(row['series'])}: (\d+) points from (\S+) to (\S+) angstrom, largest drawn flux (\S+) at (\S+)"
+            r" angstrom, luminosity (\S+) erg/s = 4π \(1 Mpc\)² ∫ f_λ dλ from (\S+) to (\S+) Å \((.+?)\)",
+            output,
+        )
+        assert match is not None, output
+        assert int(match[1]) == row["point_count"]
+        assert np.allclose(
+            [float(value) for value in match.group(2, 3, 4, 5, 6, 7, 8)],
+            [
+                row["x_min_angstrom"],
+                row["x_max_angstrom"],
+                row["peak_flux"],
+                row["x_at_peak_angstrom"],
+                row["luminosity_erg_per_s"],
+                row["lambda_min_angstroms"],
+                row["lambda_max_angstroms"],
+            ],
+            rtol=1e-3,
+            atol=0.0,
+        )
+        assert match[9] == row["method"]
+
+    modelrow, referencerow = dfsummary.iter_rows(named=True)
+    noisematch = re.search(
+        r"(\d+) packets in the drawn bins, relative noise of the luminosity (\S+)% = (.+) of these packets", output
+    )
+    assert noisematch is not None
+    assert int(noisematch[1]) == modelrow["packet_count"]
+    assert np.isclose(float(noisematch[2]) / 100.0, modelrow["relnoise_luminosity"], rtol=1e-3)
+    assert noisematch[3] == modelrow["noise_method"]
+    assert referencerow["relnoise_luminosity"] is None
+
+    dfspectrum = pl.read_csv(tmp_path / "spec.txt", **readargs).filter(
+        pl.col("lambda_angstroms").is_between(modelrow["lambda_min_angstroms"], modelrow["lambda_max_angstroms"])
+    )
+    integral = np.trapezoid(dfspectrum["f_lambda.TEST MODEL"], dfspectrum["lambda_angstroms"])
+    # the summary also takes the part of the end bins up to the axis limits, which this integral leaves out
+    assert np.isclose(
+        4 * math.pi * at.constants.megaparsec_to_cm**2 * integral, modelrow["luminosity_erg_per_s"], rtol=0.02
+    )

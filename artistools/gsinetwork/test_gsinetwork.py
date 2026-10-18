@@ -186,6 +186,44 @@ def test_comparetogsinetwork_plots_the_global_qdot_with_no_cell(mockplot: mock.M
     assert np.allclose(np.asarray(mockplot.call_args_list[0][0][2]), depdata["Qdot_betaminus_ana_erg/s/g"].to_numpy())
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_comparetogsinetwork_write_data_gives_the_drawn_series(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """--write_data gives one row for each drawn point of the Qdot figure and of the abundance figure of a cell.
+
+    The command had no data flags, and the rule of AGENTS.md gives them to each plot command.
+    """
+    cell = 211
+    at.gsinetwork.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        nogsinet=True,
+        modelgridindex=[cell],
+        species=["Fe", "Ni56"],
+        outputfile=tmp_path,
+        write_data=True,
+    )
+
+    def read_table(path: Path) -> pl.DataFrame:
+        return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
+
+    # each heating rate of the test model is zero
+    assert (read_table(tmp_path / "gsinetwork_global-qdot.txt")["qdot_erg_per_s_per_g"] == 0.0).all()
+    dfabund = read_table(tmp_path / f"gsinetwork_mgi{cell}-abundance.txt")
+    drawncount = 0
+    for callargs in mockplot.call_args_list:
+        _, drawnx, drawny = callargs.args
+        if "dot{Q}" in callargs.kwargs["label"]:
+            continue
+        # each series has its own rows, thus the rows of the series follow the order of the plot calls
+        dfseries = dfabund.slice(drawncount, len(drawnx))
+        assert np.allclose(dfseries["time_days"].to_numpy(), np.asarray(drawnx), rtol=1e-12, atol=0.0)
+        assert np.allclose(dfseries["massfraction"].to_numpy(), np.asarray(drawny), rtol=1e-12, atol=0.0)
+        drawncount += len(drawnx)
+    assert drawncount == dfabund.height > 0
+    assert set(dfabund["series"]) <= {"Fe", "Ni56"}
+    assert set(dfabund["source"]) == {"ARTIS"}
+
+
 def test_particledata_holds_the_last_abundance_after_the_network_ends(tmp_path: Path) -> None:
     """A time after the last network step has no step above it, and the abundance must then stay at its end value.
 

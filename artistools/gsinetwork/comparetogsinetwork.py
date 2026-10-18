@@ -29,6 +29,7 @@ from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps
 from artistools.inputmodel.rprocess_from_trajectory import get_traj_network_timesteps
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
@@ -39,6 +40,8 @@ from artistools.misc import get_grid_mapping
 from artistools.misc import get_model_name
 from artistools.misc import get_timesteps
 from artistools.misc import get_wid_init_at_tmodel
+from artistools.misc import is_in_range
+from artistools.misc import output_data
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -278,6 +281,28 @@ def sum_weighted_particle_arrays(
     )
 
 
+def get_series_table(
+    source: str, seriesname: str, time_days: pl.Series, values: pl.Series, valuecolumn: str
+) -> pl.DataFrame:
+    """Return the drawn points of one series, with its source, e.g. ARTIS or GSINET, and its name."""
+    return pl.DataFrame({
+        "source": source,
+        "series": seriesname,
+        "time_days": time_days.cast(pl.Float64),
+        valuecolumn: values.cast(pl.Float64),
+    })
+
+
+def output_drawn_series(args: argparse.Namespace, drawnseries: Sequence[pl.DataFrame], figurepath: Path | str) -> None:
+    """Print or write the drawn series of a figure, with the points up to the time of -xmax.
+
+    The series of ARTIS and of GSINET have different times, thus the table has one row for each drawn point.
+    """
+    if not (getattr(args, "print_data", False) or getattr(args, "write_data", False)) or not drawnseries:
+        return
+    output_data(args, {"": pl.concat(drawnseries).filter(is_in_range("time_days", None, args.xmax))}, figurepath)
+
+
 def plot_qdot(
     modelpath: Path,
     dfpairs: pl.DataFrame | None,
@@ -322,12 +347,13 @@ def plot_qdot(
 
     # ARTIS writes the fission column only when the model has spontaneous fission
     qdotseries = (
-        ("hbeta", "Qdot_betaminus_ana_erg/s/g", "solid", r"$\dot{Q}_\beta$"),
-        ("halpha", "Qdotalpha_ana_erg/s/g", "dashed", r"$\dot{Q}_\alpha$"),
-        ("hspof", "Qdotspfission_ana_erg/s/g", "dotted", r"$\dot{Q}_{sponfis}$"),
+        ("hbeta", "Qdot_betaminus_ana_erg/s/g", "solid", r"$\dot{Q}_\beta$", "betaminus"),
+        ("halpha", "Qdotalpha_ana_erg/s/g", "dashed", r"$\dot{Q}_\alpha$", "alpha"),
+        ("hspof", "Qdotspfission_ana_erg/s/g", "dotted", r"$\dot{Q}_{sponfis}$", "spontaneous fission"),
     )
 
-    for gsicol, artiscol, linestyle, label in qdotseries:
+    drawnseries: list[pl.DataFrame] = []
+    for gsicol, artiscol, linestyle, label, channel in qdotseries:
         if dfgsiglobalheating is not None:
             axis.plot(
                 dfgsiglobalheating["time_days"],
@@ -336,6 +362,15 @@ def plot_qdot(
                 color="black",
                 linestyle=linestyle,
                 label=f"{label} GSINET",
+            )
+            drawnseries.append(
+                get_series_table(
+                    "GSINET",
+                    channel,
+                    dfgsiglobalheating["time_days"],
+                    dfgsiglobalheating[gsicol],
+                    "qdot_erg_per_s_per_g",
+                )
             )
 
         if artiscol in depdata.columns:
@@ -347,12 +382,16 @@ def plot_qdot(
                 linestyle=linestyle,
                 label=f"{label} ARTIS",
             )
+            drawnseries.append(
+                get_series_table("ARTIS", channel, depdata["tmid_days"], depdata[artiscol], "qdot_erg_per_s_per_g")
+            )
 
     set_legend(axis, args, ncol=3)
 
     axis.autoscale(enable=True, axis="both")
     axis.set_xmargin(0.02)
     axis.set_ymargin(0.02)
+    output_drawn_series(args, drawnseries, pdfoutpath)
     save_figure(fig, pdfoutpath, format="pdf", args=args)
 
 
@@ -396,6 +435,7 @@ def plot_cell_abund_evolution(
     axis = axes[0]
     print(f"{'':7s}  gsi_abund artis_abund")
 
+    drawnseries: list[pl.DataFrame] = []
     for axis, strspecies in zip(axes, arr_species, strict=False):
         axis.set_ylabel("Mass fraction")
 
@@ -410,6 +450,11 @@ def plot_cell_abund_evolution(
                 markersize=8,
                 label=f"{strnuc_latex} GSINET",
                 color="black",
+            )
+            drawnseries.append(
+                get_series_table(
+                    "GSINET", strspecies, pl.Series(arr_time_gsi_days), df_gsi_abunds[strspecies], "massfraction"
+                )
             )
 
         print(f"{strspecies:7s}  ", end="")
@@ -427,6 +472,15 @@ def plot_cell_abund_evolution(
                 label=f"{strnuc_latex} ARTIS",
                 color="red",
             )
+            drawnseries.append(
+                get_series_table(
+                    "ARTIS",
+                    strspecies,
+                    arr_abund_artis["tmid_days"],
+                    arr_abund_artis[f"X_{strspecies}"],
+                    "massfraction",
+                )
+            )
         else:
             print(" [no ARTIS data]")
 
@@ -438,6 +492,7 @@ def plot_cell_abund_evolution(
 
     strcell = f"cell {mgi}" if mgi >= 0 else "global"
     axes[0].set_title(f"{get_model_name(modelpath)} {strcell}")
+    output_drawn_series(args, drawnseries, pdfoutpath)
     save_figure(fig, pdfoutpath, format="pdf", args=args)
 
 
@@ -728,6 +783,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
     addarg_darkmode(parser)
+    addarg_data_output(parser)
     addarg_modelpath(parser, default=Path(), helptext="Path for ARTIS files")
 
     parser.add_argument(

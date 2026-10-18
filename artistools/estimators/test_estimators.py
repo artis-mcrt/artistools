@@ -1,6 +1,7 @@
 import argparse
 import copy
 import dataclasses as dc
+import io
 import json
 import os
 import re
@@ -2695,6 +2696,25 @@ def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
     assert dottedgif.is_file(), f"no gif in {list((tmp_path / 'results.v1').iterdir())}"
 
 
+def test_frames_of_a_gif_print_one_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Each frame printed its own table with its own header, thus the output of a gif was not one table."""
+    gifpath = tmp_path / "movie.gif"
+    at.estimators.plotestimators.main(
+        argsraw=[],
+        modelpath=modelpath,
+        plotlist=[["Te"]],
+        timestep="40-42",
+        makegif=True,
+        outputfile=str(gifpath),
+        print_data=True,
+        write_data=True,
+    )
+    output = capsys.readouterr().out
+    assert output.count(" velocity_kmps ") == 1
+    dftable = pl.read_csv(tmp_path / "movie.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert sorted(dftable["timestep"].unique().to_list()) == ["ts040", "ts041", "ts042"]
+
+
 def test_a_compact_ion_name_reads_the_ion_stage_in_upper_case() -> None:
     """The roman numeral of an ion stage is always in upper case, and the element symbol is not.
 
@@ -2821,10 +2841,42 @@ def test_estimator_slice_of_3d_model(tmp_path: Path, slicetext: str, layerindex:
     assert np.allclose(tegrid[(cellindex // 10) % 10, cellindex % 10], dfexpected["Te"].to_numpy())
 
 
+def test_estimator_image_table_holds_only_the_drawn_cells() -> None:
+    """The table took each cell that was not NaN, and the image of a log scale also leaves out zero and infinity."""
+    from artistools.estimators.plotestimators import get_image_figure_table
+    from artistools.estimators.plotestimators import ImageFigureData
+    from artistools.estimators.plotestimators import PanelStyle
+
+    grid = np.array([[1.0, 0.0], [np.nan, np.inf]])
+    figuredata = ImageFigureData(
+        grids=[grid, grid],
+        styles=[PanelStyle("Te", "log", None, None), PanelStyle("Te", "linear", None, None)],
+        plotaxes=("x", "y"),
+        vmax_cmps=0.1 * at.constants.C_cm_per_s,
+        title="",
+        framefields={"timestep": "8"},
+    )
+    dftable = get_image_figure_table(figuredata, argparse.Namespace(x="velocity", xmin=None, xmax=None))
+    assert dftable.filter(pl.col("panel") == 0)["value"].to_list() == [1.0]
+    assert dftable.filter(pl.col("panel") == 1)["value"].to_list() == [1.0, 0.0]
+    assert dftable.filter(pl.col("panel") == 1)["vel_x_on_c"].to_list() == pytest.approx([-0.05, 0.05], rel=1e-9)
+    # -xmax cuts the image, thus the cell from 0 to 0.1c is not in the table
+    dfcut = get_image_figure_table(figuredata, argparse.Namespace(x="beta", xmin=None, xmax=-0.01))
+    assert dfcut.filter(pl.col("panel") == 1)["vel_x_on_c"].to_list() == pytest.approx([-0.05], rel=1e-9)
+
+
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_path: Path) -> None:
     """-dimensionreduce 2 gives the mean of the cells in each ring of cylindrical radius and z."""
-    ((_, edges1, edges2, tegrid),) = get_image_panel_calls({"plotlist": [["Te"]], "dimensionreduce": 2}, tmp_path)
+    ((_, edges1, edges2, tegrid),) = get_image_panel_calls(
+        {"plotlist": [["Te"]], "dimensionreduce": 2, "write_data": True}, tmp_path
+    )
     assert len(list(tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.pdf"))) == 1
+    # --write_data gave only a warning for a colour image, and no table of its cells
+    (tablepath,) = tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.txt")
+    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
+    assert dftable.height == int(np.isfinite(tegrid.filled(np.nan)).sum())
+    assert np.isclose(dftable["vel_rcyl_on_c"].to_numpy().min(), (edges1[0] + edges1[1]) / 2)
+    assert np.allclose(np.sort(dftable["value"].to_numpy()), np.sort(tegrid.compressed()), rtol=1e-6, atol=0)
     assert tegrid.shape == (10, 5)
     assert np.isclose(edges1[0], 0.0)
     assert np.isclose(edges1[-1], edges2[-1])
@@ -3129,6 +3181,151 @@ def test_deposition_rates_read_the_next_timestep() -> None:
     )
 
 
+def test_analytic_deposition_channel_gives_the_rate_of_its_own_timestep() -> None:
+    """An analytic channel equals its emission_ana_ column, and ARTIS calculates it for the timestep of its own row.
+
+    The command moved each channel back one timestep, which is correct only for a Monte Carlo channel, e.g. gamma.
+    """
+    dfestim = pl.LazyFrame({
+        "timestep": [0, 1],
+        "modelgridindex": [0, 0],
+        "tmid_days": [10.0, 11.0],
+        "nntot": [10.0, 9.0],
+        "volume": [2.0, 3.0],
+        "volume_prevtimestep": [None, 2.0],
+        "mass_g": [5.0, 5.0],
+        "deposition_gamma": [0.0, 4.0e-9],
+        "deposition_alpha": [7.0e-10, 6.0e-10],
+        "emission_ana_alpha": [7.0e-10, 6.0e-10],
+    })
+
+    dftable = at.estimators.deposition.aggregate_deposition_rates(dfestim)
+    # timestep 0 takes gamma from the row of timestep 1, and alpha from its own row with its own volume
+    assert dftable["timestep"].to_list() == [0]
+    rate_erg_per_s = 4.0e-9 * 2.0 + 7.0e-10 * 2.0
+    assert np.isclose(dftable["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
+
+    # an analytic channel alone needs no later row, thus the last timestep has its rate too
+    dfalpha = at.estimators.deposition.aggregate_deposition_rates(dfestim, channels=["alpha"])
+    assert dfalpha["timestep"].to_list() == [0, 1]
+    assert np.allclose(dfalpha["dep_per_volume"], np.array([7.0e-10, 6.0e-10]) / at.constants.EV_to_erg, rtol=1e-12)
+
+    # ARTIS gives an analytic rate for spontaneous fission with each scheme, and a rate of zero made it Monte Carlo
+    dffission = dfestim.with_columns(deposition_spfission=pl.lit(0.0), emission_ana_spfission=pl.lit(0.0))
+    dffissionrates = at.estimators.deposition.aggregate_deposition_rates(dffission, channels=["spfission"])
+    assert dffissionrates["timestep"].to_list() == [0, 1]
+
+    # a channel of zero equals its emission_ana_ column with either scheme, and the last timestep then got a rate of 0
+    dfzero = dfestim.with_columns(deposition_alpha=pl.lit(0.0), emission_ana_alpha=pl.lit(0.0))
+    assert at.estimators.deposition.get_analytic_deposition_channels(dfzero, ["alpha"]) == ([], ["alpha"])
+    assert at.estimators.deposition.aggregate_deposition_rates(dfzero, channels=["alpha"])["timestep"].to_list() == [0]
+
+
+def test_deposition_rate_keeps_a_cell_with_no_row_at_the_next_timestep() -> None:
+    """The inner join left out a cell with no row at the next timestep, also from the volume and the ion count."""
+    dfestim = pl.LazyFrame({
+        "timestep": [0, 0, 1],
+        "modelgridindex": [0, 1, 0],
+        "tmid_days": [10.0, 10.0, 11.0],
+        "nntot": [10.0, 10.0, 9.0],
+        "volume": [2.0, 2.0, 3.0],
+        "volume_prevtimestep": [None, None, 2.0],
+        "mass_g": [5.0, 5.0, 5.0],
+        "deposition_gamma": [0.0, 0.0, 4.0e-9],
+    })
+    dftable = at.estimators.deposition.aggregate_deposition_rates(dfestim, channels=["gamma"])
+    # the rate of cell 1 at timestep 0 is not known, thus the sum is not known, and the count names the cell
+    assert dftable["timestep"].to_list() == [0]
+    assert np.isnan(dftable["dep_per_volume"].item())
+    assert dftable["cellswithnorate"].item() == 1
+
+
+def test_deposition_gaps_expect_the_last_timestep_for_analytic_channels(capsys: pytest.CaptureFixture[str]) -> None:
+    """An analytic channel gives the rate of the last timestep, and a run with no row there gave no warning."""
+    deposition = at.estimators.deposition
+    dftable = pl.DataFrame({"timestep": [0, 1], "cellswithnorate": [0, 0]})
+    deposition.warn_about_gaps(modelpath_classic_3d, dftable, None, 2, onlyanalytic=True)
+    warning = capsys.readouterr().err
+    assert "no deposition rate for timestep 2" in warning
+    # the rule of the next timestep applies to a Monte Carlo rate alone, thus it does not explain this gap
+    assert "next timestep" not in warning
+    # a Monte Carlo channel gives no rate for the last timestep of any model
+    deposition.warn_about_gaps(modelpath_classic_3d, dftable, None, 2)
+    assert "no deposition rate" not in capsys.readouterr().err
+    assert deposition.selects_only_analytic_channels(["deposition_spfission"], ["spfission"], None)
+    assert not deposition.selects_only_analytic_channels(["deposition_alpha"], ["alpha"], None)
+
+
+def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path: Path) -> None:
+    """The options of the run decide which deposition channels hold an analytic rate, when the options exist.
+
+    A Monte Carlo rate differs from the analytic rate by its noise. A restart with a different scheme gives rows that
+    follow a different rule, in either direction, and the command must stop.
+    """
+    configured = at.estimators.deposition.get_configured_analytic_channels
+    assert configured(tmp_path) is None
+    (tmp_path / "artisoptions.h").write_text(
+        "constexpr auto PARTICLE_THERMALISATION_SCHEME = ParticleThermalisationScheme::INSTANTFULLDEPOSITION;\n",
+        encoding="utf-8",
+    )
+    assert configured(tmp_path) == ["spfission", "positron", "electron", "alpha"]
+    (tmp_path / "artisoptions.h").write_text("constexpr bool INSTANT_PARTICLE_DEPOSITION = false;\n", encoding="utf-8")
+    assert configured(tmp_path) == ["spfission"]
+
+    dfestim = pl.LazyFrame({
+        "timestep": [0, 1],
+        "modelgridindex": [0, 0],
+        "tmid_days": [10.0, 11.0],
+        "nntot": [10.0, 9.0],
+        "volume": [2.0, 3.0],
+        "volume_prevtimestep": [None, 2.0],
+        "mass_g": [5.0, 5.0],
+        "deposition_alpha": [7.0e-10, 6.0e-10],
+        "emission_ana_alpha": [7.1e-10, 6.2e-10],
+    })
+    dfalpha = at.estimators.deposition.aggregate_deposition_rates(
+        dfestim, channels=["alpha"], configuredanalyticchannels=["spfission"]
+    )
+    # a Monte Carlo channel takes the rate of timestep 0 from the row of timestep 1, with the volume of timestep 0
+    assert dfalpha["timestep"].to_list() == [0]
+    assert np.isclose(dfalpha["dep_per_volume"].item(), 6.0e-10 / at.constants.EV_to_erg, rtol=1e-12)
+
+    # a restart with Monte Carlo alpha deposition gives the rows of its run a rate that is not the analytic rate, and
+    # the analytic rule of artisoptions.h took it as the rate of its own timestep
+    dfmixed = dfestim.with_columns(deposition_alpha=pl.Series([7.1e-10, 9.0e-10]))
+    with pytest.raises(ValueError, match=r"gives an analytic rate for the deposition channel alpha.*timesteps \[1\]"):
+        at.estimators.deposition.aggregate_deposition_rates(
+            dfmixed, channels=["alpha"], configuredanalyticchannels=["spfission", "alpha"]
+        )
+
+    # a restart with instant deposition gives the rows of its run the analytic rate, and the Monte Carlo rule of
+    # artisoptions.h moved that rate back one timestep
+    dfinstantrun = dfestim.with_columns(deposition_alpha=pl.Series([7.0e-10, 6.2e-10]))
+    with pytest.raises(ValueError, match=r"gives a Monte Carlo rate for the deposition channel alpha.*timesteps \[1\]"):
+        at.estimators.deposition.aggregate_deposition_rates(
+            dfinstantrun, channels=["alpha"], configuredanalyticchannels=["spfission"]
+        )
+
+    # an analytic channel at timestep 0 needs no row of timestep 1, and the row of a restart with another scheme there
+    # stopped the command
+    deposition = at.estimators.deposition
+    with (
+        mock.patch.object(deposition, "scan_estimators", return_value=dfmixed),
+        mock.patch.object(deposition, "get_configured_analytic_channels", return_value=["spfission", "alpha"]),
+    ):
+        dfrates = deposition.get_deposition_rates(tmp_path, timesteps=[0], channels=["alpha"])
+    assert dfrates["timestep"].to_list() == [0]
+    assert np.isclose(dfrates["dep_per_volume"].item(), 7.1e-10 / at.constants.EV_to_erg, rtol=1e-12)
+
+    # gamma needs the row of timestep 1, and the check of the analytic alpha read that row too and stopped the command
+    dfwithgamma = dfmixed.with_columns(deposition_gamma=pl.Series([0.0, 4.0e-9]))
+    dfgammaalpha = deposition.aggregate_deposition_rates(
+        dfwithgamma, timesteps=[0], channels=["gamma", "alpha"], configuredanalyticchannels=["spfission", "alpha"]
+    )
+    rate_erg_per_s = 4.0e-9 * 2.0 + 7.1e-10 * 2.0
+    assert np.isclose(dfgammaalpha["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
+
+
 def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
     """The rates of a model must match a calculation that reads the estimators on its own.
 
@@ -3274,6 +3471,14 @@ def test_deposition_needs_the_deposition_estimators() -> None:
     assert at.estimators.deposition.format_channel_list(modelpath).endswith("holds no deposition channel")
 
 
+def test_deposition_counts_a_repeated_channel_one_time() -> None:
+    """-channels gamma,gamma gave the gamma rate two times in the sum."""
+    channels = at.estimators.deposition.select_deposition_channels(
+        ["deposition_gamma", "deposition_alpha"], ["gamma", "deposition_gamma", "alpha"]
+    )
+    assert channels == ["gamma", "alpha"]
+
+
 def test_deposition_names_the_channels_of_the_model() -> None:
     """An unknown channel must give a message that names the channels of the model."""
     colnames = ["total_dep", "deposition_gamma", "deposition_positron"]
@@ -3356,6 +3561,10 @@ def test_line_points_leave_a_cell_with_no_value_out_of_the_average() -> None:
     dflinepoints = get_line_points(dfseries, argparse.Namespace()).collect()
 
     assert np.isclose(dflinepoints["yvalue_binned"].item(), 10.0)
+
+    # an infinite value, e.g. a ratio with a divisor of 0, made the mean of its bin infinite, and the plot drew no point
+    dfinfinite = dfseries.with_columns(yvalue=pl.Series([10.0, float("inf"), 10.0]))
+    assert np.isclose(get_line_points(dfinfinite, argparse.Namespace()).collect()["yvalue_binned"].item(), 10.0)
 
 
 def test_add_derived_estimator_columns_fills_absent_channels_with_zero() -> None:
@@ -5672,3 +5881,122 @@ def test_classic_restart_repeats_its_first_timestep(tmp_path: Path) -> None:
     assert sorted(estimators) == [(timestep, mgi) for timestep in range(3) for mgi in (0, 1)]
     assert np.isclose(estimators[1, 0]["Te"], 4000.0)
     assert np.isclose(estimators[2, 0]["Te"], 9000.0)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_estimator_print_data_gives_the_drawn_values(
+    mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """--print_data must give the values of the drawn line, thus a script gets the plot as numbers."""
+    at.estimators.plot(
+        argsraw=[], modelpath=modelpath_classic_3d, outputfile=tmp_path, timedays=5, plotlist=[["Te"]], print_data=True
+    )
+    output = capsys.readouterr().out
+    headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
+    # an empty line separates the table of the points from the table _summary
+    pointstext, summarytext = output[headerstart:].split("\n\n", 1)
+    dftable = pl.read_csv(io.StringIO(pointstext), separator=" ", null_values="nan", comment_prefix="#")
+    assert summarytext.startswith("timestep timedays series subplot point_count ")
+
+    assert set(dftable["series"]) == {"Te"}
+    # the line repeats its first and its last bin out to the edges of the axis, and the table held the inner points
+    drawnlines = [
+        (np.asarray(call.args[1], dtype=np.float64), np.asarray(call.args[2], dtype=np.float64))
+        for call in mockplot.call_args_list
+    ]
+    assert any(
+        len(ydata) == dftable.height
+        and np.allclose(xdata, dftable["velocity_kmps"], rtol=1e-6, atol=0)
+        and np.allclose(ydata, dftable["value"], rtol=1e-6, atol=0)
+        for xdata, ydata in drawnlines
+    )
+    assert dftable["bin_centre"].to_list()[0] is False
+    assert dftable["bin_centre"].to_list()[-1] is False
+    assert dftable["bin_centre"].sum() == dftable.height - 2
+
+    # --markers draws the line and a marker for each cell, and the table gave only the line
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        outputfile=tmp_path,
+        timedays=5,
+        plotlist=[["Te"]],
+        markers=True,
+        print_data=True,
+    )
+    output = capsys.readouterr().out
+    headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
+    dfmarkertable = pl.read_csv(
+        io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ", null_values="nan", comment_prefix="#"
+    )
+    dfline = dfmarkertable.filter(pl.col("points") == "line")
+    assert dfline.height == dftable.height
+    assert np.allclose(dfline["value"], dftable["value"], rtol=1e-6, atol=0)
+    assert dfmarkertable.filter(pl.col("points") == "markers").height > dfline.height
+
+
+def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.CaptureFixture[str]) -> None:
+    """A script or an agent needs the units of each column, and the listing for a reader gives them by family."""
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, print_data=True)
+    output = capsys.readouterr().out
+    dftable = pl.read_csv(io.StringIO(output[output.index("variable units description") :]), separator=" ")
+    units = dict(zip(dftable["variable"], dftable["units"], strict=True))
+    assert units["Te"] == "K"
+    assert units["gamma_NT_Fe_II"] == "s^-1"
+    assert units["nnion_Fe_II"] == "cm^-3"
+    descriptions = dict(zip(dftable["variable"], dftable["description"], strict=True))
+    # the ratio is in the family of the heating rates, but it is no rate
+    assert "fraction" in descriptions["heating_heating_dep/total_dep"]
+
+
+def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
+
+    The maximum must also agree with the bins of the table of the plotted points, which a different query makes.
+    """
+    plotestimators.main(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        outputfile=tmp_path,
+        timedays=5,
+        plotlist=[["Te", "rho"]],
+        write_data=True,
+    )
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    (summaryfile,) = tmp_path.glob("*_summary.txt")
+    dfsummary = pl.read_csv(summaryfile, separator=" ", null_values="nan", comment_prefix="#")
+    assert dfsummary["series"].to_list() == ["Te", "rho"]
+    dfpoints = pl.read_csv(
+        summaryfile.with_name(summaryfile.name.replace("_summary", "")),
+        separator=" ",
+        null_values="nan",
+        comment_prefix="#",
+    )
+    for row in dfsummary.iter_rows(named=True):
+        match = re.search(
+            rf"{row['series']}: subplot 0, (\d+) points, .*, max (\S+) {re.escape(row['units'])} at x = (\S+),"
+            rf" mean (\S+) {re.escape(row['units'])}, weight of the mean: (.+)",
+            output,
+        )
+        assert match is not None, output
+        assert int(match[1]) == row["value_count"] == row["point_count"]
+        assert np.isclose(float(match[2]), row["value_max"], rtol=1e-3)
+        assert np.isclose(float(match[3]), row["velocity_kmps_at_value_max"], rtol=1e-3)
+        assert np.isclose(float(match[4]), row["value_mean"], rtol=1e-3)
+        assert match[5] == row["method"]
+        binmaximum = (
+            dfpoints
+            .filter(pl.col("series") == row["series"], pl.col("points") == "line")
+            .select(pl.col("value_max").max())
+            .item()
+        )
+        assert np.isclose(binmaximum, row["value_max"], rtol=1e-6)
+
+    mintempcount, maxtempcount = (
+        dfsummary.filter(pl.col("series") == "Te").select("mintemp_point_count", "maxtemp_point_count").row(0)
+    )
+    assert f"Te: {mintempcount} points are at MINTEMP" in output
+    assert f"Te: {maxtempcount} points are at MAXTEMP" in output
+    # a density has no temperature limit of ARTIS
+    assert dfsummary.filter(pl.col("series") == "rho")["mintemp_point_count"].is_null().all()

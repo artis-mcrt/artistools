@@ -21,6 +21,7 @@ from functools import cache
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 import polars.selectors as cs
 
@@ -115,6 +116,33 @@ def with_compressed_extension(filename: Path | str, ext: str) -> Path:
 def without_compressed_extension(filepath: Path) -> Path:
     """Return the path without its compression extension, e.g. model.txt for model.txt.zst."""
     return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
+
+
+def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], object]) -> None:
+    """Write a text file through a temporary file in the same folder, then put the file at its path in one step.
+
+    os.replace puts the new file in the place of a symbolic link, and it does not write through the link. A model
+    folder of a different user can hold a link with the name of an output file, e.g. a link to ~/.bashrc. A new file
+    takes the mode 0666 less the umask, as a file of open() does. A file that replaces a regular file takes its mode.
+    """
+    import secrets
+    import stat
+
+    try:
+        deststat: os.stat_result | None = filepath.lstat()
+    except FileNotFoundError:
+        deststat = None
+    partialfilepath = filepath.with_name(f".{filepath.name}.partial{secrets.token_hex(8)}")
+    # O_EXCL fails for a name that exists, e.g. a link, and the kernel takes the umask away from the mode 0666
+    fd = os.open(partialfilepath, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            write(stream)
+        if deststat is not None and stat.S_ISREG(deststat.st_mode):
+            partialfilepath.chmod(stat.S_IMODE(deststat.st_mode))
+        partialfilepath.replace(filepath)
+    finally:
+        partialfilepath.unlink(missing_ok=True)
 
 
 def get_file_copies(filepath: Path) -> list[Path]:
@@ -1051,7 +1079,6 @@ def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: f
 
     iio = import_optional("imageio.v2")
 
-    import numpy as np
     from PIL import Image
 
     # a gif holds one canvas, thus pad every frame to the largest size or lose what lies outside.

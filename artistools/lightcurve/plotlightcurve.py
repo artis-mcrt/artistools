@@ -29,11 +29,13 @@ from artistools.inputmodel import get_modeldata
 from artistools.lightcurve.core import FILTERNAME_ALIASES
 from artistools.lightcurve.core import find_lightcurve_file
 from artistools.lightcurve.core import generate_band_lightcurve_data
+from artistools.lightcurve.core import get_band_gap_times
 from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag
 from artistools.lightcurve.core import get_filename_part
 from artistools.lightcurve.core import get_filter_data
 from artistools.lightcurve.core import get_from_packets
+from artistools.lightcurve.core import get_katz_integral
 from artistools.lightcurve.core import get_top_nuclides
 from artistools.lightcurve.core import lum_lsun_to_mag
 from artistools.lightcurve.core import path_is_reference_lightcurve
@@ -47,6 +49,7 @@ from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_decliner
 from artistools.lightcurve.viewingangleanalysis import plot_viewanglebrightness_at_fixed_time
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
@@ -78,15 +81,15 @@ from artistools.misc import get_model_folder
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
+from artistools.misc import is_in_range
 from artistools.misc import makelist
 from artistools.misc import normalize_path_list
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_dir
 from artistools.misc import path_is_file
 from artistools.misc import print_detail
 from artistools.misc import print_heading
-from artistools.misc import print_product
-from artistools.misc import print_saved
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
@@ -97,6 +100,7 @@ from artistools.misc.remote import on_model_host
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import get_next_color
+from artistools.plottools import get_summary_table
 from artistools.plottools import get_unused_colors
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
@@ -107,6 +111,7 @@ from artistools.plottools import make_colorbar_viewingangles_colormap
 from artistools.plottools import make_frame_figure
 from artistools.plottools import make_frame_figure_with_residuals
 from artistools.plottools import print_dirbin_summary
+from artistools.plottools import print_series_summary
 from artistools.plottools import RESIDUALROWHEIGHT
 from artistools.plottools import ResidualSeries
 from artistools.plottools import save_figure
@@ -117,7 +122,7 @@ from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
-from artistools.plottools import write_residual_stats
+from artistools.plottools import warn_direction_bin_noise
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -175,6 +180,14 @@ ENERGYRATEKINDS: t.Final = (
     ("emission", EMISSIONCOLUMNS, "dotted", r"$\dot{{E}}_{{rad,{}}}$"),
     ("analyticemission", ANALYTICEMISSIONCOLUMNS, "dashdot", r"$\dot{{E}}_{{rad,{}}}$ analytical"),
 )
+
+# the columns of the table of the energy rates and the thermalisation ratios that --print_data gives
+CURVESCHEMA: t.Final = MappingProxyType({
+    "quantity": pl.String,
+    "unit": pl.String,
+    "time_days": pl.Float64,
+    "value": pl.Float64,
+})
 
 # the arguments that name the particles of the energy rates
 ENERGYRATEDESTS: t.Final = ("deposition", "emission", "analyticemission", "thermalisation")
@@ -300,6 +313,109 @@ def get_reflightcurve_yerr(
     return [np.where(hasmag, errside, 0.0) for errside in yerr], unbounded
 
 
+def get_peak_summary(
+    time_days: npt.ArrayLike,
+    yvalues: npt.ArrayLike,
+    unit: str,
+    *,
+    ismagnitude: bool,
+    isband: bool = False,
+    packetnoise: tuple[npt.ArrayLike, npt.ArrayLike] | None = None,
+    gaptimes: Sequence[float] = (),
+) -> tuple[dict[str, t.Any], list[str], list[str]]:
+    """Return the fields of the summary of a drawn light curve, the parts of its summary line, and its warnings.
+
+    The peak is the largest luminosity, or the smallest magnitude, of the points in the time range. The y range of the
+    figure does not change it, because a statistic of the curve must not depend on the view. The time of the peak is
+    the rise time from the explosion. For a band, Δm15 is the magnitude 15 days after the peak minus the peak
+    magnitude. If the peak is in the first two or the last two points, the true peak can be outside the time range.
+    packetnoise gives the packet count
+    and the relative noise sqrt(Σ e²) / Σ e of each point of a light curve from packets. The function makes the parts
+    from the fields, thus the line agrees with the table _summary. The key of the peak value gives its unit, e.g.
+    peak_luminosity_erg_per_s or peak_mag.
+    """
+    times = np.asarray(time_days, dtype=np.float64)
+    values = np.asarray(yvalues, dtype=np.float64)
+    hasvalue = np.isfinite(values) & np.isfinite(times)
+    # an interpolation must not cross a time with no value. gaptimes gives the times that the series leaves out, e.g.
+    # a time with no flux in a band
+    alltimegaps = np.concatenate([times[np.isfinite(times) & ~np.isfinite(values)], np.asarray(gaptimes, dtype=float)])
+    if not hasvalue.any():
+        return {"point_count": 0}, ["no finite value"], []
+    # a reference file can list its points in any order, and the interpolation of Δm15 and the test of the ends need
+    # the order of the times
+    order = np.argsort(times[hasvalue], kind="stable")
+    times, values = times[hasvalue][order], values[hasvalue][order]
+    peakindex = int(np.argmin(values) if ismagnitude else np.argmax(values))
+    peakkey = "peak_mag" if ismagnitude else f"peak_luminosity_{unit.replace('/', '_per_')}"
+    fields: dict[str, t.Any] = {
+        "point_count": len(times),
+        "time_min_days": float(times.min()),
+        "time_max_days": float(times.max()),
+        "peak_time_days": float(times[peakindex]),
+        peakkey: float(values[peakindex]),
+        "method": "brightest point in the time range" if ismagnitude else "largest point in the time range",
+    }
+    if packetnoise is not None:
+        peakrelnoise = float(np.asarray(packetnoise[1], dtype=np.float64)[hasvalue][order][peakindex])
+        if np.isfinite(peakrelnoise):
+            fields |= {
+                "peak_packet_count": int(np.asarray(packetnoise[0])[hasvalue][order][peakindex]),
+                "peak_relnoise": peakrelnoise,
+                # a magnitude of a luminosity L with the relative noise r has the noise 2.5 / ln(10) * r
+                **({"peak_noise_mag": 2.5 / math.log(10) * peakrelnoise} if ismagnitude else {}),
+                "noise_method": "sqrt(Σ e²) / Σ e",
+            }
+    deltam15gap: tuple[float, float] | None = None
+    if isband:
+        targettime = fields["peak_time_days"] + 15.0
+        hasdeltam15 = targettime <= fields["time_max_days"]
+        if hasdeltam15:
+            lowertime, uppertime = times[times <= targettime].max(), times[times >= targettime].min()
+            if np.any((alltimegaps > lowertime) & (alltimegaps < uppertime)):
+                deltam15gap = (float(lowertime), float(uppertime))
+                hasdeltam15 = False
+        fields |= {
+            "deltam15_mag": float(np.interp(fields["peak_time_days"] + 15.0, times, values)) - fields[peakkey]
+            if hasdeltam15
+            else None,
+            "deltam15_method": "linear interpolation of the magnitude at the peak time + 15 d" if hasdeltam15 else None,
+        }
+
+    parts = [
+        f"{fields['point_count']} points from {fields['time_min_days']:.4g} to {fields['time_max_days']:.4g} d",
+        f"peak {fields[peakkey]:.4g} {unit} at {fields['peak_time_days']:.4g} d ({fields['method']})",
+    ]
+    warnings = []
+    if "peak_relnoise" in fields:
+        noisetext = f"{fields['peak_noise_mag']:.3g} mag" if ismagnitude else f"{fields['peak_relnoise']:.2%}"
+        parts.append(
+            f"noise of the peak point {noisetext} = {fields['noise_method']} of its {fields['peak_packet_count']}"
+            " packets"
+        )
+        if fields["peak_relnoise"] > 0.1:
+            warnings.append(
+                f"the peak point has a relative Monte Carlo noise of {fields['peak_relnoise']:.0%}, thus the time and"
+                " the value of the peak are uncertain"
+            )
+    if isband:
+        if fields["deltam15_mag"] is not None:
+            parts.append(f"Δm15 {fields['deltam15_mag']:.3g} mag ({fields['deltam15_method']})")
+        elif deltam15gap is not None:
+            parts.append(
+                f"no Δm15, because the magnitude has no value between {deltam15gap[0]:.4g} and {deltam15gap[1]:.4g} d,"
+                " which hold the time 15 days after the peak"
+            )
+        else:
+            parts.append("no Δm15, because the time range ends before 15 days after the peak")
+    # a curve of four points or fewer has each point in the first two or the last two, thus each peak is at an end
+    if peakindex < 2 or peakindex > len(times) - 3:
+        warnings.append(
+            "the peak is in the first two or the last two points, thus the true peak can be outside the time range"
+        )
+    return fields, parts, warnings
+
+
 def plot_bol_reflightcurve(
     axis: mplax.Axes,
     lightcurvefilename: str | Path,
@@ -309,17 +425,33 @@ def plot_bol_reflightcurve(
     residualseries: list[ResidualSeries] | None = None,
     linewidth: float | None = None,
     alpha: float | None = None,
+    plottedpoints: list[pl.DataFrame] | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
-    Return the label used in the plot legend, which comes from the file metadata unless label is given.
+    Return the label used in the plot legend, which comes from the file metadata unless label is given. plottedpoints
+    takes the rows of the file, with the label as the model, "reference" as the escape type, and the plotted values.
+    summaryrows takes the fields of the summary line. Only the points from timemin to timemax go into the figure, the
+    summary, and plottedpoints.
     """
     dflightcurve, metadata = read_bol_reflightcurve_data(lightcurvefilename)
+    # the points have no line between them, thus a point outside the time range has no part in the figure
+    dflightcurve = dflightcurve.filter(is_in_range("time_days", timemin, timemax))
     # an empty label is a series deliberately left out of the legend, so only a missing one takes the metadata
     plotlabel = str(metadata.get("label", lightcurvefilename)) if label is None else label
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
     time_days = dflightcurve["time_days"].to_numpy()
     yvalues = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
+    plotcolumn = get_plot_lum_column(lumunit)
+    dfplotted = dflightcurve.select(
+        pl.lit(plotlabel).alias("model"),
+        pl.lit(plotlabel).alias("label"),
+        pl.lit("reference").alias("escape_type"),
+        pl.all(),
+    ).with_columns(pl.Series(plotcolumn, yvalues, dtype=pl.Float64))
 
     residual_yerr = None
     errorbar_kwargs = None
@@ -330,6 +462,12 @@ def plot_bol_reflightcurve(
             dflightcurve["luminosity_errminus_erg/s"].to_numpy(),
             dflightcurve["luminosity_errplus_erg/s"].to_numpy(),
             lumunit,
+        )
+        # the bars are in the unit of the y axis, and a magnitude bar has its sides in the other order
+        dfplotted = dfplotted.with_columns(
+            pl.Series(f"{plotcolumn}_errlower", np.asarray(yerr[0], dtype=np.float64)),
+            pl.Series(f"{plotcolumn}_errupper", np.asarray(yerr[1], dtype=np.float64)),
+            pl.Series("faint_side_unbounded", np.asarray(unbounded, dtype=bool)),
         )
         # the error bars are the only lines of this series, thus -linewidth sets their width
         errorbars = axis.errorbar(
@@ -372,6 +510,18 @@ def plot_bol_reflightcurve(
             time_days, yvalues, marker="o", linestyle="None", label=plotlabel, color=color, alpha=alpha
         )
         refartists = [refline]
+    if plottedpoints is not None:
+        plottedpoints.append(dfplotted)
+    summaryfields, summaryparts, summarywarnings = get_peak_summary(
+        time_days, yvalues, lumunit, ismagnitude=lumunit == "mag"
+    )
+    print_series_summary(
+        plotlabel or str(lightcurvefilename),
+        summaryparts,
+        summarywarnings,
+        fields=summaryfields,
+        summaryrows=summaryrows,
+    )
 
     # a marker and a line have different default zorders. With an equal zorder, matplotlib draws
     # the series in the order of the command line
@@ -415,8 +565,10 @@ def plot_energy_rates(
     linewidth: float | str | None = None,
     *,
     residualseries: list[ResidualSeries] | None = None,
-) -> bool:
-    """Plot the energy rates of deposition.out that args names, and return True if the function drew a curve on axis.
+) -> tuple[bool, pl.DataFrame]:
+    """Plot the energy rates of deposition.out that args names, and return whether a curve is on axis, and the data.
+
+    The data has one row for each point of each curve, with the columns quantity, unit, time_days, and value.
 
     axis takes the deposition rates and the emission rates. thermaxis takes the thermalisation ratios with the curves
     of Barnes, Kasen, Wu & Martínez-Pinedo (2016, ApJ, 829, 110, doi:10.3847/0004-637X/829/2/110). Each particle takes
@@ -438,6 +590,7 @@ def plot_energy_rates(
         )
 
     drewrate = False
+    dfcurves: list[pl.DataFrame] = []
     for particle, colour in particlecolours.items():
         for dest, columns, linestyle, labelformat in ENERGYRATEKINDS:
             if particle not in getattr(args, dest):
@@ -461,13 +614,76 @@ def plot_energy_rates(
                         line=rateline,
                     )
                 )
+            dfcurves.append(get_curve_table(column, lumunit, depdata["tmid_days"], yvalues))
             drewrate = True
 
     if args.thermalisation:
         assert thermaxis is not None
-        plot_thermalisation(thermaxis, depdata, modelpath, modelname, args, particlecolours, linewidth)
+        dfcurves.extend(plot_thermalisation(thermaxis, depdata, modelpath, modelname, args, particlecolours, linewidth))
 
-    return drewrate
+    return drewrate, pl.concat(dfcurves) if dfcurves else pl.DataFrame(schema=CURVESCHEMA)
+
+
+def get_table_in_time_range(dftables: Sequence[pl.DataFrame], args: argparse.Namespace) -> pl.DataFrame:
+    """Return the rows of the plotted tables from -timemin to -timemax, for --print_data and --write_data.
+
+    A light curve keeps the nearest point outside each end for its line, and the table leaves that point out. The
+    tables of a figure can have different columns, e.g. the error bars of a reference file.
+    """
+    dftables = [dftable for dftable in dftables if not dftable.is_empty()]
+    if not dftables:
+        return pl.DataFrame()
+    return pl.concat(dftables, how="diagonal_relaxed").filter(is_in_range("time_days", args.timemin, args.timemax))
+
+
+def get_magnitude_table(
+    model: str,
+    modelpath: str | None,
+    label: str,
+    dirbin: int | None,
+    name: tuple[str, str],
+    time_days: t.Any,
+    magnitudes: t.Any,
+) -> pl.DataFrame:
+    """Return the points of one curve of a band plot or a colour plot, e.g. name ("band", "B") or ("colour", "B-V").
+
+    A curve with no point gives an empty frame, and a reference curve has no model path and no direction bin, thus
+    the schema gives the types of the columns. Two models can have one name, thus the model path identifies the model.
+    """
+    namecolumn, namevalue = name
+    valuecolumn = "magnitude" if namecolumn == "band" else "colour_mag"
+    return pl.DataFrame(
+        {
+            "model": model,
+            "modelpath": modelpath,
+            "label": label,
+            "dirbin": dirbin,
+            namecolumn: namevalue,
+            "time_days": np.asarray(time_days, dtype=np.float64),
+            valuecolumn: np.asarray(magnitudes, dtype=np.float64),
+        },
+        schema={
+            "model": pl.String,
+            "modelpath": pl.String,
+            "label": pl.String,
+            "dirbin": pl.Int64,
+            namecolumn: pl.String,
+            "time_days": pl.Float64,
+            valuecolumn: pl.Float64,
+        },
+    )
+
+
+def get_curve_table(
+    quantity: str,
+    unit: str,
+    time_days: pl.Series | list[float],
+    values: pl.Series | npt.NDArray[np.floating] | list[float],
+) -> pl.DataFrame:
+    """Return the points of one plotted curve in the form of the energy rate table."""
+    return pl.DataFrame(
+        {"quantity": quantity, "unit": unit, "time_days": time_days, "value": values}, schema=CURVESCHEMA
+    )
 
 
 def plot_thermalisation(
@@ -478,12 +694,13 @@ def plot_thermalisation(
     args: argparse.Namespace,
     particlecolours: dict[str, str],
     linewidth: float | str | None,
-) -> None:
-    """Plot the deposition rate over the emission rate of each particle of -thermalisation.
+) -> list[pl.DataFrame]:
+    """Plot the deposition rate over the emission rate of each particle of -thermalisation, and return the curves.
 
     --showbarnes adds the curves of Barnes et al. (2016, ApJ, 829, 110) for the gamma rays, the electrons, and the alpha
     particles.
     """
+    dfcurves: list[pl.DataFrame] = []
     if "betaplus" in args.thermalisation:
         print_detail(
             "the thermalisation ratio of the positrons divides by the analytical emission rate, because"
@@ -500,9 +717,11 @@ def plot_thermalisation(
             )
             continue
         symbol = PARTICLESYMBOLS[particle]
+        ratios = depdata[depcolumn] / depdata[emissioncolumn]
+        dfcurves.append(get_curve_table(f"{depcolumn}/{emissioncolumn}", "ratio", depdata["tmid_days"], ratios))
         thermaxis.plot(
             depdata["tmid_days"],
-            depdata[depcolumn] / depdata[emissioncolumn],
+            ratios,
             linewidth=linewidth,
             label=rf"{modelname} $\left(\dot{{E}}_{{dep,{symbol}}} \middle/ \dot{{E}}_{{rad,{symbol}}}\right)$",
             linestyle="solid",
@@ -512,7 +731,7 @@ def plot_thermalisation(
     # the curves of Barnes et al. (2016, ApJ, 829, 110) describe the gamma rays, the electrons, and the alpha particles
     barnesparticles = [particle for particle in ("gamma", "betaminus", "alpha") if particle in args.thermalisation]
     if not (args.showbarnes and barnesparticles):
-        return
+        return dfcurves
 
     model_mass_grams, ejecta_ke_erg = get_model_mass_and_kinetic_energy(Path(modelpath))
     print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
@@ -546,6 +765,7 @@ def plot_thermalisation(
     }
     for particle in barnesparticles:
         barnes_f, symbol = barnes_curves[particle]
+        dfcurves.append(get_curve_table(f"Barnes2016_f_{particle}", "ratio", tmids, barnes_f))
         thermaxis.plot(
             tmids,
             barnes_f,
@@ -554,6 +774,7 @@ def plot_thermalisation(
             linestyle="dashed",
             color=particlecolours[particle],
         )
+    return dfcurves
 
 
 def get_time_range_days(dflightcurve: pl.DataFrame) -> tuple[float | None, float | None]:
@@ -577,9 +798,13 @@ def plot_artis_lightcurve(
     pellet_nucname: str | None = None,
     use_pellet_decay_time: bool = False,
     residualseries: list[ResidualSeries] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
     **plotkwargs: t.Any,
 ) -> dict[int, pl.DataFrame] | None:
-    """Plot one model's bolometric light curve, and return the plotted data per direction bin."""
+    """Plot one model's bolometric light curve, and return the plotted data per direction bin.
+
+    summaryrows takes the fields of the summary line of each direction bin.
+    """
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
@@ -665,6 +890,10 @@ def plot_artis_lightcurve(
                 "Give -plotviewingangle with light_curve_res.out, give no -plotviewingangle with light_curve.out, and"
                 " give a file that ARTIS wrote in full",
             )
+        if directionresolved:
+            warn_direction_bin_noise(
+                lcpath.name, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+            )
         # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
         if -1 in dirbins and -1 not in lcdataframes:
             lcdataframes[-1] = scan_lightcurve(
@@ -720,6 +949,7 @@ def plot_artis_lightcurve(
         print_theta_phi_definitions()
 
     filterfunc = get_filterfunc(args)
+    plotteddataframes: dict[int, pl.DataFrame] = {}
     for dirbin in dirbins:
         lcdata = lcdataframes[dirbin]
         print_dirbin_summary(dirbin, angle_definition[dirbin], lcdata)
@@ -753,19 +983,12 @@ def plot_artis_lightcurve(
             plotkwargs["color"] = None
 
         lcdata_tmin, lcdata_tmax = get_time_range_days(lcdata)
-        lcdata = lcdata.with_columns(time_s=pl.col("time_days") * day_to_s)
-        katz_integral = np.trapezoid(
-            (
-                lcdata
-                .select(pl.col("luminosity_erg/s") * pl.col("time_s"))
-                .fill_null(0.0)
-                .fill_nan(0.0)
-                .to_series()
-                .to_numpy()
-            ),
-            x=lcdata["time_s"],
+        katz_integral, katzomitted_days = get_katz_integral(lcdata["time_days"], lcdata["luminosity_erg/s"])
+        omittedtext = f", leaving out {katzomitted_days:.3g} days with no luminosity" if katzomitted_days else ""
+        print_detail(
+            f"Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days, trapezoid rule{omittedtext}):"
+            f" {katz_integral:.3e} [erg s]"
         )
-        print_detail(f"Katz integral L t dt ({lcdata_tmin:.2f} to {lcdata_tmax:.2f} days): {katz_integral:.3e} [erg s]")
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
         if validrange_start_days is None or validrange_end_days is None:
             # entire range is invalid
@@ -781,6 +1004,20 @@ def plot_artis_lightcurve(
             else:
                 lcdata_before_valid = lcdata.filter(pl.col("time_days") <= lcdata_valid["time_days"].min())
                 lcdata_after_valid = lcdata.filter(pl.col("time_days") >= lcdata_valid["time_days"].max())
+
+        # the line of the luminosity shows only the valid range, and -plotinvalidpart and --plotcmf show each row.
+        # Thus the table keeps each row only with these options, and a column names the rows of the line
+        cmfcolumn = ycolumn.replace("luminosity_", "luminosity_cmf_")
+        showseachrow = args.plotinvalidpart or (args.plotcmf and cmfcolumn in lcdata.columns)
+        # a direction bin of a colour bar has no legend entry, thus its name holds the number of the bin
+        summaryname = label_with_tags or " ".join(part for part in (linelabel, f"direction bin {dirbin}") if part)
+        dfplotted = lcdata.with_columns(
+            label=pl.lit(summaryname),
+            in_valid_range=pl.lit(value=False)
+            if validrange_start_days is None or validrange_end_days is None
+            else pl.col("time_days").is_between(validrange_start_days, validrange_end_days),
+        )
+        plotteddataframes[dirbin] = dfplotted if showseachrow else dfplotted.filter(pl.col("in_valid_range"))
 
         if args.plotinvalidpart:
             plotkwargs_invalidrange = plotkwargs.copy()
@@ -803,7 +1040,37 @@ def plot_artis_lightcurve(
                 f" {energy_released:.3e} [erg]"
             )
 
-        (modelline,) = axis.plot(lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, **plotkwargs)
+        (modelline,) = axis.plot(
+            lcdata_valid["time_days"], lcdata_valid[ycolumn], label=label_with_tags, gid=summaryname, **plotkwargs
+        )
+        # the frame keeps the nearest point outside each end of -timemin and -timemax, and the axis does not show it
+        lcdata_inrange = lcdata_valid.filter(is_in_range("time_days", args.timemin, args.timemax))
+        # the relative noise of the timestep is the noise of the observer-frame luminosity and not of the comoving frame
+        haspacketnoise = {"packetcount", "relnoise"}.issubset(lcdata_inrange.columns) and "cmf" not in ycolumn
+        # a filter combines the packets of neighbouring timesteps, thus the noise of one timestep is not its noise
+        isfiltered = filterfunc is not None
+        summaryfields, summaryparts, summarywarnings = get_peak_summary(
+            lcdata_inrange["time_days"],
+            lcdata_inrange[ycolumn],
+            lumunit,
+            ismagnitude=lumunit == "mag",
+            packetnoise=(lcdata_inrange["packetcount"], lcdata_inrange["relnoise"])
+            if haspacketnoise and not isfiltered
+            else None,
+        )
+        if haspacketnoise and isfiltered:
+            summaryparts.append("no noise estimate, because the filter combines the packets of neighbouring timesteps")
+        # a magnitude has no comoving-frame column, and its maximum is the faintest point
+        cmfcolumn_summary = ycolumn.replace("luminosity_", "luminosity_cmf_")
+        if ycolumn.startswith("luminosity_") and cmfcolumn_summary in lcdata.columns and lcdata.height > 4:
+            # the observer-frame luminosity falls at the end, thus only the comoving frame shows a rise at the end
+            cmfpeakindex = lcdata[cmfcolumn_summary].fill_nan(None).arg_max() or 0
+            if cmfpeakindex > lcdata.height - 3:
+                summarywarnings.append(
+                    "the comoving-frame luminosity has its maximum at the end, thus the true peak can be after the"
+                    " time range"
+                )
+        print_series_summary(summaryname, summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows)
         if residualseries is not None:
             residualseries.append(
                 ResidualSeries(
@@ -814,10 +1081,6 @@ def plot_artis_lightcurve(
                     line=modelline,
                 )
             )
-        if args.print_data:
-            print_product(args, lcdata)
-
-        cmfcolumn = ycolumn.replace("luminosity_", "luminosity_cmf_")
         if args.plotcmf and cmfcolumn not in lcdata.columns:
             print_warning(
                 f"the light curve of {linelabel} has no comoving frame luminosity, thus --plotcmf draws no curve"
@@ -843,7 +1106,7 @@ def plot_artis_lightcurve(
                     )
                 )
 
-    return lcdataframes
+    return plotteddataframes
 
 
 def make_plot_figure(
@@ -869,12 +1132,17 @@ def make_plot_figure(
 
 def draw_plot(
     args: argparse.Namespace, axis: mplax.Axes, thermaxis: mplax.Axes | None, residualaxis: mplax.Axes | None
-) -> pl.DataFrame | None:
-    """Draw the light curves and the energy rates that args selects, and return the statistics of the residuals.
+) -> dict[str, pl.DataFrame]:
+    """Draw the light curves and the energy rates that args selects, and return the tables of the plotted data.
 
     The light curves come from light_curve.out, gamma_light_curve.out, light_curve_res.out, or the packets files. The
     axes must be empty. This function writes no file, thus the viewer can call it again for each change of a control.
-    The statistics are None without a residual panel.
+
+    The keys of the tables are the ends of the names of the data files, see output_data. The table of the light curves
+    has one row for each time of each model, escape type, and direction bin. It holds the values after -filtersavgol
+    or -filtermovingavg. The table of the energy rates holds the curves of deposition.out and of the thermalisation
+    panel. The statistics of the residuals are empty without a residual panel. The table _summary gives the fields of
+    the summary line of each drawn light curve, see get_peak_summary.
     """
     modelpaths = args.modelpath
     showuvoir, showgamma = args.rpkt, args.gamma
@@ -890,6 +1158,9 @@ def draw_plot(
 
     plottedsomething = False
     plotteddeposition = False
+    dflightcurves: list[pl.DataFrame] = []
+    dfenergyrates: list[pl.DataFrame] = []
+    summaryrows: list[dict[str, t.Any]] = []
     for lcindex, modelpath in enumerate(modelpaths):
         if path_is_reference_lightcurve(modelpath):
             bolreflightcurve = Path(modelpath)
@@ -903,6 +1174,10 @@ def draw_plot(
                 residualseries=residualseries,
                 linewidth=args.linewidth[lcindex] or None,
                 alpha=args.linealpha[lcindex],
+                plottedpoints=dflightcurves,
+                timemin=args.timemin,
+                timemax=args.timemax,
+                summaryrows=summaryrows,
             )
             print_heading(lightcurvelabel)
             plottedsomething = True
@@ -951,15 +1226,28 @@ def draw_plot(
                         color=args.color[lcindex],
                         linelabel=args.label[lcindex],
                         residualseries=residualseries,
+                        summaryrows=summaryrows,
                     )
                     plottedthismodel = plottedthismodel or (lcdataframes is not None)
+                    # two models can have one name, thus the path names the model of each row
+                    dflightcurves.extend(
+                        dflc.select(
+                            pl.lit(get_model_name(modelpath)).alias("model"),
+                            pl.lit(str(modelpath)).alias("modelpath"),
+                            pl.lit(escape_type).alias("escape_type"),
+                            *([pl.lit(pellet_nucname).alias("pellet_nucname")] if pellet_nucname is not None else []),
+                            pl.lit(dirbin).alias("dirbin"),
+                            pl.all(),
+                        )
+                        for dirbin, dflc in (lcdataframes or {}).items()
+                    )
 
             plottedsomething = plottedsomething or plottedthismodel
 
             if plottedthismodel and (shows_energy_rates(args) or args.thermalisation):
                 # the rates belong to the model, not to one escape type or pellet nuclide, and the style
                 # comes from the command line rather than from whatever a series left in its plot kwargs
-                drewrate = plot_energy_rates(
+                drewrate, dfmodelrates = plot_energy_rates(
                     axis,
                     thermaxis,
                     get_model_folder(modelpath),
@@ -969,6 +1257,14 @@ def draw_plot(
                     residualseries=residualseries,
                 )
                 plotteddeposition = plotteddeposition or drewrate
+                # two models can have one name, thus the path names the model of each row and keeps the curves apart
+                dfenergyrates.append(
+                    dfmodelrates.select(
+                        pl.lit(get_model_name(modelpath)).alias("model"),
+                        pl.lit(str(modelpath)).alias("modelpath"),
+                        pl.all(),
+                    )
+                )
 
         print()
 
@@ -982,6 +1278,10 @@ def draw_plot(
                 residualseries=residualseries,
                 linewidth=args.linewidth[len(modelpaths) + refindex] or None,
                 alpha=args.linealpha[len(modelpaths) + refindex],
+                plottedpoints=dflightcurves,
+                timemin=args.timemin,
+                timemax=args.timemax,
+                summaryrows=summaryrows,
             )
             plottedsomething = True
 
@@ -1041,9 +1341,12 @@ def draw_plot(
         # applied before a one-sided limit is lost
         invert_magnitude_yaxis(axis)
 
-    dfresidualstats = None
+    dfresidualstats = pl.DataFrame()
+    dfresidualcurves: list[pl.DataFrame] = []
     if residualaxis is not None and residualseries is not None:
-        dfresidualstats = draw_residual_panel(residualaxis, axis, residualseries, args, ismagnitude=lumunit == "mag")
+        dfresidualstats = draw_residual_panel(
+            residualaxis, axis, residualseries, args, ismagnitude=lumunit == "mag", plottedpoints=dfresidualcurves
+        )
 
     if thermaxis is not None:
         set_axis_properties(thermaxis, args, setyaxis=False)
@@ -1055,7 +1358,13 @@ def draw_plot(
         thermaxis.set_xlabel(labelaxis.get_xlabel())
         labelaxis.set_xlabel("")
 
-    return dfresidualstats
+    return {
+        "": get_table_in_time_range(dflightcurves, args),
+        "_energyrates": get_table_in_time_range(dfenergyrates, args),
+        "_residuals": dfresidualstats,
+        "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
+        "_summary": get_summary_table(summaryrows),
+    }
 
 
 def create_axes(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_] | mplax.Axes]:
@@ -1136,10 +1445,8 @@ def set_lightcurve_plot_labels(
     return fig, ax
 
 
-def make_band_lightcurves_plot(
-    modelpaths: Sequence[str | Path], outputfolder: Path | str, args: argparse.Namespace
-) -> None:
-    """Plot band magnitude light curves for every model and save the figure."""
+def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.Namespace) -> None:
+    """Plot the light curves of the band magnitudes for each model, give the plotted data, and save the figure."""
     residualaxis = None
     residualseries: list[ResidualSeries] | None = None
     if args.residualbaselineseries is not None:
@@ -1163,9 +1470,11 @@ def make_band_lightcurves_plot(
     # y axis label and the output file name. main() dispatches here only when -filter has a value
     bandnames: list[str] = list(args.filter)
     filterfunc = get_filterfunc(args)
-    # each model writes its own data files, thus the name of a file holds the model name if the plot holds several
-    # models. The file name of one model stays the same
-    namesmodel = len(modelpaths) > 1
+    dfbands: list[pl.DataFrame] = []
+    # the reference files give markers with no line, thus their points need a different test of the axes
+    dfrefbands: list[pl.DataFrame] = []
+    dfhesmabands: list[pl.DataFrame] = []
+    summaryrows: list[dict[str, t.Any]] = []
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, dirbin_definition = parse_directionbin_args(modelpath, args)
@@ -1180,27 +1489,17 @@ def make_band_lightcurves_plot(
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 axis = axes[plotnumber]
                 time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
-
-                if args.print_data or args.write_data:
-                    txtlinesout = [f"# band: {band_name}", f"# model: {modelname}", "# time_days magnitude"]
-                    txtlinesout.extend(f"{t_d} {m}" for t_d, m in zip(time, brightness_in_mag, strict=False))
-                    txtout = "\n".join(txtlinesout)
-                if args.write_data:
-                    filestem = f"band_{get_filename_part(band_name)}"
-                    if namesmodel:
-                        filestem += f"_{get_filename_part(modelname)}"
-                    bandoutfile = Path(
-                        outputfolder, f"{filestem}_angle_{dirbin}.txt" if dirbin != -1 else f"{filestem}.txt"
-                    )
-                    bandoutfile.write_text(txtout, encoding="utf-8")
-                    print_saved(bandoutfile)
-                if args.print_data:
-                    print_product(args, txtout)
-
-                plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
-
                 if filterfunc is not None:
                     brightness_in_mag = filterfunc(brightness_in_mag)
+
+                linelabel = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
+                dfbands.append(
+                    get_magnitude_table(
+                        modelname, str(modelpath), linelabel, dirbin, ("band", band_name), time, brightness_in_mag
+                    )
+                )
+
+                plotkwargs["label"] = linelabel
 
                 text_key = FILTERNAME_ALIASES.get(band_name, band_name)
 
@@ -1237,7 +1536,19 @@ def make_band_lightcurves_plot(
                 # plotkwargs is reused for each model, thus a model with no -linealpha takes None, the default alpha
                 plotkwargs["alpha"] = args.linealpha[modelnumber]
 
-                (modelline,) = axis.plot(time, brightness_in_mag, **plotkwargs)
+                summaryname = f"{band_name} {plotkwargs['label'] or modelname}"
+                (modelline,) = axis.plot(time, brightness_in_mag, gid=summaryname, **plotkwargs)
+                summaryfields, summaryparts, summarywarnings = get_peak_summary(
+                    time,
+                    brightness_in_mag,
+                    "mag",
+                    ismagnitude=True,
+                    isband=True,
+                    gaptimes=get_band_gap_times(band_lightcurve_data, band_name),
+                )
+                print_series_summary(
+                    summaryname, summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows
+                )
                 if residualseries is not None:
                     residualseries.append(
                         ResidualSeries(
@@ -1261,10 +1572,16 @@ def make_band_lightcurves_plot(
             ax,
             linewidth=args.linewidth[len(modelpaths) + refindex] or None,
             residualseries=residualseries,
+            plottedpoints=dfrefbands,
+            timemin=args.timemin,
+            timemax=args.timemax,
+            summaryrows=summaryrows,
         )
 
     if args.plot_hesma_model:
-        plot_hesma_lightcurve(axes, bandnames, args, residualseries)
+        plot_hesma_lightcurve(
+            axes, bandnames, args, residualseries, plottedpoints=dfhesmabands, summaryrows=summaryrows
+        )
 
     ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=bandnames[0] if bandnames else None)
@@ -1275,12 +1592,24 @@ def make_band_lightcurves_plot(
 
     invert_magnitude_yaxis(ax)
 
+    dfresidualstats = pl.DataFrame()
+    dfresidualcurves: list[pl.DataFrame] = []
     if residualaxis is not None and residualseries is not None:
         assert isinstance(ax, mplax.Axes)
-        dfresidualstats = draw_residual_panel(residualaxis, ax, residualseries, args, ismagnitude=True)
-        if args.write_data:
-            write_residual_stats(dfresidualstats, args.outputfile)
+        dfresidualstats = draw_residual_panel(
+            residualaxis, ax, residualseries, args, ismagnitude=True, plottedpoints=dfresidualcurves
+        )
 
+    output_data(
+        args,
+        {
+            "": get_table_in_time_range([*dfbands, *dfrefbands, *dfhesmabands], args),
+            "_residuals": dfresidualstats,
+            "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
+            "_summary": get_summary_table(summaryrows),
+        },
+        args.outputfile,
+    )
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
@@ -1289,18 +1618,40 @@ def plot_hesma_lightcurve(
     bandnames: Sequence[str],
     args: argparse.Namespace,
     residualseries: list[ResidualSeries] | None,
+    plottedpoints: list[pl.DataFrame] | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> None:
     """Draw each band of the HESMA model of -plot_hesma_model on the panel of that band.
+
+    plottedpoints takes the points of each band from -timemin to -timemax in the form of get_magnitude_table.
+    summaryrows takes the fields of the summary line of each band.
 
     The first column of the file holds the time, and a column with the name of a band holds its magnitudes. The grid
     of panels can hold more panels than bands, e.g. six panels for four bands.
     """
     hesma_model = read_hesma_lightcurve(args)
     timecolumn = hesma_model.columns[0]
+    hesma_model = df_filter_minmax_bracketed(
+        hesma_model, colname=timecolumn, minval=args.timemin, maxval=args.timemax
+    ).collect()
     label = Path(args.plot_hesma_model).stem
     for axis, band_name in zip(axes[: len(bandnames)], bandnames, strict=True):
         if band_name in hesma_model.columns:
             (hesmaline,) = axis.plot(hesma_model[timecolumn], hesma_model[band_name], color="black", label=label)
+            # the line reaches each end of the axis, and the summary and the table give only the points that it shows
+            dfinrange = hesma_model.filter(is_in_range(timecolumn, args.timemin, args.timemax))
+            summaryfields, summaryparts, summarywarnings = get_peak_summary(
+                dfinrange[timecolumn], dfinrange[band_name], "mag", ismagnitude=True, isband=True
+            )
+            print_series_summary(
+                f"{band_name} {label}", summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows
+            )
+            if plottedpoints is not None:
+                plottedpoints.append(
+                    get_magnitude_table(
+                        label, None, label, None, ("band", band_name), dfinrange[timecolumn], dfinrange[band_name]
+                    )
+                )
             if residualseries is not None:
                 residualseries.append(
                     ResidualSeries(
@@ -1339,6 +1690,8 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
     # the filter pairs share bands, so integrate the bands of every pair once per direction bin
     bandnames = sorted({name for filters in args.colour_evolution for name in filters.split("-")})
     filterfunc = get_filterfunc(args)
+    dfcolours: list[pl.DataFrame] = []
+    dfrefcolours: list[pl.DataFrame] = []
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = get_model_name(modelpath)
@@ -1365,11 +1718,17 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
 
                 if filterfunc is not None:
                     colour_delta_mag = filterfunc(colour_delta_mag)
+                linelabel = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
+                dfcolours.append(
+                    get_magnitude_table(
+                        modelname, str(modelpath), linelabel, dirbin, ("colour", filters), plot_times, colour_delta_mag
+                    )
+                )
 
                 axes[plotnumber].plot(
                     plot_times,
                     colour_delta_mag,
-                    label=get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args),
+                    label=linelabel,
                     color=dirbincolor,
                     linestyle=args.linestyle[modelnumber],
                     linewidth=args.linewidth[modelnumber] or (4 if args.subplots else 3),
@@ -1388,6 +1747,9 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
                 ax,
                 plotnumber,
                 linewidth=args.linewidth[len(modelpaths) + refindex] or None,
+                plottedpoints=dfrefcolours,
+                timemin=args.timemin,
+                timemax=args.timemax,
             )
 
     for plotnumber, filters in enumerate(args.colour_evolution):
@@ -1408,6 +1770,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
 
     invert_magnitude_yaxis(ax)
 
+    output_data(args, {"": get_table_in_time_range([*dfcolours, *dfrefcolours], args)}, args.outputfile)
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 
@@ -1453,10 +1816,16 @@ def plot_lightcurve_from_refdata(
     ax: npt.NDArray[np.object_] | mplax.Axes,
     linewidth: float | None = None,
     residualseries: list[ResidualSeries] | None = None,
+    plottedpoints: list[pl.DataFrame] | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
+    summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label.
 
-    The points have no line, thus -linewidth sets the size of each marker.
+    The points have no line, thus -linewidth sets the size of each marker. plottedpoints takes the points of each band
+    in the form of get_magnitude_table, and summaryrows takes the fields of the summary line of each band. Only the
+    points from timemin to timemax go into the figure and plottedpoints.
     """
     lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"]
@@ -1468,7 +1837,9 @@ def plot_lightcurve_from_refdata(
         axis = axes[axnumber]
         if filter_name_raw == "bol":
             continue
-        dfband = get_dereddened_band_data(lightcurve_data, metadata, filter_name_raw, filterdir)
+        dfband = get_dereddened_band_data(lightcurve_data, metadata, filter_name_raw, filterdir).filter(
+            is_in_range("time", timemin, timemax)
+        )
 
         (refline,) = axis.plot(
             dfband["time"],
@@ -1479,6 +1850,28 @@ def plot_lightcurve_from_refdata(
             label=linename,
             color=color,
         )
+        summaryfields, summaryparts, summarywarnings = get_peak_summary(
+            dfband["time"], dfband["magnitude"], "mag", ismagnitude=True, isband=True
+        )
+        print_series_summary(
+            f"{filter_name_raw} {linename or lightcurvefilename}",
+            summaryparts,
+            summarywarnings,
+            fields=summaryfields,
+            summaryrows=summaryrows,
+        )
+        if plottedpoints is not None:
+            plottedpoints.append(
+                get_magnitude_table(
+                    linename or str(lightcurvefilename),
+                    None,
+                    linename or str(lightcurvefilename),
+                    None,
+                    ("band", filter_name_raw),
+                    dfband["time"],
+                    dfband["magnitude"],
+                )
+            )
         if residualseries is not None:
             residualseries.append(
                 ResidualSeries(
@@ -1500,10 +1893,14 @@ def plot_color_evolution_from_data(
     ax: npt.NDArray[np.object_] | mplax.Axes,
     plotnumber: int,
     linewidth: float | None = None,
+    plottedpoints: list[pl.DataFrame] | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
 ) -> None:
     """Plot the observed colour evolution between two bands, dereddened with CCM89.
 
-    The points have no line, thus -linewidth sets the size of each marker.
+    The points have no line, thus -linewidth sets the size of each marker. plottedpoints takes the points in the form
+    of get_magnitude_table. Only the points from timemin to timemax go into the figure and plottedpoints.
     """
     lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     filterdir = Path(get_path("artistools_dir"), "data/filters/")
@@ -1513,10 +1910,24 @@ def plot_color_evolution_from_data(
         for filter_name_raw in filter_names
     ]
 
-    merge_dataframes = filter_data[0].join(
-        filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left"
+    merge_dataframes = (
+        filter_data[0]
+        .join(filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left")
+        .filter(is_in_range("time", timemin, timemax))
     )
     axis = iter_axes(ax)[plotnumber]
+    if plottedpoints is not None:
+        plottedpoints.append(
+            get_magnitude_table(
+                metadata["label"] or str(lightcurvefilename),
+                None,
+                metadata["label"] or str(lightcurvefilename),
+                None,
+                ("colour", "-".join(filter_names)),
+                merge_dataframes["time"],
+                merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"],
+            )
+        )
     axis.plot(
         merge_dataframes["time"],
         merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"],
@@ -1674,13 +2085,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-colour_evolution", nargs="*", help="Plot the colour evolution of each pair of bands, e.g. B-V U-B"
     )
 
-    parser.add_argument("--print_data", action="store_true", help="Print plotted data")
-
-    parser.add_argument(
-        "--write_data",
-        action="store_true",
-        help="Save the band light curves of -filter and the statistics of -residual in text files",
-    )
+    addarg_data_output(parser)
 
     addarg_residuals(parser)
 
@@ -1895,7 +2300,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     resolve_plot_args(args)
     modelpaths = args.modelpath
-    outputfolder = args.outputfile.parent
 
     # determine if this will be a scatter plot or not
     if any(getattr(args, dest) for dest in PEAKMAGDESTS):
@@ -1925,15 +2329,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if args.filter:
-        make_band_lightcurves_plot(modelpaths, outputfolder, args)
+        make_band_lightcurves_plot(modelpaths, args)
 
     elif args.colour_evolution:
         colour_evolution_plot(modelpaths, args)
     else:
         fig, axis, thermaxis, residualaxis = make_plot_figure(args)
-        dfresidualstats = draw_plot(args, axis, thermaxis, residualaxis)
-        if args.write_data and dfresidualstats is not None:
-            write_residual_stats(dfresidualstats, args.outputfile)
+        output_data(args, draw_plot(args, axis, thermaxis, residualaxis), args.outputfile)
         save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 

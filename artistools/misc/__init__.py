@@ -3,6 +3,7 @@
 from artistools.misc.cliutils import addarg_action as addarg_action
 from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
 from artistools.misc.cliutils import addarg_darkmode as addarg_darkmode
+from artistools.misc.cliutils import addarg_data_output as addarg_data_output
 from artistools.misc.cliutils import addarg_dpi as addarg_dpi
 from artistools.misc.cliutils import addarg_figscale as addarg_figscale
 from artistools.misc.cliutils import addarg_filter as addarg_filter
@@ -43,6 +44,7 @@ from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
 from artistools.misc.cliutils import make_output_folder as make_output_folder
 from artistools.misc.cliutils import makelist as makelist
 from artistools.misc.cliutils import normalize_path_list as normalize_path_list
+from artistools.misc.cliutils import output_data as output_data
 from artistools.misc.cliutils import parse_cli_args as parse_cli_args
 from artistools.misc.cliutils import parse_float_range as parse_float_range
 from artistools.misc.cliutils import parse_range as parse_range
@@ -110,9 +112,11 @@ from artistools.misc.fileio import zopenpl as zopenpl
 from artistools.misc.general import df_filter_minmax_bracketed as df_filter_minmax_bracketed
 from artistools.misc.general import gaussian_filter_wrap as gaussian_filter_wrap
 from artistools.misc.general import import_optional as import_optional
+from artistools.misc.general import is_in_range as is_in_range
 from artistools.misc.general import parallel_map as parallel_map
 from artistools.misc.general import savgol_filter as savgol_filter
 from artistools.misc.modelinfo import get_artis_option as get_artis_option
+from artistools.misc.modelinfo import get_artis_options as get_artis_options
 from artistools.misc.modelinfo import get_artis_source_text as get_artis_source_text
 from artistools.misc.modelinfo import get_cellsofmpirank as get_cellsofmpirank
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping

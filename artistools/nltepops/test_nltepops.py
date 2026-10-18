@@ -651,3 +651,101 @@ def test_floers_multizone_populations_take_the_resolved_levels(
     )
     assert list(xarr) == list(range(dfresolved.height))
     assert np.isclose(yarr.sum(), float(dfresolved["n_NLTE"].sum()), rtol=1e-6)
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_nltepops_singletimestep_write_data_gives_the_plotted_series(
+    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The table has one row for each level of each subplot, and one column for each series of the subplots.
+
+    The reference file of Fe II holds three levels, thus the column of that series has no value at the other levels.
+    """
+    modeldir = tmp_path / "floersmodel"
+    make_model_with_floers_data(modeldir)
+    (modeldir / "level_pops_w7-247d.csv").unlink()
+    monkeypatch.chdir(tmp_path)
+
+    at.nltepops.plot(argsraw=[], modelpath=modeldir, outputfile=tmp_path / "pops.pdf", timestep=40, write_data=True)
+
+    dftable = pl.read_csv(tmp_path / "pops.txt", separator=" ", null_values="nan", comment_prefix="#")
+    columnoflabel = {
+        "LTE T$_e$": "n_LTE_T_e_per_cm3",
+        "LTE T$_R$": "n_LTE_T_R_per_cm3",
+        "Flörs NLTE": "n_Floers_per_cm3",
+        "ARTIS NLTE": "n_NLTE_per_cm3",
+        "Odd parity": "n_NLTE_per_cm3",
+    }
+    # each subplot is one ion, and the subplots draw in the order of the ions in the table
+    axesorder = list(dict.fromkeys(callargs.args[0] for callargs in mockplot.call_args_list))
+    ions = dftable["ion"].unique(maintain_order=True).to_list()
+    assert ions == ["Fe I", "Fe II", "Fe III", "Fe IV"]
+    assert len(axesorder) == len(ions)
+    for callargs in mockplot.call_args_list:
+        xarr, yarr = get_plot_xy(callargs)
+        (labelprefix,) = (prefix for prefix in columnoflabel if callargs.kwargs["label"].startswith(prefix))
+        dfsubplot = dftable.filter(pl.col("ion") == ions[axesorder.index(callargs.args[0])])
+        if labelprefix == "Odd parity":
+            dfsubplot = dfsubplot.filter(pl.col("odd_parity"))
+        dfseries = dfsubplot.filter(pl.col(columnoflabel[labelprefix]).is_not_null())
+        assert dfseries["level"].to_list() == xarr.astype(int).tolist()
+        assert np.allclose(dfseries[columnoflabel[labelprefix]].to_numpy(), yarr, rtol=1e-12, atol=0.0)
+
+    assert dftable.filter(pl.col("n_Floers_per_cm3").is_not_null())["ion"].unique().to_list() == ["Fe II"]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+@pytest.mark.parametrize(
+    ("xmode", "xcolumn", "timeargs"),
+    [("time", "time_days", {"timedays": "270-275", "cell": 0}), ("velocity", "vel_r_mid_kmps", {"timestep": 40})],
+)
+def test_nltepops_time_or_velocity_write_data_gives_the_plotted_series(
+    mockplot: mock.MagicMock, xmode: str, xcolumn: str, timeargs: dict[str, t.Any], tmp_path: Path
+) -> None:
+    """The table has one row for each point of each series, and the columns ion and level name the series.
+
+    Two models can have one name, thus the column modelpath names the model of each row.
+    """
+    at.nltepops.plot(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=tmp_path,
+        x=xmode,
+        ion_stages=[1, 2],
+        levels=[0, 1],
+        write_data=True,
+        **timeargs,
+    )
+
+    dftable = pl.read_csv(tmp_path / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dftable["modelpath"].unique().to_list() == [str(modelpath)]
+    serieskeys = [("Fe I", 0), ("Fe I", 1), ("Fe II", 0), ("Fe II", 1)]
+    assert len(mockplot.call_args_list) == len(serieskeys)
+    for callargs, (ion, level) in zip(mockplot.call_args_list, serieskeys, strict=True):
+        xarr, yarr = get_plot_xy(callargs)
+        dfseries = dftable.filter((pl.col("ion") == ion) & (pl.col("level") == level))
+        assert dfseries.height == len(xarr) > 0
+        assert np.allclose(dfseries[xcolumn].to_numpy(), xarr, rtol=1e-12, atol=0.0)
+        assert np.allclose(dfseries["n_NLTE_per_cm3"].to_numpy(), yarr, rtol=1e-12, atol=0.0)
+
+
+def test_nltepops_versus_time_write_data_gives_the_points_inside_xmax(tmp_path: Path) -> None:
+    """The table held the timesteps after -xmax."""
+    commonargs: dict[str, t.Any] = {
+        "modelpath": modelpath,
+        "x": "time",
+        "timedays": "270-290",
+        "cell": 0,
+        "ion_stages": [2],
+        "levels": [0],
+        "write_data": True,
+    }
+    at.nltepops.plot(argsraw=[], outputfile=tmp_path / "all", **commonargs)
+    dfall = pl.read_csv(tmp_path / "all" / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
+    times = dfall["time_days"].to_list()
+    assert len(times) > 3
+
+    at.nltepops.plot(argsraw=[], outputfile=tmp_path, xmax=(times[1] + times[2]) / 2, **commonargs)
+
+    dftable = pl.read_csv(tmp_path / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dftable["time_days"].to_list() == times[:2]

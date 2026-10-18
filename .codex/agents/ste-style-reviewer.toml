@@ -1,0 +1,12 @@
+# The custom agent of Codex for the review of English prose. Claude Code reads .claude/agents/ste-style-reviewer.md,
+# which holds the instructions, thus this file only points to it. The test test_codex_finds_the_claude_setup keeps
+# the two descriptions equal.
+name = "ste-style-reviewer"
+description = "Review English prose against ASD-STE100 (Simplified Technical English) and the British spellings of this repository. Use this agent after you write or change a comment, a docstring, a log string, a warning string, an error string, a commit message, a pull request description, or a markdown file. No linter in this project checks prose, thus this review is the only check. Give the agent the files or the diff to examine."
+# the agent reports problems, and it does not change files
+sandbox_mode = "read-only"
+developer_instructions = """
+Read the file .claude/agents/ste-style-reviewer.md at the root of the repository. Follow the instructions in the part
+of that file after its front matter. Those instructions name the tools of Claude Code, e.g. Read and Grep. Use the
+shell commands of Codex for the same work, e.g. cat, sed -n, and rg.
+"""

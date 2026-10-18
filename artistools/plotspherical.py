@@ -11,6 +11,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
+from matplotlib.collections import QuadMesh
 
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
@@ -19,6 +20,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.estimators import scan_estimators
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_maxpacketfiles
@@ -34,6 +36,7 @@ from artistools.misc import format_frame_path
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_timestep_times
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import parse_range_list
 from artistools.misc import print_theta_phi_definitions
@@ -47,6 +50,9 @@ from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import FIGWIDTH_INCHES
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
+
+if t.TYPE_CHECKING:
+    from artistools.misc import FrameSet
 
 DEFAULT_PLOTVARS = ("luminosity", "emvelocityoverc", "emlosvelocityoverc")
 
@@ -394,6 +400,103 @@ def plot_spherical(
     return fig, axes
 
 
+def get_map_table(axes: t.Any, plotvars: Sequence[str], nphibins: int, timerange: tuple[float, float]) -> pl.DataFrame:
+    """Return one row for each pixel of the maps of one time range, with one column for each plot variable.
+
+    The table reads the mesh of each map from its axes, thus it holds the values after -gaussian_sigma. A bin with no
+    value, which the map leaves blank, gives a null value. The longitude is the horizontal coordinate of the map, from
+    -pi to +pi with phi = 0 at the centre. --phireverse changes its sign. The cos theta edges give the vertical
+    coordinate, because the latitude of the map is arcsin(cos theta).
+    """
+    _, column_phibins = get_map_columns(nphibins)
+    valuecolumns: dict[str, npt.NDArray[np.float64]] = {}
+    pixeledges: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None = None
+    for ax, plotvar in zip(axes, plotvars, strict=False):
+        colormesh = next(artist for artist in ax.collections if isinstance(artist, QuadMesh))
+        values = np.ma.filled(np.ma.asarray(colormesh.get_array(), dtype=np.float64), np.nan)
+        match plotvar:
+            case "luminosity":
+                colname = "luminosity_erg_per_s"
+            case "temperature" | "temperature_sigma":
+                colname = f"{plotvar}_K"
+            case s if s.startswith("nnelement_"):
+                colname = f"{plotvar}_per_cm3"
+            case _:
+                colname = plotvar
+        valuecolumns[colname] = values.ravel()
+        if pixeledges is None:
+            vertices = np.asarray(colormesh.get_coordinates(), dtype=np.float64)
+            pixeledges = (vertices[0, :, 0], vertices[:, 0, 1])
+
+    assert pixeledges is not None
+    longitude_edges, latitude_edges = pixeledges
+    nrows, ncolumns = len(latitude_edges) - 1, len(longitude_edges) - 1
+    rowindex, columnindex = np.divmod(np.arange(nrows * ncolumns), ncolumns)
+    costheta_edges = np.sin(latitude_edges)
+    return pl.DataFrame({
+        "timemin_days": np.full(nrows * ncolumns, timerange[0]),
+        "timemax_days": np.full(nrows * ncolumns, timerange[1]),
+        "costhetabin": rowindex,
+        "phibinmonotonicasc": column_phibins[columnindex],
+        "costheta_lower": costheta_edges[rowindex],
+        "costheta_upper": costheta_edges[rowindex + 1],
+        "longitude_lower_rad": np.minimum(longitude_edges[columnindex], longitude_edges[columnindex + 1]),
+        "longitude_upper_rad": np.maximum(longitude_edges[columnindex], longitude_edges[columnindex + 1]),
+        **valuecolumns,
+    }).fill_nan(None)
+
+
+def write_frames(
+    args: argparse.Namespace,
+    dfdirbins: pl.DataFrame,
+    condition: str,
+    time_ranges: Sequence[tuple[float | None, float | None, str]],
+    timeranges: Sequence[tuple[float, float]],
+    frameset: "FrameSet",
+    outformat: str,
+) -> tuple[list[str], list[pl.DataFrame]]:
+    """Draw and save the figure of each time range, and return the paths of the frames and the tables of the maps.
+
+    The tables are empty unless --print_data or --write_data asks for them.
+    """
+    makestables = getattr(args, "print_data", False) or getattr(args, "write_data", False)
+    outputfilenames: list[str] = []
+    dfmaptables: list[pl.DataFrame] = []
+    for timebin, ((_tstart, _tend, label), timerange) in enumerate(zip(time_ranges, timeranges, strict=True)):
+        # the resolved range, not the requested one: resolve_time_range replaces a bound that the
+        # command line left open, thus a requested bound can be absent and can name another time
+        print(f"Plotting spherical map for {timerange[0]:.2f}-{timerange[1]:.2f} days {label}")
+        fig, axes = plot_spherical(
+            dfdirbins.filter(pl.col("timebin") == timebin),
+            plotvars=args.plotvars,
+            nphibins=args.nphibins,
+            ncosthetabins=args.ncosthetabins,
+            gaussian_sigma=args.gaussian_sigma,
+            cmap=args.cmap,
+            figscale=args.figscale,
+            phireverse=args.phireverse,
+        )
+        if makestables:
+            dfmaptables.append(get_map_table(axes, args.plotvars, args.nphibins, timerange))
+
+        timemindays, timemaxdays = timerange
+        if not args.notitle:
+            axes[0].set_title(
+                f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
+            )
+
+        outfilename = format_frame_path(
+            frameset.frametemplate, timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat
+        )
+
+        # the suffix of the file name sets the format. The default name takes the suffix of -format
+        save_figure(fig, outfilename, dpi=args.dpi, pad_inches=0.0, args=args, isframe=frameset.combines)
+
+        outputfilenames.append(outfilename)
+
+    return outputfilenames, dfmaptables
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, default=Path())
@@ -450,6 +553,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_darkmode(parser)
     addarg_verbose(parser)
     addarg_dpi(parser, default=300)
+    addarg_data_output(parser)
 
     parser.add_argument("--phireverse", action="store_true", help="Reverse the phi direction")
 
@@ -540,35 +644,10 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         plotvars=args.plotvars,
     )
 
-    outputfilenames = []
-    for timebin, ((_tstart, _tend, label), timerange) in enumerate(zip(time_ranges, timeranges, strict=True)):
-        # the resolved range, not the requested one: resolve_time_range replaces a bound that the
-        # command line left open, thus a requested bound can be absent and can name another time
-        print(f"Plotting spherical map for {timerange[0]:.2f}-{timerange[1]:.2f} days {label}")
-        fig, axes = plot_spherical(
-            dfdirbins.filter(pl.col("timebin") == timebin),
-            plotvars=args.plotvars,
-            nphibins=args.nphibins,
-            ncosthetabins=args.ncosthetabins,
-            gaussian_sigma=args.gaussian_sigma,
-            cmap=args.cmap,
-            figscale=args.figscale,
-            phireverse=args.phireverse,
-        )
-
-        timemindays, timemaxdays = timerange
-        if not args.notitle:
-            axes[0].set_title(
-                f"{timemindays:.2f}-{timemaxdays:.2f} days{f' ({condition})' if condition else ''}", loc="left", pad=0
-            )
-
-        outfilename = format_frame_path(
-            frameset.frametemplate, timemindays=timemindays, timemaxdays=timemaxdays, outformat=outformat
-        )
-
-        # the suffix of the file name sets the format. The default name takes the suffix of -format
-        save_figure(fig, outfilename, dpi=args.dpi, pad_inches=0.0, args=args, isframe=frameset.combines)
-
-        outputfilenames.append(outfilename)
-
-    frameset.finish(outputfilenames, args)
+    outputfilenames, dfmaptables = write_frames(
+        args, dfdirbins, condition, time_ranges, timeranges, frameset, outformat
+    )
+    productpath = frameset.finish(outputfilenames, args)
+    if dfmaptables:
+        # every frame has the same grid, thus one table holds the maps of all the frames
+        output_data(args, {"": pl.concat(dfmaptables)}, productpath or outputfilenames[0])

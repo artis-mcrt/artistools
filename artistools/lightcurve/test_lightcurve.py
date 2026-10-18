@@ -2,6 +2,7 @@ import argparse
 import dataclasses as dc
 import gzip
 import lzma
+import re
 import shlex
 import shutil
 import typing as t
@@ -174,13 +175,25 @@ def test_lightcurve_of_a_virtual_observer_keeps_the_vpkt_window_and_ranges(
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
 def test_lightcurve_plot_reflightcurves_keep_their_errorbars(mockerrorbar: mock.MagicMock) -> None:
-    """Reference light curves keep their error bars by either route, the model path list or -reflightcurves."""
+    """Reference light curves keep their error bars by either route, the model path list or -reflightcurves.
+
+    --write_data gave no table, because the table held only the ARTIS light curves.
+    """
     at.lightcurve.plot(
         argsraw=[],
         modelpath=["AT2017gfo_waxmanetal2018.txt"],
         reflightcurves=["AT2017gfo_smarttetal2017.txt"],
         outputfile=Path(outputpath, "lightcurve_reflightcurves.pdf"),
+        write_data=True,
     )
+    dftable = pl.read_csv(
+        Path(outputpath, "lightcurve_reflightcurves.txt"), separator=" ", null_values="nan", comment_prefix="#"
+    )
+    assert dftable["model"].unique(maintain_order=True).to_list() == [
+        "AT2017gfo (Waxman+2018)",
+        "AT2017gfo (Smartt+2017)",
+    ]
+    assert dftable["escape_type"].unique().to_list() == ["reference"]
 
     # one call for the reference light curve given as a model path, one for the -reflightcurves file
     assert mockerrorbar.call_count == 2
@@ -351,9 +364,36 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
         "outputfile": tmp_path,
     }
     at.lightcurve.plot(argsraw=[], save_viewing_angle_peakmag_risetime_delta_m15_to_file=True, **commonargs)
-    at.lightcurve.plot(argsraw=[], make_viewing_angle_peakmag_risetime_scatter_plot=True, **commonargs)
+    at.lightcurve.plot(argsraw=[], make_viewing_angle_peakmag_risetime_scatter_plot=True, write_data=True, **commonargs)
 
     assert list(tmp_path.glob("*risetime_peakmag.pdf"))
+    # the scatter plot wrote no table, because main returned before output_data
+    (tablepath,) = tmp_path.glob("*risetime_peakmag.txt")
+    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
+    # the row of the angle average holds the half widths of its error bars, which a direction bin does not have
+    assert dftable.columns == [
+        "model",
+        "modelpath",
+        "label",
+        "dirbin",
+        "risetime_days",
+        "peakmag",
+        "risetime_days_err",
+        "peakmag_err",
+    ]
+    # the data file of a run with no -plotviewingangle holds the angle average, which is the direction bin -1
+    assert dftable["dirbin"].to_list() == [-1, -1]
+
+    # --noangleaveraged hides the point of the angle average, and its error bars keep it as their centre
+    at.lightcurve.plot(
+        argsraw=[],
+        make_viewing_angle_peakmag_risetime_scatter_plot=True,
+        noangleaveraged=True,
+        write_data=True,
+        **commonargs,
+    )
+    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
+    assert dftable["dirbin"].to_list() == [-1, -1]
 
 
 @mock.patch.object(mplax.Axes, "scatter", side_effect=mplax.Axes.scatter, autospec=True)
@@ -378,9 +418,15 @@ def test_viewing_angle_scatter_plot_colours_each_direction_bin_of_the_data_file(
         "make_viewing_angle_peakmag_risetime_scatter_plot": True,
         "colorbarcostheta": True,
     }
-    at.lightcurve.plot(argsraw=[], plotviewingangle=[0, 10], **scatterplotargs, **commonargs)
+    at.lightcurve.plot(argsraw=[], plotviewingangle=[0, 10], write_data=True, **scatterplotargs, **commonargs)
 
     assert list(tmp_path.glob("*risetime_peakmag.pdf"))
+    # the table gave the direction bins 0 and 1 for the rows of the bins 0 and 10
+    (tablepath,) = tmp_path.glob("*risetime_peakmag.txt")
+    assert pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")["dirbin"].to_list()[:2] == [
+        0,
+        10,
+    ]
     dirbincolors = mockscatter.call_args_list[0].kwargs["color"]
     assert len(dirbincolors) == 2
     assert not np.allclose(dirbincolors[0], dirbincolors[1]), "the two cos(theta) bins share a colour"
@@ -793,7 +839,12 @@ def test_hesma_lightcurve_on_a_grid_with_more_panels_than_bands(tmp_path: Path) 
     hesmafile.write_text("# t U B V R\n1.0 1.0 2.0 3.0 4.0\n5.0 5.0 6.0 7.0 8.0\n", encoding="utf-8")
     fig, axesgrid = plt.subplots(2, 3)
     axes = list(axesgrid.flatten())
-    plot_hesma_lightcurve(axes, ["U", "B", "V", "R"], argparse.Namespace(plot_hesma_model=str(hesmafile)), None)
+    plot_hesma_lightcurve(
+        axes,
+        ["U", "B", "V", "R"],
+        argparse.Namespace(plot_hesma_model=str(hesmafile), timemin=None, timemax=None),
+        None,
+    )
 
     assert [len(axis.get_lines()) for axis in axes] == [1, 1, 1, 1, 0, 0]
     assert np.allclose(np.asarray(axes[3].get_lines()[0].get_ydata(), dtype=float), [4.0, 8.0])
@@ -1239,6 +1290,7 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: mock.MagicMock) -> No
         reflightcurves=[REFLIGHTCURVE],
         magnitude=True,
         outputfile=outputpath / "lc_reflightcurves_arg.pdf",
+        write_data=True,
     )
 
     dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(REFLIGHTCURVE)
@@ -1256,6 +1308,17 @@ def test_reflightcurves_arg_draws_error_bars(mockerrorbar: mock.MagicMock) -> No
     )
     assert np.allclose(yerr[0], expected[0])
     assert np.allclose(yerr[1], expected[1])
+
+    # the table gave the error sizes in erg/s, and the figure draws them in magnitudes with the sides swapped
+    dftable = pl.read_csv(
+        outputpath / "lc_reflightcurves_arg.txt",
+        separator=" ",
+        null_values="nan",
+        comment_prefix="#",
+        infer_schema_length=None,
+    ).filter(pl.col("escape_type") == "reference")
+    assert np.allclose(dftable["mag_errlower"], yerr[0], rtol=1e-6, atol=0)
+    assert np.allclose(dftable["mag_errupper"], yerr[1], rtol=1e-6, atol=0)
 
 
 @pytest.mark.parametrize(
@@ -1702,6 +1765,20 @@ def test_band_plot_colorbar_keeps_the_labels_it_does_not_name(mockplot: mock.Mag
     assert labels.count("My model") == 1, "the legend gives a custom -label one time only"
 
 
+def test_colorbar_direction_bin_warns_of_hidden_values(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A direction bin of a colour bar has no legend entry, and the check of the hidden values skipped its line."""
+    at.lightcurve.plot(
+        argsraw=["-ymax", "1e30"],
+        modelpath=[modelpath_classic_3d],
+        plotviewingangle=[0],
+        colorbarcostheta=True,
+        outputfile=tmp_path,
+    )
+    assert re.search(
+        r"does not show these values of '[^']*direction bin 0': values above the top", capsys.readouterr().err
+    )
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotcmf_leaves_the_next_direction_bin_alone(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """The comoving frame curve is thin and dashed, and the next direction bin keeps the rest-frame style.
@@ -1805,7 +1882,16 @@ def test_lightcurve_print_data_survives_quiet(capsys: pytest.CaptureFixture[str]
     # a script reads the product, thus no progress message may stand around it
     assert "====>" not in withdata
     assert "Reading " not in withdata
-    assert withdata.lstrip().startswith("shape:")
+    # the polars display of a table shows only ten rows, thus the product is the table as text with every row
+    # an empty line separates the table of the light curve from the table _summary of the summary lines
+    curvetext, summarytext = withdata.split("\n\n")
+    datalines = curvetext.splitlines()
+    assert datalines[0].startswith("model modelpath escape_type dirbin time_days ")
+    # the figure draws only the valid range of the light curve, thus the table gives only these timesteps
+    assert 10 < len(datalines) - 1 < len(at.get_timestep_times(modelpath))
+    assert all(line.endswith(" true") for line in datalines[1:])
+    assert summarytext.splitlines()[0].startswith("series point_count ")
+    assert len(summarytext.splitlines()) == 2
 
 
 def test_lightcurve_reference_data_takes_a_day_range(tmp_path: Path) -> None:
@@ -2122,7 +2208,7 @@ def test_bolometric_residual_accepts_a_baseline_with_one_observation(tmp_path: P
             write_data=True,
             outputfile=tmp_path / "residual.pdf",
         )
-    stats = pl.read_csv(tmp_path / "residual_residuals.csv")
+    stats = pl.read_csv(tmp_path / "residual_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert stats["npoints"].item() == 1
     assert np.isclose(stats["rms"].item(), 2.0)
     line = mockdraw.call_args.args[0].lines[0]
@@ -2156,7 +2242,7 @@ def test_bolometric_residual_panel_gives_the_rms_residual(tmp_path: Path, refisp
         write_data=True,
         outputfile=tmp_path / "bolresiduals.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "bolresiduals_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "bolresiduals_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfstats["reference"].item() == "fake bolometric"
     fullmodel = (
         at.lightcurve
@@ -2287,7 +2373,7 @@ def test_lightcurve_residual_panel_compares_two_models(tmp_path: Path, filternam
         write_data=True,
         outputfile=tmp_path / "models.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "models_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "models_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfstats["model"].item() == "comparison"
     assert dfstats["reference"].item() == "baseline"
     assert np.isclose(dfstats["rms"].item(), 0.0)
@@ -2306,7 +2392,7 @@ def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path, f
         write_data=True,
         outputfile=tmp_path / "selected.pdf",
     )
-    stats = pl.read_csv(tmp_path / "selected_residuals.csv")
+    stats = pl.read_csv(tmp_path / "selected_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert stats["model"].to_list() == ["comparison"]
     assert stats["reference"].to_list() == ["baseline"]
     assert np.isclose(stats["rms"].item(), 0.0)
@@ -2330,7 +2416,7 @@ def test_residual_baseline_counts_gamma_lightcurves(tmp_path: Path, rpkt: bool, 
     labels = [r"model1 $\gamma$", r"model2 $\gamma$"]
     if rpkt:
         labels = ["model1", labels[0], "model2", labels[1]]
-    dfstats = pl.read_csv(tmp_path / "gamma_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "gamma_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfstats["reference"].to_list() == [labels[baselineindex]] * (len(labels) - 1)
     assert dfstats["model"].to_list() == [label for index, label in enumerate(labels) if index != baselineindex]
     assert (dfstats["npoints"] > 0).all()
@@ -2358,7 +2444,7 @@ def test_residual_baseline_counts_comoving_frame_curves(tmp_path: Path, modelcou
         assert np.allclose(residualseries.x, line.get_xdata())
         assert np.allclose(residualseries.y, line.get_ydata())
         assert residualseries.color == line.get_color()
-    dfstats = pl.read_csv(tmp_path / "cmf_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "cmf_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfstats.height == len(series) - 1
     assert dfstats["reference"].to_list() == [series[baselineindex].label] * dfstats.height
     baseline = series[baselineindex]
@@ -2422,7 +2508,7 @@ def test_residual_baseline_counts_energy_rate_curves(
     rateline = mockdraw.call_args.args[1].lines[1]
     assert series[1].label == rateline.get_label()
     assert series[1].color == rateline.get_color()
-    dfstats = pl.read_csv(tmp_path / "rates_residuals.csv")
+    dfstats = pl.read_csv(tmp_path / "rates_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfstats["reference"].to_list() == [series[baselineindex].label] * 2
     assert dfstats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
     assert (dfstats["npoints"] > 0).all()
@@ -2462,11 +2548,53 @@ def test_residual_baseline_counts_hesma_curve(
     assert np.allclose(series[2].x, [265.0, 280.0, 300.0])
     assert np.allclose(series[2].y, [-13.5, -13.0, -12.5])
     assert series[2].color == axis.lines[-1].get_color()
-    stats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
+    stats = pl.read_csv(
+        tmp_path / "plotBlightcurves_residuals.txt", separator=" ", null_values="nan", comment_prefix="#"
+    )
     assert stats["reference"].to_list() == [series[baselineindex].label] * 2
     assert stats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
     assert (stats["npoints"] > 0).all()
     assert stats["rms_relative"].null_count() == 2
+    # the band table held only the bands of the models
+    dfbands = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dfbands["model"].unique(maintain_order=True).to_list() == ["TEST MODEL", "reference", "hesma"]
+    assert np.allclose(dfbands.filter(pl.col("model") == "hesma")["magnitude"], [-13.5, -13.0, -12.5])
+
+
+def test_band_reference_table_has_only_the_time_range(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The band table of a reference curve and of a HESMA curve holds only the points that the axis shows.
+
+    The band of a reference curve also gave no summary line, and a model band did.
+    """
+    monkeypatch.chdir(tmp_path)
+    hesmafile = tmp_path / "hesma.dat"
+    hesmafile.write_text("# time B\n265 -13.5\n280 -13\n300 -12.5\n", encoding="utf-8")
+    refdata = pl.DataFrame({"band": ["B"] * 3, "time": [265.0, 280.0, 300.0], "magnitude": [-13.0, -12.5, -12.0]})
+    with mock.patch.object(
+        at.lightcurve.plotlightcurve, "read_reflightcurve_band_data", return_value=(refdata, {"label": "reference"})
+    ):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath],
+            filter=["B"],
+            reflightcurves=["reference.dat"],
+            plot_hesma_model=hesmafile,
+            timemin=270.0,
+            timemax=290.0,
+            write_data=True,
+            outputfile=tmp_path,
+        )
+    dfbands = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dfbands.filter(pl.col("model") == "reference")["time_days"].to_list() == [280.0]
+    assert dfbands.filter(pl.col("model") == "hesma")["time_days"].to_list() == [280.0]
+    output = capsys.readouterr().out
+    assert (
+        "B reference: 1 points from 280 to 280 d, peak -12.5 mag at 280 d (brightest point in the time range)" in output
+    )
+    # the HESMA band gave no summary line either
+    assert "B hesma: 1 points from 280 to 280 d, peak -13 mag at 280 d (brightest point in the time range)" in output
 
 
 @pytest.mark.parametrize("residualtype", [None, "absolute", "relative", "relativelog"])
@@ -2497,7 +2625,9 @@ def test_band_residual_panel_takes_one_filter(
         )
         # a fainter model lies below the reference in the main frame, thus it must also lie below zero in the panel
         assert all(axis.yaxis_inverted() for axis in mocksave.call_args.args[0].axes)
-        dfstats = pl.read_csv(tmp_path / "plotBlightcurves_residuals.csv")
+        dfstats = pl.read_csv(
+            tmp_path / "plotBlightcurves_residuals.txt", separator=" ", null_values="nan", comment_prefix="#"
+        )
         assert dfstats["npoints"].item() > 3
         assert dfstats["rms"].item() > 0.0
         # a ratio to a mean magnitude has no meaning
@@ -3035,8 +3165,89 @@ def test_direction_bins_of_a_model_with_no_direction_file_give_a_warning(
     assert mockplot.call_args.kwargs["label"] == "TEST MODEL"
 
 
-def test_band_data_files_of_several_models_hold_the_model_name(tmp_path: Path) -> None:
-    """--write_data writes one band file for each model. The second model overwrote the file of the first model."""
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_lightcurve_data_gives_the_filtered_curve_and_the_energy_rates(
+    mockplot: mock.MagicMock, tmp_path: Path
+) -> None:
+    """The table took the light curve before -filtersavgol, and it held no curve of -deposition."""
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        filtersavgol=["5", "3"],
+        deposition=["gamma"],
+        write_data=True,
+        outputfile=tmp_path / "lc.pdf",
+    )
+    dflc = pl.read_csv(tmp_path / "lc.txt", separator=" ", null_values="nan", comment_prefix="#")
+    modelname = at.get_model_name(modelpath_classic_3d)
+    modelcall = next(call for call in mockplot.call_args_list if call.kwargs.get("label") == modelname)
+    dfdrawn = pl.DataFrame({
+        "time_days": np.asarray(modelcall.args[1], dtype=np.float64),
+        "drawn": np.asarray(modelcall.args[2], dtype=np.float64),
+    })
+    dfcompared = dfdrawn.join(dflc.select("time_days", "luminosity_erg/s"), on="time_days", how="inner")
+    assert dfcompared.height == dfdrawn.height
+    # the line shows only the range of validity, and the table held the hidden rows outside it
+    assert dflc["in_valid_range"].all()
+    assert dflc["time_days"].to_list() == dfdrawn["time_days"].to_list()
+    assert np.allclose(dfcompared["luminosity_erg/s"], dfcompared["drawn"], rtol=1e-6, atol=0)
+
+    dfrates = pl.read_csv(tmp_path / "lc_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dfrates["quantity"].unique().to_list() == ["gammadep_Lsun"]
+    assert dfrates["unit"].unique().to_list() == ["erg/s"]
+    assert dfrates["model"].unique().to_list() == [modelname]
+
+    # the table held the rates after -timemax
+    ratetimes = dfrates["time_days"].to_list()
+    timemax = (ratetimes[2] + ratetimes[3]) / 2
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d],
+        deposition=["gamma"],
+        timemax=timemax,
+        write_data=True,
+        outputfile=tmp_path / "lcclipped.pdf",
+    )
+    dfclipped = pl.read_csv(
+        tmp_path / "lcclipped_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#"
+    )
+    # the line goes to the first time after -timemax, and the table takes the times up to -timemax
+    assert dfclipped["time_days"].to_list() == ratetimes[:3]
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_band_and_colour_data_give_the_filtered_magnitudes(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """The band table took the magnitudes before -filtermovingavg, and the colour plot wrote no table."""
+
+    def table_is_drawn(tablename: str, valuecolumn: str) -> bool:
+        dftable = pl.read_csv(tmp_path / tablename, separator=" ", null_values="nan", comment_prefix="#")
+        drawnvalues = [np.asarray(call.args[2], dtype=np.float64) for call in mockplot.call_args_list]
+        mockplot.reset_mock()
+        return any(
+            len(values) == dftable.height and np.allclose(values, dftable[valuecolumn], rtol=1e-6, atol=0)
+            for values in drawnvalues
+        )
+
+    commonoptions: dict[str, t.Any] = {
+        "modelpath": [modelpath],
+        "timemin": 250,
+        "timemax": 300,
+        "filtermovingavg": 3,
+        "write_data": True,
+        "outputfile": tmp_path,
+    }
+    at.lightcurve.plot(argsraw=[], filter=["B"], **commonoptions)
+    assert table_is_drawn("plotBlightcurves.txt", "magnitude")
+    at.lightcurve.plot(argsraw=[], colour_evolution=["B-V"], **commonoptions)
+    assert table_is_drawn("plotcolorevolutionB-V.txt", "colour_mag")
+
+
+def test_band_data_of_several_models_names_the_model_of_each_row(tmp_path: Path) -> None:
+    """--write_data writes one table for all the models.
+
+    The old code wrote one file for each model, and the second model replaced the file of the first model. Two models
+    can also have one name, thus the table gives the model path and the -label of each row.
+    """
     modelcopy = tmp_path / "secondmodel"
     modelcopy.mkdir()
     for filepath in modelpath.iterdir():
@@ -3047,14 +3258,56 @@ def test_band_data_files_of_several_models_hold_the_model_name(tmp_path: Path) -
         argsraw=[],
         modelpath=[modelpath, modelcopy],
         filter=["B"],
+        label=["first", "second"],
         timemin=290,
         timemax=300,
         write_data=True,
         outputfile=outputfolder,
     )
-    assert sorted(path.name for path in outputfolder.glob("band_*.txt")) == [
-        "band_B_TEST MODEL.txt",
-        "band_B_secondmodel.txt",
+    dfbands = pl.read_csv(outputfolder / "plotBlightcurves.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert sorted(dfbands["model"].unique()) == ["TEST MODEL", "secondmodel"]
+    assert dict(dfbands.select("modelpath", "label").unique().iter_rows()) == {
+        str(modelpath): "first",
+        str(modelcopy): "second",
+    }
+    assert dfbands["band"].unique().to_list() == ["B"]
+
+
+def test_viewing_angle_data_names_keep_two_models_of_one_name_apart(tmp_path: Path) -> None:
+    """Two models of one name wrote one data file, thus the scatter plot showed the second model two times."""
+    from artistools.lightcurve.viewingangleanalysis import get_viewing_angle_data_names
+
+    folders = [tmp_path / "a" / "run1" / "model", tmp_path / "b" / "run1" / "model", tmp_path / "c" / "other"]
+    for folder in folders:
+        folder.mkdir(parents=True)
+    assert get_viewing_angle_data_names(folders) == ["model (a/run1)", "model (b/run1)", "other"]
+    # one folder given two times gives the same data two times
+    assert get_viewing_angle_data_names([folders[0], folders[0]]) == ["model", "model"]
+    # a plotlabel.txt can give one name to two sibling folders, thus their own folder names tell them apart
+    siblings = [tmp_path / "runs" / "a", tmp_path / "runs" / "b"]
+    for sibling in siblings:
+        sibling.mkdir(parents=True)
+        (sibling / "plotlabel.txt").write_text("same label\n", encoding="utf-8")
+    assert get_viewing_angle_data_names(siblings) == ["same label (a)", "same label (b)"]
+
+    modelcopies = [tmp_path / name / modelpath_classic_3d.name for name in ("first", "second")]
+    for modelcopy in modelcopies:
+        modelcopy.mkdir(parents=True)
+        for filepath in modelpath_classic_3d.iterdir():
+            (modelcopy / filepath.name).symlink_to(filepath)
+    outputfolder = tmp_path / "out"
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelcopies,
+        plotviewingangle=[0],
+        save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
+        timemin=3.2,
+        timemax=7.5,
+        outputfile=outputfolder,
+    )
+    assert sorted(path.name for path in outputfolder.glob("*_viewing_angle_data.txt")) == [
+        f"lightcurveband_{modelpath_classic_3d.name} (first)_viewing_angle_data.txt",
+        f"lightcurveband_{modelpath_classic_3d.name} (second)_viewing_angle_data.txt",
     ]
 
 
@@ -3073,7 +3326,7 @@ def test_band_name_with_an_instrument_folder_gives_valid_file_names(tmp_path: Pa
         outputfile=tmp_path,
     )
     assert (tmp_path / "plotNOT_Blightcurves.pdf").is_file()
-    assert (tmp_path / "band_NOT_B.txt").is_file()
+    assert (tmp_path / "plotNOT_Blightcurves.txt").is_file()
 
     args = at.misc.parse_cli_args(
         at.lightcurve.plotlightcurve.addargs, None, None, [str(modelpath), "-colour_evolution", "NOT/B-NOT/V"]
@@ -3395,3 +3648,148 @@ def test_viewer_direction_removes_the_packets_that_it_gave_to_the_observers() ->
     viewer = interactive.LightCurveViewer([str(vpktmodelpath), "-plotvspecpol", "0", "--interactive"], mplfig.Figure())
     assert viewer.values.frompackets
     assert not viewer.set_direction(viewer.values, alldirections).frompackets
+
+
+def test_viewing_angle_table_gives_no_bin_that_the_file_does_not_name(capsys: pytest.CaptureFixture[str]) -> None:
+    """An old data file of the bins 5 and 10 has no dirbin column, and the table named its rows the bins 0 and 1."""
+    from artistools.lightcurve.viewingangleanalysis import get_table_dirbins
+
+    args = argparse.Namespace(
+        plotvspecpol=None, plotviewingangle=None, average_over_phi_angle=False, average_over_theta_angle=False
+    )
+    dfdata = pl.DataFrame({"peakmag": [-15.0, -15.5]})
+    assert get_table_dirbins(dfdata, Path("old_viewing_angle_data.txt"), args) == [None, None]
+    assert "has no dirbin column" in capsys.readouterr().err
+    args.plotviewingangle = [5, 10]
+    assert get_table_dirbins(dfdata, Path("old_viewing_angle_data.txt"), args) == [5, 10]
+
+
+def test_lightcurve_tables_keep_two_models_of_one_name_apart(tmp_path: Path) -> None:
+    """Two models of one name gave one value of the column model, and the filter took their rates for one line.
+
+    The table of the light curves also gave the name alone, thus its rows had no model path and no -label.
+    """
+    modelcopy = tmp_path / "copy" / modelpath_classic_3d.name
+    modelcopy.mkdir(parents=True)
+    for filepath in modelpath_classic_3d.iterdir():
+        (modelcopy / filepath.name).symlink_to(filepath)
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=[modelpath_classic_3d, modelcopy],
+        label=["first", "second"],
+        deposition=["gamma"],
+        write_data=True,
+        outputfile=tmp_path / "lc.pdf",
+    )
+    dflightcurves = pl.read_csv(tmp_path / "lc.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dflightcurves["model"].n_unique() == 1
+    assert dict(dflightcurves.select("modelpath", "label").unique().iter_rows()) == {
+        str(modelpath_classic_3d): "first",
+        str(modelcopy): "second",
+    }
+    dfrates = pl.read_csv(tmp_path / "lc_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dfrates["model"].n_unique() == 1
+    assert sorted(dfrates["modelpath"].unique().to_list()) == sorted([str(modelpath_classic_3d), str(modelcopy)])
+    assert len(set(dfrates.group_by("modelpath").len()["len"].to_list())) == 1
+
+
+def test_peak_summary_sorts_the_times_of_a_reference_file() -> None:
+    """A reference file can list its points in any order, and np.interp of Δm15 needs increasing times."""
+    from artistools.lightcurve.plotlightcurve import get_peak_summary
+
+    times = np.array([30.0, 10.0, 0.0, 20.0, 40.0, 5.0])
+    magnitudes = -15.0 + 0.1 * np.abs(times - 10.0)
+    sortedfields, sortedparts, _ = get_peak_summary(
+        np.sort(times), magnitudes[np.argsort(times)], "mag", ismagnitude=True, isband=True
+    )
+    fields, parts, warnings = get_peak_summary(times, magnitudes, "mag", ismagnitude=True, isband=True)
+    assert parts == sortedparts
+    assert fields == sortedfields
+    assert "Δm15 1.5 mag" in parts[2]
+    assert np.isclose(fields["deltam15_mag"], 1.5)
+    # the peak at 10 d is the third point in time, thus it is not at an end
+    assert not warnings
+
+
+def test_peak_summary_warns_about_the_peak_of_a_short_curve() -> None:
+    """Each point of a curve of four points is in the first two or the last two, and no warning of an end came."""
+    from artistools.lightcurve.plotlightcurve import get_peak_summary
+
+    _, _, warnings = get_peak_summary([1.0, 2.0, 3.0, 4.0], [1.0, 3.0, 2.0, 1.0], "erg/s", ismagnitude=False)
+    assert any("the true peak can be outside the time range" in warning for warning in warnings)
+
+
+def test_peak_summary_gives_no_deltam15_across_a_missing_magnitude() -> None:
+    """A NaN magnitude near 15 days after the peak left the finite points, and np.interp then bridged the gap."""
+    from artistools.lightcurve.plotlightcurve import get_peak_summary
+
+    times = np.array([0.0, 10.0, 20.0, 25.0, 30.0, 40.0])
+    magnitudes = np.array([-14.0, -15.0, -14.5, np.nan, -14.0, -13.5])
+    fields, parts, _ = get_peak_summary(times, magnitudes, "mag", ismagnitude=True, isband=True)
+
+    assert fields["deltam15_mag"] is None
+    assert "no Δm15, because the magnitude has no value between 20 and 30 d" in parts[2]
+
+    # a band with no flux at a time leaves out that time, and the caller gives it as a gap
+    hasvalue = np.isfinite(magnitudes)
+    fields, parts, _ = get_peak_summary(
+        times[hasvalue], magnitudes[hasvalue], "mag", ismagnitude=True, isband=True, gaptimes=[25.0]
+    )
+    assert fields["deltam15_mag"] is None
+    assert "no Δm15, because the magnitude has no value between 20 and 30 d" in parts[2]
+
+
+def test_katz_integral_leaves_out_a_missing_luminosity() -> None:
+    """A null or NaN luminosity counted as zero, and the trapezoids on both sides of it added an invented energy."""
+    from artistools.lightcurve import get_katz_integral
+
+    integral, omitted_days = get_katz_integral(
+        pl.Series([1.0, 2.0, 3.0, 4.0]), pl.Series([1.0, float("nan"), 1.0, None])
+    )
+    # each trapezoid has a missing end, thus none of them counts
+    assert integral == 0.0
+    assert np.isclose(omitted_days, 3.0)
+
+    integral, omitted_days = get_katz_integral(
+        pl.Series([1.0, 2.0, 3.0, 4.0]), pl.Series([1.0, float("nan"), 1.0, 1.0])
+    )
+    # the trapezoid from 3 to 4 days is the only complete one: 0.5 (3 d + 4 d) L times 1 d, in seconds
+    assert np.isclose(integral, 0.5 * (3.0 + 4.0) * at.constants.day_to_s**2, rtol=1e-12, atol=0.0)
+    assert np.isclose(omitted_days, 2.0)
+
+
+def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
+
+    The peak must also be the largest luminosity of the valid range in the table of the plotted light curve.
+    """
+    outputfile = tmp_path / "lc.pdf"
+    at.lightcurve.plot(argsraw=[], modelpath=[modelpath], frompackets=True, outputfile=outputfile, write_data=True)
+    output = capsys.readouterr().out
+    readargs: dict[str, t.Any] = {"separator": " ", "null_values": "nan", "comment_prefix": "#"}
+    dfsummary = pl.read_csv(tmp_path / "lc_summary.txt", **readargs)
+    row = dfsummary.row(0, named=True)
+    assert dfsummary.height == 1
+    match = re.search(
+        r"TEST MODEL: (\d+) points from (\S+) to (\S+) d, peak (\S+) erg/s at (\S+) d \((.+?)\),"
+        r" noise of the peak point (\S+)% = (.+) of its (\d+) packets",
+        output,
+    )
+    assert match is not None, output
+    assert int(match[1]) == row["point_count"]
+    assert np.allclose(
+        [float(value) for value in match.group(2, 3, 4, 5)],
+        [row["time_min_days"], row["time_max_days"], row["peak_luminosity_erg_per_s"], row["peak_time_days"]],
+        rtol=1e-3,
+        atol=0.0,
+    )
+    assert match[6] == row["method"]
+    assert np.isclose(float(match[7]) / 100.0, row["peak_relnoise"], rtol=1e-3)
+    assert match[8] == row["noise_method"]
+    assert int(match[9]) == row["peak_packet_count"]
+
+    dfvalid = pl.read_csv(tmp_path / "lc.txt", **readargs).filter(pl.col("in_valid_range"))
+    dfpeak = dfvalid.filter(pl.col("luminosity_erg/s") == pl.col("luminosity_erg/s").max())
+    assert np.isclose(dfpeak["luminosity_erg/s"].item(), row["peak_luminosity_erg_per_s"], rtol=1e-12)
+    assert np.isclose(dfpeak["time_days"].item(), row["peak_time_days"], rtol=1e-12)
+    assert np.isclose(dfpeak["relnoise"].item(), row["peak_relnoise"], rtol=1e-12)

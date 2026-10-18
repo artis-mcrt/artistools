@@ -1,17 +1,14 @@
 {
-  "attribution": {
-    "sessionUrl": false
-  },
   "hooks": {
     "PostToolUse": [
       {
         "hooks": [
           {
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-python-file.sh",
+            "command": "\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}\"/.claude/hooks/check-python-file.sh",
             "type": "command"
           },
           {
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-rust-file.sh",
+            "command": "\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}\"/.claude/hooks/check-rust-file.sh",
             "type": "command"
           }
         ],
@@ -22,7 +19,7 @@
       {
         "hooks": [
           {
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-uv-lock.sh",
+            "command": "\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}\"/.claude/hooks/guard-uv-lock.sh",
             "type": "command"
           }
         ],
@@ -33,7 +30,7 @@
       {
         "hooks": [
           {
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/warn-conflict-copies.sh",
+            "command": "\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}\"/.claude/hooks/warn-conflict-copies.sh",
             "type": "command"
           }
         ]
@@ -43,7 +40,7 @@
       {
         "hooks": [
           {
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/verify-tree.sh",
+            "command": "\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}\"/.claude/hooks/verify-tree.sh",
             "type": "command"
           }
         ]

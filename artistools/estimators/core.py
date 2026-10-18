@@ -3,6 +3,7 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
+import contextlib
 import dataclasses as dc
 import datetime as dt
 import string
@@ -21,6 +22,7 @@ from types import MappingProxyType
 
 import polars as pl
 from polars import selectors as cs
+from polars.io.plugins import register_io_source
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
@@ -31,6 +33,7 @@ from artistools.codecomparison import read_reference_estimators
 from artistools.constants import K_B_ev_per_K
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
+from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_mpiranklist
@@ -1162,8 +1165,6 @@ def scan_remote_estimators(
     """
     import functools
 
-    from polars.io.plugins import register_io_source
-
     template, modelmeta, source = get_remote_estimator_schema(
         modelpath,
         RemoteEstimatorSource(
@@ -1827,3 +1828,13 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
         )
 
     return pl.concat(contributions) if contributions else pl.DataFrame(schema=schema)
+
+
+def get_temperature_limits(modelpath: Path | str) -> dict[str, float]:
+    """Return MINTEMP and MAXTEMP of the artisoptions.h of a model, with no entry for a limit that it does not give."""
+    limits: dict[str, float] = {}
+    for name in ("MINTEMP", "MAXTEMP"):
+        value = get_artis_option(modelpath, name)
+        with contextlib.suppress(TypeError, ValueError):
+            limits[name] = float(str(value).rstrip("fF"))
+    return limits
