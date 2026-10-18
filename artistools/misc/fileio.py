@@ -118,6 +118,33 @@ def without_compressed_extension(filepath: Path) -> Path:
     return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
 
 
+def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], None]) -> None:
+    """Write a text file through a temporary file in the same folder, then put the file at its path in one step.
+
+    os.replace puts the new file in the place of a symbolic link, and it does not write through the link. A model
+    folder of a different user can hold a link with the name of an output file, e.g. a link to ~/.bashrc.
+    """
+    import stat
+    import tempfile
+
+    try:
+        deststat: os.stat_result | None = filepath.lstat()
+    except FileNotFoundError:
+        deststat = None
+    # mkstemp creates the file 0600. A file that a link replaces takes the mode of the folder, and not of the target
+    isregularfile = deststat is not None and stat.S_ISREG(deststat.st_mode)
+    destmode = deststat.st_mode if deststat is not None and isregularfile else filepath.parent.stat().st_mode & 0o666
+    fd, partialfilename = tempfile.mkstemp(dir=filepath.parent, prefix=f".{filepath.name}.partial")
+    partialfilepath = Path(partialfilename)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            write(stream)
+        partialfilepath.chmod(destmode & 0o777)
+        partialfilepath.replace(filepath)
+    finally:
+        partialfilepath.unlink(missing_ok=True)
+
+
 def get_file_copies(filepath: Path) -> list[Path]:
     """Return the paths of the uncompressed copy and of each compressed copy of a file, e.g. model.txt.zst."""
     uncompressedpath = without_compressed_extension(filepath)

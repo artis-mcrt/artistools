@@ -1915,6 +1915,26 @@ def test_report_names_the_logs_of_a_remote_model_below_home(tmp_path: Path) -> N
     assert dfsummary["level"].to_list() == ["warning"]
 
 
+def test_write_data_table_replaces_a_link_and_leaves_its_target(tmp_path: Path) -> None:
+    """A model folder of a different user can hold a link with the name of a data file, e.g. to ~/.bashrc.
+
+    The table went through the link into its target, thus a label of the model could reach a file of the user.
+    """
+    from artistools.misc.cliutils import write_data_table
+
+    target = tmp_path / "bashrc"
+    target.write_text("export KEEP=1\n", encoding="utf-8")
+    datafile = tmp_path / "densityprofile.txt"
+    datafile.symlink_to(target)
+
+    write_data_table(pl.DataFrame({"label": ["$(touch pwned)"], "value": [1.0]}), datafile, commentlines=["note"])
+
+    assert target.read_text(encoding="utf-8") == "export KEEP=1\n"
+    assert not datafile.is_symlink()
+    assert datafile.read_text(encoding="utf-8").startswith("# note\nlabel value\n")
+    assert not list(tmp_path.glob(".*partial*"))
+
+
 def test_get_filterfunc() -> None:
     # no filter arguments -> no filter function
     assert at.misc.get_filterfunc(argparse.Namespace()) is None

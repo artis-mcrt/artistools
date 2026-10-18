@@ -23,6 +23,7 @@ from artistools.commands import SuggestingArgumentParser
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import print_saved
+from artistools.misc.fileio import write_text_file_atomic
 from artistools.misc.remote import model_path_from_text
 
 if t.TYPE_CHECKING:
@@ -1255,15 +1256,18 @@ def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", com
     The polars display of a table shows only some rows, thus a reader of the output does not get each value. A reader
     that splits on spaces moves each later value to the wrong column after an empty field. Thus a missing value is nan.
     A value or a column name that contains a space has quotes, which polars and pandas read. Each line of commentlines
-    goes before the table with "# " at its start, which pl.read_csv(comment_prefix="#") and np.loadtxt skip.
+    goes before the table with "# " at its start, which pl.read_csv(comment_prefix="#") and np.loadtxt skip. A file
+    replaces a symbolic link at its path, because write_text_file_atomic does not write through a link.
     """
-    if not commentlines:
-        dfdata.write_csv(destination, separator=" ", null_value="nan")
-        return
-    with contextlib.ExitStack() as stack:
-        stream = destination if not isinstance(destination, Path) else stack.enter_context(destination.open("w"))
+
+    def write_to_stream(stream: t.TextIO) -> None:
         stream.writelines(f"# {line}\n" for line in commentlines)
         dfdata.write_csv(stream, separator=" ", null_value="nan")
+
+    if isinstance(destination, Path):
+        write_text_file_atomic(destination, write_to_stream)
+    else:
+        write_to_stream(destination)
 
 
 def get_provenance_lines(args: argparse.Namespace) -> list[str]:
