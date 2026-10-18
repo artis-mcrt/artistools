@@ -33,6 +33,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc.cliutils import get_provenance_lines
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.fileio import write_text_file_atomic
 from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
@@ -398,5 +399,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         get_temperature_html(modelfolder, reportfolder, timesteps, method),
     ]
     pagepath = reportfolder / "index.html"
-    pagepath.write_text(get_page_html(modelname, sections), encoding="utf-8")
+    pagehtml = get_page_html(modelname, sections)
+    # a link at the path of the page gets replaced, and its target stays as it was
+    write_text_file_atomic(pagepath, lambda stream: stream.write(pagehtml))
     print_saved(pagepath)

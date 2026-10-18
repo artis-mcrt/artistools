@@ -565,6 +565,22 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     save_figure(fig, datafolder / filename, format="pdf", args=args)
 
 
+def get_shown_observations(dfobservations: pl.DataFrame, axis: mplax.Axes) -> pl.DataFrame:
+    """Return the observed supernovae whose marker or error bars the final limits of the axes show.
+
+    Each row has a horizontal bar of the colour and a vertical bar of the magnitude, thus a row stays if a bar
+    crosses the axes.
+    """
+    xlow, xhigh = sorted(axis.get_xlim())
+    ylow, yhigh = sorted(axis.get_ylim())
+    x, xerr = pl.col("(B-V)Bmax"), pl.col("err_(B-V)Bmax").fill_null(0.0)
+    y, yerr = pl.col("MB"), pl.col("err_MB").fill_null(0.0)
+    xisinside, yisinside = x.is_between(xlow, xhigh), y.is_between(ylow, yhigh)
+    horizontalbarisshown = yisinside & (x - xerr <= xhigh) & (x + xerr >= xlow)
+    verticalbarisshown = xisinside & (y - yerr <= yhigh) & (y + yerr >= ylow)
+    return dfobservations.filter(horizontalbarisshown | verticalbarisshown)
+
+
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     """Scatter plot the colour at peak against the peak magnitude, one point per direction bin per model."""
     if not args.filter or len(args.filter) != 2:
@@ -643,7 +659,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
             "": filter_to_axis_limits(pl.concat(dfplotted), ax, "peakcolour", f"{bands[0]}max")
             if dfplotted
             else pl.DataFrame(),
-            "_observations": pl.DataFrame(sn_data),
+            "_observations": get_shown_observations(pl.DataFrame(sn_data), ax),
         },
         plotname,
     )
@@ -836,5 +852,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         schema={"dirbin": pl.Int64, "costhetabin": pl.Int64, "phibin": pl.Int64, "luminosity_erg/s": pl.Float64},
         orient="row",
     ).with_columns(time_days=pl.lit(timetoplot))
-    output_data(args, {"": dfplotted}, plotname)
+    # the log axis draws no luminosity of zero or below, thus the table gives only the points of the figure
+    xcolumn = "phibin" if args.colorbarcostheta else "costhetabin"
+    output_data(args, {"": filter_to_axis_limits(dfplotted, axis, xcolumn, "luminosity_erg/s")}, plotname)
     save_figure(fig, plotname, format="pdf", args=args)

@@ -118,7 +118,7 @@ def without_compressed_extension(filepath: Path) -> Path:
     return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
 
 
-def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], None]) -> None:
+def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], object]) -> None:
     """Write a text file through a temporary file in the same folder, then put the file at its path in one step.
 
     os.replace puts the new file in the place of a symbolic link, and it does not write through the link. A model

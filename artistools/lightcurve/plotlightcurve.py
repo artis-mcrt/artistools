@@ -645,6 +645,29 @@ def get_shown_energy_rates(
     return pl.concat(parts)
 
 
+def get_shown_magnitude_points(
+    tablegroups: Sequence[tuple[Sequence[pl.DataFrame], bool]],
+    axisofname: dict[str, mplax.Axes],
+    namecolumn: str,
+    valuecolumn: str,
+) -> pl.DataFrame:
+    """Return the points of a band plot or a colour plot that the final limits of the panel of each band show.
+
+    Each table holds one curve of get_magnitude_table, e.g. a band of a model. The bool of a group is true for a curve
+    with a line, which keeps the end of each segment that crosses an edge of its panel. A point of a reference file is
+    a marker with no line. The groups keep the order of the plot.
+    """
+    shown = [
+        filter_to_axis_limits(
+            dftable, axisofname[dftable[namecolumn][0]], "time_days", valuecolumn, linecolumns=[] if isline else None
+        )
+        for tables, isline in tablegroups
+        for dftable in tables
+        if not dftable.is_empty()
+    ]
+    return pl.concat(shown) if shown else pl.DataFrame()
+
+
 def get_magnitude_table(
     model: str, dirbin: int | None, name: tuple[str, str], time_days: t.Any, magnitudes: t.Any
 ) -> pl.DataFrame:
@@ -1462,6 +1485,9 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
     bandnames: list[str] = list(args.filter)
     filterfunc = get_filterfunc(args)
     dfbands: list[pl.DataFrame] = []
+    # the reference files give markers with no line, thus their points need a different test of the axes
+    dfrefbands: list[pl.DataFrame] = []
+    dfhesmabands: list[pl.DataFrame] = []
     summaryrows: list[dict[str, t.Any]] = []
     for modelnumber, modelpath in enumerate(Path(m) for m in modelpaths):
         # check if doing viewing angle stuff, and if so define which data to use
@@ -1555,14 +1581,16 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
             ax,
             linewidth=args.linewidth[len(modelpaths) + refindex] or None,
             residualseries=residualseries,
-            plottedpoints=dfbands,
+            plottedpoints=dfrefbands,
             timemin=args.timemin,
             timemax=args.timemax,
             summaryrows=summaryrows,
         )
 
     if args.plot_hesma_model:
-        plot_hesma_lightcurve(axes, bandnames, args, residualseries, plottedpoints=dfbands, summaryrows=summaryrows)
+        plot_hesma_lightcurve(
+            axes, bandnames, args, residualseries, plottedpoints=dfhesmabands, summaryrows=summaryrows
+        )
 
     ax = set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     fig, ax = set_lightcurve_plot_labels(fig, ax, args, band_name=bandnames[0] if bandnames else None)
@@ -1581,7 +1609,10 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
             residualaxis, ax, residualseries, args, ismagnitude=True, plottedpoints=dfresidualcurves
         )
 
-    dfplotted = pl.concat(dfbands) if dfbands else pl.DataFrame()
+    axisofband = dict(zip(bandnames, axes, strict=False))
+    dfplotted = get_shown_magnitude_points(
+        [(dfbands, True), (dfrefbands, False), (dfhesmabands, True)], axisofband, "band", "magnitude"
+    )
     output_data(
         args,
         {
@@ -1671,6 +1702,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
     bandnames = sorted({name for filters in args.colour_evolution for name in filters.split("-")})
     filterfunc = get_filterfunc(args)
     dfcolours: list[pl.DataFrame] = []
+    dfrefcolours: list[pl.DataFrame] = []
 
     for modelnumber, modelpath in enumerate(modelpaths):
         modelname = get_model_name(modelpath)
@@ -1723,7 +1755,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
                 ax,
                 plotnumber,
                 linewidth=args.linewidth[len(modelpaths) + refindex] or None,
-                plottedpoints=dfcolours,
+                plottedpoints=dfrefcolours,
                 timemin=args.timemin,
                 timemax=args.timemax,
             )
@@ -1746,7 +1778,16 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
 
     invert_magnitude_yaxis(ax)
 
-    output_data(args, {"": pl.concat(dfcolours) if dfcolours else pl.DataFrame()}, args.outputfile)
+    axisofcolour = dict(zip(args.colour_evolution, iter_axes(ax), strict=False))
+    output_data(
+        args,
+        {
+            "": get_shown_magnitude_points(
+                [(dfcolours, True), (dfrefcolours, False)], axisofcolour, "colour", "colour_mag"
+            )
+        },
+        args.outputfile,
+    )
     save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
 
 

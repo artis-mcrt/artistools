@@ -6966,6 +6966,37 @@ def test_report_asks_about_the_overwrite_before_it_reads_the_model(
     assert "did not overwrite the files" in stderr
 
 
+def test_report_replaces_a_link_at_the_page_and_leaves_its_target(tmp_path: Path) -> None:
+    """write_text followed a link at index.html, thus --force wrote the page into a file of the user."""
+    from artistools import report
+
+    target = tmp_path / "notes.txt"
+    target.write_text("keep\n", encoding="utf-8")
+    reportfolder = tmp_path / "myreport"
+    reportfolder.mkdir()
+    (reportfolder / "index.html").symlink_to(target)
+    sectionnames = [
+        "get_provenance_html",
+        "get_health_check_html",
+        "get_model_summary_html",
+        "get_log_summary_html",
+        "get_light_curve_html",
+        "get_spectra_html",
+        "get_temperature_html",
+    ]
+    with (
+        mock.patch.object(report, "get_report_timesteps", return_value=([], "no timesteps")),
+        mock.patch.multiple(report, **dict.fromkeys(sectionnames, mock.DEFAULT)) as mocksections,
+    ):
+        for mocksection in mocksections.values():
+            mocksection.return_value = ""
+        report.main(argsraw=[str(modelpath_classic_3d), "-o", str(reportfolder), "--force"])
+
+    assert target.read_text(encoding="utf-8") == "keep\n"
+    assert not (reportfolder / "index.html").is_symlink()
+    assert "<html" in (reportfolder / "index.html").read_text(encoding="utf-8")
+
+
 def test_report_provenance_keeps_a_remote_model_folder() -> None:
     """A local resolve put the working folder in front of host:path, which named a folder that does not exist."""
     from artistools.report import get_provenance_html

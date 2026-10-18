@@ -3243,6 +3243,16 @@ def test_band_and_colour_data_give_the_filtered_magnitudes(mockplot: mock.MagicM
     at.lightcurve.plot(argsraw=[], colour_evolution=["B-V"], **commonoptions)
     assert table_is_drawn("plotcolorevolutionB-V.txt", "colour_mag")
 
+    # the table held the magnitudes below -ymin, which the figure does not show
+    dfband = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan", comment_prefix="#")
+    ymin = float(np.median(dfband["magnitude"].to_numpy()))
+    at.lightcurve.plot(argsraw=[], filter=["B"], ymin=ymin, ymax=0.0, **commonoptions)
+    dfclipped = pl.read_csv(tmp_path / "plotBlightcurves.txt", separator=" ", null_values="nan", comment_prefix="#")
+    isshown = pl.col("magnitude") >= ymin
+    hasshownneighbour = isshown.shift(1).fill_null(value=False) | isshown.shift(-1).fill_null(value=False)
+    assert 0 < dfclipped.height < dfband.height
+    assert dfclipped.select((isshown | hasshownneighbour).all()).item()
+
 
 def test_band_data_of_several_models_names_the_model_of_each_row(tmp_path: Path) -> None:
     """--write_data writes one table for all the models.
@@ -3350,6 +3360,28 @@ def test_brightness_at_time_takes_the_output_folder_and_one_time(
     with pytest.raises(SystemExit):
         at.lightcurve.plot(argsraw=[], modelpath=[modelpath_classic_3d], brightnessattime=True, timedays="4-5")
     assert "takes one time" in capsys.readouterr().err
+
+    # the log axis draws no zero luminosity, and the table gave the row of that direction bin
+    from artistools.lightcurve import viewingangleanalysis
+
+    lightcurves = {
+        dirbin: pl.LazyFrame({"time_days": [5.0], "luminosity_erg/s": [0.0 if dirbin == 0 else 1e40]})
+        for dirbin in range(100)
+    }
+    with mock.patch.object(viewingangleanalysis, "scan_lightcurve", return_value=lightcurves):
+        at.lightcurve.plot(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            brightnessattime=True,
+            timedays="5",
+            outputfile="sub/x.pdf",
+            write_data=True,
+        )
+    dftable = pl.read_csv(
+        tmp_path / "sub" / "plotviewinganglebrightnessat5.0days.txt", separator=" ", comment_prefix="#"
+    )
+    assert dftable.height == 99
+    assert 0 not in dftable["dirbin"].to_list()
 
 
 @pytest.mark.parametrize(
@@ -3620,6 +3652,26 @@ def test_viewing_angle_table_gives_no_bin_that_the_file_does_not_name(capsys: py
     assert "has no dirbin column" in capsys.readouterr().err
     args.plotviewingangle = [5, 10]
     assert get_table_dirbins(dfdata, Path("old_viewing_angle_data.txt"), args) == [5, 10]
+
+
+def test_colour_at_peak_observations_keep_the_rows_that_the_axes_show() -> None:
+    """The table _observations gave each observed supernova, also one that the axes leave out with its error bars."""
+    import matplotlib.figure as mplfig
+
+    from artistools.lightcurve.viewingangleanalysis import get_shown_observations
+
+    axis = mplfig.Figure().add_subplot()
+    axis.set_xlim(0.0, 1.0)
+    # a magnitude axis is inverted, and the test of the limits must not depend on the order
+    axis.set_ylim(-17.0, -20.0)
+    dfobservations = pl.DataFrame({
+        "(B-V)Bmax": [0.5, 1.2, 1.1, 2.0],
+        "err_(B-V)Bmax": [0.05, 0.3, 0.05, 0.1],
+        "MB": [-19.0, -18.0, -18.0, -18.0],
+        "err_MB": [0.1, 0.1, 0.1, 0.1],
+    })
+    # the second row has its marker outside the axes, and its bar of the colour reaches into them
+    assert get_shown_observations(dfobservations, axis)["(B-V)Bmax"].to_list() == [0.5, 1.2]
 
 
 def test_peak_summary_sorts_the_times_of_a_reference_file() -> None:
