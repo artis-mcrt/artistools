@@ -3266,6 +3266,17 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
             dfinstantrun, channels=["alpha"], configuredanalyticchannels=["spfission"]
         )
 
+    # an analytic channel at timestep 0 needs no row of timestep 1, and the row of a restart with another scheme there
+    # stopped the command
+    deposition = at.estimators.deposition
+    with (
+        mock.patch.object(deposition, "scan_estimators", return_value=dfmixed),
+        mock.patch.object(deposition, "get_configured_analytic_channels", return_value=["spfission", "alpha"]),
+    ):
+        dfrates = deposition.get_deposition_rates(tmp_path, timesteps=[0], channels=["alpha"])
+    assert dfrates["timestep"].to_list() == [0]
+    assert np.isclose(dfrates["dep_per_volume"].item(), 7.1e-10 / at.constants.EV_to_erg, rtol=1e-12)
+
 
 def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
     """The rates of a model must match a calculation that reads the estimators on its own.

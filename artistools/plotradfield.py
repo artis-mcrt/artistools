@@ -46,6 +46,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import parse_range_list
+from artistools.misc import print_saved
 from artistools.misc import read_rank_outputfiles
 from artistools.misc import resolve_frameset_paths
 from artistools.misc.cliutils import format_range_list
@@ -572,4 +573,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # a run that holds data for one cell or one timestep alone makes one plot, and combine_frames
     # takes that plot for the product, because no plot of a merging run opened on its own
-    frameset.finish(pdf_list, args)
+    productpath = frameset.finish(pdf_list, args)
+    if len(pdf_list) == 1 and productpath is not None and Path(productpath) != Path(pdf_list[0]):
+        # the table of the plot must stay beside the figure, which combine_frames moved to the name of the product
+        frametable = Path(pdf_list[0]).with_suffix(".txt")
+        if getattr(args, "write_data", False) and frametable.is_file():
+            import shutil
+
+            producttable = Path(productpath).with_suffix(".txt")
+            shutil.move(str(frametable), str(producttable))
+            print_saved(producttable)

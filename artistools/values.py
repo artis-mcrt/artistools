@@ -276,17 +276,19 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for variable in dict.fromkeys(resolve_positional_modelpath(args, "variables"))
         if variable not in INDEXCOLUMNS
     ]
-    # a model path can name a file of the model, e.g. mymodel/light_curve.out
-    modelpath = get_model_folder(args.modelpath)
-    require_model_folder(modelpath)
     if not variables:
         exit_with_error(
             "no variable was given", f"Name the variables before the folder, e.g. Te TR -t 300. {LISTVARIABLESHINT}"
         )
 
+    # the refusal must come before the work starts, e.g. before a remote model starts its server
     outputfile = resolve_outputfile(args.outputfile, "values.txt") if args.outputfile is not None else None
     if outputfile is not None:
         confirm_overwrite([outputfile.parent], [outputfile.name], force=args.force)
+
+    # a model path can name a file of the model, e.g. mymodel/light_curve.out
+    modelpath = get_model_folder(args.modelpath)
+    require_model_folder(modelpath)
 
     print(f"'{get_model_name(modelpath)}': values of {', '.join(variables)}")
     print_modelpath(modelpath)

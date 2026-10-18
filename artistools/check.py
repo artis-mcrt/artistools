@@ -27,6 +27,7 @@ from artistools.lightcurve import scan_lightcurve
 from artistools.logsummary import get_folder_log_ranks
 from artistools.logsummary import get_log_summary
 from artistools.logsummary import get_logfiles
+from artistools.logsummary import get_logged_rank_count
 from artistools.misc import addarg_modelpath
 from artistools.misc import exit_with_error
 from artistools.misc import get_deposition
@@ -242,17 +243,24 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
         for name, folder in zip(runnames, runfolders, strict=True)
         if (version := versionofrun.get("." if folder == modelpath else folder.name)) is not None
     ]
-    logcounts = [
-        (name, logcount)
-        for name, folder in zip(runnames, runfolders, strict=True)
-        if (logcount := len(get_folder_log_ranks(folder))) > 0
-    ]
+    # the logs of the highest ranks can be missing, thus the rank-0 log gives the number of ranks if it can
+    logcounts: list[tuple[str, int]] = []
+    incompletelogs: list[str] = []
+    for name, folder in zip(runnames, runfolders, strict=True):
+        filecount = len(get_folder_log_ranks(folder))
+        loggedcount = get_logged_rank_count(folder)
+        if loggedcount is not None:
+            logcounts.append((name, loggedcount))
+            if filecount < loggedcount:
+                incompletelogs.append(f"{name} holds {filecount} of the logs of its {loggedcount} ranks")
+        elif filecount > 0:
+            logcounts.append((name, filecount))
     changes = [
         f"the ARTIS version changes from {previousvalue} in {previousname} to {value} in {name}"
         for (previousname, previousvalue), (name, value) in itertools.pairwise(versions)
         if previousvalue != value
     ] + [
-        f"the number of rank logs changes from {previousvalue} in {previousname} to {value} in {name}"
+        f"the number of ranks changes from {previousvalue} in {previousname} to {value} in {name}"
         for (previousname, previousvalue), (name, value) in itertools.pairwise(logcounts)
         if previousvalue != value
     ]
@@ -262,8 +270,8 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
         else "no rank-0 log gives the ARTIS version"
     )
     logcounttext = (
-        f"each run folder with a log holds {' or '.join(str(count) for count in sorted({c for _, c in logcounts}))}"
-        " rank logs (output_N-0.txt)"
+        f"each run folder with a log has {' or '.join(str(count) for count in sorted({c for _, c in logcounts}))}"
+        " ranks (from the line of MPI_COMM_WORLD in the rank-0 log, or else the number of logs output_N-0.txt)"
         if logcounts
         else "no run folder holds a rank log"
     )
@@ -292,6 +300,7 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
                 f"{get_some_names_text(nologs)} {'holds' if len(nologs) == 1 else 'hold'} no rank log, thus the check"
                 " cannot compare the number of ranks"
             )
+    gaps.extend(incompletelogs)
     summary = f"{runcounttext}: {versiontext}, and {logcounttext}"
     if changes or gaps:
         return "warning", f"{summary}; {'; '.join([*changes, *gaps])}"

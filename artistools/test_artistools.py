@@ -6841,6 +6841,22 @@ def test_plotopacity_writes_the_drawn_values(
     )
 
 
+def test_plotradfield_table_follows_the_sole_frame_to_the_product(tmp_path: Path) -> None:
+    """Two timesteps with data for one timestep alone gave one figure, and the table kept the name of the frame."""
+    # the test model has no radiation field data before timestep 10
+    at.plotradfield.main(
+        argsraw=[],
+        modelpath=modelpath,
+        modelgridindex=[0],
+        timestep="5,40",
+        outputfile=tmp_path / "rf.pdf",
+        write_data=True,
+    )
+    assert (tmp_path / "rf.pdf").is_file()
+    assert (tmp_path / "rf.txt").is_file()
+    assert not list(tmp_path.glob("plotradfield_cell*.txt"))
+
+
 @mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotradfield_writes_the_drawn_values(
@@ -7235,6 +7251,28 @@ def test_check_complete_timesteps_finds_a_missing_row() -> None:
     assert f"deposition.out has a row for time step {ntimesteps}" in detail
 
 
+def test_check_restarts_takes_the_number_of_ranks_from_the_rank_0_log(tmp_path: Path) -> None:
+    """A run of 4 ranks that lost one log and a run of 3 ranks each held 3 logs, and the check gave the status ok."""
+    from artistools.check import check_restarts
+
+    runfolders = []
+    for foldername, rankcount in [("100.slurm", 4), ("200.slurm", 3)]:
+        folder = tmp_path / foldername
+        folder.mkdir()
+        runfolders.append(folder)
+        for rank in range(3):
+            mpiline = f"  rank {rank} of [0..{rankcount - 1}] in MPI_COMM_WORLD\n"
+            (folder / f"output_{rank}-0.txt").write_text(mpiline, encoding="utf-8")
+    with (
+        mock.patch("artistools.check.get_runfolders", return_value=runfolders),
+        mock.patch("artistools.check.get_run_versions", return_value={}),
+    ):
+        status, detail = check_restarts(tmp_path)
+    assert status == "warning"
+    assert "the number of ranks changes from 4 in 100.slurm to 3 in 200.slurm" in detail
+    assert "100.slurm holds 3 of the logs of its 4 ranks" in detail
+
+
 def test_check_restarts_warns_about_a_run_with_no_version() -> None:
     """A run with no version left the comparison, and the agreement of the other runs then gave the status ok."""
     from artistools.check import check_restarts
@@ -7466,6 +7504,23 @@ def test_values_give_the_time_of_volume_prevtimestep(tmp_path: Path) -> None:
     prevcolumn = next(column for column in dfwritten.columns if column.startswith("volume_prevtimestep"))
     assert dfwritten[prevcolumn].to_list()[0] is None
     assert np.isclose(dfwritten[prevcolumn][1], dfwritten[volumecolumn][0], rtol=1e-6)
+
+
+def test_values_ask_about_the_overwrite_before_they_read_the_model(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The command found the model folder before the question, e.g. through ssh for a remote model."""
+    from artistools import values
+
+    outputfile = tmp_path / "values.txt"
+    outputfile.write_text("old\n", encoding="utf-8")
+    with (
+        mock.patch.object(values, "get_model_folder", side_effect=AssertionError("the model was read")),
+        mock.patch("sys.stdin.isatty", return_value=False),
+        pytest.raises(SystemExit),
+    ):
+        values.main(argsraw=["Te", "-ts", "28", "-o", str(outputfile), str(modelpath_classic_3d)])
+    assert "did not overwrite the files" in capsys.readouterr().err
 
 
 def test_values_take_a_file_of_the_model_as_the_model_path(tmp_path: Path) -> None:

@@ -396,9 +396,16 @@ def get_deposition_rates(
     """
     readtimesteps = None if timesteps is None else tuple({*timesteps} | {timestep + 1 for timestep in timesteps})
     dfestim = scan_estimators(modelpath, timestep=readtimesteps, join_modeldata=True, verbose=verbose)
+    configuredanalyticchannels = get_configured_analytic_channels(modelpath)
+    if timesteps is not None and configuredanalyticchannels is not None:
+        selectedchannels = select_deposition_channels(dfestim.collect_schema().names(), channels)
+        # an analytic channel gives the rate of its own row, thus a later row of a restart with another scheme must
+        # not stop the command when no selected channel needs it
+        if all(channel in configuredanalyticchannels for channel in selectedchannels):
+            dfestim = dfestim.filter(pl.col("timestep").is_in(list(timesteps)))
 
     return aggregate_deposition_rates(
-        dfestim, timesteps, channels, yerange, configuredanalyticchannels=get_configured_analytic_channels(modelpath)
+        dfestim, timesteps, channels, yerange, configuredanalyticchannels=configuredanalyticchannels
     )
 
 
