@@ -806,7 +806,9 @@ def plot_populations_with_time_or_velocity(
                 if makestable:
                     seriestables.append(
                         dfseries.select(
+                            # two models can have one name, thus the path names the model of each row
                             pl.lit(get_model_name(modelpath)).alias("model"),
+                            pl.lit(str(modelpath)).alias("modelpath"),
                             pl.lit(get_ionstring(Z, ion_stage)).alias("ion"),
                             pl.lit(ionlevel, dtype=pl.Int64).alias("level"),
                             pl.lit(get_level_label(levelnames, ionlevel)).alias("levelname"),

@@ -371,7 +371,16 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
     (tablepath,) = tmp_path.glob("*risetime_peakmag.txt")
     dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
     # the row of the angle average holds the half widths of its error bars, which a direction bin does not have
-    assert dftable.columns == ["model", "dirbin", "risetime_days", "peakmag", "risetime_days_err", "peakmag_err"]
+    assert dftable.columns == [
+        "model",
+        "modelpath",
+        "label",
+        "dirbin",
+        "risetime_days",
+        "peakmag",
+        "risetime_days_err",
+        "peakmag_err",
+    ]
     # the data file of a run with no -plotviewingangle holds the angle average, which is the direction bin -1
     assert dftable["dirbin"].to_list() == [-1, -1]
 
@@ -3271,7 +3280,8 @@ def test_band_and_colour_data_give_the_filtered_magnitudes(mockplot: mock.MagicM
 def test_band_data_of_several_models_names_the_model_of_each_row(tmp_path: Path) -> None:
     """--write_data writes one table for all the models.
 
-    The old code wrote one file for each model, and the second model replaced the file of the first model.
+    The old code wrote one file for each model, and the second model replaced the file of the first model. Two models
+    can also have one name, thus the table gives the model path and the -label of each row.
     """
     modelcopy = tmp_path / "secondmodel"
     modelcopy.mkdir()
@@ -3283,6 +3293,7 @@ def test_band_data_of_several_models_names_the_model_of_each_row(tmp_path: Path)
         argsraw=[],
         modelpath=[modelpath, modelcopy],
         filter=["B"],
+        label=["first", "second"],
         timemin=290,
         timemax=300,
         write_data=True,
@@ -3290,6 +3301,10 @@ def test_band_data_of_several_models_names_the_model_of_each_row(tmp_path: Path)
     )
     dfbands = pl.read_csv(outputfolder / "plotBlightcurves.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert sorted(dfbands["model"].unique()) == ["TEST MODEL", "secondmodel"]
+    assert dict(dfbands.select("modelpath", "label").unique().iter_rows()) == {
+        str(modelpath): "first",
+        str(modelcopy): "second",
+    }
     assert dfbands["band"].unique().to_list() == ["B"]
 
 

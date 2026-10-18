@@ -711,7 +711,10 @@ def test_nltepops_singletimestep_write_data_gives_the_plotted_series(
 def test_nltepops_time_or_velocity_write_data_gives_the_plotted_series(
     mockplot: mock.MagicMock, xmode: str, xcolumn: str, timeargs: dict[str, t.Any], tmp_path: Path
 ) -> None:
-    """The table has one row for each point of each series, and the columns ion and level name the series."""
+    """The table has one row for each point of each series, and the columns ion and level name the series.
+
+    Two models can have one name, thus the column modelpath names the model of each row.
+    """
     at.nltepops.plot(
         argsraw=[],
         modelpath=modelpath,
@@ -724,6 +727,7 @@ def test_nltepops_time_or_velocity_write_data_gives_the_plotted_series(
     )
 
     dftable = pl.read_csv(tmp_path / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dftable["modelpath"].unique().to_list() == [str(modelpath)]
     serieskeys = [("Fe I", 0), ("Fe I", 1), ("Fe II", 0), ("Fe II", 1)]
     assert len(mockplot.call_args_list) == len(serieskeys)
     for callargs, (ion, level) in zip(mockplot.call_args_list, serieskeys, strict=True):

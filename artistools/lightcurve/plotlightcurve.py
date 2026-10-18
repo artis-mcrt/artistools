@@ -716,18 +716,26 @@ def get_shown_magnitude_points(
 
 
 def get_magnitude_table(
-    model: str, dirbin: int | None, name: tuple[str, str], time_days: t.Any, magnitudes: t.Any
+    model: str,
+    modelpath: str | None,
+    label: str,
+    dirbin: int | None,
+    name: tuple[str, str],
+    time_days: t.Any,
+    magnitudes: t.Any,
 ) -> pl.DataFrame:
     """Return the points of one curve of a band plot or a colour plot, e.g. name ("band", "B") or ("colour", "B-V").
 
-    A curve with no point gives an empty frame, and a reference curve has no direction bin, thus the schema gives the
-    types of the columns.
+    A curve with no point gives an empty frame, and a reference curve has no model path and no direction bin, thus
+    the schema gives the types of the columns. Two models can have one name, thus the model path identifies the model.
     """
     namecolumn, namevalue = name
     valuecolumn = "magnitude" if namecolumn == "band" else "colour_mag"
     return pl.DataFrame(
         {
             "model": model,
+            "modelpath": modelpath,
+            "label": label,
             "dirbin": dirbin,
             namecolumn: namevalue,
             "time_days": np.asarray(time_days, dtype=np.float64),
@@ -735,6 +743,8 @@ def get_magnitude_table(
         },
         schema={
             "model": pl.String,
+            "modelpath": pl.String,
+            "label": pl.String,
             "dirbin": pl.Int64,
             namecolumn: pl.String,
             "time_days": pl.Float64,
@@ -1563,9 +1573,14 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
                 if filterfunc is not None:
                     brightness_in_mag = filterfunc(brightness_in_mag)
 
-                dfbands.append(get_magnitude_table(modelname, dirbin, ("band", band_name), time, brightness_in_mag))
+                linelabel = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
+                dfbands.append(
+                    get_magnitude_table(
+                        modelname, str(modelpath), linelabel, dirbin, ("band", band_name), time, brightness_in_mag
+                    )
+                )
 
-                plotkwargs["label"] = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
+                plotkwargs["label"] = linelabel
 
                 text_key = FILTERNAME_ALIASES.get(band_name, band_name)
 
@@ -1718,7 +1733,9 @@ def plot_hesma_lightcurve(
             )
             if plottedpoints is not None:
                 plottedpoints.append(
-                    get_magnitude_table(label, None, ("band", band_name), dfinrange[timecolumn], dfinrange[band_name])
+                    get_magnitude_table(
+                        label, None, label, None, ("band", band_name), dfinrange[timecolumn], dfinrange[band_name]
+                    )
                 )
             if residualseries is not None:
                 residualseries.append(
@@ -1786,14 +1803,17 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
 
                 if filterfunc is not None:
                     colour_delta_mag = filterfunc(colour_delta_mag)
+                linelabel = get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args)
                 dfcolours.append(
-                    get_magnitude_table(modelname, dirbin, ("colour", filters), plot_times, colour_delta_mag)
+                    get_magnitude_table(
+                        modelname, str(modelpath), linelabel, dirbin, ("colour", filters), plot_times, colour_delta_mag
+                    )
                 )
 
                 axes[plotnumber].plot(
                     plot_times,
                     colour_delta_mag,
-                    label=get_linelabel(modelname, modelnumber, dirbin, dirbin_definition, args),
+                    label=linelabel,
                     color=dirbincolor,
                     linestyle=args.linestyle[modelnumber],
                     linewidth=args.linewidth[modelnumber] or (4 if args.subplots else 3),
@@ -1939,6 +1959,8 @@ def plot_lightcurve_from_refdata(
                 get_magnitude_table(
                     linename or str(lightcurvefilename),
                     None,
+                    linename or str(lightcurvefilename),
+                    None,
                     ("band", filter_name_raw),
                     dfband["time"],
                     dfband["magnitude"],
@@ -1991,6 +2013,8 @@ def plot_color_evolution_from_data(
     if plottedpoints is not None:
         plottedpoints.append(
             get_magnitude_table(
+                metadata["label"] or str(lightcurvefilename),
+                None,
                 metadata["label"] or str(lightcurvefilename),
                 None,
                 ("colour", "-".join(filter_names)),

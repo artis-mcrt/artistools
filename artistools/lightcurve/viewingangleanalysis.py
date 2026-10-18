@@ -449,7 +449,7 @@ def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> N
 
 
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
-    modelnames: Sequence[str], key: str, args: argparse.Namespace
+    modelpaths: Sequence[Path | str], modelnames: Sequence[str], key: str, args: argparse.Namespace
 ) -> None:
     """Scatter plot peak magnitude against rise time or decline rate, one point per direction bin per model."""
     fig, axesgrid = make_frame_figure(args)
@@ -517,7 +517,13 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
                     "peakmag_err": pl.Float64,
                 },
                 orient="row",
-            ).select(pl.lit(modelname).alias("model"), pl.all())
+            ).select(
+                # two models can have one name, thus the path names the model of each row
+                pl.lit(modelname).alias("model"),
+                pl.lit(str(modelpaths[ii])).alias("modelpath"),
+                pl.lit(get_series_label(args.label, ii, modelname)).alias("label"),
+                pl.all(),
+            )
         )
 
         if not args.noangleaveraged:
@@ -649,6 +655,8 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         dfplotted.append(
             dfdata.select(
                 pl.lit(modelname).alias("model"),
+                pl.lit(str(modelpath)).alias("modelpath"),
+                pl.lit(modelname).alias("label"),
                 pl.Series("dirbin", get_table_dirbins(viewing_angle_plot_data, datafilename, args), dtype=pl.Int64),
                 pl.all(),
             )
@@ -823,7 +831,7 @@ def peakmag_risetime_declinerate_init(
     write_viewing_angle_data(plottinglist[0], modelnames, args)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot or args.make_viewing_angle_peakmag_risetime_scatter_plot:
-        make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelnames, plottinglist[0], args)
+        make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelpaths, modelnames, plottinglist[0], args)
         return
 
 
