@@ -357,19 +357,24 @@ def aggregate_deposition_rates(
     if timesteps is not None:
         dfcells = dfcells.filter(pl.col("timestep").is_in(list(timesteps)))
 
+    # a cell can have no row at the next timestep, e.g. after a bad restart. The left join keeps the cell in the
+    # denominators, and its rate is not known. A timestep with no rate row at all, e.g. the last one, gives no row
     return (
         dfcells
-        .join(dfrates, on=("timestep", "modelgridindex"), how="inner")
+        .join(dfrates.with_columns(hasraterow=pl.lit(value=True)), on=("timestep", "modelgridindex"), how="left")
         .group_by("timestep")
         .agg(
             tmid_days=pl.col("tmid_days").first(),
-            dep_erg_per_s=pl.col("dep_erg_per_s").sum(),
+            # a missing rate is not a zero, thus it makes the sum a NaN, as a NaN rate does
+            dep_erg_per_s=pl.col("dep_erg_per_s").fill_null(float("nan")).sum(),
             ioncount=pl.col("ioncount").sum(),
             volume=pl.col("volume").sum(),
             mass_g=pl.col("mass_g").sum(),
-            # a NaN rate makes the sum a NaN, thus the count of the cells with a NaN rate goes beside it
+            # the sum of a NaN is a NaN, thus the count of the cells with no rate goes beside it
             cellswithnorate=pl.col("dep_erg_per_s").is_finite().fill_null(value=False).not_().sum(),
+            raterowcount=pl.col("hasraterow").fill_null(value=False).sum(),
         )
+        .filter(pl.col("raterowcount") > 0)
         .with_columns(
             # a rate in erg divided by erg per eV gives the rate in eV
             dep_per_volume=pl.col("dep_erg_per_s") / EV_to_erg / pl.col("volume"),

@@ -63,9 +63,9 @@ def read_log_messages(logpath: Path) -> pl.DataFrame:
     timestep: int | None = None
     with zopen(logpath) as flog:
         for line in flog:
+            # a tag can follow the progress text on the line of a timestep, thus the line can also hold a message
             if (timestepmatch := RE_TIMESTEP.search(line)) is not None:
                 timestep = int(timestepmatch.group(1))
-                continue
             if (levelmatch := RE_LEVEL.search(line)) is None:
                 continue
             message = line[levelmatch.start() :].strip()

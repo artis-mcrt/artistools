@@ -4702,6 +4702,15 @@ def test_installskill_refuses_a_destination_in_the_skill_of_the_package(
                 install_skill(skillsdir, copy=True, force=True)
     assert [path.name for path in packageskill.iterdir()] == ["SKILL.md"]
 
+    # the destination tmp/artis-data holds the package, and rmtree of the destination deleted the skill of the package
+    nestedskill = tmp_path / "artis-data" / "artistools" / "data" / "skills" / "artis-data"
+    nestedskill.mkdir(parents=True)
+    (nestedskill / "SKILL.md").write_text("the skill of the package", encoding="utf-8")
+    monkeypatch.setattr("artistools.installskill.get_skill_folder", lambda: nestedskill)
+    with pytest.raises(SystemExit):
+        install_skill(tmp_path, copy=True, force=True)
+    assert (nestedskill / "SKILL.md").is_file()
+
 
 def test_installskill_makes_no_link_into_the_uv_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """With uvx, artistools runs from the uv cache.
@@ -6605,6 +6614,19 @@ def test_logsummary_reads_two_gzip_copies_of_a_log_once(tmp_path: Path, capsys: 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
     dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
     assert dfsummary["count"].to_list() == [1]
+
+
+def test_log_reader_finds_a_message_on_the_line_of_a_timestep(tmp_path: Path) -> None:
+    """The reader took the timestep from the line and went on to the next line, thus it left out the message."""
+    from artistools.logsummary import read_log_messages
+
+    logfile = tmp_path / "output_0-0.txt"
+    logfile.write_text(
+        "timestep 3: time before update grid 0.1 (tstart + tdelta/2) 2.0 days ...[error] cell 7 has no matter\n",
+        encoding="utf-8",
+    )
+    dfmessages = read_log_messages(logfile)
+    assert dfmessages.select("level", "timestep", "modelgridindex").rows() == [("error", 3, 7)]
 
 
 def test_logsummary_keeps_identical_logs_of_two_run_folders(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

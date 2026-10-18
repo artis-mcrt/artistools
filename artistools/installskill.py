@@ -81,6 +81,12 @@ def install_skill(skillsdir: Path, *, copy: bool, force: bool) -> bool:
         exit_with_error(
             f"{destination} is the folder of the skill in the package, or is in it", "Give a different -skillsdir"
         )
+    # rmtree of a real folder that holds the package deletes the skill of the package, and maybe artistools too. The
+    # command removes a link and not its target, thus only a real folder needs this test
+    if destination.is_dir() and not destination.is_symlink() and is_in_folder(source, destination.resolve()):
+        exit_with_error(
+            f"{destination} holds the skill of the package, e.g. in artistools", "Give a different -skillsdir"
+        )
     if not copy and is_in_uv_cache(source):
         exit_with_error(
             f"This installation of artistools runs from the uv cache, which uv can delete. Thus a link to {source} can"

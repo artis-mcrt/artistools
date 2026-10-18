@@ -3216,6 +3216,25 @@ def test_analytic_deposition_channel_gives_the_rate_of_its_own_timestep() -> Non
     assert at.estimators.deposition.aggregate_deposition_rates(dfzero, channels=["alpha"])["timestep"].to_list() == [0]
 
 
+def test_deposition_rate_keeps_a_cell_with_no_row_at_the_next_timestep() -> None:
+    """The inner join left out a cell with no row at the next timestep, also from the volume and the ion count."""
+    dfestim = pl.LazyFrame({
+        "timestep": [0, 0, 1],
+        "modelgridindex": [0, 1, 0],
+        "tmid_days": [10.0, 10.0, 11.0],
+        "nntot": [10.0, 10.0, 9.0],
+        "volume": [2.0, 2.0, 3.0],
+        "volume_prevtimestep": [None, None, 2.0],
+        "mass_g": [5.0, 5.0, 5.0],
+        "deposition_gamma": [0.0, 0.0, 4.0e-9],
+    })
+    dftable = at.estimators.deposition.aggregate_deposition_rates(dfestim, channels=["gamma"])
+    # the rate of cell 1 at timestep 0 is not known, thus the sum is not known, and the count names the cell
+    assert dftable["timestep"].to_list() == [0]
+    assert np.isnan(dftable["dep_per_volume"].item())
+    assert dftable["cellswithnorate"].item() == 1
+
+
 def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path: Path) -> None:
     """The options of the run decide which deposition channels hold an analytic rate, when the options exist.
 
