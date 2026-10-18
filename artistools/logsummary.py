@@ -27,6 +27,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import parse_range_list
 from artistools.misc import print_detail
 from artistools.misc import print_product
+from artistools.misc import print_warning
 from artistools.misc import zopen
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.modelinfo import get_dfrankassignments
@@ -38,6 +39,7 @@ from artistools.misc.remote import on_model_host
 RE_LEVEL = re.compile(r"\[(warning|error)\]|\b(WARNING|ERROR)\b")
 RE_TIMESTEP = re.compile(r"timestep (\d+): time before update grid")
 RE_CELL = re.compile(r"\b(?:modelcell|modelgridindex|cell) (\d+)")
+RE_MPIRANKS = re.compile(r"rank \d+ of \[0\.\.(\d+)\] in MPI_COMM_WORLD")
 RE_LOGFILENAME = re.compile(r"output_(\d+)-0\.txt(?:\.gz|\.xz|\.zst)?")
 RE_NUMBER = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 
@@ -110,9 +112,11 @@ def get_unique_logfiles(modelpath: Path, logfiles: Sequence[Path]) -> list[Path]
     """
     uniquelogs: list[Path] = []
     uniquelogsofname: dict[str, list[Path]] = {}
+    # a local run writes its estimator files into the model folder, thus its log there is a run and not a copy
+    modelfolderisrun = any(modelpath.glob("estimators_*.out*"))
     for logfile in logfiles:
         samename = uniquelogsofname.setdefault(without_compressed_extension(logfile).name, [])
-        comparetext = logfile.parent == modelpath
+        comparetext = logfile.parent == modelpath and not modelfolderisrun
         if all(not are_copies(logfile, uniquelog, comparetext=comparetext) for uniquelog in samename):
             samename.append(logfile)
             uniquelogs.append(logfile)
@@ -146,14 +150,39 @@ def get_folder_ranks(
     if cells is None:
         return get_folder_log_ranks(folder) if ranks is None else ranks
     lzrankassignments = get_dfrankassignments(folder)
-    folderlogranks = get_folder_log_ranks(folder)
+    nprocs = get_logged_rank_count(folder)
+    if lzrankassignments is None and nprocs is None:
+        # the logs of the highest ranks can be missing, thus the names of the logs do not give the number of ranks
+        print_warning(
+            f"{folder} has no modelgridrankassignments.out, and its rank-0 log gives no number of ranks, thus the"
+            " ranks of the cells are not known, and the summary leaves out the logs of this folder"
+        )
+        return []
+
+    def get_nprocs_of_folder() -> int:
+        assert nprocs is not None, "the branch above returns when the folder gives no number of ranks"
+        return nprocs
+
     cellranks = get_ranks_of_cells_in_layout(
         np.asarray(cells, dtype=np.int64),
         get_npts_model(modelpath),
         lzrankassignments.collect() if lzrankassignments is not None else None,
-        lambda: max(folderlogranks, default=0) + 1,
+        get_nprocs_of_folder,
     )
     return sorted({int(rank) for rank in cellranks})
+
+
+def get_logged_rank_count(folder: Path) -> int | None:
+    """Return the number of MPI ranks that the rank-0 log of a run folder gives, e.g. "rank 0 of [0..3]", or None."""
+    logpath = firstexisting_or_none("output_0-0.txt", folder=folder, search_subfolders=False)
+    if logpath is None:
+        return None
+    with zopen(logpath) as flog:
+        # ARTIS writes the MPI layout near the start of the log, thus the search reads only the first lines
+        for _, line in zip(range(200), flog, strict=False):
+            if (rankmatch := RE_MPIRANKS.search(line)) is not None:
+                return int(rankmatch.group(1)) + 1
+    return None
 
 
 def get_folder_log_ranks(folder: Path) -> list[int]:

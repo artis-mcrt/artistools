@@ -6522,13 +6522,30 @@ def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
     for runfolder, rankcount, cellrank in [("100.slurm", 2, 1), ("200.slurm", 4, 3)]:
         (modelfolder / runfolder).mkdir()
         for rank in range(rankcount):
+            # ARTIS writes the MPI layout near the start of each log
+            mpiline = f"  rank {rank} of [0..{rankcount - 1}] in MPI_COMM_WORLD\n"
             message = "[error] cell 999 has no matter\n" if rank == cellrank else "[warning] cell 5 is cold\n"
-            (modelfolder / runfolder / f"output_{rank}-0.txt").write_text(header + message, encoding="utf-8")
+            (modelfolder / runfolder / f"output_{rank}-0.txt").write_text(mpiline + header + message, encoding="utf-8")
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-modelgridindex", "999", "--quiet"])
     dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
     assert dfsummary["level"].to_list() == ["error"]
     assert dfsummary["count"].item() == 2
+
+    # the names of the logs gave 2 ranks when the logs of ranks 2 and 3 were missing, and then rank 1 took cell 999
+    for rank in (2, 3):
+        (modelfolder / "200.slurm" / f"output_{rank}-0.txt").unlink()
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-modelgridindex", "999", "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert dfsummary["count"].item() == 1
+
+    # a folder that gives no number of ranks gives a warning, and the summary leaves out its logs
+    (modelfolder / "300.slurm").mkdir()
+    (modelfolder / "300.slurm" / "output_0-0.txt").write_text(header + "[error] cell 999 is odd\n", encoding="utf-8")
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-modelgridindex", "999", "--quiet"])
+    captured = capsys.readouterr()
+    assert "300.slurm has no modelgridrankassignments.out" in captured.err
+    assert pl.read_csv(io.StringIO(captured.out), separator=" ", null_values="nan")["count"].item() == 1
 
 
 def test_logsummary_reads_a_compressed_copy_of_a_log_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -6602,6 +6619,13 @@ def test_logsummary_keeps_identical_logs_of_two_run_folders(tmp_path: Path, caps
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
     dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
     assert dfsummary["count"].to_list() == [2]
+
+    # a local run writes its estimators and its log into the model folder, and its log is a run and not a copy
+    (modelfolder / "output_0-0.txt").write_text(logtext, encoding="utf-8")
+    (modelfolder / "estimators_0000.out").write_text("", encoding="utf-8")
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert dfsummary["count"].to_list() == [3]
 
 
 def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:
