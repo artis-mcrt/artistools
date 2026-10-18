@@ -2060,6 +2060,112 @@ def test_ejectaopacity(capsys: pytest.CaptureFixture[str]) -> None:
     assert np.isclose(float(planckmeanline.split(":")[1].split()[0]), 13.21, rtol=1e-3)
 
 
+def test_line_contributions_follow_the_level_populations_of_artis() -> None:
+    """Each method of the level populations gives the tau_sobolev and the emission of a calculation by hand.
+
+    The test model has NLTE levels and a superlevel for Fe II and Fe III, and LTE populations for Ni II.
+    """
+    timestep = 10
+    dfcells = at.linecontributions.get_line_contributions(
+        modelpath, timestep, 3000.0, 30000.0, [(26, 2), (26, 3), (28, 2)], percell=True
+    )
+    time_s = at.get_timestep_times(modelpath, loc="mid")[timestep] * at.constants.day_to_s
+    dfnltepops = at.nltepops.read_nltepops(modelpath, timestep=timestep).filter(pl.col("timestep") == timestep)
+    dfestimators = at.scan_estimators(modelpath, timestep=timestep, join_modeldata=True).collect()
+    kT_ev = at.constants.K_B_ev_per_K * dfestimators["Te"].item()
+    adata = at.atomic.get_levels(modelpath)
+
+    def get_population(
+        level: int,
+        g: npt.NDArray[np.float64],
+        energy_ev: npt.NDArray[np.float64],
+        dfionpops: pl.DataFrame,
+        nnion: float,
+    ) -> float:
+        if dfionpops.is_empty():
+            boltzmann = g * np.exp(-energy_ev / kT_ev)
+            return float(nnion * boltzmann[level] / boltzmann.sum())
+        lastnltelevel = dfionpops["level"].max()
+        assert isinstance(lastnltelevel, int)
+        if level <= lastnltelevel:
+            return float(dfionpops.filter(pl.col("level") == level)["n_NLTE"].item())
+        superlevel = slice(lastnltelevel + 1, None)
+        boltzmann = g[superlevel] * np.exp(-(energy_ev[superlevel] - energy_ev[lastnltelevel + 1]) / kT_ev)
+        superlevelpop = dfionpops.filter(pl.col("level") == -1)["n_NLTE"].item()
+        return float(superlevelpop * boltzmann[level - lastnltelevel - 1] / boltzmann.sum())
+
+    for ion, Z, ion_stage, source in (
+        ("Fe III", 26, 3, "NLTE"),
+        ("Fe II", 26, 2, "superlevel"),
+        ("Ni II", 28, 2, "LTE"),
+    ):
+        row = (
+            dfcells
+            .filter((pl.col("ion") == ion) & (pl.col("n_upper_source") == source))
+            .sort("emission_erg_per_s", descending=True)
+            .row(0, named=True)
+        )
+        dflevels = adata.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["levels"].item()
+        levelvalues = (
+            dflevels["g"].to_numpy().astype(np.float64),
+            dflevels["energy_ev"].to_numpy().astype(np.float64),
+            dfnltepops.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage)),
+            float(dfestimators[f"nnion_{ion.replace(' ', '_')}"].item()),
+        )
+        g = levelvalues[0]
+
+        lambda_cm = row["lambda_angstroms"] / at.constants.angstroms_per_cm
+        n_upper = get_population(row["upper"], *levelvalues)
+        tau = (
+            row["A_per_s"]
+            * lambda_cm**3
+            * time_s
+            / (8 * math.pi)
+            * (g[row["upper"]] / g[row["lower"]] * get_population(row["lower"], *levelvalues) - n_upper)
+        )
+        emission = (
+            n_upper
+            * row["A_per_s"]
+            * at.constants.h_erg_s
+            * at.constants.C_cm_per_s
+            / lambda_cm
+            * -math.expm1(-tau)
+            / tau
+            * dfestimators["volume"].item()
+        )
+        assert np.isclose(row["tau_sobolev"], tau, rtol=1e-6), ion
+        assert np.isclose(row["emission_erg_per_s"], emission, rtol=1e-6), ion
+
+
+def test_line_populations_take_the_boltzmann_factor_of_the_ground_level_with_no_superlevel() -> None:
+    """An ion with NLTE rows and no superlevel gives a level above the NLTE levels n_0 g / g_0 exp(-E / k T_exc)."""
+    dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 10000.0]})
+    levels = pl.DataFrame({"level": [0, 1, 2], "g": [2.0, 4.0, 6.0], "energy_ev": [0.0, 1.0, 2.0]})
+    dfnltepops = pl.DataFrame({"modelgridindex": [0, 1, 0, 1], "level": [0, 0, 1, 1], "n_NLTE": [10.0, 20.0, 3.0, 4.0]})
+    dfpops = at.linecontributions.get_ion_populations(dfcells, levels, [1, 2], dfnltepops, "nnion_X_II")
+    dflevel2 = dfpops.filter(pl.col("level") == 2).sort("modelgridindex")
+    assert dflevel2["population_source"].unique().to_list() == ["Boltzmann from the ground level"]
+    expected = np.array([10.0, 20.0]) * 3.0 * np.exp(-2.0 / at.constants.K_B_ev_per_K / np.array([5000.0, 10000.0]))
+    assert np.allclose(dflevel2["population"].to_numpy(), expected, rtol=1e-12, atol=0.0)
+    assert dfpops.filter(pl.col("level") == 1).sort("modelgridindex")["population"].to_list() == [3.0, 4.0]
+
+
+def test_linecontributions_writes_a_file_only_with_the_output_option(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The command wrote linecontributions.txt into the working folder with no -o, because -o had a default name."""
+    monkeypatch.chdir(tmp_path)
+    commonargs: dict[str, t.Any] = {"modelpath": modelpath, "timestep": 10, "lambdamin": 4600.0, "lambdamax": 4700.0}
+    at.linecontributions.main(argsraw=[], **commonargs)
+    assert not list(tmp_path.iterdir())
+    assert '"Fe III" 4659.' in capsys.readouterr().out
+
+    outputfile = tmp_path / "lines.txt"
+    at.linecontributions.main(argsraw=[], outputfile=outputfile, **commonargs)
+    filetext = outputfile.read_text(encoding="utf-8")
+    assert "# column tau_sobolev_max: the maximum Sobolev optical depth of the line in the cells" in filetext
+
+
 @mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotopacity_draws_ratios_and_the_planck_mean(

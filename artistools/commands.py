@@ -173,6 +173,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "exportmassfractions",
         "gsinetworkdecayproducts",
         "hesma",
+        "linecontributions",
         "spencerfano",
         "writebollightcurvedata",
         "writecodecomparisondata",
@@ -408,6 +409,20 @@ subcommandtree: CommandTree = {
         examples=(("", "the skill for Claude Code, in ~/.claude/skills"),),
         # a run writes into the home folder of the user
         exampletestfolder=None,
+    ),
+    "linecontributions": CommandSpec(
+        "linecontributions",
+        helptext="Give the Sobolev optical depth and the emission of each line in a wavelength range.",
+        note=(
+            "The level populations of each cell follow ARTIS. --percell gives one row for each cell and line, e.g. to"
+            " find where a line forms."
+        ),
+        examples=(
+            (
+                "-modelpath . -t 259 -lambdamin 4000 -lambdamax 5500",
+                "the lines with the most emission from 4000 to 5500 Å at 259 days",
+            ),
+        ),
     ),
     "logsummary": CommandSpec(
         "logsummary",
