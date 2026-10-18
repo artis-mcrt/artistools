@@ -56,9 +56,11 @@ jobs:
                   key: ${{ steps.setup-uv.outputs.python-version }}
 
             - name: Install artistools
+              # valgrind of the CodSpeed simulation needs the debug info of libc for accurate results, and the
+              # runner image does not have it
               run: |
                   sudo apt-get update
-                  sudo apt-get install liblzma-dev
+                  sudo apt-get install liblzma-dev libc6-dbg
                   uv sync --compile-bytecode
 
             - name: Download/extract test data
