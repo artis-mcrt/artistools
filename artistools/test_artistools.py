@@ -6262,6 +6262,12 @@ def test_run_versions_follow_the_runs_and_leave_out_a_copied_log(tmp_path: Path)
     assert list(get_run_versions(tmp_path)) == ["100.slurm", "200.slurm"]
     assert get_version_columns(tmp_path) == {"artis_version": "newbuild"}
 
+    # the log of the last run gives no version, and the catalog gave the version of the run before it
+    (tmp_path / "300.slurm").mkdir()
+    (tmp_path / "300.slurm" / "output_0-0.txt").write_text(timestepline.format(20), encoding="utf-8")
+    assert list(get_run_versions(tmp_path)) == ["100.slurm", "200.slurm", "300.slurm"]
+    assert get_version_columns(tmp_path) == {"artis_version": None}
+
 
 def test_describe_counts_the_direction_bins_of_the_file(tmp_path: Path) -> None:
     """ARTIS sets MABINS when it compiles, and the summary gave the 100 bins of artistools for a file of 2 bins."""

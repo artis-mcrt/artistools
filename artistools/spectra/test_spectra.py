@@ -917,7 +917,13 @@ def test_spectraemissionplot_linewidth_arg(mockplot: mock.MagicMock, tmp_path: P
     dfreferences = pl.read_csv(
         tmp_path / "emission_linewidth_references.txt", separator=" ", null_values="nan", comment_prefix="#"
     )
-    assert dfreferences.height == len(mockplot.call_args_list[1].args[2])
+    # the table holds the points that the axes show, and the reference has negative fluxes below the bottom of 0
+    axis, drawnx, drawny = mockplot.call_args_list[1].args
+    drawnx, drawny = np.asarray(drawnx, dtype=float), np.asarray(drawny, dtype=float)
+    (xlow, xhigh), (ylow, yhigh) = sorted(axis.get_xlim()), sorted(axis.get_ylim())
+    isinside = (drawnx >= xlow) & (drawnx <= xhigh) & (drawny >= ylow) & (drawny <= yhigh)
+    assert 0 < dfreferences.height <= len(drawny)
+    assert set(drawnx[isinside].round(4)) <= set(dfreferences["x_plotted_angstrom"].round(4).to_list())
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -1461,6 +1467,22 @@ def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) ->
     dfreferences = pl.read_csv(tmp_path / "spec_references.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfreferences["series"].n_unique() == 1
     assert dfreferences.height > 100
+
+    # the table held the fluxes of the reference below -ymin, which the figure does not show
+    ymin = float(np.median(dfreferences["flux_plotted"].to_numpy()))
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath, "2003du_20031213_3219_8822_00.txt"],
+        outputfile=tmp_path / "ymin.pdf",
+        timedays="300",
+        ymin=ymin,
+        write_data=True,
+    )
+    dfclipped = pl.read_csv(tmp_path / "ymin_references.txt", separator=" ", null_values="nan", comment_prefix="#")
+    isshown = pl.col("flux_plotted") >= ymin
+    hasshownneighbour = isshown.shift(1).fill_null(value=False) | isshown.shift(-1).fill_null(value=False)
+    assert 0 < dfclipped.height < dfreferences.height
+    assert dfclipped.select((isshown | hasshownneighbour).all()).item()
 
     at.spectra.plot(
         argsraw=[],

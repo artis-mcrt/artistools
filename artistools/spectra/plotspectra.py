@@ -1895,6 +1895,39 @@ def get_drawn_lines_table(
     )
 
 
+def get_shown_reference_rows(
+    dfothers: pl.DataFrame, axes: Sequence[mplax.Axes], args: argparse.Namespace
+) -> pl.DataFrame:
+    """Return the rows of the reference series that the final limits of their axes show, e.g. with -ymin.
+
+    The label of a series names its line on the axes. A line with no line style is a set of markers, and a line
+    keeps the end of each segment that crosses an edge. A series with no line of its label keeps each row.
+    """
+    if dfothers.is_empty() or "series" not in dfothers.columns:
+        return dfothers
+    lineoflabel: dict[str, tuple[mplax.Axes, Line2D]] = {}
+    for axis in axes:
+        for line in axis.get_lines():
+            lineoflabel.setdefault(str(line.get_label()), (axis, line))
+    xcolumn = f"x_plotted_{args.xunit}"
+    shown: list[pl.DataFrame] = []
+    for (label,), dfseries in dfothers.partition_by("series", maintain_order=True, as_dict=True).items():
+        axisandline = lineoflabel.get(str(label))
+        plottedcolumn = f"{args.yvariable}_plotted"
+        ycolumn = (
+            plottedcolumn
+            if plottedcolumn in dfseries.columns and dfseries[plottedcolumn].is_not_null().any()
+            else "transmission"
+        )
+        if axisandline is None or ycolumn not in dfseries.columns:
+            shown.append(dfseries)
+            continue
+        axis, line = axisandline
+        ismarkers = line.get_linestyle() in {"None", "none", "", " "}
+        shown.append(filter_to_axis_limits(dfseries, axis, xcolumn, ycolumn, linecolumns=None if ismarkers else []))
+    return pl.concat(shown, how="diagonal")
+
+
 def get_emission_plot_label(
     modelpath: Path, args: argparse.Namespace, modelname: str, dirbin: int | None, timemin: float, timemax: float
 ) -> str:
@@ -2281,7 +2314,7 @@ def draw_plot(
         "": gridtables[0] if gridtables else pl.DataFrame(),
         # a model with a different wavelength grid gets its own table
         **{f"_grid{index}": dfgrid for index, dfgrid in enumerate(gridtables[1:], start=2)},
-        "_references": dfothers,
+        "_references": get_shown_reference_rows(dfothers, list(axes), args),
         "_residuals": dfresidualstats,
         "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
         "_summary": get_summary_table(summaryrows),

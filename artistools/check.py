@@ -244,6 +244,7 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
     versionofrun = {
         foldername: f"{fields.get('git version', 'unknown version')} (branch {fields.get('git branch', 'unknown')})"
         for foldername, fields in get_run_versions(modelpath).items()
+        if fields
     }
     runnames = [get_runname(modelpath, folder) for folder in runfolders]
     # a run folder with no rank-0 log gives no version, and a run folder with no log gives no count

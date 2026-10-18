@@ -367,7 +367,7 @@ def get_run_versions(modelpath: Path) -> dict[str, dict[str, str]]:
     """Return the git version and the git branch of ARTIS of each run folder with a log, in the order of the runs.
 
     A restarted run can use a different build of ARTIS, thus each run folder gives its own version. The key is the
-    name of the run folder, or "." for the model folder. A log can give only one of the two fields. A copy of a log,
+    name of the run folder, or "." for the model folder. A log can give one of the two fields, or none. A copy of a log,
     e.g. output_0-0.txt of the last run in the model folder, is not a run, thus it gives no version. A restart starts
     at a later timestep, thus the first timestep of each log gives the order. A log with no timestep keeps its place
     after the log before it in the order of the folders.
@@ -387,8 +387,8 @@ def get_run_versions(modelpath: Path) -> dict[str, dict[str, str]]:
                     firsttimestep = int(timestepmatch.group(1))
                     break
         orderkey = float(firsttimestep) if firsttimestep is not None else (runs[-1][0] if runs else -math.inf)
-        if fields:
-            runs.append((orderkey, "." if logpath.parent == modelpath else logpath.parent.name, fields))
+        # a log with no git line is still a run, thus the last run is not the run before it, and its fields are empty
+        runs.append((orderkey, "." if logpath.parent == modelpath else logpath.parent.name, fields))
     return {foldername: fields for _, foldername, fields in sorted(runs, key=operator.itemgetter(0))}
 
 
