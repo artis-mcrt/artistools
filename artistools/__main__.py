@@ -186,10 +186,7 @@ def get_error_help(exc: BaseException) -> str:
 
 
 def get_polars_panic() -> type[BaseException]:
-    """Return the class of a panic of polars, which is a BaseException.
-
-    The dispatcher imports polars only when an error comes, thus a quick command such as version starts quickly.
-    """
+    """Return the class of a panic of polars, which is a BaseException, and not an Exception."""
     return pl.exceptions.PanicException
 
 

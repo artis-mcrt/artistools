@@ -117,7 +117,15 @@ def make_plot(args: argparse.Namespace) -> None:
         modelname = get_model_name(model_path)
         ax.plot(df[xcolumn], df[ycolumn], label=modelname)
         if makestable:
-            dfcurves.append(df.select(pl.lit(modelname).alias("model"), pl.col(xcolumn), pl.col(ycolumn)))
+            # two models can have one name, thus the path names the model of each row
+            dfcurves.append(
+                df.select(
+                    pl.lit(modelname).alias("model"),
+                    pl.lit(str(model_path)).alias("modelpath"),
+                    pl.col(xcolumn),
+                    pl.col(ycolumn),
+                )
+            )
 
     ax.set_xlabel("Mass number" if args.xaxis == "massnumber" else "Atomic number")
     ax.set_ylabel("Mass fraction" if args.yaxis == "massfraction" else "Number abundance")
@@ -139,8 +147,9 @@ def make_plot(args: argparse.Namespace) -> None:
     namesuffix = "".join(f"_{label.replace('=', '')}" for label in selectionlabels)
     outpath = resolve_outputfile(args.outputfile, f"plotinitialabundances_{stryaxis}vs{xcolumn}{namesuffix}.pdf")
     # the models can hold different nuclides, thus one table in long form gives each curve on its own grid
+    # each table is one curve, thus the test of the segments joins no point of one model to a point of the next model
     dfshown = (
-        filter_to_axis_limits(pl.concat(dfcurves), ax, xcolumn, ycolumn, linecolumns=["model"])
+        pl.concat([filter_to_axis_limits(dfcurve, ax, xcolumn, ycolumn, linecolumns=[]) for dfcurve in dfcurves])
         if dfcurves
         else pl.DataFrame()
     )

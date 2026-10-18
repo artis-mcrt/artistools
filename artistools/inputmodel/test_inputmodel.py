@@ -3679,7 +3679,7 @@ def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Pat
         )
 
     dftable = read_data_table(tmp_path / "plotinitialabundances_abundancevsZ.txt")
-    assert dftable.columns == ["model", "Z", "abundance"]
+    assert dftable.columns == ["model", "modelpath", "Z", "abundance"]
     assert mockplot.call_count == 2
     for call in mockplot.call_args_list:
         dfcurve = dftable.filter(pl.col("model") == call.kwargs["label"])
@@ -3690,6 +3690,23 @@ def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Pat
         dfhidden = dfdrawn.join(dfcurve, on=["Z", "abundance"], how="anti")
         assert (dfhidden["abundance"] < 1e-7).all()
     assert dftable.height < sum(len(call.args[1]) for call in mockplot.call_args_list)
+
+
+def test_plotinitialabundances_table_keeps_two_models_of_one_name_apart(tmp_path: Path) -> None:
+    """Two models of one name gave one value of the column model, and the filter took them for one line."""
+    modelcopy = tmp_path / "copy" / modelpath.name
+    modelcopy.mkdir(parents=True)
+    for filepath in modelpath.iterdir():
+        if filepath.name != "plotlabel.txt":
+            (modelcopy / filepath.name).symlink_to(filepath)
+    at.inputmodel.plotinitialabundances.main(
+        argsraw=[str(modelpath), str(modelcopy), "-x", "Z", "-y", "abundance", "-o", str(tmp_path)], write_data=True
+    )
+
+    dftable = read_data_table(tmp_path / "plotinitialabundances_abundancevsZ.txt")
+    assert sorted(dftable["modelpath"].unique().to_list()) == sorted([str(modelpath), str(modelcopy)])
+    curvesizes = dftable.group_by("modelpath").len()["len"].to_list()
+    assert len(set(curvesizes)) == 1
 
 
 def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

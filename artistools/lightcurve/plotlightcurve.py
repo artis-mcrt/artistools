@@ -414,7 +414,8 @@ def get_peak_summary(
             )
         else:
             parts.append("no Δm15, because the time range ends before 15 days after the peak")
-    if len(times) > 4 and (peakindex < 2 or peakindex > len(times) - 3):
+    # a curve of four points or fewer has each point in the first two or the last two, thus each peak is at an end
+    if peakindex < 2 or peakindex > len(times) - 3:
         warnings.append(
             "the peak is in the first two or the last two points, thus the true peak can be outside the time range"
         )

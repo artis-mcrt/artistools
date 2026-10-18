@@ -3747,6 +3747,14 @@ def test_peak_summary_sorts_the_times_of_a_reference_file() -> None:
     assert not warnings
 
 
+def test_peak_summary_warns_about_the_peak_of_a_short_curve() -> None:
+    """Each point of a curve of four points is in the first two or the last two, and no warning of an end came."""
+    from artistools.lightcurve.plotlightcurve import get_peak_summary
+
+    _, _, warnings = get_peak_summary([1.0, 2.0, 3.0, 4.0], [1.0, 3.0, 2.0, 1.0], "erg/s", ismagnitude=False)
+    assert any("the true peak can be outside the time range" in warning for warning in warnings)
+
+
 def test_peak_summary_gives_no_deltam15_across_a_missing_magnitude() -> None:
     """A NaN magnitude near 15 days after the peak left the finite points, and np.interp then bridged the gap."""
     from artistools.lightcurve.plotlightcurve import get_peak_summary

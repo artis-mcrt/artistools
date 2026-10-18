@@ -274,6 +274,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("cell", "the index of the cell in the model grid", ""),
     ("modelgridindex", "the index of the cell in the model grid", ""),
     ("model", "the name of the model, or the label of the reference data", ""),
+    ("modelpath", "the path of the model as the command line gives it, because two models can have one name", ""),
     ("series", "the name of the plotted series", ""),
     ("label", "the label of the plotted series or panel", ""),
     ("subplot", "the index of the subplot, from 0", ""),
