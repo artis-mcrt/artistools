@@ -4,6 +4,7 @@ import argparse
 import math
 import typing as t
 from collections.abc import Collection
+from collections.abc import Iterator
 from collections.abc import Sequence
 from itertools import starmap
 from pathlib import Path
@@ -24,6 +25,7 @@ from artistools.ejectaopacity import get_excitation_temperature_column
 from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.ejectaopacity import get_selected_timestep
 from artistools.estimators import scan_estimators
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -329,6 +331,7 @@ def get_cell_line_table(
         .select(
             "modelgridindex",
             "velocity_kmps",
+            "volume",
             "Te",
             "nne",
             "T_exc",
@@ -425,19 +428,17 @@ def parse_ions(iontexts: Sequence[str], optionname: str) -> list[tuple[int, int]
     return ions
 
 
-def get_line_contributions(
+def get_cell_line_batches(
     modelpath: Path | str,
     timestep: int,
     lambdamin: float,
     lambdamax: float,
     ions: Collection[tuple[int, int]] | None = None,
     exctemperature: str = "auto",
-    *,
-    percell: bool = False,
-) -> pl.DataFrame:
-    """Return the emission of each line in the wavelength range, or with percell, one row for each cell and line.
+) -> Iterator[pl.DataFrame]:
+    """Yield the table of get_cell_line_table() for each batch of cells.
 
-    The method and the assumptions go to the log.
+    The method and the assumptions go to the log before the first batch.
     """
     time_days = get_timestep_time(modelpath, timestep)
     temperaturecolumn = get_excitation_temperature_column(
@@ -545,17 +546,12 @@ def get_line_contributions(
 
     maxlevelcount = max(levels.height for levels in levelsofion.values())
     cellsperbatch = max(1, ROWSPERBATCH // max(dflines.height, maxlevelcount))
-    celltables = []
-    summaries = []
     for firstcell in range(0, dfcells.height, cellsperbatch):
-        dfcelllines = get_cell_line_table(
-            dfcells.slice(firstcell, cellsperbatch), dflines, levelsofion, dfnltepops, time_days
-        )
-        summaries.append(get_line_summary(dfcelllines))
-        if percell:
-            celltables.append(dfcelllines)
+        yield get_cell_line_table(dfcells.slice(firstcell, cellsperbatch), dflines, levelsofion, dfnltepops, time_days)
 
-    dfsummary = get_line_summary_of_batches(summaries)
+
+def warn_about_line_summary(dfsummary: pl.DataFrame) -> None:
+    """Warn about the lines with a population inversion in each cell, and the lines with no level population."""
     if (inverted := dfsummary.filter(pl.col("tau_sobolev_max") < 0.0).height) > 0:
         print_warning(
             f"{inverted} lines have a negative tau_sobolev in each cell, i.e. a population inversion. The escape"
@@ -564,7 +560,113 @@ def get_line_contributions(
     if (nopopulation := dfsummary.filter(pl.col("tau_sobolev_max").is_null()).height) > 0:
         print_warning(f"{nopopulation} lines have no level population in any cell, thus they have no tau_sobolev")
 
+
+def get_line_contributions(
+    modelpath: Path | str,
+    timestep: int,
+    lambdamin: float,
+    lambdamax: float,
+    ions: Collection[tuple[int, int]] | None = None,
+    exctemperature: str = "auto",
+    *,
+    percell: bool = False,
+) -> pl.DataFrame:
+    """Return the emission of each line in the wavelength range, or with percell, one row for each cell and line.
+
+    The method and the assumptions go to the log.
+    """
+    celltables = []
+    summaries = []
+    for dfcelllines in get_cell_line_batches(modelpath, timestep, lambdamin, lambdamax, ions, exctemperature):
+        summaries.append(get_line_summary(dfcelllines))
+        if percell:
+            celltables.append(dfcelllines)
+
+    dfsummary = get_line_summary_of_batches(summaries)
+    warn_about_line_summary(dfsummary)
     return pl.concat(celltables) if percell else dfsummary
+
+
+def get_velocity_bin_edges_kmps(modelpath: Path | str, nbins: int, velocitymax_kmps: float | None) -> list[float]:
+    """Return the edges [km/s] of nbins equal bins from zero to velocitymax_kmps, or to the vmax of the model."""
+    if velocitymax_kmps is None:
+        _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+        velocitymax_kmps = modelmeta["vmax_cmps"] / km_to_cm
+    return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
+
+
+def get_velocity_bin_index_expr(velocity_kmps: pl.Expr, velocityedges_kmps: Sequence[float]) -> pl.Expr:
+    """Return the index of the velocity bin, or null for a velocity outside the bins.
+
+    A bin holds its lower edge, and the last bin also holds its upper edge.
+    """
+    nbins = len(velocityedges_kmps) - 1
+    lower, upper = velocityedges_kmps[0], velocityedges_kmps[-1]
+    binindex = ((velocity_kmps - lower) / (upper - lower) * nbins).floor().cast(pl.Int64).clip(upper_bound=nbins - 1)
+    return pl.when(velocity_kmps.is_between(lower, upper)).then(binindex)
+
+
+def get_line_velocity_profiles(
+    modelpath: Path | str,
+    timestep: int,
+    lambdamin: float,
+    lambdamax: float,
+    velocityedges_kmps: Sequence[float],
+    ions: Collection[tuple[int, int]] | None = None,
+    exctemperature: str = "auto",
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Return the line summary, and the emission and the mean tau_sobolev of each line in each velocity bin.
+
+    The bins have equal widths. The mean of tau_sobolev takes the volume of each cell as the weight. A cell outside the
+    bins is in the summary, but not in a bin.
+    """
+    summaries = []
+    profiles = []
+    tau = pl.col("tau_sobolev")
+    for dfcelllines in get_cell_line_batches(modelpath, timestep, lambdamin, lambdamax, ions, exctemperature):
+        summaries.append(get_line_summary(dfcelllines))
+        profiles.append(
+            dfcelllines
+            .lazy()
+            .with_columns(velocitybin=get_velocity_bin_index_expr(pl.col("velocity_kmps"), velocityedges_kmps))
+            .filter(pl.col("velocitybin").is_not_null())
+            .group_by(*LINEKEYS, "velocitybin")
+            .agg(
+                emission_erg_per_s=pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0).sum(),
+                tau_times_volume=(tau * pl.col("volume")).filter(tau.is_not_null()).sum(),
+                volume_with_tau=pl.col("volume").filter(tau.is_not_null()).sum(),
+                cellcount=pl.len(),
+            )
+            .collect()
+        )
+
+    dfsummary = get_line_summary_of_batches(summaries)
+    warn_about_line_summary(dfsummary)
+    binwidth_kmps = (velocityedges_kmps[-1] - velocityedges_kmps[0]) / (len(velocityedges_kmps) - 1)
+    dfprofiles = (
+        pl
+        .concat(profiles)
+        .group_by(*LINEKEYS, "velocitybin")
+        .agg(pl.col("emission_erg_per_s", "tau_times_volume", "volume_with_tau", "cellcount").sum())
+        .select(
+            *LINEKEYS,
+            "velocitybin",
+            x_lower_kmps=pl.col("velocitybin").replace_strict(
+                list(range(len(velocityedges_kmps) - 1)), velocityedges_kmps[:-1], return_dtype=pl.Float64
+            ),
+            x_upper_kmps=pl.col("velocitybin").replace_strict(
+                list(range(len(velocityedges_kmps) - 1)), velocityedges_kmps[1:], return_dtype=pl.Float64
+            ),
+            emission_erg_per_s=pl.col("emission_erg_per_s"),
+            emission_per_velocity_erg_per_s_per_kmps=pl.col("emission_erg_per_s") / binwidth_kmps,
+            tau_sobolev_volume_mean=pl.when(pl.col("volume_with_tau") > 0).then(
+                pl.col("tau_times_volume") / pl.col("volume_with_tau")
+            ),
+            cellcount=pl.col("cellcount"),
+        )
+        .sort(*LINEKEYS, "velocitybin")
+    )
+    return dfsummary, dfprofiles
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

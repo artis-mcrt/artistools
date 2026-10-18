@@ -156,6 +156,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "plotinitialcomposition",
         "plotlastpacketinteraction",
         "plotlightcurves",
+        "plotlinecontributions",
         "plotlinefluxes",
         "plotlogfiles",
         "plotnltepops",
@@ -459,6 +460,25 @@ subcommandtree: CommandTree = {
         helptext="Plot ARTIS light curves.",
         examples=((".", "the light curve of a model"),),
         aliases=("lc", "plotlightcurve"),
+    ),
+    "plotlinecontributions": CommandSpec(
+        "plotlinecontributions",
+        helptext="Plot the Sobolev emission and the optical depth of the strongest lines against velocity.",
+        note=(
+            "The values come from the estimators and the level populations, as in linecontributions."
+            " plotlastpacketinteraction -groupby gives the same view from the packets."
+        ),
+        examples=(
+            (
+                ". -timedays 7 -lambdamin 3000 -lambdamax 10000",
+                "where the 8 lines with the most emission from 3000 to 10000 Å form at 7 days",
+            ),
+            (
+                ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau",
+                "where the lines with the largest optical depth from 6000 to 6400 Å form",
+            ),
+        ),
+        exampletestfolder="test-classicmode_3d",
     ),
     "plotlinefluxes": CommandSpec(
         "plotlinefluxes",

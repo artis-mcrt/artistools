@@ -280,6 +280,22 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("emission_fraction", "the emission of the line divided by the emission of all the lines in the range", ""),
     ("velocity_kmps_emission_mean", "the mean radial velocity of the cells, with the emission as the weight", "km/s"),
     ("Te_emission_mean", "the mean electron temperature of the cells, with the emission as the weight", "K"),
+    (
+        "emission_per_velocity_erg_per_s_per_kmps",
+        "the emission of the cells in the velocity bin, divided by the width of the bin",
+        "erg/s/(km/s)",
+    ),
+    (
+        "emission_fraction_per_kmps",
+        "the emission of the line in the velocity bin, divided by the width of the bin and the emission in all cells",
+        "(km/s)^-1",
+    ),
+    (
+        "tau_sobolev_volume_mean",
+        "the mean tau_sobolev of the cells in the velocity bin, with the volume as the weight",
+        "",
+    ),
+    ("cellcount", "the number of cells in the velocity bin", ""),
     # the logs of ARTIS
     ("mpirank", "the index of the MPI rank", ""),
     ("update_grid_s", "the time that the MPI rank took to update the grid in the timestep", "s"),
@@ -292,6 +308,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("W", "the dilution factor of the radiation field of the cell", None),
     ("nne", "the number density of the free electrons in the cell", None),
     ("rho", "the density of the cell", None),
+    ("volume", "the volume of the cell at the mid time of the timestep", None),
     ("beta", "the radial velocity of the centre of the cell", None),
     ("velocity_kmps", "the radial velocity of the centre of the cell", "km/s"),
     ("vel_r_mid(_kmps|_on_c)?", "the radial velocity of the centre of the cell", None),

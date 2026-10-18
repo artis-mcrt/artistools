@@ -2173,6 +2173,50 @@ def test_line_summary_joins_the_cells_of_a_line_with_different_population_method
     assert np.isclose(dfsummary["velocity_kmps_emission_mean"].item(), 1750.0, rtol=1e-12)
 
 
+def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path: Path) -> None:
+    """The emission and the mean tau_sobolev of each bin agree with a sum by hand over the cells of the line."""
+    commonargs: dict[str, t.Any] = {"modelpath": modelpath_classic_3d, "lambdamin": 6000.0, "lambdamax": 6400.0}
+    nbins = 6
+    at.plotlinecontributions.main(
+        argsraw=[],
+        timestep=25,
+        nvelocitybins=nbins,
+        maxlines=3,
+        rankby="tau",
+        outputfile=tmp_path / "lines.pdf",
+        write_data=True,
+        **commonargs,
+    )
+    dfdrawn = pl.read_csv(tmp_path / "lines.txt", separator=" ", null_values="nan", comment_prefix="#")
+
+    dfcells = at.linecontributions.get_line_contributions(timestep=25, percell=True, **commonargs)
+    dfsummary = at.linecontributions.get_line_contributions(timestep=25, **commonargs)
+    dfranked = dfsummary.sort("tau_sobolev_max", descending=True).head(3)
+    assert dfdrawn.select("lambda_angstroms").unique().height == 3
+
+    _, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    binwidth_kmps = modelmeta["vmax_cmps"] / at.constants.km_to_cm / nbins
+    for line in dfranked.iter_rows(named=True):
+        dflinecells = dfcells.filter(
+            (pl.col("ion") == line["ion"]) & (pl.col("lower") == line["lower"]) & (pl.col("upper") == line["upper"])
+        ).with_columns(velocitybin=(pl.col("velocity_kmps") / binwidth_kmps).floor().cast(pl.Int64))
+        dflinebins = dfdrawn.filter(
+            (pl.col("ion") == line["ion"]) & (pl.col("lower") == line["lower"]) & (pl.col("upper") == line["upper"])
+        )
+        assert dflinebins.height > 1
+        for row in dflinebins.iter_rows(named=True):
+            dfbincells = dflinecells.filter(pl.col("velocitybin") == round(row["x_lower_kmps"] / binwidth_kmps))
+            emission = float(dfbincells["emission_erg_per_s"].sum())
+            tau = pl.col("tau_sobolev")
+            tau_mean = dfbincells.select((tau * pl.col("volume")).sum() / pl.col("volume").sum()).item()
+            assert row["cellcount"] == dfbincells.height
+            assert np.isclose(row["emission_erg_per_s"], emission, rtol=1e-6)
+            assert np.isclose(row["tau_sobolev_volume_mean"], tau_mean, rtol=1e-6)
+            assert np.isclose(
+                row["emission_fraction_per_kmps"], emission / binwidth_kmps / line["emission_erg_per_s"], rtol=1e-6
+            )
+
+
 def test_linecontributions_writes_a_file_only_with_the_output_option(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
