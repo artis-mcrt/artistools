@@ -370,7 +370,8 @@ def test_viewing_angle_peakmag_risetime_scatter_plot(monkeypatch: pytest.MonkeyP
     # the scatter plot wrote no table, because main returned before output_data
     (tablepath,) = tmp_path.glob("*risetime_peakmag.txt")
     dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
-    assert dftable.columns == ["model", "dirbin", "risetime_days", "peakmag"]
+    # the row of the angle average holds the half widths of its error bars, which a direction bin does not have
+    assert dftable.columns == ["model", "dirbin", "risetime_days", "peakmag", "risetime_days_err", "peakmag_err"]
     # the data file of a run with no -plotviewingangle holds the angle average, which is the direction bin -1
     assert dftable["dirbin"].to_list() == [-1, -1]
 
@@ -3704,6 +3705,28 @@ def test_bolometric_table_keeps_a_reference_point_whose_error_bar_crosses_the_ax
     })
     dfshown = get_shown_lightcurve_rows([dfreference], axis, "erg/s", showscmf=False)
     assert dfshown["time_days"].to_list() == [2.0, 4.0]
+
+
+def test_scatter_table_keeps_an_angle_average_whose_error_bar_crosses_the_axes() -> None:
+    """A point of the angle average outside the axes can have an error bar inside them, and the row went."""
+    import matplotlib.figure as mplfig
+
+    from artistools.lightcurve.viewingangleanalysis import filter_to_markers_and_error_bars
+
+    axis = mplfig.Figure().add_subplot()
+    axis.set_xlim(10.0, 20.0)
+    axis.set_ylim(-17.0, -16.0)
+    dfpoints = pl.DataFrame({
+        "dirbin": [3, -1],
+        "risetime_days": [15.0, 15.0],
+        "peakmag": [-18.0, -18.0],
+        "risetime_days_err": [None, 1.0],
+        "peakmag_err": [None, 1.5],
+    })
+    shown = filter_to_markers_and_error_bars(
+        dfpoints, axis, ("risetime_days", "risetime_days_err"), ("peakmag", "peakmag_err")
+    )
+    assert shown["dirbin"].to_list() == [-1]
 
 
 def test_peak_summary_sorts_the_times_of_a_reference_file() -> None:

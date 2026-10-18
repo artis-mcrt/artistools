@@ -29,6 +29,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import zopen
+from artistools.misc.cliutils import format_range_list
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.modelinfo import get_dfrankassignments
 from artistools.misc.modelinfo import get_npts_model
@@ -87,18 +88,26 @@ def get_logfiles(modelpath: Path, ranks: Sequence[int] | None, cells: Sequence[i
     A run that stops before it writes an estimator file has no run folder in get_runfolders, but its log can hold the
     error. Thus the search reads each subfolder of the model folder. A restart can use a different number of ranks,
     thus None finds the ranks of each folder from the names of its logs, and cells finds the ranks of these cells in
-    the layout of each folder. The host of a remote model finds the logs.
+    the layout of each folder. The host of a remote model finds the logs. A folder with logs that has no log of a
+    selected rank gives a warning, because the summary then has no messages of that rank of that run.
     """
-    return get_unique_logfiles(
-        modelpath,
-        [
-            logpath
-            for folder in get_run_subfolders(modelpath)
-            for rank in get_folder_ranks(modelpath, folder, ranks, cells)
-            if (logpath := firstexisting_or_none(f"output_{rank}-0.txt", folder=folder, search_subfolders=False))
-            is not None
-        ],
-    )
+    logfiles: list[Path] = []
+    for folder in get_run_subfolders(modelpath):
+        folderlogranks = get_folder_log_ranks(folder)
+        missingranks: list[int] = []
+        for rank in get_folder_ranks(modelpath, folder, ranks, cells):
+            logpath = firstexisting_or_none(f"output_{rank}-0.txt", folder=folder, search_subfolders=False)
+            if logpath is not None:
+                logfiles.append(logpath)
+            else:
+                missingranks.append(rank)
+        # a folder with no log is not a run folder, e.g. a folder of plots, thus only a folder with logs gives a warning
+        if missingranks and folderlogranks:
+            print_warning(
+                f"{folder} has no log of the ranks {format_range_list(missingranks)}, thus the summary leaves out their"
+                " messages of this run"
+            )
+    return get_unique_logfiles(modelpath, logfiles)
 
 
 def get_unique_logfiles(modelpath: Path, logfiles: Sequence[Path]) -> list[Path]:

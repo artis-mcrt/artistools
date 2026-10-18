@@ -6536,8 +6536,10 @@ def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
     for rank in (2, 3):
         (modelfolder / "200.slurm" / f"output_{rank}-0.txt").unlink()
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-modelgridindex", "999", "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
-    assert dfsummary["count"].item() == 1
+    captured = capsys.readouterr()
+    assert pl.read_csv(io.StringIO(captured.out), separator=" ", null_values="nan")["count"].item() == 1
+    # the summary left out the run of 200.slurm with no message
+    assert "200.slurm has no log of the ranks 3" in captured.err
 
     # a folder that gives no number of ranks gives a warning, and the summary leaves out its logs
     (modelfolder / "300.slurm").mkdir()
@@ -7313,6 +7315,12 @@ def test_check_katz_ratio_agrees_with_a_direct_integration(tmp_path: Path) -> No
     detail = get_check_results(tmp_path).filter(pl.col("check") == "energy")["detail"].item()
     omitteddays = lightcurve[3, 0] - deposition[:, 1].min()
     assert f"leave out {omitteddays:.3g} d of L and 0 d of Q with no value or no row" in detail
+
+    # a light curve with no row at one inner time has no NaN either, and the trapezoid rule spanned the gap
+    np.savetxt(tmp_path / "light_curve.out", np.delete(lightcurve, 10, axis=0))
+    status, detail = get_check_results(tmp_path).filter(pl.col("check") == "energy").select("status", "detail").row(0)
+    assert status == "warning"
+    assert f"light_curve.out has no row at 1 mid times of deposition.out, e.g. at {lightcurve[10, 0]:.2f} d" in detail
 
 
 def test_check_that_fails_gives_an_error_row_and_the_other_checks_run() -> None:

@@ -481,17 +481,20 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         # the angle average has the direction bin -1, as in the readers of the light curves
         # the fit of the angle average gives an array of one value. The error bars have the angle average as their
         # centre, thus the table keeps that row while the plot draws its point or its error bars
+        # the error bars give the standard deviation over the direction bins, thus the row of the average holds them
+        xerr = None if args.noerrorbars else float(np.std(xvalues_viewingangles))
+        yerr = None if args.noerrorbars else float(np.std(band_peak_mag_viewing_angles))
         averagepoint = (
             []
             if args.noangleaveraged and args.noerrorbars
-            else list(
-                zip(
-                    itertools.repeat(-1),
+            else [
+                (-1, float(xaverage), float(yaverage), xerr, yerr)
+                for xaverage, yaverage in zip(
                     np.ravel(xvalues_angleaveraged),
                     np.ravel(args.band_peakmag_angle_averaged_polyfit[ii]),
                     strict=False,
                 )
-            )
+            ]
         )
         dfplotted.append(
             pl.DataFrame(
@@ -500,11 +503,19 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
                         get_table_dirbins(viewing_angle_plot_data, datafilename, args),
                         xvalues_viewingangles,
                         band_peak_mag_viewing_angles,
-                        strict=True,
+                        itertools.repeat(None),
+                        itertools.repeat(None),
+                        strict=False,
                     ),
                     *averagepoint,
                 ],
-                schema={"dirbin": pl.Int64, "x": pl.Float64, "peakmag": pl.Float64},
+                schema={
+                    "dirbin": pl.Int64,
+                    "x": pl.Float64,
+                    "peakmag": pl.Float64,
+                    "x_err": pl.Float64,
+                    "peakmag_err": pl.Float64,
+                },
                 orient="row",
             ).select(pl.lit(modelname).alias("model"), pl.all())
         )
@@ -557,7 +568,12 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         filename = f"{filestem}_risetime_peakmag.pdf"
     xcolumn = "risetime_days" if args.make_viewing_angle_peakmag_risetime_scatter_plot else "deltam15"
     dftable = (
-        filter_to_axis_limits(pl.concat(dfplotted).rename({"x": xcolumn}), ax, xcolumn, "peakmag")
+        filter_to_markers_and_error_bars(
+            pl.concat(dfplotted).rename({"x": xcolumn, "x_err": f"{xcolumn}_err"}),
+            ax,
+            (xcolumn, f"{xcolumn}_err"),
+            ("peakmag", "peakmag_err"),
+        )
         if dfplotted
         else pl.DataFrame()
     )
@@ -565,20 +581,28 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     save_figure(fig, datafolder / filename, format="pdf", args=args)
 
 
-def get_shown_observations(dfobservations: pl.DataFrame, axis: mplax.Axes) -> pl.DataFrame:
-    """Return the observed supernovae whose marker or error bars the final limits of the axes show.
+def filter_to_markers_and_error_bars(
+    dfpoints: pl.DataFrame, axis: mplax.Axes, xcolumns: tuple[str, str], ycolumns: tuple[str, str]
+) -> pl.DataFrame:
+    """Keep the rows whose marker or error bars the final limits of the axes show.
 
-    Each row has a horizontal bar of the colour and a vertical bar of the magnitude, thus a row stays if a bar
-    crosses the axes.
+    xcolumns and ycolumns give the column of the value and the column of the half width of its error bar. A row with
+    no error bar has a null half width. A row has a horizontal bar and a vertical bar, thus it stays if a bar crosses
+    the axes.
     """
     xlow, xhigh = sorted(axis.get_xlim())
     ylow, yhigh = sorted(axis.get_ylim())
-    x, xerr = pl.col("(B-V)Bmax"), pl.col("err_(B-V)Bmax").fill_null(0.0)
-    y, yerr = pl.col("MB"), pl.col("err_MB").fill_null(0.0)
+    x, xerr = pl.col(xcolumns[0]), pl.col(xcolumns[1]).fill_null(0.0)
+    y, yerr = pl.col(ycolumns[0]), pl.col(ycolumns[1]).fill_null(0.0)
     xisinside, yisinside = x.is_between(xlow, xhigh), y.is_between(ylow, yhigh)
     horizontalbarisshown = yisinside & (x - xerr <= xhigh) & (x + xerr >= xlow)
     verticalbarisshown = xisinside & (y - yerr <= yhigh) & (y + yerr >= ylow)
-    return dfobservations.filter(horizontalbarisshown | verticalbarisshown)
+    return dfpoints.filter((horizontalbarisshown | verticalbarisshown).fill_null(value=False))
+
+
+def get_shown_observations(dfobservations: pl.DataFrame, axis: mplax.Axes) -> pl.DataFrame:
+    """Return the observed supernovae whose marker or error bars the final limits of the axes show."""
+    return filter_to_markers_and_error_bars(dfobservations, axis, ("(B-V)Bmax", "err_(B-V)Bmax"), ("MB", "err_MB"))
 
 
 def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:

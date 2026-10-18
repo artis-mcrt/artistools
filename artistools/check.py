@@ -348,6 +348,13 @@ def check_energy(modelpath: Path) -> tuple[str, str]:
     lumomitted_days += (lcfirstday - tmindays if lcfirstday > tmindays * (1 + 1e-4) else 0.0) + (
         tmaxdays - lclastday if lclastday < tmaxdays * (1 - 1e-4) else 0.0
     )
+    # a mid time of deposition.out with no row of light_curve.out inside the range makes one trapezoid span the gap
+    lctimes = dffinitelc["time_days"].to_numpy()
+    bridgedtimes = [
+        float(tmid)
+        for tmid in dfdeposition["tmid_days"].to_numpy()
+        if lcfirstday < tmid < lclastday and not np.isclose(lctimes, tmid, rtol=1e-4, atol=0.0).any()
+    ]
     depintegral, depomitted_days = get_katz_integral(
         dfdeposition["tmid_days"], dfdeposition[DEPOSITIONCOLUMN] * Lsun_to_erg_per_s
     )
@@ -362,6 +369,12 @@ def check_energy(modelpath: Path) -> tuple[str, str]:
         detail += (
             f". The integrals leave out {lumomitted_days:.3g} d of L and {depomitted_days:.3g} d of Q with no value"
             " or no row, thus the ratio covers different times"
+        )
+        return "warning", detail
+    if bridgedtimes:
+        detail += (
+            f". light_curve.out has no row at {len(bridgedtimes)} mid times of deposition.out, e.g. at"
+            f" {bridgedtimes[0]:.2f} d, thus the trapezoid rule takes a straight line of L across each gap"
         )
         return "warning", detail
     isinrange = KATZ_RATIO_RANGE[0] <= ratio <= KATZ_RATIO_RANGE[1]

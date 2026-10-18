@@ -111,6 +111,16 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("peakmag", "the peak magnitude of the polynomial fit to the light curve of the band", "mag"),
     ("risetime_days", "the time of the peak of the polynomial fit, from the explosion", "days"),
     ("deltam15", "the magnitude 15 days after the peak minus the peak magnitude, from the polynomial fit", "mag"),
+    (
+        "risetime_days_err",
+        "the half width of the error bar of the angle average, the standard deviation over the direction bins",
+        "days",
+    ),
+    (
+        "(peakmag|deltam15)_err",
+        "the half width of the error bar of {0} of the angle average, the standard deviation over the direction bins",
+        "mag",
+    ),
     ("time_(min|max)_days", "the {0}imum time of the drawn points, from the explosion", "days"),
     ("peak_time_days", "the time of the peak, from the explosion", "days"),
     ("peak_mag", "the smallest drawn magnitude", "mag"),
