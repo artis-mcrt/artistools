@@ -194,7 +194,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("-nvelocitybins", type=int, default=25, help="Number of velocity bins of equal width")
     parser.add_argument(
-        "-velocitymax", type=float, help="Upper edge of the velocity bins in km/s. Default: the vmax of the model"
+        "-velocitymax",
+        type=float,
+        help="Upper edge of the velocity bins in km/s. Default: the corner of the model grid",
     )
     addarg_excitationtemperature(parser)
     addarg_output(parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path/filename for the plot file")
@@ -224,10 +226,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.modelpath, timestep, args.xmin, args.xmax, velocityedges_kmps, ions, args.exctemperature
     )
 
-    upperedgesource = "-velocitymax" if args.velocitymax is not None else "the vmax of the model"
     print_detail(
         f"{args.nvelocitybins} velocity bins of {velocityedges_kmps[1]:.0f} km/s from 0 to {velocityedges_kmps[-1]:.0f}"
-        f" km/s ({upperedgesource}). Each cell goes in the bin of the radial velocity of its centre"
+        f" km/s. Each cell goes in the bin of the radial velocity of its centre"
     )
     print_detail(
         "The upper panel gives the emission of the cells in each bin, divided by the width of the bin. The panel also"

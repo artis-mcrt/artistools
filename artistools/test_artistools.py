@@ -2195,7 +2195,8 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
     assert dfdrawn.select("lambda_angstroms").unique().height == 3
 
     _, modelmeta = at.get_modeldata(modelpath_classic_3d)
-    binwidth_kmps = modelmeta["vmax_cmps"] / at.constants.km_to_cm / nbins
+    # the default bins end at the corner of the 3D grid
+    binwidth_kmps = modelmeta["vmax_cmps"] / at.constants.km_to_cm * math.sqrt(3) / nbins
     for line in dfranked.iter_rows(named=True):
         dflinecells = dfcells.filter(
             (pl.col("ion") == line["ion"]) & (pl.col("lower") == line["lower"]) & (pl.col("upper") == line["upper"])

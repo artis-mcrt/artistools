@@ -1,6 +1,7 @@
 """Plot 2D histograms of where in the ejecta packets were last emitted or scattered."""
 
 import argparse
+import math
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -421,7 +422,7 @@ def print_group_profile_method(
     velocityedges_kmps: Sequence[float],
     luminosity_factor: float,
 ) -> None:
-    """Print the method of the velocity profiles, and the luminosity, mean velocity, and packet number of each group.
+    """Print the method of the profiles, and the luminosity, the mean velocity, and the number of packets of each group.
 
     The mean velocity takes the energy of each bin as the weight and the centre of each bin as the velocity.
     """
@@ -470,9 +471,13 @@ def print_group_profile_method(
     for label, energy, groupcount, meanvelocity in dfgroups.select(
         "label", "energy", "packetcount", "meanvelocity"
     ).iter_rows():
+        # a group with all its packets outside the bins has no mean velocity
+        velocitytext = (
+            f"mean velocity {meanvelocity:.0f} km/s" if math.isfinite(meanvelocity) else "no packet in the bins"
+        )
         print_detail(
-            f"  {label}: {energy * luminosity_factor:.3e} erg/s ({energy / totalenergy:.1%}), mean velocity"
-            f" {meanvelocity:.0f} km/s, {groupcount} packets"
+            f"  {label}: {energy * luminosity_factor:.3e} erg/s ({energy / totalenergy:.1%}), {velocitytext},"
+            f" {groupcount} packets"
         )
 
 
@@ -592,7 +597,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-velocitymax",
         type=float,
-        help="Upper edge of the velocity bins of -groupby in km/s. Default: the vmax of the model",
+        help="Upper edge of the velocity bins of -groupby in km/s. Default: the corner of the model grid",
     )
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument("--colorlogscale", action="store_true", help="Show the log10 of the emissivity in the 2D plot")

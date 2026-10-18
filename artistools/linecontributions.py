@@ -588,10 +588,18 @@ def get_line_contributions(
 
 
 def get_velocity_bin_edges_kmps(modelpath: Path | str, nbins: int, velocitymax_kmps: float | None) -> list[float]:
-    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax_kmps or to the model vmax."""
+    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax_kmps or to the grid corner.
+
+    The corner of a 2D grid or a 3D grid is outside vmax. A cell in a corner can hold much of the emission or the
+    optical depth, e.g. in the fast ejecta of a kilonova.
+    """
     if velocitymax_kmps is None:
         _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-        velocitymax_kmps = modelmeta["vmax_cmps"] / km_to_cm
+        velocitymax_kmps = modelmeta["vmax_cmps"] / km_to_cm * math.sqrt(modelmeta["dimensions"])
+        print_detail(
+            f"The velocity bins end at {velocitymax_kmps:.0f} km/s, the corner of the model grid. This is vmax times"
+            f" the square root of the number of dimensions ({modelmeta['dimensions']})"
+        )
     return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
 
 
