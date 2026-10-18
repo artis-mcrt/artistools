@@ -18,8 +18,15 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.linecontributions import add_velocity_bin_args
+from artistools.linecontributions import convert_velocity_columns
+from artistools.linecontributions import format_velocity
 from artistools.linecontributions import get_velocity_bin_edges_kmps
 from artistools.linecontributions import get_velocity_bin_index_expr
+from artistools.linecontributions import get_velocity_unit
+from artistools.linecontributions import INVERSE_VELOCITYUNIT_AXISLABELS
+from artistools.linecontributions import KMPS_PER_VELOCITYUNIT
+from artistools.linecontributions import VELOCITYUNIT_AXISLABELS
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
@@ -36,6 +43,7 @@ from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import resolve_outputfile
+from artistools.misc.dirbins import get_dirbin_labels
 from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_emission_velocity_expr
@@ -330,14 +338,15 @@ def plot_velocity_profiles_by_group(
     wavelen: float | None = None,
     binwidth: float | None = None,
     maxseriescount: int | None = 8,
+    unit: t.Literal["kmps", "c"] = "kmps",
     outputfile: Path | None = None,
     args: argparse.Namespace | None = None,
 ) -> None:
     """Plot the luminosity per unit velocity against the radial velocity of the last interaction, for each group.
 
     A group is an element, an ion, or a line of the last emission, or with absorption, of the last absorption. The
-    last absorption of a packet happens at the position of its last emission. An outputfile of None or of a folder
-    gives the file a name from the selection of the packets.
+    last absorption of a packet happens at the position of its last emission. unit is the unit of the velocity axis.
+    An outputfile of None or of a folder gives the file a name from the selection of the packets.
     """
     from artistools.spectra.core import get_absorption_type_labels
     from artistools.spectra.core import get_emission_type_labels
@@ -383,21 +392,22 @@ def plot_velocity_profiles_by_group(
     )
     luminosity_factor = inverse_solidangle_fraction / (delta_t_s * nprocs_read)
     print_group_profile_method(
-        dfprofiles, dfpackets.height, position, typecolumn, t_min, t_max, velocityedges_kmps, luminosity_factor
+        dfprofiles, dfpackets.height, position, typecolumn, t_min, t_max, velocityedges_kmps, luminosity_factor, unit
     )
 
     dftable = get_group_profile_table(dfprofiles, velocityedges_kmps, luminosity_factor, [*drawnnames, "Other"])
     fig, axesgrid = make_frame_figure(args, aspect=0.6)
     ax = axesgrid[0, 0]
-    draw_group_profiles(ax, dftable, velocityedges_kmps)
+    draw_group_profiles(ax, dftable, velocityedges_kmps, unit)
     interaction = "absorption" if absorption else ("thermal emission" if trueem else "interaction")
-    ax.set_xlabel(f"Radial velocity of the last {interaction} [km/s]")
-    ax.set_ylabel(r"$\Delta L / \Delta v$ [erg s$^{-1}$ (km/s)$^{-1}$]")
+    ax.set_xlabel(f"Radial velocity of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
+    ax.set_ylabel(rf"$\Delta L / \Delta v$ [erg s$^{{-1}}$ {INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
+    titleparts = [f"{get_model_name(modelpath)} {(t_min + t_max) / 2:.2f} d"]
     if wavelen is not None and binwidth is not None:
-        windowtext = f"{wavelen - binwidth / 2:.0f}-{wavelen + binwidth / 2:.0f} Å"
-        ax.set_title(f"{get_model_name(modelpath)} {(t_min + t_max) / 2:.2f} d, {windowtext}")
-    else:
-        ax.set_title(f"{get_model_name(modelpath)} {(t_min + t_max) / 2:.2f} d")
+        titleparts.append(f"{wavelen - binwidth / 2:.0f}-{wavelen + binwidth / 2:.0f} Å")
+    if dirbin != -1:
+        titleparts.append(get_dirbin_labels([dirbin], average_over_phi=True, usedegrees=True)[dirbin])
+    ax.set_title(", ".join(titleparts))
     set_legend(ax, args)
 
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
@@ -408,7 +418,7 @@ def plot_velocity_profiles_by_group(
         outputfile, f"{start_of_filename}{kind}_by{groupby}_ts{timestep}_into_dirbin{dirbin}.pdf"
     )
     if args is not None:
-        output_data(args, {"": dftable}, outfilename)
+        output_data(args, {"": convert_velocity_columns(dftable, unit)}, outfilename)
     save_figure(fig, outfilename, args=args)
 
 
@@ -421,6 +431,7 @@ def print_group_profile_method(
     t_max: float,
     velocityedges_kmps: Sequence[float],
     luminosity_factor: float,
+    unit: t.Literal["kmps", "c"],
 ) -> None:
     """Print the method of the profiles, and the luminosity, the mean velocity, and the number of packets of each group.
 
@@ -440,7 +451,8 @@ def print_group_profile_method(
     nbins = len(velocityedges_kmps) - 1
     binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
     print_detail(
-        f"{nbins} velocity bins of {binwidth_kmps:.0f} km/s from 0 to {velocityedges_kmps[-1]:.0f} km/s. The luminosity"
+        f"{nbins} velocity bins of {format_velocity(binwidth_kmps, unit)} from 0 to"
+        f" {format_velocity(velocityedges_kmps[-1], unit)}. The luminosity"
         " is the packet energy divided by the width of the timestep and by the number of MPI ranks. A factor of 4 pi"
         " divided by the solid angle of the direction bin then applies"
     )
@@ -473,7 +485,9 @@ def print_group_profile_method(
     ).iter_rows():
         # a group with all its packets outside the bins has no mean velocity
         velocitytext = (
-            f"mean velocity {meanvelocity:.0f} km/s" if math.isfinite(meanvelocity) else "no packet in the bins"
+            f"mean velocity {format_velocity(meanvelocity, unit)}"
+            if math.isfinite(meanvelocity)
+            else "no packet in the bins"
         )
         print_detail(
             f"  {label}: {energy * luminosity_factor:.3e} erg/s ({energy / totalenergy:.1%}), {velocitytext},"
@@ -504,18 +518,26 @@ def get_group_profile_table(
     )
 
 
-def draw_group_profiles(ax: "mplax.Axes", dftable: pl.DataFrame, velocityedges_kmps: Sequence[float]) -> None:
-    """Draw the sum of all the groups, and one step series for each group, with its fraction of the luminosity."""
-    edges = np.array(velocityedges_kmps)
+def draw_group_profiles(
+    ax: "mplax.Axes", dftable: pl.DataFrame, velocityedges_kmps: Sequence[float], unit: t.Literal["kmps", "c"]
+) -> None:
+    """Draw the sum of all the groups, and one step series for each group, with its fraction of the luminosity.
+
+    dftable is in km/s, and the axis takes the velocity unit unit.
+    """
+    kmpsperunit = KMPS_PER_VELOCITYUNIT[unit]
+    edges = np.array(velocityedges_kmps) / kmpsperunit
     yvalues = "luminosity_per_velocity_erg_per_s_per_kmps"
     dftotal = dftable.group_by("x_lower_kmps").agg(pl.col(yvalues).sum()).sort("x_lower_kmps")
     totalluminosity = float(dftable["luminosity_erg_per_s"].sum())
-    ax.stairs(dftotal[yvalues].to_numpy(), edges, label="All packets in the bins", color="black", linewidth=1.5)
+    ax.stairs(
+        dftotal[yvalues].to_numpy() * kmpsperunit, edges, label="All packets in the bins", color="black", linewidth=1.5
+    )
     for (label,), dfgroup in dftable.group_by("label", maintain_order=True):
         fraction = float(dfgroup["luminosity_erg_per_s"].sum()) / totalluminosity if totalluminosity > 0 else 0.0
         # stairs with `color=None` draws black and not the next colour of the cycle
         color = "grey" if label == "Other" else get_next_color(ax)
-        ax.stairs(dfgroup[yvalues].to_numpy(), edges, label=f"{label} ({fraction:.1%})", color=color)
+        ax.stairs(dfgroup[yvalues].to_numpy() * kmpsperunit, edges, label=f"{label} ({fraction:.1%})", color=color)
     ax.set_xlim(edges[0], edges[-1])
     ax.set_ylim(bottom=0.0)
 
@@ -591,14 +613,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=8,
         help='Number of groups that -groupby draws. The other groups join the group "Other"',
     )
-    parser.add_argument(
-        "-nvelocitybins", type=int, default=25, help="Number of velocity bins of equal width for -groupby"
-    )
-    parser.add_argument(
-        "-velocitymax",
-        type=float,
-        help="Upper edge of the velocity bins of -groupby in km/s. Default: the corner of the model grid",
-    )
+    add_velocity_bin_args(parser, " of -groupby")
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument("--colorlogscale", action="store_true", help="Show the log10 of the emissivity in the 2D plot")
 
@@ -675,23 +690,20 @@ def plot_velocity_profiles_from_args(args: argparse.Namespace) -> None:
             "--absorption takes the last absorption, and --use_thermalemissiontype takes the last thermal emission",
             "Give one of the two options",
         )
-    if args.nvelocitybins < 1:
-        exit_with_error(f"-nvelocitybins {args.nvelocitybins} gives no bins", "Give a number of 1 or more")
-    if args.velocitymax is not None and args.velocitymax <= 0.0:
-        exit_with_error(f"-velocitymax {args.velocitymax} gives no range", "Give a velocity above 0 km/s")
-
     modelpath = Path(args.modelpath)
+    unit = get_velocity_unit(modelpath, args.velocityunit)
     plot_velocity_profiles_by_group(
         modelpath,
         args.timedays,
         args.dirbin,
         args.groupby,
-        get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax),
+        get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit),
         trueem=args.use_thermalemissiontype,
         absorption=args.absorption,
         wavelen=args.wavelen,
         binwidth=args.binwidth,
         maxseriescount=args.maxseriescount,
+        unit=unit,
         outputfile=args.outputfile,
         args=args,
     )

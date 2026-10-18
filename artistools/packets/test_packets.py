@@ -587,13 +587,14 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
     assert heatmap[0, 25] > 0.0
 
 
-@pytest.mark.parametrize("absorption", [False, True])
+@pytest.mark.parametrize(("absorption", "velocityunit"), [(False, "kmps"), (True, "kmps"), (False, "c")])
 def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_each_velocity_bin(
-    tmp_path: Path, absorption: bool
+    tmp_path: Path, absorption: bool, velocityunit: str
 ) -> None:
     """The group of a packet comes from its emission type, or with --absorption, from its absorption type.
 
     The groups after -maxseriescount and the codes with no line join Other, and a packet above the bins is in no bin.
+    -velocityunit c gives -velocitymax, the bin edges, and the luminosity per unit velocity in units of c.
     """
     from artistools.packets import plotlastpacketinteraction
 
@@ -603,6 +604,7 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
     t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
     delta_t_s = (at.get_timestep_times(modelpath, loc="end")[timestep] - t_start) * at.constants.day_to_s
     emtime_s = 6.0 * at.constants.day_to_s
+    kmps_per_unit = at.constants.C_cm_per_s / at.constants.km_to_cm if velocityunit == "c" else 1.0
     # rows 0 and 3 of the linelist are lines of Fe IV and Ni IV, and the last code is a free-free emission
     typecodes = [0, 0, 0, 0, 3, -9999999]
     velocities_kmps = [2000.0, 3000.0, 7000.0, 12000.0, 7000.0, 7000.0]
@@ -630,21 +632,30 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
             absorption=absorption,
             maxseriescount=1,
             nvelocitybins=2,
-            velocitymax=10000.0,
+            velocitymax=10000.0 / kmps_per_unit,
+            velocityunit=velocityunit,
             outputfile=tmp_path / "profile.pdf",
             write_data=True,
         )
 
     dftable = pl.read_csv(tmp_path / "profile.txt", separator=" ", null_values="nan", comment_prefix="#")
     luminosities = {
-        (label, xlower): luminosity
-        for label, xlower, luminosity in dftable.select("label", "x_lower_kmps", "luminosity_erg_per_s").iter_rows()
+        (label, round(xlower * kmps_per_unit)): (luminosity, perunitvelocity)
+        for label, xlower, luminosity, perunitvelocity in dftable.select(
+            "label",
+            f"x_lower_{velocityunit}",
+            "luminosity_erg_per_s",
+            f"luminosity_per_velocity_erg_per_s_per_{velocityunit}",
+        ).iter_rows()
     }
     # an absorption has no free-free label, thus its code joins Other as a code with no line
-    expected = {("Fe IV", 0.0): 4e40, ("Fe IV", 5000.0): 2e40, ("Other", 0.0): 0.0, ("Other", 5000.0): 1.5e40}
+    expected = {("Fe IV", 0): 4e40, ("Fe IV", 5000): 2e40, ("Other", 0): 0.0, ("Other", 5000): 1.5e40}
     assert luminosities.keys() == expected.keys()
+    binwidth = 5000.0 / kmps_per_unit
     for key, energy in expected.items():
-        assert np.isclose(luminosities[key], energy / delta_t_s, rtol=1e-6, atol=0.0), key
+        luminosity, perunitvelocity = luminosities[key]
+        assert np.isclose(luminosity, energy / delta_t_s, rtol=1e-6, atol=0.0), key
+        assert np.isclose(perunitvelocity, energy / delta_t_s / binwidth, rtol=1e-6, atol=0.0), key
 
 
 def test_a_position_outside_the_grid_gets_no_cell() -> None:

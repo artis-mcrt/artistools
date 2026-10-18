@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from collections.abc import Sequence
 from itertools import starmap
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import polars as pl
@@ -587,20 +588,102 @@ def get_line_contributions(
     return pl.concat(celltables) if percell else dfsummary
 
 
-def get_velocity_bin_edges_kmps(modelpath: Path | str, nbins: int, velocitymax_kmps: float | None) -> list[float]:
-    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax_kmps or to the grid corner.
+# the number of km/s in each unit of the velocity axis
+KMPS_PER_VELOCITYUNIT: t.Final = MappingProxyType({"kmps": 1.0, "c": C_cm_per_s / km_to_cm})
+VELOCITYUNIT_LABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "c"})
+# the axis labels of a velocity and of the inverse of a velocity, as matplotlib text
+VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "$c$"})
+INVERSE_VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "(km/s)$^{-1}$", "c": "$c^{-1}$"})
 
-    The corner of a 2D grid or a 3D grid is outside vmax. A cell in a corner can hold much of the emission or the
-    optical depth, e.g. in the fast ejecta of a kilonova.
+
+def add_velocity_bin_args(parser: argparse.ArgumentParser, usetext: str = "") -> None:
+    """Add -nvelocitybins, -velocitymax, and -velocityunit. usetext ends each help text, e.g. " of -groupby"."""
+    parser.add_argument("-nvelocitybins", type=int, default=25, help=f"Number of velocity bins of equal width{usetext}")
+    parser.add_argument(
+        "-velocitymax",
+        type=float,
+        help=f"Upper edge of the velocity bins{usetext}, in the unit of -velocityunit. Default: the corner of the grid",
+    )
+    parser.add_argument(
+        "-velocityunit",
+        choices=["auto", "kmps", "c"],
+        default="auto",
+        help=(
+            f"Unit of the velocity axis{usetext}: km/s or c. The value auto takes c for a model with a vmax of 0.2 c"
+            " or more, e.g. a kilonova, and km/s for a different model"
+        ),
+    )
+
+
+def get_velocity_unit(modelpath: Path | str, choice: str) -> t.Literal["kmps", "c"]:
+    """Return the unit of the velocity axis that -velocityunit selects, and log the reason for the value auto."""
+    if choice == "kmps":
+        return "kmps"
+    if choice == "c":
+        return "c"
+    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
+    unit: t.Literal["kmps", "c"] = "c" if vmax_on_c >= 0.2 else "kmps"
+    print_detail(
+        f"The velocity axis takes units of {VELOCITYUNIT_LABELS[unit]}, because the vmax of the model is"
+        f" {vmax_on_c:.3f} c (-velocityunit auto takes c for a vmax of 0.2 c or more)"
+    )
+    return unit
+
+
+def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
+    """Return the text of a velocity in the unit of the velocity axis."""
+    if unit == "c":
+        return f"{velocity_kmps / KMPS_PER_VELOCITYUNIT['c']:.3f} c"
+    return f"{velocity_kmps:.0f} km/s"
+
+
+def get_velocity_bin_edges_kmps(
+    modelpath: Path | str, nbins: int, velocitymax: float | None, unit: t.Literal["kmps", "c"]
+) -> list[float]:
+    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax or to the grid corner.
+
+    velocitymax is in the unit of the velocity axis. The corner of a 2D grid or a 3D grid is outside vmax. A cell in a
+    corner can hold much of the emission or the optical depth, e.g. in the fast ejecta of a kilonova.
     """
-    if velocitymax_kmps is None:
+    if nbins < 1:
+        exit_with_error(f"-nvelocitybins {nbins} gives no bins", "Give a number of 1 or more")
+    if velocitymax is not None:
+        if velocitymax <= 0.0:
+            exit_with_error(f"-velocitymax {velocitymax} gives no range", "Give a velocity above 0")
+        if unit == "c" and velocitymax > 1.0:
+            exit_with_error(
+                f"-velocitymax {velocitymax} is above the speed of light, and the velocity axis takes units of c",
+                "Give -velocitymax in units of c, or give -velocityunit kmps",
+            )
+        velocitymax_kmps = velocitymax * KMPS_PER_VELOCITYUNIT[unit]
+    else:
         _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
         velocitymax_kmps = modelmeta["vmax_cmps"] / km_to_cm * math.sqrt(modelmeta["dimensions"])
         print_detail(
-            f"The velocity bins end at {velocitymax_kmps:.0f} km/s, the corner of the model grid. This is vmax times"
-            f" the square root of the number of dimensions ({modelmeta['dimensions']})"
+            f"The velocity bins end at {format_velocity(velocitymax_kmps, unit)}, the corner of the model grid. This"
+            f" is vmax times the square root of the number of dimensions ({modelmeta['dimensions']})"
         )
     return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
+
+
+def convert_velocity_columns(dftable: pl.DataFrame, unit: t.Literal["kmps", "c"]) -> pl.DataFrame:
+    """Return the table with each velocity column and each value per unit velocity in the unit of the axis.
+
+    The code calculates in km/s. A column x_lower_kmps becomes x_lower_c, and a column that ends in _per_kmps becomes
+    a column that ends in _per_c.
+    """
+    if unit == "kmps":
+        return dftable
+    kmpsperunit = KMPS_PER_VELOCITYUNIT[unit]
+    return dftable.select(
+        (pl.col(column) / kmpsperunit).alias(column.removesuffix("_kmps") + f"_{unit}")
+        if column in {"x_lower_kmps", "x_upper_kmps"}
+        else (pl.col(column) * kmpsperunit).alias(column.removesuffix("_per_kmps") + f"_per_{unit}")
+        if column.endswith("_per_kmps")
+        else pl.col(column)
+        for column in dftable.columns
+    )
 
 
 def get_velocity_bin_index_expr(velocity_kmps: pl.Expr, velocityedges_kmps: Sequence[float]) -> pl.Expr:

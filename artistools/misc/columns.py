@@ -151,6 +151,11 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "the isotropic-equivalent luminosity of the packets of the velocity bin, divided by the width of the bin",
         "erg/s/(km/s)",
     ),
+    (
+        "luminosity_per_velocity_erg_per_s_per_c",
+        "the isotropic-equivalent luminosity of the packets of the velocity bin, divided by the width of the bin",
+        "erg/s/c",
+    ),
     ("emvelocityoverc", "the energy-weighted mean speed of the packets at their last interaction", "c"),
     ("emvelocityoverc_sigma", "the energy-weighted standard deviation of the speed at the last interaction", "c"),
     (
@@ -291,12 +296,25 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "erg/s/(km/s)",
     ),
     (
+        "emission_per_velocity_erg_per_s_per_c",
+        "the emission of the cells in the velocity bin, divided by the width of the bin",
+        "erg/s/c",
+    ),
+    (
         "emission_fraction_per_kmps",
         (
             "the emission of the line in the velocity bin, divided by the width of the bin and by the emission in all"
             " the cells"
         ),
         "(km/s)^-1",
+    ),
+    (
+        "emission_fraction_per_c",
+        (
+            "the emission of the line in the velocity bin, divided by the width of the bin and by the emission in all"
+            " the cells"
+        ),
+        "c^-1",
     ),
     (
         "tau_sobolev_volume_mean",

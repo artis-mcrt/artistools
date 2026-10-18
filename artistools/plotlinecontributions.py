@@ -10,10 +10,17 @@ import polars as pl
 
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import get_selected_timestep
+from artistools.linecontributions import add_velocity_bin_args
+from artistools.linecontributions import convert_velocity_columns
+from artistools.linecontributions import format_velocity
 from artistools.linecontributions import get_line_velocity_profiles
 from artistools.linecontributions import get_velocity_bin_edges_kmps
+from artistools.linecontributions import get_velocity_unit
+from artistools.linecontributions import INVERSE_VELOCITYUNIT_AXISLABELS
+from artistools.linecontributions import KMPS_PER_VELOCITYUNIT
 from artistools.linecontributions import LINEKEYS
 from artistools.linecontributions import parse_ions
+from artistools.linecontributions import VELOCITYUNIT_AXISLABELS
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -77,14 +84,17 @@ def plot_line_profiles(
     dfprofiles: pl.DataFrame,
     dfranked: pl.DataFrame,
     velocityedges_kmps: Sequence[float],
+    unit: t.Literal["kmps", "c"],
 ) -> pl.DataFrame:
     """Draw the emission profile and the mean tau_sobolev of each ranked line, and return the drawn data.
 
     The emission profile of a line is its emission per unit velocity, divided by the emission of the line in all the
     cells. Thus a weak line and a strong line have profiles of the same size, and the legend gives the strength. The
-    emission panel also draws the profile of the sum of all the lines in the wavelength range.
+    emission panel also draws the profile of the sum of all the lines in the wavelength range. The axis and the drawn
+    data take the velocity unit unit.
     """
-    edges = np.array(velocityedges_kmps)
+    kmpsperunit = KMPS_PER_VELOCITYUNIT[unit]
+    edges = np.array(velocityedges_kmps) / kmpsperunit
     nbins = len(edges) - 1
 
     def get_bin_values(dfline: pl.DataFrame, column: str, emptyvalue: float) -> "npt.NDArray[np.float64]":
@@ -98,7 +108,7 @@ def plot_line_profiles(
         (pl.col("emission_per_velocity_erg_per_s_per_kmps").sum() / alllinesemission).alias(profilecolumn)
     )
     axes[0].stairs(
-        get_bin_values(dfalllines, profilecolumn, 0.0),
+        get_bin_values(dfalllines, profilecolumn, 0.0) * kmpsperunit,
         edges,
         label="All lines in the range",
         color="black",
@@ -117,7 +127,7 @@ def plot_line_profiles(
     for label, emissionfraction in dfranked.select("label", "emission_fraction").iter_rows():
         dfline = dfdrawn.filter(pl.col("label") == label)
         stairs = axes[0].stairs(
-            get_bin_values(dfline, profilecolumn, 0.0), edges, label=f"{label} ({emissionfraction:.1%})"
+            get_bin_values(dfline, profilecolumn, 0.0) * kmpsperunit, edges, label=f"{label} ({emissionfraction:.1%})"
         )
         tauvalues = get_bin_values(dfline, "tau_sobolev_volume_mean", np.nan)
         # a log axis cannot show a population inversion, i.e. a negative tau_sobolev
@@ -133,20 +143,23 @@ def plot_line_profiles(
     axes[0].set_ylim(bottom=0.0)
     axes[0].set_xlim(edges[0], edges[-1])
 
-    return dfdrawn.select(
-        "label",
-        *LINEKEYS,
-        "x_lower_kmps",
-        "x_upper_kmps",
-        "emission_erg_per_s",
-        "emission_per_velocity_erg_per_s_per_kmps",
-        profilecolumn,
-        "tau_sobolev_volume_mean",
-        "cellcount",
-    ).sort("label", "x_lower_kmps")
+    return convert_velocity_columns(
+        dfdrawn.select(
+            "label",
+            *LINEKEYS,
+            "x_lower_kmps",
+            "x_upper_kmps",
+            "emission_erg_per_s",
+            "emission_per_velocity_erg_per_s_per_kmps",
+            profilecolumn,
+            "tau_sobolev_volume_mean",
+            "cellcount",
+        ).sort("label", "x_lower_kmps"),
+        unit,
+    )
 
 
-def print_ranked_lines(dfranked: pl.DataFrame, rankby: str) -> None:
+def print_ranked_lines(dfranked: pl.DataFrame, rankby: str, unit: t.Literal["kmps", "c"]) -> None:
     """Print the emission fraction, the mean velocity of the emission, and the maximum tau_sobolev of each line."""
     rankedby = "the most emission" if rankby == "emission" else "the largest tau_sobolev in a cell"
     print_detail(
@@ -156,13 +169,14 @@ def print_ranked_lines(dfranked: pl.DataFrame, rankby: str) -> None:
     for row in dfranked.iter_rows(named=True):
         meanvelocity = row["velocity_kmps_emission_mean"]
         emissiontext = (
-            f"{row['emission_fraction']:.1%} of the emission of the lines, mean velocity {meanvelocity:.0f} km/s"
+            f"{row['emission_fraction']:.1%} of the emission of the lines, mean velocity"
+            f" {format_velocity(meanvelocity, unit)}"
             if meanvelocity is not None
             else "no emission"
         )
         taumax = row["tau_sobolev_max"]
         tautext = (
-            f"maximum tau_sobolev {taumax:.3g} at {row['velocity_kmps_at_tau_sobolev_max']:.0f} km/s,"
+            f"maximum tau_sobolev {taumax:.3g} at {format_velocity(row['velocity_kmps_at_tau_sobolev_max'], unit)},"
             f" {row['cellcount_tau_sobolev_above_1']} cells with tau_sobolev above 1"
             if taumax is not None
             else "no tau_sobolev"
@@ -192,12 +206,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " find the lines of an absorption feature"
         ),
     )
-    parser.add_argument("-nvelocitybins", type=int, default=25, help="Number of velocity bins of equal width")
-    parser.add_argument(
-        "-velocitymax",
-        type=float,
-        help="Upper edge of the velocity bins in km/s. Default: the corner of the model grid",
-    )
+    add_velocity_bin_args(parser)
     addarg_excitationtemperature(parser)
     addarg_output(parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path/filename for the plot file")
     addarg_figscale(parser)
@@ -211,24 +220,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
         exit_with_error("give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
-    if args.nvelocitybins < 1:
-        exit_with_error(f"-nvelocitybins {args.nvelocitybins} gives no bins", "Give a number of 1 or more")
-    if args.velocitymax is not None and args.velocitymax <= 0.0:
-        exit_with_error(f"-velocitymax {args.velocitymax} gives no range", "Give a velocity above 0 km/s")
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     print(f"Line contributions of {get_model_logname(args.modelpath)} at timestep {timestep}")
     print_modelpath(args.modelpath)
 
-    velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax)
+    unit = get_velocity_unit(args.modelpath, args.velocityunit)
+    velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax, unit)
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
     dfsummary, dfprofiles = get_line_velocity_profiles(
         args.modelpath, timestep, args.xmin, args.xmax, velocityedges_kmps, ions, args.exctemperature
     )
 
     print_detail(
-        f"{args.nvelocitybins} velocity bins of {velocityedges_kmps[1]:.0f} km/s from 0 to {velocityedges_kmps[-1]:.0f}"
-        f" km/s. Each cell goes in the bin of the radial velocity of its centre"
+        f"{args.nvelocitybins} velocity bins of {format_velocity(velocityedges_kmps[1], unit)} from 0 to"
+        f" {format_velocity(velocityedges_kmps[-1], unit)}. Each cell goes in the bin of the radial velocity of its"
+        " centre"
     )
     print_detail(
         "The upper panel gives the emission of the cells in each bin, divided by the width of the bin. The panel also"
@@ -245,15 +252,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             )
 
     dfranked = get_ranked_lines(dfsummary, args.rankby, args.maxlines)
-    print_ranked_lines(dfranked, args.rankby)
+    print_ranked_lines(dfranked, args.rankby, unit)
 
     fig, axesgrid = make_frame_figure(args, rows=2, aspect=0.45)
     axes = axesgrid[:, 0]
-    dfdrawn = plot_line_profiles(axes, dfsummary, dfprofiles, dfranked, velocityedges_kmps)
+    dfdrawn = plot_line_profiles(axes, dfsummary, dfprofiles, dfranked, velocityedges_kmps, unit)
     # -xmin and -xmax give the wavelength range of the lines, thus they do not set the limits of the velocity axis
     set_axis_properties(axes[0], args, xlimits=(None, None, "-xmin"), setyaxis=False)
-    axes[1].set_xlabel("Radial velocity [km/s]")
-    axes[0].set_ylabel(r"$\Delta L / \Delta v / L$ [(km/s)$^{-1}$]")
+    axes[1].set_xlabel(f"Radial velocity [{VELOCITYUNIT_AXISLABELS[unit]}]")
+    axes[0].set_ylabel(rf"$\Delta L / \Delta v / L$ [{INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
     axes[1].set_ylabel(r"$\langle\tau_\mathrm{Sobolev}\rangle_V$")
     set_legend(axes[0], args)
     set_plot_title(
