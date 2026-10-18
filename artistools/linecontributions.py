@@ -50,6 +50,9 @@ from artistools.nltepops import read_nltepops
 
 DEFAULTOUTPUTNAME = "linecontributions.txt"
 
+# the columns that name one line, i.e. one transition of one ion
+LINEKEYS: t.Final = ("ion", "lambda_angstroms", "lower", "upper", "A_per_s")
+
 # a batch of cells makes one row for each pair of a cell and a line, and one value for each pair of a cell and a
 # level. This count keeps a batch near 1 GB for the columns of the cell table
 ROWSPERBATCH = 4_000_000
@@ -352,9 +355,10 @@ def get_line_summary(dfcelllines: pl.DataFrame) -> pl.DataFrame:
     get_line_summary_of_batches() combines the batches, then it divides the sums by the emission to give the means.
     """
     emission = pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0)
-    return dfcelllines.group_by(
-        "ion", "lambda_angstroms", "lower", "upper", "A_per_s", "n_lower_source", "n_upper_source", maintain_order=True
-    ).agg(
+    return dfcelllines.group_by(LINEKEYS, maintain_order=True).agg(
+        # an ion can take NLTE populations in one cell and LTE populations in a different cell
+        pl.col("n_lower_source").unique().sort(),
+        pl.col("n_upper_source").unique().sort(),
         emission_erg_per_s=emission.sum(),
         emission_times_velocity=(emission * pl.col("velocity_kmps")).sum(),
         emission_times_Te=(emission * pl.col("Te")).sum(),
@@ -365,14 +369,21 @@ def get_line_summary(dfcelllines: pl.DataFrame) -> pl.DataFrame:
 
 
 def get_line_summary_of_batches(dfsummaries: Sequence[pl.DataFrame]) -> pl.DataFrame:
-    """Combine the line summaries of the batches of cells, and give the fraction of the emission of each line."""
-    keys = ["ion", "lambda_angstroms", "lower", "upper", "A_per_s", "n_lower_source", "n_upper_source"]
+    """Combine the line summaries of the batches of cells, and give the fraction of the emission of each line.
+
+    A line with more than one method of its level populations, e.g. NLTE in one cell and LTE in a different cell,
+    gives the methods with a "/" between them.
+    """
     emission = pl.col("emission_erg_per_s")
     return (
         pl
         .concat(dfsummaries)
-        .group_by(keys, maintain_order=True)
+        .group_by(LINEKEYS, maintain_order=True)
         .agg(
+            *(
+                pl.col(column).explode().unique().sort().str.join("/")
+                for column in ("n_lower_source", "n_upper_source")
+            ),
             emission.sum(),
             pl.col("emission_times_velocity").sum(),
             pl.col("emission_times_Te").sum(),
@@ -387,7 +398,7 @@ def get_line_summary_of_batches(dfsummaries: Sequence[pl.DataFrame]) -> pl.DataF
         )
         .sort("emission_erg_per_s", "lambda_angstroms", descending=[True, False])
         .select(
-            *keys[:5],
+            *LINEKEYS,
             "emission_erg_per_s",
             "emission_fraction",
             "velocity_kmps_emission_mean",
@@ -395,7 +406,8 @@ def get_line_summary_of_batches(dfsummaries: Sequence[pl.DataFrame]) -> pl.DataF
             "tau_sobolev_max",
             "velocity_kmps_at_tau_sobolev_max",
             "cellcount_tau_sobolev_above_1",
-            *keys[5:],
+            "n_lower_source",
+            "n_upper_source",
         )
     )
 
@@ -557,7 +569,7 @@ def get_line_contributions(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
     addarg_timestep(parser, helptext="Timestep number to select")
     addarg_timedays(parser, kind="str", helptext="Time in days to select")
     parser.add_argument("-xmin", "-lambdamin", type=float, help="Minimum wavelength of the lines in Angstroms")

@@ -407,7 +407,7 @@ subcommandtree: CommandTree = {
         ),
         examples=(
             (
-                "-modelpath . -t 259 -lambdamin 4000 -lambdamax 5500",
+                ". -t 259 -lambdamin 4000 -lambdamax 5500",
                 "the lines with the most emission from 4000 to 5500 Å at 259 days",
             ),
         ),

@@ -2142,6 +2142,37 @@ def test_line_populations_of_a_cell_with_no_nlte_row_take_the_lte_populations() 
     assert dfpops.filter(pl.col("modelgridindex") == 0).sort("level")["population"].to_list() == [90.0, 10.0]
 
 
+def test_line_summary_joins_the_cells_of_a_line_with_different_population_methods() -> None:
+    """A line with NLTE populations in one cell and LTE populations in another gave two rows of the summary."""
+    from artistools.linecontributions import get_line_summary
+    from artistools.linecontributions import get_line_summary_of_batches
+
+    def get_cell_table(modelgridindex: int, source: str, emission: float) -> pl.DataFrame:
+        return pl.DataFrame({
+            "modelgridindex": [modelgridindex],
+            "velocity_kmps": [1000.0 * (modelgridindex + 1)],
+            "Te": [5000.0],
+            "ion": ["Fe II"],
+            "lambda_angstroms": [7155.0],
+            "lower": [0],
+            "upper": [10],
+            "A_per_s": [0.1],
+            "n_lower_source": [source],
+            "n_upper_source": [source],
+            "tau_sobolev": [0.5],
+            "emission_erg_per_s": [emission],
+        })
+
+    dfsummary = get_line_summary_of_batches([
+        get_line_summary(get_cell_table(0, "NLTE", 1.0)),
+        get_line_summary(get_cell_table(1, "LTE", 3.0)),
+    ])
+    assert dfsummary.height == 1
+    assert dfsummary["n_lower_source"].item() == "LTE/NLTE"
+    assert dfsummary["emission_erg_per_s"].item() == 4.0
+    assert np.isclose(dfsummary["velocity_kmps_emission_mean"].item(), 1750.0, rtol=1e-12)
+
+
 def test_linecontributions_writes_a_file_only_with_the_output_option(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -2150,6 +2181,9 @@ def test_linecontributions_writes_a_file_only_with_the_output_option(
     commonargs: dict[str, t.Any] = {"modelpath": modelpath, "timestep": 10, "lambdamin": 4600.0, "lambdamax": 4700.0}
     at.linecontributions.main(argsraw=[], **commonargs)
     assert not list(tmp_path.iterdir())
+    assert '"Fe III" 4659.' in capsys.readouterr().out
+    # the skill gives the model path as the last positional argument, and the parser rejected it
+    at.linecontributions.main(argsraw=["-timestep", "10", "-lambdamin", "4600", "-lambdamax", "4700", str(modelpath)])
     assert '"Fe III" 4659.' in capsys.readouterr().out
 
     outputfile = tmp_path / "lines.txt"
