@@ -295,8 +295,17 @@ def aggregate_deposition_rates(
     dfestim = dfestim.select(list(neededcolumns)).collect().lazy()
     if configuredanalyticchannels is not None:
         analyticchannels = [channel for channel in selectedchannels if channel in configuredanalyticchannels]
+        # an analytic rate comes from the row of its timestep, and a Monte Carlo rate from the row of the next
+        # timestep, thus each check reads only the rows that give its rates
         check_channels_of_each_run(
-            dfestim, analyticchannels, [channel for channel in selectedchannels if channel not in analyticchannels]
+            dfestim if timesteps is None else dfestim.filter(pl.col("timestep").is_in(list(timesteps))),
+            analyticchannels,
+            [],
+        )
+        check_channels_of_each_run(
+            dfestim if timesteps is None else dfestim.filter(pl.col("timestep").is_in([ts + 1 for ts in timesteps])),
+            [],
+            [channel for channel in selectedchannels if channel not in analyticchannels],
         )
         analyticsource = "The options of the run give an analytic rate for these deposition channels"
     else:

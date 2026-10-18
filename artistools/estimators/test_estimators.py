@@ -3277,6 +3277,14 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
     assert dfrates["timestep"].to_list() == [0]
     assert np.isclose(dfrates["dep_per_volume"].item(), 7.1e-10 / at.constants.EV_to_erg, rtol=1e-12)
 
+    # gamma needs the row of timestep 1, and the check of the analytic alpha read that row too and stopped the command
+    dfwithgamma = dfmixed.with_columns(deposition_gamma=pl.Series([0.0, 4.0e-9]))
+    dfgammaalpha = deposition.aggregate_deposition_rates(
+        dfwithgamma, timesteps=[0], channels=["gamma", "alpha"], configuredanalyticchannels=["spfission", "alpha"]
+    )
+    rate_erg_per_s = 4.0e-9 * 2.0 + 7.1e-10 * 2.0
+    assert np.isclose(dfgammaalpha["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
+
 
 def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
     """The rates of a model must match a calculation that reads the estimators on its own.

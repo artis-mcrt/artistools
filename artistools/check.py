@@ -247,14 +247,17 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
     logcounts: list[tuple[str, int]] = []
     incompletelogs: list[str] = []
     for name, folder in zip(runnames, runfolders, strict=True):
-        filecount = len(get_folder_log_ranks(folder))
+        logranks = get_folder_log_ranks(folder)
         loggedcount = get_logged_rank_count(folder)
         if loggedcount is not None:
             logcounts.append((name, loggedcount))
-            if filecount < loggedcount:
-                incompletelogs.append(f"{name} holds {filecount} of the logs of its {loggedcount} ranks")
-        elif filecount > 0:
-            logcounts.append((name, filecount))
+            # a log of a higher rank of an earlier run can stand in the place of a missing log, thus compare the ranks
+            if missingranks := sorted(set(range(loggedcount)) - set(logranks)):
+                incompletelogs.append(
+                    f"{name} has no log of the ranks {format_range_list(missingranks)} of its {loggedcount} ranks"
+                )
+        elif logranks:
+            logcounts.append((name, len(logranks)))
     changes = [
         f"the ARTIS version changes from {previousvalue} in {previousname} to {value} in {name}"
         for (previousname, previousvalue), (name, value) in itertools.pairwise(versions)

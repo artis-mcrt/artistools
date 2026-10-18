@@ -34,6 +34,7 @@ from artistools.misc import print_saved
 from artistools.misc.cliutils import get_provenance_lines
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import write_text_file_atomic
+from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
@@ -379,13 +380,16 @@ def get_report_files_in_folder(reportfolder: Path) -> list[str]:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make an HTML page with the summary, the health check, the log summary, and standard figures of a model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    modelfolder = get_model_folder(args.modelpath)
-    modelname = resolve_modelpath(modelfolder).name
-    reportfolder = Path(args.outputfile or f"{modelname}_report")
-
-    # the refusal must come before the work starts, e.g. before a remote model starts its server
+    # the refusal must come before the work starts, e.g. before a remote model starts its server. The test of a file
+    # of a remote model asks its host, thus the default name of the folder takes the text of a remote model path
+    givenpath = Path(args.modelpath)
+    namedfolder = givenpath if is_remote_path(givenpath) else get_model_folder(givenpath)
+    reportfolder = Path(args.outputfile or f"{resolve_modelpath(namedfolder).name}_report")
     oldreportfiles = get_report_files_in_folder(reportfolder)
     confirm_overwrite([reportfolder], oldreportfiles, force=args.force)
+
+    modelfolder = get_model_folder(args.modelpath)
+    modelname = resolve_modelpath(modelfolder).name
     timesteps, method = get_report_timesteps(modelfolder)
     print_detail(method)
     reportfolder.mkdir(parents=True, exist_ok=True)

@@ -7080,10 +7080,12 @@ def test_report_asks_about_the_overwrite_before_it_reads_the_model(
     (reportfolder / "spectrum_timestep007.png").write_bytes(b"")
     with (
         mock.patch.object(report, "get_report_timesteps", side_effect=AssertionError("the model was read")),
+        # the test of a file of a remote model asks its host through ssh
+        mock.patch.object(report, "get_model_folder", side_effect=AssertionError("the model path was resolved")),
         mock.patch("sys.stdin.isatty", return_value=False),
         pytest.raises(SystemExit),
     ):
-        report.main(argsraw=[str(modelpath_classic_3d), "-o", str(reportfolder)])
+        report.main(argsraw=["testhost:~/mymodel", "-o", str(reportfolder)])
     stderr = capsys.readouterr().err
     assert "spectrum_timestep007.png exists" in stderr
     assert "did not overwrite the files" in stderr
@@ -7270,7 +7272,19 @@ def test_check_restarts_takes_the_number_of_ranks_from_the_rank_0_log(tmp_path: 
         status, detail = check_restarts(tmp_path)
     assert status == "warning"
     assert "the number of ranks changes from 4 in 100.slurm to 3 in 200.slurm" in detail
-    assert "100.slurm holds 3 of the logs of its 4 ranks" in detail
+    assert "100.slurm has no log of the ranks 3 of its 4 ranks" in detail
+
+    # logs of higher ranks of an earlier run made the count of the logs equal to the count of the ranks
+    (runfolders[0] / "output_2-0.txt").unlink()
+    for rank in (4, 5):
+        (runfolders[0] / f"output_{rank}-0.txt").write_text("", encoding="utf-8")
+    with (
+        mock.patch("artistools.check.get_runfolders", return_value=runfolders[:1] * 2),
+        mock.patch("artistools.check.get_run_versions", return_value={}),
+    ):
+        status, detail = check_restarts(tmp_path)
+    assert status == "warning"
+    assert "100.slurm has no log of the ranks 2-3 of its 4 ranks" in detail
 
 
 def test_check_restarts_warns_about_a_run_with_no_version() -> None:
