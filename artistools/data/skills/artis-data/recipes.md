@@ -225,9 +225,10 @@ Question: at which velocities do the packets of a spectral feature last interact
   the line absorbs, e.g. for a P Cygni absorption trough.
 - If the range has few packets, the answer has much Monte Carlo noise. Give the number of packets with each answer.
 - The packets give the last interaction alone. `artistools linecontributions` gives the lines from the level
-  populations of each cell, with no Monte Carlo noise. Its tau_sobolev shows where a line can absorb, e.g. for the
-  trough of a P Cygni profile. Its emission is the energy that leaves each cell in the line. It is not the flux that
-  escapes the ejecta, thus compare it with the packets before an answer.
+  populations of each cell. It does not count packets, thus a range with few packets gives no additional noise. Its
+  tau_sobolev shows where a line can absorb, e.g. for a P Cygni absorption trough. Its emission is the energy that
+  leaves each cell in the line. It is not the flux that escapes the ejecta. Compare it with the packets before you
+  give an answer.
 
 ```python
 import artistools as at

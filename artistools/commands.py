@@ -414,8 +414,8 @@ subcommandtree: CommandTree = {
         "linecontributions",
         helptext="Give the Sobolev optical depth and the emission of each line in a wavelength range.",
         note=(
-            "The level populations of each cell follow ARTIS. --percell gives one row for each cell and line, e.g. to"
-            " find where a line forms."
+            "The level populations of each cell follow calculate_levelpop() of ARTIS. --percell gives one row for each"
+            " cell and line. Use it to find where a line forms."
         ),
         examples=(
             (

@@ -53,7 +53,7 @@ DEFAULTOUTPUTNAME = "linecontributions.txt"
 # level. This count keeps a batch near 1 GB for the columns of the cell table
 ROWSPERBATCH = 4_000_000
 
-# the escape probability (1 - exp(-tau)) / tau loses its digits for a small tau, thus a small tau takes the series
+# for a small tau, (1 - exp(-tau)) / tau loses accuracy, thus a small tau takes the series 1 - tau / 2
 SMALLTAU = 1e-6
 
 NLTEPOPS_SCHEMA = pl.Schema({
@@ -141,7 +141,8 @@ def get_ion_populations(
     - the NLTE population of the ground level and of each NLTE level;
     - for a level in the superlevel, the superlevel population times g exp(-E / k T_exc) of the level, divided by
       the sum of these factors over the superlevel;
-    - for another level, the population of the ground level times the Boltzmann factor at T_exc.
+    - for a level above the NLTE levels of an ion with no superlevel, the ground-level population times
+      g / g_0 exp(-(E - E_0) / k T_exc).
     """
     temperatures = dfcells["T_exc"].cast(pl.Float64).to_numpy()
     neededframe = levels.filter(pl.col("level").is_in(neededlevels))
@@ -318,9 +319,9 @@ def get_cell_line_table(
 
 
 def get_line_summary(dfcelllines: pl.DataFrame) -> pl.DataFrame:
-    """Return one row for each line with the sums and the emission-weighted means of the cells of one batch.
+    """Return one row for each line, with the sums and the maxima over the cells of one batch.
 
-    get_line_summary_of_batches() joins the rows of the batches, thus the means are sums here.
+    get_line_summary_of_batches() combines the batches, then it divides the sums by the emission to give the means.
     """
     emission = pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0)
     return dfcelllines.group_by(
@@ -336,7 +337,7 @@ def get_line_summary(dfcelllines: pl.DataFrame) -> pl.DataFrame:
 
 
 def get_line_summary_of_batches(dfsummaries: Sequence[pl.DataFrame]) -> pl.DataFrame:
-    """Join the line summaries of the batches of cells, and give the fraction of the emission of each line."""
+    """Combine the line summaries of the batches of cells, and give the fraction of the emission of each line."""
     keys = ["ion", "lambda_angstroms", "lower", "upper", "A_per_s", "n_lower_source", "n_upper_source"]
     emission = pl.col("emission_erg_per_s")
     return (
@@ -394,7 +395,7 @@ def get_line_contributions(
     *,
     percell: bool = False,
 ) -> pl.DataFrame:
-    """Return the emission of each line in the wavelength range, or with percell the row of each cell and line.
+    """Return the emission of each line in the wavelength range, or with percell, one row for each cell and line.
 
     The method and the assumptions go to the log.
     """
@@ -434,8 +435,9 @@ def get_line_contributions(
         )
     if Path(modelpath, "autoion.txt").is_file():
         print_warning(
-            "The model has autoion.txt. ARTIS leaves the autoionising levels out of the sum of the superlevel, but"
-            " this command keeps them in it. Thus the population of a level in the superlevel can be too small"
+            "The model has autoion.txt. ARTIS does not include the autoionising levels in the Boltzmann sum of the"
+            " superlevel, but this command includes them. Thus the population of a level in the superlevel can be too"
+            " small"
         )
 
     nlteions = set(dfnltepops.select("Z", "ion_stage").unique().iter_rows())
@@ -474,12 +476,17 @@ def get_line_contributions(
     )
 
     print_detail(
-        f"{dflines.height} lines of {len(levelsofion)} ions from {lambdamin:g} to {lambdamax:g} Å (vacuum wavelengths"
-        f" from the level energies), in {dfcells.height} cells at the mid time {time_days:.2f} d of timestep {timestep}"
+        f"{dflines.height} lines of {len(levelsofion)} ions from {lambdamin:g} to {lambdamax:g} Å. The wavelengths are"
+        " vacuum wavelengths from the level energies"
+    )
+    print_detail(f"{dfcells.height} cells at the mid time {time_days:.2f} d of timestep {timestep}")
+    print_detail(
+        "tau_sobolev = (A lambda^3 t / 8 pi) (g_u n_l / g_l - n_u) at the mid time t of the timestep. A is the Einstein"
+        " coefficient of the spontaneous emission, g is the statistical weight, and n is the population of the lower"
+        " (l) or upper (u) level"
     )
     print_detail(
-        "tau_sobolev = (A lambda^3 t / 8 pi) (g_u n_l / g_l - n_u) at the mid time t of the timestep. The emission of a"
-        " line in a cell is n_u A h nu beta times the volume of the cell, with the escape probability"
+        "The emission of a line in a cell is n_u A h nu beta times the volume of the cell. The escape probability is"
         f" beta = (1 - exp(-tau)) / tau ({ESCAPE_PROBABILITY_REFERENCE})"
     )
     print_detail(
@@ -487,9 +494,13 @@ def get_line_contributions(
         " ejecta, and it does not subtract the absorption of the radiation field by the line"
     )
     print_detail(
-        "The level populations follow calculate_levelpop() of ARTIS: NLTE populations from the nlte_*.out files, the"
-        " superlevel population spread with g exp(-E / k T_exc), or LTE populations of the nnion_ estimator at T_exc."
-        " The columns n_lower_source and n_upper_source name the method of each level"
+        "The level populations follow calculate_levelpop() of ARTIS. The columns n_lower_source and n_upper_source"
+        " name the method of each level:\n"
+        "    - NLTE: the population from the nlte_*.out files;\n"
+        "    - superlevel: the superlevel population times g exp(-E / k T_exc), divided by the sum of these"
+        " factors over the superlevel;\n"
+        "    - Boltzmann from the ground level: the ground-level population times g / g_0 exp(-(E - E_0) / k T_exc);\n"
+        "    - LTE: the population of the nnion_ estimator at T_exc."
     )
 
     maxlevelcount = max(levels.height for levels in levelsofion.values())

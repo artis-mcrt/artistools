@@ -106,7 +106,7 @@ main columns of an escaped packet are:
   by element, or by velocity.
 - `artistools plotlinefluxes --print_data` gives the ratio of the luminosities of two emission features against time.
 - `artistools linecontributions -t <days> -lambdamin <Å> -lambdamax <Å> <modelpath>` gives each line in the range
-  with its Sobolev optical depth and its Sobolev emission n_u A h nu beta, summed over the cells. `--percell` gives
+  with its maximum Sobolev optical depth in the cells and its emission n_u A h nu beta, summed over the cells. `--percell` gives
   one row for each cell and line, with the level populations and the method of each one.
   `at.linecontributions.get_line_contributions(modelpath, timestep, lambdamin, lambdamax)` gives the same table.
 

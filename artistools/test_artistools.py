@@ -2061,7 +2061,7 @@ def test_ejectaopacity(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_line_contributions_follow_the_level_populations_of_artis() -> None:
-    """Each method of the level populations gives the tau_sobolev and the emission of a calculation by hand.
+    """Each method of the level populations gives the same tau_sobolev and emission as a calculation by hand.
 
     The test model has NLTE levels and a superlevel for Fe II and Fe III, and LTE populations for Ni II.
     """
@@ -2138,7 +2138,7 @@ def test_line_contributions_follow_the_level_populations_of_artis() -> None:
 
 
 def test_line_populations_take_the_boltzmann_factor_of_the_ground_level_with_no_superlevel() -> None:
-    """An ion with NLTE rows and no superlevel gives a level above the NLTE levels n_0 g / g_0 exp(-E / k T_exc)."""
+    """For an ion with NLTE rows and no superlevel, a level above the NLTE levels has n_0 g / g_0 exp(-E / k T_exc)."""
     dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 10000.0]})
     levels = pl.DataFrame({"level": [0, 1, 2], "g": [2.0, 4.0, 6.0], "energy_ev": [0.0, 1.0, 2.0]})
     dfnltepops = pl.DataFrame({"modelgridindex": [0, 1, 0, 1], "level": [0, 0, 1, 1], "n_NLTE": [10.0, 20.0, 3.0, 4.0]})

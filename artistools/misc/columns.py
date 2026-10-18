@@ -261,10 +261,17 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("escape_probability", "the Sobolev escape probability (1 - exp(-tau)) / tau of the line in the cell", ""),
     (
         "emissivity_erg_per_s_per_cm3",
-        "the energy that the line takes out of a unit volume of the cell, n_u A h nu times the escape probability",
+        (
+            "the energy that leaves a unit volume of the cell in the line each second, n_u A h nu times the escape"
+            " probability"
+        ),
         "erg/s/cm^3",
     ),
-    ("emission_erg_per_s", "the energy that the line takes out of the cell, or out of all the cells", "erg/s"),
+    (
+        "emission_erg_per_s",
+        "the energy that leaves the cell in the line each second, or the sum over all the cells",
+        "erg/s",
+    ),
     ("emission_fraction", "the emission of the line divided by the emission of all the lines in the range", ""),
     ("velocity_kmps_emission_mean", "the mean radial velocity of the cells, with the emission as the weight", "km/s"),
     ("Te_emission_mean", "the mean electron temperature of the cells, with the emission as the weight", "K"),
