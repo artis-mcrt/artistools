@@ -1920,6 +1920,28 @@ def test_report_names_the_logs_of_a_remote_model_below_home(tmp_path: Path) -> N
     assert dfsummary["level"].to_list() == ["warning"]
 
 
+def test_output_data_replaces_the_file_of_a_table_that_is_now_empty(tmp_path: Path) -> None:
+    """An empty table wrote no file, thus the file of an earlier run stayed and seemed to hold the data of this run."""
+    from artistools.misc import output_data
+
+    args = argparse.Namespace(write_data=True, print_data=False)
+    stalefile = tmp_path / "plot_residuals.txt"
+    stalefile.write_text("model value\nold 1.0\n", encoding="utf-8")
+
+    output_data(
+        args,
+        {"": pl.DataFrame({"value": [2.0]}), "_residuals": pl.DataFrame(), "_other": pl.DataFrame()},
+        tmp_path / "plot.pdf",
+    )
+
+    staletext = stalefile.read_text(encoding="utf-8")
+    assert "old 1.0" not in staletext
+    assert "the table has no rows" in staletext
+    # an empty table with no earlier file gives no file
+    assert not (tmp_path / "plot_other.txt").exists()
+    assert (tmp_path / "plot.txt").is_file()
+
+
 def test_write_data_table_replaces_a_link_and_leaves_its_target(tmp_path: Path) -> None:
     """A model folder of a different user can hold a link with the name of a data file, e.g. to ~/.bashrc.
 

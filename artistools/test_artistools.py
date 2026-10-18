@@ -647,6 +647,27 @@ def test_residual_y_maximum_keeps_the_main_range(residualtype: str, ismagnitude:
     plt.close(fig)
 
 
+def test_residual_curves_keep_the_points_below_the_residual_maximum() -> None:
+    """The table _residualcurves held the residuals above -residualymax, which the panel does not show."""
+    x = np.arange(1.0, 11.0)
+    series = [
+        at.plottools.ResidualSeries("reference", x, np.ones(10), "k"),
+        at.plottools.ResidualSeries("model", x, x, "r"),
+    ]
+    args = argparse.Namespace(
+        logscaley=False, residualbaselineseries=0, residuals=None, residualtype="relative", residualymax=3.5
+    )
+    fig, mainaxis, residualaxis = at.plottools.make_frame_figure_with_residuals(args)
+    mainaxis.set_xlim(1.0, 10.0)
+    plottedpoints: list[pl.DataFrame] = []
+    at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args, plottedpoints=plottedpoints)
+    plt.close(fig)
+
+    dfmodel = pl.concat(plottedpoints).filter(pl.col("model") == "model")
+    # the line to the first ratio above 3.5 is visible, thus the ratio 4 stays
+    assert dfmodel["residual"].to_list() == [1.0, 2.0, 3.0, 4.0]
+
+
 def test_residual_log_axis_ignores_a_non_positive_maximum(capsys: pytest.CaptureFixture[str]) -> None:
     """A log residual axis gives a warning and keeps its data range for a non-positive maximum."""
     x = np.array([1.0, 2.0])
@@ -7092,6 +7113,23 @@ def test_check_gives_an_error_for_a_te_that_is_not_finite() -> None:
     assert status == "error"
     assert "of the 2 cells with Te, 1 (50.0%) are at MINTEMP = 3500 K" in detail
     assert "2 values of Te are NaN or infinite" in detail
+
+
+def test_check_temperature_limits_warns_about_one_bad_timestep() -> None:
+    """The mean over 20 time steps was 5% for one time step with each cell at MINTEMP, thus the status was ok."""
+    from artistools.check import check_temperature_limits
+
+    dfte = pl.LazyFrame({
+        "timestep": [timestep for timestep in range(20) for _ in range(10)],
+        "Te": [3500.0 if timestep == 0 else 5000.0 for timestep in range(20) for _ in range(10)],
+    })
+    with (
+        mock.patch("artistools.check.scan_estimators", return_value=dfte),
+        mock.patch("artistools.check.get_run_versions", return_value={"job0": {"git version": "v2023.10"}}),
+    ):
+        status, detail = check_temperature_limits(modelpath_classic_3d)
+    assert status == "warning"
+    assert "over all 20 time steps, 5.0% of the values of Te are at a limit" in detail
 
 
 def test_check_names_runs_of_other_builds_for_the_temperature_limits() -> None:

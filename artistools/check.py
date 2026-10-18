@@ -43,7 +43,7 @@ from artistools.misc.remote import on_model_host
 
 STATUSES: t.Final = ("ok", "warning", "error", "not checked")
 
-# a fraction of the values of Te at MINTEMP or MAXTEMP above this value gives a warning
+# a fraction of the cells of a time step with Te at MINTEMP or MAXTEMP above this value gives a warning
 TEMPERATURE_LIMIT_FRACTION_MAX = 0.1
 
 # a ratio of the two Katz integrals outside this range gives a warning
@@ -163,7 +163,13 @@ def check_temperature_limits(modelpath: Path) -> tuple[str, str]:
             " other limits"
         )
         return "warning", detail
-    return ("warning" if overallfraction > TEMPERATURE_LIMIT_FRACTION_MAX else "ok"), detail
+    # one time step with each cell at a limit has no physical Te, also when the other time steps bring the mean down
+    isbad = worst["atlimitfraction"] > TEMPERATURE_LIMIT_FRACTION_MAX
+    detail += (
+        f"; the status is a warning if more than {100 * TEMPERATURE_LIMIT_FRACTION_MAX:g}% of the cells of a time step"
+        " are at a limit"
+    )
+    return ("warning" if isbad else "ok"), detail
 
 
 def check_complete_timesteps(modelpath: Path) -> tuple[str, str]:

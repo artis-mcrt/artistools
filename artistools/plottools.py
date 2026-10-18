@@ -1182,7 +1182,8 @@ def draw_residual_panel(
 ) -> pl.DataFrame:
     """Draw the selected residual type below the main frame and return the statistics.
 
-    plottedpoints takes the drawn points of each residual curve, see plot_residual_panel.
+    plottedpoints takes the points of each residual curve that the final limits of the panel show, see
+    plot_residual_panel.
 
     The residual type sets the calculation and the y scale of the panel.
     Call it after the main frame has its labels and its x range.
@@ -1193,6 +1194,7 @@ def draw_residual_panel(
     # the shared x axis otherwise takes a new range with the default margin of the residual axis
     residualaxis.set_xmargin(mainaxis.get_xmargin())
     xlim = mainaxis.get_xlim()
+    firstcurveindex = len(plottedpoints) if plottedpoints is not None else 0
     dfresidualstats = plot_residual_panel(
         residualaxis,
         series,
@@ -1236,6 +1238,13 @@ def draw_residual_panel(
     if getattr(args, "hideyticklabels", False):
         residualaxis.tick_params(axis="y", which="both", labelleft=False)
         residualaxis.set_ylabel("")
+
+    if plottedpoints is not None:
+        # the limits of the panel are final now, e.g. after -residualymax, thus each curve keeps the points it shows
+        plottedpoints[firstcurveindex:] = [
+            filter_to_axis_limits(dfcurve, residualaxis, "x", "residual", linecolumns=[])
+            for dfcurve in plottedpoints[firstcurveindex:]
+        ]
 
     return dfresidualstats
 

@@ -6,6 +6,7 @@ import dataclasses as dc
 import itertools
 import math
 import operator
+import os
 import re
 import sys
 import typing as t
@@ -1313,18 +1314,23 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
     Each key of tables is the end of a file name, e.g. "_residuals" gives myplot_residuals.txt for myplot.pdf, and an
     empty key gives myplot.txt. The standard output gives the tables in the same order, with an empty line between two
     tables. The function skips an empty table. A file starts with comment lines that tell how the command made the data
-    and what each column holds. A pipe reads the standard output, thus it gets no comment lines.
+    and what each column holds. A pipe reads the standard output, thus it gets no comment lines. An empty table replaces
+    the file of an earlier run, thus that file cannot seem to hold the data of this run.
     """
-    tables = {suffix: dfdata for suffix, dfdata in tables.items() if not dfdata.is_empty()}
     if getattr(args, "print_data", False):
-        for tableindex, dfdata in enumerate(tables.values()):
+        for tableindex, dfdata in enumerate(dfdata for dfdata in tables.values() if not dfdata.is_empty()):
             if tableindex > 0:
                 print_product(args, "")
             print_product(args, dfdata)
     if getattr(args, "write_data", False):
         for suffix, dfdata in tables.items():
             datafile = Path(outputfile).with_name(f"{Path(outputfile).stem}{suffix}.txt")
-            commentlines = [*get_provenance_lines(args), *get_column_description_lines(dfdata.columns)]
+            if dfdata.is_empty() and not os.path.lexists(datafile):
+                continue
+            emptylines = (
+                ["the table has no rows, e.g. because the figure shows no point of it"] if dfdata.is_empty() else []
+            )
+            commentlines = [*get_provenance_lines(args), *emptylines, *get_column_description_lines(dfdata.columns)]
             write_data_table(dfdata, datafile, commentlines=commentlines)
             print_saved(datafile)
 
