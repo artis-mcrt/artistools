@@ -61,7 +61,10 @@ def select_deposition_channels(colnames: Sequence[str], channels: Sequence[str] 
         )
         raise ValueError(msg)
 
-    channels = [channel.removeprefix(DEPOSITIONPREFIX) for channel in channels] if channels else available
+    # a channel that the command line gives two times must count one time in the sum
+    channels = (
+        list(dict.fromkeys(channel.removeprefix(DEPOSITIONPREFIX) for channel in channels)) if channels else available
+    )
     if unknown := [channel for channel in channels if channel not in available]:
         msg = f"This model gives no deposition rate of {' and '.join(unknown)}. It holds {', '.join(available)}"
         raise ValueError(msg)

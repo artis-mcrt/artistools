@@ -34,6 +34,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
+from artistools.misc import path_is_file
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
@@ -136,34 +137,61 @@ def get_ion_populations(
 ) -> pl.DataFrame:
     """Return the population of each needed level of one ion in each cell, as calculate_levelpop() of ARTIS gives it.
 
-    An ion with no rows in the NLTE populations takes the LTE populations of its nnion_ estimator at T_exc. An ion
-    with NLTE rows takes:
+    A cell with no NLTE row of the ion takes the LTE populations of the nnion_ estimator at T_exc. ARTIS writes no
+    NLTE row of an element that has no NLTE solution in a cell, e.g. an element that fell back to LTE. A cell with
+    NLTE rows takes:
     - the NLTE population of the ground level and of each NLTE level;
     - for a level in the superlevel, the superlevel population times g exp(-E / k T_exc) of the level, divided by
       the sum of these factors over the superlevel;
     - for a level above the NLTE levels of an ion with no superlevel, the ground-level population times
       g / g_0 exp(-(E - E_0) / k T_exc).
     """
-    temperatures = dfcells["T_exc"].cast(pl.Float64).to_numpy()
     neededframe = levels.filter(pl.col("level").is_in(neededlevels))
-    cellcolumn = dfcells.select("modelgridindex")
+    isnltecell = pl.col("modelgridindex").is_in(dfnltepops["modelgridindex"].unique().implode())
+    framesofcells = []
+    if not (dfltecells := dfcells.filter(~isnltecell)).is_empty():
+        framesofcells.append(get_lte_ion_populations(dfltecells, levels, neededframe, nnioncolumn))
+    if not (dfnltecells := dfcells.filter(isnltecell)).is_empty():
+        framesofcells.append(get_nlte_ion_populations(dfnltecells, levels, neededframe, dfnltepops))
+    return pl.concat(framesofcells)
 
-    def get_frame(pops: "np.ndarray[t.Any, np.dtype[np.float64]]", source: str) -> pl.DataFrame:
-        return cellcolumn.join(neededframe.select("level"), how="cross", maintain_order="left_right").with_columns(
-            population=pl.Series(pops.reshape(-1), dtype=pl.Float64), population_source=pl.lit(source)
+
+def get_lte_ion_populations(
+    dfcells: pl.DataFrame, levels: pl.DataFrame, neededframe: pl.DataFrame, nnioncolumn: str
+) -> pl.DataFrame:
+    """Return the LTE population of each level of neededframe in each cell, from the nnion_ estimator at T_exc.
+
+    A model with no nnion_ estimator of the ion gives a null population.
+    """
+    temperatures = dfcells["T_exc"].cast(pl.Float64).to_numpy()
+    nnion = (
+        dfcells[nnioncolumn].cast(pl.Float64).fill_null(0.0).to_numpy()
+        if nnioncolumn in dfcells.columns
+        else np.full(dfcells.height, np.nan)
+    )
+    partitionfunctions = get_boltzmann_factors(levels, temperatures, 0.0).sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pops = (
+            nnion[:, np.newaxis]
+            * get_boltzmann_factors(neededframe, temperatures, 0.0)
+            / partitionfunctions[:, np.newaxis]
         )
+    return (
+        dfcells
+        .select("modelgridindex")
+        .join(neededframe.select("level"), how="cross", maintain_order="left_right")
+        .with_columns(
+            population=pl.Series(pops.reshape(-1), dtype=pl.Float64).fill_nan(None), population_source=pl.lit("LTE")
+        )
+    )
 
-    if dfnltepops.is_empty():
-        nnion = dfcells[nnioncolumn].cast(pl.Float64).fill_null(0.0).to_numpy()
-        partitionfunctions = get_boltzmann_factors(levels, temperatures, 0.0).sum(axis=1)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            pops = (
-                nnion[:, np.newaxis]
-                * get_boltzmann_factors(neededframe, temperatures, 0.0)
-                / partitionfunctions[:, np.newaxis]
-            )
-        return get_frame(pops, "LTE")
 
+def get_nlte_ion_populations(
+    dfcells: pl.DataFrame, levels: pl.DataFrame, neededframe: pl.DataFrame, dfnltepops: pl.DataFrame
+) -> pl.DataFrame:
+    """Return the population of each level of neededframe in each cell from the NLTE rows, see get_ion_populations."""
+    temperatures = dfcells["T_exc"].cast(pl.Float64).to_numpy()
+    cellcolumn = dfcells.select("modelgridindex")
     lastnltelevel = dfnltepops.select(pl.col("level").max()).item()
     assert isinstance(lastnltelevel, int)
     dfresolved = (
@@ -433,7 +461,7 @@ def get_line_contributions(
             .select(NLTEPOPS_SCHEMA.names())
             .unique(subset=["modelgridindex", "Z", "ion_stage", "level"], keep="first", maintain_order=True)
         )
-    if Path(modelpath, "autoion.txt").is_file():
+    if path_is_file(Path(modelpath, "autoion.txt")):
         print_warning(
             "The model has autoion.txt. ARTIS does not include the autoionising levels in the Boltzmann sum of the"
             " superlevel, but this command includes them. Thus the population of a level in the superlevel can be too"

@@ -190,6 +190,11 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "erg/s/g",
     ),
     ("source", "the code that gives the series: ARTIS, or the nuclear network GSINET", ""),
+    (
+        "specpath",
+        "the path of the reference file as the command line gives it, because two files can have one label",
+        "",
+    ),
     # the opacities
     ("lambda_angstroms_bin_mid", "the wavelength at the middle of the bin", "Å"),
     ("lambda_angstroms_(lower|upper)", "the {0} edge of the wavelength bin", "Å"),

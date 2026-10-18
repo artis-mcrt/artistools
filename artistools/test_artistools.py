@@ -2129,6 +2129,19 @@ def test_line_populations_take_the_boltzmann_factor_of_the_ground_level_with_no_
     assert dfpops.filter(pl.col("level") == 1).sort("modelgridindex")["population"].to_list() == [3.0, 4.0]
 
 
+def test_line_populations_of_a_cell_with_no_nlte_row_take_the_lte_populations() -> None:
+    """ARTIS writes no NLTE row of an element that fell back to LTE in a cell, and that cell got no populations."""
+    dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 8000.0], "nnion_X_II": [100.0, 200.0]})
+    levels = pl.DataFrame({"level": [0, 1], "g": [2.0, 4.0], "energy_ev": [0.0, 1.0]})
+    dfnltepops = pl.DataFrame({"modelgridindex": [0, 0], "level": [0, 1], "n_NLTE": [90.0, 10.0]})
+    dfpops = at.linecontributions.get_ion_populations(dfcells, levels, [0, 1], dfnltepops, "nnion_X_II")
+    dfcell1 = dfpops.filter(pl.col("modelgridindex") == 1).sort("level")
+    assert dfcell1["population_source"].to_list() == ["LTE", "LTE"]
+    boltzmann = np.array([2.0, 4.0 * np.exp(-1.0 / at.constants.K_B_ev_per_K / 8000.0)])
+    assert np.allclose(dfcell1["population"].to_numpy(), 200.0 * boltzmann / boltzmann.sum(), rtol=1e-12, atol=0.0)
+    assert dfpops.filter(pl.col("modelgridindex") == 0).sort("level")["population"].to_list() == [90.0, 10.0]
+
+
 def test_linecontributions_writes_a_file_only_with_the_output_option(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

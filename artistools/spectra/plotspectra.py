@@ -1412,7 +1412,7 @@ def make_spectrum_plot(
                 nseriesplotted += 1
 
         if args.print_data or args.write_data:
-            dfothers.append(get_drawn_lines_table(otherlines, args))
+            dfothers.append(get_drawn_lines_table(otherlines, args, specpath=str(specpath)))
         if seriesdata:
             # one column for each model, direction bin, and panel, e.g. f_lambda.mymodel_dirbin05_300d
             gridcolumns = get_grid_columns(args.xunit)
@@ -1831,13 +1831,13 @@ def plot_reference_spectra(
 
 
 def get_drawn_lines_table(
-    lines: Sequence[Line2D], args: argparse.Namespace, ycolumn: str | None = None
+    lines: Sequence[Line2D], args: argparse.Namespace, ycolumn: str | None = None, specpath: str | None = None
 ) -> pl.DataFrame:
     """Return the drawn points of each line, e.g. of a reference spectrum, with one row for each point.
 
     A reference spectrum or a code comparison spectrum has its own wavelength grid, thus its points do not go in the
     table of the ARTIS spectra. ycolumn names the column of the y values, e.g. "transmission" for a filter curve. The
-    default is the plotted -yvariable.
+    default is the plotted -yvariable. Two files can have one label, thus specpath gives the file of the lines.
     """
     return pl.concat(
         [
@@ -1845,7 +1845,7 @@ def get_drawn_lines_table(
                 "series": str(line.get_label()),
                 f"x_plotted_{args.xunit}": np.asarray(line.get_xdata(), dtype=np.float64),
                 ycolumn or f"{args.yvariable}_plotted": np.asarray(line.get_ydata(), dtype=np.float64),
-            })
+            }).select("series", pl.lit(specpath, dtype=pl.String).alias("specpath"), pl.exclude("series"))
             for line in lines
         ]
         or [pl.DataFrame()],

@@ -1473,6 +1473,8 @@ def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) ->
     assert [col for col in dfout.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
     dfreferences = pl.read_csv(tmp_path / "spec_references.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfreferences["series"].n_unique() == 1
+    # two reference files can have one label, thus each row names its file
+    assert dfreferences["specpath"].unique().to_list() == ["2003du_20031213_3219_8822_00.txt"]
     assert dfreferences.height > 100
 
     at.spectra.plot(

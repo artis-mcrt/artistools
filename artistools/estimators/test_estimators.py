@@ -3471,6 +3471,14 @@ def test_deposition_needs_the_deposition_estimators() -> None:
     assert at.estimators.deposition.format_channel_list(modelpath).endswith("holds no deposition channel")
 
 
+def test_deposition_counts_a_repeated_channel_one_time() -> None:
+    """-channels gamma,gamma gave the gamma rate two times in the sum."""
+    channels = at.estimators.deposition.select_deposition_channels(
+        ["deposition_gamma", "deposition_alpha"], ["gamma", "deposition_gamma", "alpha"]
+    )
+    assert channels == ["gamma", "alpha"]
+
+
 def test_deposition_names_the_channels_of_the_model() -> None:
     """An unknown channel must give a message that names the channels of the model."""
     colnames = ["total_dep", "deposition_gamma", "deposition_positron"]
