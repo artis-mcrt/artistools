@@ -87,37 +87,44 @@ def get_logfiles(modelpath: Path, ranks: Sequence[int] | None, cells: Sequence[i
     thus None finds the ranks of each folder from the names of its logs, and cells finds the ranks of these cells in
     the layout of each folder. The host of a remote model finds the logs.
     """
-    return get_unique_logfiles([
-        logpath
-        for folder in get_run_subfolders(modelpath)
-        for rank in get_folder_ranks(modelpath, folder, ranks, cells)
-        if (logpath := firstexisting_or_none(f"output_{rank}-0.txt", folder=folder, search_subfolders=False))
-        is not None
-    ])
+    return get_unique_logfiles(
+        modelpath,
+        [
+            logpath
+            for folder in get_run_subfolders(modelpath)
+            for rank in get_folder_ranks(modelpath, folder, ranks, cells)
+            if (logpath := firstexisting_or_none(f"output_{rank}-0.txt", folder=folder, search_subfolders=False))
+            is not None
+        ],
+    )
 
 
-def get_unique_logfiles(logfiles: Sequence[Path]) -> list[Path]:
-    """Return the logs with no copy: a link to a different log, or a file with the same text as a different log.
+def get_unique_logfiles(modelpath: Path, logfiles: Sequence[Path]) -> list[Path]:
+    """Return the logs with no copy: a link to a different log, or a log of the model folder that repeats a run log.
 
     A model folder can hold a copy or a link of the log of its last run, e.g. output_0-0.txt, and its messages then
-    counted two times. The run subfolders come first in get_run_subfolders, thus the log of the run stays. A copy has
-    the name of its log, thus only logs of one name need a comparison, and a run of 2000 ranks stays fast. The copy
-    can have a different compression, e.g. output_0-0.txt.gz, thus the name leaves out that extension.
+    counted two times. The run subfolders come first in get_run_subfolders, thus the log of the run stays. Two retries
+    in two run folders can stop with the same error and write the same text, thus only a log of the model folder can
+    be a copy by its text. A copy has the name of its log, thus only logs of one name need a comparison, and a run of
+    2000 ranks stays fast. The copy can have a different compression, thus the name leaves out that extension.
     """
     uniquelogs: list[Path] = []
     uniquelogsofname: dict[str, list[Path]] = {}
     for logfile in logfiles:
         samename = uniquelogsofname.setdefault(without_compressed_extension(logfile).name, [])
-        if all(not are_copies(logfile, uniquelog) for uniquelog in samename):
+        comparetext = logfile.parent == modelpath
+        if all(not are_copies(logfile, uniquelog, comparetext=comparetext) for uniquelog in samename):
             samename.append(logfile)
             uniquelogs.append(logfile)
     return uniquelogs
 
 
-def are_copies(logfile: Path, otherlogfile: Path) -> bool:
-    """Return True if two logs are one file, or if they hold the same text after their decompression."""
+def are_copies(logfile: Path, otherlogfile: Path, comparetext: bool) -> bool:
+    """Return True if two logs are one file, or, with comparetext, if they hold the same text after decompression."""
     if logfile.resolve() == otherlogfile.resolve():
         return True
+    if not comparetext:
+        return False
     if logfile == without_compressed_extension(logfile) and otherlogfile == without_compressed_extension(otherlogfile):
         # two text files with the same text have the same bytes, thus a different size is a different log
         return logfile.stat().st_size == otherlogfile.stat().st_size and filecmp.cmp(

@@ -2201,10 +2201,11 @@ def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicM
         ylabel = call.args[0].get_ylabel()
         dftable, ycolumn = next(value for key, value in panels.items() if ylabel.startswith(key))
         dfcurve = dftable.filter(pl.col("model") == call.kwargs["label"])
-        # the table gives the points that the axis shows, and the line can close at v = c outside the axis
+        # the table gives the points that the axis shows, and the end of each segment that crosses an edge
         xlow, xhigh = call.args[0].get_xlim()
         drawnx, drawny = np.asarray(call.args[1], dtype=float), np.asarray(call.args[2], dtype=float)
-        isvisible = (drawnx >= xlow) & (drawnx <= xhigh)
+        isinside = (drawnx >= xlow) & (drawnx <= xhigh)
+        isvisible = isinside | np.concatenate([[False], isinside[:-1]]) | np.concatenate([isinside[1:], [False]])
         np.testing.assert_allclose(dfcurve["vel_r_on_c"], drawnx[isvisible], rtol=1e-12)
         np.testing.assert_allclose(dfcurve[ycolumn], drawny[isvisible], rtol=1e-12, atol=0.0)
         ncurves += 1
@@ -4608,14 +4609,19 @@ def test_closest_network_timesteps_agree_with_a_filter_of_each_time(trajectory_c
 
 
 def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(tmp_path: Path) -> None:
-    """The axis shows the velocities from -xmin to -xmax, and the tables also gave the closing point at v = c."""
+    """The axis shows the velocities from -xmin to -xmax, and the tables also gave the points far outside the axis.
+
+    A point outside the axis stays only as the end of a segment that crosses an edge of the axis.
+    """
     at.inputmodel.plotdensity.main(
         argsraw=[], modelpath=[modelpath], outputpath=tmp_path, xmin=0.01, xmax=0.05, write_data=True, quiet=True
     )
     for filename in ("densityprofile.txt", "densityprofile_massprofile.txt"):
         dftable = read_data_table(tmp_path / filename)
-        assert dftable.height > 0
-        assert dftable["vel_r_on_c"].is_between(0.01, 0.05).all(), filename
+        isinside = pl.col("vel_r_on_c").is_between(0.01, 0.05)
+        hasinsideneighbour = isinside.shift(1).fill_null(value=False) | isinside.shift(-1).fill_null(value=False)
+        assert dftable.filter(isinside).height > 0, filename
+        assert dftable.select((isinside | hasinsideneighbour).all()).item(), filename
 
 
 def test_plotinitialcomposition_3d_tables_follow_the_order_of_the_cells() -> None:

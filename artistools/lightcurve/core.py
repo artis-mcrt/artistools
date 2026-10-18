@@ -486,7 +486,10 @@ def generate_band_lightcurve_data(
                 (time, float(lum_lsun_to_mag(np.asarray(spectrum_to_bolometric_lum(spectrum) / Lsun_to_erg_per_s))))
                 for time, spectrum in times_spectra
             )
-            filters_dict["bol"] = [(time, magnitude) for time, magnitude in bol_magnitudes if math.isfinite(magnitude)]
+            # a time with no flux keeps a NaN magnitude, thus a reader knows that the band has no value there
+            filters_dict["bol"] = [
+                (time, magnitude if math.isfinite(magnitude) else math.nan) for time, magnitude in bol_magnitudes
+            ]
             continue
 
         bandpoints = filters_dict.setdefault(filter_name, [])
@@ -525,7 +528,8 @@ def generate_band_lightcurve_data(
             weighted_flux_obs = float(abs(np.trapezoid(integrand, integration_grid)))
             if weighted_flux_obs <= 0.0:
                 # no flux in the band gives no magnitude. A zero magnitude would show an extremely bright source
-                print(f"  no {filter_name} band flux at {time:.2f} d. Skipping this time.")
+                print(f"  no {filter_name} band flux at {time:.2f} d. The band has no magnitude at this time.")
+                bandpoints.append((time, math.nan))
                 continue
 
             # the spectrum is at 1 Mpc, and 25 = 5 log10(1 Mpc / 10 pc) gives the absolute magnitude at 10 pc
@@ -627,13 +631,17 @@ def get_band_lightcurve(
     args: argparse.Namespace | None = None,
     **kwargs: t.Any,
 ) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
-    """Return the times and magnitudes of one band's light curve, restricted to the args.timemin/timemax range."""
+    """Return the times and magnitudes of one band's light curve, restricted to the args.timemin/timemax range.
+
+    A time with no flux in the band has no magnitude, thus it gives no point. get_band_gap_times gives these times.
+    """
     args = args_from_kwargs(args, kwargs)
 
     selected = [
         (time, brightness)
         for time, brightness in band_lightcurve_data[band_name]
-        if ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
+        if math.isfinite(brightness)
+        and ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
     ]
     if not selected:
         msg = (
@@ -646,13 +654,18 @@ def get_band_lightcurve(
     return times, np.array(brightness_in_mag)
 
 
+def get_band_gap_times(band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name: str) -> list[float]:
+    """Return the times at which a band has no flux and no magnitude, e.g. for a test of an interpolation."""
+    return [time for time, brightness in band_lightcurve_data[band_name] if not math.isfinite(brightness)]
+
+
 def get_colour_delta_mag(
     band_lightcurve_data: Mapping[str, Iterable[tuple[float, float]]], filter_names: Sequence[str]
 ) -> tuple[list[float], list[float]]:
     """Return the times and magnitude differences of two bands, using only the times sampled by both bands."""
     # make magnitude dictionaries where time is the key
-    time_dict_1 = dict(band_lightcurve_data[filter_names[0]])
-    time_dict_2 = dict(band_lightcurve_data[filter_names[1]])
+    time_dict_1 = {time: mag for time, mag in band_lightcurve_data[filter_names[0]] if math.isfinite(mag)}
+    time_dict_2 = {time: mag for time, mag in band_lightcurve_data[filter_names[1]] if math.isfinite(mag)}
 
     # a band with no flux at some time contributes no point there, so the two bands can be sampled at different
     # times. Only times present in both bands have a colour

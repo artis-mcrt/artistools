@@ -29,6 +29,7 @@ from artistools.inputmodel import get_modeldata
 from artistools.lightcurve.core import FILTERNAME_ALIASES
 from artistools.lightcurve.core import find_lightcurve_file
 from artistools.lightcurve.core import generate_band_lightcurve_data
+from artistools.lightcurve.core import get_band_gap_times
 from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag
 from artistools.lightcurve.core import get_filename_part
@@ -327,6 +328,7 @@ def get_peak_summary(
     ismagnitude: bool,
     isband: bool = False,
     packetnoise: tuple[npt.ArrayLike, npt.ArrayLike] | None = None,
+    gaptimes: Sequence[float] = (),
 ) -> tuple[dict[str, t.Any], list[str], list[str]]:
     """Return the fields of the summary of a drawn light curve, the parts of its summary line, and its warnings.
 
@@ -340,8 +342,9 @@ def get_peak_summary(
     times = np.asarray(time_days, dtype=np.float64)
     values = np.asarray(yvalues, dtype=np.float64)
     hasvalue = np.isfinite(values) & np.isfinite(times)
-    # the plot draws no line across a time with no value, thus an interpolation must not cross such a time
-    gaptimes = times[np.isfinite(times) & ~np.isfinite(values)]
+    # an interpolation must not cross a time with no value. gaptimes gives the times that the series leaves out, e.g.
+    # a time with no flux in a band
+    alltimegaps = np.concatenate([times[np.isfinite(times) & ~np.isfinite(values)], np.asarray(gaptimes, dtype=float)])
     if not hasvalue.any():
         return {"point_count": 0}, ["no finite value"], []
     # a reference file can list its points in any order, and the interpolation of Δm15 and the test of the ends need
@@ -374,7 +377,7 @@ def get_peak_summary(
         hasdeltam15 = targettime <= fields["time_max_days"]
         if hasdeltam15:
             lowertime, uppertime = times[times <= targettime].max(), times[times >= targettime].min()
-            if np.any((gaptimes > lowertime) & (gaptimes < uppertime)):
+            if np.any((alltimegaps > lowertime) & (alltimegaps < uppertime)):
                 deltam15gap = (float(lowertime), float(uppertime))
                 hasdeltam15 = False
         fields |= {
@@ -1002,12 +1005,15 @@ def plot_artis_lightcurve(
                 lcdata_after_valid = lcdata.filter(pl.col("time_days") >= lcdata_valid["time_days"].max())
 
         # the line of the luminosity shows only the valid range, and -plotinvalidpart and --plotcmf show each row.
-        # Thus the table keeps each row, and a column names the rows of the line
-        plotteddataframes[dirbin] = lcdata.with_columns(
+        # Thus the table keeps each row only with these options, and a column names the rows of the line
+        cmfcolumn = ycolumn.replace("luminosity_", "luminosity_cmf_")
+        showseachrow = args.plotinvalidpart or (args.plotcmf and cmfcolumn in lcdata.columns)
+        dfplotted = lcdata.with_columns(
             in_valid_range=pl.lit(value=False)
             if validrange_start_days is None or validrange_end_days is None
             else pl.col("time_days").is_between(validrange_start_days, validrange_end_days)
         )
+        plotteddataframes[dirbin] = dfplotted if showseachrow else dfplotted.filter(pl.col("in_valid_range"))
 
         if args.plotinvalidpart:
             plotkwargs_invalidrange = plotkwargs.copy()
@@ -1073,7 +1079,6 @@ def plot_artis_lightcurve(
                     line=modelline,
                 )
             )
-        cmfcolumn = ycolumn.replace("luminosity_", "luminosity_cmf_")
         if args.plotcmf and cmfcolumn not in lcdata.columns:
             print_warning(
                 f"the light curve of {linelabel} has no comoving frame luminosity, thus --plotcmf draws no curve"
@@ -1517,7 +1522,12 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
                 summaryname = f"{band_name} {plotkwargs['label'] or modelname}"
                 (modelline,) = axis.plot(time, brightness_in_mag, gid=summaryname, **plotkwargs)
                 summaryfields, summaryparts, summarywarnings = get_peak_summary(
-                    time, brightness_in_mag, "mag", ismagnitude=True, isband=True
+                    time,
+                    brightness_in_mag,
+                    "mag",
+                    ismagnitude=True,
+                    isband=True,
+                    gaptimes=get_band_gap_times(band_lightcurve_data, band_name),
                 )
                 print_series_summary(
                     summaryname, summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows

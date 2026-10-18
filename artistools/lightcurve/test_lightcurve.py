@@ -1891,7 +1891,9 @@ def test_lightcurve_print_data_survives_quiet(capsys: pytest.CaptureFixture[str]
     curvetext, summarytext = withdata.split("\n\n")
     datalines = curvetext.splitlines()
     assert datalines[0].startswith("model escape_type dirbin time_days ")
-    assert len(datalines) == 1 + len(at.get_timestep_times(modelpath))
+    # the figure draws only the valid range of the light curve, thus the table gives only these timesteps
+    assert 10 < len(datalines) - 1 < len(at.get_timestep_times(modelpath))
+    assert all(line.endswith(" true") for line in datalines[1:])
     assert summarytext.splitlines()[0].startswith("series point_count ")
     assert len(summarytext.splitlines()) == 2
 
@@ -3187,8 +3189,9 @@ def test_lightcurve_data_gives_the_filtered_curve_and_the_energy_rates(
     })
     dfcompared = dfdrawn.join(dflc.select("time_days", "luminosity_erg/s"), on="time_days", how="inner")
     assert dfcompared.height == dfdrawn.height
-    # the line shows only the range of validity, thus the column in_valid_range names its rows
-    assert dflc.filter(pl.col("in_valid_range"))["time_days"].to_list() == dfdrawn["time_days"].to_list()
+    # the line shows only the range of validity, and the table held the hidden rows outside it
+    assert dflc["in_valid_range"].all()
+    assert dflc["time_days"].to_list() == dfdrawn["time_days"].to_list()
     assert np.allclose(dfcompared["luminosity_erg/s"], dfcompared["drawn"], rtol=1e-6, atol=0)
 
     dfrates = pl.read_csv(tmp_path / "lc_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#")
@@ -3645,6 +3648,14 @@ def test_peak_summary_gives_no_deltam15_across_a_missing_magnitude() -> None:
     magnitudes = np.array([-14.0, -15.0, -14.5, np.nan, -14.0, -13.5])
     fields, parts, _ = get_peak_summary(times, magnitudes, "mag", ismagnitude=True, isband=True)
 
+    assert fields["deltam15_mag"] is None
+    assert "no Δm15, because the magnitude has no value between 20 and 30 d" in parts[2]
+
+    # a band with no flux at a time leaves out that time, and the caller gives it as a gap
+    hasvalue = np.isfinite(magnitudes)
+    fields, parts, _ = get_peak_summary(
+        times[hasvalue], magnitudes[hasvalue], "mag", ismagnitude=True, isband=True, gaptimes=[25.0]
+    )
     assert fields["deltam15_mag"] is None
     assert "no Δm15, because the magnitude has no value between 20 and 30 d" in parts[2]
 

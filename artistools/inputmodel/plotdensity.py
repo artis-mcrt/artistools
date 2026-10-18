@@ -31,6 +31,7 @@ from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import trim_or_pad
+from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -253,11 +254,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     axes[0].set_ylim(bottom=0.0)
     axes[1].set_ylim(bottom=0.0)
 
-    # the axis shows the velocities of xlimits, thus the tables give only these points
+    # the axes show the velocities of xlimits, and a line keeps the end of each segment that crosses an edge
+    valuecolumns = {"": ("mass_enclosed_msun", axes[0]), "_massprofile": ("dmass_dv_msun_per_c", axes[1])}
     output_data(
         args,
         {
-            suffix: dftable.filter(pl.col("vel_r_on_c").is_between(*xlimits)) if not dftable.is_empty() else dftable
+            suffix: dftable
+            if dftable.is_empty()
+            else filter_to_axis_limits(
+                dftable, valuecolumns[suffix][1], "vel_r_on_c", valuecolumns[suffix][0], linecolumns=["model"]
+            )
             for suffix, dftable in tables.items()
         },
         args.outputfile,

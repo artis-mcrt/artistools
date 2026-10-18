@@ -6538,6 +6538,22 @@ def test_logsummary_reads_two_gzip_copies_of_a_log_once(tmp_path: Path, capsys: 
     assert dfsummary["count"].to_list() == [1]
 
 
+def test_logsummary_keeps_identical_logs_of_two_run_folders(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Two retries can stop with the same error and write the same text, and the second retry counted as a copy."""
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    logtext = "timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[error] cell 3 has no matter\n"
+    for foldername in ("100.slurm", "200.slurm"):
+        (modelfolder / foldername).mkdir(parents=True)
+        (modelfolder / foldername / "output_0-0.txt").write_text(logtext, encoding="utf-8")
+    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
+    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    assert dfsummary["count"].to_list() == [2]
+
+
 def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:
     """A log holds thousands of warnings of a few kinds, thus the table names each kind, its timesteps, and its cells.
 
@@ -6753,6 +6769,25 @@ def test_plotradfield_writes_the_drawn_values(
         assert (dfseries["lambda_angstroms"] < 1000.0).sum() <= 1
         assert (dfseries["lambda_angstroms"] > 20000.0).sum() <= 1
 
+    # the table held the values above -ymax, which the figure does not show
+    ymax = float(np.median(dftable["J_lambda_erg_per_s_per_cm2_per_angstrom"].to_numpy()))
+    at.plotradfield.main(
+        argsraw=[],
+        modelpath=modelpath,
+        modelgridindex=0,
+        timestep=40,
+        ymax=ymax,
+        outputfile=tmp_path / "rfclipped.pdf",
+        write_data=True,
+    )
+    dfclipped = read_data_file(tmp_path / "rfclipped.txt")
+    isshown = pl.col("J_lambda_erg_per_s_per_cm2_per_angstrom") <= ymax
+    hasshownneighbour = isshown.shift(1).over("series").fill_null(value=False) | isshown.shift(-1).over(
+        "series"
+    ).fill_null(value=False)
+    assert 0 < dfclipped.height < dftable.height
+    assert dfclipped.select((isshown | hasshownneighbour).all()).item()
+
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plottransitions_writes_the_drawn_values(mockplot: mock.MagicMock, tmp_path: Path) -> None:
@@ -6911,6 +6946,26 @@ def test_report_holds_each_part_and_its_figures(tmp_path: Path) -> None:
         main(argsraw=[], modelpath=modelpath_classic_3d, outputfile=reportfolder)
 
 
+def test_report_asks_about_the_overwrite_before_it_reads_the_model(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The report read the timesteps of the model before the question, e.g. through ssh for a remote model."""
+    from artistools import report
+
+    reportfolder = tmp_path / "myreport"
+    reportfolder.mkdir()
+    (reportfolder / "spectrum_timestep007.png").write_bytes(b"")
+    with (
+        mock.patch.object(report, "get_report_timesteps", side_effect=AssertionError("the model was read")),
+        mock.patch("sys.stdin.isatty", return_value=False),
+        pytest.raises(SystemExit),
+    ):
+        report.main(argsraw=[str(modelpath_classic_3d), "-o", str(reportfolder)])
+    stderr = capsys.readouterr().err
+    assert "spectrum_timestep007.png exists" in stderr
+    assert "did not overwrite the files" in stderr
+
+
 def test_report_provenance_keeps_a_remote_model_folder() -> None:
     """A local resolve put the working folder in front of host:path, which named a folder that does not exist."""
     from artistools.report import get_provenance_html
@@ -6992,6 +7047,17 @@ def test_check_names_runs_of_other_builds_for_the_temperature_limits() -> None:
         status, detail = check_temperature_limits(modelpath_classic_3d)
     assert status == "warning"
     assert "the runs used 2 ARTIS versions (v2023.10, v2026.5)" in detail
+
+
+def test_check_restarts_warns_about_a_run_with_no_version() -> None:
+    """A run with no version left the comparison, and the agreement of the other runs then gave the status ok."""
+    from artistools.check import check_restarts
+
+    versions = {"job0": {"git version": "v2023.10-106-gfcb7e2c"}}
+    with mock.patch("artistools.check.get_run_versions", return_value=versions):
+        status, detail = check_restarts(modelpath_classic_3d)
+    assert status == "warning"
+    assert "job1 gives no ARTIS version, thus the check cannot compare the versions" in detail
 
 
 def test_check_reads_each_log_once_and_finds_the_restarts() -> None:

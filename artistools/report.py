@@ -358,6 +358,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_force(parser)
 
 
+def get_report_files_in_folder(reportfolder: Path) -> list[str]:
+    """Return the names of the files of an earlier report in the folder, which a new report can replace.
+
+    The timesteps of the figures come from the model, and the model is not read yet. Thus each figure of a report
+    counts, also a figure of a different timestep.
+    """
+    if not reportfolder.is_dir():
+        return []
+    patterns = [
+        "index.html",
+        LIGHTCURVEFILENAME,
+        SPECTRUMFILENAME.replace("{timestep:03d}", "*"),
+        TEMPERATUREFILENAME.replace("{timestep:03d}", "*"),
+    ]
+    return sorted({path.name for pattern in patterns for path in reportfolder.glob(pattern)})
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Make an HTML page with the summary, the health check, the log summary, and standard figures of a model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -365,15 +382,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelname = resolve_modelpath(modelfolder).name
     reportfolder = Path(args.outputfile or f"{modelname}_report")
 
+    # the refusal must come before the work starts, e.g. before a remote model starts its server
+    confirm_overwrite([reportfolder], get_report_files_in_folder(reportfolder), force=args.force)
     timesteps, method = get_report_timesteps(modelfolder)
     print_detail(method)
-    filenames = [
-        "index.html",
-        LIGHTCURVEFILENAME,
-        *(SPECTRUMFILENAME.format(timestep=timestep) for timestep in timesteps),
-        *(TEMPERATUREFILENAME.format(timestep=timestep) for timestep in timesteps),
-    ]
-    confirm_overwrite([reportfolder], filenames, force=args.force)
     reportfolder.mkdir(parents=True, exist_ok=True)
 
     sections = [

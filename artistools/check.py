@@ -247,9 +247,29 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
         if len(runfolders) > 1
         else f"1 run folder with estimators ({runnames[0]}), thus no restart"
     )
+
+    # a run with no data for a comparison is not checked, thus the agreement of the other runs is not enough
+    def get_some_names_text(names: Sequence[str]) -> str:
+        # the names can skip runs, thus a range such as "job0 to job14" would name runs that have the data
+        return ", ".join(names) if len(names) <= 3 else f"{len(names)} run folders, e.g. {', '.join(names[:3])},"
+
+    gaps: list[str] = []
+    if len(runfolders) > 1:
+        versionnames = {name for name, _ in versions}
+        logcountnames = {name for name, _ in logcounts}
+        if noversion := [name for name in runnames if name not in versionnames]:
+            gaps.append(
+                f"{get_some_names_text(noversion)} {'gives' if len(noversion) == 1 else 'give'} no ARTIS version,"
+                " thus the check cannot compare the versions"
+            )
+        if nologs := [name for name in runnames if name not in logcountnames]:
+            gaps.append(
+                f"{get_some_names_text(nologs)} {'holds' if len(nologs) == 1 else 'hold'} no rank log, thus the check"
+                " cannot compare the number of ranks"
+            )
     summary = f"{runcounttext}: {versiontext}, and {logcounttext}"
-    if changes:
-        return "warning", f"{summary}; {'; '.join(changes)}"
+    if changes or gaps:
+        return "warning", f"{summary}; {'; '.join([*changes, *gaps])}"
     return "ok", summary
 
 
