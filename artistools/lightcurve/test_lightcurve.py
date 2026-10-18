@@ -3308,6 +3308,38 @@ def test_band_data_of_several_models_names_the_model_of_each_row(tmp_path: Path)
     assert dfbands["band"].unique().to_list() == ["B"]
 
 
+def test_viewing_angle_data_names_keep_two_models_of_one_name_apart(tmp_path: Path) -> None:
+    """Two models of one name wrote one data file, thus the scatter plot showed the second model two times."""
+    from artistools.lightcurve.viewingangleanalysis import get_viewing_angle_data_names
+
+    folders = [tmp_path / "a" / "run1" / "model", tmp_path / "b" / "run1" / "model", tmp_path / "c" / "other"]
+    for folder in folders:
+        folder.mkdir(parents=True)
+    assert get_viewing_angle_data_names(folders) == ["model (a/run1)", "model (b/run1)", "other"]
+    # one folder given two times gives the same data two times
+    assert get_viewing_angle_data_names([folders[0], folders[0]]) == ["model", "model"]
+
+    modelcopies = [tmp_path / name / modelpath_classic_3d.name for name in ("first", "second")]
+    for modelcopy in modelcopies:
+        modelcopy.mkdir(parents=True)
+        for filepath in modelpath_classic_3d.iterdir():
+            (modelcopy / filepath.name).symlink_to(filepath)
+    outputfolder = tmp_path / "out"
+    at.lightcurve.plot(
+        argsraw=[],
+        modelpath=modelcopies,
+        plotviewingangle=[0],
+        save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
+        timemin=3.2,
+        timemax=7.5,
+        outputfile=outputfolder,
+    )
+    assert sorted(path.name for path in outputfolder.glob("*_viewing_angle_data.txt")) == [
+        f"lightcurveband_{modelpath_classic_3d.name} (first)_viewing_angle_data.txt",
+        f"lightcurveband_{modelpath_classic_3d.name} (second)_viewing_angle_data.txt",
+    ]
+
+
 def test_band_name_with_an_instrument_folder_gives_valid_file_names(tmp_path: Path) -> None:
     """A filter of an instrument has a name with a folder, e.g. NOT/B. Its slash must not reach a file name.
 
