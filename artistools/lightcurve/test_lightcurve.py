@@ -3194,6 +3194,17 @@ def test_lightcurve_data_gives_the_filtered_curve_and_the_energy_rates(
     assert dflc["time_days"].to_list() == dfdrawn["time_days"].to_list()
     assert np.allclose(dfcompared["luminosity_erg/s"], dfcompared["drawn"], rtol=1e-6, atol=0)
 
+    # the table held the luminosities below -ymin, which the figure does not show
+    ymin = float(np.median(dflc["luminosity_erg/s"].to_numpy()))
+    at.lightcurve.plot(
+        argsraw=[], modelpath=[modelpath_classic_3d], ymin=ymin, write_data=True, outputfile=tmp_path / "lcymin.pdf"
+    )
+    dfclipped = pl.read_csv(tmp_path / "lcymin.txt", separator=" ", null_values="nan", comment_prefix="#")
+    isshown = pl.col("luminosity_erg/s") >= ymin
+    hasshownneighbour = isshown.shift(1).fill_null(value=False) | isshown.shift(-1).fill_null(value=False)
+    assert 0 < dfclipped.height < dflc.height
+    assert dfclipped.select((isshown | hasshownneighbour).all()).item()
+
     dfrates = pl.read_csv(tmp_path / "lc_energyrates.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dfrates["quantity"].unique().to_list() == ["gammadep_Lsun"]
     assert dfrates["unit"].unique().to_list() == ["erg/s"]
@@ -3672,6 +3683,27 @@ def test_colour_at_peak_observations_keep_the_rows_that_the_axes_show() -> None:
     })
     # the second row has its marker outside the axes, and its bar of the colour reaches into them
     assert get_shown_observations(dfobservations, axis)["(B-V)Bmax"].to_list() == [0.5, 1.2]
+
+
+def test_bolometric_table_keeps_a_reference_point_whose_error_bar_crosses_the_axis() -> None:
+    """A reference point above -ymax has an error bar that reaches into the axis, and the figure shows the bar."""
+    import matplotlib.figure as mplfig
+
+    from artistools.lightcurve.plotlightcurve import get_shown_lightcurve_rows
+
+    axis = mplfig.Figure().add_subplot()
+    axis.set_xlim(0.0, 10.0)
+    axis.set_ylim(0.0, 1.0)
+    dfreference = pl.DataFrame({
+        "model": "observed",
+        "escape_type": "reference",
+        "time_days": [2.0, 4.0, 6.0],
+        "luminosity_erg/s": [0.5, 1.5, 3.0],
+        "luminosity_erg/s_errlower": [0.1, 0.8, 0.5],
+        "luminosity_erg/s_errupper": [0.1, 0.1, 0.5],
+    })
+    dfshown = get_shown_lightcurve_rows([dfreference], axis, "erg/s", showscmf=False)
+    assert dfshown["time_days"].to_list() == [2.0, 4.0]
 
 
 def test_peak_summary_sorts_the_times_of_a_reference_file() -> None:

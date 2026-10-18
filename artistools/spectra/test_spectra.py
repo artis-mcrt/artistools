@@ -2754,12 +2754,11 @@ def test_polarisation_plot_writes_the_drawn_ratio(mockplot: mock.MagicMock, tmp_
     assert dftable.columns == ["x_plotted_angstrom", "Q/I"]
     axis, drawnx, drawny = mockplot.call_args.args
     drawnx, drawny = np.asarray(drawnx, dtype=np.float64), np.asarray(drawny, dtype=np.float64)
-    # the table holds the points of the axis and the nearest point outside each end
+    # the table holds the drawn points of the axis, and matplotlib draws no point at a NaN
     xlow, xhigh = sorted(axis.get_xlim())
-    lowedge = drawnx[drawnx <= xlow].max(initial=-np.inf)
-    highedge = drawnx[drawnx >= xhigh].min(initial=np.inf)
-    iskept = (drawnx >= lowedge) & (drawnx <= highedge)
-    assert np.allclose(dftable["Q/I"].to_numpy(), drawny[iskept], rtol=1e-6, atol=0, equal_nan=True)
+    isinside = np.isfinite(drawny) & (drawnx >= xlow) & (drawnx <= xhigh)
+    assert np.isfinite(dftable["Q/I"].to_numpy()).all()
+    assert set(drawnx[isinside].round(6)) <= set(dftable["x_plotted_angstrom"].round(6).to_list())
 
     # the axis shows -xmin to -xmax, and the table gave each wavelength of the spectrum
     mockplot.reset_mock()
@@ -2778,6 +2777,19 @@ def test_polarisation_plot_writes_the_drawn_ratio(mockplot: mock.MagicMock, tmp_
     assert (wavelengths < 4000.0).sum() <= 1
     assert (wavelengths > 6000.0).sum() <= 1
     assert wavelengths.is_between(4000.0, 6000.0).sum() > 0
+
+    # each ratio of the test model is 0.514 or less, thus the axis from 0.6 to 1 shows no point, and the table gave each
+    at.spectra.plot(
+        argsraw=[],
+        specpath=[modelpath_classic_3d],
+        timedays="5",
+        stokesparam="Q/I",
+        ymin=0.6,
+        ymax=1.0,
+        write_data=True,
+        outputfile=tmp_path / "ymin",
+    )
+    assert not list((tmp_path / "ymin").glob("plotpol_*.txt"))
 
 
 def test_emission_plot_takes_a_list_of_one_time(tmp_path: Path) -> None:

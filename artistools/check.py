@@ -384,14 +384,16 @@ def check_packet_noise(modelpath: Path, frompackets: bool) -> tuple[str, str]:
         "packet noise: the relative noise of a time step is sqrt(Σ e²) / Σ e over the energies e of its escaped"
         " r-packets, for the angle average"
     )
-    dflightcurve = (
+    dfalltimesteps = (
         get_from_packets(modelpath)[-1]
         .select("timestep", "time_days", "packetcount", "luminosity_Lsun", "relnoise")
-        .filter(pl.col("relnoise").is_not_null())
         .collect()
     )
+    dflightcurve = dfalltimesteps.filter(pl.col("relnoise").is_not_null())
     if dflightcurve.is_empty():
         return "warning", "no time step has an escaped r-packet"
+    # a time step with no escaped packet has no sampled luminosity and no noise, thus the check names it
+    nopackettimesteps = dfalltimesteps.filter(pl.col("relnoise").is_null())["timestep"].to_list()
 
     worst = dflightcurve.sort("relnoise", descending=True).row(0, named=True)
     peak = dflightcurve.sort("luminosity_Lsun", descending=True).row(0, named=True)
@@ -402,6 +404,12 @@ def check_packet_noise(modelpath: Path, frompackets: bool) -> tuple[str, str]:
         f" packets are above {100 * PACKET_RELNOISE_MAX:g}%, and the noise at the peak ({peak['time_days']:.2f} d) is"
         f" {100 * peak['relnoise']:.2f}%"
     )
+    if nopackettimesteps:
+        detail += (
+            f"; the time steps {format_range_list(nopackettimesteps)} have no escaped r-packet, thus their luminosity"
+            " and their noise are not known"
+        )
+        return "warning", detail
     return ("warning" if worst["relnoise"] > PACKET_RELNOISE_MAX else "ok"), detail
 
 

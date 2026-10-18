@@ -94,6 +94,7 @@ from artistools.misc.timesteps import parse_timedays_range
 from artistools.packets import get_packets
 from artistools.packets import get_packets_column_names
 from artistools.plottools import draw_residual_panel
+from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
 from artistools.plottools import get_shown_on_axes
@@ -359,8 +360,8 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     axis.set_xlabel(xlabel)
     figname = f"plotpol_{timeavg}_days_{args.stokesparam.split('/')[0]}_{args.stokesparam.split('/')[1]}.pdf"
     outpath = resolve_outputfile(args.outputfile, figname)
-    # the axis shows -xmin to -xmax, and the line to each edge of the axis needs the nearest point outside each end
-    dfvisible = df_filter_minmax_bracketed(dfdrawn, colname="x", minval=args.xmin, maxval=args.xmax).collect()
+    # the axis shows -xmin to -xmax and -ymin to -ymax, and a segment that crosses an edge keeps its two ends
+    dfvisible = filter_to_axis_limits(dfdrawn, axis, "x", timecolname, linecolumns=[])
     output_data(
         args,
         {

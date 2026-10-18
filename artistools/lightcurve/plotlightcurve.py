@@ -100,6 +100,7 @@ from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import get_next_color
+from artistools.plottools import get_shown_on_axes
 from artistools.plottools import get_summary_table
 from artistools.plottools import get_unused_colors
 from artistools.plottools import get_viewinganglecolor_for_colorbar
@@ -623,6 +624,45 @@ def plot_energy_rates(
         dfcurves.extend(plot_thermalisation(thermaxis, depdata, modelpath, modelname, args, particlecolours, linewidth))
 
     return drewrate, pl.concat(dfcurves) if dfcurves else pl.DataFrame(schema=CURVESCHEMA)
+
+
+def get_shown_lightcurve_rows(
+    dflightcurves: Sequence[pl.DataFrame], axis: mplax.Axes, lumunit: LumUnit, *, showscmf: bool
+) -> pl.DataFrame:
+    """Return the rows of the light curves that the final limits of the axis show, e.g. with -ymin or a log axis.
+
+    Each table holds one curve. A curve of a model is a line, and it keeps the end of each segment that crosses an
+    edge. With --plotcmf, a row also stays if the line of the comoving frame shows it. A row of a reference file is a
+    point, which stays if its marker or its error bar crosses the axis.
+    """
+    plotcolumn = get_plot_lum_column(lumunit)
+    cmfcolumn = plotcolumn.replace("luminosity_", "luminosity_cmf_")
+    xlow, xhigh = sorted(axis.get_xlim())
+    ylow, yhigh = sorted(axis.get_ylim())
+
+    def get_shown_rows(dfcurve: pl.DataFrame) -> pl.DataFrame:
+        if dfcurve.is_empty() or plotcolumn not in dfcurve.columns:
+            return dfcurve
+        if (dfcurve["escape_type"] == "reference").all():
+            isshown = get_shown_on_axes(axis, "time_days", plotcolumn)
+            if f"{plotcolumn}_errlower" in dfcurve.columns:
+                value = pl.col(plotcolumn)
+                barlow = value - pl.col(f"{plotcolumn}_errlower").fill_null(0.0)
+                barhigh = value + pl.col(f"{plotcolumn}_errupper").fill_null(0.0)
+                barisshown = (
+                    pl.col("time_days").is_between(xlow, xhigh)
+                    & (pl.min_horizontal(barlow, barhigh) <= yhigh)
+                    & (pl.max_horizontal(barlow, barhigh) >= ylow)
+                ).fill_null(value=False)
+                isshown |= barisshown
+            return dfcurve.filter(isshown)
+        isshown = get_shown_on_axes(axis, "time_days", plotcolumn, linecolumns=[])
+        if showscmf and cmfcolumn in dfcurve.columns:
+            isshown |= get_shown_on_axes(axis, "time_days", cmfcolumn, linecolumns=[])
+        return dfcurve.filter(isshown)
+
+    shown = [get_shown_rows(dfcurve) for dfcurve in dflightcurves]
+    return pl.concat(shown, how="diagonal_relaxed") if shown else pl.DataFrame()
 
 
 def get_shown_energy_rates(
@@ -1370,7 +1410,7 @@ def draw_plot(
         thermaxis.set_xlabel(labelaxis.get_xlabel())
         labelaxis.set_xlabel("")
 
-    dfplotted = pl.concat(dflightcurves, how="diagonal_relaxed") if dflightcurves else pl.DataFrame()
+    dfplotted = get_shown_lightcurve_rows(dflightcurves, axis, lumunit, showscmf=args.plotcmf)
     dfrates = get_shown_energy_rates(dfenergyrates, axis, thermaxis)
     return {
         "": dfplotted,

@@ -1805,7 +1805,8 @@ def get_shown_on_axes(
     """
     xislog, yislog = axis.get_xscale() == "log", axis.get_yscale() == "log"
     x, y = pl.col(xcolumn), pl.col(ycolumn)
-    isdrawn = x.is_not_null() & y.is_not_null()
+    # matplotlib draws no point at a NaN or an infinite value, and no segment to it
+    isdrawn = (x.is_finite() & y.is_finite()).fill_null(value=False)
     if xislog:
         isdrawn &= x > 0.0
     if yislog:

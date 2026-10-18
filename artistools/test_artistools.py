@@ -7305,6 +7305,23 @@ def test_check_from_packets_gives_the_largest_noise(capsys: pytest.CaptureFixtur
     assert "complete time steps (" not in captured.err
 
 
+def test_check_packet_noise_names_a_timestep_with_no_escaped_packet() -> None:
+    """A time step with no escaped packet has a null noise, and the check left it out and gave the status ok."""
+    from artistools.check import check_packet_noise
+
+    dflightcurve = pl.LazyFrame({
+        "timestep": [0, 1, 2],
+        "time_days": [1.0, 2.0, 3.0],
+        "packetcount": [1000, 0, 1000],
+        "luminosity_Lsun": [1e8, 0.0, 1e8],
+        "relnoise": [0.01, None, 0.01],
+    })
+    with mock.patch("artistools.check.get_from_packets", return_value={-1: dflightcurve}):
+        status, detail = check_packet_noise(modelpath_classic_3d, frompackets=True)
+    assert status == "warning"
+    assert "the time steps 1 have no escaped r-packet" in detail
+
+
 def test_values_of_one_cell_agree_with_the_estimators() -> None:
     """The values command must give the raw estimators of the cell, and not a mean over cells or bins."""
     from artistools.values import get_values_table
