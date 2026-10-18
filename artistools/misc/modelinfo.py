@@ -207,15 +207,57 @@ def get_artis_source_text(modelpath: Path | str, filename: str) -> str | None:
 # a value option, e.g. "constexpr double MINTEMP = 3500.;" or a value on the next line, an option with no value, e.g.
 # "constexpr std::optional<double> GAMMA_USE_KAPPA_GREY;", and the start of a function option, e.g.
 # "constexpr bool LEVEL_IS_NLTE(int element_z, int ionstage, int level) {"
+# C++ also permits a direct initialisation of a value, e.g. "constexpr int MAXITER{4};" or "constexpr int MAXITER(4);".
 # The type is the text up to the name, e.g. "std::array<int, 2>" or "const char*". A string literal in a value
 # can hold ";", e.g. "a;b", thus the value is a sequence of literals and other characters. A lone "'" is a digit
-# separator, e.g. 1'000
+# separator, e.g. 1'000. The pattern tries the function option before the parenthesis form, because both start with
+# "(". The parenthesis form holds no "{", thus a function with a trailing return type is not a value
 CPP_LITERAL_PATTERN = r"\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'"
 ARTIS_OPTION_PATTERN = re.compile(
-    rf"^[ \t]*constexpr\s+(?:enum\s+)?([^=;(\n]+?)[\s*&]+(\w+)\s*"
-    rf"(\([^)]*\)\s*\{{|=(?:{CPP_LITERAL_PATTERN}|[^;\"])*;|;)",
+    rf"^[ \t]*constexpr\s+(?:enum\s+)?([^=;(\n{{]+?)[\s*&]+(\w+)\s*"
+    rf"(\([^)]*\)\s*\{{|\((?:{CPP_LITERAL_PATTERN}|[^;\"{{])*\)\s*;|\{{|=(?:{CPP_LITERAL_PATTERN}|[^;\"])*;|;)",
     re.MULTILINE,
 )
+# an optional value in a constructor form, e.g. "std::optional<int>{12}" or "std::make_optional(12)"
+OPTIONAL_CONSTRUCTOR_PATTERN = re.compile(r"(?:std::optional\s*<.*>|std::make_optional)\s*(\{.*\}|\(.*\))", re.DOTALL)
+
+
+def get_value_without_outer_brackets(value: str) -> str:
+    """Return the value inside one outer pair of braces or parentheses, e.g. "12" for "{12}", or the value itself.
+
+    A list of more than one element, e.g. "{26, 2}" of a std::array, keeps its braces, because the braces are part of
+    the value. A comma inside a string literal or inside an inner bracket does not separate two elements. The first
+    and the last bracket must be one pair, thus "(a) * (b)" stays as it is.
+    """
+    if len(value) < 2 or (value[0], value[-1]) not in {("{", "}"), ("(", ")")}:
+        return value
+    inner = value[1:-1]
+    depth = 0
+    for char in re.sub(CPP_LITERAL_PATTERN, "", inner):
+        if char in "{([":
+            depth += 1
+        elif char in "})]":
+            depth -= 1
+        if depth < 0 or (char == "," and depth == 0):
+            return value
+    return inner.strip()
+
+
+def get_artis_option_value(typename: str, initialiser: str) -> str:
+    """Return the text of the value of an option from its initialiser, in one form for each meaning.
+
+    The initialiser is the text after the name, e.g. "= 12", "{12}", "(12)", "= {12}", or "" for no initialiser. All
+    of these forms give "12". A std::optional with no value gives "std::nullopt", e.g. for "", "{}", or "= {}". Any
+    other type with no initialiser or with empty brackets gives "{}", its value-initialised state.
+    """
+    value = get_value_without_outer_brackets(" ".join(initialiser.removeprefix("=").split()))
+    is_optional = typename.startswith("std::optional")
+    if match := OPTIONAL_CONSTRUCTOR_PATTERN.fullmatch(value):
+        is_optional = True
+        value = get_value_without_outer_brackets(match.group(1))
+    if value in {"", "{}", "()"}:
+        return "std::nullopt" if is_optional else "{}"
+    return value
 
 
 def parse_artis_options(text: str) -> dict[str, str]:
@@ -235,18 +277,18 @@ def parse_artis_options(text: str) -> dict[str, str]:
     options: dict[str, str] = {}
     for match in ARTIS_OPTION_PATTERN.finditer(text):
         typename, name, valuetext = match.groups()
-        if valuetext == ";":
-            # a std::optional with no initialiser holds no value, which disables the option
-            value = "std::nullopt" if typename.startswith("std::optional") else "{}"
-        elif valuetext.startswith("="):
-            value = valuetext.removeprefix("=").removesuffix(";")
-        else:
+        if valuetext.endswith("{"):
+            # a function body or a brace initialiser ends at the brace that closes its first brace
             depth, end = 1, match.end()
             while depth > 0 and end < len(text):
                 depth += {"{": 1, "}": -1}.get(text[end], 0)
                 end += 1
-            value = text[match.start(3) : end]
-        options[name] = " ".join(value.split())
+            if valuetext == "{":
+                options[name] = get_artis_option_value(typename.strip(), text[match.start(3) : end])
+            else:
+                options[name] = " ".join(text[match.start(3) : end].split())
+        else:
+            options[name] = get_artis_option_value(typename.strip(), valuetext.removesuffix(";"))
     return options
 
 

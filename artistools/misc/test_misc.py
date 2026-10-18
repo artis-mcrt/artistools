@@ -4006,3 +4006,47 @@ def test_artis_option_function_keeps_its_nested_blocks() -> None:
         "TEXT": '"a;b"',
         "NCELLS": "1'000",
     }
+
+
+@pytest.mark.parametrize(
+    ("optionline", "expectedvalue"),
+    [
+        ("constexpr std::optional<int> X;", "std::nullopt"),
+        ("constexpr std::optional<int> X = 12;", "12"),
+        ("constexpr std::optional<int> X{12};", "12"),
+        ("constexpr std::optional<int> X = {12};", "12"),
+        ("constexpr std::optional<int> X(12);", "12"),
+        ("constexpr std::optional<double> X {\n  1e-9\n};", "1e-9"),
+        ("constexpr std::optional<int> X{};", "std::nullopt"),
+        ("constexpr std::optional<int> X = {};", "std::nullopt"),
+        ("constexpr std::optional<int> X = std::nullopt;", "std::nullopt"),
+        ("constexpr std::optional<int> X{std::nullopt};", "std::nullopt"),
+        ("constexpr std::optional<int> X = std::optional<int>{12};", "12"),
+        ("constexpr std::optional<int> X = std::make_optional(12);", "12"),
+        ("constexpr auto X = std::optional<int>{12};", "12"),
+        ("constexpr auto X = std::optional<int>{};", "std::nullopt"),
+        ("constexpr bool X{true};", "true"),
+        ("constexpr int X{};", "{}"),
+        # a list of more than one element keeps its braces, also with a comma in a string literal of one element
+        ("constexpr std::array<int, 2> X{26, 2};", "{26, 2}"),
+        ('constexpr const char *X{"a,b"};', '"a,b"'),
+        # the first and the last parenthesis are not one pair
+        ("constexpr int X = (1) * (2);", "(1) * (2)"),
+    ],
+)
+def test_artis_option_initialisation_forms(optionline: str, expectedvalue: str) -> None:
+    """Each form of the initialisation of a C++ option gives one value for each meaning.
+
+    An option in the brace or the parenthesis form gave no entry, and "= {12}" gave "{12}", which a caller
+    took as a value that is not a number.
+    """
+    from artistools.misc.modelinfo import parse_artis_options
+
+    assert parse_artis_options(f"{optionline}\n") == {"X": expectedvalue}
+
+
+def test_artis_option_function_with_trailing_return_type_is_not_a_value() -> None:
+    """The parenthesis form of a value must not take the parameters and the body of a function."""
+    from artistools.misc.modelinfo import parse_artis_options
+
+    assert parse_artis_options("constexpr auto F(int a) -> bool { return f(a); }\n") == {}
