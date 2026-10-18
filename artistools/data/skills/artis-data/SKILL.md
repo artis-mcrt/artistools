@@ -83,7 +83,7 @@ line when you need a number. Examples of the lines are:
 
 - `Te: subplot 0, 540 points, x 5009 to 2.878e+04 km/s, min 3500 K at x = 1.711e+04, ..., mean 8.394e+04 K, weight of
   the mean: cell volume times time step duration`. A point is a cell at a time step, and the line names the weight;
-- `B mymodel: 54 points from 250.4 to 299.3 d, peak -13.12 mag at 267.9 d (brightest drawn point), Δm15 0.248 mag
+- `B mymodel: 54 points from 250.4 to 299.3 d, peak -13.12 mag at 267.9 d (brightest point in the time range), Δm15 0.248 mag
   (linear interpolation of the magnitude at the peak time + 15 d)`;
 - `mymodel: 518 points from 2500 to 1.9e+04 angstrom, largest drawn flux 5.121e-16 at 4648 angstrom, luminosity
   2.763e+40 erg/s = 4π (1 Mpc)² ∫ f_λ dλ from 2500 to 19000 Å (trapezoidal rule, ...)`. The luminosity is for the

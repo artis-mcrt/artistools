@@ -608,8 +608,10 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         plotteddata.append(
             dflcdata.select("time", fratio=pl.col("fratio")).rename({"fratio": f"fratio_{tablemodelname}"})
         )
-        # the points of a model have no line unless -linestyle gives one
-        plottedisline.append(bool(args.linestyle[modelindex]))
+        # matplotlib draws a line between the points if the line has a width and a style, e.g. -linewidth alone
+        plottedisline.append(
+            float(plotkwargs.get("lw", 0.0)) > 0.0 and plotkwargs.get("linestyle", "-") not in {"None", "none", "", " "}
+        )
 
         tmin = min(tmin, dflcdata.select(pl.col("time").min()).item())
         tmax = max(tmax, dflcdata.select(pl.col("time").max()).item())

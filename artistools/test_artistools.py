@@ -2966,6 +2966,21 @@ def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: 
     hasinsideneighbour = isinside.shift(1).fill_null(value=False) | isinside.shift(-1).fill_null(value=False)
     assert dfcomparisons.select((isinside | hasinsideneighbour).all()).item()
 
+    # -linewidth alone draws a line between the points, thus the table keeps the end of each segment across an edge
+    with mock.patch.object(at.plotlinefluxes, "get_line_luminosities_from_packets", get_line_luminosities):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
+            xmin=4.5,
+            xmax=6.5,
+            ymin=0.001,
+            linewidth=[2.0],
+            outputfile=tmp_path / "linewidth.pdf",
+            write_data=True,
+        )
+    assert read_data_file(tmp_path / "linewidth.txt")["time"].to_list()[0] < 4.5
+
     # each ratio of the models is 1, which -ymin 2 hides, and the table gave the ratios
     (tmp_path / "linefluxes.txt").unlink()
     with mock.patch.object(at.plotlinefluxes, "get_line_luminosities_from_packets", get_line_luminosities):
@@ -6398,7 +6413,7 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
 
     at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)
     assert re.search(
-        r"B TEST MODEL: 54 points .*, peak -13\.1\d mag at 267\.9 d \(brightest drawn point\),"
+        r"B TEST MODEL: 54 points .*, peak -13\.1\d mag at 267\.9 d \(brightest point in the time range\),"
         r" Δm15 0\.2\d+ mag \(linear interpolation",
         capsys.readouterr().out,
     )

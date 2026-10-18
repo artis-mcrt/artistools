@@ -333,9 +333,11 @@ def get_peak_summary(
 ) -> tuple[dict[str, t.Any], list[str], list[str]]:
     """Return the fields of the summary of a drawn light curve, the parts of its summary line, and its warnings.
 
-    The peak is the largest luminosity, or the smallest magnitude. The time of the peak is the rise time from the
-    explosion. For a band, Δm15 is the magnitude 15 days after the peak minus the peak magnitude. If the peak is in the
-    first two or the last two points, the true peak can be outside the time range. packetnoise gives the packet count
+    The peak is the largest luminosity, or the smallest magnitude, of the points in the time range. The y range of the
+    figure does not change it, because a statistic of the curve must not depend on the view. The time of the peak is
+    the rise time from the explosion. For a band, Δm15 is the magnitude 15 days after the peak minus the peak
+    magnitude. If the peak is in the first two or the last two points, the true peak can be outside the time range.
+    packetnoise gives the packet count
     and the relative noise sqrt(Σ e²) / Σ e of each point of a light curve from packets. The function makes the parts
     from the fields, thus the line agrees with the table _summary. The key of the peak value gives its unit, e.g.
     peak_luminosity_erg_per_s or peak_mag.
@@ -360,7 +362,7 @@ def get_peak_summary(
         "time_max_days": float(times.max()),
         "peak_time_days": float(times[peakindex]),
         peakkey: float(values[peakindex]),
-        "method": "brightest drawn point" if ismagnitude else "largest drawn point",
+        "method": "brightest point in the time range" if ismagnitude else "largest point in the time range",
     }
     if packetnoise is not None:
         peakrelnoise = float(np.asarray(packetnoise[1], dtype=np.float64)[hasvalue][order][peakindex])
