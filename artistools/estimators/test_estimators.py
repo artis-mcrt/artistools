@@ -5895,6 +5895,25 @@ def test_estimator_print_data_gives_the_drawn_values(
     assert len(clippedline) <= dfline.height
 
 
+def test_line_table_keeps_a_bin_whose_band_crosses_the_axes() -> None:
+    """The mean of a bin can be above the axes while the band of the cells of the bin is inside, and the row went."""
+    import matplotlib.figure as mplfig
+
+    from artistools.estimators.plotestimators import get_band_is_shown
+
+    axis = mplfig.Figure().add_subplot()
+    axis.set_xlim(0.0, 10.0)
+    axis.set_ylim(0.0, 1.0)
+    dfline = pl.DataFrame({
+        "velocity_kmps": [1.0, 2.0, 3.0],
+        "value": [2.0, 2.0, 2.0],
+        "value_min": [0.5, 1.5, 1.5],
+        "value_max": [3.0, 3.0, 3.0],
+    })
+    # the band of the first bin reaches into the axes, and so does the area from the first bin to the second
+    assert dfline.filter(get_band_is_shown(axis, "velocity_kmps"))["velocity_kmps"].to_list() == [1.0, 2.0]
+
+
 def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.CaptureFixture[str]) -> None:
     """A script or an agent needs the units of each column, and the listing for a reader gives them by family."""
     at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, print_data=True)

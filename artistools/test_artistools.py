@@ -6717,6 +6717,31 @@ def test_plotviewingangles_write_data_holds_the_volume_and_the_lines(tmp_path: P
         )
 
 
+def test_plotopacity_tables_leave_out_a_zero_on_a_log_panel() -> None:
+    """The log axes of the ratios and of the line counts draw no zero, and the table gave each zero."""
+    from artistools.plotopacity import get_opacity_tables
+
+    fig = mplfig.Figure()
+    opacityaxis, ratioaxis, linecountaxis = (fig.add_subplot(3, 1, index) for index in (1, 2, 3))
+    for axis in (opacityaxis, ratioaxis, linecountaxis):
+        axis.set_yscale("log")
+        axis.set_ylim(1e-3, 1e3)
+    dfopacities = pl.DataFrame({
+        "lambda_angstroms_lower": [1000.0, 1020.0],
+        "lambda_angstroms_upper": [1020.0, 1040.0],
+        "exopac": [1.0, 2.0],
+        "linebinned": [3.0, 4.0],
+        "linecount": [0, 5],
+    })
+    args = argparse.Namespace(taucaps=[], showlinecount=True)
+    ratios = {"linebinned": np.array([0.0, 0.0, np.nan, 2.0, 2.0, np.nan])}
+    dfbins = get_opacity_tables(dfopacities, None, math.nan, ratios, (opacityaxis, ratioaxis, linecountaxis), args)[""]
+
+    assert dfbins["ratio_linebinned_to_exopac"].to_list() == [None, 2.0]
+    assert dfbins["linecount"].to_list() == [None, 5]
+    assert dfbins["exopac_cm2_per_g"].to_list() == [1.0, 2.0]
+
+
 @mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotopacity_writes_the_drawn_values(
@@ -7156,6 +7181,15 @@ def test_check_complete_timesteps_finds_a_missing_row() -> None:
         status, detail = check_complete_timesteps(modelpath_classic_3d)
     assert status == "warning"
     assert "deposition.out has no row for the time steps 1" in detail
+
+    # each row through one time step past the model gave the status ok, and more complete time steps than the model
+    ntimesteps = len(at.get_timestep_times(modelpath_classic_3d))
+    with mock.patch(
+        "artistools.check.get_deposition", return_value=pl.LazyFrame({"timestep": list(range(ntimesteps + 1))})
+    ):
+        status, detail = check_complete_timesteps(modelpath_classic_3d)
+    assert status == "warning"
+    assert f"deposition.out has a row for time step {ntimesteps}" in detail
 
 
 def test_check_restarts_warns_about_a_run_with_no_version() -> None:

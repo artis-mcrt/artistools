@@ -193,6 +193,15 @@ def check_complete_timesteps(modelpath: Path) -> tuple[str, str]:
         f"deposition.out gives {lastcomplete + 1} of {len(tmids)} time steps as complete"
         f" (the last row of deposition.out is the last complete time step)"
     )
+    # a deposition.out of a different model or of an earlier input.txt can hold more time steps than the model
+    if lastcomplete >= len(tmids):
+        return (
+            "warning",
+            (
+                f"deposition.out has a row for time step {lastcomplete}, and the model has the time steps 0 to"
+                f" {len(tmids) - 1}, thus deposition.out can belong to a different model or an earlier input.txt"
+            ),
+        )
     # a bad restart or a merge of two files can leave out a row, and the time step of that row is then not complete
     if missingtimesteps := sorted(set(range(lastcomplete + 1)) - set(dfdeposition["timestep"].to_list())):
         return (

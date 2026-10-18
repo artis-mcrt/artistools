@@ -343,7 +343,9 @@ def plot_opacities(
 
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
         output_data(
-            args, get_opacity_tables(dfopacities, dfmovingaverages, planckmean, ratios, ax, args), args.outputfile
+            args,
+            get_opacity_tables(dfopacities, dfmovingaverages, planckmean, ratios, (ax, ratioaxis, bottomaxis), args),
+            args.outputfile,
         )
     save_figure(fig, args.outputfile, args=args)
 
@@ -353,7 +355,7 @@ def get_opacity_tables(
     dfmovingaverages: pl.DataFrame | None,
     planckmean: float,
     ratios: "Mapping[str, npt.NDArray[np.float64]]",
-    axis: "mplax.Axes",
+    panels: "tuple[mplax.Axes, mplax.Axes, mplax.Axes]",
     args: argparse.Namespace,
 ) -> dict[str, pl.DataFrame]:
     """Return the tables of the plotted opacities, with the keys of output_data.
@@ -362,40 +364,56 @@ def get_opacity_tables(
     range, thus "_movingaverage" gives the moving averages and the ratios at the middle of each bin. With no moving
     average, the ratios go in the table of the bins. ratios holds the drawn ratio of each line-binned opacity.
 
-    An opacity that the final y limits of the axis hide, e.g. with -ymin, is null. The ratio panel has its own y range,
-    thus each ratio stays.
+    panels gives the axes of the opacities, of the ratios, and of the line counts. A value that the final limits of its
+    panel hide is null, e.g. an opacity below -ymin, or a ratio or a line count of zero on a log axis.
     """
+    opacityaxis, ratioaxis, linecountaxis = panels
     opacitycolumns = [column for column, _label, _linestyle in get_opacity_series(args.taucaps)]
-    ylow, yhigh = sorted(axis.get_ylim())
-    islogscale = axis.get_yscale() == "log"
 
-    def get_shown_bin_value(column: str) -> pl.Expr:
+    def get_shown_bin_value(column: str, axis: "mplax.Axes") -> pl.Expr:
+        # each bin is a horizontal line, thus a bin in the x range of the plot shows if its value is inside the y range
+        ylow, yhigh = sorted(axis.get_ylim())
         value = pl.col(column)
-        isshown = value.is_between(ylow, yhigh) & ((value > 0.0) if islogscale else pl.lit(value=True))
+        isshown = value.is_between(ylow, yhigh) & ((value > 0.0) if axis.get_yscale() == "log" else pl.lit(value=True))
         return pl.when(isshown).then(value)
 
     dfbins = dfopacities.select(
         "lambda_angstroms_lower",
         "lambda_angstroms_upper",
-        *(get_shown_bin_value(column).alias(f"{column}_cm2_per_g") for column in opacitycolumns),
-        *(["linecount"] if args.showlinecount else []),
+        *(get_shown_bin_value(column, opacityaxis).alias(f"{column}_cm2_per_g") for column in opacitycolumns),
+        *([get_shown_bin_value("linecount", linecountaxis).alias("linecount")] if args.showlinecount else []),
     )
     if math.isfinite(planckmean):
         dfbins = dfbins.with_columns(planckmean_exopac_cm2_per_g=pl.lit(planckmean))
     ratiocolumns = {f"ratio_{column}_to_exopac": values for column, values in ratios.items()}
     if dfmovingaverages is None:
         # the line of each bin has a point at the lower edge, a point at the upper edge, and a NaN
-        return {"": dfbins.hstack(pl.DataFrame({name: values[::3] for name, values in ratiocolumns.items()}))}
-    dfaverages = dfmovingaverages.select(
-        "lambda_angstroms_bin_mid",
-        *(
+        return {
+            "": dfbins.hstack(pl.DataFrame({name: values[::3] for name, values in ratiocolumns.items()})).with_columns(
+                get_shown_bin_value(name, ratioaxis).alias(name) for name in ratiocolumns
+            )
+        }
+    dfaverages = (
+        dfmovingaverages
+        .select(
+            "lambda_angstroms_bin_mid",
+            *(
+                pl
+                .when(get_shown_on_axes(opacityaxis, "lambda_angstroms_bin_mid", column, linecolumns=[]))
+                .then(pl.col(column))
+                .alias(f"{column}_movingaverage_cm2_per_g")
+                for column in opacitycolumns
+            ),
+        )
+        .hstack(pl.DataFrame(ratiocolumns))
+        .with_columns(
             pl
-            .when(get_shown_on_axes(axis, "lambda_angstroms_bin_mid", column, linecolumns=[]))
-            .then(pl.col(column))
-            .alias(f"{column}_movingaverage_cm2_per_g")
-            for column in opacitycolumns
-        ),
-    ).hstack(pl.DataFrame(ratiocolumns))
+            .when(get_shown_on_axes(ratioaxis, "lambda_angstroms_bin_mid", name, linecolumns=[]))
+            .then(pl.col(name))
+            .alias(name)
+            for name in ratiocolumns
+        )
+    )
     return {"": dfbins, "_movingaverage": dfaverages}
 
 

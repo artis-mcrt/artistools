@@ -111,6 +111,7 @@ from artistools.nltepops import texifyconfiguration
 from artistools.plottools import filter_to_axis_limits
 from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
+from artistools.plottools import get_shown_on_axes
 from artistools.plottools import get_summary_table
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
@@ -2261,6 +2262,27 @@ def make_figure(
     return outfilename, dftable
 
 
+def get_band_is_shown(axis: mplax.Axes, xcolumn: str) -> pl.Expr:
+    """Return an expression that is true for a row of a line table whose band of value_min to value_max shows.
+
+    fill_between fills the area from each row to the next one. The test takes the bounding box of that area, thus a
+    row can stay when its area only passes near a corner of the axes.
+    """
+    xlow, xhigh = sorted(axis.get_xlim())
+    ylow, yhigh = sorted(axis.get_ylim())
+    x, valuemin, valuemax = pl.col(xcolumn), pl.col("value_min"), pl.col("value_max")
+    nextx, nextmin, nextmax = x.shift(-1), valuemin.shift(-1), valuemax.shift(-1)
+    pointisshown = x.is_between(xlow, xhigh) & (valuemin <= yhigh) & (valuemax >= ylow)
+    areaisshown = (
+        (pl.min_horizontal(x, nextx) <= xhigh)
+        & (pl.max_horizontal(x, nextx) >= xlow)
+        & (pl.min_horizontal(valuemin, nextmin) <= yhigh)
+        & (pl.max_horizontal(valuemax, nextmax) >= ylow)
+        & nextx.is_not_null()
+    ).fill_null(value=False)
+    return pointisshown.fill_null(value=False) | areaisshown | areaisshown.shift(1).fill_null(value=False)
+
+
 def get_figure_table(
     figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, fig: "mplfig.Figure"
 ) -> pl.DataFrame:
@@ -2297,18 +2319,16 @@ def get_line_figure_table(
                 )
                 dfdrawn.append((
                     "line",
-                    filter_to_axis_limits(
-                        dfdrawnline.select(
-                            pl.col("xvalue_binned").alias(xcolumn),
-                            value=pl.col("yvalue_binned"),
-                            value_min=pl.col("yvalue_binned_min"),
-                            value_max=pl.col("yvalue_binned_max"),
-                            bin_centre=pl.col("bin_centre"),
-                        ),
-                        axis,
-                        xcolumn,
-                        "value",
-                        linecolumns=[],
+                    dfdrawnline.select(
+                        pl.col("xvalue_binned").alias(xcolumn),
+                        value=pl.col("yvalue_binned"),
+                        value_min=pl.col("yvalue_binned_min"),
+                        value_max=pl.col("yvalue_binned_max"),
+                        bin_centre=pl.col("bin_centre"),
+                    ).filter(
+                        get_shown_on_axes(axis, xcolumn, "value", linecolumns=[])
+                        # with no --markers, the plot also fills the range of the cells of each bin
+                        | (pl.lit(value=False) if args.markers else get_band_is_shown(axis, xcolumn))
                     ),
                 ))
             if series.dfpoints is not None:
