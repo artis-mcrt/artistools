@@ -5018,9 +5018,9 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
             modulename = modulebycommand[subcommand]
             module = REPOPATH / "artistools" / Path(*modulename.split(".")).with_suffix(".py")
             text = module.read_text(encoding="utf-8")
-            assert "resolve_outputfile" in text or "resolve_frameset_paths" in text, (
-                f"{subcommand} writes one file, thus it must name that file"
-            )
+            assert any(
+                name in text for name in ("resolve_outputfile", "resolve_frameset_paths", "resolve_table_outputfile")
+            ), f"{subcommand} writes one file, thus it must name that file"
 
     assert withoutput > 20, "the tree must hold many commands that write output"
 

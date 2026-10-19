@@ -57,6 +57,7 @@ from artistools.misc.cliutils import parse_range_list as parse_range_list
 from artistools.misc.cliutils import print_detail as print_detail
 from artistools.misc.cliutils import print_error as print_error
 from artistools.misc.cliutils import print_heading as print_heading
+from artistools.misc.cliutils import print_or_write_table as print_or_write_table
 from artistools.misc.cliutils import print_product as print_product
 from artistools.misc.cliutils import print_warning as print_warning
 from artistools.misc.cliutils import require_action as require_action
@@ -66,6 +67,7 @@ from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import resolve_positional_modelpath as resolve_positional_modelpath
 from artistools.misc.cliutils import resolve_series_styles as resolve_series_styles
 from artistools.misc.cliutils import resolve_slice_axis as resolve_slice_axis
+from artistools.misc.cliutils import resolve_table_outputfile as resolve_table_outputfile
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import separate_trailing_folders as separate_trailing_folders
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict

@@ -32,7 +32,6 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_wavelengthrange
-from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
 from artistools.misc import get_selected_timestep
@@ -44,14 +43,11 @@ from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
-from artistools.misc import print_product
-from artistools.misc import print_saved
+from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
+from artistools.misc import resolve_table_outputfile
 from artistools.misc.cliutils import CommaJoinAction
-from artistools.misc.cliutils import get_provenance_lines
 from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.cliutils import write_data_table
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.dirbins import get_costheta_bins
 from artistools.nltepops import has_nlte_populations
@@ -1152,9 +1148,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.xmin is None or args.xmax is None:
         exit_with_error("give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
 
-    outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME) if args.outputfile else None
-    if outputfile is not None:
-        confirm_overwrite([outputfile.parent], [outputfile.name], force=args.force)
+    outputfile = resolve_table_outputfile(args, DEFAULTOUTPUTNAME)
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     print(f"Line contributions of {get_model_logname(args.modelpath)} at timestep {timestep}")
@@ -1182,8 +1176,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         dftable = shown
 
-    print_product(args, dftable)
-    if outputfile is not None:
-        commentlines = [*get_provenance_lines(args), *get_column_description_lines(dftable.columns)]
-        write_data_table(dftable, outputfile, commentlines=commentlines)
-        print_saved(outputfile)
+    print_or_write_table(args, dftable, outputfile, get_column_description_lines(dftable.columns))

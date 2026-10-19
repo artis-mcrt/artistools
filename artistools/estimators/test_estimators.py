@@ -3570,7 +3570,8 @@ def test_deposition_ye_range_needs_a_model_with_ye(tmp_path: Path, capsys: pytes
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54", ye="0.25-0.35", outputfile=outfile)
 
     # the one cell of the model is inside the range, thus the table gives the rate of that cell
-    lines = outfile.read_text(encoding="utf-8").splitlines()
+    # the provenance lines of the command come first
+    lines = [line for line in outfile.read_text(encoding="utf-8").splitlines() if not line.startswith("# ")]
     assert lines[0].endswith("in 1 of 1 cells with matter, with an init_Ye of 0.25 to 0.35")
     assert float(lines[3].split()[3]) == pytest.approx(
         at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_per_ion"].item(), rel=1e-3
@@ -3672,7 +3673,8 @@ def test_deposition_writes_a_table(tmp_path: Path, capsys: pytest.CaptureFixture
     outfile = tmp_path / "deposition.txt"
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54,last", outputfile=outfile)
 
-    lines = outfile.read_text(encoding="utf-8").splitlines()
+    # the provenance lines of the command come first
+    lines = [line for line in outfile.read_text(encoding="utf-8").splitlines() if not line.startswith("# ")]
     assert lines[0].startswith(at.get_model_name(modeldir))
     assert lines[1].split() == ["timestep", "t_days", "dep_per_volume", "dep_per_ion", "dep_per_mass"]
     assert lines[2].split() == ["[d]", "[eV/s/cm^3]", "[eV/s]", "[eV/s/g]"]

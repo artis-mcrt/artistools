@@ -25,7 +25,6 @@ from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import artis_subfolders
-from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import folder_is_artis_model
 from artistools.misc import get_model_folder
@@ -37,15 +36,12 @@ from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
-from artistools.misc import print_product
-from artistools.misc import print_saved
+from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
+from artistools.misc import resolve_table_outputfile
 from artistools.misc import suggest_names
 from artistools.misc.cliutils import format_range_list
-from artistools.misc.cliutils import get_provenance_lines
-from artistools.misc.cliutils import write_data_table
 
 # the columns of each row before the variables. The variables cannot repeat them
 INDEXCOLUMNS = ("timestep", "time_days", "modelgridindex", "vel_r_mid_kmps")
@@ -282,9 +278,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     # the refusal must come before the work starts, e.g. before a remote model starts its server
-    outputfile = resolve_outputfile(args.outputfile, "values.txt") if args.outputfile is not None else None
-    if outputfile is not None:
-        confirm_overwrite([outputfile.parent], [outputfile.name], force=args.force)
+    outputfile = resolve_table_outputfile(args, "values.txt")
 
     # a model path can name a file of the model, e.g. mymodel/light_curve.out
     modelpath = get_model_folder(args.modelpath)
@@ -303,8 +297,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for line in methodlines:
         print_detail(line)
 
-    if outputfile is None:
-        print_product(args, dfvalues)
-    else:
-        write_data_table(dfvalues, outputfile, commentlines=[*get_provenance_lines(args), *methodlines])
-        print_saved(outputfile)
+    print_or_write_table(args, dfvalues, outputfile, methodlines)

@@ -11,6 +11,7 @@ from artistools.constants import EV_to_erg
 from artistools.estimators.core import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
@@ -28,8 +29,9 @@ from artistools.misc import print_detail
 from artistools.misc import print_product
 from artistools.misc import print_saved
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
+from artistools.misc import resolve_table_outputfile
 from artistools.misc.cliutils import CommaJoinAction
+from artistools.misc.cliutils import get_provenance_lines
 
 DEPOSITIONPREFIX = "deposition_"
 DEFAULTOUTPUTNAME = "deposition.txt"
@@ -579,6 +581,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--listchannels", action="store_true", help="Show the deposition channels of the model. The command then stops"
     )
     addarg_output(parser, kind="file", helptext="Path/filename for the output text file")
+    addarg_force(parser)
     addarg_verbose(parser)
 
 
@@ -589,6 +592,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     channels = str(args.channels).split(",") if args.channels else None
     yerange = parse_ye_range(str(args.ye)) if args.ye is not None else None
     modelpaths = normalize_path_list(args.modelpath)
+    outputfile = resolve_table_outputfile(args, DEFAULTOUTPUTNAME)
 
     # each model gets its check in front of the first slow read, thus a bad path wastes no work
     yecellcounts = [
@@ -617,9 +621,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             )
             tables.append(format_deposition_table(modelpath, dftable, channels, yerange, yecells))
 
-        print_product(args, tables[-1])
+        if outputfile is None:
+            print_product(args, tables[-1])
 
-    if args.outputfile:
-        outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME)
-        outputfile.write_text("\n\n".join(tables) + "\n", encoding="utf-8")
+    if outputfile is not None:
+        provenancetext = "".join(f"# {line}\n" for line in get_provenance_lines(args))
+        outputfile.write_text(provenancetext + "\n\n".join(tables) + "\n", encoding="utf-8")
         print_saved(outputfile)

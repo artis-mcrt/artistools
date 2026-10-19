@@ -23,22 +23,18 @@ from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_force
 from artistools.misc import addarg_output
-from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import folder_is_artis_model
 from artistools.misc import get_artis_options
 from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
 from artistools.misc import get_timestep_times
-from artistools.misc import make_output_folder
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
+from artistools.misc import print_or_write_table
 from artistools.misc import print_product
-from artistools.misc import print_saved
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
-from artistools.misc.cliutils import get_provenance_lines
-from artistools.misc.cliutils import write_data_table
+from artistools.misc import resolve_table_outputfile
 from artistools.misc.fileio import natural_sort_key
 
 CATALOGSCHEMA: t.Final = pl.Schema({
@@ -248,16 +244,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     folder = Path(args.folder)
     if not folder.is_dir():
         exit_with_error(f"{folder} is not a folder", "Give the folder that holds the model folders")
-    outputfile = resolve_outputfile(args.outputfile, "catalog.txt") if args.outputfile else None
-    if outputfile is not None:
-        confirm_overwrite([outputfile.parent], [outputfile.name], args.force)
+    outputfile = resolve_table_outputfile(args, "catalog.txt")
 
     dfcatalog = get_catalog(folder)
 
     if outputfile is None:
         print_product(args, "\n".join(f"# {line}" for line in METHODLINES))
-        print_product(args, dfcatalog)
-    else:
-        make_output_folder(outputfile.parent, "writes")
-        write_data_table(dfcatalog, outputfile, commentlines=[*get_provenance_lines(args), *METHODLINES])
-        print_saved(outputfile)
+    print_or_write_table(args, dfcatalog, outputfile, METHODLINES)

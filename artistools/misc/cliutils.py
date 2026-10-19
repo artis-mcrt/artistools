@@ -1346,6 +1346,32 @@ def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", com
         write_to_stream(destination)
 
 
+def resolve_table_outputfile(args: argparse.Namespace, defaultname: str) -> Path | None:
+    """Return the file that -o names for a command that prints its table without -o, or None with no -o.
+
+    A -o path with no file extension names a folder, which takes defaultname. The overwrite check of -f comes here,
+    thus before the work starts.
+    """
+    if not args.outputfile:
+        return None
+    outputfile = resolve_outputfile(args.outputfile, defaultname)
+    confirm_overwrite([outputfile.parent], [outputfile.name], force=getattr(args, "force", False))
+    return outputfile
+
+
+def print_or_write_table(
+    args: argparse.Namespace, dftable: "pl.DataFrame", outputfile: Path | None, commentlines: Sequence[str] = ()
+) -> None:
+    """Print the table with no -o, or write it to outputfile with the provenance lines and commentlines."""
+    if outputfile is None:
+        print_product(args, dftable)
+        return
+
+    make_output_folder(outputfile.parent, "writes")
+    write_data_table(dftable, outputfile, commentlines=[*get_provenance_lines(args), *commentlines])
+    print_saved(outputfile)
+
+
 def get_provenance_lines(args: argparse.Namespace) -> list[str]:
     """Return the lines that tell how a command made its data: the version, the time, the folder, and the command.
 
