@@ -618,7 +618,7 @@ def parse_taucap(text: str) -> float:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path(), helptext="Path of the ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     addarg_timestep(parser, helptext="Timestep to plot, e.g. 40 or last")
     addarg_timedays(parser, kind="str")
     addarg_modelgridindex(

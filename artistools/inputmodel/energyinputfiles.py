@@ -20,13 +20,14 @@ from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import read_wsv
 from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
 from artistools.plottools import make_frame_figure
-from artistools.plottools import save_or_show
+from artistools.plottools import save_figure
 
 
 def cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
@@ -229,8 +230,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate"
         ),
     )
-    addarg_modelpath(parser, default=Path())
-    addarg_output(parser, kind="file", helptext="Path for the plot, or omit to show it interactively")
+    addarg_modelpath(parser, positional=True, default=Path())
+    addarg_output(parser, kind="file", helptext="Path for the plot of plotrate")
+    addarg_show(parser)
 
     addarg_figscale(parser)
     addarg_darkmode(parser)
@@ -253,10 +255,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axis.set_ylabel("Nuclear heating power [erg/s]")
         axis.set_xscale("log")
         axis.set_yscale("log")
-        # -o promises that a path with no file extension names a folder, and an empty -o shows the plot
-        save_or_show(
-            fig, resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf") if args.outputfile else None, args
-        )
+        save_figure(fig, resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf"), args=args)
 
     elif args.action == "describe":
         etot, energydistribution = get_etot_fromfile(modelpath)

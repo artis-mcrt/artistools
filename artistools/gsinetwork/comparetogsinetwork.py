@@ -34,6 +34,7 @@ from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import get_deposition
 from artistools.misc import get_grid_mapping
@@ -783,8 +784,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
     addarg_darkmode(parser)
+    addarg_show(parser)
     addarg_data_output(parser)
-    addarg_modelpath(parser, default=Path(), helptext="Path for ARTIS files")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path for ARTIS files")
 
     parser.add_argument(
         "-mergerroot",

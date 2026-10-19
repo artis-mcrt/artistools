@@ -444,7 +444,7 @@ def get_drawn_series_table(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, positional=True, default=Path())
 
     addarg_timedays(parser, kind="str")
 

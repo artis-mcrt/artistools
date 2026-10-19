@@ -88,7 +88,7 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, positional=True, default=Path())
     addarg_output(
         parser, kind="folder", helptext="Folder for the spectrum files (default: the spectra folder of the model)"
     )

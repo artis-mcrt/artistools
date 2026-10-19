@@ -1149,8 +1149,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     def get_folder_help(self, words: "Sequence[str]") -> str:
         """Return the help line for words that this command refuses and that name a folder, or an empty string.
 
-        A command reads its positional paths as one group. A command with no positional path reads the folder from
-        -modelpath alone.
+        A command reads its positional paths as one group.
         """
         from artistools.misc.cliutils import KeepGivenPaths
         from artistools.misc.remote import is_remote_path
@@ -1160,8 +1159,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             return ""
         if any(isinstance(action, KeepGivenPaths) for action in self._actions):
             return "Write the paths in one group, in front of the options or after them"
-        if "-modelpath" in self._option_string_actions:
-            return f"This command reads the folder from -modelpath, e.g. -modelpath {folder}"
         return ""
 
     @t.override

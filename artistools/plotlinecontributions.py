@@ -40,7 +40,6 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.dirbins import check_costheta_dirbin
@@ -544,7 +543,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         title += f", {costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}"
     label_line_axes(axes, args, unit, title, hastrough=troughsettings is not None)
 
-    outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME)
+    outputfile = Path(args.outputfile)
     output_data(args, tables, outputfile)
     save_figure(fig, outputfile, args=args)
 

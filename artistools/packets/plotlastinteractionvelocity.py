@@ -13,6 +13,7 @@ from artistools.constants import km_to_cm
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_plotinvalidpart
@@ -30,7 +31,6 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
 from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.misc.general import get_bin_index_expr
@@ -74,6 +74,7 @@ def get_last_interaction_velocity_quartiles(
     timerange_days: tuple[float, float],
     *,
     plotinvalidpart: bool,
+    maxpacketfiles: int | None = None,
 ) -> dict[int, tuple[pl.DataFrame, int]]:
     """Return, for each direction bin, the velocity quartiles of the last interaction of each timestep.
 
@@ -87,7 +88,9 @@ def get_last_interaction_velocity_quartiles(
     histogram. One scan of the packets gives the quartiles of all the direction bins. A direction bin takes all the phi
     bins of its costheta bin, and -1 takes all the directions.
     """
-    _, lzpackets = get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    _, lzpackets = get_packets(
+        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+    )
     tstarts = get_timestep_times(modelpath, loc="start")
     tends = get_timestep_times(modelpath, loc="end")
     timemids = get_timestep_times(modelpath, loc="mid")
@@ -257,6 +260,7 @@ def plot_velocity_against_time(
             histogrambinwidth_kmps,
             timerange_days,
             plotinvalidpart=args.plotinvalidpart,
+            maxpacketfiles=args.maxpacketfiles,
         )
         for dirbin in args.dirbin:
             dfquartiles, norecordcount = quartilesofdirbin[dirbin]
@@ -371,6 +375,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_figscale(parser)
     addarg_data_output(parser)
     addarg_plotinvalidpart(parser, "the timesteps")
+    addarg_maxpacketfiles(parser)
     addarg_show(parser)
     addarg_darkmode(parser)
 
@@ -389,6 +394,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     unit = get_velocity_unit(args.modelpath[0], args.velocityunit)
 
     tables, fig = plot_velocity_against_time(args, unit)
-    outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME)
+    outputfile = Path(args.outputfile)
     output_data(args, tables, outputfile)
     save_figure(fig, outputfile, args=args)

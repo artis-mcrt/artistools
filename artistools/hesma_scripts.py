@@ -16,6 +16,7 @@ from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_unsupported
@@ -27,9 +28,10 @@ from artistools.misc import match_closest_time
 from artistools.misc import parse_cli_args
 from artistools.misc import read_wsv
 from artistools.misc import require_action
+from artistools.misc import resolve_outputfile
 from artistools.misc import split_multitable_dataframe
 from artistools.plottools import make_frame_figure
-from artistools.plottools import save_or_show
+from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 from artistools.spectra import get_vspecpol_data
 
@@ -186,9 +188,7 @@ def make_hesma_peakmag_dm15_dm40(
     outdataframe.write_csv(outpath / f"{modelname}_width-luminosity.dat", separator=" ")
 
 
-def plot_hesma_peakmag_dm15_dm40(
-    pathtofiles: Path | str, args: argparse.Namespace, outputfile: Path | str | None = None
-) -> None:
+def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, args: argparse.Namespace, outputfile: Path | str) -> None:
     """Plot peak magnitude against dm15 for every width-luminosity file in a folder."""
     fig, axesgrid = make_frame_figure()
     axis = axesgrid[0][0]
@@ -202,7 +202,7 @@ def plot_hesma_peakmag_dm15_dm40(
     axis.set_ylabel("Peak magnitude")
     set_legend(axis, args)
 
-    save_or_show(fig, outputfile, args)
+    save_figure(fig, outputfile, args=args)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -227,10 +227,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " plotspectrum/plotresspec: plot a HESMA reference spectrum file"
         ),
     )
-    addarg_modelpath(parser, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
+    addarg_modelpath(parser, positional=True, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
     addarg_output(parser, kind="folder", helptext="Folder for the written HESMA files", default=Path())
     # not -outputfile/-o, because addarg_outputpath above already claims -o for the folder
-    parser.add_argument("-plotfile", type=Path, help="Path for the plot, or omit to show it interactively")
+    parser.add_argument(
+        "-plotfile", type=Path, help="Path for the plot. Default: hesma_<action>.pdf in the working folder"
+    )
+    addarg_show(parser)
     addarg_timeminmax(parser)
     parser.add_argument(
         "-hesmafile", type=Path, nargs="+", help="HESMA spectrum file(s) to plot (plotspectrum, plotresspec)"
@@ -266,6 +269,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     require_action(args)
 
     outputpath = Path(args.outputfile)
+    # each plot action saves a file, and --show opens it in a window first
+    plotfile = resolve_outputfile(args.plotfile, f"hesma_{args.action}.pdf")
 
     if args.action == "vspecfiles":
         make_hesma_vspecfiles(require(args.modelpath, "-modelpath", args.action), outputpath)
@@ -288,7 +293,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     elif args.action == "plotwidthluminosity":
-        plot_hesma_peakmag_dm15_dm40(require(args.pathtofiles, "-pathtofiles", args.action), args, args.plotfile)
+        plot_hesma_peakmag_dm15_dm40(require(args.pathtofiles, "-pathtofiles", args.action), args, plotfile)
 
     elif args.action == "plotspectrum":
         fig, axesgrid = make_frame_figure()
@@ -297,7 +302,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         for hesmafile in require(args.hesmafile, "-hesmafile", args.action):
             plot_hesma_spectrum(timedays, [axis], hesmafile)
         set_legend(axis, args)
-        save_or_show(fig, args.plotfile, args)
+        save_figure(fig, plotfile, args=args)
 
     else:
         fig, axesgrid = make_frame_figure()
@@ -308,4 +313,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             require(args.timedays, "-timedays", args.action),
             args,
         )
-        save_or_show(fig, args.plotfile, args)
+        save_figure(fig, plotfile, args=args)

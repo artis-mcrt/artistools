@@ -29,6 +29,7 @@ from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
 from artistools.misc import get_file_identity
 from artistools.misc import parallel_map
@@ -47,6 +48,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
     addarg_darkmode(parser)
+    addarg_show(parser)
     parser.add_argument(
         "-trajectoryroot", "-trajroot", required=True, type=Path, help="Path to nuclear network trajectory folder"
     )

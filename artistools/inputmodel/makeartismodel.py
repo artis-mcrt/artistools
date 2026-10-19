@@ -25,6 +25,7 @@ from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import normalize_path_list
@@ -35,7 +36,7 @@ from artistools.misc import resolve_outputfile
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, multiplepaths=True, default=[], helptext="Path to input model file")
+    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Path to input model file")
 
     parser.add_argument(
         "--downscale3dgrid", action="store_true", help="Downscale a 3D ARTIS model to smaller grid size"
@@ -45,6 +46,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--downscaleplot", action="store_true", help="Write a density-slice diagnostic plot when downscaling"
     )
     addarg_darkmode(parser)
+    addarg_show(parser)
 
     parser.add_argument("-outputgridsize", default=50, type=int, help="Size of small model grid for downscale script")
 

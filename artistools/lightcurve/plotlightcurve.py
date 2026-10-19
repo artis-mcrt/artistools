@@ -64,6 +64,7 @@ from artistools.misc import addarg_residuals
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
+from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_unsupported
 from artistools.misc import addarg_verbose
@@ -2098,10 +2099,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_axislimits(parser, include_x=False)
 
-    parser.add_argument("-timemin", "-xmin", type=float, default=None, help="Plot range: x-axis minimum")
-
-    parser.add_argument("-timemax", "-xmax", type=float, default=None, help="Plot range: x-axis maximum")
+    addarg_timeminmax(
+        parser, helptext_min="Plot range: minimum time in days", helptext_max="Plot range: maximum time in days"
+    )
     # deprecated spellings kept as hidden aliases
+    parser.add_argument("-xmin", dest="timemin", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("-xmax", dest="timemax", type=float, help=argparse.SUPPRESS)
     parser.add_argument("-timedaysmin", dest="timemin", type=float, help=argparse.SUPPRESS)
     parser.add_argument("-timedaysmax", dest="timemax", type=float, help=argparse.SUPPRESS)
 
@@ -2110,7 +2113,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_yscale(parser)
 
     # the older spelling of "-yscale log"
-    parser.add_argument("--logscaley", action="store_true", help="Use log scale for vertical axis")
 
     parser.add_argument(
         "-reflightcurves",

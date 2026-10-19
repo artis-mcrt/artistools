@@ -28,6 +28,7 @@ from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
@@ -176,7 +177,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
     addarg_darkmode(parser)
-    addarg_modelpath(parser, default=Path())
+    addarg_show(parser)
+    addarg_modelpath(parser, positional=True, default=Path())
 
     addarg_timedays(parser, kind="str")
 

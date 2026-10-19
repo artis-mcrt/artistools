@@ -302,7 +302,7 @@ def add_upper_lte_pop(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
-    addarg_modelpath(parser, default=None)
+    addarg_modelpath(parser, positional=True, default=None)
 
     addarg_figscale(parser)
 

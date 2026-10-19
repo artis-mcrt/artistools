@@ -587,7 +587,7 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
             "c",
             ions=None,
             srIItriplet=False,
-            colorlogscale=False,
+            logcolorscale=False,
             trueem=True,
             lambdarange=None,
             outputfile=None,
@@ -924,7 +924,7 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
             "c",
             ions=None,
             srIItriplet=False,
-            colorlogscale=False,
+            logcolorscale=False,
             trueem=True,
             lambdarange=None,
             outputfile=None,
@@ -1046,9 +1046,9 @@ def test_timestep_of_a_time_at_the_start_of_a_timestep() -> None:
 
 
 @mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
-@pytest.mark.parametrize("colorlogscale", [False, True], ids=["linear", "log"])
+@pytest.mark.parametrize("logcolorscale", [False, True], ids=["linear", "log"])
 def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
-    mockimshow: mock.MagicMock, colorlogscale: bool, tmp_path: Path
+    mockimshow: mock.MagicMock, logcolorscale: bool, tmp_path: Path
 ) -> None:
     """Each row of the table gives the edges of one bin and the value that the image shows in that bin."""
     from artistools.packets import plotlastpacketinteraction
@@ -1059,7 +1059,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
         modelpath=at.get_path("testdata") / "testmodel",
         timedays=300,
         outputfile=outputfile,
-        colorlogscale=colorlogscale,
+        logcolorscale=logcolorscale,
         velocityunit="c",
         velocitymax_kmps=0.5 * at.constants.C_cm_per_s / at.constants.km_to_cm,
         write_data=True,
@@ -1068,7 +1068,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
     image = mockimshow.call_args.args[1]
     dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
     valuecolumn = (
-        "log10_escaped_luminosity_erg_per_s_per_cm3" if colorlogscale else "escaped_luminosity_erg_per_s_per_cm3"
+        "log10_escaped_luminosity_erg_per_s_per_cm3" if logcolorscale else "escaped_luminosity_erg_per_s_per_cm3"
     )
     assert dftable.height == image.size
     assert dftable[valuecolumn].null_count() == int(np.ma.count_masked(image))
@@ -1082,7 +1082,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
     imagevalues = np.ma.filled(image[rowindices, columnindices].astype(float), np.nan)
     assert np.allclose(dftable[valuecolumn].to_numpy(), imagevalues, rtol=1e-12, atol=0.0, equal_nan=True)
 
-    if colorlogscale:
+    if logcolorscale:
         # the log scale took the natural logarithm, and the colour bar and the table named it log
         plotlastpacketinteraction.main(
             argsraw=[],

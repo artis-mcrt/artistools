@@ -49,7 +49,7 @@ def get_timestep_days(modelpath: Path | str, timestep: int) -> str:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, positional=True, default=Path())
     addarg_timedays(parser, kind="float", helptext="Name the timestep that covers this time in days")
     addarg_timestep(parser, helptext="Give the days that this timestep covers, e.g. 40 or last")
 

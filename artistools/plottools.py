@@ -1475,17 +1475,6 @@ def save_figure(
         open_file(outpath)
 
 
-def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None", args: argparse.Namespace) -> None:
-    """Save the figure when an output file was given, otherwise show it. Close the figure either way."""
-    if outputfile:
-        save_figure(fig, outputfile, args=args)
-    else:
-        if getattr(args, "darkmode", False):
-            apply_dark_colours(fig, *DARKMODE_COLOURS)
-        plt.show()
-        plt.close(fig)
-
-
 def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) -> None:
     """Set the plot title, unless -notitle was given, placing it inside the axes for -inset_title."""
     # a command that defines neither flag still gets a title, thus a caller does not have to declare a
@@ -1975,32 +1964,31 @@ VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "$c$"}
 INVERSE_VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "(km/s)$^{-1}$", "c": "$c^{-1}$"})
 
 
-def addarg_velocityunit(parser: argparse.ArgumentParser, usetext: str = "") -> None:
-    """Add -velocityunit. usetext ends the help text, e.g. " of -groupby"."""
+def addarg_velocityunit(parser: argparse.ArgumentParser) -> None:
+    """Add -velocityunit, the unit of the velocity axis and of the logs."""
     parser.add_argument(
         "-velocityunit",
         choices=["auto", "kmps", "c"],
         default="auto",
         help=(
-            f"Unit of the velocity axis{usetext}: km/s or c. The value auto takes c for a model with a vmax of 0.2 c"
-            " or more, e.g. a kilonova, and km/s for a different model"
+            "Unit of the velocity axis: km/s or c. The value auto takes c for a model with a vmax of 0.2 c or more,"
+            " e.g. a kilonova, and km/s for a different model"
         ),
     )
 
 
-def addarg_velocitybins(parser: argparse.ArgumentParser, usetext: str = "") -> None:
-    """Add -nvelocitybins, -velocitymax, and -velocityunit. usetext ends each help text, e.g. " of -groupby"."""
+def addarg_velocitybins(parser: argparse.ArgumentParser) -> None:
+    """Add -nvelocitybins, -velocitymax, and -velocityunit."""
     parser.add_argument(
-        "-nvelocitybins", type=positive_int_arg, default=25, help=f"Number of velocity bins of equal width{usetext}"
+        "-nvelocitybins", type=positive_int_arg, default=25, help="Number of velocity bins of equal width"
     )
     parser.add_argument(
         "-velocitymax",
         dest="velocitymax_kmps",
         type=positive_velocity_kmps_arg,
-        help=f"Upper edge of the velocity bins{usetext}, with its unit, e.g. 0.3c or 90000km/s. Default: the corner of"
-        " the grid",
+        help="Upper edge of the velocity bins, with its unit, e.g. 0.3c or 90000km/s. Default: the corner of the grid",
     )
-    addarg_velocityunit(parser, usetext)
+    addarg_velocityunit(parser)
 
 
 def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps", "c"]:

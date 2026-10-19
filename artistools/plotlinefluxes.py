@@ -978,7 +978,11 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(
-        parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders with spec.out or packets files"
+        parser,
+        positional=True,
+        multiplepaths=True,
+        default=[],
+        helptext="Paths to ARTIS folders with spec.out or packets files",
     )
 
     addarg_seriesstyle(parser, colordefault=[f"C{i}" for i in range(10)])

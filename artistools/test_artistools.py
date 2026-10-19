@@ -1127,8 +1127,8 @@ def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
     assert (tmp_path / "map.png").read_bytes().startswith(pngmagic)
 
 
-def test_every_command_that_saves_a_plot_has_darkmode() -> None:
-    """--darkmode applies to each plot file, thus each command that saves a plot must accept it.
+def test_every_command_that_saves_a_plot_has_darkmode_show_and_open() -> None:
+    """--darkmode, --show, and --open apply to each plot file, thus each command that saves a plot must accept them.
 
     Only the commands with --show had --darkmode, thus e.g. plotlogfiles wrote a light PDF file. A command can save
     the plot in a module that it imports, e.g. makeartismodel with --downscaleplot, thus the check follows the imports.
@@ -1137,7 +1137,7 @@ def test_every_command_that_saves_a_plot_has_darkmode() -> None:
     import re
 
     # matplotlib, plotly, and pyvista each have a function that writes a plot file
-    savesplot = re.compile(r"save_figure\(|savefig\(|save_or_show\(|write_image\(|write_html\(|screenshot=")
+    savesplot = re.compile(r"save_figure\(|savefig\(|write_image\(|write_html\(|screenshot=")
     packagefolder = Path(at.__file__).parent
     # plottools defines save_figure, and each module that draws a plot imports it
     writermodules = {
@@ -1152,6 +1152,7 @@ def test_every_command_that_saves_a_plot_has_darkmode() -> None:
         return [spec for node in tree.values() for spec in (walktree(node) if isinstance(node, dict) else [node])]
 
     plotmodules = 0
+    missingflags: list[str] = []
     for spec in walktree(at.commands.subcommandtree):
         module = importlib.import_module(f"artistools.{spec.module}")
         importedmodules = set(re.findall(r"^from (artistools[\w.]*) import", inspect.getsource(module), re.MULTILINE))
@@ -1163,6 +1164,9 @@ def test_every_command_that_saves_a_plot_has_darkmode() -> None:
         actions = parser._actions  # ruff:ignore[private-member-access]
         flags = {flag for action in actions for flag in action.option_strings}
         assert "--darkmode" in flags, f"{spec.module} saves a plot but has no --darkmode"
+        missingflags.extend(f"{spec.module} {flag}" for flag in ("--show", "--open") if flag not in flags)
+    # save_figure reads --show and --open, thus each command that saves a plot also gives them
+    assert not missingflags
     assert plotmodules >= 22
 
 
@@ -1335,7 +1339,7 @@ def test_plotspherical_gif(tmp_path: Path) -> None:
 @pytest.mark.benchmark
 def test_logfiles(mockplot: mock.MagicMock) -> None:
     """Log file timings are parsed for every stage and rank, and plotted one page per timestep."""
-    logfilepaths = at.plotlogfiles.read_logfiles(modelpath_classic_3d)
+    logfilepaths = at.plotlogfiles.get_model_logfiles(modelpath_classic_3d)
     # compressed log files must be read too, not skipped
     assert sorted(path.name for path in logfilepaths) == [
         "output_0-0.txt",
@@ -5053,7 +5057,7 @@ def test_the_help_of_a_long_command_holds_no_wall_of_flags() -> None:
 
     shortcommand = subactions[0].choices["timesteps"].format_usage()
     assert "[options]" not in shortcommand, "a command of few flags names them"
-    assert "-modelpath" in shortcommand
+    assert "modelpath" in shortcommand
 
     # a default that says nothing stays out of the help text
     estimatorshelp = subactions[0].choices["plotestimators"].format_help()

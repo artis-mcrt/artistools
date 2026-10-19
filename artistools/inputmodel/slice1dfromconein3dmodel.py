@@ -271,7 +271,11 @@ def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None])
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(
-        parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
+        parser,
+        positional=True,
+        multiplepaths=True,
+        default=[],
+        helptext="Path to ARTIS model folders with model.txt and abundances.txt",
     )
 
     parser.add_argument(

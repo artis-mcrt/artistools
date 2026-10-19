@@ -3553,18 +3553,6 @@ def test_getpath_and_version_keep_their_product_with_quiet(capsys: pytest.Captur
     assert capsys.readouterr().out.strip() == f"artistools {importlib.metadata.version('artistools')}"
 
 
-def test_a_folder_that_the_command_refuses_names_the_remedy(capsys: pytest.CaptureFixture[str]) -> None:
-    """The error must name the folder and not a "--" that the user never wrote, and it must name -modelpath."""
-    import artistools.__main__
-
-    modelpath = at.get_path("testdata") / "testmodel"
-    with pytest.raises(SystemExit):
-        artistools.__main__.main(argsraw=["timesteps", str(modelpath)])
-    message = capsys.readouterr().err
-    assert f"unrecognized arguments: {modelpath}" in message
-    assert f"-modelpath {modelpath}" in message
-
-
 def test_a_hidden_command_stays_out_of_the_suggestions(capsys: pytest.CaptureFixture[str]) -> None:
     """The help hides server and describeinputmodel, thus a suggestion, the list, and tab completion leave them out."""
     import artistools.__main__

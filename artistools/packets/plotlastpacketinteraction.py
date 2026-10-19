@@ -24,6 +24,7 @@ from artistools.constants import km_to_cm
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_plotinvalidpart
@@ -84,7 +85,10 @@ if t.TYPE_CHECKING:
 
 
 def get_required_packets(
-    modelpath: Path, ions: Sequence[tuple[int | None, int | None]] | None, srII_triplet: bool = False
+    modelpath: Path,
+    ions: Sequence[tuple[int | None, int | None]] | None,
+    srII_triplet: bool = False,
+    maxpacketfiles: int | None = None,
 ) -> tuple[int, pl.LazyFrame]:
     """Return the escaped r-packets, or with ions, the escaped r-packets that a line of the ions last absorbed.
 
@@ -92,7 +96,7 @@ def get_required_packets(
     takes the place of ions.
     """
     nprocs_read, dfpackets = get_packets(
-        modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+        modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
     if srII_triplet:
@@ -131,6 +135,7 @@ def get_reduced_packet_set(
     srII_triplet: bool = False,
     *,
     absorption: bool = False,
+    maxpacketfiles: int | None = None,
 ) -> tuple[int, pl.LazyFrame, float]:
     """Get packets in specific escape angle bins for observer direction.
 
@@ -143,7 +148,9 @@ def get_reduced_packet_set(
     """
     from artistools.spectra.core import get_boundbound_absorption_freq_expr
 
-    nprocs_read, dfpackets_selected = get_required_packets(modelpath, ions, srII_triplet=srII_triplet)
+    nprocs_read, dfpackets_selected = get_required_packets(
+        modelpath, ions, srII_triplet=srII_triplet, maxpacketfiles=maxpacketfiles
+    )
     frequency = get_boundbound_absorption_freq_expr() if absorption else pl.col("nu_rf")
     dfpackets_selected = dfpackets_selected.with_columns((c_ang_per_s / frequency).alias("lambda_rf"))
 
@@ -173,7 +180,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     *,
     ions: Sequence[tuple[int | None, int | None]] | None,
     srIItriplet: bool,
-    colorlogscale: bool,
+    logcolorscale: bool,
     trueem: bool,
     lambdarange: tuple[float, float] | None,
     outputfile: Path | None,
@@ -201,7 +208,13 @@ def packets_2d_hist_bin_and_ejecta_vel(
         start_of_filename += "allions_"
 
     nprocs_read, lzpackets, inverse_solidangle_fraction = get_reduced_packet_set(
-        modelpath, dirbin, ions, lambdarange=lambdarange, srII_triplet=srIItriplet, absorption=absorption
+        modelpath,
+        dirbin,
+        ions,
+        lambdarange=lambdarange,
+        srII_triplet=srIItriplet,
+        absorption=absorption,
+        maxpacketfiles=getattr(args, "maxpacketfiles", None),
     )
 
     start_of_filename += f"t_arrive_d_{tdays}_"
@@ -286,7 +299,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     )
 
     heatmap = np.ma.masked_less_equal(hist2D * luminosityfactor, 0.0)
-    if colorlogscale:
+    if logcolorscale:
         heatmap = np.ma.log10(heatmap)
 
     # an image with a colorbar keeps plt.subplots: fig.colorbar takes space that the
@@ -308,7 +321,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_ylabel(rf"$v_z$ [{VELOCITYUNIT_AXISLABELS[unit]}]")
     cbar = fig.colorbar(im, ax=ax)
     luminositylabel = r"observed luminosity per volume [erg/(s cm$^3$)]"
-    cbar.set_label(rf"log$_{{10}}$ {luminositylabel}" if colorlogscale else f"O{luminositylabel[1:]}")
+    cbar.set_label(rf"log$_{{10}}$ {luminositylabel}" if logcolorscale else f"O{luminositylabel[1:]}")
     if dirbin != -1:
         draw_observer_direction(ax, dirbin, 0.8 * velocitymax_kmps / kmpsperunit)
 
@@ -316,7 +329,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
         assert args is not None
         valuecolumn = (
-            "log10_escaped_luminosity_erg_per_s_per_cm3" if colorlogscale else "escaped_luminosity_erg_per_s_per_cm3"
+            "log10_escaped_luminosity_erg_per_s_per_cm3" if logcolorscale else "escaped_luminosity_erg_per_s_per_cm3"
         )
         # the empty table replaces a _summary file of the same name from an earlier command with -groupby
         output_data(
@@ -499,7 +512,12 @@ def plot_velocity_profiles_by_group(
     position: t.Literal["em", "trueem"] = "trueem" if trueem else "em"
     typecolumn = "absorption_type" if absorption else ("trueemissiontype" if trueem else "emissiontype")
     nprocs_read, lzdfpackets, inverse_solidangle_fraction = get_reduced_packet_set(
-        modelpath, dirbin, None, lambdarange=lambdarange, absorption=absorption
+        modelpath,
+        dirbin,
+        None,
+        lambdarange=lambdarange,
+        absorption=absorption,
+        maxpacketfiles=getattr(args, "maxpacketfiles", None),
     )
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
     delta_t_s = (t_max - t_min) * day_to_s
@@ -868,10 +886,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_velocitykind(parser)
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument(
-        "--colorlogscale",
+        "--logcolorscale",
         action="store_true",
         help="Show the log10 of the observed luminosity per unit volume in the 2D image",
     )
+    # the earlier name of --logcolorscale
+    parser.add_argument("--colorlogscale", dest="logcolorscale", action="store_true", help=argparse.SUPPRESS)
 
     parser.add_argument(
         "--use_thermalemissiontype",
@@ -884,6 +904,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_show(parser)
     addarg_data_output(parser)
     addarg_plotinvalidpart(parser, "the packets")
+    addarg_maxpacketfiles(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -943,7 +964,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         unit,
         ions=ions,
         srIItriplet=args.srIItriplet,
-        colorlogscale=args.colorlogscale,
+        logcolorscale=args.logcolorscale,
         trueem=args.use_thermalemissiontype,
         lambdarange=get_lambdarange(args),
         outputfile=args.outputfile,
@@ -999,7 +1020,7 @@ def plot_velocity_profiles_from_args(
     for option, isgiven in (
         ("-ions", ions is not None),
         ("--srIItriplet", args.srIItriplet),
-        ("--colorlogscale", args.colorlogscale),
+        ("--logcolorscale", args.logcolorscale),
     ):
         if isgiven:
             exit_with_error(

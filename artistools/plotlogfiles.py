@@ -16,40 +16,32 @@ from artistools.misc import addarg_data_output
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
-from artistools.misc import firstexisting_or_none
+from artistools.misc import addarg_show
+from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
-from artistools.misc import get_mpiranklist
-from artistools.misc import get_runfolders
 from artistools.misc import normalize_path_list
+from artistools.misc import open_file
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
-from artistools.misc import print_warning
 from artistools.misc import zopen
 from artistools.plottools import apply_darkmode
 from artistools.plottools import make_frame_figure
 from artistools.plottools import set_legend
 
-defaultoutputfile = "plotlogfiles_{0}.pdf"
+defaultoutputfile = "plotlogfiles_{modelname}.pdf"
 
 
-def read_logfiles(modelpath: Path | str) -> list[Path]:
-    """Return the per-rank ARTIS log files of a model, including compressed ones."""
-    mpiranklist = get_mpiranklist(modelpath)
-    # search_subfolders=False so a rank file missing from one run folder is skipped
-    # rather than silently substituted by another folder's copy
-    return [
-        logfilepath
-        for folderpath in get_runfolders(modelpath)
-        for mpirank in mpiranklist
-        if (
-            logfilepath := firstexisting_or_none(
-                [f"output_{mpirank}-0.txt"], folder=folderpath, search_subfolders=False
-            )
-        )
-        is not None
-    ]
+def get_model_logfiles(modelpath: Path | str) -> list[Path]:
+    """Return the log of each rank of each run of a model, including compressed ones.
+
+    get_logfiles of logsummary also finds the log of a run that stopped before it wrote an estimator file, and a
+    restart with a different number of ranks.
+    """
+    from artistools.logsummary import get_logfiles
+
+    return get_logfiles(Path(modelpath), None)
 
 
 # ARTIS writes two forms of each line. The old form holds a Unix time and whole seconds:
@@ -162,10 +154,14 @@ def make_plot(
             # save_figure holds these rules for a figure of its own, and this pdf writes its own pages
             # without --darkmode, the transparency of the matplotlib configuration applies
             darkkwargs = {"transparent": apply_darkmode(fig, "pdf")} if getattr(args, "darkmode", False) else {}
+            if getattr(args, "show", False):
+                plt.show()
             pdf.savefig(fig, bbox_inches="tight", pad_inches=0.02, **darkkwargs)
             plt.close(fig)
 
     print_saved(outputfile)
+    if getattr(args, "open", False):
+        open_file(outputfile)
     output_data(args, {"": get_time_taken_table(dfdrawnlines)}, outputfile)
 
 
@@ -174,9 +170,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_legend(parser)
     addarg_darkmode(parser)
     addarg_modelpath(
-        parser, multiplepaths=True, default=[], helptext="Path to ARTIS model folders with model.txt and abundances.txt"
+        parser, positional=True, multiplepaths=True, default=[], helptext="Paths of ARTIS models with log files"
     )
-    addarg_output(parser, kind="file", defaultname=defaultoutputfile, helptext="Filename for PDF file")
+    addarg_output(
+        parser,
+        kind="file",
+        defaultname=defaultoutputfile,
+        helptext="Filename for the PDF file. The field {modelname} gives the name of each model",
+    )
+    addarg_show(parser)
     addarg_data_output(parser)
 
 
@@ -187,14 +189,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpaths = normalize_path_list(args.modelpath)
     outputfile = args.outputfile
     if len(modelpaths) > 1 and "{" not in str(outputfile):
-        print_warning(f"output filename {outputfile} has no {{0}} placeholder, so each model will overwrite it")
+        exit_with_error(
+            f"the output file {outputfile} has no field, thus each model would replace the file of the model before it",
+            "Give a name with the field {modelname}, e.g. -o plotlogfiles_{modelname}.pdf",
+        )
 
     for modelpath in modelpaths:
         modelname = get_model_name(modelpath)
-        logfiledict = read_time_taken(read_logfiles(modelpath))
+        logfiledict = read_time_taken(get_model_logfiles(modelpath))
         make_plot(
             logfiledict,
-            outputfile=str(outputfile).format(modelname),
+            # {0} is the field of the earlier default name
+            outputfile=str(outputfile).format(modelname, modelname=modelname),
             modelname=modelname,
             modellogname=get_model_logname(modelpath),
             args=args,

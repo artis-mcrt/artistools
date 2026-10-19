@@ -27,7 +27,7 @@ DEFAULTOUTPUTNAME = "massfracs.txt"
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, positional=True, default=Path())
     addarg_timestep(parser, default=14, helptext="Timestep number to export")
     addarg_modelgridindex(parser, default=[0], helptext="Range of cell numbers to export")
     addarg_output(parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path to output file of mass fractions")

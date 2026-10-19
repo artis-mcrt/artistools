@@ -2346,11 +2346,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-x", dest="xunit", type=parse_xunit_argument, help=argparse.SUPPRESS)
 
     addarg_axislimits(
-        parser,
-        include_y=False,
-        wavelength_aliases=True,
-        xminhelp="Plot range: minimum x range",
-        xmaxhelp="Plot range: maximum x range",
+        parser, wavelength_aliases=True, xminhelp="Plot range: minimum x range", xmaxhelp="Plot range: maximum x range"
     )
 
     xbinsizegroup = parser.add_mutually_exclusive_group()
@@ -2375,10 +2371,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " the models"
         ),
     )
-
-    parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
-
-    parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
 
     parser.add_argument(
         "--hidemodeltimerange", action="store_true", help='Hide the "at (+/- x.xd)" from the line labels'
@@ -2522,7 +2514,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_yscale(parser)
 
     # the older spelling of "-yscale log"
-    parser.add_argument("--logscaley", action="store_true", help="Use log scale for y values")
 
     parser.add_argument("--hidenetspectrum", action="store_true", help="Hide net spectrum")
 

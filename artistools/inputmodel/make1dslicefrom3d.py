@@ -17,6 +17,7 @@ from artistools.inputmodel.core import save_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_force
 from artistools.misc import addarg_legend
+from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 from artistools.plottools import make_frame_figure
@@ -28,6 +29,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
     addarg_darkmode(parser)
+    addarg_show(parser)
     parser.add_argument("-inputfolder", action="store", default=".", help="Path to folder with 3D files")
 
     parser.add_argument(

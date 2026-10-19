@@ -1386,6 +1386,8 @@ def addarg_yscale(parser: argparse.ArgumentParser, *, default: str = "auto") -> 
             f" The default is {default}"
         ),
     )
+    # the older spelling of "-yscale log"
+    parser.add_argument("--logscaley", action="store_true", help=argparse.SUPPRESS)
     parser.set_defaults(defaultyscale=default)
 
 
