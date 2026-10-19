@@ -59,13 +59,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory"
     )
 
-    parser.add_argument(
-        "-timemin", "-tmin", type=time_days_arg, default=0.1, help=f"Minimum time in days. {TIME_UNIT_HELP}"
-    )
+    parser.add_argument("-timemin", "-tmin", type=time_days_arg, default=0.1, help=f"Minimum time. {TIME_UNIT_HELP}")
 
-    parser.add_argument(
-        "-timemax", "-tmax", type=time_days_arg, default=80.0, help=f"Maximum time in days. {TIME_UNIT_HELP}"
-    )
+    parser.add_argument("-timemax", "-tmax", type=time_days_arg, default=80.0, help=f"Maximum time. {TIME_UNIT_HELP}")
 
     parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
 

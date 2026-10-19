@@ -179,7 +179,8 @@ def get_line_luminosities_from_packets(
 ) -> pl.DataFrame:
     """Get the emission line luminosities of the requested features vs time.
 
-    The returned values are luminosities in [erg/s]: they are not divided by 4 pi d^2 for any observer distance. The
+    The values are luminosities in erg/s. The function does not divide them by 4 pi d^2, because they are for no
+    specific observer distance. The
     column {colname}_relnoise of each feature gives the relative Monte Carlo noise sqrt(sum(e^2)) / sum(e) of the
     luminosity. A bin with no packet has no noise value.
     """
@@ -538,8 +539,8 @@ def add_ratio_noise(dflcdata: pl.DataFrame, featurecolnames: Sequence[str]) -> p
         fratio_relnoise=sum((pl.col(column) ** 2 for column in noisecolumns), start=pl.lit(0.0)).sqrt()
     )
     print(
-        "  noise: the relative Monte Carlo noise of the luminosity of a feature is sqrt(Σ e²) / Σ e over its packet"
-        " energies e, and the ratio has the root of the sum of the squares of the two"
+        "  noise: the relative Monte Carlo noise of a feature is sqrt(Σ e²) / Σ e over its packet energies e. The noise"
+        " of the ratio is the root of the sum of the squares of the two noises"
     )
     noisytimes = dflcdata.filter(pl.col("fratio_relnoise") > NOISY_RELATIVE_ERROR)["time"].to_list()
     if noisytimes:

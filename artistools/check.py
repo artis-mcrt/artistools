@@ -1,9 +1,16 @@
 """Check whether the results of an ARTIS model deserve trust, and give one row for each check.
 
-The checks read the input files, the rank-0 logs, the estimators, deposition.out, and light_curve.out. --frompackets
-also reads the escaped packets to find the Monte Carlo noise of the light curve. Each check runs alone, thus a check
-that fails gives a row with the status "error", and the other checks still run. A status is "ok", "warning", "error",
-or "not checked".
+The checks read these files:
+
+- the input files;
+- the rank-0 logs;
+- the estimators;
+- deposition.out;
+- light_curve.out.
+
+--frompackets also reads the escaped packets to find the Monte Carlo noise of the light curve. Each check runs alone,
+thus a check that fails gives a row with the status "error", and the other checks still run. A status is "ok",
+"warning", "error", or "not checked".
 """
 
 import argparse
@@ -497,7 +504,7 @@ def check_caches(modelpath: Path) -> tuple[str, str]:
     detail = f"{len(caches)} parquet caches of {sizemb:.1f} MB (artistools cache list gives them)"
     if leftovers:
         return "warning", (
-            f"{detail}, and {len(leftovers)} files of conversions that stopped, e.g. {leftovers[0].name}."
+            f"{detail}, and {len(leftovers)} leftover files of conversions that stopped, e.g. {leftovers[0].name}."
             " artistools cache delete deletes them"
         )
     return "ok", detail
@@ -509,11 +516,11 @@ def check_arrival_range(modelpath: Path) -> tuple[str, str]:
     if validstart_days is None or validend_days is None:
         return "warning", (
             "no arrival time has the light of all the ejecta, because the light travel time across the ejecta is"
-            " longer than the time of the run"
+            " longer than the time range of the model"
         )
     return "ok", (
         f"the light of all the ejecta reaches the observer from {validstart_days:.2f} to {validend_days:.2f} d."
-        " The commands that read packets keep this range, and --plotinvalidpart also takes the other times"
+        " The commands that read packets use only this range. --plotinvalidpart also shows the other times"
     )
 
 

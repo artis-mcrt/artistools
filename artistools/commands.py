@@ -97,9 +97,9 @@ def get_epilog() -> str:
         + '\n\nRun "artistools <command> --help" for the arguments of one command.'
         + "\nA command that reads a model takes its folder with -modelpath. Most of these commands also take the"
         + "\nfolder as the last positional argument."
-        + "\nA time or a wavelength can have a unit, e.g. -t 12h or -lambdamin 600nm. A number with no unit"
-        + "\nis in days or in Angstroms. --explain prints the selection of the arguments, then stops before the"
-        + "\nread of the data."
+        + "\nA time or a wavelength can have a unit, e.g. -t 12h or -lambdamin 600nm. A value with no unit"
+        + "\nis in days or in Angstroms. --explain prints what the arguments select. Then it stops before it"
+        + "\nreads the data."
         + "\nSet ARTISTOOLS_TRACEBACK=1 to get the full traceback of an error."
     )
 
@@ -236,8 +236,8 @@ subcommandtree: CommandTree = {
         "check",
         helptext="Check whether the results of an ARTIS model deserve trust, and give one row for each check.",
         note=(
-            "The checks also cover the input files, the caches, and the range of the arrival times. --frompackets also"
-            " reads the escaped packets to find the Monte Carlo noise of the light curve."
+            "The checks also examine the input files, the caches, and the range of the arrival times. --frompackets"
+            " also reads the escaped packets to find the Monte Carlo noise of the light curve."
         ),
         examples=((".", "the checks of the results of the model"),),
     ),

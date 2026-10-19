@@ -782,21 +782,16 @@ def addarg_timedays(
             dest="timedays",
             nargs="?",
             type=time_days_range_arg,
-            help=f"{helptext or 'Range of times in days to plot (e.g. 50-100)'}. {TIME_UNIT_HELP}",
+            help=f"{helptext or 'Range of times to plot (e.g. 50-100)'}. {TIME_UNIT_HELP}",
         )
     elif kind == "float":
-        group.add_argument(*flags, type=time_days_arg, help=f"{helptext or 'Time in days to plot'}. {TIME_UNIT_HELP}")
+        group.add_argument(*flags, type=time_days_arg, help=f"{helptext or 'Time to plot'}. {TIME_UNIT_HELP}")
     else:
-        group.add_argument(
-            *flags, type=time_days_range_arg, help=f"{helptext or 'Time in days to plot'}. {TIME_UNIT_HELP}"
-        )
+        group.add_argument(*flags, type=time_days_range_arg, help=f"{helptext or 'Time to plot'}. {TIME_UNIT_HELP}")
 
 
 def addarg_timeminmax(
-    parser: argparse.ArgumentParser,
-    *,
-    helptext_min: str = "Lower time in days",
-    helptext_max: str = "Upper time in days",
+    parser: argparse.ArgumentParser, *, helptext_min: str = "Lower time", helptext_max: str = "Upper time"
 ) -> None:
     """Add the -timemin and -timemax arguments bounding a time range in days."""
     group = arggroup(parser, "time selection")
@@ -926,7 +921,10 @@ def split_value_and_unit(text: str) -> tuple[float, str]:
 
 
 def time_days_arg(text: str) -> float:
-    """Return the time in days of a command line value, e.g. 300, 300d, 12h, or 2.6e7s. A bare number is in days."""
+    """Return the time in days of a command line value, e.g. 300, 300d, 12h, or 2.6e7s.
+
+    A value with no unit is in days.
+    """
     unitnames = ", ".join(name for name in TIME_UNITS_IN_DAYS if len(name) == 1)
     try:
         number, unit = split_value_and_unit(text)
@@ -953,7 +951,7 @@ def time_days_range_arg(text: str) -> str:
         return text
     parts = TIME_RANGE_SEPARATOR.split(text.strip())
     if len(parts) > 2:
-        msg = f"'{text}' is not a time or a time range. Give e.g. 300, 300d, or 250d-300d"
+        msg = f"'{text}' is not a time or a time range. Give a time or a time range, e.g. 300, 300d, or 250d-300d"
         raise argparse.ArgumentTypeError(msg)
     days = [time_days_arg(part) for part in parts]
     if not any(split_value_and_unit(part)[1] for part in parts):
@@ -964,7 +962,7 @@ def time_days_range_arg(text: str) -> str:
 def wavelength_angstroms_arg(text: str) -> float:
     """Return the wavelength in Angstroms of a command line value, e.g. 6000, 6000A, 600nm, or 0.6micron.
 
-    A bare number is in Angstroms. A unit is one of the wavelength units of -xunit of plotspectra.
+    A value with no unit is in Angstroms. A unit is one of the wavelength units of -xunit of plotspectra.
     """
     from artistools.spectra.core import convert_xunit_aliases_to_canonical
     from artistools.spectra.core import XUNITS
@@ -1499,7 +1497,10 @@ def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", com
 
 
 def addarg_table_output(parser: argparse.ArgumentParser) -> None:
-    """Add -o and -f to a command that prints a table, thus the table can go to a file in place of the output."""
+    """Add -o and -f to a command that prints a table.
+
+    The command can then write the table to a file in place of the standard output.
+    """
     addarg_output(
         parser,
         kind="file",
@@ -1785,7 +1786,7 @@ def check_range_order(args: argparse.Namespace) -> None:
 
     Such a range selects no data, thus the command gave an empty plot or an error after a long read. Two equal ends
     select one time, e.g. for decayproducts. The limits of a plot axis can have the opposite order, e.g. for a
-    magnitude, thus only a range of the selection takes this check.
+    magnitude, thus this function checks only a range of the selection.
     """
     bounds = [("timemin", "timemax", "-timemin", "-timemax")]
     if getattr(args, "xrangeisselection", False):
@@ -1862,14 +1863,18 @@ def addarg_common(parser: argparse.ArgumentParser) -> None:
 def print_explanation(
     parser: argparse.ArgumentParser, args: argparse.Namespace, parsedargs: argparse.Namespace
 ) -> None:
-    """Print what the command reads and writes, as the arguments give it, with no read of the data.
+    """Print what the command reads and writes, as the arguments give it. Read no data.
 
     parsedargs holds the arguments before resolve_args, thus a value that resolve_args sets, e.g. the scale "auto" of
     the y axis, is not a value of the user. The lines give each argument of the user with its value after the
-    conversion of the unit. They also give the model folders, the timesteps of the time selection, the direction bins,
-    and the output file.
+    conversion of the units. They also give:
+
+    - the model folders;
+    - the timesteps of the time selection;
+    - the direction bins;
+    - the output file.
     """
-    print_heading("The command reads and writes this. --explain stops it before it reads the data")
+    print_heading("The arguments select these data and files. --explain stops the command before it reads the data")
     for action in parser._actions:  # ruff:ignore[private-member-access]
         if action.dest in {"help", "explain", "quiet", *MODELPATH_DESTS} or not hasattr(args, action.dest):
             continue

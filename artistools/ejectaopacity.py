@@ -459,14 +459,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-lambdamin",
         type=wavelength_angstroms_arg,
         default=20.0,
-        help=f"Minimum wavelength for binned opacities. {WAVELENGTH_UNIT_HELP}",
+        help=f"Minimum wavelength of the binned opacities. {WAVELENGTH_UNIT_HELP}",
     )
     parser.add_argument(
         "-xmax",
         "-lambdamax",
         type=wavelength_angstroms_arg,
         default=50000.0,
-        help=f"Maximum wavelength for binned opacities. {WAVELENGTH_UNIT_HELP}",
+        help=f"Maximum wavelength of the binned opacities. {WAVELENGTH_UNIT_HELP}",
     )
     parser.set_defaults(xrangeisselection=True)
     parser.add_argument(

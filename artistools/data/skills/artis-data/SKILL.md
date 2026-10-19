@@ -75,8 +75,8 @@ column name that contains a space has quotes. `--write_data` writes the table to
 lines that give the command. Read such a file with `pl.read_csv(path, separator=" ", comment_prefix="#",
 null_values="nan")`.
 
-`--explain` prints the timesteps, the direction bins, and the output file that the arguments select, then stops before
-the read of the data. A time or a wavelength can have a unit, e.g. `-t 12h` or `-lambdamin 600nm`. A value with no unit
+`--explain` prints the time steps, the direction bins, and the output file that the arguments select. Then it stops
+before it reads the data. A time or a wavelength can have a unit, e.g. `-t 12h` or `-lambdamin 600nm`. A value with no unit
 is in days or in Angstroms.
 
 Without `--quiet`, plotestimators, plotlightcurves, and plotspectra also log one summary line for each drawn series.

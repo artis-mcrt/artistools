@@ -256,7 +256,10 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("fratio", "the luminosity of the second feature divided by the luminosity of the first feature", ""),
     (
         "fratio_relnoise(_.+)?",
-        "the relative Monte Carlo noise of fratio, sqrt(r1^2 + r2^2) of the noises sqrt(sum(e^2)) / sum(e) of the two",
+        (
+            "the relative Monte Carlo noise of fratio, sqrt(r1^2 + r2^2), where r1 and r2 are the noises"
+            " sqrt(sum(e^2)) / sum(e) of the two features"
+        ),
         "",
     ),
     ("fratio_.+", "the luminosity of the second feature divided by the luminosity of the first feature", ""),

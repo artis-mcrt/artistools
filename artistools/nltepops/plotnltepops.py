@@ -1098,9 +1098,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_modelpath(parser)
 
     timegroup = parser.add_mutually_exclusive_group()
-    timegroup.add_argument(
-        "-timedays", "-time", "-t", type=time_days_range_arg, help=f"Time in days to plot. {TIME_UNIT_HELP}"
-    )
+    timegroup.add_argument("-timedays", "-time", "-t", type=time_days_range_arg, help=f"Time to plot. {TIME_UNIT_HELP}")
 
     timegroup.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
 

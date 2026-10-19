@@ -8390,7 +8390,7 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
     assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted(kept)
 
 
-def test_check_names_the_missing_input_files_and_the_leftovers_of_a_conversion(tmp_path: Path) -> None:
+def test_check_names_the_missing_input_files_and_the_leftover_files(tmp_path: Path) -> None:
     """Give a warning for each missing input file and for the files that a stopped conversion left."""
     from artistools.check import check_caches
     from artistools.check import check_input_files
@@ -8407,7 +8407,7 @@ def test_check_names_the_missing_input_files_and_the_leftovers_of_a_conversion(t
     assert "no adata.txt" in detail
     status, detail = check_caches(tmp_path)
     assert status == "warning"
-    assert "1 files of conversions that stopped" in detail
+    assert "1 leftover files of conversions that stopped" in detail
 
 
 def test_linefluxes_ratio_noise_adds_the_noise_of_the_two_features_in_quadrature() -> None:

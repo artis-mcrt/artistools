@@ -805,7 +805,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # the plots went to the model folder before the command read -o, thus that folder stays the default
     addarg_output(parser, kind="folder", helptext="Folder for the plots (default: the model folder)")
 
-    parser.add_argument("-timemax", type=time_days_arg, help=f"Maximum time in days to plot. {TIME_UNIT_HELP}")
+    parser.add_argument("-timemax", type=time_days_arg, help=f"Maximum time to plot. {TIME_UNIT_HELP}")
     # the earlier name of -timemax
     parser.add_argument("-xmax", dest="timemax", type=time_days_arg, help=argparse.SUPPRESS)
 

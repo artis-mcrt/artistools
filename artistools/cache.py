@@ -1,9 +1,9 @@
 """Make, list, or delete the parquet caches that artistools reads in place of the text output of an ARTIS model.
 
-A reader of artistools converts a text file to a parquet cache at the first read, and later reads take the cache.
-"make" does all the conversions at one time, e.g. in the job script after a run of ARTIS. Each later command then
-reads its data quickly. "list" gives the caches and their sizes. "delete" removes the caches and the files that a
-stopped conversion leaves.
+A reader of artistools converts a text file to a parquet cache when it first reads the file. Later commands read the
+cache. "make" does all the conversions at one time, e.g. in the job script after a run of ARTIS. Each later command
+then reads its data quickly. "list" gives the caches and their sizes. "delete" deletes the caches and the leftover
+files, which are the temporary files and folders of a conversion that stopped.
 """
 
 import argparse
@@ -55,7 +55,7 @@ def get_cache_folders(modelfolder: Path) -> list[Path]:
 
 
 def find_cache_files(modelfolder: Path) -> tuple[list[Path], list[Path]]:
-    """Return the parquet caches of a model, and the temporary files and folders of conversions that stopped.
+    """Return the parquet caches of a model, and the leftover files of the conversions that stopped.
 
     The lock files of the caches stay out of both lists. A process that waits for a lock keeps the lock file open,
     thus a deletion can give the lock to two writers at one time.
@@ -90,7 +90,7 @@ def get_cache_table(modelfolder: Path) -> pl.DataFrame:
 
 
 def make_inputmodel_caches(modelfolder: Path) -> str | None:
-    """Read model.txt and abundances.txt, thus the reader writes the cache of each large file.
+    """Read model.txt and abundances.txt. The readers then write a cache of each large file.
 
     Return None for a model folder with no model.txt.
     """
@@ -103,7 +103,7 @@ def make_inputmodel_caches(modelfolder: Path) -> str | None:
 
 
 def make_linelist_cache(modelfolder: Path) -> str | None:
-    """Read the line list, thus the reader writes its cache. Return None for a model with no line list."""
+    """Read the line list. The reader then writes its cache. Return None for a model with no line list."""
     if firstexisting_or_none(["linelist.out", "linestat.out"], folder=modelfolder, search_subfolders=False) is None:
         return None
     get_linelist_pldf(modelfolder)
@@ -111,7 +111,10 @@ def make_linelist_cache(modelfolder: Path) -> str | None:
 
 
 def make_estimator_caches(modelfolder: Path) -> str | None:
-    """Scan the estimators, thus the reader converts the files of each run folder. Return None with no estimators."""
+    """Scan the estimators. The reader then converts the files of each run folder.
+
+    Return None for a model with no estimator files.
+    """
     if not get_runfolders(modelfolder):
         return None
     scan_estimators(modelfolder)
@@ -172,7 +175,7 @@ def delete_caches(modelfolder: Path, force: bool) -> None:
             shutil.rmtree(path)
         else:
             path.unlink(missing_ok=True)
-    print(f"Deleted {len(paths)} files. The next read of each kind of data converts the text files again")
+    print(f"Deleted {len(paths)} files. The next command that reads each kind of data converts the text files again")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -182,7 +185,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["make", "list", "delete"],
         helptext=(
             "make: convert the text output to the parquet caches. list: give the caches and their sizes. delete:"
-            " delete the caches and the files of conversions that stopped"
+            " delete the caches and the leftover files of the conversions that stopped"
         ),
     )
     addarg_modelpath(parser, positional=True, default=Path())
