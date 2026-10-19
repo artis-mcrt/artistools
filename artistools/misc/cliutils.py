@@ -941,8 +941,11 @@ def time_days_range_arg(text: str) -> str:
     """Return a time or a time range in days, e.g. "250-300" for 250d-300d. A text with no unit stays the same.
 
     A command reads the time text after the parse, e.g. with parse_timedays_range. Thus the text with a unit becomes
-    the same text in days, and a text with no unit keeps its form, e.g. in the label of a plot.
+    the same text in days, and a text with no unit keeps its form, e.g. in the label of a plot. deposition also reads
+    a list such as 1,5,30, thus each item of a list takes the same conversion.
     """
+    if "," in text:
+        return ",".join(time_days_range_arg(item) for item in text.split(","))
     try:
         float(text)
     except ValueError:

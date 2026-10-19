@@ -4120,12 +4120,14 @@ def test_confirm_overwrite_matches_stops_for_a_file_of_the_pattern(tmp_path: Pat
         ("250d-300d", "250-300"),
         ("12h-36h", "0.5-1.5"),
         ("86400s", "1"),
+        ("1,5,30", "1,5,30"),
+        ("1d,12h-36h,30", "1,0.5-1.5,30"),
     ],
 )
 def test_time_days_range_arg_splits_at_the_range_hyphen_only(text: str, expected: str) -> None:
     """Convert a time range with units to days, and keep a text with no unit, which a plot label can show.
 
-    A hyphen of an exponent, e.g. 1e-2, is not the hyphen of the range.
+    A hyphen of an exponent, e.g. 1e-2, is not the hyphen of the range. deposition reads a list such as 1,5,30.
     """
     from artistools.misc.cliutils import time_days_range_arg
 

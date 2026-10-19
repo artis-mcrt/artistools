@@ -599,7 +599,8 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         )
 
         dflcdata = dflcdata.with_columns(fratio=pl.col(emfeatures[1].colname) / pl.col(emfeatures[0].colname))
-        dflcdata = add_ratio_noise(dflcdata, [feature.colname for feature in emfeatures])
+        # fratio divides the second feature by the first, thus a later feature takes no part in its noise
+        dflcdata = add_ratio_noise(dflcdata, [emfeatures[0].colname, emfeatures[1].colname])
         axis.set_ylabel(
             r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
         )

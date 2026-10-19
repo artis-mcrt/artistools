@@ -8366,9 +8366,10 @@ def test_values_of_an_unknown_variable_name_the_listing(capsys: pytest.CaptureFi
 
 
 def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Path) -> None:
-    """Delete the caches and the leftovers of a stopped conversion, and keep each file that is not a cache.
+    """Delete the caches and the leftover files of a stopped conversion, and keep each file that is not a cache.
 
-    A deleted lock file can give the lock to two writers. A parquet file of --write_data belongs to the user.
+    A deleted lock file can give the lock to two writers. A parquet file of a different name belongs to the user, also
+    when it ends in .out.parquet.
     """
     from artistools.cache import main as cachemain
 
@@ -8380,7 +8381,13 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
         "packets/.packetsbatch01_0004_0007.out.parquet.partialab12.partial",
         "12411848.slurm/.estimators_allranks.out.parquet.parts9x/ts00001_part00000.parquet",
     ]
-    kept = ["packets/.packetsbatch00_0000_0003.out.parquet.replace-lock", "spectrum_data.parquet", "model.txt"]
+    kept = [
+        "packets/.packetsbatch00_0000_0003.out.parquet.replace-lock",
+        "spectrum_data.parquet",
+        "science.out.parquet",
+        "analysis/.analysis.parts.backup/notes.txt",
+        "model.txt",
+    ]
     for name in [*deleted, *kept]:
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_text("x")

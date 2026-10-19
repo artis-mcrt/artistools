@@ -101,11 +101,14 @@ def write_flambda_spectra_of_models(modelpaths: Sequence[Path], outdirectory: Pa
     subfoldernames: list[str] = []
     for modelindex, modelpath in enumerate(modelpaths):
         modelname = get_model_name(modelpath)
-        if modelname in subfoldernames:
-            # the second model would replace the files of the first, and the check of the overwrite saw no file
-            modelname = f"{modelname}_{modelindex}"
-            if outdirectory is not None and len(modelpaths) > 1:
-                print_warning(f"{modelpath} has the name of an earlier model, thus its folder is {modelname}")
+        # the second model would replace the files of the first, and the check of the overwrite saw no file. A name
+        # with the index can also be the name of a model, e.g. mymodel_2, thus the index grows until the name is new
+        suffixindex = modelindex
+        while modelname in subfoldernames:
+            modelname = f"{get_model_name(modelpath)}_{suffixindex}"
+            suffixindex += 1
+        if modelname != get_model_name(modelpath) and outdirectory is not None and len(modelpaths) > 1:
+            print_warning(f"{modelpath} has the name of an earlier model, thus its folder is {modelname}")
         subfoldernames.append(modelname)
     modeloutdirectories = [
         get_spectra_outdirectory(

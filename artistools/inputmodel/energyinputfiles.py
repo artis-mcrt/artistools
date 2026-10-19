@@ -18,9 +18,11 @@ from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
+from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
@@ -233,6 +235,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     addarg_modelpath(parser, positional=True, default=Path())
     addarg_output(parser, kind="file", helptext="Path for the plot of plotrate")
+    addarg_force(parser)
     addarg_show(parser)
 
     addarg_figscale(parser)
@@ -249,6 +252,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = Path(args.modelpath)
 
     if args.action == "plotrate":
+        plotfile = resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf")
+        confirm_overwrite([plotfile.parent], [plotfile.name], force=args.force)
         fig, axesgrid = make_frame_figure(args)
         axis = axesgrid[0][0]
         plot_energy_rate(modelpath, axis)
@@ -256,7 +261,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axis.set_ylabel("Nuclear heating power [erg/s]")
         axis.set_xscale("log")
         axis.set_yscale("log")
-        save_figure(fig, resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf"), args=args)
+        save_figure(fig, plotfile, args=args)
 
     elif args.action == "describe":
         etot, energydistribution = get_etot_fromfile(modelpath)

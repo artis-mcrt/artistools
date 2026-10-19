@@ -1580,6 +1580,18 @@ def test_writespectra_gives_two_models_of_one_name_two_folders(tmp_path: Path) -
     assert list(tmp_path.glob(f"{modelname}_1/spectrum_ts*.txt"))
 
 
+def test_writespectra_folder_names_stay_unique_when_a_model_has_a_name_with_an_index(tmp_path: Path) -> None:
+    """Give the models foo, foo_2, and foo three folders. The third model took foo_2, the folder of the second."""
+    names = {Path("a"): "foo", Path("b"): "foo_2", Path("c"): "foo"}
+    with (
+        mock.patch.object(at.spectra.writespectra, "get_model_name", side_effect=names.__getitem__),
+        mock.patch.object(at.spectra.writespectra, "write_flambda_spectra") as mockwrite,
+    ):
+        at.spectra.writespectra.write_flambda_spectra_of_models(list(names), tmp_path, force=False)
+    folders = [call.args[1] for call in mockwrite.call_args_list]
+    assert len(set(folders)) == 3
+
+
 def test_hiding_the_x_tick_labels_holds_the_width_and_the_frame(tmp_path: Path) -> None:
     """--hidexticklabels must not change the width of the file, nor the size of the frame.
 

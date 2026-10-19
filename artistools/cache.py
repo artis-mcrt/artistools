@@ -40,13 +40,19 @@ from artistools.packets.core import get_packets_batch_parquet_paths
 if t.TYPE_CHECKING:
     from collections.abc import Callable
 
-# each reader names its cache after the text file and adds .parquet. A cache of an artistools version before 2026-10
-# also has the suffix .tmp. A file of another name, e.g. the output of --write_data, is not a cache
-CACHE_NAME_PATTERN: t.Final = re.compile(r"[^.].*\.(?:txt|out)\.parquet(?:\.tmp)?")
+# the names of the caches that the readers write: the input model, the line list, the estimators, and the batches of
+# the packets and the virtual packets. A file of a different name, e.g. science.out.parquet, belongs to the user
+CACHE_BASENAME: t.Final = (
+    r"(?:model\.txt|abundances\.txt|linelist\.out|estimators_allranks\.out|estimbatch\d+_\d+_\d+\.out"
+    r"|v?packetsbatch\d+_\d+_\d+\.out)\.parquet"
+)
 
-# write_parquet_atomic writes a cache to a temporary file of this name, and a conversion of estimators writes its
-# parts into a temporary folder. A conversion that stops, e.g. at the time limit of a job, can leave them
-LEFTOVER_NAME_PATTERN: t.Final = re.compile(r"\..*\.(?:partial|parts).*")
+# a cache of an artistools version before 2026-10 also has the suffix .tmp
+CACHE_NAME_PATTERN: t.Final = re.compile(rf"{CACHE_BASENAME}(?:\.tmp)?")
+
+# write_parquet_atomic writes a cache to a temporary file of the name of mkstemp, and a conversion of estimators
+# writes its parts into a temporary folder. A conversion that stops, e.g. at the time limit of a job, can leave them
+LEFTOVER_NAME_PATTERN: t.Final = re.compile(rf"\.{CACHE_BASENAME}\.(?:partial\w+\.partial|parts\w+)")
 
 
 def get_cache_folders(modelfolder: Path) -> list[Path]:
@@ -66,7 +72,7 @@ def find_cache_files(modelfolder: Path) -> tuple[list[Path], list[Path]]:
         for path in sorted(folder.iterdir()):
             if CACHE_NAME_PATTERN.fullmatch(path.name) and path.is_file():
                 caches.append(path)
-            elif LEFTOVER_NAME_PATTERN.fullmatch(path.name) and not path.name.endswith(".replace-lock"):
+            elif LEFTOVER_NAME_PATTERN.fullmatch(path.name):
                 leftovers.append(path)
     return caches, leftovers
 

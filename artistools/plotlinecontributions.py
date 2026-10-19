@@ -249,7 +249,8 @@ def plot_trough_estimate(
     arrival_days = inputs.time_days * (1.0 - photospherevelocity_kmps / KMPS_PER_VELOCITYUNIT["c"])
     print_detail(
         "To test the estimate, compare it with the absorption of each line in the packet spectrum of the same"
-        f" direction: artistools plotspectra {modelpath} --frompackets -dirbin {dirbin} --average_over_phi_angle"
+        f" direction: artistools plotspectra {modelpath} --frompackets -dirbin {dirbin}"
+        f"{' --average_over_phi_angle' if averageoverphi else ''}"
         f" --showabsorption -groupby line -timedays {arrival_days:.3g}. The light of the gas in front of the"
         f" photosphere arrives at about t (1 - v_ph / c) = {arrival_days:.3g} d"
     )
