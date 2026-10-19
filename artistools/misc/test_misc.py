@@ -1687,7 +1687,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (5, "1bce6ae4beb8f682"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (6, "b125fa1943d9fa52"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1844,6 +1844,7 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     modelgridindex.
     """
     from artistools.check import get_check_results
+    from artistools.corehours import read_model_core_hours
     from artistools.describemodel import get_model_summary
     from artistools.logsummary import get_log_summary
     from artistools.logsummary import get_logfiles
@@ -1887,6 +1888,7 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
             # the logs of host:path were not found, because the search ran on this host
             remotelogfiles = get_logfiles(Path(f"testhost:{logfolder}"), [0])
             dfremotelogsummary = get_log_summary(remotelogfiles)
+            remotecorehours = read_model_core_hours(Path(f"testhost:{logfolder}"))
             # a negative cell and an empty list also select all the cells
             allcellselections: tuple[int | list[int] | None, ...] = (None, -1, [])
             for allcells in allcellselections:
@@ -1914,6 +1916,11 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     assert remotelogfiles == [Path(f"testhost:{logfolder / 'output_0-0.txt'}")]
     pltest.assert_frame_equal(dfremotelogsummary, get_log_summary(get_logfiles(logfolder, [0])))
     assert dfremotelogsummary["level"].to_list() == ["warning"]
+    # the logs of host:path were not found, because get_run_subfolders ran on this host
+    assert [(logfile, iscopy) for logfile, iscopy, _ in remotecorehours] == [
+        (Path(f"testhost:{logfolder / 'output_0-0.txt'}"), False)
+    ]
+    assert [run for _, _, run in remotecorehours] == [run for _, _, run in read_model_core_hours(logfolder)]
 
 
 def test_report_names_the_logs_of_a_remote_model_below_home(tmp_path: Path) -> None:
