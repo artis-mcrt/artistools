@@ -235,7 +235,10 @@ subcommandtree: CommandTree = {
     "check": CommandSpec(
         "check",
         helptext="Check whether the results of an ARTIS model deserve trust, and give one row for each check.",
-        note="--frompackets also reads the escaped packets to find the Monte Carlo noise of the light curve.",
+        note=(
+            "The checks also cover the input files, the caches, and the range of the arrival times. --frompackets also"
+            " reads the escaped packets to find the Monte Carlo noise of the light curve."
+        ),
         examples=((".", "the checks of the results of the model"),),
     ),
     "comparetogsinetwork": CommandSpec(

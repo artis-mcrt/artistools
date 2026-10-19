@@ -8122,7 +8122,7 @@ def test_check_that_fails_gives_an_error_row_and_the_other_checks_run() -> None:
 
     with mock.patch("artistools.check.check_temperature_limits", side_effect=RuntimeError("no\nestimators")):
         dfresults = get_check_results(modelpath_classic_3d)
-    assert dfresults.height == 6
+    assert dfresults.height == 9
     assert dfresults.filter(pl.col("check") == "temperature limits").select("status", "detail").row(0) == (
         "error",
         "RuntimeError: no estimators",
@@ -8349,3 +8349,23 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
     cachemain(argsraw=["delete", "-f", str(tmp_path)])
 
     assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted(kept)
+
+
+def test_check_names_the_missing_input_files_and_the_leftovers_of_a_conversion(tmp_path: Path) -> None:
+    """Give a warning for each missing input file and for the files that a stopped conversion left."""
+    from artistools.check import check_caches
+    from artistools.check import check_input_files
+
+    (tmp_path / "input.txt").write_text("")
+    (tmp_path / "model.txt.zst").write_text("")
+    (tmp_path / "packets").mkdir()
+    (tmp_path / "packets" / ".packetsbatch00_0000_0003.out.parquet.partialab12.partial").write_text("x")
+
+    status, detail = check_input_files(tmp_path)
+    assert status == "warning"
+    assert "model.txt" not in detail
+    assert "no abundances.txt" in detail
+    assert "no adata.txt" in detail
+    status, detail = check_caches(tmp_path)
+    assert status == "warning"
+    assert "1 files of conversions that stopped" in detail
