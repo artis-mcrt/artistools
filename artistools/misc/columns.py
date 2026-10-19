@@ -380,26 +380,27 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("luminosity_fraction", "the luminosity of the group divided by the luminosity of all the groups", ""),
     (
         "velocity_luminosity_q(25|50|75)_kmps",
-        "the radial velocity of the last interaction at the {0}% quantile of the packet energy of the group",
+        (
+            "the velocity (radial or line-of-sight, -velocity) of the last interaction or of the last thermal"
+            " emission at the {0}% quantile of the packet energy of the group or the timestep"
+        ),
         "km/s",
     ),
     (
         "velocity_luminosity_q(25|50|75)_c",
-        "the radial velocity of the last interaction at the {0}% quantile of the packet energy of the group",
+        (
+            "the velocity (radial or line-of-sight, -velocity) of the last interaction or of the last thermal"
+            " emission at the {0}% quantile of the packet energy of the group or the timestep"
+        ),
         "c",
     ),
+    ("velocity_luminosity_q50_(min|max)_kmps", "the {0}imum median velocity of the timesteps of the series", "km/s"),
+    ("velocity_luminosity_q50_(min|max)_c", "the {0}imum median velocity of the timesteps of the series", "c"),
     (
-        "velocity_q(25|50|75)_kmps",
-        "the radial velocity of the last interaction at the {0}% quantile of the packet energy of the timestep",
-        "km/s",
+        "luminosity_relative_error",
+        "the relative Monte Carlo error sqrt(sum(e^2)) / sum(e) of the energies e of the packets of the row",
+        "",
     ),
-    (
-        "velocity_q(25|50|75)_c",
-        "the radial velocity of the last interaction at the {0}% quantile of the packet energy of the timestep",
-        "c",
-    ),
-    ("velocity_q50_(min|max)_kmps", "the {0}imum median velocity of the timesteps of the series", "km/s"),
-    ("velocity_q50_(min|max)_c", "the {0}imum median velocity of the timesteps of the series", "c"),
     # the logs of ARTIS
     ("mpirank", "the index of the MPI rank", ""),
     ("update_grid_s", "the time that the MPI rank took to update the grid in the timestep", "s"),

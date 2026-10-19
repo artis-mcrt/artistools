@@ -32,10 +32,12 @@ from artistools.misc import resolve_outputfile
 from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.misc.general import get_bin_index_expr
-from artistools.packets.core import get_emission_velocity_of_columns_expr
+from artistools.packets.core import addarg_velocitykind
+from artistools.packets.core import get_last_interaction_velocity_expr
 from artistools.packets.core import get_packets
 from artistools.packets.core import print_arrival_time_method
 from artistools.packets.core import print_last_interaction_convention
+from artistools.packets.core import print_velocity_method
 from artistools.plottools import addarg_velocityunit
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -57,6 +59,9 @@ DEFAULTOUTPUTNAME = "plotlastinteractionvelocity.pdf"
 # much memory. This number of bins up to the grid corner gives a resolution far below the width of a cell
 VELOCITYHISTOGRAMBINS = 2000
 
+# a timestep with fewer packets gets a warning, because 100 packets of one energy give a luminosity error of 10 %
+LOWPACKETCOUNT: t.Final = 100
+
 
 def get_last_interaction_velocity_quartiles(
     modelpath: Path,
@@ -64,6 +69,7 @@ def get_last_interaction_velocity_quartiles(
     lambdamin: float,
     lambdamax: float,
     position: t.Literal["em", "trueem"],
+    velocitykind: t.Literal["radial", "lineofsight"],
     histogrambinwidth_kmps: float,
     timerange_days: tuple[float, float],
 ) -> dict[int, tuple[pl.DataFrame, int]]:
@@ -92,7 +98,12 @@ def get_last_interaction_velocity_quartiles(
     print_arrival_time_method(modelpath, timesteps, "each timestep with a mid time from -timemin to -timemax")
     print_last_interaction_convention(modelpath)
     timeedges = [*tstarts, tends[-1]]
-    velocity_kmps = get_emission_velocity_of_columns_expr(position, lzpackets.collect_schema().names()) / km_to_cm
+    try:
+        velocity_kmps = (
+            get_last_interaction_velocity_expr(position, velocitykind, lzpackets.collect_schema().names()) / km_to_cm
+        )
+    except ValueError as exc:
+        exit_with_error(str(exc))
     # the filter of the arrival time comes first, thus the scan reads only the row groups of the selected timesteps
     dfhistogram = (
         lzpackets
@@ -125,7 +136,7 @@ def get_last_interaction_velocity_quartiles(
             .agg(
                 packetcount=pl.col("packetcount").sum(),
                 **{
-                    f"velocity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
+                    f"velocity_luminosity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
                         "velocity_kmps", "e_rf", quantile
                     )
                     for quantile in (0.25, 0.5, 0.75)
@@ -135,14 +146,18 @@ def get_last_interaction_velocity_quartiles(
                 time_days=pl.col("timestep").replace_strict(range(len(timemids)), timemids, return_dtype=pl.Float64)
             )
             .sort("timestep")
-            .select("timestep", "time_days", "packetcount", pl.col("^velocity_q.*$"))
+            .select("timestep", "time_days", "packetcount", pl.col("^velocity_luminosity_q.*$"))
         )
         results[dirbin] = (dfquartiles, norecordcount)
     return results
 
 
 def print_method(
-    position: t.Literal["em", "trueem"], lambdamin: float, lambdamax: float, histogrambinwidth_kmps: float
+    position: t.Literal["em", "trueem"],
+    velocitykind: t.Literal["radial", "lineofsight"],
+    lambdamin: float,
+    lambdamax: float,
+    histogrambinwidth_kmps: float,
 ) -> None:
     """Print the selection of the packets and the method of the quartiles."""
     print_detail(
@@ -150,16 +165,11 @@ def print_method(
         " the escape. Each packet reaches the observer. Thus the energy of a packet gives its part of the observed"
         " luminosity in that wavelength range"
     )
-    if position == "em":
+    print_velocity_method(position, velocitykind)
+    if position == "em" and velocitykind == "radial":
         print_detail(
-            "The velocity is |em_pos| / em_time, the radial velocity of the last interaction. In a range with no strong"
-            " line, its median is an estimate of the velocity of the photosphere. An electron scattering also sets"
-            " em_pos"
-        )
-    else:
-        print_detail(
-            "The velocity is |trueem_pos| / trueem_time, the radial velocity of the last thermal emission. An old"
-            " packets file has no trueem_pos, and its column true_emission_velocity then gives the velocity"
+            "In a range with no strong line, the median radial velocity is an estimate of the velocity of the"
+            " photosphere"
         )
     print_detail(
         "In the plot, each point of a series is one timestep, at its mid time. The curve gives the median. The shaded"
@@ -185,14 +195,21 @@ def plot_velocity_against_time(
         print_modelpath(modelpath)
         _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
         histogrambinwidth_kmps = get_grid_corner_velocity_kmps(modelmeta) / VELOCITYHISTOGRAMBINS
-        print_method(position, args.xmin, args.xmax, histogrambinwidth_kmps)
+        print_method(position, args.velocitykind, args.xmin, args.xmax, histogrambinwidth_kmps)
         dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=True, usedegrees=True)
         timerange_days = (
             -math.inf if args.timemin is None else args.timemin,
             math.inf if args.timemax is None else args.timemax,
         )
         quartilesofdirbin = get_last_interaction_velocity_quartiles(
-            modelpath, args.dirbin, args.xmin, args.xmax, position, histogrambinwidth_kmps, timerange_days
+            modelpath,
+            args.dirbin,
+            args.xmin,
+            args.xmax,
+            position,
+            args.velocitykind,
+            histogrambinwidth_kmps,
+            timerange_days,
         )
         for dirbin in args.dirbin:
             dfquartiles, norecordcount = quartilesofdirbin[dirbin]
@@ -204,11 +221,13 @@ def plot_velocity_against_time(
                 continue
             times = dfquartiles["time_days"].to_numpy()
             # a line with no marker draws nothing for a series of one timestep, and the marker shows each timestep
-            (line,) = ax.plot(times, dfquartiles["velocity_q50_kmps"].to_numpy() / kmpsperunit, marker=".", label=label)
+            (line,) = ax.plot(
+                times, dfquartiles["velocity_luminosity_q50_kmps"].to_numpy() / kmpsperunit, marker=".", label=label
+            )
             ax.fill_between(
                 times,
-                dfquartiles["velocity_q25_kmps"].to_numpy() / kmpsperunit,
-                dfquartiles["velocity_q75_kmps"].to_numpy() / kmpsperunit,
+                dfquartiles["velocity_luminosity_q25_kmps"].to_numpy() / kmpsperunit,
+                dfquartiles["velocity_luminosity_q75_kmps"].to_numpy() / kmpsperunit,
                 color=line.get_color(),
                 alpha=0.2,
                 linewidth=0,
@@ -221,15 +240,21 @@ def plot_velocity_against_time(
                     pl.all(),
                 )
             )
-            medians = dfquartiles["velocity_q50_kmps"].to_numpy()
+            medians = dfquartiles["velocity_luminosity_q50_kmps"].to_numpy()
             summaryrows.append({
                 "series": label,
                 "packetcount": int(dfquartiles["packetcount"].sum()),
                 "time_days_min": float(times.min()),
                 "time_days_max": float(times.max()),
-                "velocity_q50_min_kmps": float(medians.min()),
-                "velocity_q50_max_kmps": float(medians.max()),
+                "velocity_luminosity_q50_min_kmps": float(medians.min()),
+                "velocity_luminosity_q50_max_kmps": float(medians.max()),
             })
+            noisytimes = dfquartiles.filter(pl.col("packetcount") < LOWPACKETCOUNT)["time_days"].to_list()
+            if noisytimes:
+                print_warning(
+                    f"{label}: {len(noisytimes)} of {dfquartiles.height} timesteps have fewer than {LOWPACKETCOUNT}"
+                    f" packets, e.g. at {noisytimes[0]:.2f} d. Their quartiles come from few packets"
+                )
             print_detail(
                 f"{label}: {int(dfquartiles['packetcount'].sum())} packets in {dfquartiles.height} timesteps, median"
                 f" from {format_velocity(float(medians[0]), unit)} at {times[0]:.2f} d to"
@@ -243,9 +268,13 @@ def plot_velocity_against_time(
         )
     ax.set_xlabel("Time [d]")
     interaction = "thermal emission" if position == "trueem" else "interaction"
-    ax.set_ylabel(f"Velocity of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
+    velocityname = (
+        "Radial velocity" if args.velocitykind == "radial" else "Line-of-sight velocity (towards the observer)"
+    )
+    ax.set_ylabel(f"{velocityname} of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
     set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
-    ax.set_ylim(bottom=0.0)
+    if args.velocitykind == "radial":
+        ax.set_ylim(bottom=0.0)
     set_legend(ax, args)
     tables = {
         "": convert_velocity_columns(pl.concat(seriestables), unit),
@@ -286,6 +315,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Take the velocity of the last thermal emission and not of the last interaction",
     )
     addarg_velocityunit(parser)
+    addarg_velocitykind(parser)
     addarg_output(parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path/filename for the plot file")
     addarg_figscale(parser)
     addarg_data_output(parser)

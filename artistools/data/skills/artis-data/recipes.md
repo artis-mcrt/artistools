@@ -221,8 +221,12 @@ Question: at which velocities do the packets of a spectral feature last interact
   plots the luminosity of each line of the last emission against the radial velocity of the last interaction.
   `-groupby ion` and `-groupby element` give larger groups. `--absorption` selects the packets by the wavelength of
   their last absorption. It also groups them by the element, the ion, or the line of that absorption.
+  `-velocity lineofsight` takes the line-of-sight velocity, positive towards the observer. Use it for a P Cygni
+  profile, because only that velocity separates the gas that moves towards the observer from the gas that moves
+  away. The blue absorption comes from the gas that moves towards the observer.
   `--print_data` gives the values and the number of packets in each bin. Its `_summary` table gives one row for each
-  group, with the luminosity, the number of packets, and the quartiles of the velocity.
+  group, with the luminosity, the number of packets, the relative error `luminosity_relative_error`, and the
+  quartiles of the velocity. The command warns for a group with a relative error above 10 %.
 - `artistools plotlinecontributions -t <days> -lambdamin <Å> -lambdamax <Å> <modelpath>` plots the Sobolev emission
   and the median tau_sobolev of the strongest lines against velocity, from the level populations. `-rankby tau`
   selects the lines with the largest tau_sobolev, e.g. for an absorption trough. The `_summary` table of
@@ -234,7 +238,11 @@ Question: at which velocities do the packets of a spectral feature last interact
   the lines that emit in the wavelength range.
 - The packets give the region where the radiation last interacts. This region can be different from the region where
   the line absorbs, e.g. for a P Cygni absorption trough.
-- If the range has few packets, the answer has much Monte Carlo noise. Give the number of packets with each answer.
+- If the range has few packets, the answer has much Monte Carlo noise. Give the number of packets and the relative
+  error with each answer.
+- `plotlinecontributions` gives the time t since the explosion, and the packet commands give the arrival time. A
+  distant observer sees the light of the cells at the radial velocity v from t (1 - v / c) to t (1 + v / c). The log of
+  `plotlinecontributions` gives the timesteps of the packet commands that hold this light.
 - The packets give the last interaction alone. `artistools linecontributions` gives the lines from the level
   populations of each cell. It does not count packets, thus a range with few packets gives no additional noise. Its
   tau_sobolev shows where a line can absorb, e.g. for a P Cygni absorption trough. Its emission is the energy that

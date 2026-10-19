@@ -34,25 +34,33 @@ from artistools.misc import get_model_name
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
+from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
+from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.dirbins import check_costheta_dirbin
+from artistools.misc.dirbins import get_costheta_bins
 from artistools.misc.dirbins import get_dirbin_labels
+from artistools.packets.core import addarg_velocitykind
 from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
-from artistools.packets.core import get_emission_velocity_of_columns_expr
+from artistools.packets.core import get_last_interaction_velocity_expr
 from artistools.packets.core import get_packets
+from artistools.packets.core import get_relative_error_expr
+from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.packets.core import print_arrival_time_method
 from artistools.packets.core import print_last_interaction_convention
+from artistools.packets.core import print_velocity_method
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
 from artistools.plottools import get_next_color
+from artistools.plottools import get_signed_velocity_bin_edges_kmps
 from artistools.plottools import get_velocity_bin_edges_kmps
 from artistools.plottools import get_velocity_bin_index_expr
 from artistools.plottools import get_velocity_unit
@@ -156,7 +164,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
     modelpath: Path,
     tdays: float,
     dirbin: int,
-    velocityedges_kmps: Sequence[float],
+    nbins: int,
+    velocitymax_kmps: float | None,
     unit: t.Literal["kmps", "c"],
     *,
     ions: Sequence[tuple[int | None, int | None]] | None,
@@ -170,10 +179,10 @@ def packets_2d_hist_bin_and_ejecta_vel(
 ) -> None:
     """Plot the observed luminosity per unit volume at the last interaction of the packets, and save the figure.
 
-    The image has v_cyl = sqrt(v_x^2 + v_y^2) from 0 to the last edge of velocityedges_kmps, and v_z from minus that
-    edge to that edge. Each pixel has the width of a velocity bin. unit is the unit of the axes. An outputfile of None
-    or of a folder gives the file a name from the selection of the packets. With absorption, the wavelength range
-    applies to the wavelength of the last absorption.
+    The image has nbins pixels of v_cyl = sqrt(v_x^2 + v_y^2) from 0 to velocitymax_kmps, and 2 nbins pixels of v_z
+    from minus to plus velocitymax_kmps. A velocitymax_kmps of None takes the largest v_cyl or |v_z| of the last
+    interactions. unit is the unit of the axes. An outputfile of None or of a folder gives the file a name from the
+    selection of the packets. With absorption, the wavelength range applies to the wavelength of the last absorption.
     """
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if lambdarange is not None:
@@ -221,9 +230,19 @@ def packets_2d_hist_bin_and_ejecta_vel(
         .collect()
     )
 
-    pixelwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
-    xedges = np.array(velocityedges_kmps)
-    yedges = np.concatenate((-xedges[:0:-1], xedges))
+    if velocitymax_kmps is None:
+        fastest_kmps = dfpackets.select(pl.max_horizontal("v_cyl_kmps", pl.col("v_z_kmps").abs()).fill_nan(None).max())
+        if fastest_kmps.item() is None:
+            exit_with_error("no selected packet has a record of the position", "Give a different selection")
+        # the factor keeps the fastest packet inside the last pixel
+        velocitymax_kmps = float(fastest_kmps.item()) * (1.0 + 1e-9)
+        print_detail(
+            f"The axes end at {format_velocity(velocitymax_kmps, unit)}, the largest v_cyl or |v_z| of the last"
+            " interactions. -velocitymax gives a different end"
+        )
+    xedges = np.linspace(0.0, velocitymax_kmps, nbins + 1)
+    pixelwidth_kmps = float(xedges[1])
+    yedges = np.array(get_signed_velocity_bin_edges_kmps(xedges.tolist()))
     # the ring of bin i has a volume of pi ((i + 1)^2 - i^2) w^3 in velocity space, and t^3 makes it a real volume
     dfinimage = (
         dfpackets
@@ -236,10 +255,12 @@ def packets_2d_hist_bin_and_ejecta_vel(
             / (math.pi * (2 * pl.col("xbinindex") + 1) * (pixelwidth_kmps * km_to_cm * pl.col("emtime_s")) ** 3)
         )
     )
-    hist2D = (
-        sum_weights_in_bins(dfinimage, "v_z_kmps", "weight", yedges.tolist(), "xbinindex", len(xedges) - 1)["sum"]
+    dfinimage = dfinimage.with_columns(weightsquared=pl.col("weight") ** 2, one=pl.lit(1.0))
+    hist2D, histsquared, histcount = (
+        sum_weights_in_bins(dfinimage, "v_z_kmps", column, yedges.tolist(), "xbinindex", len(xedges) - 1)["sum"]
         .to_numpy()
         .reshape(len(xedges) - 1, len(yedges) - 1)
+        for column in ("weight", "weightsquared", "one")
     )
     luminosityfactor = inverse_solidangle_fraction / (delta_t_s * nprocs_read)
     print_arrival_time_method(modelpath, [timestep], "the timestep that holds -timedays")
@@ -250,6 +271,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
         position,
         format_velocity(pixelwidth_kmps, unit),
         luminosityfactor,
+        histcount,
         selectiontext=(
             "the Sr II triplet"
             if srIItriplet
@@ -283,6 +305,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
     cbar = fig.colorbar(im, ax=ax)
     luminositylabel = r"observed luminosity per volume [erg/(s cm$^3$)]"
     cbar.set_label(rf"log$_{{10}}$ {luminositylabel}" if colorlogscale else f"O{luminositylabel[1:]}")
+    if dirbin != -1:
+        draw_observer_direction(ax, dirbin, 0.8 * velocitymax_kmps / kmpsperunit)
 
     outfilename = resolve_outputfile(outputfile, start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf")
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
@@ -294,12 +318,31 @@ def packets_2d_hist_bin_and_ejecta_vel(
         output_data(
             args,
             {
-                "": convert_velocity_columns(get_heatmap_table(z, xedges, yedges, valuecolumn), unit),
+                "": convert_velocity_columns(
+                    get_heatmap_table(z, xedges, yedges, valuecolumn).with_columns(
+                        packetcount=pl.Series(histcount.T.ravel(order="F")).cast(pl.Int64),
+                        luminosity_relative_error=pl.Series(
+                            np.sqrt(histsquared.T.ravel(order="F")) / hist2D.T.ravel(order="F"), nan_to_null=True
+                        ),
+                    ),
+                    unit,
+                ),
                 "_summary": pl.DataFrame(),
             },
             outfilename,
         )
     save_figure(fig, outfilename, dpi=300, args=args)
+
+
+def draw_observer_direction(ax: "mplax.Axes", dirbin: int, length: float) -> None:
+    """Draw an arrow from the origin towards the observer, at the mean cos θ of the direction bin."""
+    costhetalower, costhetaupper, _ = get_costheta_bins(usedegrees=False)
+    costhetaindex = dirbin // get_viewingdirection_phibincount()
+    costheta = (costhetalower[costhetaindex] + costhetaupper[costhetaindex]) / 2.0
+    sintheta = math.sqrt(1.0 - costheta**2)
+    head = (length * sintheta, length * costheta)
+    ax.annotate("", xy=head, xytext=(0.0, 0.0), arrowprops={"arrowstyle": "->", "color": "red"})
+    ax.text(*head, " observer", color="red", ha="left", va="center")
 
 
 def print_heatmap_method(
@@ -308,13 +351,15 @@ def print_heatmap_method(
     position: t.Literal["em", "trueem"],
     pixelwidthtext: str,
     luminosityfactor: float,
+    pixelpacketcounts: "npt.NDArray[np.floating]",
     *,
     selectiontext: str | None,
 ) -> None:
     """Print the selection of the packets of the 2D image, the meaning of its colour, and the luminosity in it.
 
     dfpackets holds the selected packets of the timestep, and dfinimage the packets inside the image.
-    selectiontext names the lines of the last absorption that select the packets, or None for all the packets.
+    pixelpacketcounts gives the number of packets of each pixel. selectiontext names the lines of the last
+    absorption that select the packets, or None for all the packets.
     """
     if selectiontext is None:
         print_detail(f"{dfpackets.height} escaped r-packets of the direction bin arrive in the timestep")
@@ -337,6 +382,17 @@ def print_heatmap_method(
         " timestep and by the number of packet files (one for each MPI rank). The command then multiplies the colour"
         " by 4 pi divided by the solid angle of the direction bin"
     )
+    print_detail(
+        "The data table gives the number of packets and the relative error sqrt(sum(w^2)) / sum(w) of each pixel, with"
+        " the weight w of each packet"
+    )
+    pixelcounts = pixelpacketcounts[pixelpacketcounts > 0]
+    if pixelcounts.size > 0 and float(np.median(pixelcounts)) < 1.0 / NOISY_RELATIVE_ERROR**2:
+        print_warning(
+            f"The pixels that hold packets have a median of {float(np.median(pixelcounts)):g} packets, thus the colour"
+            " of a pixel has a large packet noise. Give a smaller -nvelocitybins, a wider wavelength range, or"
+            " -dirbin -1"
+        )
     totalluminosity = float(dfpackets["e_rf"].sum()) * luminosityfactor
     imageluminosity = float(dfinimage["e_rf"].sum()) * luminosityfactor
     print_detail(
@@ -383,7 +439,11 @@ def get_group_velocity_profiles(
             velocitybin=get_velocity_bin_index_expr(pl.col("velocity_kmps"), velocityedges_kmps),
         )
         .group_by("label", "velocitybin")
-        .agg(energy=pl.col("e_rf").cast(pl.Float64).sum(), packetcount=pl.len())
+        .agg(
+            energy=pl.col("e_rf").cast(pl.Float64).sum(),
+            energysquared=(pl.col("e_rf").cast(pl.Float64) ** 2).sum(),
+            packetcount=pl.len(),
+        )
         .collect()
     )
     dftotals = (
@@ -400,7 +460,7 @@ def get_group_velocity_profiles(
         dfgrouped
         .with_columns(label=pl.when(pl.col("label").is_in(drawnnames)).then(pl.col("label")).otherwise(pl.lit("Other")))
         .group_by("label", "velocitybin")
-        .agg(pl.col("energy", "packetcount").sum())
+        .agg(pl.col("energy", "energysquared", "packetcount").sum())
         .sort("label", "velocitybin", nulls_last=True)
     )
     return dfprofiles, drawnnames
@@ -415,13 +475,14 @@ def plot_velocity_profiles_by_group(
     *,
     trueem: bool = False,
     absorption: bool = False,
+    velocitykind: t.Literal["radial", "lineofsight"] = "radial",
     lambdarange: tuple[float, float] | None = None,
     maxseriescount: int | None = 8,
     unit: t.Literal["kmps", "c"] = "kmps",
     outputfile: Path | None = None,
     args: argparse.Namespace | None = None,
 ) -> None:
-    """Plot the luminosity per unit velocity against the radial velocity of the last interaction, for each group.
+    """Plot the luminosity per unit velocity against the velocity of the last interaction, for each group.
 
     A group is an element, an ion, or a line of the last emission, or with absorption, of the last absorption. The
     last absorption of a packet happens at the position of its last emission. unit is the unit of the velocity axis.
@@ -438,7 +499,10 @@ def plot_velocity_profiles_by_group(
     )
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
     delta_t_s = (t_max - t_min) * day_to_s
-    velocity = get_emission_velocity_of_columns_expr(position, lzdfpackets.collect_schema().names())
+    try:
+        velocity = get_last_interaction_velocity_expr(position, velocitykind, lzdfpackets.collect_schema().names())
+    except ValueError as exc:
+        exit_with_error(str(exc))
     dfpackets = (
         lzdfpackets
         .filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="left"))
@@ -469,7 +533,7 @@ def plot_velocity_profiles_by_group(
     print_arrival_time_method(modelpath, [timestep], "the timestep that holds -timedays")
     print_last_interaction_convention(modelpath)
     print_group_profile_method(
-        dfprofiles, dfpackets.height, position, typecolumn, velocityedges_kmps, dfgroupsummary, unit
+        dfprofiles, dfpackets.height, position, velocitykind, typecolumn, velocityedges_kmps, dfgroupsummary, unit
     )
 
     dftable = get_group_profile_table(dfprofiles, velocityedges_kmps, luminosity_factor, [*drawnnames, "Other"])
@@ -479,7 +543,8 @@ def plot_velocity_profiles_by_group(
     draw_group_profiles(ax, dftable, velocityedges_kmps, unit, fractionoflabel)
     # with --absorption the velocity is still the one of em_pos, which an electron scattering after the absorption moves
     interaction = "thermal emission" if trueem else "interaction"
-    ax.set_xlabel(f"Radial velocity of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
+    velocityname = "Radial velocity" if velocitykind == "radial" else "Line-of-sight velocity (towards the observer)"
+    ax.set_xlabel(f"{velocityname} of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
     ax.set_ylabel(rf"$\Delta L / \Delta v$ [erg s$^{{-1}}$ {INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
     titleparts = [f"{get_model_name(modelpath)} {get_timestep_time(modelpath, timestep):.2f} d"]
     if lambdarange is not None:
@@ -495,6 +560,8 @@ def plot_velocity_profiles_by_group(
     # the last absorption, the last thermal emission, and the last emission select different groups, thus the files
     # must not replace each other
     kind = "absorption" if absorption else ("thermalemission" if trueem else "emission")
+    if velocitykind == "lineofsight":
+        kind += "_lineofsight"
     outfilename = resolve_outputfile(
         outputfile, f"{start_of_filename}{kind}_by{groupby}_ts{timestep}_into_dirbin{dirbin}.pdf"
     )
@@ -531,6 +598,7 @@ def print_group_profile_method(
     dfprofiles: pl.DataFrame,
     packetcount: int,
     position: t.Literal["em", "trueem"],
+    velocitykind: t.Literal["radial", "lineofsight"],
     typecolumn: str,
     velocityedges_kmps: Sequence[float],
     dfgroupsummary: pl.DataFrame,
@@ -552,23 +620,18 @@ def print_group_profile_method(
         " of the observed luminosity, because other lines absorb its photons again. plotlinecontributions gives the"
         " emission of each line in each cell"
     )
-    if position == "em":
-        print_detail(
-            "The velocity is |em_pos| / em_time, the radial velocity of the last interaction. An electron scattering"
-            " also sets em_pos, thus a packet that scatters after its last emission gives the place of the scattering"
-        )
-    else:
-        print_detail(
-            "The velocity is |trueem_pos| / trueem_time, the radial velocity of the last thermal emission. An old"
-            " packets file has no trueem_pos, and its column true_emission_velocity then gives the velocity"
-        )
+    print_velocity_method(position, velocitykind)
     nbins = len(velocityedges_kmps) - 1
     binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
     print_detail(
-        f"{nbins} velocity bins of {format_velocity(binwidth_kmps, unit)} from 0 to"
-        f" {format_velocity(velocityedges_kmps[-1], unit)}. The luminosity"
-        " is the packet energy divided by the width of the timestep and by the number of MPI ranks. A factor of 4 pi"
-        " divided by the solid angle of the direction bin then applies"
+        f"{nbins} velocity bins of {format_velocity(binwidth_kmps, unit)} from"
+        f" {format_velocity(velocityedges_kmps[0], unit)} to {format_velocity(velocityedges_kmps[-1], unit)}. The"
+        " luminosity is the packet energy divided by the width of the timestep and by the number of packet files (one"
+        " for each MPI rank). The command then multiplies it by 4 pi divided by the solid angle of the direction bin"
+    )
+    print_detail(
+        "The relative error of a luminosity is sqrt(sum(e^2)) / sum(e) of the packet energies e, which is"
+        " 1 / sqrt(n) for n packets of one energy. The table gives it in the column luminosity_relative_error"
     )
     totalenergy = float(dfprofiles["energy"].sum())
     outside = dfprofiles.filter(pl.col("velocitybin").is_null())
@@ -590,8 +653,15 @@ def print_group_profile_method(
             else "no record of the position"
         )
         print_detail(
-            f"  {row['label']}: {row['luminosity_erg_per_s']:.3e} erg/s ({row['luminosity_fraction']:.1%}),"
-            f" {velocitytext}, {row['packetcount']} packets"
+            f"  {row['label']}: {row['luminosity_erg_per_s']:.3e} erg/s ({row['luminosity_fraction']:.1%}) with a"
+            f" relative error of {row['luminosity_relative_error']:.0%}, {velocitytext}, {row['packetcount']} packets"
+        )
+    noisylabels = dfgroupsummary.filter(pl.col("luminosity_relative_error") > NOISY_RELATIVE_ERROR)["label"].to_list()
+    if noisylabels:
+        print_warning(
+            f"These groups have a luminosity with a relative error above {NOISY_RELATIVE_ERROR:.0%}:"
+            f" {', '.join(noisylabels)}. Thus the packet noise of their fractions and velocity profiles is large. Give"
+            " a wider wavelength range or -dirbin -1. A smaller -maxseriescount puts the weak groups in Other"
         )
 
 
@@ -618,6 +688,7 @@ def get_group_summary(
         .agg(
             luminosity_erg_per_s=pl.col("e_rf").cast(pl.Float64).sum() * luminosity_factor,
             packetcount=pl.len(),
+            luminosity_relative_error=get_relative_error_expr(pl.col("e_rf")),
             **{
                 f"velocity_luminosity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
                     "velocity_kmps", "e_rf", quantile
@@ -632,7 +703,10 @@ def get_group_summary(
             "luminosity_erg_per_s",
             "luminosity_fraction",
             "packetcount",
-            pl.exclude("label", "luminosity_erg_per_s", "luminosity_fraction", "packetcount"),
+            "luminosity_relative_error",
+            pl.exclude(
+                "label", "luminosity_erg_per_s", "luminosity_fraction", "packetcount", "luminosity_relative_error"
+            ),
         )
     )
 
@@ -657,6 +731,7 @@ def get_group_profile_table(
         luminosity_erg_per_s=pl.col("energy").fill_null(0.0) * luminosity_factor,
         luminosity_per_velocity_erg_per_s_per_kmps=pl.col("energy").fill_null(0.0) * luminosity_factor / binwidth_kmps,
         packetcount=pl.col("packetcount").fill_null(0),
+        luminosity_relative_error=pl.col("energysquared").sqrt() / pl.col("energy"),
     )
 
 
@@ -766,7 +841,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-groupby",
         choices=["element", "ion", "line"],
         help=(
-            "Plot the luminosity per unit velocity against the radial velocity of the last interaction. Draw one"
+            "Plot the luminosity per unit velocity against the velocity (-velocity) of the last interaction. Draw one"
             " series for each element, ion, or line of the last emission. Without this option, the plot is a 2D image"
         ),
     )
@@ -786,6 +861,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help='Number of groups that -groupby draws. The other groups join the group "Other"',
     )
     addarg_velocitybins(parser)
+    addarg_velocitykind(parser)
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument(
         "--colorlogscale",
@@ -830,6 +906,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     ions = get_selected_ions(args)
 
+    if args.groupby is None and args.velocitykind != "radial":
+        exit_with_error(
+            "-velocity applies only with -groupby. The 2D image always gives v_cyl and v_z",
+            "Remove -velocity, or give -groupby",
+        )
     if args.groupby is not None:
         plot_velocity_profiles_from_args(args, ions)
         return
@@ -840,7 +921,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         modelpath,
         args.timedays,
         args.dirbin,
-        get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit),
+        args.nvelocitybins,
+        None
+        if args.velocitymax is None
+        else get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit)[-1],
         unit,
         ions=ions,
         srIItriplet=args.srIItriplet,
@@ -909,14 +993,19 @@ def plot_velocity_profiles_from_args(
             )
     modelpath = Path(args.modelpath)
     unit = get_velocity_unit(modelpath, args.velocityunit)
+    velocityedges_kmps = get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit)
+    if args.velocitykind == "lineofsight":
+        # a line-of-sight velocity can be negative, thus each side of zero gets -nvelocitybins bins
+        velocityedges_kmps = get_signed_velocity_bin_edges_kmps(velocityedges_kmps)
     plot_velocity_profiles_by_group(
         modelpath,
         args.timedays,
         args.dirbin,
         args.groupby,
-        get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit),
+        velocityedges_kmps,
         trueem=args.use_thermalemissiontype,
         absorption=args.absorption,
+        velocitykind=args.velocitykind,
         lambdarange=get_lambdarange(args),
         maxseriescount=args.maxseriescount,
         unit=unit,

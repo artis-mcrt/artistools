@@ -582,7 +582,8 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
             modelpath,
             tdays,
             -1,
-            [0.02 * c_kmps * binindex for binindex in range(26)],
+            25,
+            0.5 * c_kmps,
             "c",
             ions=None,
             srIItriplet=False,
@@ -725,9 +726,9 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
     assert dftable["packetcount"].to_list() == [3, 1]
     # the histogram bins of the test model are 25 km/s wide, and each velocity takes the centre of its bin
     expected = {
-        "velocity_q25_kmps": [3000.0, 7000.0],
-        "velocity_q50_kmps": [5000.0, 7000.0],
-        "velocity_q75_kmps": [5000.0, 7000.0],
+        "velocity_luminosity_q25_kmps": [3000.0, 7000.0],
+        "velocity_luminosity_q50_kmps": [5000.0, 7000.0],
+        "velocity_luminosity_q75_kmps": [5000.0, 7000.0],
     }
     for column, values in expected.items():
         assert np.allclose(dftable[column].to_numpy(), values, rtol=0.0, atol=15.0), column
@@ -769,6 +770,57 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
     luminosity = float(dfwindow["e_rf"].sum()) / ((t_end - t_start) * at.constants.day_to_s * nprocs)
     assert dfsummary["packetcount"].sum() == dfwindow.height > 0
     assert np.isclose(float(dfsummary["luminosity_erg_per_s"].sum()), luminosity, rtol=1e-6, atol=0.0)
+
+
+def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path: Path) -> None:
+    """-velocity lineofsight bins (em_pos . dir) / em_time from minus to plus the last edge.
+
+    The plot had only the radial velocity, which cannot separate the blue side and the red side of a P Cygni profile.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 7.0)
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
+    plotlastpacketinteraction.main(
+        argsraw=[],
+        modelpath=modelpath,
+        timedays=7.0,
+        groupby="element",
+        nvelocitybins=5,
+        velocitykind="lineofsight",
+        outputfile=tmp_path / "groups.pdf",
+        write_data=True,
+    )
+    dftable = pl.read_csv(tmp_path / "groups.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfbins = (
+        dftable.group_by("x_lower_kmps", "x_upper_kmps").agg(pl.col("luminosity_erg_per_s").sum()).sort("x_lower_kmps")
+    )
+    edges = [*dfbins["x_lower_kmps"].to_list(), float(dfbins["x_upper_kmps"][-1])]
+    assert len(edges) == 11
+    assert np.isclose(edges[0], -edges[-1], rtol=1e-9, atol=0.0)
+
+    nprocs, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfwindow = (
+        lzpackets
+        .filter(pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"))
+        .select(
+            pl.col("e_rf").cast(pl.Float64),
+            velocity_kmps=(
+                pl.col("em_posx") * pl.col("dirx")
+                + pl.col("em_posy") * pl.col("diry")
+                + pl.col("em_posz") * pl.col("dirz")
+            )
+            / (pl.col("em_time") * at.constants.km_to_cm),
+        )
+        .collect()
+    )
+    velocities = dfwindow["velocity_kmps"].to_numpy()
+    assert velocities.min() < 0.0 < velocities.max()
+    luminosityfactor = 1.0 / ((t_end - t_start) * at.constants.day_to_s * nprocs)
+    expected, _ = np.histogram(velocities, bins=edges, weights=dfwindow["e_rf"].to_numpy() * luminosityfactor)
+    assert np.allclose(dfbins["luminosity_erg_per_s"].to_numpy(), expected, rtol=1e-6, atol=0.0)
 
 
 def test_a_position_outside_the_grid_gets_no_cell() -> None:
@@ -861,7 +913,8 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
             modelpath,
             tdays,
             -1,
-            [0.02 * c_kmps * binindex for binindex in range(26)],
+            25,
+            0.5 * c_kmps,
             "c",
             ions=None,
             srIItriplet=False,

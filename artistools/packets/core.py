@@ -1,5 +1,6 @@
 """Read ARTIS packets and virtual packets files, caching them as parquet, and bin them by viewing direction."""
 
+import argparse
 import contextlib
 import datetime as dt
 import math
@@ -256,6 +257,62 @@ def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) 
         + pl.col(f"{position}_posy") * pl.col("diry")
         + pl.col(f"{position}_posz") * pl.col("dirz")
     ) / get_emission_time_expr(position)
+
+
+# a sum of packet energies with a relative error above this fraction gets a warning. 100 packets of one energy give 0.1
+NOISY_RELATIVE_ERROR: t.Final = 0.1
+
+
+def get_relative_error_expr(energy: pl.Expr) -> pl.Expr:
+    """Return the relative Monte Carlo error sqrt(sum(e^2)) / sum(e) of a sum of packet energies.
+
+    For n packets of one energy, the error is 1 / sqrt(n).
+    """
+    return (energy.cast(pl.Float64) ** 2).sum().sqrt() / energy.cast(pl.Float64).sum()
+
+
+def addarg_velocitykind(parser: argparse.ArgumentParser) -> None:
+    """Add -velocity, which selects the radial or the line-of-sight velocity of the last interaction."""
+    parser.add_argument(
+        "-velocity",
+        dest="velocitykind",
+        choices=["radial", "lineofsight"],
+        default="radial",
+        help=(
+            "The velocity of the last interaction or of the last thermal emission: the radial velocity, or the"
+            " line-of-sight velocity, positive towards the observer. The line-of-sight velocity gives the Doppler"
+            " shift of a P Cygni profile"
+        ),
+    )
+
+
+def get_last_interaction_velocity_expr(
+    position: t.Literal["em", "trueem"], velocitykind: t.Literal["radial", "lineofsight"], packetcolumns: Sequence[str]
+) -> pl.Expr:
+    """Return the radial or the line-of-sight velocity [cm/s] of the last interaction or the last thermal emission."""
+    if velocitykind == "radial":
+        return get_emission_velocity_of_columns_expr(position, packetcolumns)
+    if f"{position}_posx" not in packetcolumns:
+        msg = f"The packets hold no {position}_pos, thus they give no line-of-sight velocity. Give -velocity radial"
+        raise ValueError(msg)
+    return get_emission_velocity_lineofsight_expr(position)
+
+
+def print_velocity_method(
+    position: t.Literal["em", "trueem"], velocitykind: t.Literal["radial", "lineofsight"]
+) -> None:
+    """Print the definition of the velocity of the last interaction or of the last thermal emission."""
+    event = "last interaction" if position == "em" else "last thermal emission"
+    if velocitykind == "radial":
+        print_detail(f"The velocity is |{position}_pos| / {position}_time, the radial velocity of the {event}")
+        if position == "trueem":
+            print_detail("An old packets file has no trueem_pos, and its column true_emission_velocity is the velocity")
+    else:
+        print_detail(
+            f"The velocity is ({position}_pos . n) / {position}_time, the line-of-sight velocity of the {event}, with"
+            " the direction n of the packet at the escape. A positive velocity is towards the observer. A line that"
+            " emits or absorbs at a positive velocity gives a wavelength below its rest wavelength"
+        )
 
 
 def get_modelgridindex_from_velocity_expr(velocity: pl.Expr, dfmodel: pl.LazyFrame) -> pl.Expr:

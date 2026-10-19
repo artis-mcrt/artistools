@@ -2111,6 +2111,11 @@ def get_velocity_bin_edges_kmps(
     return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
 
 
+def get_signed_velocity_bin_edges_kmps(velocityedges_kmps: Sequence[float]) -> list[float]:
+    """Return the edges [km/s] from minus the last edge to the last edge, from edges that start at zero."""
+    return [-edge for edge in velocityedges_kmps[:0:-1]] + list(velocityedges_kmps)
+
+
 def convert_velocity_columns(dftable: pl.DataFrame, unit: t.Literal["kmps", "c"]) -> pl.DataFrame:
     """Return the table with each velocity column and each value per unit velocity in the unit of the axis.
 

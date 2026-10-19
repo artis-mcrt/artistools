@@ -33,6 +33,8 @@ from artistools.misc import get_artis_option
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_time
+from artistools.misc import get_timestep_times
+from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
@@ -229,6 +231,14 @@ def plot_trough_estimate(
     )
     plot_trough(ax, dfdepths, dfranked, colours, unit, photospherevelocity_kmps)
     print_trough_method(dirbin, photospherevelocity_kmps, unit, dfranked.height, dfblend, dopplershift=dopplershift)
+    # the gas in front of the photosphere moves towards the observer, thus its light arrives at about t (1 - v_ph / c)
+    arrival_days = inputs.time_days * (1.0 - photospherevelocity_kmps / KMPS_PER_VELOCITYUNIT["c"])
+    print_detail(
+        "To test the estimate, compare it with the absorption of each line in the packet spectrum of the same"
+        f" direction: artistools plotspectra {modelpath} --frompackets -dirbin {dirbin} --average_over_phi_angle"
+        f" --showabsorption -groupby line -timedays {arrival_days:.3g}. The light of the gas in front of the"
+        f" photosphere arrives at about t (1 - v_ph / c) = {arrival_days:.3g} d"
+    )
     ax.set_ylabel("Trough depth")
     return {
         "_trough": convert_velocity_columns(
@@ -239,6 +249,34 @@ def plot_trough_estimate(
         ),
         "_troughblend": dfblend,
     }
+
+
+def print_arrival_times(
+    modelpath: Path, profiles: "LineVelocityProfiles", time_days: float, unit: t.Literal["kmps", "c"]
+) -> None:
+    """Print the arrival times of the light of the ranked lines, and the timesteps of the packet commands that hold it.
+
+    The median takes the emission of each cell and ranked line as the weight. The cells at the radial velocity v make
+    a shell. A distant observer sees the light of that shell from t (1 - v / c) to t (1 + v / c).
+    """
+    median_kmps = profiles.dfrankedcells.select(
+        get_weighted_quantile_expr("velocity_kmps", "emission_erg_per_s", 0.5)
+    ).item()
+    if median_kmps is None:
+        return
+    beta = median_kmps / KMPS_PER_VELOCITYUNIT["c"]
+    arrivalrange_days = (time_days * (1.0 - beta), time_days * (1.0 + beta))
+    tstarts = get_timestep_times(modelpath, loc="start")
+    arrivaltimesteps = [
+        int(np.clip(np.searchsorted(tstarts, arrival_days, side="right") - 1, 0, len(tstarts) - 1))
+        for arrival_days in arrivalrange_days
+    ]
+    print_detail(
+        "Half of the emission of the ranked lines comes from cells below the radial velocity"
+        f" {format_velocity(median_kmps, unit)}. A distant observer sees the light of the cells at that velocity from"
+        f" {arrivalrange_days[0]:.3g} to {arrivalrange_days[1]:.3g} d, i.e. t (1 - v / c) to t (1 + v / c). The"
+        f" packet commands bin these arrival times in timesteps {arrivaltimesteps[0]} to {arrivaltimesteps[1]}"
+    )
 
 
 def print_ranked_lines(dflinesummary: pl.DataFrame, rankby: str, unit: t.Literal["kmps", "c"], lineset: str) -> None:
@@ -465,6 +503,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     dfranked = profiles.dfranked.with_columns(label=get_line_label())
     dflinesummary = get_ranked_line_summary(profiles).with_columns(label=get_line_label())
     print_ranked_lines(dflinesummary, args.rankby, unit, lineset)
+    print_arrival_times(args.modelpath, profiles, inputs.time_days, unit)
 
     fig, axesgrid = make_frame_figure(args, rows=3 if troughsettings else 2, aspect=0.45)
     axes = axesgrid[:, 0]
