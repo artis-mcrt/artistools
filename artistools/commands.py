@@ -235,6 +235,7 @@ subcommandtree: CommandTree = {
     "check": CommandSpec(
         "check",
         helptext="Check whether the results of an ARTIS model deserve trust, and give one row for each check.",
+        aliases=("doctor",),
         note=(
             "The checks also examine the input files, the caches, and the range of the arrival times. --frompackets"
             " also reads the escaped packets to find the Monte Carlo noise of the light curve."
