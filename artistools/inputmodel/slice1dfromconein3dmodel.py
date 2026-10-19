@@ -267,8 +267,6 @@ def make_1d_model_files(args: argparse.Namespace, logprint: Callable[..., None])
 
     save_initelemabundances(abundances_df, outpath=Path(args.outputfile, "abundances_1d.txt"))
 
-    print("Saved abundances_1d.txt and model_1d.txt")
-
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""

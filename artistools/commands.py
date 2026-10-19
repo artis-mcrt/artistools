@@ -320,12 +320,7 @@ subcommandtree: CommandTree = {
         "make1dslicefrom3dmodel": CommandSpec(
             "inputmodel.make1dslicefrom3d",
             helptext="Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice.",
-            examples=(
-                (
-                    "-inputfolder . -axis x -outputfolder 1dslice",
-                    "a 1D slice of the 3D model along x, in the folder 1dslice",
-                ),
-            ),
+            examples=((". -axis x -o 1dslice", "a 1D slice of the 3D model along x, in the folder 1dslice"),),
             exampletestfolder="testmodel_3d_10^3",
         ),
         "makeartismodel": CommandSpec(

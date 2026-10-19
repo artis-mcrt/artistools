@@ -4443,9 +4443,7 @@ def test_make1dslicefrom3dmodel(tmp_path: Path) -> None:
     from artistools.inputmodel import make1dslicefrom3d
 
     outfolder = tmp_path / "slice"
-    make1dslicefrom3d.main(
-        argsraw=[], inputfolder=modelpath_3d, outputfolder=str(outfolder), pdfoutputfile=str(tmp_path / "slice.pdf")
-    )
+    make1dslicefrom3d.main(argsraw=[str(modelpath_3d), "-o", str(outfolder), "-opdf", str(tmp_path / "slice.pdf")])
 
     dfmodel, modelmeta = at.inputmodel.get_modeldata(outfolder, get_elemabundances=True, printwarningsonly=True)
     # the 10 x 10 x 10 grid has 5 cells on each side of the origin

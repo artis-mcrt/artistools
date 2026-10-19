@@ -17,9 +17,12 @@ from artistools.inputmodel.core import save_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_force
 from artistools.misc import addarg_legend
+from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
+from artistools.misc.remote import model_path_from_text
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -30,15 +33,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_legend(parser)
     addarg_darkmode(parser)
     addarg_show(parser)
-    parser.add_argument("-inputfolder", action="store", default=".", help="Path to folder with 3D files")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the 3D ARTIS model")
+    # the earlier name of the model path
+    parser.add_argument("-inputfolder", dest="modelpath", type=model_path_from_text, help=argparse.SUPPRESS)
 
-    parser.add_argument(
-        "-axis", action="store", dest="chosenaxis", default="x", choices=["x", "y", "z"], help="Slice axis (x, y, or z)"
-    )
+    parser.add_argument("-axis", default="x", choices=["x", "y", "z"], help="Slice axis (x, y, or z)")
 
-    parser.add_argument(
-        "-outputfolder", action="store", default="1dslice", help="Path to folder in which to store 1D output files"
+    addarg_output(
+        parser, kind="folder", default=Path("1dslice"), helptext="Folder for the 1D model.txt and abundances.txt"
     )
+    # the earlier name of -o
+    parser.add_argument("-outputfolder", dest="outputfile", type=Path, help=argparse.SUPPRESS)
 
     parser.add_argument("-opdf", action="store", dest="pdfoutputfile", help="Path/filename for PDF plot")
     addarg_force(parser)
@@ -48,12 +53,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice."""
     args = parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
-    confirm_overwrite([args.outputfolder], ("model.txt", "abundances.txt"), force=args.force)
-    Path(args.outputfolder).mkdir(parents=True, exist_ok=True)
+    confirm_overwrite([args.outputfile], ("model.txt", "abundances.txt"), force=args.force)
+    Path(args.outputfile).mkdir(parents=True, exist_ok=True)
 
-    dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.inputfolder, args.outputfolder, args.chosenaxis)
+    dict3dcellidto1dcellid, xlist, ylists = slice_3dmodel(args.modelpath, args.outputfile, args.axis)
 
-    slice_abundance_file(args.inputfolder, args.outputfolder, dict3dcellidto1dcellid)
+    slice_abundance_file(args.modelpath, args.outputfile, dict3dcellidto1dcellid)
 
     if args.pdfoutputfile:
         make_plot(xlist, ylists, args.pdfoutputfile, args)

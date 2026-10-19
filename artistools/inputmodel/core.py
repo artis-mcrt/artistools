@@ -29,6 +29,8 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_identity
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
+from artistools.misc import print_detail
+from artistools.misc import print_saved
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
@@ -1296,7 +1298,8 @@ def save_modeldata(
             write_artis_csv(dfmodel, fmodel)
 
     remove_parquet_cache(modelfilepath)
-    print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
+    print_saved(modelfilepath)
+    print_detail(f"took {time.perf_counter() - timestart:.1f} seconds")
 
 
 def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int:
@@ -1425,7 +1428,8 @@ def save_initelemabundances(
         write_artis_csv(dfelabundances, fabund)
 
     remove_parquet_cache(abundancefilename)
-    print(f"wrote {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
+    print_saved(abundancefilename)
+    print_detail(f"took {time.perf_counter() - timestart:.1f} seconds")
 
 
 def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = ".") -> None:

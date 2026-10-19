@@ -23,6 +23,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.misc import read_wsv
 from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
@@ -114,15 +115,15 @@ def make_energy_files(cellmass_grams: npt.NDArray[np.floating], outputpath: Path
 
     energydistributiondata = make_energydistribution_of_mass(cellmass_grams, E_tot_per_gram)
 
-    print("Writing energydistribution.txt")
     with Path(outputpath, "energydistribution.txt").open("w", encoding="utf-8") as fmodel:
         fmodel.write(f"{len(energydistributiondata['cell_energy'])}\n")  # write number of points
         fmodel.writelines(f"{cellid}\t{cell_energy:g}\n" for cellid, cell_energy in energydistributiondata.iter_rows())
 
-    print("Writing energyrate.txt")
+    print_saved(Path(outputpath, "energydistribution.txt"))
     with Path(outputpath, "energyrate.txt").open("w", encoding="utf-8") as fmodel:
         fmodel.write(f"{len(times_and_rate['times'])}\n")  # write number of points
         times_and_rate.write_csv(fmodel, separator="\t", include_header=False, float_precision=10)
+    print_saved(Path(outputpath, "energyrate.txt"))
 
 
 def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
