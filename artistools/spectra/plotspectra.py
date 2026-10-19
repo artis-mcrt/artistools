@@ -2346,7 +2346,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-x", dest="xunit", type=parse_xunit_argument, help=argparse.SUPPRESS)
 
     addarg_axislimits(
-        parser, wavelength_aliases=True, xminhelp="Plot range: minimum x range", xmaxhelp="Plot range: maximum x range"
+        parser,
+        wavelength_aliases=True,
+        xtype=float,
+        xminhelp="Plot range: minimum x range",
+        xmaxhelp="Plot range: maximum x range",
     )
 
     xbinsizegroup = parser.add_mutually_exclusive_group()

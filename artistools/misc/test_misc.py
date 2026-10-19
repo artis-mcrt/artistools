@@ -4110,3 +4110,66 @@ def test_confirm_overwrite_matches_stops_for_a_file_of_the_pattern(tmp_path: Pat
     with pytest.raises(SystemExit):
         at.misc.confirm_overwrite_matches(tmp_path, ("spectrum_ts*.txt",), force=False)
     at.misc.confirm_overwrite_matches(tmp_path, ("spectrum_ts*.txt",), force=True)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("250-300", "250-300"),
+        ("1e-2-2e-2", "1e-2-2e-2"),
+        ("250d-300d", "250-300"),
+        ("12h-36h", "0.5-1.5"),
+        ("86400s", "1"),
+    ],
+)
+def test_time_days_range_arg_splits_at_the_range_hyphen_only(text: str, expected: str) -> None:
+    """Convert a time range with units to days, and keep a text with no unit, which a plot label can show.
+
+    A hyphen of an exponent, e.g. 1e-2, is not the hyphen of the range.
+    """
+    from artistools.misc.cliutils import time_days_range_arg
+
+    assert time_days_range_arg(text) == expected
+
+
+def test_wavelength_and_time_units_convert_to_the_unit_of_the_command() -> None:
+    """Give a wavelength in Angstroms and a time in days, and refuse a unit of a different quantity."""
+    from artistools.misc.cliutils import time_days_arg
+    from artistools.misc.cliutils import wavelength_angstroms_arg
+
+    assert [wavelength_angstroms_arg(text) for text in ("6000", "600nm", "0.6micron", "6000Å")] == [6000.0] * 4
+    assert np.isclose(time_days_arg("2.592e6s"), 30.0, rtol=1e-12)
+    for convert, text in ((wavelength_angstroms_arg, "2keV"), (time_days_arg, "3yr")):
+        with pytest.raises(argparse.ArgumentTypeError):
+            convert(text)
+
+
+def test_explain_reads_no_packets_and_gives_the_timesteps(capsys: pytest.CaptureFixture[str]) -> None:
+    """Print the timesteps of the selection for --explain, and stop before the command reads a packet."""
+    import artistools.__main__
+
+    modelfolder = at.get_path("testdata") / "test-classicmode_3d"
+    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", side_effect=AssertionError):
+        artistools.__main__.main(
+            argsraw=["plotlastpacketinteraction", str(modelfolder), "-t", "6.5d", "-lambdamin", "300nm", "--explain"]
+        )
+    stdout = capsys.readouterr().out
+    assert "-xmin = 3000.0" in stdout
+    assert f"model: {modelfolder}" in stdout
+    assert "time: timesteps" in stdout
+
+
+def test_reversed_wavelength_selection_stops_before_the_read(capsys: pytest.CaptureFixture[str]) -> None:
+    """Stop at the parse when -lambdamin is above -lambdamax, because such a range selects no packet."""
+    import artistools.__main__
+
+    modelfolder = at.get_path("testdata") / "test-classicmode_3d"
+    with (
+        mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", side_effect=AssertionError),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        artistools.__main__.main(
+            argsraw=["plotlastpacketinteraction", str(modelfolder), "-lambdamin", "8000", "-lambdamax", "3000"]
+        )
+    assert excinfo.value.code == 1
+    assert "-lambdamin 8000 is above -lambdamax 3000" in capsys.readouterr().err

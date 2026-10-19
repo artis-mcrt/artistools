@@ -38,6 +38,8 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc.cliutils import wavelength_angstroms_arg
+from artistools.misc.cliutils import WAVELENGTH_UNIT_HELP
 from artistools.misc.general import get_bin_index_expr
 from artistools.rustext import sum_binned_line_opacities
 
@@ -453,11 +455,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # every command that reads a range of wavelengths takes both spellings, thus -xmin reaches this
     # command as well. This one bins the opacities over that range, and it draws no plot
     parser.add_argument(
-        "-xmin", "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities"
+        "-xmin",
+        "-lambdamin",
+        type=wavelength_angstroms_arg,
+        default=20.0,
+        help=f"Minimum wavelength for binned opacities. {WAVELENGTH_UNIT_HELP}",
     )
     parser.add_argument(
-        "-xmax", "-lambdamax", type=float, default=50000.0, help="Maximum wavelength in Angstroms for binned opacities"
+        "-xmax",
+        "-lambdamax",
+        type=wavelength_angstroms_arg,
+        default=50000.0,
+        help=f"Maximum wavelength for binned opacities. {WAVELENGTH_UNIT_HELP}",
     )
+    parser.set_defaults(xrangeisselection=True)
     parser.add_argument(
         "-deltalambda", type=float, default=10.0, help="Wavelength bin width in Angstroms for binned opacities"
     )

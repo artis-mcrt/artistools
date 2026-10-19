@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import copy
 import dataclasses as dc
 import itertools
 import math
@@ -21,6 +22,8 @@ import matplotlib.colors as mplcolors
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
+from artistools.constants import day_to_s
+from artistools.constants import hour_to_s
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import print_saved
@@ -155,6 +158,7 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
             + (". Use -2 to select all viewing angles" if allow_select_all else "")
         ),
     )
+    parser.set_defaults(allowalldirbins=allow_select_all)
 
     parser.add_argument(
         "--usedegrees",
@@ -726,8 +730,19 @@ def addarg_wavelengthrange(parser: argparse.ArgumentParser, selected: str) -> No
     selected names what the range selects, e.g. "the lines". A plot command with a wavelength axis takes
     addarg_axislimits, because there -xmin and -xmax are the limits of the axis.
     """
-    parser.add_argument("-xmin", "-lambdamin", type=float, help=f"Minimum wavelength of {selected} in Angstroms")
-    parser.add_argument("-xmax", "-lambdamax", type=float, help=f"Maximum wavelength of {selected} in Angstroms")
+    parser.add_argument(
+        "-xmin",
+        "-lambdamin",
+        type=wavelength_angstroms_arg,
+        help=f"Minimum wavelength of {selected}. {WAVELENGTH_UNIT_HELP}",
+    )
+    parser.add_argument(
+        "-xmax",
+        "-lambdamax",
+        type=wavelength_angstroms_arg,
+        help=f"Maximum wavelength of {selected}. {WAVELENGTH_UNIT_HELP}",
+    )
+    parser.set_defaults(xrangeisselection=True)
 
 
 def addarg_sliceaxis(parser: argparse.ArgumentParser, *, default: str, helptext: str) -> None:
@@ -762,12 +777,18 @@ def addarg_timedays(
     flags = ("-timedays", "-time", "-t")
     if kind == "rangestr":
         group.add_argument(
-            *flags, dest="timedays", nargs="?", help=helptext or "Range of times in days to plot (e.g. 50-100)"
+            *flags,
+            dest="timedays",
+            nargs="?",
+            type=time_days_range_arg,
+            help=f"{helptext or 'Range of times in days to plot (e.g. 50-100)'}. {TIME_UNIT_HELP}",
         )
     elif kind == "float":
-        group.add_argument(*flags, type=float, help=helptext or "Time in days to plot")
+        group.add_argument(*flags, type=time_days_arg, help=f"{helptext or 'Time in days to plot'}. {TIME_UNIT_HELP}")
     else:
-        group.add_argument(*flags, help=helptext or "Time in days to plot")
+        group.add_argument(
+            *flags, type=time_days_range_arg, help=f"{helptext or 'Time in days to plot'}. {TIME_UNIT_HELP}"
+        )
 
 
 def addarg_timeminmax(
@@ -778,8 +799,8 @@ def addarg_timeminmax(
 ) -> None:
     """Add the -timemin and -timemax arguments bounding a time range in days."""
     group = arggroup(parser, "time selection")
-    group.add_argument("-timemin", type=float, help=helptext_min)
-    group.add_argument("-timemax", type=float, help=helptext_max)
+    group.add_argument("-timemin", type=time_days_arg, help=f"{helptext_min}. {TIME_UNIT_HELP}")
+    group.add_argument("-timemax", type=time_days_arg, help=f"{helptext_max}. {TIME_UNIT_HELP}")
 
 
 def addarg_axislimits(
@@ -792,18 +813,25 @@ def addarg_axislimits(
     include_x: bool = True,
     include_y: bool = True,
     wavelength_aliases: bool = False,
+    xtype: Callable[[str], float] | None = None,
 ) -> None:
     """Add the -xmin/-xmax and -ymin/-ymax plot range arguments.
 
-    A command whose x axis is a wavelength in Angstroms takes wavelength_aliases, which adds the
-    -lambdamin and -lambdamax spellings of the same arguments.
+    A command whose x axis is a wavelength takes wavelength_aliases, which adds the -lambdamin and -lambdamax
+    spellings of the same arguments. Its x axis is in Angstroms, thus a value can also give a different unit, e.g.
+    600nm. plotspectra has its own type, because the unit of its axis comes from -xunit.
     """
     group = arggroup(parser, "appearance")
     if include_x:
         xminflags = ("-xmin", "-lambdamin") if wavelength_aliases else ("-xmin",)
         xmaxflags = ("-xmax", "-lambdamax") if wavelength_aliases else ("-xmax",)
-        group.add_argument(*xminflags, dest="xmin", type=float, default=xmindefault, help=xminhelp)
-        group.add_argument(*xmaxflags, dest="xmax", type=float, default=xmaxdefault, help=xmaxhelp)
+        if xtype is None:
+            xtype = wavelength_angstroms_arg if wavelength_aliases else float
+        if xtype is wavelength_angstroms_arg:
+            xminhelp = f"{xminhelp}. {WAVELENGTH_UNIT_HELP}"
+            xmaxhelp = f"{xmaxhelp}. {WAVELENGTH_UNIT_HELP}"
+        group.add_argument(*xminflags, dest="xmin", type=xtype, default=xmindefault, help=xminhelp)
+        group.add_argument(*xmaxflags, dest="xmax", type=xtype, default=xmaxdefault, help=xmaxhelp)
     if include_y:
         group.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis minimum")
         group.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
@@ -858,6 +886,99 @@ def positive_float_arg(text: str) -> float:
         msg = f"{text} is not a finite number above 0"
         raise argparse.ArgumentTypeError(msg)
     return value
+
+
+# a number, then an optional unit, e.g. 600nm, 2.5 d, or 1e5. The unit starts with a character that no number holds
+VALUE_WITH_UNIT_PATTERN: t.Final = re.compile(r"\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*([^\d\s.+-].*?)?\s*")
+
+# the size of each unit of a time value in days. A value with no unit has the unit "", which is days
+TIME_UNITS_IN_DAYS: t.Final[Mapping[str, float]] = MappingProxyType({
+    "": 1.0,
+    "d": 1.0,
+    "day": 1.0,
+    "days": 1.0,
+    "h": hour_to_s / day_to_s,
+    "hour": hour_to_s / day_to_s,
+    "hours": hour_to_s / day_to_s,
+    "s": 1.0 / day_to_s,
+})
+
+# the help text of each option that takes a time
+TIME_UNIT_HELP: t.Final = "A value with no unit is in days. A unit is optional, e.g. 12h"
+
+# the help text of each option that takes a wavelength in Angstroms
+WAVELENGTH_UNIT_HELP: t.Final = "A value with no unit is in Angstroms. A unit is optional, e.g. 600nm"
+
+# a hyphen that ends a time and starts the next one. A hyphen of an exponent, e.g. 1e-2, follows a digit and an e
+TIME_RANGE_SEPARATOR: t.Final = re.compile(r"(?<=[0-9.a-zA-Z])(?<![0-9.][eE])-")
+
+
+def split_value_and_unit(text: str) -> tuple[float, str]:
+    """Return the number and the unit of a command line value, e.g. (600.0, "nm") for 600nm.
+
+    A value with no unit gives the unit "". A text that does not start with a number gives a ValueError.
+    """
+    if (match := VALUE_WITH_UNIT_PATTERN.fullmatch(text)) is None:
+        msg = f"{text!r} is not a number with an optional unit"
+        raise ValueError(msg)
+    return float(match.group(1)), match.group(2) or ""
+
+
+def time_days_arg(text: str) -> float:
+    """Return the time in days of a command line value, e.g. 300, 300d, 12h, or 2.6e7s. A bare number is in days."""
+    unitnames = ", ".join(name for name in TIME_UNITS_IN_DAYS if len(name) == 1)
+    try:
+        number, unit = split_value_and_unit(text)
+    except ValueError:
+        msg = f"'{text}' is not a time. Give a number of days, or a number with one of the units {unitnames}"
+        raise argparse.ArgumentTypeError(msg) from None
+    if unit.lower() not in TIME_UNITS_IN_DAYS:
+        msg = f"'{unit}' in '{text}' is not a unit of time. Give one of the units {unitnames}, or no unit for days"
+        raise argparse.ArgumentTypeError(msg)
+    return number * TIME_UNITS_IN_DAYS[unit.lower()]
+
+
+def time_days_range_arg(text: str) -> str:
+    """Return a time or a time range in days, e.g. "250-300" for 250d-300d. A text with no unit stays the same.
+
+    A command reads the time text after the parse, e.g. with parse_timedays_range. Thus the text with a unit becomes
+    the same text in days, and a text with no unit keeps its form, e.g. in the label of a plot.
+    """
+    try:
+        float(text)
+    except ValueError:
+        pass
+    else:
+        return text
+    parts = TIME_RANGE_SEPARATOR.split(text.strip())
+    if len(parts) > 2:
+        msg = f"'{text}' is not a time or a time range. Give e.g. 300, 300d, or 250d-300d"
+        raise argparse.ArgumentTypeError(msg)
+    days = [time_days_arg(part) for part in parts]
+    if not any(split_value_and_unit(part)[1] for part in parts):
+        return text
+    return "-".join(f"{value:.10g}" for value in days)
+
+
+def wavelength_angstroms_arg(text: str) -> float:
+    """Return the wavelength in Angstroms of a command line value, e.g. 6000, 6000A, 600nm, or 0.6micron.
+
+    A bare number is in Angstroms. A unit is one of the wavelength units of -xunit of plotspectra.
+    """
+    from artistools.spectra.core import convert_xunit_aliases_to_canonical
+    from artistools.spectra.core import XUNITS
+
+    unitnames = ", ".join(name for name, xunit in XUNITS.items() if xunit.kind == "wavelength")
+    try:
+        number, unit = split_value_and_unit(text)
+        xunit = XUNITS[convert_xunit_aliases_to_canonical(unit)] if unit else XUNITS["angstrom"]
+    except ValueError:
+        msg = f"'{text}' is not a wavelength. Give a number of Angstroms, or a number with one of the units {unitnames}"
+        raise argparse.ArgumentTypeError(msg) from None
+    if xunit.kind != "wavelength":
+        msg = f"'{text}' is not a wavelength. Give one of the units {unitnames}, or no unit for Angstroms"
+        raise argparse.ArgumentTypeError(msg)
+    return number * xunit.unit_in_base_units
 
 
 def series_value_arg[T](convert: Callable[[str], T]) -> Callable[[str], T | None]:
@@ -1628,6 +1749,168 @@ def check_time_selection(
         exit_with_error(f"{', '.join(ways)} name the time range in more than one way", "Give only one of them")
 
 
+def check_range_order(args: argparse.Namespace) -> None:
+    """Stop when a range of the selection has a lower end above its upper end.
+
+    Such a range selects no data, thus the command gave an empty plot or an error after a long read. Two equal ends
+    select one time, e.g. for decayproducts. The limits of a plot axis can have the opposite order, e.g. for a
+    magnitude, thus only a range of the selection takes this check.
+    """
+    bounds = [("timemin", "timemax", "-timemin", "-timemax")]
+    if getattr(args, "xrangeisselection", False):
+        bounds.append(("xmin", "xmax", "-lambdamin", "-lambdamax"))
+    for lowerdest, upperdest, lowerflag, upperflag in bounds:
+        lower, upper = getattr(args, lowerdest, None), getattr(args, upperdest, None)
+        if isinstance(lower, float | int) and isinstance(upper, float | int) and lower > upper:
+            exit_with_error(
+                f"{lowerflag} {lower:g} is above {upperflag} {upper:g}, thus the range selects nothing",
+                f"Give the lower end to {lowerflag} and the upper end to {upperflag}",
+            )
+
+
+def check_direction_bins(args: argparse.Namespace) -> None:
+    """Stop when -plotviewingangle names a bin that does not exist, before the command reads the spectra."""
+    from artistools.misc.dirbins import get_viewingdirectionbincount
+
+    dirbins = getattr(args, "plotviewingangle", None)
+    if not dirbins:
+        return
+    ndirbins = get_viewingdirectionbincount()
+    specialbins = {-1, -2} if getattr(args, "allowalldirbins", False) else {-1}
+    if badbins := [dirbin for dirbin in dirbins if dirbin not in specialbins and not 0 <= dirbin < ndirbins]:
+        specialtext = (
+            "-1 for all the directions, -2 for each bin," if -2 in specialbins else "-1 for all the directions,"
+        )
+        exit_with_error(
+            f"-plotviewingangle {' '.join(map(str, badbins))} names no direction bin",
+            f"Give {specialtext} or a bin from 0 to {ndirbins - 1}",
+        )
+
+
+def resolve_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    argsraw: "Sequence[str] | None" = None,
+    kwargs: "Collection[str] | None" = None,
+) -> None:
+    """Check the arguments of a command and complete them after the parse, before the command reads data.
+
+    The dispatcher and parse_cli_args both call this function, thus each entry point makes the same checks. A check
+    that needs only the arguments belongs here, because then a mistake costs no time.
+    """
+    assert isinstance(parser, SuggestingArgumentParser), "every parser of a command is this class"
+    check_time_selection(parser, args, argsraw, kwargs)
+    check_range_order(args)
+    check_direction_bins(args)
+    resolve_output_argument(args)
+    resolve_yscale(args)
+
+
+# the dests that hold the model paths of a command. plotspectra names its dest specpath, because a path can also name
+# a reference spectrum
+MODELPATH_DESTS: t.Final = ("modelpath", "specpath")
+
+
+def addarg_common(parser: argparse.ArgumentParser) -> None:
+    """Add the arguments that every command takes: --quiet, and --explain for a command that reads a model.
+
+    The dispatcher and parse_cli_args both call this function, thus no module declares these arguments.
+    """
+    addarg_quiet(parser)
+    if any(action.dest in MODELPATH_DESTS for action in parser._actions):  # ruff:ignore[private-member-access]
+        arggroup(parser, "output").add_argument(
+            "--explain",
+            action="store_true",
+            help=(
+                "Print the model folders, the selection, and the output files that the arguments give, then stop."
+                " The command then reads no data"
+            ),
+        )
+
+
+def print_explanation(
+    parser: argparse.ArgumentParser, args: argparse.Namespace, parsedargs: argparse.Namespace
+) -> None:
+    """Print what the command reads and writes, as the arguments give it, with no read of the data.
+
+    parsedargs holds the arguments before resolve_args, thus a value that resolve_args sets, e.g. the scale "auto" of
+    the y axis, is not a value of the user. The lines give each argument of the user with its value after the
+    conversion of the unit. They also give the model folders, the timesteps of the time selection, the direction bins,
+    and the output file.
+    """
+    print_heading("The command reads and writes this. --explain stops it before it reads the data")
+    for action in parser._actions:  # ruff:ignore[private-member-access]
+        if action.dest in {"help", "explain", "quiet", *MODELPATH_DESTS} or not hasattr(args, action.dest):
+            continue
+        parsedvalue = getattr(parsedargs, action.dest, None)
+        if parsedvalue is not None and parsedvalue != parser.get_default(action.dest):
+            flag = action.option_strings[0] if action.option_strings else action.dest
+            print_detail(f"{flag} = {getattr(args, action.dest)}")
+
+    # normalize_path_list gives the working folder for None, thus a command with no such dest gives no path
+    for dest in (dest for dest in MODELPATH_DESTS if hasattr(args, dest)):
+        for modelpath in normalize_path_list(getattr(args, dest)):
+            explain_model_selection(modelpath, args)
+
+    if (outputfile := getattr(args, "outputfile", None)) is not None:
+        existstext = (
+            " (the file exists, thus the command asks before it overwrites it)" if Path(outputfile).exists() else ""
+        )
+        print_detail(f"output: {outputfile}{existstext}")
+
+
+def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:
+    """Print the model folder, the timesteps of the time selection, and the direction bins for one model path."""
+    from artistools.misc.dirbins import get_dirbin_labels
+    from artistools.misc.fileio import folder_is_artis_model
+    from artistools.misc.fileio import get_model_folder
+    from artistools.misc.remote import is_remote_path
+    from artistools.misc.timesteps import get_time_range
+
+    if is_remote_path(modelpath):
+        print_detail(f"model: {modelpath} (a remote model. --explain reads no file of it)")
+        return
+    modelfolder = get_model_folder(modelpath)
+    if not modelfolder.is_dir():
+        print_detail(f"model: {modelfolder} does not exist")
+        return
+    if not folder_is_artis_model(modelfolder):
+        # plotspectra also reads a reference spectrum, which is a file outside a model folder
+        print_detail(f"path: {modelpath} (no model folder, because {modelfolder} holds no input.txt)")
+        return
+    print_detail(f"model: {modelfolder}")
+
+    timeselection = {name: getattr(args, name, None) for name in ("timestep", "timemin", "timemax", "timedays")}
+    if any(value is not None for value in timeselection.values()):
+        try:
+            timestepmin, timestepmax, timemin, timemax = get_time_range(
+                modelfolder,
+                timestep_range_str=timeselection["timestep"],
+                timemin=timeselection["timemin"],
+                timemax=timeselection["timemax"],
+                timedays_range_str=timeselection["timedays"],
+            )
+        except (OSError, ValueError) as exc:
+            print_detail(f"time: the selection gives an error: {exc}")
+        else:
+            print_detail(
+                f"time: timesteps {timestepmin} to {timestepmax}, which cover {timemin:.3f} to {timemax:.3f} d"
+            )
+
+    if dirbins := [dirbin for dirbin in getattr(args, "plotviewingangle", None) or [] if dirbin != -2]:
+        try:
+            labels = get_dirbin_labels(
+                dirbins,
+                average_over_phi=getattr(args, "average_over_phi_angle", False),
+                average_over_theta=getattr(args, "average_over_theta_angle", False),
+            )
+        except ValueError as exc:
+            print_detail(f"direction: the selection gives an error: {exc}")
+        else:
+            for dirbin, label in labels.items():
+                print_detail(f"direction bin {dirbin}: {label}")
+
+
 def parse_cli_args(
     addargsfunc: Callable[[argparse.ArgumentParser], None],
     description: str | None,
@@ -1645,15 +1928,17 @@ def parse_cli_args(
 
     parser = SuggestingArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
     addargsfunc(parser)
-    # the dispatcher adds --quiet to the parser that it builds, thus a direct call needs it here
-    addarg_quiet(parser)
+    # the dispatcher adds --quiet and --explain to the parser that it builds, thus a direct call needs them here
+    addarg_common(parser)
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
     tokens = [] if argsraw is None and kwargs else argsraw
     args = parser.parse_args(separate_trailing_folders(tokens))
-    check_time_selection(parser, args, tokens, kwargs)
-    resolve_output_argument(args)
-    resolve_yscale(args)
+    parsedargs = copy.copy(args)
+    resolve_args(parser, args, tokens, kwargs)
+    if getattr(args, "explain", False):
+        print_explanation(parser, args, parsedargs)
+        raise SystemExit(0)
 
     return args
 

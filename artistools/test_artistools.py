@@ -961,12 +961,15 @@ def test_command_groups_name_every_visible_command() -> None:
 
 
 def test_cli_bad_argument_gives_short_error(capsys: pytest.CaptureFixture[str]) -> None:
-    """A bad argument value must exit with a one-line error on stderr instead of a traceback."""
+    """A bad argument value must exit with a one-line error on stderr instead of a traceback.
+
+    The type of -timedays reads the time, thus argparse refuses the value with its exit status 2 before any read.
+    """
     import artistools.__main__
 
     with pytest.raises(SystemExit) as excinfo:
         artistools.__main__.main(argsraw=["plotspectra", str(modelpath), "-timedays", "banana"])
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 2
     captured = capsys.readouterr()
     assert "banana" in captured.err
     assert "Traceback" not in captured.err

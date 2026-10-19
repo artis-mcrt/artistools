@@ -37,6 +37,8 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import write_parquet_atomic
+from artistools.misc.cliutils import time_days_arg
+from artistools.misc.cliutils import TIME_UNIT_HELP
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -57,9 +59,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory"
     )
 
-    parser.add_argument("-timemin", "-tmin", type=float, default=0.1, help="Minimum time in days")
+    parser.add_argument(
+        "-timemin", "-tmin", type=time_days_arg, default=0.1, help=f"Minimum time in days. {TIME_UNIT_HELP}"
+    )
 
-    parser.add_argument("-timemax", "-tmax", type=float, default=80.0, help="Maximum time in days")
+    parser.add_argument(
+        "-timemax", "-tmax", type=time_days_arg, default=80.0, help=f"Maximum time in days. {TIME_UNIT_HELP}"
+    )
 
     parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
 

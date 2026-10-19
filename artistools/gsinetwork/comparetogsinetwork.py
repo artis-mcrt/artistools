@@ -47,6 +47,8 @@ from artistools.misc import output_data
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.misc.cliutils import time_days_arg
+from artistools.misc.cliutils import TIME_UNIT_HELP
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -803,9 +805,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # the plots went to the model folder before the command read -o, thus that folder stays the default
     addarg_output(parser, kind="folder", helptext="Folder for the plots (default: the model folder)")
 
-    parser.add_argument("-timemax", type=float, help="Maximum time in days to plot")
+    parser.add_argument("-timemax", type=time_days_arg, help=f"Maximum time in days to plot. {TIME_UNIT_HELP}")
     # the earlier name of -timemax
-    parser.add_argument("-xmax", dest="timemax", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("-xmax", dest="timemax", type=time_days_arg, help=argparse.SUPPRESS)
 
     # the help named a list such as 4,5,6, and nargs="*" with the type int took "4 5 6" and refused
     # that list. One builder gives every command the same text: a number, a range 3-7, or a list 4,5,6

@@ -58,6 +58,8 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc.cliutils import CellListAction
 from artistools.misc.cliutils import get_cell_list
+from artistools.misc.cliutils import time_days_range_arg
+from artistools.misc.cliutils import TIME_UNIT_HELP
 from artistools.nltepops.core import add_lte_pops
 from artistools.nltepops.core import read_nltepops
 from artistools.nltepops.core import texifyconfiguration
@@ -1096,7 +1098,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_modelpath(parser)
 
     timegroup = parser.add_mutually_exclusive_group()
-    timegroup.add_argument("-timedays", "-time", "-t", help="Time in days to plot")
+    timegroup.add_argument(
+        "-timedays", "-time", "-t", type=time_days_range_arg, help=f"Time in days to plot. {TIME_UNIT_HELP}"
+    )
 
     timegroup.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
 
