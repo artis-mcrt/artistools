@@ -254,6 +254,11 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     # the line fluxes
     ("time", "the middle of the time bin, from the explosion", "days"),
     ("fratio", "the luminosity of the second feature divided by the luminosity of the first feature", ""),
+    (
+        "fratio_relnoise(_.+)?",
+        "the relative Monte Carlo noise of fratio, sqrt(r1^2 + r2^2) of the noises sqrt(sum(e^2)) / sum(e) of the two",
+        "",
+    ),
     ("fratio_.+", "the luminosity of the second feature divided by the luminosity of the first feature", ""),
     ("feature", "the emission feature, or reference for a point of the reference data", ""),
     ("log10nne", "the base-10 logarithm of the electron density of the cell of the last emission", "log10(cm^-3)"),

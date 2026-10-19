@@ -8369,3 +8369,33 @@ def test_check_names_the_missing_input_files_and_the_leftovers_of_a_conversion(t
     status, detail = check_caches(tmp_path)
     assert status == "warning"
     assert "1 files of conversions that stopped" in detail
+
+
+def test_linefluxes_ratio_noise_adds_the_noise_of_the_two_features_in_quadrature() -> None:
+    """Give each feature the noise sqrt(sum(e^2)) / sum(e) of its packets, and the ratio the root of the sum of squares.
+
+    A time bin with no packet of a feature has no noise value, thus its ratio has none either.
+    """
+    from artistools.plotlinefluxes import add_ratio_noise
+    from artistools.plotlinefluxes import FeatureTuple
+    from artistools.plotlinefluxes import get_line_luminosities_from_packets
+
+    features = [
+        FeatureTuple(f"feature{index}", "label", 1000.0, [index], 990.0, 1010.0, 26, 2, [1], [0]) for index in (1, 2)
+    ]
+    dfpackets = pl.LazyFrame({
+        "trueemissiontype": [1, 1, 1, 2, 2],
+        "e_rf": [1.0, 2.0, 3.0, 4.0, 4.0],
+        "t_arrive_d": [1.5, 1.5, 1.5, 1.5, 2.5],
+    })
+    with mock.patch.object(at.plotlinefluxes, "get_packets", return_value=(1, dfpackets)):
+        dflcdata = get_line_luminosities_from_packets(
+            "trueemissiontype", features, modelpath_classic_3d, arr_tstart=[1.0, 2.0], arr_tend=[2.0, 3.0]
+        )
+    assert np.isclose(dflcdata["feature1_relnoise"][0], math.sqrt(1 + 4 + 9) / 6, rtol=1e-12)
+    assert dflcdata["feature1_relnoise"][1] is None
+    assert np.allclose(dflcdata["feature2_relnoise"].to_numpy(), [1.0, 1.0], rtol=1e-12, atol=0)
+
+    dfratio = add_ratio_noise(dflcdata.with_columns(fratio=pl.lit(1.0)), ["feature1", "feature2"])
+    assert np.isclose(dfratio["fratio_relnoise"][0], math.sqrt((math.sqrt(14) / 6) ** 2 + 1), rtol=1e-12)
+    assert dfratio["fratio_relnoise"][1] is None
