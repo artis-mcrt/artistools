@@ -18,6 +18,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
+from artistools.misc import print_warning
 from artistools.misc.remote import split_remote_path
 from artistools.spectra.core import get_spectra
 
@@ -94,16 +95,24 @@ def write_flambda_spectra_of_models(modelpaths: Sequence[Path], outdirectory: Pa
     """Write the spectra of write_flambda_spectra for each model.
 
     The file names hold no model name, thus each of several models gets a subfolder of outdirectory with its name.
-    The default folder of a model is its spectra folder.
+    Two models can have the same name, thus the second one gets its index after the name, e.g. mymodel_1. The default
+    folder of a model is its spectra folder.
     """
+    subfoldernames: list[str] = []
+    for modelindex, modelpath in enumerate(modelpaths):
+        modelname = get_model_name(modelpath)
+        if modelname in subfoldernames:
+            # the second model would replace the files of the first, and the check of the overwrite saw no file
+            modelname = f"{modelname}_{modelindex}"
+            if outdirectory is not None and len(modelpaths) > 1:
+                print_warning(f"{modelpath} has the name of an earlier model, thus its folder is {modelname}")
+        subfoldernames.append(modelname)
     modeloutdirectories = [
         get_spectra_outdirectory(
             modelpath,
-            outdirectory / get_model_name(modelpath)
-            if outdirectory is not None and len(modelpaths) > 1
-            else outdirectory,
+            outdirectory / subfoldername if outdirectory is not None and len(modelpaths) > 1 else outdirectory,
         )
-        for modelpath in modelpaths
+        for modelpath, subfoldername in zip(modelpaths, subfoldernames, strict=True)
     ]
     # the check of all the folders comes before the first model, thus a refusal leaves no partial output. Each file
     # name holds a timestep, and the valid timesteps come from the data, thus the check takes patterns

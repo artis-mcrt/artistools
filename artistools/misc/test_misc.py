@@ -4146,13 +4146,11 @@ def test_wavelength_and_time_units_convert_to_the_unit_of_the_command() -> None:
 
 def test_explain_reads_no_packets_and_gives_the_timesteps(capsys: pytest.CaptureFixture[str]) -> None:
     """Print the timesteps of the selection for --explain, and stop before the command reads a packet."""
-    import artistools.__main__
+    from artistools.__main__ import main
 
     modelfolder = at.get_path("testdata") / "test-classicmode_3d"
     with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", side_effect=AssertionError):
-        artistools.__main__.main(
-            argsraw=["plotlastpacketinteraction", str(modelfolder), "-t", "6.5d", "-lambdamin", "300nm", "--explain"]
-        )
+        main(argsraw=["plotlastpacketinteraction", str(modelfolder), "-t", "6.5d", "-lambdamin", "300nm", "--explain"])
     stdout = capsys.readouterr().out
     assert "-xmin = 3000.0" in stdout
     assert f"model: {modelfolder}" in stdout
@@ -4161,16 +4159,14 @@ def test_explain_reads_no_packets_and_gives_the_timesteps(capsys: pytest.Capture
 
 def test_reversed_wavelength_selection_stops_before_the_read(capsys: pytest.CaptureFixture[str]) -> None:
     """Stop at the parse when -lambdamin is above -lambdamax, because such a range selects no packet."""
-    import artistools.__main__
+    from artistools.__main__ import main
 
     modelfolder = at.get_path("testdata") / "test-classicmode_3d"
     with (
         mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", side_effect=AssertionError),
         pytest.raises(SystemExit) as excinfo,
     ):
-        artistools.__main__.main(
-            argsraw=["plotlastpacketinteraction", str(modelfolder), "-lambdamin", "8000", "-lambdamax", "3000"]
-        )
+        main(argsraw=["plotlastpacketinteraction", str(modelfolder), "-lambdamin", "8000", "-lambdamax", "3000"])
     assert excinfo.value.code == 1
     assert "-lambdamin 8000 is above -lambdamax 3000" in capsys.readouterr().err
 

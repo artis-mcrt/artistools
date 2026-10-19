@@ -1572,6 +1572,14 @@ def test_writespectra_asks_for_all_the_models_before_the_first_model(tmp_path: P
     assert not list(tmp_path.glob(f"{at.get_model_name(modelpath)}/spectrum_ts*.txt"))
 
 
+def test_writespectra_gives_two_models_of_one_name_two_folders(tmp_path: Path) -> None:
+    """Two models of one name had one folder, and the second model replaced the files of the first with no prompt."""
+    at.spectra.writespectra.main(argsraw=[str(modelpath), str(modelpath), "-o", str(tmp_path)])
+    modelname = at.get_model_name(modelpath)
+    assert list(tmp_path.glob(f"{modelname}/spectrum_ts*.txt"))
+    assert list(tmp_path.glob(f"{modelname}_1/spectrum_ts*.txt"))
+
+
 def test_hiding_the_x_tick_labels_holds_the_width_and_the_frame(tmp_path: Path) -> None:
     """--hidexticklabels must not change the width of the file, nor the size of the frame.
 
