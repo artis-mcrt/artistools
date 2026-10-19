@@ -35,6 +35,7 @@ from artistools.misc.general import get_bin_index_expr
 from artistools.packets.core import get_emission_velocity_of_columns_expr
 from artistools.packets.core import get_packets
 from artistools.packets.core import print_arrival_time_method
+from artistools.packets.core import print_last_interaction_convention
 from artistools.plottools import addarg_velocityunit
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -89,6 +90,7 @@ def get_last_interaction_velocity_quartiles(
         )
         return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
     print_arrival_time_method(modelpath, timesteps, "each timestep with a mid time from -timemin to -timemax")
+    print_last_interaction_convention(modelpath)
     timeedges = [*tstarts, tends[-1]]
     velocity_kmps = get_emission_velocity_of_columns_expr(position, lzpackets.collect_schema().names()) / km_to_cm
     # the filter of the arrival time comes first, thus the scan reads only the row groups of the selected timesteps

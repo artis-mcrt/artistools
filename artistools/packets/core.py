@@ -25,6 +25,7 @@ from artistools.inputmodel import get_modeldata
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
@@ -190,6 +191,31 @@ def get_emission_velocity_of_columns_expr(position: t.Literal["em", "trueem"], p
             raise ValueError(msg)
         return pl.col("true_emission_velocity")
     return get_emission_velocity_expr(position)
+
+
+def print_last_interaction_convention(modelpath: Path | str) -> None:
+    """Print which events of ARTIS set the emission type, the position of the last interaction, and the absorption.
+
+    rpkt.cc and macroatom.cc of ARTIS give these rules, and the code of 2012 already had them.
+    """
+    print_detail(
+        "In ARTIS, an emission sets emissiontype, em_pos, and em_time. An electron scattering keeps emissiontype, but"
+        " it sets em_pos and em_time. Thus em_pos is the place of the last interaction, and emissiontype can come"
+        " from an earlier event. Each absorption sets absorption_type"
+    )
+    if get_artis_option(modelpath, "RPKT_BOUNDBOUND_THERMALISATION_PROBABILITY") in {None, "std::nullopt"}:
+        print_detail(
+            "A line absorption activates a macro atom, and its radiative de-excitation is an emission. Thus a"
+            " resonance scattering (an absorption and an emission by the same line) and a fluorescence each set"
+            " emissiontype and em_pos. A thermal emission (trueemissiontype) is the emission of a k-packet, or of a"
+            " macro atom that a collision or a non-thermal electron activated. A later line scattering keeps it"
+        )
+    else:
+        print_detail(
+            "artisoptions.h sets RPKT_BOUNDBOUND_THERMALISATION_PROBABILITY, thus a line event is a scattering or a"
+            " thermalisation, and not a macro atom. A line scattering keeps emissiontype, but it sets em_pos, as an"
+            " electron scattering does. A thermalisation emits the packet again with the emissiontype NOT SET"
+        )
 
 
 def print_arrival_time_method(modelpath: Path | str, timesteps: Sequence[int], selectiontext: str) -> None:

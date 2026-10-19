@@ -2283,7 +2283,8 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
     earlier code put the whole volume of a cell in the bin of its centre, and the depths then went from 0.24 to 1.11.
 
     Bins that end below the photosphere, e.g. with -velocitymax, gave no plateau. One bin gave a blend above zero at
-    only one wavelength, because the blend went to zero at the centre of the outer bins.
+    only one wavelength, because the blend went to zero at the centre of the outer bins. The wavelength grid of the
+    blend went to the fastest part of a cell, although the bins above the shell had no depth.
     """
     from artistools.linecontributions import CellLineInputs
     from artistools.linecontributions import get_sobolev_trough
@@ -2347,6 +2348,11 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
     dfshort, dfshortblend = get_shell_trough(64, edges[:4], 90, relativisticdoppler=False)
     assert np.allclose(dfshort["trough_depth"].to_numpy()[: len(expected)], expected, rtol=0.0, atol=0.01)
     assert np.isclose(dfshortblend["trough_depth"].to_numpy().max(), absorbed, rtol=0.01, atol=0.0)
+    # the shell ends at 9000 km/s, and the blend ends one bin after the last depth. The grid went to the fastest part
+    # of a cell at 17 000 km/s, and the 400 points then covered a range twice as wide
+    c_kmps = at.constants.C_cm_per_s / at.constants.km_to_cm
+    shortestlambda_angstroms = float(dfshortblend["lambda_angstroms"].to_numpy().min())
+    assert 5000.0 * (1 - 11000.0 / c_kmps) < shortestlambda_angstroms < 5000.0 * (1 - 9000.0 / c_kmps)
 
     # one bin gives its depth to each wavelength of the blend, from the rest wavelength to the outer edge of the bin
     dfonebin, dfonebinblend = get_shell_trough(10, [0.0, 2.0 * vmax_kmps], 90, relativisticdoppler=False)

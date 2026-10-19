@@ -1,6 +1,7 @@
 """Plot 2D histograms of where in the ejecta packets were last emitted or scattered."""
 
 import argparse
+import math
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -13,16 +14,19 @@ import polars as pl
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_lineindices
+from artistools.atomic import roman_numerals
 from artistools.constants import c_ang_per_s
-from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
+from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_unsupported
 from artistools.misc import exit_with_error
@@ -35,6 +39,7 @@ from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import resolve_outputfile
+from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
@@ -43,6 +48,7 @@ from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_emission_velocity_of_columns_expr
 from artistools.packets.core import get_packets
 from artistools.packets.core import print_arrival_time_method
+from artistools.packets.core import print_last_interaction_convention
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -67,20 +73,16 @@ if t.TYPE_CHECKING:
 
 
 def get_required_packets(
-    modelpath: Path, Z_list: Sequence[int] | None, ion_stage_list: Sequence[int] | None, srII_triplet: bool = False
+    modelpath: Path, ions: Sequence[tuple[int | None, int | None]] | None, srII_triplet: bool = False
 ) -> tuple[int, pl.LazyFrame]:
-    """Return the escaped r-packets, or with a list, the escaped r-packets that a line of the list last absorbed.
+    """Return the escaped r-packets, or with ions, the escaped r-packets that a line of the ions last absorbed.
 
-    A None list selects every element or every ion stage. The Sr II triplet takes the place of both lists. With no
-    list and no Sr II triplet, the function returns every escaped r-packet.
+    Each item of ions is (Z, ion_stage), and a None in it selects each element or each ion stage. The Sr II triplet
+    takes the place of ions.
     """
-    # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
     nprocs_read, dfpackets = get_packets(
         modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
-
-    if not srII_triplet and Z_list is ion_stage_list is None:
-        return nprocs_read, dfpackets
 
     if srII_triplet:
         lineindices = get_lineindices(
@@ -91,8 +93,21 @@ def get_required_packets(
             | ((pl.col("lowerlevelindex") == 2) & (pl.col("upperlevelindex") == 4))
             | ((pl.col("lowerlevelindex") == 1) & (pl.col("upperlevelindex") == 4)),
         )
+    elif ions is None:
+        return nprocs_read, dfpackets
     else:
-        lineindices = get_lineindices(modelpath, Z_list, ion_stage_list)
+        lineindices = get_lineindices(
+            modelpath,
+            None,
+            None,
+            linefilter=pl.any_horizontal(
+                pl.all_horizontal(
+                    pl.lit(Z is None) | (pl.col("atomic_number") == Z),
+                    pl.lit(ion_stage is None) | (pl.col("ion_stage") == ion_stage),
+                )
+                for Z, ion_stage in ions
+            ),
+        )
 
     return nprocs_read, dfpackets.filter(pl.col("absorption_type").is_in(lineindices.implode()))
 
@@ -100,8 +115,7 @@ def get_required_packets(
 def get_reduced_packet_set(
     modelpath: Path,
     dirbin: int,
-    Z: Sequence[int] | None,
-    ion_stage: Sequence[int] | None,
+    ions: Sequence[tuple[int | None, int | None]] | None,
     lambdarange: tuple[float, float] | None = None,
     srII_triplet: bool = False,
     *,
@@ -111,14 +125,14 @@ def get_reduced_packet_set(
 
     The function returns the number of MPI ranks, the packets, and the solid-angle factor
     (4 pi / solidangle) of the direction bin. `get_required_packets()` selects the packets for the
-    given element and ion filters. A lambdarange keeps only the packets in that range of wavelength [Å], with
+    ions. A lambdarange keeps only the packets in that range of wavelength [Å], with
     both ends. The range applies to the rest-frame wavelength at the escape, or with absorption, at the last
     absorption. ARTIS records no wavelength for a free-free or a bound-free absorption, thus
     the slice leaves out its packet, as plotspectra does. The function then keeps only the packets of the direction bin.
     """
     from artistools.spectra.core import get_boundbound_absorption_freq_expr
 
-    nprocs_read, dfpackets_selected = get_required_packets(modelpath, Z, ion_stage, srII_triplet=srII_triplet)
+    nprocs_read, dfpackets_selected = get_required_packets(modelpath, ions, srII_triplet=srII_triplet)
     frequency = get_boundbound_absorption_freq_expr() if absorption else pl.col("nu_rf")
     dfpackets_selected = dfpackets_selected.with_columns((c_ang_per_s / frequency).alias("lambda_rf"))
 
@@ -129,25 +143,37 @@ def get_reduced_packet_set(
     return nprocs_read, dfpackets_selected, solidangle_factor
 
 
+def get_ion_label(ion: tuple[int | None, int | None]) -> str:
+    """Return the name of an ion, an element, or an ion stage of the selection of -ions, e.g. "Sr II" or "Sr"."""
+    Z, ion_stage = ion
+    if Z is None:
+        assert ion_stage is not None
+        return f"ion stage {roman_numerals[ion_stage]}"
+    return get_elsymbol(Z) if ion_stage is None else get_ionstring(Z, ion_stage)
+
+
 def packets_2d_hist_bin_and_ejecta_vel(
     modelpath: Path,
     tdays: float,
+    dirbin: int,
+    velocityedges_kmps: Sequence[float],
+    unit: t.Literal["kmps", "c"],
+    *,
+    ions: Sequence[tuple[int | None, int | None]] | None,
     srIItriplet: bool,
     colorlogscale: bool,
-    dirbin: int,
     trueem: bool,
-    Z: int | None = None,
-    ion_stage_str: str | None = None,
-    lambdarange: tuple[float, float] | None = None,
-    outputfile: Path | None = None,
-    args: argparse.Namespace | None = None,
-    *,
-    absorption: bool = False,
+    lambdarange: tuple[float, float] | None,
+    outputfile: Path | None,
+    args: argparse.Namespace | None,
+    absorption: bool,
 ) -> None:
-    """Plot a 2D histogram of packet emission position against ejecta velocity, and save the figure.
+    """Plot the observed luminosity per unit volume at the last interaction of the packets, and save the figure.
 
-    An outputfile of None or of a folder gives the file a name from the selection of the packets. With absorption, the
-    wavelength range applies to the wavelength of the last absorption.
+    The image has v_cyl = sqrt(v_x^2 + v_y^2) from 0 to the last edge of velocityedges_kmps, and v_z from minus that
+    edge to that edge. Each pixel has the width of a velocity bin. unit is the unit of the axes. An outputfile of None
+    or of a folder gives the file a name from the selection of the packets. With absorption, the wavelength range
+    applies to the wavelength of the last absorption.
     """
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if lambdarange is not None:
@@ -155,112 +181,108 @@ def packets_2d_hist_bin_and_ejecta_vel(
         start_of_filename = (
             f"{start_of_filename}{lambdarange[0]:.0f}-{lambdarange[1]:.0f}A_{'absorption_' if absorption else ''}"
         )
-    start_of_filename = f"{start_of_filename}Z={Z}_" if Z else f"{start_of_filename}allelements_"
-    start_of_filename = f"{start_of_filename}I={ion_stage_str}_" if ion_stage_str else f"{start_of_filename}allions_"
+    if srIItriplet:
+        start_of_filename += "SrIItriplet_"
+    elif ions is not None:
+        start_of_filename += "-".join(get_ion_label(ion).replace(" ", "") for ion in ions) + "_"
+    else:
+        start_of_filename += "allions_"
 
-    # Step 1) collect packets IDs and select according to arrival time. None selects every element or ion stage
-    Z_list = [Z] if Z else None
-    ion_stage_list = [decode_roman_numeral(ion_stage_str)] if ion_stage_str else None
-    if ion_stage_list == [-1]:
-        exit_with_error(f"-ionstage {ion_stage_str} is no Roman numeral", "Give the ion stage as e.g. II")
-
-    nprocs_read, dfpackets, inverse_solidangle_fraction = get_reduced_packet_set(
-        modelpath,
-        dirbin,
-        Z_list,
-        ion_stage_list,
-        lambdarange=lambdarange,
-        srII_triplet=srIItriplet,
-        absorption=absorption,
+    nprocs_read, lzpackets, inverse_solidangle_fraction = get_reduced_packet_set(
+        modelpath, dirbin, ions, lambdarange=lambdarange, srII_triplet=srIItriplet, absorption=absorption
     )
 
     start_of_filename += f"t_arrive_d_{tdays}_"
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
-    Delta_t_secs = (t_max - t_min) * day_to_s
-    Delta_beta = 0.5 / 25
+    delta_t_s = (t_max - t_min) * day_to_s
 
     position: t.Literal["em", "trueem"] = "em"
     if trueem:
         required_cols = {"trueem_posx", "trueem_posy", "trueem_posz", "trueem_time"}
-        missing_cols = required_cols - set(dfpackets.collect_schema().names())
+        missing_cols = required_cols - set(lzpackets.collect_schema().names())
         if missing_cols:
             exit_with_error(
                 f"the 2D image of --use_thermalemissiontype needs the packet columns {', '.join(sorted(missing_cols))}",
                 "Give -groupby, which can take the column true_emission_velocity of an old packets file",
             )
         position = "trueem"
-    # a timestep holds the times from its start up to its end, and the end belongs to the next timestep
-    dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="left"))
-    # a packet with no record of the emission has a time of NaN, thus it is outside each bin of the histogram
+    # a packet with no record of the emission has a time of NaN, thus it is outside each bin of the image
     emtime = get_emission_time_expr(position)
-    dfpackets = dfpackets.with_columns(
-        ((pl.col(f"{position}_posx") ** 2 + pl.col(f"{position}_posy") ** 2).sqrt() / emtime / CLIGHT).alias(
-            "beta_r_cyl_em"
+    dfpackets = (
+        lzpackets
+        # a timestep holds the times from its start up to its end, and the end belongs to the next timestep
+        .filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="left"))
+        .select(
+            pl.col("e_rf").cast(pl.Float64),
+            emtime_s=emtime.cast(pl.Float64),
+            v_cyl_kmps=(pl.col(f"{position}_posx") ** 2 + pl.col(f"{position}_posy") ** 2).sqrt() / emtime / km_to_cm,
+            v_z_kmps=(pl.col(f"{position}_posz") / emtime / km_to_cm).cast(pl.Float64),
         )
-    ).with_columns((pl.col(f"{position}_posz") / emtime / CLIGHT).alias("beta_z_em"))
-
-    dfpackets = dfpackets.with_columns(
-        ((pl.col("beta_r_cyl_em") / Delta_beta).floor() * Delta_beta * CLIGHT * emtime).alias("R_cyl_inner_em")
-    ).with_columns((pl.col("R_cyl_inner_em") + Delta_beta * CLIGHT * emtime).alias("R_cyl_outer_em"))
-    dfpackets_selected = dfpackets.with_columns(
-        (
-            np.pi
-            * (pl.col("R_cyl_outer_em").cast(pl.Float64) ** 2 - pl.col("R_cyl_inner_em").cast(pl.Float64) ** 2)
-            * CLIGHT
-            * Delta_beta
-            * emtime
-        ).alias("hollow_cyl_vol_em")
-    ).collect()
-    energy_sum = float(dfpackets_selected["e_rf"].sum())
-    print_arrival_time_method(modelpath, [timestep], "the timestep that holds -timedays")
-    print_heatmap_method(
-        dfpackets_selected.height,
-        position,
-        Delta_beta,
-        energy_sum / nprocs_read / Delta_t_secs * inverse_solidangle_fraction,
-        ionlabel=None if Z is None else get_ionstring(Z, ion_stage_list[0]) if ion_stage_list else get_elsymbol(Z),
-        srIItriplet=srIItriplet,
+        .collect()
     )
 
-    # Step 2) create the heatmap. Normalise packet energy to modelgrid cell volume at packet emission time (lab frame)
-    # the kernel gives the bins of np.histogram2d. np.histogram2d took 0.13 s for 2.5 million packets at 2 days of
-    # a 3D kilonova model. The kernel made the command 0.11 s faster
-    xedges = np.linspace(0, 0.5, num=26)
-    yedges = np.linspace(-0.5, 0.5, num=51)
-    xbinindex = get_bin_indices(dfpackets_selected.select("beta_r_cyl_em"), "beta_r_cyl_em", xedges.tolist())[
-        "binindex"
-    ]
-    dfinxrange = dfpackets_selected.select(
-        pl.col("beta_z_em").cast(pl.Float64),
-        weight=(pl.col("e_rf") / pl.col("hollow_cyl_vol_em")).cast(pl.Float64),
-        xbinindex=xbinindex,
-    ).filter(pl.col("xbinindex") >= 0)
+    pixelwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
+    xedges = np.array(velocityedges_kmps)
+    yedges = np.concatenate((-xedges[:0:-1], xedges))
+    # the ring of bin i has a volume of pi ((i + 1)^2 - i^2) w^3 in velocity space, and t^3 makes it a real volume
+    dfinimage = (
+        dfpackets
+        .with_columns(
+            xbinindex=get_bin_indices(dfpackets.select("v_cyl_kmps"), "v_cyl_kmps", xedges.tolist())["binindex"]
+        )
+        .filter((pl.col("xbinindex") >= 0) & pl.col("v_z_kmps").is_between(yedges[0], yedges[-1]))
+        .with_columns(
+            weight=pl.col("e_rf")
+            / (math.pi * (2 * pl.col("xbinindex") + 1) * (pixelwidth_kmps * km_to_cm * pl.col("emtime_s")) ** 3)
+        )
+    )
     hist2D = (
-        sum_weights_in_bins(dfinxrange, "beta_z_em", "weight", yedges.tolist(), "xbinindex", len(xedges) - 1)["sum"]
+        sum_weights_in_bins(dfinimage, "v_z_kmps", "weight", yedges.tolist(), "xbinindex", len(xedges) - 1)["sum"]
         .to_numpy()
         .reshape(len(xedges) - 1, len(yedges) - 1)
     )
-    heatmap = hist2D / Delta_t_secs / nprocs_read * inverse_solidangle_fraction
-    heatmap = np.ma.masked_less_equal(heatmap, 0.0)
+    luminosityfactor = inverse_solidangle_fraction / (delta_t_s * nprocs_read)
+    print_arrival_time_method(modelpath, [timestep], "the timestep that holds -timedays")
+    print_last_interaction_convention(modelpath)
+    print_heatmap_method(
+        dfpackets,
+        dfinimage,
+        position,
+        format_velocity(pixelwidth_kmps, unit),
+        luminosityfactor,
+        selectiontext=(
+            "the Sr II triplet"
+            if srIItriplet
+            else None
+            if ions is None
+            else ", ".join(get_ion_label(ion) for ion in ions)
+        ),
+    )
+
+    heatmap = np.ma.masked_less_equal(hist2D * luminosityfactor, 0.0)
     if colorlogscale:
         heatmap = np.ma.log10(heatmap)
 
     # an image with a colorbar keeps plt.subplots: fig.colorbar takes space that the
     # Divider of make_frame_figure gives back at draw time, and the two then overlap
     set_mpl_style()
-    fig, ax = plt.subplots(figsize=(3.5, 4.5), layout="constrained")
+    figscale = getattr(args, "figscale", 1.0)
+    fig, ax = plt.subplots(figsize=(3.5 * figscale, 4.5 * figscale), layout="constrained")
     z = heatmap.T
 
-    im = ax.imshow(z, origin="lower", cmap="viridis", extent=(xedges[0], xedges[-1], yedges[0], yedges[-1]))
+    kmpsperunit = KMPS_PER_VELOCITYUNIT[unit]
+    im = ax.imshow(
+        z,
+        origin="lower",
+        cmap="viridis",
+        extent=(xedges[0] / kmpsperunit, xedges[-1] / kmpsperunit, yedges[0] / kmpsperunit, yedges[-1] / kmpsperunit),
+    )
     ax.set_aspect("equal")
-    ax.set_xlabel(r"$v_{\rm cyl} = \sqrt{v_x^2 + v_y^2}$ [$c$]")
-    ax.set_ylabel(r"$v_z$ [$c$]")
+    ax.set_xlabel(rf"$v_{{\rm cyl}} = \sqrt{{v_x^2 + v_y^2}}$ [{VELOCITYUNIT_AXISLABELS[unit]}]")
+    ax.set_ylabel(rf"$v_z$ [{VELOCITYUNIT_AXISLABELS[unit]}]")
     cbar = fig.colorbar(im, ax=ax)
     luminositylabel = r"observed luminosity per volume [erg/(s cm$^3$)]"
     cbar.set_label(rf"log$_{{10}}$ {luminositylabel}" if colorlogscale else f"O{luminositylabel[1:]}")
-
-    ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6))
-    ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
 
     outfilename = resolve_outputfile(outputfile, start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf")
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
@@ -270,28 +292,36 @@ def packets_2d_hist_bin_and_ejecta_vel(
         )
         # the empty table replaces a _summary file of the same name from an earlier command with -groupby
         output_data(
-            args, {"": get_heatmap_table(z, xedges, yedges, valuecolumn), "_summary": pl.DataFrame()}, outfilename
+            args,
+            {
+                "": convert_velocity_columns(get_heatmap_table(z, xedges, yedges, valuecolumn), unit),
+                "_summary": pl.DataFrame(),
+            },
+            outfilename,
         )
     save_figure(fig, outfilename, dpi=300, args=args)
 
 
 def print_heatmap_method(
-    packetcount: int,
+    dfpackets: pl.DataFrame,
+    dfinimage: pl.DataFrame,
     position: t.Literal["em", "trueem"],
-    pixelwidth_on_c: float,
-    luminosity_erg_per_s: float,
+    pixelwidthtext: str,
+    luminosityfactor: float,
     *,
-    ionlabel: str | None,
-    srIItriplet: bool,
+    selectiontext: str | None,
 ) -> None:
-    """Print the selection of the packets of the 2D image, and the meaning of its colour."""
-    linetext = "the Sr II triplet" if srIItriplet else ionlabel
-    if linetext is None:
-        print_detail(f"{packetcount} escaped r-packets of the direction bin arrive in the timestep")
+    """Print the selection of the packets of the 2D image, the meaning of its colour, and the luminosity in it.
+
+    dfpackets holds the selected packets of the timestep, and dfinimage the packets inside the image.
+    selectiontext names the lines of the last absorption that select the packets, or None for all the packets.
+    """
+    if selectiontext is None:
+        print_detail(f"{dfpackets.height} escaped r-packets of the direction bin arrive in the timestep")
     else:
         print_detail(
-            f"{packetcount} escaped r-packets of the direction bin arrive in the timestep and have a last absorption by"
-            f" a line of {linetext}. The image takes only such packets"
+            f"{dfpackets.height} escaped r-packets of the direction bin arrive in the timestep and have a last"
+            f" absorption by a line of {selectiontext}. The image takes only such packets"
         )
     if position == "em":
         print_detail(
@@ -301,16 +331,22 @@ def print_heatmap_method(
     else:
         print_detail("The position is trueem_pos at trueem_time, the place of the last thermal emission")
     print_detail(
-        f"Each pixel is a ring around the z axis, from v_cyl to v_cyl + {pixelwidth_on_c:g} c and from v_z to v_z +"
-        f" {pixelwidth_on_c:g} c, with v_cyl = sqrt(v_x^2 + v_y^2). The command divides the energy of each packet by"
-        " the volume of its ring at the time of its last interaction. The colour is the sum of these values in the"
-        " ring, divided by the width of the timestep and by the number of packet files (one for each MPI rank). The"
-        " command then multiplies the colour by 4 pi divided by the solid angle of the direction bin"
+        f"Each pixel is a ring around the z axis, {pixelwidthtext} wide in v_cyl and in v_z, with v_cyl ="
+        " sqrt(v_x^2 + v_y^2). The command divides the energy of each packet by the volume of its ring at the time of"
+        " its last interaction. The colour is the sum of these values in the ring, divided by the width of the"
+        " timestep and by the number of packet files (one for each MPI rank). The command then multiplies the colour"
+        " by 4 pi divided by the solid angle of the direction bin"
     )
+    totalluminosity = float(dfpackets["e_rf"].sum()) * luminosityfactor
+    imageluminosity = float(dfinimage["e_rf"].sum()) * luminosityfactor
     print_detail(
         "Thus the colour is the observed luminosity per unit volume at the place of the last interaction. It is not"
-        " the emissivity of the ejecta. The packets of the image give an observed luminosity of"
-        f" {luminosity_erg_per_s:.3e} erg/s (4 pi times the luminosity per unit solid angle)"
+        f" the emissivity of the ejecta. The packets give an observed luminosity of {totalluminosity:.3e} erg/s (4 pi"
+        f" times the luminosity per unit solid angle), and {imageluminosity / totalluminosity:.1%} of it is inside"
+        " the image. A packet outside the image has a velocity above the axes or no record of the position"
+        if totalluminosity > 0.0
+        else "Thus the colour is the observed luminosity per unit volume at the place of the last interaction. No"
+        " packet is in the image"
     )
 
 
@@ -398,7 +434,7 @@ def plot_velocity_profiles_by_group(
     position: t.Literal["em", "trueem"] = "trueem" if trueem else "em"
     typecolumn = "absorption_type" if absorption else ("trueemissiontype" if trueem else "emissiontype")
     nprocs_read, lzdfpackets, inverse_solidangle_fraction = get_reduced_packet_set(
-        modelpath, dirbin, None, None, lambdarange=lambdarange, absorption=absorption
+        modelpath, dirbin, None, lambdarange=lambdarange, absorption=absorption
     )
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
     delta_t_s = (t_max - t_min) * day_to_s
@@ -431,6 +467,7 @@ def plot_velocity_profiles_by_group(
     luminosity_factor = inverse_solidangle_fraction / (delta_t_s * nprocs_read)
     dfgroupsummary = get_group_summary(dfpackets, typecolumn, dflabels, drawnnames, luminosity_factor)
     print_arrival_time_method(modelpath, [timestep], "the timestep that holds -timedays")
+    print_last_interaction_convention(modelpath)
     print_group_profile_method(
         dfprofiles, dfpackets.height, position, typecolumn, velocityedges_kmps, dfgroupsummary, unit
     )
@@ -658,7 +695,7 @@ def draw_group_profiles(
 def get_heatmap_table(
     image: np.ma.MaskedArray, xedges: npt.NDArray[np.floating], yedges: npt.NDArray[np.floating], valuecolumn: str
 ) -> pl.DataFrame:
-    """Return one row for each bin of the image, with the velocity edges of the bin in units of c.
+    """Return one row for each bin of the image, with the velocity edges [km/s] of the bin.
 
     The image has one row for each v_z bin and one column for each v_cyl bin. A bin that the image leaves blank has no
     value.
@@ -667,10 +704,10 @@ def get_heatmap_table(
     # the Fortran order keeps the v_z bins of one v_cyl bin together
     values = np.ma.filled(image.astype(np.float64), np.nan).ravel(order="F")
     return pl.DataFrame({
-        "v_cyl_min_c": np.repeat(xedges[:-1], nzbins),
-        "v_cyl_max_c": np.repeat(xedges[1:], nzbins),
-        "v_z_min_c": np.tile(yedges[:-1], nrbins),
-        "v_z_max_c": np.tile(yedges[1:], nrbins),
+        "v_cyl_min_kmps": np.repeat(xedges[:-1], nzbins),
+        "v_cyl_max_kmps": np.repeat(xedges[1:], nzbins),
+        "v_z_min_kmps": np.tile(yedges[:-1], nrbins),
+        "v_z_max_kmps": np.tile(yedges[1:], nrbins),
         valuecolumn: pl.Series(values, nan_to_null=True),
     })
 
@@ -704,8 +741,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-wavelen", type=float, help=argparse.SUPPRESS)
     parser.add_argument("-binwidth", type=float, help=argparse.SUPPRESS)
 
-    parser.add_argument("-element", type=str, default=None, help="Element symbol")
-    parser.add_argument("-ionstage", type=str, default=None, help="Ionisation stage (spectroscopic notation)")
+    parser.add_argument(
+        "-ions",
+        action=CommaJoinAction,
+        help=(
+            'Ions or elements of the 2D image, e.g. "Sr II,Fe". The image takes the packets with a last absorption by'
+            " a line of these ions. Default: all the escaped packets"
+        ),
+    )
+    # the earlier form of -ions: one element, one ion stage, or both
+    parser.add_argument("-element", type=str, help=argparse.SUPPRESS)
+    parser.add_argument("-ionstage", type=str, help=argparse.SUPPRESS)
 
     parser.add_argument(
         "-dirbin",
@@ -739,7 +785,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=8,
         help='Number of groups that -groupby draws. The other groups join the group "Other"',
     )
-    addarg_velocitybins(parser, " of -groupby")
+    addarg_velocitybins(parser)
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument(
         "--colorlogscale",
@@ -754,6 +800,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_output(parser, kind="file", helptext="Path/filename for the PDF file")
+    addarg_figscale(parser)
+    addarg_show(parser)
     addarg_data_output(parser)
 
 
@@ -780,24 +828,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     check_costheta_dirbin(args.dirbin, "-dirbin", allowall=True)
 
-    # get_atomic_number gives -1 for a text that is no element symbol, and 0 for the free neutron, which has no lines
-    atomic_number = get_atomic_number(args.element) if args.element else None
-    if atomic_number is not None and atomic_number < 1:
-        exit_with_error(f"-element {args.element} is no element symbol", "Give the element as e.g. Sr")
+    ions = get_selected_ions(args)
 
     if args.groupby is not None:
-        plot_velocity_profiles_from_args(args)
+        plot_velocity_profiles_from_args(args, ions)
         return
 
+    modelpath = Path(args.modelpath)
+    unit = get_velocity_unit(modelpath, args.velocityunit)
     packets_2d_hist_bin_and_ejecta_vel(
-        Path(args.modelpath),
+        modelpath,
         args.timedays,
-        args.srIItriplet,
-        args.colorlogscale,
-        dirbin=args.dirbin,
-        Z=atomic_number,
+        args.dirbin,
+        get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit),
+        unit,
+        ions=ions,
+        srIItriplet=args.srIItriplet,
+        colorlogscale=args.colorlogscale,
         trueem=args.use_thermalemissiontype,
-        ion_stage_str=args.ionstage,
         lambdarange=get_lambdarange(args),
         outputfile=args.outputfile,
         args=args,
@@ -805,16 +853,52 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
 
+def get_selected_ions(args: argparse.Namespace) -> list[tuple[int | None, int | None]] | None:
+    """Return the (Z, ion_stage) of each item of -ions, or of -element and -ionstage, or None for no selection.
+
+    A None in an item selects each element or each ion stage.
+    """
+    if args.element is None and args.ionstage is None:
+        if not args.ions:
+            return None
+        ions: list[tuple[int | None, int | None]] = []
+        for iontext in str(args.ions).split(","):
+            try:
+                iontuple = get_ion_tuple(iontext.strip())
+            except ValueError:
+                exit_with_error(
+                    f"-ions takes ions or elements, and '{iontext}' is neither", 'Give e.g. -ions "Sr II,Fe"'
+                )
+            Z = iontuple[0] if isinstance(iontuple, tuple) else iontuple
+            # get_atomic_number gives -1 for a text that is no element symbol, and 0 for the free neutron
+            if Z < 1:
+                exit_with_error(
+                    f"-ions takes ions or elements, and '{iontext}' is neither", 'Give e.g. -ions "Sr II,Fe"'
+                )
+            ions.append(iontuple if isinstance(iontuple, tuple) else (iontuple, None))
+        return ions
+    if args.ions:
+        exit_with_error("give the ions one time", "Remove -element and -ionstage")
+    Z = get_atomic_number(args.element) if args.element else None
+    if Z is not None and Z < 1:
+        exit_with_error(f"-element {args.element} is no element symbol", "Give the element as e.g. Sr")
+    ion_stage = decode_roman_numeral(args.ionstage) if args.ionstage else None
+    if ion_stage == -1:
+        exit_with_error(f"-ionstage {args.ionstage} is no Roman numeral", "Give the ion stage as e.g. II")
+    return [(Z, ion_stage)]
+
+
 def get_lambdarange(args: argparse.Namespace) -> tuple[float, float] | None:
     """Return the range of rest-frame wavelength [Å] of -lambdamin and -lambdamax, or None for no limit."""
     return None if args.xmin is None else (args.xmin, args.xmax)
 
 
-def plot_velocity_profiles_from_args(args: argparse.Namespace) -> None:
+def plot_velocity_profiles_from_args(
+    args: argparse.Namespace, ions: Sequence[tuple[int | None, int | None]] | None
+) -> None:
     """Check the options of -groupby, then plot the velocity profile of each group."""
     for option, isgiven in (
-        ("-element", args.element is not None),
-        ("-ionstage", args.ionstage is not None),
+        ("-ions", ions is not None),
         ("--srIItriplet", args.srIItriplet),
         ("--colorlogscale", args.colorlogscale),
     ):

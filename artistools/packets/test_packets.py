@@ -577,8 +577,21 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
     with mock.patch.object(
         plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
     ):
+        c_kmps = at.constants.C_cm_per_s / at.constants.km_to_cm
         plotlastpacketinteraction.packets_2d_hist_bin_and_ejecta_vel(
-            modelpath, tdays=tdays, srIItriplet=False, colorlogscale=False, dirbin=-1, trueem=True
+            modelpath,
+            tdays,
+            -1,
+            [0.02 * c_kmps * binindex for binindex in range(26)],
+            "c",
+            ions=None,
+            srIItriplet=False,
+            colorlogscale=False,
+            trueem=True,
+            lambdarange=None,
+            outputfile=None,
+            args=None,
+            absorption=False,
         )
 
     assert mocksavefigure.call_count == 1
@@ -843,8 +856,21 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
     with mock.patch.object(
         plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
     ):
+        c_kmps = at.constants.C_cm_per_s / at.constants.km_to_cm
         plotlastpacketinteraction.packets_2d_hist_bin_and_ejecta_vel(
-            modelpath, tdays=tdays, srIItriplet=False, colorlogscale=False, dirbin=-1, trueem=True
+            modelpath,
+            tdays,
+            -1,
+            [0.02 * c_kmps * binindex for binindex in range(26)],
+            "c",
+            ions=None,
+            srIItriplet=False,
+            colorlogscale=False,
+            trueem=True,
+            lambdarange=None,
+            outputfile=None,
+            args=None,
+            absorption=False,
         )
 
     assert mocksavefigure.call_count == 1
@@ -903,7 +929,7 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
 
     modelpath = at.get_path("testdata") / "testmodel"
     plotlastpacketinteraction.main(argsraw=["-modelpath", str(modelpath), "-timedays", "300", "-o", str(tmp_path)])
-    assert (tmp_path / "testmodel_allelements_allions_t_arrive_d_300.0_ts54_into_dirbin-1.pdf").is_file()
+    assert (tmp_path / "testmodel_allions_t_arrive_d_300.0_ts54_into_dirbin-1.pdf").is_file()
 
     # -tdays is the old spelling, and -o can also name the file
     outputfile = tmp_path / "lastinteraction.pdf"
@@ -970,6 +996,8 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
         timedays=300,
         outputfile=outputfile,
         colorlogscale=colorlogscale,
+        velocityunit="c",
+        velocitymax=0.5,
         write_data=True,
     )
 
@@ -997,6 +1025,8 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
             modelpath=at.get_path("testdata") / "testmodel",
             timedays=300,
             outputfile=tmp_path / "linear.pdf",
+            velocityunit="c",
+            velocitymax=0.5,
             write_data=True,
         )
         dflinear = pl.read_csv(tmp_path / "linear.txt", separator=" ", null_values="nan", comment_prefix="#")

@@ -1018,21 +1018,31 @@ def get_sobolev_trough(
     betas = np.concatenate((edges_on_c[:1], bincentres_on_c[:belowcbincount], outeredge_on_c))
     dopplerfactors = np.sqrt((1.0 - betas) / (1.0 + betas)) if relativisticdoppler else 1.0 - betas
     lambdarests_angstroms = profiles.dfranked["lambda_angstroms"].to_numpy()
+    samplesofline = [
+        np.concatenate((
+            linedepths[:1],
+            linedepths[:belowcbincount],
+            linedepths[belowcbincount - 1 : belowcbincount][: len(outeredge_on_c)],
+        ))
+        for linedepths in depths
+    ]
+    # the grid ends at the shortest wavelength with a depth, thus empty bins at high velocity keep its resolution
+    shortestlambdas_angstroms = [
+        lambdarest_angstroms * dopplerfactors[min(int(np.flatnonzero(samples > 0.0)[-1]) + 1, len(samples) - 1)]
+        for lambdarest_angstroms, samples in zip(lambdarests_angstroms, samplesofline, strict=True)
+        if np.any(samples > 0.0)
+    ]
     lambdagrid_angstroms = np.linspace(
-        lambdarests_angstroms.min() * dopplerfactors.min(), lambdarests_angstroms.max(), 400
+        min(shortestlambdas_angstroms, default=lambdarests_angstroms.min() * dopplerfactors.min()),
+        lambdarests_angstroms.max(),
+        400,
     )
     transmission = np.ones_like(lambdagrid_angstroms)
-    for lambdarest_angstroms, linedepths in zip(lambdarests_angstroms, depths, strict=True):
-        belowcdepths = linedepths[:belowcbincount]
-        sampledepths = np.concatenate((belowcdepths[:1], belowcdepths, belowcdepths[-1:][: len(outeredge_on_c)]))
+    for lambdarest_angstroms, samples in zip(lambdarests_angstroms, samplesofline, strict=True):
         # np.interp needs increasing x, and a larger velocity gives a shorter wavelength
         transmission *= 1.0 - np.clip(
             np.interp(
-                lambdagrid_angstroms,
-                lambdarest_angstroms * dopplerfactors[::-1],
-                sampledepths[::-1],
-                left=0.0,
-                right=0.0,
+                lambdagrid_angstroms, lambdarest_angstroms * dopplerfactors[::-1], samples[::-1], left=0.0, right=0.0
             ),
             0.0,
             1.0,
