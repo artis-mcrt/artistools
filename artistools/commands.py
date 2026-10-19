@@ -506,7 +506,10 @@ subcommandtree: CommandTree = {
                 "where the lines with the largest tau_sobolev from 6000 to 6400 Å form at 7 days",
             ),
             (
-                ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau -troughdirbin 90 -photospherevelocity 15000",
+                (
+                    ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau -troughdirbin 90"
+                    " -photospherevelocity 15000km/s"
+                ),
                 "the same, with a Sobolev estimate of the trough for the observer at the pole",
             ),
         ),

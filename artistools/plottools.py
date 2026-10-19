@@ -42,7 +42,6 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
-from artistools.misc.cliutils import positive_float_arg
 from artistools.misc.cliutils import positive_int_arg
 
 # the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
@@ -1996,8 +1995,10 @@ def addarg_velocitybins(parser: argparse.ArgumentParser, usetext: str = "") -> N
     )
     parser.add_argument(
         "-velocitymax",
-        type=positive_float_arg,
-        help=f"Upper edge of the velocity bins{usetext}, in the unit of -velocityunit. Default: the corner of the grid",
+        dest="velocitymax_kmps",
+        type=positive_velocity_kmps_arg,
+        help=f"Upper edge of the velocity bins{usetext}, with its unit, e.g. 0.3c or 90000km/s. Default: the corner of"
+        " the grid",
     )
     addarg_velocityunit(parser, usetext)
 
@@ -2078,28 +2079,20 @@ def get_cell_widths_kmps(modelmeta: Mapping[str, t.Any]) -> tuple[float, float, 
 
 
 def get_velocity_bin_edges_kmps(
-    modelpath: "Path | str", nbins: int, velocitymax: float | None, unit: t.Literal["kmps", "c"]
+    modelpath: "Path | str", nbins: int, velocitymax_kmps: float | None, unit: t.Literal["kmps", "c"]
 ) -> list[float]:
-    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax or to the grid corner.
+    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax_kmps or to the grid corner.
 
-    velocitymax is in the unit of the velocity axis. The corner of a 2D grid or a 3D grid is outside vmax. A cell in a
-    corner can hold much of the emission or the optical depth, e.g. in the fast ejecta of a kilonova.
+    unit is the unit of the log text. The corner of a 2D grid or a 3D grid is outside vmax. A cell in a corner can hold
+    much of the emission or the optical depth, e.g. in the fast ejecta of a kilonova.
     """
     if nbins < 1:
         exit_with_error(f"-nvelocitybins {nbins} gives no bins", "Give a number of 1 or more")
-    if velocitymax is not None:
-        if velocitymax <= 0.0:
-            exit_with_error(f"-velocitymax {velocitymax} gives no range", "Give a velocity above 0")
-        if unit == "c" and velocitymax > 1.0:
-            exit_with_error(
-                f"-velocitymax {velocitymax} is above the speed of light, and the velocity axis takes units of c",
-                "Give -velocitymax in units of c, or give -velocityunit kmps",
-            )
-        velocitymax_kmps = velocitymax * KMPS_PER_VELOCITYUNIT[unit]
+    if velocitymax_kmps is not None:
         if velocitymax_kmps > KMPS_PER_VELOCITYUNIT["c"]:
             exit_with_error(
-                f"-velocitymax {velocitymax} km/s is above the speed of light",
-                f"Give a velocity of {KMPS_PER_VELOCITYUNIT['c']:.0f} km/s or less",
+                f"-velocitymax {format_velocity(velocitymax_kmps, unit)} is above the speed of light",
+                "Give a velocity of 1c or less",
             )
     else:
         from artistools.inputmodel import get_modeldata
@@ -2111,6 +2104,51 @@ def get_velocity_bin_edges_kmps(
             f" is vmax times the square root of the number of dimensions ({modelmeta['dimensions']})"
         )
     return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
+
+
+def parse_velocity_argument(value: str, *, requireunit: bool = False) -> tuple[float, t.Literal["kmps", "c"]]:
+    """Return the velocity [km/s] and the unit of a command line value, e.g. 5000km/s or 0.1c.
+
+    A number with no unit is in km/s, unless requireunit is True. A command that takes no unit then gives an error.
+    """
+    text = value.strip()
+    unit: t.Literal["kmps", "c"]
+    if text.lower().endswith("km/s"):
+        numbertext, unit = text[: -len("km/s")], "kmps"
+    elif text.lower().endswith("c"):
+        numbertext, unit = text[:-1], "c"
+    else:
+        numbertext, unit = text, "kmps"
+    helptext = "Give a number that ends in km/s, e.g. 5000km/s, or a fraction of c, e.g. 0.1c"
+    if requireunit and numbertext == text:
+        msg = f"'{value}' has no unit. {helptext}"
+        raise argparse.ArgumentTypeError(msg)
+    try:
+        number = float(numbertext)
+    except ValueError:
+        number = math.nan
+    if not math.isfinite(number):
+        msg = f"'{value}' is not a finite velocity. {helptext}"
+        raise argparse.ArgumentTypeError(msg)
+
+    return (number * C_cm_per_s / km_to_cm if unit == "c" else number), unit
+
+
+def get_velocity_label(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
+    """Return a velocity in the unit that the user gave, e.g. 0.1c or 5000 km/s."""
+    return f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
+
+
+def positive_velocity_kmps_arg(text: str) -> float:
+    """Return the velocity [km/s] of a command line value with its unit, e.g. 0.1c or 30000km/s, when it is above 0.
+
+    A bare number has no unit, thus it gives an error. -velocityunit auto chooses the unit of the axis from the model.
+    """
+    velocity_kmps, _ = parse_velocity_argument(text, requireunit=True)
+    if velocity_kmps <= 0.0:
+        msg = f"'{text}' is not a velocity above 0"
+        raise argparse.ArgumentTypeError(msg)
+    return velocity_kmps
 
 
 def get_signed_velocity_bin_edges_kmps(velocityedges_kmps: Sequence[float]) -> list[float]:

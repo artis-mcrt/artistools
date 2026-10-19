@@ -308,7 +308,7 @@ Do these steps in this sequence, for each direction bin:
    `-dirbin 50`, give `-costhetamin 0 -costhetamax 0.2`. A line makes an absorption trough only with tau_sobolev above
    1 in front of the photosphere, i.e. at a velocity above the median of step 2.
 4. Estimate the trough: `artistools plotlinecontributions ... -troughdirbin 90 -photospherevelocity <v>`, with the
-   median of step 2. The estimate has no emission of the lines, no limb darkening, and only the ranked lines. If the
+   median of step 2 and its unit, e.g. `0.157c` or `47000km/s`. The estimate has no emission of the lines, no limb darkening, and only the ranked lines. If the
    estimate gives a deep trough and the spectrum does not, the emission of the lines can fill the trough. As an
    alternative, lines of different ions can change the feature.
 5. Compare the line blanketing of each direction. Run `artistools plotopacity -modelpath <modelpath> -t <days> -vmin

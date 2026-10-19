@@ -648,7 +648,7 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
             absorption=absorption,
             maxseriescount=1,
             nvelocitybins=2,
-            velocitymax=10000.0 / kmps_per_unit,
+            velocitymax_kmps=10000.0,
             velocityunit=velocityunit,
             outputfile=tmp_path / "profile.pdf",
             write_data=True,
@@ -1054,7 +1054,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
         outputfile=outputfile,
         colorlogscale=colorlogscale,
         velocityunit="c",
-        velocitymax=0.5,
+        velocitymax_kmps=0.5 * at.constants.C_cm_per_s / at.constants.km_to_cm,
         write_data=True,
     )
 
@@ -1083,7 +1083,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
             timedays=300,
             outputfile=tmp_path / "linear.pdf",
             velocityunit="c",
-            velocitymax=0.5,
+            velocitymax_kmps=0.5 * at.constants.C_cm_per_s / at.constants.km_to_cm,
             write_data=True,
         )
         dflinear = pl.read_csv(tmp_path / "linear.txt", separator=" ", null_values="nan", comment_prefix="#")

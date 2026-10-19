@@ -42,7 +42,6 @@ from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
-from artistools.misc.cliutils import positive_float_arg
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
@@ -58,12 +57,12 @@ from artistools.plottools import get_velocity_unit
 from artistools.plottools import INVERSE_VELOCITYUNIT_AXISLABELS
 from artistools.plottools import KMPS_PER_VELOCITYUNIT
 from artistools.plottools import make_frame_figure
+from artistools.plottools import positive_velocity_kmps_arg
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import VELOCITYUNIT_AXISLABELS
-from artistools.plottools import VELOCITYUNIT_LABELS
 
 if t.TYPE_CHECKING:
     import matplotlib.axes as mplax
@@ -334,7 +333,7 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
     The function checks the options before the command reads the estimators.
     """
     if args.troughdirbin is None:
-        if args.photospherevelocity is not None:
+        if args.photospherevelocity_kmps is not None:
             exit_with_error("-photospherevelocity applies only to the trough estimate", "Give -troughdirbin too")
         return None
     check_costheta_dirbin(args.troughdirbin, "-troughdirbin", allowall=False)
@@ -346,33 +345,31 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
             " such vector",
             "Remove -troughdirbin",
         )
-    if args.photospherevelocity is None or args.photospherevelocity <= 0.0:
+    photospherevelocity_kmps = args.photospherevelocity_kmps
+    if photospherevelocity_kmps is None:
         exit_with_error(
             "the trough estimate needs the velocity of the photosphere",
             "Give -photospherevelocity, e.g. the median of plotlastinteractionvelocity for a range with no strong line",
         )
-    photospherevelocity_kmps = args.photospherevelocity * KMPS_PER_VELOCITYUNIT[unit]
     if photospherevelocity_kmps >= KMPS_PER_VELOCITYUNIT["c"]:
         exit_with_error(
-            f"-photospherevelocity {args.photospherevelocity:g} {VELOCITYUNIT_LABELS[unit]} is at or above the speed"
-            " of light",
-            f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
+            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is at or above the speed of light",
+            "Give a velocity below 1c",
         )
-    # a value in the wrong unit, e.g. 0.05 for 0.05 c on a km/s axis, gives a disk much smaller than a cell
     partwidth_kmps = min(get_cell_widths_kmps(modelmeta)) / TROUGHSAMPLESPERCELL
     if photospherevelocity_kmps < partwidth_kmps:
         exit_with_error(
-            f"-photospherevelocity {args.photospherevelocity:g} {VELOCITYUNIT_LABELS[unit]} is less than"
+            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is less than"
             f" {format_velocity(partwidth_kmps, unit)}, a third of the width of a cell, thus the trough estimate has no"
             " resolution",
-            f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
+            "Give a larger -photospherevelocity",
         )
     cornervelocity_kmps = get_grid_corner_velocity_kmps(modelmeta)
     if photospherevelocity_kmps >= cornervelocity_kmps:
         exit_with_error(
             f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is at or above the corner of the"
             f" grid at {format_velocity(cornervelocity_kmps, unit)}, thus no cell is in front of the photosphere",
-            f"Give a lower velocity in units of {VELOCITYUNIT_LABELS[unit]}",
+            "Give a lower -photospherevelocity",
         )
     if args.costhetamin is not None or args.costhetamax is not None:
         exit_with_error(
@@ -417,10 +414,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "-photospherevelocity",
-        type=positive_float_arg,
+        dest="photospherevelocity_kmps",
+        type=positive_velocity_kmps_arg,
         help=(
-            "Velocity of the photosphere of -troughdirbin, in the unit of -velocityunit. plotlastinteractionvelocity"
-            " gives an estimate"
+            "Velocity of the photosphere of -troughdirbin, with its unit, e.g. 0.157c or 47000km/s."
+            " plotlastinteractionvelocity gives an estimate"
         ),
     )
     addarg_excitationtemperature(parser)
@@ -502,7 +500,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     unit = get_velocity_unit(args.modelpath, args.velocityunit)
     troughsettings = get_trough_settings(args, unit)
-    velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax, unit)
+    velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax_kmps, unit)
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
     costhetarange = get_costheta_range(args.costhetamin, args.costhetamax)
     inputs = get_cell_line_inputs(

@@ -3372,8 +3372,8 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
 
     "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
     """
-    from artistools.spectra import get_velocity_label
-    from artistools.spectra import parse_velocity_argument
+    from artistools.plottools import get_velocity_label
+    from artistools.plottools import parse_velocity_argument
 
     text = slicetext.strip().lower()
     helptext = (

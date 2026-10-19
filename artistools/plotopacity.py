@@ -58,7 +58,9 @@ from artistools.misc import print_warning
 from artistools.misc.general import get_progress_class
 from artistools.plottools import addarg_costhetarange
 from artistools.plottools import get_costheta_range
+from artistools.plottools import get_velocity_label
 from artistools.plottools import make_frame_figure
+from artistools.plottools import parse_velocity_argument
 from artistools.plottools import RESIDUALROWHEIGHT
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
@@ -66,8 +68,6 @@ from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
 from artistools.plottools import set_log_ticks_every_decade
 from artistools.plottools import set_plot_title
-from artistools.spectra import get_velocity_label
-from artistools.spectra import parse_velocity_argument
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping

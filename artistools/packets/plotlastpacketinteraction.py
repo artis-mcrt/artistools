@@ -924,8 +924,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.dirbin,
         args.nvelocitybins,
         None
-        if args.velocitymax is None
-        else get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit)[-1],
+        if args.velocitymax_kmps is None
+        else get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax_kmps, unit)[-1],
         unit,
         ions=ions,
         srIItriplet=args.srIItriplet,
@@ -994,7 +994,7 @@ def plot_velocity_profiles_from_args(
             )
     modelpath = Path(args.modelpath)
     unit = get_velocity_unit(modelpath, args.velocityunit)
-    velocityedges_kmps = get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit)
+    velocityedges_kmps = get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax_kmps, unit)
     if args.velocitykind == "lineofsight":
         # a line-of-sight velocity can be negative, thus each side of zero gets -nvelocitybins bins
         velocityedges_kmps = get_signed_velocity_bin_edges_kmps(velocityedges_kmps)

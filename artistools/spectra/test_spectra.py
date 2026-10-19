@@ -666,18 +666,18 @@ def test_spectraemissionplot_of_a_model_with_no_sampled_emission_gives_a_message
 
 def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     """A shell edge is a number in km/s, or a fraction of c with a c suffix, and the labels keep that unit."""
-    assert atspectra.parse_velocity_argument("5000") == (5000.0, "kmps")
-    assert atspectra.parse_velocity_argument("5000 km/s") == (5000.0, "kmps")
-    assert atspectra.parse_velocity_argument("5000km/s", requireunit=True) == (5000.0, "kmps")
+    assert at.plottools.parse_velocity_argument("5000") == (5000.0, "kmps")
+    assert at.plottools.parse_velocity_argument("5000 km/s") == (5000.0, "kmps")
+    assert at.plottools.parse_velocity_argument("5000km/s", requireunit=True) == (5000.0, "kmps")
     with pytest.raises(argparse.ArgumentTypeError, match="has no unit"):
-        atspectra.parse_velocity_argument("5000", requireunit=True)
-    velocity_kmps, unit = atspectra.parse_velocity_argument("0.1C")
+        at.plottools.parse_velocity_argument("5000", requireunit=True)
+    velocity_kmps, unit = at.plottools.parse_velocity_argument("0.1C")
     assert unit == "c"
     assert np.isclose(velocity_kmps, 29979.2458)
 
     for badvalue in ("fast", "inf", "infc", "nan"):
         with pytest.raises(argparse.ArgumentTypeError, match="not a finite velocity"):
-            atspectra.parse_velocity_argument(badvalue)
+            at.plottools.parse_velocity_argument(badvalue)
 
     shells = [0.0, 29979.2458, 59958.4916]
     assert atspectra.get_shell_labels(shells, "c") == ["[0, 0.1) c", "[0.1, 0.2) c"]

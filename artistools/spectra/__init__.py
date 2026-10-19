@@ -13,10 +13,8 @@ from artistools.spectra.core import get_from_packets as get_from_packets
 from artistools.spectra.core import get_specpol_data as get_specpol_data
 from artistools.spectra.core import get_spectra as get_spectra
 from artistools.spectra.core import get_spectrum_at_time as get_spectrum_at_time
-from artistools.spectra.core import get_velocity_label as get_velocity_label
 from artistools.spectra.core import get_vspecpol_data as get_vspecpol_data
 from artistools.spectra.core import make_virtual_spectra_summed_file as make_virtual_spectra_summed_file
-from artistools.spectra.core import parse_velocity_argument as parse_velocity_argument
 from artistools.spectra.core import read_spec as read_spec
 from artistools.spectra.core import read_spec_res as read_spec_res
 

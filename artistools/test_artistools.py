@@ -2271,12 +2271,16 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
 
 @pytest.mark.parametrize(
     ("photospherevelocity", "errortext"),
-    [("350000", "above the speed of light"), ("0.05", "a third of the width of a cell")],
+    [("350000km/s", "above the speed of light"), ("0.05", "has no unit"), ("10km/s", "a third of the width of a cell")],
 )
-def test_plotlinecontributions_stops_for_a_photosphere_velocity_in_the_wrong_unit(
+def test_plotlinecontributions_stops_for_a_photosphere_velocity_with_no_unit_or_no_resolution(
     photospherevelocity: str, errortext: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Stop before the estimators for a km/s value above c, and for a value in units of c on a km/s axis."""
+    """Stop before the estimators for a velocity above c, a number with no unit, or a disk smaller than a cell.
+
+    A bare number took the unit of -velocityunit, whose default depends on the model, thus 0.05 meant for 0.05 c gave
+    0.05 km/s.
+    """
     with pytest.raises(SystemExit):
         at.plotlinecontributions.main(
             argsraw=[

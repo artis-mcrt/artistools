@@ -637,7 +637,7 @@ def get_layer_bounds(axisname: str, positiontext: str, modelmeta: "Mapping[str, 
     outside the grid, thus the text then gives the range of the grid.
     """
     # plotestimators imports the spectra package in its function too, because the CLI must start quickly
-    from artistools.spectra import parse_velocity_argument
+    from artistools.plottools import parse_velocity_argument
 
     try:
         velocity_kmps, _ = parse_velocity_argument(positiontext)

@@ -101,6 +101,7 @@ from artistools.plottools import get_summary_table
 from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
 from artistools.plottools import make_frame_figure_with_residuals
+from artistools.plottools import parse_velocity_argument
 from artistools.plottools import plain_label
 from artistools.plottools import print_dirbin_summary
 from artistools.plottools import print_series_summary
@@ -140,7 +141,6 @@ from artistools.spectra.core import get_xunit
 from artistools.spectra.core import make_averaged_vspecfiles
 from artistools.spectra.core import make_virtual_spectra_summed_file
 from artistools.spectra.core import NO_SAMPLED_EMISSION_HELP
-from artistools.spectra.core import parse_velocity_argument
 from artistools.spectra.core import parse_xunit_argument
 from artistools.spectra.core import print_integrated_flux
 from artistools.spectra.core import SHELLCOLUMNS
