@@ -3595,6 +3595,22 @@ def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: 
     assert read_data_file(tmp_path / "linefluxes_comparisons.txt")["time"].is_between(4.5, 6.5).all()
 
 
+def test_linefluxes_refuse_two_features_that_share_a_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A packet of a line that both features hold counted in both sums, thus the ratio noise was not correct.
+
+    Two identical features gave a ratio of exactly 1 and a noise above 0.
+    """
+    with pytest.raises(SystemExit):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 7155, 7100, 7200)],
+            outputfile=tmp_path / "linefluxes.pdf",
+        )
+    assert "of the ratio share" in capsys.readouterr().err
+    assert not (tmp_path / "linefluxes.pdf").exists()
+
+
 def test_linefluxes_floers_ratio_file_with_no_w7_model(tmp_path: Path) -> None:
     """A file with no W7 model gave a frame with no columns, and the concatenation of the comparisons then failed."""
     ratiofile = tmp_path / "floersratios.csv"
