@@ -83,6 +83,7 @@ from artistools.nltepops import has_nlte_populations
 from artistools.plottools import DARKMODE_COLOURS
 from artistools.plottools import get_light_grey
 from artistools.plottools import LABELWIDTH_INCHES
+from artistools.plottools import parse_velocity_argument
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools.application import open_model_folder
@@ -636,9 +637,6 @@ def get_layer_bounds(axisname: str, positiontext: str, modelmeta: "Mapping[str, 
     The edges take km/s for a position in km/s, and c for each other position. plotestimators rejects a position
     outside the grid, thus the text then gives the range of the grid.
     """
-    # plotestimators imports the spectra package in its function too, because the CLI must start quickly
-    from artistools.plottools import parse_velocity_argument
-
     try:
         velocity_kmps, _ = parse_velocity_argument(positiontext)
     except argparse.ArgumentTypeError:

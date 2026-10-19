@@ -384,7 +384,7 @@ subcommandtree: CommandTree = {
         "to_tardis": CommandSpec(
             "inputmodel.to_tardis",
             helptext="Convert an ARTIS format model to TARDIS format.",
-            examples=(("-inputpath .", "the TARDIS model file of the input model"),),
+            examples=((".", "the TARDIS model file of the input model"),),
         ),
     },
     "installskill": CommandSpec(

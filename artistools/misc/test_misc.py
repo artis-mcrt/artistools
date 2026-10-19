@@ -2254,6 +2254,22 @@ def test_average_direction_bins_rejects_missing_bins(monkeypatch: pytest.MonkeyP
         dirbins.average_direction_bins(averaged, overangle="phi")
 
 
+def test_centre_direction_of_each_dirbin_is_in_that_dirbin() -> None:
+    """The packet binning of ARTIS puts the centre direction of each direction bin into that bin.
+
+    The trough estimate of plotlinecontributions took phi = 2 pi (phibin + 0.5) / nphibins. The phi bins of ARTIS
+    descend and reverse at the middle bin, thus -troughdirbin 90 put the observer in a different direction bin.
+    """
+    from artistools.packets.core import add_packet_directions_lazypolars
+    from artistools.packets.core import bin_packet_directions_polars
+
+    ndirbins = at.misc.get_viewingdirectionbincount()
+    directions = np.array([dirbins.get_dirbin_centre_direction(dirbin) for dirbin in range(ndirbins)])
+    dfdirections = pl.DataFrame({"dirx": directions[:, 0], "diry": directions[:, 1], "dirz": directions[:, 2]})
+    dfbinned = bin_packet_directions_polars(add_packet_directions_lazypolars(dfdirections)).collect()
+    assert dfbinned["dirbin"].to_list() == list(range(ndirbins))
+
+
 def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
     """A timestep range gives no times in days, so the timestep bounds must be used even when not clamping."""
     write_timesteps_out(tmp_path)

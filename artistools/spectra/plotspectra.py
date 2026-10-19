@@ -2514,8 +2514,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_yscale(parser)
 
-    # the older spelling of "-yscale log"
-
     parser.add_argument("--hidenetspectrum", action="store_true", help="Hide net spectrum")
 
     parser.add_argument("--hideother", action="store_true", help="Hide other contributions")

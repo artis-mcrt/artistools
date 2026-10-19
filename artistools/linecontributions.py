@@ -49,7 +49,7 @@ from artistools.misc import resolve_table_outputfile
 from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.columns import get_column_description_lines
-from artistools.misc.dirbins import get_costheta_bins
+from artistools.misc.dirbins import get_dirbin_centre_direction
 from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
 from artistools.plottools import get_velocity_bin_index_expr
@@ -967,10 +967,11 @@ def get_sobolev_trough(
     estimate does not take. Thus the blend is too blue by a fraction of about v_t^2 / (2 c^2).
     """
     nphibins = get_viewingdirection_phibincount()
-    costhetalower, costhetaupper, _ = get_costheta_bins(usedegrees=False)
-    costhetabin = dirbin // nphibins
-    costheta = (costhetalower[costhetabin] + costhetaupper[costhetabin]) / 2.0
-    sintheta = math.sqrt(1.0 - costheta**2)
+    firstdirbin = dirbin - dirbin % nphibins
+    directions = [
+        get_dirbin_centre_direction(observerdirbin)
+        for observerdirbin in (range(firstdirbin, firstdirbin + nphibins) if averageoverphi else [dirbin])
+    ]
     vph_kmps = photospherevelocity_kmps
     c_kmps = C_cm_per_s / km_to_cm
     widths_kmps = np.array(cellwidths_kmps)
@@ -1040,11 +1041,6 @@ def get_sobolev_trough(
         cells[u <= nearsideu_kmps[:, np.newaxis]] = -1
         return cells
 
-    phiindices = np.arange(nphibins) if averageoverphi else np.array([dirbin % nphibins])
-    directions = [
-        np.array([sintheta * math.cos(phi), sintheta * math.sin(phi), costheta])
-        for phi in 2.0 * math.pi * (phiindices + 0.5) / nphibins
-    ]
     depths = np.zeros((profiles.dfranked.height, nbins))
     for direction in directions:
         cells = get_cells_on_rays(direction, usamples_kmps[np.newaxis, :])

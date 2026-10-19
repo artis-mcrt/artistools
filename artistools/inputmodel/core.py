@@ -1305,6 +1305,9 @@ def save_modeldata(
 
 def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int:
     """Return the modelgridindex of the first cell of a 1D model with an outer velocity [km/s] of velocity or above."""
+    # a negative value was the default that gave no velocity, and searchsorted takes it as the first cell
+    if velocity < 0.0:
+        exit_with_error(f"-velocity {velocity:g} km/s is below zero", "Give a radial velocity of 0 or more")
     dfmodel, modelmeta = get_modeldata(modelpath)
     if modelmeta["dimensions"] != 1:
         exit_with_error(

@@ -34,28 +34,26 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
     print_saved(outfilepath)
 
 
-def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None, *, force: bool) -> None:
-    """Write the spectrum of each timestep of the valid time range to a text file.
+def get_spectra_outdirectory(modelpath: Path, outdirectory: Path | None) -> Path:
+    """Return outdirectory, or the spectra folder of the model when the caller gives none."""
+    if outdirectory is not None:
+        return outdirectory
+    # a folder below a remote path would make a local folder of the same name, and that folder would then hide
+    # the remote model. Thus the files of a remote model go to the working folder. The host and the whole path
+    # give each model its own folder, e.g. spectra/vae26/home/scratch/mymodel
+    if (remote := split_remote_path(modelpath)) is not None:
+        host, hostpath = remote
+        return Path("spectra", host, *("home" if part == "~" else part for part in hostpath.parts if part != "/"))
+    return Path(modelpath, "spectra")
+
+
+def write_flambda_spectra(modelpath: Path, outdirectory: Path) -> None:
+    """Write the spectrum of each timestep of the valid time range to a text file in outdirectory.
 
     Each file holds lambda_angstroms and f_lambda, and its name gives the timestep and the time in days. A model
-    with direction bins also gets one file of the first polar angle bin for each timestep. The files go to
-    outdirectory, or to the spectra folder of the model when the caller gives none.
+    with direction bins also gets one file of the first polar angle bin for each timestep.
     """
-    if outdirectory is None:
-        # a folder below a remote path would make a local folder of the same name, and that folder would then hide
-        # the remote model. Thus the files of a remote model go to the working folder. The host and the whole path
-        # give each model its own folder, e.g. spectra/vae26/home/scratch/mymodel
-        if (remote := split_remote_path(modelpath)) is not None:
-            host, hostpath = remote
-            outdirectory = Path(
-                "spectra", host, *("home" if part == "~" else part for part in hostpath.parts if part != "/")
-            )
-        else:
-            outdirectory = Path(modelpath, "spectra")
-
     outdirectory.mkdir(parents=True, exist_ok=True)
-    # each file name holds a timestep, and the valid timesteps come from the data, thus the check takes patterns
-    confirm_overwrite_matches(outdirectory, ("spectrum_ts*.txt", "spectrum_polar00_ts*.txt"), force=force)
 
     tmids = get_timestep_times(modelpath, loc="mid")
 
@@ -96,14 +94,24 @@ def write_flambda_spectra_of_models(modelpaths: Sequence[Path], outdirectory: Pa
     """Write the spectra of write_flambda_spectra for each model.
 
     The file names hold no model name, thus each of several models gets a subfolder of outdirectory with its name.
+    The default folder of a model is its spectra folder.
     """
-    for modelpath in modelpaths:
-        modeloutdirectory = (
+    modeloutdirectories = [
+        get_spectra_outdirectory(
+            modelpath,
             outdirectory / get_model_name(modelpath)
             if outdirectory is not None and len(modelpaths) > 1
-            else outdirectory
+            else outdirectory,
         )
-        write_flambda_spectra(modelpath, outdirectory=modeloutdirectory, force=force)
+        for modelpath in modelpaths
+    ]
+    # the check of all the folders comes before the first model, thus a refusal leaves no partial output. Each file
+    # name holds a timestep, and the valid timesteps come from the data, thus the check takes patterns
+    for modeloutdirectory in modeloutdirectories:
+        confirm_overwrite_matches(modeloutdirectory, ("spectrum_ts*.txt", "spectrum_polar00_ts*.txt"), force=force)
+
+    for modelpath, modeloutdirectory in zip(modelpaths, modeloutdirectories, strict=True):
+        write_flambda_spectra(modelpath, modeloutdirectory)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

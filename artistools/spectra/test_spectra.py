@@ -1558,6 +1558,20 @@ def test_writespectra(tmp_path: Path) -> None:
     assert list(tmp_path.glob("spectrum_ts*.txt"))
 
 
+def test_writespectra_asks_for_all_the_models_before_the_first_model(tmp_path: Path) -> None:
+    """A refusal for the second model leaves no files of the first model.
+
+    Each model asked before its own files, thus a refusal for the second model came after the work of the first.
+    """
+    secondfolder = tmp_path / at.get_model_name(modelpath_classic_3d)
+    secondfolder.mkdir()
+    (secondfolder / "spectrum_ts05_5.00d.txt").write_text("x", encoding="utf-8")
+    # pytest gives no terminal, thus nobody can answer, and the command stops without --force
+    with pytest.raises(SystemExit):
+        at.spectra.writespectra.main(argsraw=[str(modelpath), str(modelpath_classic_3d), "-o", str(tmp_path)])
+    assert not list(tmp_path.glob(f"{at.get_model_name(modelpath)}/spectrum_ts*.txt"))
+
+
 def test_hiding_the_x_tick_labels_holds_the_width_and_the_frame(tmp_path: Path) -> None:
     """--hidexticklabels must not change the width of the file, nor the size of the frame.
 

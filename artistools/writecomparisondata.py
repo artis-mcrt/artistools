@@ -1,6 +1,7 @@
 """Tools to get artis output in the required format for the code comparison workshop."""
 
 import argparse
+import glob
 import math
 import typing as t
 from collections.abc import Sequence
@@ -331,8 +332,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # the name of "." is empty, thus the model name comes from the absolute path of the folder
     modelids = [Path(modelpath).absolute().name.split("_")[0] for modelpath in modelpathlist]
     # each file name holds the model and a quantity, e.g. phys_<model>_artisnebular.txt
+    # a folder name can hold a character of a glob pattern, e.g. "[", thus the pattern takes the name as text
     confirm_overwrite_matches(
-        args.outputfile, [f"*_{model_id}_artisnebular.txt" for model_id in modelids], force=args.force
+        args.outputfile, [f"*_{glob.escape(model_id)}_artisnebular.txt" for model_id in modelids], force=args.force
     )
 
     for modelpath, model_id in zip(modelpathlist, modelids, strict=True):

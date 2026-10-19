@@ -2112,8 +2112,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_yscale(parser)
 
-    # the older spelling of "-yscale log"
-
     parser.add_argument(
         "-reflightcurves",
         type=str,

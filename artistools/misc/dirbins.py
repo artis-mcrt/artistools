@@ -275,6 +275,20 @@ def get_costheta_bins(usedegrees: bool) -> tuple[tuple[float, ...], tuple[float,
     return tuple(float(x) for x in costhetabins_lower), tuple(costhetabins_upper), binlabels
 
 
+def get_dirbin_centre_direction(dirbin: int) -> npt.NDArray[np.float64]:
+    """Return the unit vector at the centre cos θ and the centre phi of a direction bin. The polar axis is +z.
+
+    The phi bins of ARTIS descend and reverse at the middle bin, thus the phi of a bin comes from get_phi_bins.
+    """
+    costhetabin, phibin = divmod(dirbin, get_viewingdirection_phibincount())
+    costhetalower, costhetaupper, _ = get_costheta_bins(usedegrees=False)
+    philower, phiupper, _ = get_phi_bins(usedegrees=False)
+    costheta = (costhetalower[costhetabin] + costhetaupper[costhetabin]) / 2.0
+    phi = (philower[phibin] + phiupper[phibin]) / 2.0
+    sintheta = math.sqrt(1.0 - costheta**2)
+    return np.array([sintheta * math.cos(phi), sintheta * math.sin(phi), costheta])
+
+
 def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:
     """Return the cos(theta) and phi bin labels."""
     _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)

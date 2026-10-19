@@ -271,10 +271,10 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
         if problem_messages and not allow_invalid:
             lastend_days = get_timestep_times(modelpath, loc="end")[timesteplast]
             if timemin > lastend_days:
-                # ARTIS wrote no spectrum after the last timestep of the model, thus --plotinvalidpart gives no plot
+                # ARTIS wrote no output after the last timestep of the model, thus --plotinvalidpart gives no plot
                 problem_messages.append(
                     f"ARTIS calculated the timesteps up to {timesteplast}, which ends at"
-                    f" {lastend_days:.2f} days. Thus the model has no spectrum at this time"
+                    f" {lastend_days:.2f} days. Thus the model has no output at this time"
                 )
             else:
                 problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")

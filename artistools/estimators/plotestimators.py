@@ -113,8 +113,10 @@ from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
 from artistools.plottools import get_summary_table
+from artistools.plottools import get_velocity_label
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
+from artistools.plottools import parse_velocity_argument
 from artistools.plottools import plain_label
 from artistools.plottools import print_series_summary
 from artistools.plottools import prune_log_ticks
@@ -3369,9 +3371,6 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
 
     "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
     """
-    from artistools.plottools import get_velocity_label
-    from artistools.plottools import parse_velocity_argument
-
     text = slicetext.strip().lower()
     helptext = (
         "Give a plane through the origin, e.g. -slice xy. As an alternative, give an axis and its velocity,"
