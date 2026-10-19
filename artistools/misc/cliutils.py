@@ -704,6 +704,22 @@ def addarg_plotinvalidpart(parser: argparse.ArgumentParser, plotted: str) -> Non
     )
 
 
+def addarg_averageoverphi(parser: argparse.ArgumentParser, optionname: str = "-dirbin") -> None:
+    """Add --average_over_phi_angle, which makes a direction bin of optionname into the mean over its phi bins.
+
+    The option has the meaning of --average_over_phi_angle of plotspectra, thus -dirbin 90 with it takes the costheta
+    bin 0.8 to 1, and without it the one direction bin 90.
+    """
+    parser.add_argument(
+        "--average_over_phi_angle",
+        action="store_true",
+        help=(
+            f"Take the mean over the phi bins of the costheta bin of {optionname}. Then {optionname} must be the first"
+            " bin of its costheta bin, e.g. 90 for the pole at +z"
+        ),
+    )
+
+
 def addarg_wavelengthrange(parser: argparse.ArgumentParser, selected: str) -> None:
     """Add -lambdamin and -lambdamax (also -xmin and -xmax), which select a range of wavelength in Angstroms.
 

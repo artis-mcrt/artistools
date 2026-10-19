@@ -459,8 +459,8 @@ subcommandtree: CommandTree = {
         examples=(
             (". -lambdamin 7000 -lambdamax 8000", "the median and the quartiles for all the directions"),
             (
-                ". -lambdamin 7000 -lambdamax 8000 -dirbin 0 50 90",
-                "the same for the two poles and the bin above the equator",
+                ". -lambdamin 7000 -lambdamax 8000 -dirbin 0 50 90 --average_over_phi_angle",
+                "the same for the two poles and the costheta bin above the equator",
             ),
         ),
         exampletestfolder="test-classicmode_3d",
@@ -508,7 +508,7 @@ subcommandtree: CommandTree = {
             (
                 (
                     ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau -troughdirbin 90"
-                    " -photospherevelocity 15000km/s"
+                    " --average_over_phi_angle -photospherevelocity 15000km/s"
                 ),
                 "the same, with a Sobolev estimate of the trough for the observer at the pole",
             ),

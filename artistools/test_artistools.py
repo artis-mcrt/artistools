@@ -2379,6 +2379,7 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
             edges,
             (cellwidth_kmps, cellwidth_kmps, cellwidth_kmps),
             relativisticdoppler=relativisticdoppler,
+            averageoverphi=True,
         )
 
     edges = [1000.0 * index for index in range(9)]
@@ -2454,7 +2455,9 @@ def get_trough_of_box_grid(
     profiles = LineVelocityProfiles(pl.DataFrame(), pl.DataFrame(lines), pl.DataFrame(), pl.DataFrame(), dfrankedcells)
     inputs = CellLineInputs(dfcells, pl.DataFrame(), {}, pl.DataFrame(), 1.0)
     edges = [1000.0 * index for index in range(9)]
-    return get_sobolev_trough(profiles, inputs, 90, 4000.0, edges, widths, relativisticdoppler=False)
+    return get_sobolev_trough(
+        profiles, inputs, 90, 4000.0, edges, widths, relativisticdoppler=False, averageoverphi=True
+    )
 
 
 def test_sobolev_trough_blends_lines_on_each_ray_and_takes_each_cell_width() -> None:

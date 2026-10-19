@@ -369,6 +369,24 @@ def get_dirbin_labels(
     return angle_definitions
 
 
+def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall: bool) -> None:
+    """Exit with an error if dirbin is no direction bin, or -1 when allowall is true.
+
+    With averageoverphi, as with --average_over_phi_angle of plotspectra, dirbin must be the first bin of its costheta
+    bin.
+    """
+    from artistools.misc.cliutils import exit_with_error
+
+    if averageoverphi:
+        check_costheta_dirbin(dirbin, optionname, allowall=allowall)
+        return
+    ndirbins = get_viewingdirectionbincount()
+    if (allowall and dirbin == -1) or 0 <= dirbin < ndirbins:
+        return
+    alltext = "-1 for all the directions, or " if allowall else ""
+    exit_with_error(f"{optionname} {dirbin} is no direction bin", f"Give {alltext}a bin from 0 to {ndirbins - 1}")
+
+
 def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> None:
     """Exit with an error if dirbin is not the first direction bin of a costheta bin, or -1 when allowall is true."""
     from artistools.misc.cliutils import exit_with_error

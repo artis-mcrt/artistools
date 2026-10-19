@@ -710,6 +710,7 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
         "em_posz": [0.0] * 6,
         "em_time": [emtime_s] * 5 + [-1.0],
         "costhetabin": [9] * 6,
+        "dirbin": [90] * 6,
     })
     with mock.patch.object(plotlastinteractionvelocity, "get_packets", return_value=(1, dfpackets.lazy())):
         plotlastinteractionvelocity.main(
@@ -1005,9 +1006,9 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
     ("argsraw", "expectedmessage"),
     [
         (["-element", "Xx"], "-element Xx is no element symbol"),
-        (["-dirbin", "100"], "-dirbin 100 is not the first direction bin"),
-        (["-dirbin", "35"], "-dirbin 35 is not the first direction bin"),
-        (["-dirbin", "-10"], "-dirbin -10 is not the first direction bin"),
+        (["-dirbin", "100"], "-dirbin 100 is no direction bin"),
+        (["-dirbin", "35", "--average_over_phi_angle"], "-dirbin 35 is not the first direction bin"),
+        (["-dirbin", "-10"], "-dirbin -10 is no direction bin"),
         ([], "no time was given"),
         (["-lambdamin", "3500"], "the wavelength range needs two ends"),
         (["--absorption", "--use_thermalemissiontype"], "--absorption takes the last absorption"),
@@ -1161,3 +1162,37 @@ def test_packet_commands_check_the_valid_range_of_the_arrival_times(
         timestepends = at.get_timestep_times(modelpath, loc="end")
         latestend_days = max(timestepends[timestep] for timestep in dftable["timestep"].to_list())
         assert (latestend_days > validend_days) == plotinvalidpart
+
+
+def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(tmp_path: Path) -> None:
+    """-dirbin N takes the one direction bin N, and --average_over_phi_angle takes all the phi bins of its costheta bin.
+
+    The packet commands always took the costheta bin, thus -dirbin 10 selected other directions than in plotspectra.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 6.5)
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
+    _, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfarrived = (
+        lzpackets
+        .filter(pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"))
+        .select("dirbin", "costhetabin")
+        .collect()
+    )
+    for extraargs, expectedcount in (
+        ([], dfarrived.filter(pl.col("dirbin") == 50).height),
+        (["--average_over_phi_angle"], dfarrived.filter(pl.col("costhetabin") == 5).height),
+    ):
+        outputfile = tmp_path / f"groups{len(extraargs)}.pdf"
+        plotlastpacketinteraction.main(
+            argsraw=[str(modelpath), "-t", "6.5", "-groupby", "element", "-dirbin", "50", *extraargs],
+            outputfile=outputfile,
+            write_data=True,
+        )
+        dfsummary = pl.read_csv(
+            outputfile.with_name(f"{outputfile.stem}_summary.txt"), separator=" ", null_values="nan", comment_prefix="#"
+        )
+        assert int(dfsummary["packetcount"].sum()) == expectedcount > 0

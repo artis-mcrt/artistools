@@ -20,6 +20,7 @@ from artistools.linecontributions import get_sobolev_trough
 from artistools.linecontributions import LINEKEYS
 from artistools.linecontributions import parse_ions
 from artistools.linecontributions import TROUGHSAMPLESPERCELL
+from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -39,7 +40,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.dirbins import check_costheta_dirbin
+from artistools.misc.dirbins import check_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.plottools import addarg_costhetarange
 from artistools.plottools import addarg_velocitybins
@@ -216,6 +217,8 @@ def plot_trough_estimate(
     velocityedges_kmps: Sequence[float],
     unit: t.Literal["kmps", "c"],
     modelpath: Path,
+    *,
+    averageoverphi: bool,
 ) -> dict[str, pl.DataFrame]:
     """Draw the Sobolev estimate of the trough of the ranked lines, log its method, and return its tables."""
     dirbin, photospherevelocity_kmps = troughsettings
@@ -230,9 +233,18 @@ def plot_trough_estimate(
         velocityedges_kmps,
         get_cell_widths_kmps(modelmeta),
         relativisticdoppler=relativisticdoppler,
+        averageoverphi=averageoverphi,
     )
     plot_trough(ax, dfdepths, dfranked, colours, unit, photospherevelocity_kmps)
-    print_trough_method(dirbin, photospherevelocity_kmps, unit, dfranked.height, dfblend, dopplershift=dopplershift)
+    print_trough_method(
+        dirbin,
+        photospherevelocity_kmps,
+        unit,
+        dfranked.height,
+        dfblend,
+        dopplershift=dopplershift,
+        averageoverphi=averageoverphi,
+    )
     # the gas in front of the photosphere moves towards the observer, thus its light arrives at about t (1 - v_ph / c)
     arrival_days = inputs.time_days * (1.0 - photospherevelocity_kmps / KMPS_PER_VELOCITYUNIT["c"])
     print_detail(
@@ -332,7 +344,7 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
         if args.photospherevelocity_kmps is not None:
             exit_with_error("-photospherevelocity applies only to the trough estimate", "Give -troughdirbin too")
         return None
-    check_costheta_dirbin(args.troughdirbin, "-troughdirbin", allowall=False)
+    check_dirbin(args.troughdirbin, "-troughdirbin", averageoverphi=args.average_over_phi_angle, allowall=False)
     _, modelmeta = get_modeldata(args.modelpath, printwarningsonly=True)
     if modelmeta["dimensions"] != 3:
         # a cell of a 2D model is a ring, and a cell of a 1D model is a shell
@@ -395,10 +407,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-troughdirbin",
         type=int,
         help=(
-            "Add a Sobolev estimate of the absorption trough for an observer in the costheta bin of this direction bin,"
-            " e.g. 90 for the pole at +z. The estimate takes the mean over the phi bins"
+            "Add a Sobolev estimate of the absorption trough for an observer at the centre of this direction bin, as in"
+            " plotspectra. --average_over_phi_angle takes the mean over the phi bins of its costheta bin, e.g. 90 for"
+            " the pole at +z"
         ),
     )
+    addarg_averageoverphi(parser, "-troughdirbin")
     parser.add_argument(
         "-photospherevelocity",
         dest="photospherevelocity_kmps",
@@ -523,7 +537,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     }
     if troughsettings is not None:
         tables |= plot_trough_estimate(
-            axes[2], profiles, inputs, dfranked, colours, troughsettings, velocityedges_kmps, unit, args.modelpath
+            axes[2],
+            profiles,
+            inputs,
+            dfranked,
+            colours,
+            troughsettings,
+            velocityedges_kmps,
+            unit,
+            args.modelpath,
+            averageoverphi=args.average_over_phi_angle,
         )
 
     title = f"{get_model_name(args.modelpath)} {get_timestep_time(args.modelpath, timestep):.2f} d"
@@ -544,15 +567,20 @@ def print_trough_method(
     dfblend: pl.DataFrame,
     *,
     dopplershift: str | None,
+    averageoverphi: bool,
 ) -> None:
     """Print the method and the assumptions of the trough estimate, and the deepest point of the blend.
 
     dopplershift is the value of USE_RELATIVISTIC_DOPPLER_SHIFT in artisoptions.h, or None with no such option.
     """
-    directionlabel = get_dirbin_labels([dirbin], average_over_phi=True, usedegrees=True)[dirbin]
+    directionlabel = get_dirbin_labels([dirbin], average_over_phi=averageoverphi, usedegrees=True)[dirbin]
+    observertext = (
+        f"at the centre cos θ of direction bin {dirbin} ({directionlabel}), as the mean over the phi bins"
+        if averageoverphi
+        else f"at the centre of direction bin {dirbin} ({directionlabel})"
+    )
     print_detail(
-        f"The trough panel is a Sobolev estimate for an observer at the centre cos θ of direction bin {dirbin}"
-        f" ({directionlabel}), as the mean over the phi bins. The photosphere is a sphere at"
+        f"The trough panel is a Sobolev estimate for an observer {observertext}. The photosphere is a sphere at"
         f" {format_velocity(photospherevelocity_kmps, unit)}"
     )
     print_detail(

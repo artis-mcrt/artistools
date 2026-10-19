@@ -299,18 +299,19 @@ Do these steps in this sequence, for each direction bin:
 1. Compare the spectra: `artistools plotspectra <modelpath> --frompackets -t <days> -dirbin 50 90
    --average_over_phi_angle`. Give the wavelength of the trough and the velocity that it gives for each line.
 2. Find the velocity where the continuum forms: `artistools plotlastinteractionvelocity <modelpath> -lambdamin <Å>
-   -lambdamax <Å> -dirbin 50 90`. Give the model path first. `-dirbin` takes a list, thus it takes a model path after
-   it as a direction bin. Use a wavelength range with no strong line, e.g. a range at a shorter wavelength than the
-   trough. The median is an estimate of the velocity of the photosphere in that direction. The quartiles show the
-   width of the region.
+   -lambdamax <Å> -dirbin 50 90 --average_over_phi_angle`. Give the model path first. `-dirbin` takes a list, thus it
+   takes a model path after it as a direction bin. Use a wavelength range with no strong line, e.g. a range at a shorter
+   wavelength than the trough. The median is an estimate of the velocity of the photosphere in that direction. The
+   quartiles show the width of the region.
 3. Compare the optical depth of the lines in the cells of each direction: `artistools plotlinecontributions <modelpath>
-   -t <days> -lambdamin <Å> -lambdamax <Å> -costhetamin 0.8`. These are the cells of `-dirbin 90`. For the cells of
-   `-dirbin 50`, give `-costhetamin 0 -costhetamax 0.2`. A line makes an absorption trough only with tau_sobolev above
+   -t <days> -lambdamin <Å> -lambdamax <Å> -costhetamin 0.8`. These are the cells of the costheta bin of `-dirbin 90`.
+   For the cells of `-dirbin 50`, give `-costhetamin 0 -costhetamax 0.2`. A line makes an absorption trough only with tau_sobolev above
    1 in front of the photosphere, i.e. at a velocity above the median of step 2.
-4. Estimate the trough: `artistools plotlinecontributions ... -troughdirbin 90 -photospherevelocity <v>`, with the
-   median of step 2 and its unit, e.g. `0.157c` or `47000km/s`. The estimate has no emission of the lines, no limb darkening, and only the ranked lines. If the
-   estimate gives a deep trough and the spectrum does not, the emission of the lines can fill the trough. As an
-   alternative, lines of different ions can change the feature.
+4. Estimate the trough: `artistools plotlinecontributions ... -troughdirbin 90 --average_over_phi_angle
+   -photospherevelocity <v>`, with the median of step 2 and its unit, e.g. `0.157c` or `47000km/s`. The estimate has no
+   emission of the lines, no limb darkening, and only the ranked lines. If the estimate gives a deep trough and the
+   spectrum does not, the emission of the lines can fill the trough. As an alternative, lines of different ions can
+   change the feature.
 5. Compare the line blanketing of each direction. Run `artistools plotopacity -modelpath <modelpath> -t <days> -vmin
    <v> -costhetamin 0.8 -cellaverage median --write_data`, with the median of step 2 as `-vmin`. Then run the same
    command with `-costhetamin 0 -costhetamax 0.2`. `-vmin` needs a unit, e.g. `0.157c` or `47000km/s`. Use
@@ -342,5 +343,6 @@ Possible errors:
   the ions of a kilonova, give `-ions` or `-taumin 1`. `-taumin` leaves out each line that cannot reach that
   tau_sobolev in any cell. In `plotlinecontributions`, use `-taumin` with `-rankby tau`. An optically thin line can
   emit much, and the ranking by emission and the emission fractions take only the lines that `-taumin` keeps.
-- `-dirbin 90` holds the directions with 0.8 ≤ cos θ ≤ 1, i.e. 0° to 37°, as a mean over phi. `-costhetamin 0.8`
-  selects the cells of the same cone. A 1D model has no direction.
+- `-dirbin 90 --average_over_phi_angle` holds the directions with 0.8 ≤ cos θ ≤ 1, i.e. 0° to 37°, as a mean over
+  phi. `-dirbin 90` alone is one direction bin of that cone, as in `plotspectra`. `-costhetamin 0.8` selects the
+  cells of the same cone. A 1D model has no direction.

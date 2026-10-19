@@ -21,6 +21,7 @@ from artistools.atomic import roman_numerals
 from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -48,7 +49,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.dirbins import check_costheta_dirbin
+from artistools.misc.dirbins import check_dirbin
 from artistools.misc.dirbins import get_costheta_bins
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.packets.core import addarg_velocitykind
@@ -136,6 +137,7 @@ def get_reduced_packet_set(
     srII_triplet: bool = False,
     *,
     absorption: bool = False,
+    averageoverphi: bool = False,
     maxpacketfiles: int | None = None,
 ) -> tuple[int, pl.LazyFrame, float]:
     """Get packets in specific escape angle bins for observer direction.
@@ -157,7 +159,9 @@ def get_reduced_packet_set(
 
     if lambdarange is not None:
         dfpackets_selected = dfpackets_selected.filter(pl.col("lambda_rf").is_between(*lambdarange))
-    dfpackets_selected, solidangle_factor = filter_packets_dirbin(dfpackets_selected, dirbin, average_over_phi=True)
+    dfpackets_selected, solidangle_factor = filter_packets_dirbin(
+        dfpackets_selected, dirbin, average_over_phi=averageoverphi
+    )
 
     return nprocs_read, dfpackets_selected, solidangle_factor
 
@@ -215,6 +219,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
         lambdarange=lambdarange,
         srII_triplet=srIItriplet,
         absorption=absorption,
+        averageoverphi=getattr(args, "average_over_phi_angle", False),
         maxpacketfiles=getattr(args, "maxpacketfiles", None),
     )
 
@@ -518,6 +523,7 @@ def plot_velocity_profiles_by_group(
         None,
         lambdarange=lambdarange,
         absorption=absorption,
+        averageoverphi=getattr(args, "average_over_phi_angle", False),
         maxpacketfiles=getattr(args, "maxpacketfiles", None),
     )
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
@@ -573,7 +579,11 @@ def plot_velocity_profiles_by_group(
     if lambdarange is not None:
         titleparts.append(f"{lambdarange[0]:.0f}-{lambdarange[1]:.0f} Å")
     if dirbin != -1:
-        titleparts.append(get_dirbin_labels([dirbin], average_over_phi=True, usedegrees=True)[dirbin])
+        titleparts.append(
+            get_dirbin_labels(
+                [dirbin], average_over_phi=getattr(args, "average_over_phi_angle", False), usedegrees=True
+            )[dirbin]
+        )
     ax.set_title(", ".join(titleparts))
     set_legend(ax, args)
 
@@ -847,8 +857,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=-1,
         help=(
-            "The first direction bin of a costheta bin, e.g. 0, 10, or 90. The plot takes all the phi bins of that"
-            " costheta bin. The value -1 takes all directions"
+            "The direction bin of the escaped packets, as in plotspectra. --average_over_phi_angle takes all the phi"
+            " bins of its costheta bin. The value -1 takes all directions"
         ),
     )
     parser.add_argument(
@@ -897,6 +907,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_show(parser)
     addarg_data_output(parser)
     addarg_plotinvalidpart(parser, "the packets")
+    addarg_averageoverphi(parser)
     addarg_maxpacketfiles(parser)
 
 
@@ -931,7 +942,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     except ValueError as exc:
         exit_with_error(str(exc))
 
-    check_costheta_dirbin(args.dirbin, "-dirbin", allowall=True)
+    check_dirbin(args.dirbin, "-dirbin", averageoverphi=args.average_over_phi_angle, allowall=True)
 
     ions = get_selected_ions(args)
 

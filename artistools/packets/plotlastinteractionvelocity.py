@@ -10,6 +10,7 @@ import polars as pl
 
 from artistools.constants import c_ang_per_s
 from artistools.constants import km_to_cm
+from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -32,7 +33,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc.dirbins import check_costheta_dirbin
+from artistools.misc.dirbins import check_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.misc.general import get_bin_index_expr
 from artistools.packets.core import addarg_velocitykind
@@ -75,6 +76,7 @@ def get_last_interaction_velocity_quartiles(
     timerange_days: tuple[float, float],
     *,
     plotinvalidpart: bool,
+    averageoverphi: bool = False,
     maxpacketfiles: int | None = None,
 ) -> dict[int, tuple[pl.DataFrame, int]]:
     """Return, for each direction bin, the velocity quartiles of the last interaction of each timestep.
@@ -123,12 +125,13 @@ def get_last_interaction_velocity_quartiles(
         .select(
             "e_rf",
             "costhetabin",
+            "dirbin",
             timestep=get_bin_index_expr(pl.col("t_arrive_d"), timeedges),
             # a packet with no record has a velocity of NaN, and the cast gives it no bin
             velocitybin=(velocity_kmps / histogrambinwidth_kmps).floor().cast(pl.Int64, strict=False),
         )
         .filter(pl.col("timestep").is_in(timesteps))
-        .group_by("costhetabin", "timestep", "velocitybin")
+        .group_by("costhetabin", "dirbin", "timestep", "velocitybin")
         .agg(
             pl.col("e_rf").cast(pl.Float64).sum(),
             energysquared=(pl.col("e_rf").cast(pl.Float64) ** 2).sum(),
@@ -140,7 +143,12 @@ def get_last_interaction_velocity_quartiles(
     nphibins = get_viewingdirection_phibincount()
     results = {}
     for dirbin in dirbins:
-        dfdirbin = dfhistogram if dirbin == -1 else dfhistogram.filter(pl.col("costhetabin") == dirbin // nphibins)
+        if dirbin == -1:
+            dfdirbin = dfhistogram
+        elif averageoverphi:
+            dfdirbin = dfhistogram.filter(pl.col("costhetabin") == dirbin // nphibins)
+        else:
+            dfdirbin = dfhistogram.filter(pl.col("dirbin") == dirbin)
         dfdirbin = dfdirbin.group_by("timestep", "velocitybin").agg(
             pl.col("e_rf", "energysquared", "packetcount").sum()
         )
@@ -246,7 +254,7 @@ def plot_velocity_against_time(
         _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
         histogrambinwidth_kmps = get_grid_corner_velocity_kmps(modelmeta) / VELOCITYHISTOGRAMBINS
         print_method(position, args.velocitykind, args.xmin, args.xmax, histogrambinwidth_kmps)
-        dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=True, usedegrees=True)
+        dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=args.average_over_phi_angle, usedegrees=True)
         timerange_days = (
             -math.inf if args.timemin is None else args.timemin,
             math.inf if args.timemax is None else args.timemax,
@@ -261,6 +269,7 @@ def plot_velocity_against_time(
             histogrambinwidth_kmps,
             timerange_days,
             plotinvalidpart=args.plotinvalidpart,
+            averageoverphi=args.average_over_phi_angle,
             maxpacketfiles=args.maxpacketfiles,
         )
         for dirbin in args.dirbin:
@@ -349,8 +358,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs="+",
         default=[-1],
         help=(
-            "The first direction bin of each costheta bin, e.g. 0 50 90. Each series takes all the phi bins of its"
-            " costheta bin. The value -1 takes all the directions"
+            "The direction bins of the escaped packets, as in plotspectra, e.g. 0 55 99. --average_over_phi_angle"
+            " takes all the phi bins of the costheta bin of each. The value -1 takes all the directions"
         ),
     )
     addarg_timeminmax(parser)
@@ -365,6 +374,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_figscale(parser)
     addarg_data_output(parser)
     addarg_plotinvalidpart(parser, "the timesteps")
+    addarg_averageoverphi(parser)
     addarg_maxpacketfiles(parser)
     addarg_show(parser)
     addarg_darkmode(parser)
@@ -379,7 +389,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             "Give -lambdamin and -lambdamax, e.g. -lambdamin 7200 -lambdamax 7800",
         )
     for dirbin in args.dirbin:
-        check_costheta_dirbin(dirbin, "-dirbin", allowall=True)
+        check_dirbin(dirbin, "-dirbin", averageoverphi=args.average_over_phi_angle, allowall=True)
     args.modelpath = normalize_path_list(args.modelpath)
     unit = get_velocity_unit(args.modelpath[0], args.velocityunit)
 

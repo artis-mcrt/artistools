@@ -1,6 +1,7 @@
 """Miscellaneous helpers, split into focused submodules and re-exported here."""
 
 from artistools.misc.cliutils import addarg_action as addarg_action
+from artistools.misc.cliutils import addarg_averageoverphi as addarg_averageoverphi
 from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
 from artistools.misc.cliutils import addarg_darkmode as addarg_darkmode
 from artistools.misc.cliutils import addarg_data_output as addarg_data_output

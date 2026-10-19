@@ -945,12 +945,14 @@ def get_sobolev_trough(
     cellwidths_kmps: tuple[float, float, float],
     *,
     relativisticdoppler: bool,
+    averageoverphi: bool,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return the Sobolev absorption depth of each ranked line against the line-of-sight velocity, and of their blend.
 
-    The observer is at the centre cos θ of the direction bin, and the depth is the mean over the centres of the phi
-    bins. The photosphere is a sphere at v_ph = photospherevelocity_kmps. Rays go from the photospheric disk towards
-    the observer, on a square grid of impact points in velocity space. In a homologous flow, a ray at the impact point p
+    The observer is at the centre of the direction bin. With averageoverphi, the observer is at the centre cos θ of
+    the bin, and the depth is the mean over the centres of the phi bins. The photosphere is a sphere at
+    v_ph = photospherevelocity_kmps. Rays go from the photospheric disk towards the observer, on a square grid of
+    impact points in velocity space. In a homologous flow, a ray at the impact point p
     meets a line at one point, where the line-of-sight velocity u gives the Doppler shift of the line. The point
     absorbs if it is in a cell and on the near side of the photosphere, u > sqrt(v_ph^2 - p^2). A ray then has the
     transmission exp(-tau) of that cell. Each cell is a box with the widths cellwidths_kmps along x, y, and z.
@@ -1042,9 +1044,10 @@ def get_sobolev_trough(
         cells[u <= nearsideu_kmps[:, np.newaxis]] = -1
         return cells
 
+    phiindices = np.arange(nphibins) if averageoverphi else np.array([dirbin % nphibins])
     directions = [
         np.array([sintheta * math.cos(phi), sintheta * math.sin(phi), costheta])
-        for phi in 2.0 * math.pi * (np.arange(nphibins) + 0.5) / nphibins
+        for phi in 2.0 * math.pi * (phiindices + 0.5) / nphibins
     ]
     depths = np.zeros((profiles.dfranked.height, nbins))
     for direction in directions:
@@ -1052,7 +1055,7 @@ def get_sobolev_trough(
         for lineindex in range(len(taus)):
             absorbed = 1.0 - np.exp(-taus[lineindex][cells])
             depths[lineindex] += absorbed.mean(axis=0).reshape(nbins, samplesperbin).mean(axis=1)
-    depths /= nphibins
+    depths /= len(directions)
 
     dfdepths = (
         profiles.dfranked
@@ -1090,7 +1093,10 @@ def get_sobolev_trough(
             cells = get_cells_on_rays(direction, np.clip(beta, 0.0, None)[np.newaxis, :] * c_kmps)
             sumtau += taus[lineindex][cells]
         transmission += np.exp(-sumtau).mean(axis=0)
-    dfblend = pl.DataFrame({"lambda_angstroms": lambdagrid_angstroms, "trough_depth": 1.0 - transmission / nphibins})
+    dfblend = pl.DataFrame({
+        "lambda_angstroms": lambdagrid_angstroms,
+        "trough_depth": 1.0 - transmission / len(directions),
+    })
     return dfdepths, dfblend
 
 
