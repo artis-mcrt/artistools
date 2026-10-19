@@ -1120,3 +1120,54 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
     assert (
         f"{dfarrived.height} escaped r-packets of the direction bin arrive in the timestep\n" in capsys.readouterr().out
     )
+
+
+def make_filterpackets_model(tmp_path: Path) -> Path:
+    """Copy the packets files of the 3D test model, with the file of rank 1 as an uncompressed file."""
+    sourcemodel = at.get_path("testdata") / "test-classicmode_3d"
+    modelpath = tmp_path / "model"
+    (modelpath / "packets").mkdir(parents=True)
+    (modelpath / "input.txt").write_bytes((sourcemodel / "input.txt").read_bytes())
+    (modelpath / "packets" / "packets00_0000.out.zst").write_bytes(
+        (sourcemodel / "packets" / "packets00_0000.out.zst").read_bytes()
+    )
+    with at.zopen(sourcemodel / "packets" / "packets00_0001.out.zst", mode="rb") as fsource:
+        (modelpath / "packets" / "packets00_0001.out").write_bytes(fsource.read())
+    return modelpath
+
+
+def get_packet_types(packetsfile: Path, modelpath: Path) -> pl.DataFrame:
+    columns = at.packets.core.get_packets_text_columns(packetsfile, modelpath)
+    return at.packets.core.readfile_text(packetsfile, columns).select("type_id", "escape_type_id")
+
+
+def test_filterpackets_keeps_only_the_escaped_rpkts(tmp_path: Path) -> None:
+    modelpath = make_filterpackets_model(tmp_path)
+    packetsfolder = modelpath / "packets"
+    escaped_rpkt = (pl.col("type_id") == at.packets.core.type_ids["TYPE_ESCAPE"]) & (
+        pl.col("escape_type_id") == at.packets.core.type_ids["TYPE_RPKT"]
+    )
+    inputfiles = [packetsfolder / "packets00_0000.out.zst", packetsfolder / "packets00_0001.out"]
+    expected_counts = [get_packet_types(path, modelpath).filter(escaped_rpkt).height for path in inputfiles]
+    headerline = at.zopen(inputfiles[0]).readline()
+
+    at.packets.filterpackets.main(argsraw=[str(modelpath), "-f"])
+
+    assert sorted(path.name for path in packetsfolder.iterdir()) == ["packets00_0000.out.zst", "packets00_0001.out.zst"]
+    for rank, expected_count in enumerate(expected_counts):
+        outfile = packetsfolder / f"packets00_{rank:04d}.out.zst"
+        dfpackettypes = get_packet_types(outfile, modelpath)
+        assert 0 < dfpackettypes.height == expected_count
+        assert dfpackettypes.filter(~escaped_rpkt).is_empty()
+        assert at.zopen(outfile).readline() == headerline
+
+
+def test_filterpackets_dry_run_changes_no_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    modelpath = make_filterpackets_model(tmp_path)
+    packetsfolder = modelpath / "packets"
+    contents_before = {path.name: path.read_bytes() for path in packetsfolder.iterdir()}
+
+    at.packets.filterpackets.main(argsraw=[str(modelpath), "--dry-run"])
+
+    assert {path.name: path.read_bytes() for path in packetsfolder.iterdir()} == contents_before
+    assert "In 2 of 2 packets files, the filter removes" in capsys.readouterr().out

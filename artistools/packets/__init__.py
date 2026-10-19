@@ -22,6 +22,7 @@ from artistools.packets.core import sum_packets_by_dirbin as sum_packets_by_dirb
 from artistools.packets.core import sum_virtual_packets_by_observer as sum_virtual_packets_by_observer
 
 # isort: split
+from artistools.packets import filterpackets as filterpackets
 from artistools.packets import plotlastinteractionvelocity as plotlastinteractionvelocity
 from artistools.packets import plotlastpacketinteraction as plotlastpacketinteraction
 from artistools.packets.plotlastpacketinteraction import main as plot

@@ -178,13 +178,14 @@ def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
     return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]  # ruff:ignore[banned-api]
 
 
-def write_zstd_lines(fileobj: t.IO[bytes], lines: Sequence[str]) -> None:
+def write_zstd_lines(fileobj: t.IO[bytes], lines: Sequence[str], compression_level: int | None = None) -> None:
     """Append the lines to an open binary file as one zstd frame.
 
     Each write_csv call with compression="zstd" adds one frame. ARTIS and zopen read a file of several frames.
+    A compression_level of None gives the default level of polars.
     """
     pl.DataFrame({"line": lines}, schema={"line": pl.String}).write_csv(
-        fileobj, include_header=False, quote_style="never", compression="zstd"
+        fileobj, include_header=False, quote_style="never", compression="zstd", compression_level=compression_level
     )
 
 
