@@ -551,6 +551,21 @@ def add_ratio_noise(dflcdata: pl.DataFrame, featurecolnames: Sequence[str]) -> p
     return dflcdata
 
 
+def check_ratio_features_share_no_line(feature0: FeatureTuple, feature1: FeatureTuple) -> None:
+    """Stop the command if the two features of the ratio share a line.
+
+    A packet of a shared line counts in both luminosities. Thus the two sums are not independent, and the ratio and its
+    noise are not correct, e.g. two identical features give a ratio of 1 and a noise above 0.
+    """
+    sharedlines = set(feature0.linelistindices) & set(feature1.linelistindices)
+    if sharedlines:
+        exit_with_error(
+            f"the features {feature0.featurelabel} and {feature1.featurelabel} of the ratio share {len(sharedlines)}"
+            " lines, thus a packet of such a line counts in both luminosities",
+            "Give the first two -emfeaturesearch values wavelength ranges with no common line",
+        )
+
+
 def get_comparison_table(series: str, time_days: Sequence[float], fratios: Sequence[float]) -> pl.DataFrame:
     """Return the points of one comparison series of the line ratio plot, e.g. a fit of observations."""
     return pl.DataFrame(
@@ -582,6 +597,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         print_heading(get_model_logname(modelpath, modellabel))
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
+        check_ratio_features_share_no_line(emfeatures[0], emfeatures[1])
 
         dflcdata = (
             get_line_luminosities_from_pops(
@@ -626,7 +642,8 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
             plotkwargs["dashes"] = args.dashes[modelindex]
 
         if "fratio_relnoise" in dflcdata.columns:
-            # the two features hold different lines, thus their packets differ, and their noises add in quadrature
+            # check_ratio_features_share_no_line makes the packets of the two features differ, thus their noises add
+            # in quadrature
             axis.errorbar(
                 dflcdata["time"],
                 dflcdata["fratio"],
