@@ -26,7 +26,6 @@ from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.ejectaopacity import get_opacity_columns
 from artistools.ejectaopacity import get_opacity_lines
 from artistools.ejectaopacity import get_planck_mean_opacities
-from artistools.ejectaopacity import get_selected_timestep
 from artistools.ejectaopacity import print_planck_mean_method
 from artistools.inputmodel import get_cell_selection
 from artistools.misc import addarg_axislimits
@@ -46,6 +45,7 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
 from artistools.misc import get_weighted_quantile_expr

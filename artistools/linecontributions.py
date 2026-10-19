@@ -24,7 +24,6 @@ from artistools.constants import km_to_cm
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import get_excitation_temperature_column
 from artistools.ejectaopacity import get_opacity_atomic_data
-from artistools.ejectaopacity import get_selected_timestep
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import get_cell_selection
 from artistools.misc import addarg_force
@@ -35,6 +34,7 @@ from artistools.misc import addarg_timestep
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount

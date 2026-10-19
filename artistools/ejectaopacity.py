@@ -26,14 +26,12 @@ from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
-from artistools.misc import exit_with_error
 from artistools.misc import get_artis_option
 from artistools.misc import get_artis_source_text
 from artistools.misc import get_model_logname
 from artistools.misc import get_npts_model
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
-from artistools.misc import get_single_timestep
-from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
@@ -295,20 +293,6 @@ def get_planck_mean_opacities(dfbinnedopacities: pl.DataFrame) -> pl.DataFrame:
         .sort("modelgridindex")
         .collect()
     )
-
-
-def get_selected_timestep(modelpath: Path | str, timestep: str | int | None, timedays: str | None) -> int:
-    """Return the timestep that -timestep or -timedays gives, or exit with an error."""
-    if timedays is not None:
-        if timestep is not None:
-            exit_with_error("specify only one of -timestep and -timedays")
-        return get_timestep_of_timedays(modelpath, timedays)
-
-    selectedtimestep = get_single_timestep(timestep, modelpath)
-    if selectedtimestep is None:
-        exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
-
-    return selectedtimestep
 
 
 def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:

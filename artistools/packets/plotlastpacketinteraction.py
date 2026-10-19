@@ -28,9 +28,10 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
-from artistools.misc import addarg_unsupported
+from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
@@ -799,7 +800,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Time in days. The plot takes the packets that arrive in the timestep of this time",
     )
     parser.add_argument("-tdays", dest="timedays", type=float, help=argparse.SUPPRESS)
-    addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
+    addarg_timestep(parser, helptext="Timestep of the arrival time of the packets, e.g. 40, or last")
 
     parser.add_argument(
         "-xmin",
@@ -900,8 +901,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             "Give one of the two options",
         )
 
-    if args.timedays is None:
-        exit_with_error("the time is missing", "Give the time in days, e.g. -timedays 300")
+    # the arrival time bins are the timesteps, thus -timestep and -timedays select the same bin
+    args.timedays = get_timestep_time(
+        Path(args.modelpath), get_selected_timestep(Path(args.modelpath), args.timestep, args.timedays)
+    )
 
     check_costheta_dirbin(args.dirbin, "-dirbin", allowall=True)
 

@@ -986,7 +986,12 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
 
     modelpath = at.get_path("testdata") / "testmodel"
     plotlastpacketinteraction.main(argsraw=["-modelpath", str(modelpath), "-timedays", "300", "-o", str(tmp_path)])
-    assert (tmp_path / "testmodel_allions_t_arrive_d_300.0_ts54_into_dirbin-1.pdf").is_file()
+    assert any(tmp_path.glob("testmodel_allions_t_arrive_d_*_ts54_into_dirbin-1.pdf"))
+
+    # -timestep selects the same arrival time bin, as in the other commands
+    timestepfolder = tmp_path / "timestep"
+    plotlastpacketinteraction.main(argsraw=[str(modelpath), "-timestep", "54", "-o", str(timestepfolder)])
+    assert any(timestepfolder.glob("testmodel_allions_t_arrive_d_*_ts54_into_dirbin-1.pdf"))
 
     # -tdays is the old spelling, and -o can also name the file
     outputfile = tmp_path / "lastinteraction.pdf"
@@ -1001,7 +1006,7 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
         (["-dirbin", "100"], "-dirbin 100 is not the first direction bin"),
         (["-dirbin", "35"], "-dirbin 35 is not the first direction bin"),
         (["-dirbin", "-10"], "-dirbin -10 is not the first direction bin"),
-        ([], "the time is missing"),
+        ([], "no time was given"),
         (["-lambdamin", "3500"], "the wavelength range needs two ends"),
         (["--absorption", "--use_thermalemissiontype"], "--absorption takes the last absorption"),
     ],

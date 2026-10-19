@@ -137,6 +137,7 @@ from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputf
 from artistools.misc.timesteps import apply_time_range_args as apply_time_range_args
 from artistools.misc.timesteps import get_deposition as get_deposition
 from artistools.misc.timesteps import get_escaped_arrivalrange as get_escaped_arrivalrange
+from artistools.misc.timesteps import get_selected_timestep as get_selected_timestep
 from artistools.misc.timesteps import get_single_timestep as get_single_timestep
 from artistools.misc.timesteps import get_time_range as get_time_range
 from artistools.misc.timesteps import get_time_range_text as get_time_range_text

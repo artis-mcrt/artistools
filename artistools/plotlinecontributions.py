@@ -10,7 +10,6 @@ import numpy as np
 import polars as pl
 
 from artistools.ejectaopacity import addarg_excitationtemperature
-from artistools.ejectaopacity import get_selected_timestep
 from artistools.inputmodel import get_modeldata
 from artistools.linecontributions import addarg_taumin
 from artistools.linecontributions import get_cell_line_inputs
@@ -32,6 +31,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import get_artis_option
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_weighted_quantile_expr

@@ -228,6 +228,20 @@ def get_bad_timestep_message(modelpath: Path | str, timestep: int) -> str:
     )
 
 
+def get_selected_timestep(modelpath: Path | str, timestep: str | int | None, timedays: str | None) -> int:
+    """Return the timestep that -timestep or -timedays gives, or exit with an error."""
+    if timedays is not None:
+        if timestep is not None:
+            exit_with_error("specify only one of -timestep and -timedays")
+        return get_timestep_of_timedays(modelpath, timedays)
+
+    selectedtimestep = get_single_timestep(timestep, modelpath)
+    if selectedtimestep is None:
+        exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
+
+    return selectedtimestep
+
+
 def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> int | None:
     """Return the one timestep that -timestep names, or None when it names none.
 
