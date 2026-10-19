@@ -118,12 +118,13 @@ def without_compressed_extension(filepath: Path) -> Path:
     return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
 
 
-def write_file_atomic(filepath: Path, write: Callable[[t.IO[bytes]], object]) -> None:
+def write_file_atomic(filepath: Path, write: Callable[[t.IO[bytes]], object], mode: int | None = None) -> None:
     """Write a binary file through a temporary file in the same folder, then put the file at its path in one step.
 
     os.replace puts the new file in the place of a symbolic link, and it does not write through the link. A model
     folder of a different user can hold a link with the name of an output file, e.g. a link to ~/.bashrc. A new file
     takes the mode 0666 less the umask, as a file of open() does. A file that replaces a regular file takes its mode.
+    A mode that is not None gives the mode of the new file in each case.
     """
     import secrets
     import stat
@@ -138,8 +139,10 @@ def write_file_atomic(filepath: Path, write: Callable[[t.IO[bytes]], object]) ->
     try:
         with os.fdopen(fd, "wb") as stream:
             write(stream)
-        if deststat is not None and stat.S_ISREG(deststat.st_mode):
-            partialfilepath.chmod(stat.S_IMODE(deststat.st_mode))
+        if mode is None and deststat is not None and stat.S_ISREG(deststat.st_mode):
+            mode = stat.S_IMODE(deststat.st_mode)
+        if mode is not None:
+            partialfilepath.chmod(mode)
         partialfilepath.replace(filepath)
     finally:
         partialfilepath.unlink(missing_ok=True)

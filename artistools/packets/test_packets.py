@@ -1,5 +1,6 @@
 import math
 import os
+import stat
 from pathlib import Path
 from unittest import mock
 
@@ -1148,6 +1149,8 @@ def test_filterpackets_keeps_only_the_escaped_rpkts(tmp_path: Path, monkeypatch:
     monkeypatch.setattr(at.packets.filterpackets, "LINES_PER_FRAME", 1000)
     parquetcache = at.packets.core.get_packets_rankbatch_parquetpath(modelpath, (0, 1), 0, virtual=False)
     parquetcache.write_bytes(b"")
+    # the zstd file that replaces the uncompressed file must keep its mode
+    (packetsfolder / "packets00_0001.out").chmod(0o640)
     escaped_rpkt = (pl.col("type_id") == at.packets.core.type_ids["TYPE_ESCAPE"]) & (
         pl.col("escape_type_id") == at.packets.core.type_ids["TYPE_RPKT"]
     )
@@ -1158,6 +1161,7 @@ def test_filterpackets_keeps_only_the_escaped_rpkts(tmp_path: Path, monkeypatch:
     at.packets.filterpackets.main(argsraw=[str(modelpath), "-f"])
 
     assert sorted(path.name for path in packetsfolder.iterdir()) == ["packets00_0000.out.zst", "packets00_0001.out.zst"]
+    assert stat.S_IMODE((packetsfolder / "packets00_0001.out.zst").stat().st_mode) == 0o640
     for rank, expected_count in enumerate(expected_counts):
         outfile = packetsfolder / f"packets00_{rank:04d}.out.zst"
         dfpackettypes = get_packet_types(outfile, modelpath)

@@ -1,6 +1,7 @@
 """Remove each packet except the escaped r-packets from the packets files of a model."""
 
 import argparse
+import stat
 import typing as t
 from pathlib import Path
 
@@ -107,7 +108,9 @@ def write_filtered_packets_file(packetsfile: Path, modelfolder: Path) -> Path:
     thus leaves the original file.
     """
     outpath = with_compressed_extension(without_compressed_extension(packetsfile), ".zst")
-    write_file_atomic(outpath, lambda fout: filter_packets_file(packetsfile, modelfolder, fout))
+    # the new file takes the mode of the packets file, also when it replaces a file of a different name
+    filemode = stat.S_IMODE(packetsfile.stat().st_mode)
+    write_file_atomic(outpath, lambda fout: filter_packets_file(packetsfile, modelfolder, fout), mode=filemode)
     if packetsfile != outpath:
         packetsfile.unlink()
     return outpath
@@ -129,6 +132,93 @@ def remove_packets_caches(modelfolder: Path, packetsfiles: dict[int, Path], filt
             print_detail(f"removed the cache {parquetpath}")
 
 
+class FilteredFileSizes(t.NamedTuple):
+    """The packet counts and the sizes of one packets file that the filter changes."""
+
+    packets_in: int
+    packets_removed: int
+    size_in: int
+    size_out: float
+
+
+def filter_and_report_packets_file(packetsfile: Path, modelfolder: Path, dry_run: bool) -> FilteredFileSizes | None:
+    """Filter one packets file, or only count its packets with dry_run, and print the result.
+
+    The function returns None for a file that the filter does not change. With dry_run, size_out is an estimate
+    from the fraction of the text that the filter keeps.
+    """
+    counts = filter_packets_file(packetsfile, modelfolder)
+    if counts.packets_kept == counts.packets_in:
+        print(f"{packetsfile}: only escaped r-packets")
+        return None
+    if counts.packets_kept == 0:
+        # the readers of the packets need a packet after the header line
+        print(f"{packetsfile}: no escaped r-packets, thus the filter keeps the file")
+        return None
+
+    size_in = packetsfile.stat().st_size
+    removed = counts.packets_in - counts.packets_kept
+    removed_fraction = 1 - counts.chars_kept / counts.chars_in
+    print(f"{packetsfile}: the filter removes {removed} of {counts.packets_in} packets")
+    print_detail(
+        f"the removed packets are {removed_fraction * 100:.1f}% of the text, or about"
+        f" {format_size(removed_fraction * size_in)} of {format_size(size_in)}"
+    )
+    if dry_run:
+        return FilteredFileSizes(counts.packets_in, removed, size_in, (1 - removed_fraction) * size_in)
+
+    outpath = write_filtered_packets_file(packetsfile, modelfolder)
+    size_out = outpath.stat().st_size
+    print_detail(f"wrote {outpath}: {format_size(size_out)} ({size_out / size_in * 100:.1f}% of the input)")
+    return FilteredFileSizes(counts.packets_in, removed, size_in, size_out)
+
+
+def print_filter_summary(results: "Sequence[FilteredFileSizes]", nfiles: int, dry_run: bool) -> None:
+    """Print the sums of the packet counts and of the sizes of the files that the filter changes."""
+    if not results:
+        print(f"The filter changes none of the {nfiles} packets files")
+        return
+
+    packets_total = sum(result.packets_in for result in results)
+    packets_removed = sum(result.packets_removed for result in results)
+    removes, changes, about = ("removes", "changes", "about ") if dry_run else ("removed", "changed", "")
+    print(
+        f"In {len(results)} of {nfiles} packets files, the filter {removes} {packets_removed} of"
+        f" {packets_total} packets ({packets_removed / packets_total * 100:.1f}%). The size {changes} from"
+        f" {format_size(sum(result.size_in for result in results))} to"
+        f" {about}{format_size(sum(result.size_out for result in results))}."
+    )
+
+
+def filter_packets_of_models(modelfolders: "Sequence[Path]", dry_run: bool, force: bool) -> None:
+    """Filter the packets files of each model, or only count their packets with dry_run."""
+    packetsfiles_of_model = {modelfolder: get_packets_files(modelfolder) for modelfolder in modelfolders}
+    packetsfiles = [path for packetsfiles in packetsfiles_of_model.values() for path in packetsfiles.values()]
+    if not packetsfiles:
+        print(f"No packets files in {', '.join(str(folder) for folder in modelfolders)}")
+        return
+
+    if not dry_run:
+        # the filter replaces each packets file with a zstd file of the same name
+        confirm_overwrite(
+            sorted({path.parent for path in packetsfiles}),
+            sorted({without_compressed_extension(path).name for path in packetsfiles}),
+            force=force,
+        )
+
+    results: list[FilteredFileSizes] = []
+    for modelfolder, packetsfiles_of_rank in packetsfiles_of_model.items():
+        filteredranks: set[int] = set()
+        for rank, packetsfile in packetsfiles_of_rank.items():
+            if (result := filter_and_report_packets_file(packetsfile, modelfolder, dry_run)) is not None:
+                results.append(result)
+                filteredranks.add(rank)
+        if filteredranks and not dry_run:
+            remove_packets_caches(modelfolder, packetsfiles_of_rank, filteredranks)
+
+    print_filter_summary(results, len(packetsfiles), dry_run)
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(
@@ -142,66 +232,4 @@ def main(args: argparse.Namespace | None = None, argsraw: "Sequence[str] | None"
     """Remove each packet except the escaped r-packets from the packets files of a model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     modelfolders = [get_model_folder(modelpath) for modelpath in normalize_path_list(args.modelpath)]
-    packetsfiles_of_model = {modelfolder: get_packets_files(modelfolder) for modelfolder in modelfolders}
-    packetsfiles = [path for packetsfiles in packetsfiles_of_model.values() for path in packetsfiles.values()]
-    if not packetsfiles:
-        print(f"No packets files in {', '.join(str(folder) for folder in modelfolders)}")
-        return
-
-    if not args.dry_run:
-        # the filter replaces each packets file with a zstd file of the same name
-        confirm_overwrite(
-            sorted({path.parent for path in packetsfiles}),
-            sorted({without_compressed_extension(path).name for path in packetsfiles}),
-            force=args.force,
-        )
-
-    files_changed = packets_total = packets_removed = size_in_total = 0
-    size_out_total = 0.0
-    for modelfolder, packetsfiles_of_rank in packetsfiles_of_model.items():
-        filteredranks: set[int] = set()
-        for rank, packetsfile in packetsfiles_of_rank.items():
-            counts = filter_packets_file(packetsfile, modelfolder)
-            if counts.packets_kept == counts.packets_in:
-                print(f"{packetsfile}: only escaped r-packets")
-                continue
-            if counts.packets_kept == 0:
-                # the readers of the packets need a packet after the header line
-                print(f"{packetsfile}: no escaped r-packets, thus the filter keeps the file")
-                continue
-
-            size_in = packetsfile.stat().st_size
-            removed = counts.packets_in - counts.packets_kept
-            removed_fraction = 1 - counts.chars_kept / counts.chars_in
-            files_changed += 1
-            packets_total += counts.packets_in
-            packets_removed += removed
-            size_in_total += size_in
-            print(f"{packetsfile}: the filter removes {removed} of {counts.packets_in} packets")
-            print_detail(
-                f"the removed packets are {removed_fraction * 100:.1f}% of the text, or about"
-                f" {format_size(removed_fraction * size_in)} of {format_size(size_in)}"
-            )
-            if args.dry_run:
-                size_out_total += (1 - removed_fraction) * size_in
-                continue
-
-            outpath = write_filtered_packets_file(packetsfile, modelfolder)
-            filteredranks.add(rank)
-            size_out = outpath.stat().st_size
-            size_out_total += size_out
-            print_detail(f"wrote {outpath}: {format_size(size_out)} ({size_out / size_in * 100:.1f}% of the input)")
-
-        if filteredranks:
-            remove_packets_caches(modelfolder, packetsfiles_of_rank, filteredranks)
-
-    if files_changed == 0:
-        print(f"The filter changes none of the {len(packetsfiles)} packets files")
-        return
-
-    removes, changes, about = ("removes", "changes", "about ") if args.dry_run else ("removed", "changed", "")
-    print(
-        f"In {files_changed} of {len(packetsfiles)} packets files, the filter {removes} {packets_removed} of"
-        f" {packets_total} packets ({packets_removed / packets_total * 100:.1f}%). The size {changes} from"
-        f" {format_size(size_in_total)} to {about}{format_size(size_out_total)}."
-    )
+    filter_packets_of_models(modelfolders, dry_run=args.dry_run, force=args.force)
