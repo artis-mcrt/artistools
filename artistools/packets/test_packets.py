@@ -642,6 +642,7 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
     ):
         plotlastpacketinteraction.main(
             argsraw=[],
+            plotinvalidpart=True,
             modelpath=modelpath,
             timedays=tdays,
             groupby="ion",
@@ -713,6 +714,7 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
     with mock.patch.object(plotlastinteractionvelocity, "get_packets", return_value=(1, dfpackets.lazy())):
         plotlastinteractionvelocity.main(
             argsraw=[],
+            plotinvalidpart=True,
             modelpath=[modelpath],
             xmin=7000.0,
             xmax=8000.0,
@@ -746,13 +748,13 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
     from artistools.packets import plotlastpacketinteraction
 
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
-    timestep = at.misc.get_timestep_of_timedays(modelpath, 7.0)
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 6.5)
     t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
     t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
     plotlastpacketinteraction.main(
         argsraw=[],
         modelpath=modelpath,
-        timedays=7.0,
+        timedays=6.5,
         groupby="ion",
         xmin=3500.0,
         xmax=4500.0,
@@ -784,13 +786,13 @@ def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path:
     from artistools.packets import plotlastpacketinteraction
 
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
-    timestep = at.misc.get_timestep_of_timedays(modelpath, 7.0)
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 6.5)
     t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
     t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
     plotlastpacketinteraction.main(
         argsraw=[],
         modelpath=modelpath,
-        timedays=7.0,
+        timedays=6.5,
         groupby="element",
         nvelocitybins=5,
         velocitykind="lineofsight",
@@ -1111,7 +1113,7 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
     from artistools.packets import plotlastpacketinteraction
 
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
-    timedays = 6.9
+    timedays = 6.5
     timestep = at.get_timestep_of_timedays(modelpath, timedays)
     tstart = at.get_timestep_times(modelpath, loc="start")[timestep]
     tend = at.get_timestep_times(modelpath, loc="end")[timestep]
@@ -1125,3 +1127,37 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
     assert (
         f"{dfarrived.height} escaped r-packets of the direction bin arrive in the timestep\n" in capsys.readouterr().out
     )
+
+
+def test_packet_commands_check_the_valid_range_of_the_arrival_times(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A timestep after the valid range stops the image, and the plot against time leaves out such timesteps.
+
+    The two commands took any timestep, and the light of a part of the ejecta did not reach the observer in some of
+    them. --plotinvalidpart keeps them, as in plotspectra and plotlightcurves.
+    """
+    from artistools.packets import plotlastinteractionvelocity
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    _, _, validend_days = at.misc.get_escaped_arrivalrange(modelpath)
+    assert validend_days is not None
+    with pytest.raises(SystemExit):
+        plotlastpacketinteraction.main(argsraw=[str(modelpath), "-t", "7", "-o", str(tmp_path / "image.pdf")])
+    assert "after the end of the valid range" in capsys.readouterr().err
+    plotlastpacketinteraction.main(
+        argsraw=[str(modelpath), "-t", "7", "--plotinvalidpart", "-o", str(tmp_path / "image.pdf")]
+    )
+
+    for plotinvalidpart in (False, True):
+        outputfile = tmp_path / f"velocity_{plotinvalidpart}.pdf"
+        plotlastinteractionvelocity.main(
+            argsraw=[str(modelpath), "-lambdamin", "3000", "-lambdamax", "8000", "-o", str(outputfile)],
+            plotinvalidpart=plotinvalidpart,
+            write_data=True,
+        )
+        dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
+        timestepends = at.get_timestep_times(modelpath, loc="end")
+        latestend_days = max(timestepends[timestep] for timestep in dftable["timestep"].to_list())
+        assert (latestend_days > validend_days) == plotinvalidpart

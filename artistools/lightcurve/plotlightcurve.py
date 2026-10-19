@@ -59,6 +59,7 @@ from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
+from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_residuals
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
@@ -1993,11 +1994,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--plot_cmf", "--showcmf", "--show_cmf", dest="plotcmf", action="store_true", help=argparse.SUPPRESS
     )
 
-    parser.add_argument(
-        "--plotinvalidpart",
-        action="store_true",
-        help="Plot the entire light curve including partially accumulated parts (light travel time effects)",
-    )
+    addarg_plotinvalidpart(parser, "the entire light curve, with the parts that hold only a part of the light,")
 
     parser.add_argument(
         "-deposition",

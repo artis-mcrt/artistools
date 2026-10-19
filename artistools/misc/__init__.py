@@ -16,6 +16,7 @@ from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath
 from artistools.misc.cliutils import addarg_notitle as addarg_notitle
 from artistools.misc.cliutils import addarg_output as addarg_output
 from artistools.misc.cliutils import addarg_pathoption as addarg_pathoption
+from artistools.misc.cliutils import addarg_plotinvalidpart as addarg_plotinvalidpart
 from artistools.misc.cliutils import addarg_positional_items as addarg_positional_items
 from artistools.misc.cliutils import addarg_quiet as addarg_quiet
 from artistools.misc.cliutils import addarg_residuals as addarg_residuals
@@ -135,6 +136,7 @@ from artistools.misc.modelinfo import get_wid_init_at_tmodel as get_wid_init_at_
 from artistools.misc.modelinfo import print_modelpath as print_modelpath
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc.timesteps import apply_time_range_args as apply_time_range_args
+from artistools.misc.timesteps import check_time_range_is_valid as check_time_range_is_valid
 from artistools.misc.timesteps import get_deposition as get_deposition
 from artistools.misc.timesteps import get_escaped_arrivalrange as get_escaped_arrivalrange
 from artistools.misc.timesteps import get_selected_timestep as get_selected_timestep

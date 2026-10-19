@@ -26,9 +26,11 @@ from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import check_time_range_is_valid
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import get_selected_timestep
@@ -881,6 +883,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_figscale(parser)
     addarg_show(parser)
     addarg_data_output(parser)
+    addarg_plotinvalidpart(parser, "the packets")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -902,9 +905,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     # the arrival time bins are the timesteps, thus -timestep and -timedays select the same bin
-    args.timedays = get_timestep_time(
-        Path(args.modelpath), get_selected_timestep(Path(args.modelpath), args.timestep, args.timedays)
-    )
+    selectedtimestep = get_selected_timestep(Path(args.modelpath), args.timestep, args.timedays)
+    args.timedays = get_timestep_time(Path(args.modelpath), selectedtimestep)
+    try:
+        check_time_range_is_valid(
+            Path(args.modelpath),
+            get_timestep_times(Path(args.modelpath), loc="start")[selectedtimestep],
+            get_timestep_times(Path(args.modelpath), loc="end")[selectedtimestep],
+            args.plotinvalidpart,
+        )
+    except ValueError as exc:
+        exit_with_error(str(exc))
 
     check_costheta_dirbin(args.dirbin, "-dirbin", allowall=True)
 

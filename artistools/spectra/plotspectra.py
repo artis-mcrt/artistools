@@ -1,7 +1,6 @@
 """Artistools - spectra plotting functions."""
 
 import argparse
-import contextlib
 import math
 import typing as t
 from collections.abc import Callable
@@ -41,6 +40,7 @@ from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_pathoption
+from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_residuals
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
@@ -51,6 +51,7 @@ from artistools.misc import addarg_verbose
 from artistools.misc import addarg_viewingangle
 from artistools.misc import addarg_yscale
 from artistools.misc import apply_time_range_args
+from artistools.misc import check_time_range_is_valid
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
@@ -58,7 +59,6 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_model_folders
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
-from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_logname
@@ -183,38 +183,6 @@ def path_is_reference_spectrum(filepath: str | Path) -> bool:
     name as well, thus the folder decides: an ARTIS model folder holds input.txt beside its output files.
     """
     return path_is_reference_data(filepath, "data/refspectra")
-
-
-def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
-    """Warn, or raise unless allow_invalid, when the requested times fall outside the model's packet arrival range."""
-    with contextlib.suppress(FileNotFoundError):
-        timesteplast, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
-        problem_messages: list[str] = []
-        if validrange_start_days is validrange_end_days is None:
-            problem_messages.append("The model has no valid time range days")
-        if validrange_start_days is not None and timemin < validrange_start_days:
-            problem_messages.append(
-                f"timemin {timemin} days is before the start of the valid range at {validrange_start_days:.2f} days"
-            )
-        if validrange_end_days is not None and timemax > validrange_end_days:
-            problem_messages.append(
-                f"timemax {timemax} days is after the end of the valid range at {validrange_end_days:.2f} days"
-            )
-
-        if problem_messages and not allow_invalid:
-            lastend_days = get_timestep_times(modelpath, loc="end")[timesteplast]
-            if timemin > lastend_days:
-                # ARTIS wrote no spectrum after the last timestep of the model, thus --plotinvalidpart gives no plot
-                problem_messages.append(
-                    f"ARTIS calculated the timesteps up to {timesteplast}, which ends at"
-                    f" {lastend_days:.2f} days. Thus the model has no spectrum at this time"
-                )
-            else:
-                problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")
-            raise ValueError("\n".join(problem_messages))
-
-        for message in problem_messages:
-            print_warning(message)
 
 
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
@@ -2300,11 +2268,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_maxpacketfiles(parser)
 
-    parser.add_argument(
-        "--plotinvalidpart",
-        action="store_true",
-        help="Plot the spectra even if it falls outside the valid time range (due to light travel times)",
-    )
+    addarg_plotinvalidpart(parser, "the spectra")
 
     parser.add_argument("--emissionabsorption", action="store_true", help="Implies --showemission and --showabsorption")
 

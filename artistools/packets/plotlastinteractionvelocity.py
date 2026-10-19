@@ -15,9 +15,11 @@ from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timeminmax
 from artistools.misc import exit_with_error
+from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
@@ -70,13 +72,16 @@ def get_last_interaction_velocity_quartiles(
     velocitykind: t.Literal["radial", "lineofsight"],
     histogrambinwidth_kmps: float,
     timerange_days: tuple[float, float],
+    *,
+    plotinvalidpart: bool,
 ) -> dict[int, tuple[pl.DataFrame, int]]:
     """Return, for each direction bin, the velocity quartiles of the last interaction of each timestep.
 
     Each value of the dictionary also gives the number of packets with no position. The packets are the escaped
     r-packets with a rest-frame wavelength from lambdamin to lambdamax at the escape. A packet takes the timestep of its
     arrival time, and a timestep is in the result if its mid time is in timerange_days. A range with no mid time of
-    the model gives a warning and empty tables, because a different model can have timesteps in the range.
+    the model gives a warning and empty tables, because a different model can have timesteps in the range. A timestep
+    outside the valid range of the arrival times holds only a part of the light, thus only plotinvalidpart keeps it.
 
     The quartiles take the energy of each packet as the weight, and each velocity takes the centre of its bin of the
     histogram. One scan of the packets gives the quartiles of all the direction bins. A direction bin takes all the phi
@@ -93,6 +98,10 @@ def get_last_interaction_velocity_quartiles(
             f" {timemids[0]:.2f} to {timemids[-1]:.2f} d"
         )
         return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
+    if not plotinvalidpart:
+        timesteps = get_timesteps_in_valid_range(modelpath, timesteps)
+        if not timesteps:
+            return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
     print_arrival_time_method(modelpath, timesteps, "each timestep with a mid time from -timemin to -timemax")
     print_last_interaction_convention(modelpath)
     timeedges = [*tstarts, tends[-1]]
@@ -159,6 +168,36 @@ def get_last_interaction_velocity_quartiles(
     return results
 
 
+def get_timesteps_in_valid_range(modelpath: Path, timesteps: Sequence[int]) -> list[int]:
+    """Return the timesteps inside the valid range of the arrival times, and log the timesteps that it leaves out."""
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tends = get_timestep_times(modelpath, loc="end")
+    try:
+        _, validstart_days, validend_days = get_escaped_arrivalrange(modelpath)
+    except FileNotFoundError:
+        return list(timesteps)
+    validtimesteps = [
+        timestep
+        for timestep in timesteps
+        if validstart_days is not None
+        and validend_days is not None
+        and tstarts[timestep] >= validstart_days
+        and tends[timestep] <= validend_days
+    ]
+    if len(validtimesteps) < len(timesteps):
+        rangetext = (
+            "The model has no valid range of the arrival times"
+            if validstart_days is None or validend_days is None
+            else f"The valid range of the arrival times is {validstart_days:.3g} to {validend_days:.3g} d"
+        )
+        print_warning(
+            f"{rangetext}, thus {modelpath} leaves out {len(timesteps) - len(validtimesteps)} of {len(timesteps)}"
+            " timesteps. The light of a part of the ejecta does not reach the observer in them. --plotinvalidpart"
+            " keeps them"
+        )
+    return validtimesteps
+
+
 def print_method(
     position: t.Literal["em", "trueem"],
     velocitykind: t.Literal["radial", "lineofsight"],
@@ -217,6 +256,7 @@ def plot_velocity_against_time(
             args.velocitykind,
             histogrambinwidth_kmps,
             timerange_days,
+            plotinvalidpart=args.plotinvalidpart,
         )
         for dirbin in args.dirbin:
             dfquartiles, norecordcount = quartilesofdirbin[dirbin]
@@ -330,6 +370,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path/filename for the plot file")
     addarg_figscale(parser)
     addarg_data_output(parser)
+    addarg_plotinvalidpart(parser, "the timesteps")
     addarg_show(parser)
     addarg_darkmode(parser)
 

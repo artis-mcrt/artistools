@@ -689,6 +689,21 @@ def addarg_timestep(parser: argparse.ArgumentParser, *, default: t.Any = None, h
     )
 
 
+def addarg_plotinvalidpart(parser: argparse.ArgumentParser, plotted: str) -> None:
+    """Add --plotinvalidpart, which also takes the times outside the valid range of the arrival times.
+
+    plotted names what the command then plots, e.g. "the spectra".
+    """
+    parser.add_argument(
+        "--plotinvalidpart",
+        action="store_true",
+        help=(
+            f"Plot {plotted} also outside the valid time range. The light of a part of the ejecta does not reach the"
+            " observer at all of these times, because of the light travel time"
+        ),
+    )
+
+
 def addarg_timedays(
     parser: argparse.ArgumentParser,
     *,
