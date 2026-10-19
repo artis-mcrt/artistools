@@ -502,6 +502,160 @@ def test_a_binned_line_with_empty_bins_ends_at_the_edge_of_its_bin() -> None:
     assert np.allclose(ax.get_lines()[0].get_xdata(), [0.0, 0.5, 9.5, 10.0])
 
 
+def test_histogram_breaks_the_line_at_a_gap_between_bins() -> None:
+    """--histogram draws each bin across its edges, and a gap between two bins breaks the line and the area."""
+    from artistools.estimators.plotestimators import draw_series
+
+    dflinepoints = pl.DataFrame({
+        "xbin_lower": [0.0, 1.0, 3.0],
+        "xbin_upper": [1.0, 2.0, 4.0],
+        "xvalue_binned": [0.5, 1.5, 3.5],
+        "yvalue_binned": [1.0, 2.0, 3.0],
+        "yvalue_binned_min": [0.5, 1.5, 2.5],
+        "yvalue_binned_max": [1.5, 2.5, 3.5],
+    })
+    ax = mplfig.Figure().add_subplot()
+    draw_series(dflinepoints, None, ax, label=None, args=argparse.Namespace(markers=False), xbinwidth=1.0)
+
+    line = ax.get_lines()[0]
+    nan = np.nan
+    assert np.allclose(line.get_xdata(), [0.0, 1.0, 1.0, 2.0, nan, 3.0, 4.0], equal_nan=True)
+    assert np.allclose(line.get_ydata(), [1.0, 1.0, 2.0, 2.0, nan, 3.0, 3.0], equal_nan=True)
+    # fill_between makes one polygon for each continuous part of the line
+    assert len(ax.collections[0].get_paths()) == 2
+
+
+def test_histogram_of_one_x_value_takes_the_extent_of_the_cell() -> None:
+    """A bin of a range of zero width has no width, thus the step takes the velocity range of the cell.
+
+    -xbins 1 for one cell gave two equal edges, and the histogram had a step of zero width.
+    """
+    estimators = pl.LazyFrame({
+        "timestep": [0, 0],
+        "modelgridindex": [3, 3],
+        "vel_r_min": [1.0e8, 1.0e8],
+        "vel_r_mid": [1.5e8, 1.5e8],
+        "vel_r_max": [2.0e8, 2.0e8],
+    })
+    args = argparse.Namespace(
+        xmin=None, xmax=None, xbins=1, markers=False, colorbyion=False, modelgridindex=None, histogram=True
+    )
+    _, _, _, dfplot, xlimits = plotestimators.get_xlist("velocity", estimators, None, args)
+    dfedges = dfplot.select("xbin_lower", "xbin_upper").unique().collect()
+    assert dfedges.height == 1
+    assert np.allclose(dfedges.row(0), (1000.0, 2000.0), rtol=1e-9, atol=0.0)
+    assert np.allclose(xlimits, (1000.0, 2000.0), rtol=1e-9, atol=0.0)
+
+
+def test_histogram_x_limits_keep_the_cells_with_no_value() -> None:
+    """The x axis of a histogram reaches the outer edges of all the cells, also of a cell where a series has no value.
+
+    The limits came from the bins of the series, thus a series with no value in its outer cell shrank the axis.
+    """
+    estimators = pl.LazyFrame({
+        "timestep": [0, 0, 0],
+        "modelgridindex": [0, 1, 2],
+        "vel_r_min": [0.0, 1.0e8, 2.0e8],
+        "vel_r_mid": [0.5e8, 1.5e8, 2.5e8],
+        "vel_r_max": [1.0e8, 2.0e8, 3.0e8],
+        "Te": [5000.0, 6000.0, None],
+    })
+    args = argparse.Namespace(
+        xmin=None, xmax=None, xbins=None, markers=False, colorbyion=False, modelgridindex=None, histogram=True
+    )
+    *_, xlimits = plotestimators.get_xlist("velocity", estimators, None, args)
+    assert np.allclose(xlimits, (0.0, 3000.0), rtol=1e-9, atol=0.0)
+
+
+def test_histogram_smooths_each_run_of_adjacent_bins_alone() -> None:
+    """A filter must not mix the values of the bins on the two sides of a gap.
+
+    A run that is shorter than the window of the Savitzky-Golay filter keeps its values, and gives no error.
+    """
+    from artistools.estimators.plotestimators import get_line_points
+
+    dfseries = pl.LazyFrame({
+        "xvalue_binned": [0.5, 1.5, 3.5, 4.5],
+        "xbin_lower": [0.0, 1.0, 3.0, 4.0],
+        "xbin_upper": [1.0, 2.0, 4.0, 5.0],
+        "yvalue": [1.0, 1.0, 100.0, 100.0],
+        "celltsweight": [1.0, 1.0, 1.0, 1.0],
+    })
+    for filterargs in ({"filtermovingavg": 2, "filtersavgol": None}, {"filtermovingavg": 0, "filtersavgol": (3, 1)}):
+        dflinepoints = get_line_points(dfseries, argparse.Namespace(**filterargs)).collect()
+        assert np.allclose(dflinepoints["yvalue_binned"], [1.0, 1.0, 100.0, 100.0], rtol=1e-9, atol=0.0), filterargs
+
+
+def test_histogram_of_a_line_slice_takes_the_edges_of_the_cells(capsys: pytest.CaptureFixture[str]) -> None:
+    """A line slice plots against vel_x_mid_on_c, and --histogram refused that axis with no -xbins."""
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        outputfile=at.get_path("testoutput"),
+        timestep="10",
+        plotlist=[["Te"]],
+        slice="z=0,y=0",
+        histogram=True,
+        print_data=True,
+    )
+    output = capsys.readouterr().out
+    headerstart = output.rindex("\n", 0, output.index(" vel_x_mid_on_c ")) + 1
+    dftable = pl.read_csv(io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ")
+    lower = dftable["vel_x_mid_on_c_lower"].to_numpy()
+    upper = dftable["vel_x_mid_on_c_upper"].to_numpy()
+    # the float32 edges of adjacent cells differ by a rounding error
+    assert np.allclose(lower[1:], upper[:-1], rtol=0.0, atol=1e-4 * np.min(upper - lower))
+    assert (upper > lower).all()
+
+
+def test_histogram_joins_edges_with_a_rounding_error_near_zero() -> None:
+    """Two float32 edges near zero differ by 1e-8, and a relative tolerance broke the line there."""
+    from artistools.estimators.plotestimators import get_histogram_steps
+
+    dflinepoints = pl.DataFrame({
+        "xbin_lower": [-0.02, 0.0],
+        "xbin_upper": [-1e-8, 0.02],
+        "xvalue_binned": [-0.01, 0.01],
+        "yvalue_binned": [1.0, 2.0],
+        "yvalue_binned_min": [1.0, 2.0],
+        "yvalue_binned_max": [1.0, 2.0],
+    })
+    assert not get_histogram_steps(dflinepoints)["xvalue_binned"].is_nan().any()
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_histogram_shows_the_velocity_range_of_each_shell(
+    mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 1D model with no bins gives each shell a step from its inner velocity to its outer velocity.
+
+    The x axis then reaches the inner edge of the first shell and the outer edge of the last shell, and not their
+    middles.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=CLASSIC1DPATH,
+        classicartis=True,
+        outputfile=tmp_path,
+        timestep="30",
+        plotlist=[["Te"]],
+        histogram=True,
+        print_data=True,
+    )
+    output = capsys.readouterr().out
+    headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
+    dftable = pl.read_csv(io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ")
+    lower = dftable["velocity_kmps_lower"].to_numpy()
+    upper = dftable["velocity_kmps_upper"].to_numpy()
+    assert lower[0] == 0.0
+    assert np.allclose(lower[1:], upper[:-1], rtol=1e-6, atol=0.0)
+    assert ((lower < dftable["velocity_kmps"].to_numpy()) & (dftable["velocity_kmps"].to_numpy() < upper)).all()
+
+    ax = mockplot.call_args_list[0].args[0]
+    assert np.allclose(ax.get_xlim(), (0.0, upper[-1]), rtol=1e-6, atol=0.0)
+    assert np.allclose(mockplot.call_args_list[0].args[1], np.column_stack([lower, upper]).ravel(), rtol=1e-6, atol=0)
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d_x_axis(mockplot: mock.MagicMock) -> None:
     plotlist = PLOTLIST_IONS
@@ -5592,8 +5746,10 @@ def test_time_axis_takes_no_automatic_bins() -> None:
         "modelgridindex": [cell for _ in tmids for cell in range(ncells)],
         "tmid_days": [tmid for tmid in tmids for _ in range(ncells)],
     })
-    args = argparse.Namespace(xmin=None, xmax=None, xbins=None, markers=False, colorbyion=False, modelgridindex=None)
-    xlist, _, timesteps, dfplot = plotestimators.get_xlist("time", estimators, None, args)
+    args = argparse.Namespace(
+        xmin=None, xmax=None, xbins=None, markers=False, colorbyion=False, modelgridindex=None, histogram=False
+    )
+    xlist, _, timesteps, dfplot, _ = plotestimators.get_xlist("time", estimators, None, args)
     assert args.xbins is None
     assert xlist == list(tmids)
     assert timesteps == [0, 1, 2]
