@@ -540,10 +540,50 @@ def test_histogram_of_one_x_value_takes_the_extent_of_the_cell() -> None:
     args = argparse.Namespace(
         xmin=None, xmax=None, xbins=1, markers=False, colorbyion=False, modelgridindex=None, histogram=True
     )
-    _, _, _, dfplot = plotestimators.get_xlist("velocity", estimators, None, args)
+    _, _, _, dfplot, xlimits = plotestimators.get_xlist("velocity", estimators, None, args)
     dfedges = dfplot.select("xbin_lower", "xbin_upper").unique().collect()
     assert dfedges.height == 1
     assert np.allclose(dfedges.row(0), (1000.0, 2000.0), rtol=1e-9, atol=0.0)
+    assert np.allclose(xlimits, (1000.0, 2000.0), rtol=1e-9, atol=0.0)
+
+
+def test_histogram_x_limits_keep_the_cells_with_no_value() -> None:
+    """The x axis of a histogram reaches the outer edges of all the cells, also of a cell where a series has no value.
+
+    The limits came from the bins of the series, thus a series with no value in its outer cell shrank the axis.
+    """
+    estimators = pl.LazyFrame({
+        "timestep": [0, 0, 0],
+        "modelgridindex": [0, 1, 2],
+        "vel_r_min": [0.0, 1.0e8, 2.0e8],
+        "vel_r_mid": [0.5e8, 1.5e8, 2.5e8],
+        "vel_r_max": [1.0e8, 2.0e8, 3.0e8],
+        "Te": [5000.0, 6000.0, None],
+    })
+    args = argparse.Namespace(
+        xmin=None, xmax=None, xbins=None, markers=False, colorbyion=False, modelgridindex=None, histogram=True
+    )
+    *_, xlimits = plotestimators.get_xlist("velocity", estimators, None, args)
+    assert np.allclose(xlimits, (0.0, 3000.0), rtol=1e-9, atol=0.0)
+
+
+def test_histogram_smooths_each_run_of_adjacent_bins_alone() -> None:
+    """A filter must not mix the values of the bins on the two sides of a gap.
+
+    A run that is shorter than the window of the Savitzky-Golay filter keeps its values, and gives no error.
+    """
+    from artistools.estimators.plotestimators import get_line_points
+
+    dfseries = pl.LazyFrame({
+        "xvalue_binned": [0.5, 1.5, 3.5, 4.5],
+        "xbin_lower": [0.0, 1.0, 3.0, 4.0],
+        "xbin_upper": [1.0, 2.0, 4.0, 5.0],
+        "yvalue": [1.0, 1.0, 100.0, 100.0],
+        "celltsweight": [1.0, 1.0, 1.0, 1.0],
+    })
+    for filterargs in ({"filtermovingavg": 2, "filtersavgol": None}, {"filtermovingavg": 0, "filtersavgol": (3, 1)}):
+        dflinepoints = get_line_points(dfseries, argparse.Namespace(**filterargs)).collect()
+        assert np.allclose(dflinepoints["yvalue_binned"], [1.0, 1.0, 100.0, 100.0], rtol=1e-9, atol=0.0), filterargs
 
 
 def test_histogram_of_a_line_slice_takes_the_edges_of_the_cells(capsys: pytest.CaptureFixture[str]) -> None:
@@ -5709,7 +5749,7 @@ def test_time_axis_takes_no_automatic_bins() -> None:
     args = argparse.Namespace(
         xmin=None, xmax=None, xbins=None, markers=False, colorbyion=False, modelgridindex=None, histogram=False
     )
-    xlist, _, timesteps, dfplot = plotestimators.get_xlist("time", estimators, None, args)
+    xlist, _, timesteps, dfplot, _ = plotestimators.get_xlist("time", estimators, None, args)
     assert args.xbins is None
     assert xlist == list(tmids)
     assert timesteps == [0, 1, 2]
