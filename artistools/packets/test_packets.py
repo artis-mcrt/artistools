@@ -1005,3 +1005,29 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
             atol=0.0,
             equal_nan=True,
         )
+
+
+def test_lastpacketinteraction_image_takes_each_escaped_packet(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The 2D image takes the escaped r-packets that no line absorbed, too.
+
+    The image took only the packets with a last absorption by a line.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    timedays = 6.9
+    timestep = at.get_timestep_of_timedays(modelpath, timedays)
+    tstart = at.get_timestep_times(modelpath, loc="start")[timestep]
+    tend = at.get_timestep_times(modelpath, loc="end")[timestep]
+    _, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfarrived = lzpackets.filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="left")).collect()
+    assert dfarrived.filter(pl.col("absorption_type") < 0).height > 0
+
+    plotlastpacketinteraction.main(
+        argsraw=[], modelpath=modelpath, timedays=timedays, outputfile=tmp_path / "lastinteraction.pdf"
+    )
+    assert (
+        f"{dfarrived.height} escaped r-packets of the direction bin arrive in the timestep\n" in capsys.readouterr().out
+    )

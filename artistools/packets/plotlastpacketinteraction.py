@@ -67,17 +67,12 @@ if t.TYPE_CHECKING:
 
 
 def get_required_packets(
-    modelpath: Path,
-    Z_list: Sequence[int] | None,
-    ion_stage_list: Sequence[int] | None,
-    srII_triplet: bool = False,
-    *,
-    onlylineabsorptions: bool = True,
+    modelpath: Path, Z_list: Sequence[int] | None, ion_stage_list: Sequence[int] | None, srII_triplet: bool = False
 ) -> tuple[int, pl.LazyFrame]:
-    """Return the escaped packets that a line of the given elements and ion stages last absorbed.
+    """Return the escaped r-packets, or with a list, the escaped r-packets that a line of the list last absorbed.
 
-    A None list selects every element or every ion stage. The Sr II triplet takes the place of both lists. With
-    onlylineabsorptions=False and no list, the function returns every escaped r-packet.
+    A None list selects every element or every ion stage. The Sr II triplet takes the place of both lists. With no
+    list and no Sr II triplet, the function returns every escaped r-packet.
     """
     # careful: ion_stage is counted from 1 here, i.e. 1 <-> neutral, 2 <-> singly ionized
     nprocs_read, dfpackets = get_packets(
@@ -85,11 +80,7 @@ def get_required_packets(
     )
 
     if not srII_triplet and Z_list is ion_stage_list is None:
-        if not onlylineabsorptions:
-            return nprocs_read, dfpackets
-        # the plot keeps every line, thus the filter needs no list of line indices. A packet
-        # that no line absorbed has a negative absorption_type
-        return nprocs_read, dfpackets.filter(pl.col("absorption_type") >= 0)
+        return nprocs_read, dfpackets
 
     if srII_triplet:
         lineindices = get_lineindices(
@@ -116,7 +107,6 @@ def get_reduced_packet_set(
     srII_triplet: bool = False,
     *,
     absorption: bool = False,
-    onlylineabsorptions: bool = True,
 ) -> tuple[int, pl.LazyFrame, float]:
     """Get packets in specific escape angle bins for observer direction.
 
@@ -129,9 +119,7 @@ def get_reduced_packet_set(
     """
     from artistools.spectra.core import get_boundbound_absorption_freq_expr
 
-    nprocs_read, dfpackets_selected = get_required_packets(
-        modelpath, Z, ion_stage, srII_triplet=srII_triplet, onlylineabsorptions=onlylineabsorptions
-    )
+    nprocs_read, dfpackets_selected = get_required_packets(modelpath, Z, ion_stage, srII_triplet=srII_triplet)
     frequency = get_boundbound_absorption_freq_expr() if absorption else pl.col("nu_rf")
     dfpackets_selected = dfpackets_selected.with_columns((c_ang_per_s / frequency).alias("lambda_rf"))
 
@@ -304,13 +292,14 @@ def print_heatmap_method(
     srIItriplet: bool,
 ) -> None:
     """Print the selection of the packets of the 2D image, and the meaning of its colour."""
-    linetext = (
-        "a line of the Sr II triplet" if srIItriplet else "a line" if ionlabel is None else f"a line of {ionlabel}"
-    )
-    print_detail(
-        f"{packetcount} escaped r-packets of the direction bin arrive in the timestep and have a last absorption by"
-        f" {linetext}. The image takes only such packets"
-    )
+    linetext = "the Sr II triplet" if srIItriplet else ionlabel
+    if linetext is None:
+        print_detail(f"{packetcount} escaped r-packets of the direction bin arrive in the timestep")
+    else:
+        print_detail(
+            f"{packetcount} escaped r-packets of the direction bin arrive in the timestep and have a last absorption by"
+            f" a line of {linetext}. The image takes only such packets"
+        )
     if position == "em":
         print_detail(
             "The position is em_pos at em_time, the place of the last interaction. An electron scattering also sets"
@@ -417,14 +406,7 @@ def plot_velocity_profiles_by_group(
     position: t.Literal["em", "trueem"] = "trueem" if trueem else "em"
     typecolumn = "absorption_type" if absorption else ("trueemissiontype" if trueem else "emissiontype")
     nprocs_read, lzdfpackets, inverse_solidangle_fraction = get_reduced_packet_set(
-        modelpath,
-        dirbin,
-        None,
-        None,
-        wavelen=wavelen,
-        binwidth=binwidth,
-        absorption=absorption,
-        onlylineabsorptions=False,
+        modelpath, dirbin, None, None, wavelen=wavelen, binwidth=binwidth, absorption=absorption
     )
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
     delta_t_s = (t_max - t_min) * day_to_s
