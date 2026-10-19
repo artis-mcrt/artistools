@@ -177,6 +177,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "deposition",
         "ejectaopacity",
         "exportmassfractions",
+        "filterpackets",
         "gsinetworkdecayproducts",
         "hesma",
         "linecontributions",
@@ -189,6 +190,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "catalog",
         "check",
         "completions",
+        "corehours",
         "describe",
         "getpath",
         "installskill",
@@ -255,6 +257,16 @@ subcommandtree: CommandTree = {
         note="With a shell name, e.g. zsh, the command prints the code that the instructions write to a file.",
         examples=(("zsh", "the code of tab completion for zsh"),),
     ),
+    "corehours": CommandSpec(
+        "corehours",
+        helptext="Sum the core hours of the runs of ARTIS models from the rank-0 logs of sn3d.",
+        note=(
+            "A run that stopped early gets an estimate from the timestamps of its log. The sum counts a copy of a log"
+            " in the model folder one time."
+        ),
+        examples=((".", "the core hours of each run and the sums"), (". --json", "the same values as JSON")),
+        exampletestfolder="test-classicmode_3d",
+    ),
     "deposition": CommandSpec(
         "estimators.deposition",
         helptext="Give the deposition rate per unit volume, per ion, and per unit mass.",
@@ -288,6 +300,16 @@ subcommandtree: CommandTree = {
         helptext="Write the mass fractions of the elements.",
         note="The values come from the estimators, and the command writes a text file.",
         examples=(("-modelpath . -ts 40 -modelgridindex 0", "the mass fractions of cell 0 at timestep 40"),),
+    ),
+    "filterpackets": CommandSpec(
+        "packets.filterpackets",
+        helptext="Remove each packet except the escaped r-packets from the packets files of a model.",
+        note=(
+            "The filter makes the files smaller. It also removes the escaped gamma packets. Each filtered file"
+            " replaces its packets file as a zstd file."
+        ),
+        examples=((". --dry-run", "the number of packets and the size that the filter removes"),),
+        exampletestfolder="test-classicmode_3d",
     ),
     "getpath": CommandSpec(
         "commands",

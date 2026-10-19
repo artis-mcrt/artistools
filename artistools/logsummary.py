@@ -30,6 +30,7 @@ from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import zopen
 from artistools.misc.cliutils import format_range_list
+from artistools.misc.fileio import get_decompress_errors
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.modelinfo import get_dfrankassignments
 from artistools.misc.modelinfo import get_npts_model
@@ -140,14 +141,20 @@ def are_copies(logfile: Path, otherlogfile: Path, comparetext: bool) -> bool:
         return True
     if not comparetext:
         return False
-    if logfile == without_compressed_extension(logfile) and otherlogfile == without_compressed_extension(otherlogfile):
-        # two text files with the same text have the same bytes, thus a different size is a different log
-        return logfile.stat().st_size == otherlogfile.stat().st_size and filecmp.cmp(
-            logfile, otherlogfile, shallow=False
-        )
-    # two compressed files of one text can have different bytes, e.g. a different header of gzip
-    with zopen(logfile) as flog, zopen(otherlogfile) as fotherlog:
-        return all(line == otherline for line, otherline in itertools.zip_longest(flog, fotherlog))
+    try:
+        if logfile == without_compressed_extension(logfile) and otherlogfile == without_compressed_extension(
+            otherlogfile
+        ):
+            # two text files with the same text have the same bytes, thus a different size is a different log
+            return logfile.stat().st_size == otherlogfile.stat().st_size and filecmp.cmp(
+                logfile, otherlogfile, shallow=False
+            )
+        # two compressed files of one text can have different bytes, e.g. a different header of gzip
+        with zopen(logfile) as flog, zopen(otherlogfile) as fotherlog:
+            return all(line == otherline for line, otherline in itertools.zip_longest(flog, fotherlog))
+    except (OSError, EOFError, UnicodeDecodeError, *get_decompress_errors()):
+        # an unreadable log is not a copy, and the reader of that log then reports the problem
+        return False
 
 
 def get_folder_ranks(

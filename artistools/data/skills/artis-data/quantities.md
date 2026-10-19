@@ -150,4 +150,6 @@ These options and commands describe a run:
 - `artistools logsummary <modelpath>` counts the warnings and the errors of the logs by kind, with their time steps and
   the number of cells. Each rank logs the cells that it updates, thus `-ranks all` or `-modelgridindex <cell>` reads
   more logs. Use it to explain an odd value, e.g. a cell at `MAXTEMP`.
+- `artistools corehours <modelpath> --json` gives the core hours of each run and their sum, from the rank-0 logs. A run
+  that stopped early gets an estimate from the timestamps of its log.
 - The log `output_0-0.txt` holds the messages of ARTIS for each time step. Search it for a message, e.g. a warning.

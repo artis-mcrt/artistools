@@ -7226,6 +7226,82 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
     assert "drawn series have no emission and no absorption" in out
 
 
+def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The model folder holds a link to the rank-0 log of the last run, and the sum counts that run one time.
+
+    The second run stopped early and has no last line with its core hours, thus its value is an estimate from the
+    timestamps: 1 hour * 4 processes * 1 thread.
+    """
+    import json
+
+    import artistools.__main__
+
+    modelfolder = tmp_path / "model"
+    nprocsline = "Simulation propagates 100 packets on this rank (total 400 with nprocs 4)"
+    logtext_of_runfolder = {
+        "job_from_ts0000": (
+            f"2026-10-15T09:00:00Z sn3d launched\n2026-10-15T09:00:00Z {nprocsline}\n"
+            "2026-10-15T11:00:00Z sn3d finished (job: pktprop ts 0 to ts 9 grid-preprop, 2.000 wallclock hours"
+            " * 4 processes * 1 threads = 8.000 core hours)\n"
+        ),
+        "job_from_ts0010": (
+            f"2026-10-15T12:00:00Z sn3d launched\n2026-10-15T12:00:00Z {nprocsline}\n"
+            "2026-10-15T12:30:00Z timestep 10: start update_packets\n"
+            "2026-10-15T13:00:00Z timestep 10: time after update grid on all processes\n"
+        ),
+    }
+    for runfolder, logtext in logtext_of_runfolder.items():
+        (modelfolder / runfolder).mkdir(parents=True)
+        (modelfolder / runfolder / "output_0-0.txt").write_text(logtext, encoding="utf-8")
+    (modelfolder / "output_0-0.txt").symlink_to(Path("job_from_ts0010", "output_0-0.txt"))
+
+    artistools.__main__.main(argsraw=["corehours", str(modelfolder), "--json"])
+    corehours = json.loads(capsys.readouterr().out)
+    assert [job["duplicate"] for job in corehours["jobs"]] == [False, False, True]
+    assert [job["estimate"] for job in corehours["jobs"]] == [False, True, False]
+    # the JSON gives the inputs of the estimate
+    assert np.isclose(corehours["jobs"][1]["wallclock_hours"], 1.0)
+    assert corehours["jobs"][1]["tasks"] == 4
+    assert np.isclose(corehours["total_core_hours"], 12.0)
+    assert np.isclose(corehours["wallclock_hours"], 3.0)
+    assert corehours["tasks"] == 4
+    assert corehours["timestep_ranges"] == [[0, 9], [10, 10]]
+
+    artistools.__main__.main(argsraw=["corehours", str(modelfolder)])
+    table = capsys.readouterr().out
+    assert "ignored duplicate log" in table
+    assert "WARNING: sn3d did not finish. Estimated: (job: pktprop ts 10 to ts 10 grid-preprop" in table
+    assert "CPU time:             12.000  core-h" in table
+
+    # a damaged log gives no core hours and no task count, thus the sum is not complete and the tasks are not known.
+    # The run folder comes before the target of the link, thus the search for the copy also reads the damaged log
+    (modelfolder / "job_from_ts0005").mkdir()
+    (modelfolder / "job_from_ts0005" / "output_0-0.txt.gz").write_bytes(b"not gzip data")
+    # a run folder with no rank-0 log and a last line with no number also give a run with no core hours
+    (modelfolder / "job_from_ts0030").mkdir()
+    (modelfolder / "job_from_ts0030" / "output_1-0.txt").write_text(
+        logtext_of_runfolder["job_from_ts0000"], encoding="utf-8"
+    )
+    (modelfolder / "job_from_ts0040").mkdir()
+    (modelfolder / "job_from_ts0040" / "output_0-0.txt").write_text("sn3d finished = core hours\n", encoding="utf-8")
+    (modelfolder / "light_curve.out").write_text("", encoding="utf-8")
+    artistools.__main__.main(argsraw=["corehours", str(modelfolder / "light_curve.out"), "--json"])
+    captured = capsys.readouterr()
+    corehours = json.loads(captured.out)
+    assert "output_0-0.txt.gz is unreadable" in captured.err
+    assert "job_from_ts0030 has the logs of other ranks and no rank-0 log" in captured.err
+    assert "job_from_ts0040/output_0-0.txt has a line with values that the command cannot read" in captured.err
+    assert [job["core_hours"] is None for job in corehours["jobs"]] == [False, True, False, True, True, True]
+    assert corehours["total_core_hours"] is None
+    assert corehours["tasks"] is None
+
+    artistools.__main__.main(argsraw=["corehours", str(modelfolder)])
+    table = capsys.readouterr().out
+    assert "WARNING: the log is missing, empty, or unreadable." in table
+    assert "WARNING: some logs give no core hours. The CPU time omits their runs." in table
+    assert "Tasks:" not in table
+
+
 def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -7310,6 +7386,24 @@ def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
     captured = capsys.readouterr()
     assert "300.slurm has no modelgridrankassignments.out" in captured.err
     assert pl.read_csv(io.StringIO(captured.out), separator=" ", null_values="nan")["count"].item() == 1
+
+
+def test_logsummary_log_that_cannot_be_read_is_not_a_copy(tmp_path: Path) -> None:
+    """A log with no read permission stopped the search for a copy, and the reader of that log reports the problem."""
+    from artistools.logsummary import are_copies
+
+    modellog = tmp_path / "output_0-0.txt"
+    modellog.write_text("sn3d launched\n", encoding="utf-8")
+    (tmp_path / "100.slurm").mkdir()
+    runlog = tmp_path / "100.slurm" / "output_0-0.txt"
+    runlog.write_text("sn3d launched\n", encoding="utf-8")
+    runlog.chmod(0)
+    try:
+        if os.access(runlog, os.R_OK):
+            pytest.skip("the user can read a file with no read permission, e.g. root")
+        assert not are_copies(modellog, runlog, comparetext=True)
+    finally:
+        runlog.chmod(0o644)
 
 
 def test_logsummary_reads_a_compressed_copy_of_a_log_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
