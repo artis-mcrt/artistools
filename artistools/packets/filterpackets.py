@@ -134,6 +134,13 @@ def get_rebuildable_packets_caches(modelfolder: Path, packetsfiles: dict[int, Pa
     }
 
 
+def remove_packets_cache(parquetcache: Path | None) -> None:
+    """Remove the parquet cache of a batch of packets files, if it exists."""
+    if parquetcache is not None and parquetcache.is_file():
+        parquetcache.unlink(missing_ok=True)
+        print_detail(f"removed the cache {parquetcache}")
+
+
 class FilteredFileSizes(t.NamedTuple):
     """The packet counts and the sizes of one packets file that the filter changes."""
 
@@ -150,7 +157,8 @@ def filter_and_report_packets_file(
 
     The function returns None for a file that the filter does not change. With dry_run, size_out is an estimate
     from the fraction of the text that the filter keeps. The function removes parquetcache before it replaces the
-    file, thus a stop after the replacement leaves no cache of the removed packets.
+    file, thus a stop after the replacement leaves no cache of the removed packets. The function removes parquetcache
+    again after the replacement, because a reader in another process can make the cache again during the write.
     """
     counts = filter_packets_file(packetsfile, modelfolder)
     if counts.packets_kept == counts.packets_in:
@@ -172,10 +180,9 @@ def filter_and_report_packets_file(
     if dry_run:
         return FilteredFileSizes(counts.packets_in, removed, size_in, (1 - removed_fraction) * size_in)
 
-    if parquetcache is not None and parquetcache.is_file():
-        parquetcache.unlink()
-        print_detail(f"removed the cache {parquetcache}")
+    remove_packets_cache(parquetcache)
     outpath = write_filtered_packets_file(packetsfile, modelfolder)
+    remove_packets_cache(parquetcache)
     size_out = outpath.stat().st_size
     print_detail(f"wrote {outpath}: {format_size(size_out)} ({size_out / size_in * 100:.1f}% of the input)")
     return FilteredFileSizes(counts.packets_in, removed, size_in, size_out)
