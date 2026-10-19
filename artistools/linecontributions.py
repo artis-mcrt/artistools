@@ -25,7 +25,7 @@ from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import get_excitation_temperature_column
 from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.estimators import scan_estimators
-from artistools.inputmodel import get_cell_selection
+from artistools.inputmodel import get_costheta_selection
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_table_output
 from artistools.misc import addarg_timedays
@@ -548,18 +548,9 @@ def get_cell_line_inputs(
         )
 
     if costhetarange is not None:
-        if "vel_z_mid" not in estimatorcolumns:
-            exit_with_error(
-                "a 1D model has no direction of a cell, thus -costhetamin and -costhetamax cannot select cells",
-                "Remove -costhetamin and -costhetamax",
-            )
         # a cell on a bound stays in the selection, although the Float32 error of the velocities can move it across
         # the bound. The cell at the centre of the grid has no direction, thus the selection leaves it out
-        lfestimators = lfestimators.filter(
-            get_cell_selection(
-                thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
-            )
-        )
+        lfestimators = lfestimators.filter(get_costheta_selection(costhetarange, estimatorcolumns))
         print_detail(
             f"The cells have cos θ = v_z / |v| of the cell centre from {costhetarange[0]:g} to {costhetarange[1]:g}."
             " The z axis is the polar axis of the direction bins"
@@ -586,7 +577,7 @@ def get_cell_line_inputs(
         if costhetarange is not None:
             exit_with_error(
                 "no cell with matter has its centre in the range of cos θ",
-                "Give a wider range of -costhetamin and -costhetamax",
+                "Give a wider range of cos θ, or a different -dirbin",
             )
         exit_with_error(f"the estimators hold no cell for timestep {timestep}", "Give a different time")
 

@@ -15,6 +15,10 @@ import polars as pl
 from artistools.constants import km_to_cm
 from artistools.estimators import get_units
 from artistools.estimators import scan_estimators
+from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_costheta_selection
+from artistools.inputmodel import get_modeldata
+from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_positional_items
@@ -26,6 +30,8 @@ from artistools.misc import addarg_verbose
 from artistools.misc import artis_subfolders
 from artistools.misc import exit_with_error
 from artistools.misc import folder_is_artis_model
+from artistools.misc import format_costheta_range
+from artistools.misc import get_costheta_range
 from artistools.misc import get_model_folder
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -71,12 +77,14 @@ def get_values_table(
     variables: Sequence[str],
     timesteps: Sequence[int],
     modelgridindex: Sequence[int] | None = None,
+    costhetarange: tuple[float, float] | None = None,
     verbose: bool = False,
 ) -> pl.DataFrame:
     """Return one row for each cell and timestep, with the value of each variable and no average.
 
-    The cells are those of modelgridindex, or every cell with estimators when it is None. ARTIS writes estimators only
-    for a cell with matter. A variable that the model does not hold stops the command with a list of near names.
+    The cells are those of modelgridindex, or every cell with estimators when it is None. costhetarange then keeps the
+    cells whose centre has cos θ = v_z / |v| in the range. ARTIS writes estimators only for a cell with matter. A
+    variable that the model does not hold stops the command with a list of near names.
     """
     estimators = scan_estimators(
         modelpath=modelpath,
@@ -93,6 +101,8 @@ def get_values_table(
                 f"'{variable}' is not a variable of the estimators or of the model file",
                 f"{suggest_names(variable, columns)} {LISTVARIABLESHINT}".strip(),
             )
+    if costhetarange is not None:
+        estimators = estimators.filter(get_costheta_selection(costhetarange, columns))
 
     return (
         estimators
@@ -124,7 +134,11 @@ def resolve_timesteps(args: argparse.Namespace, modelpath: Path) -> list[int]:
 
 
 def get_method_lines(
-    modelpath: Path, variables: Sequence[str], timesteps: Sequence[int], dfvalues: pl.DataFrame
+    modelpath: Path,
+    variables: Sequence[str],
+    timesteps: Sequence[int],
+    dfvalues: pl.DataFrame,
+    costhetarange: tuple[float, float] | None = None,
 ) -> list[str]:
     """Return the lines that tell which timesteps and cells the table holds, and where each column comes from."""
     tstarts = get_timestep_times(modelpath, loc="start")
@@ -147,6 +161,8 @@ def get_method_lines(
     cellstext = format_range_list(cells)
     if len(cellstext) > MAXCELLSTEXTLENGTH:
         cellstext = f"{cells[0]} to {cells[-1]}"
+    if costhetarange is not None:
+        lines.append(f"the cells have a centre with {format_costheta_range(costhetarange)}, where cos θ = v_z / |v|")
     lines.extend([
         f"{len(cells)} cells with estimators: modelgridindex {cellstext}",
         "each row gives the values of one cell at one timestep, with no average over cells or timesteps",
@@ -211,6 +227,26 @@ def warn_missing_rows(dfvalues: pl.DataFrame, timesteps: Sequence[int], modelgri
             )
 
 
+def get_cells_in_costheta_range(modelpath: Path, cells: Sequence[int], costhetarange: tuple[float, float]) -> list[int]:
+    """Return the cells of the list whose centre has cos θ = v_z / |v| in the range.
+
+    A cell of the list outside the range has no row, and it can hold estimators. Thus warn_missing_rows must not
+    name it.
+    """
+    lzmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    dfcells = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+    return (
+        dfcells
+        .filter(
+            pl.col("modelgridindex").is_in(cells),
+            get_costheta_selection(costhetarange, dfcells.collect_schema().names()),
+        )
+        .select("modelgridindex")
+        .collect()["modelgridindex"]
+        .to_list()
+    )
+
+
 def require_model_folder(modelpath: Path) -> None:
     """Stop with an error message when the path does not name a model folder."""
     if path_is_codecomparison(modelpath) or folder_is_artis_model(modelpath):
@@ -241,6 +277,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_modelpath(parser)
 
     addarg_modelgridindex(parser, helptext="Model grid cell or cells, e.g. 12, 3-7, or 1,4,9. The default is all cells")
+
+    addarg_costhetarange(parser)
 
     addarg_timestep(parser, helptext="Timestep or range of timesteps, e.g. 40, 45-65, or last")
 
@@ -277,13 +315,21 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(f"'{get_model_name(modelpath)}': values of {', '.join(variables)}")
     print_modelpath(modelpath)
     timesteps = resolve_timesteps(args, modelpath)
+    costhetarange = get_costheta_range(args)
 
-    dfvalues = get_values_table(modelpath, variables, timesteps, args.modelgridindex, verbose=args.verbose)
+    dfvalues = get_values_table(
+        modelpath, variables, timesteps, args.modelgridindex, costhetarange=costhetarange, verbose=args.verbose
+    )
     if dfvalues.is_empty():
         exit_with_error("the selected cells hold no estimators at the selected timesteps", "Select different cells")
-    warn_missing_rows(dfvalues, timesteps, args.modelgridindex)
+    expectedcells = (
+        get_cells_in_costheta_range(modelpath, args.modelgridindex, costhetarange)
+        if args.modelgridindex is not None and costhetarange is not None
+        else args.modelgridindex
+    )
+    warn_missing_rows(dfvalues, timesteps, expectedcells)
 
-    methodlines = get_method_lines(modelpath, variables, timesteps, dfvalues)
+    methodlines = get_method_lines(modelpath, variables, timesteps, dfvalues, costhetarange)
     for line in methodlines:
         print_detail(line)
 

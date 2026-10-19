@@ -52,10 +52,12 @@ from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.estimators.core import VARIABLES
 from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_costheta_selection
 from artistools.inputmodel import get_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
@@ -78,7 +80,9 @@ from artistools.misc import artis_subfolders
 from artistools.misc import exit_with_error
 from artistools.misc import flatten_list
 from artistools.misc import folder_is_artis_model
+from artistools.misc import format_costheta_range
 from artistools.misc import format_frame_path
+from artistools.misc import get_costheta_range
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -1681,7 +1685,12 @@ def plot_series(
         settings["ylabel"] = serieslabel + units_string
         linelabel = None
 
-    series = estimators.with_columns(celltsweight=pl.col("deltavol_deltat"), yvalue=colexpr)
+    # a mass fraction and Ye are quantities for each unit of mass, thus the mean uses the cell masses as weights
+    ismassquantity = variablename.startswith("init_X_") or variablename in {"Ye", "init_Ye"}
+    series = estimators.with_columns(
+        celltsweight=pl.col("rho") * pl.col("deltavol_deltat") if ismassquantity else pl.col("deltavol_deltat"),
+        yvalue=colexpr,
+    )
 
     if variablename in (dictcolors := {"Te": "red", "heating_gamma": "blue", "cooling_adiabatic": "blue"}):
         plotkwargs.setdefault("color", dictcolors[variablename])
@@ -1694,7 +1703,9 @@ def plot_series(
             dfseries=series,
             plotkwargs=plotkwargs,
             seriesname=variablename,
-            weightname="cell volume times time step duration",
+            weightname=(
+                "cell mass times time step duration" if ismassquantity else "cell volume times time step duration"
+            ),
         )
     ]
 
@@ -2295,8 +2306,11 @@ def get_line_figure_data(
         figure_title = f"{modelname}\nTimestep {strtimestep} ({strtimedays})"
         if args.slice is not None:
             figure_title += f", {args.slicelabel}"
-        print("  plotting " + figure_title.replace("\n", " "))
         framefields = {"timestep": strtimestep, "timedays": strtimedays}
+    if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
+        figure_title += f", {format_costheta_range(costhetarange)}"
+    if "cell" not in framefields:
+        print("  plotting " + figure_title.replace("\n", " "))
 
     return LineFigureData(
         subplots=subplots,
@@ -2787,6 +2801,8 @@ def get_image_figure_data(
     elif not isplane and modelmeta["dimensions"] == 3:
         strimage = "average around the z axis"
     figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
+    if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
+        figure_title += f", {format_costheta_range(costhetarange)}"
     print("  plotting " + figure_title.replace("\n", " "))
 
     return ImageFigureData(
@@ -2988,6 +3004,8 @@ LISTING_DESCRIPTIONS: Mapping[str, str] = MappingProxyType({
     "nne": "number density of the free electrons",
     "tmid_days": "mid time of the timestep",
     "heating_heating_dep/total_dep": "fraction of the deposited energy that heats the gas",
+    "init_X_lanthanides": "sum of the mass fractions of the lanthanides La to Lu (Z = 57 to 71) in the model file",
+    "init_X_actinides": "sum of the mass fractions of the actinides Ac to Lr (Z = 89 to 103) in the model file",
     "nnelement_": "number density of an element",
     "nnion_": "number density of an ion",
     "nniso_": "number density of a nuclide",
@@ -3070,6 +3088,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_modelpath(parser, helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)")
 
     addarg_modelgridindex(parser, helptext="Model grid cell for the time evolution plot")
+
+    addarg_costhetarange(parser)
 
     addarg_timestep(parser, helptext="Timestep number for internal structure plot")
 
@@ -3769,6 +3789,8 @@ def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
     resolve_snapshot_arguments(args)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
+    # the data code reads the range again with quiet, thus check and log the options here
+    get_costheta_range(args)
 
     if not wantslisting:
         print(
@@ -3815,6 +3837,9 @@ def add_plot_columns(
                 f"the plot leaves out each cell with vel_r_mid above vmax = {modelmeta['vmax_cmps'] / km_to_cm:.5g}"
                 " km/s. These cells are the corners of the 3D grid, and the velocity of the model ends at vmax"
             )
+
+    if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
+        estimators = estimators.filter(get_costheta_selection(costhetarange, estimators.collect_schema().names()))
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
     return estimators, estimators.collect_schema().names()

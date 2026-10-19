@@ -1796,3 +1796,19 @@ def get_cell_selection(
         return pl.repeat(value=True, n=pl.len())
 
     return pl.all_horizontal(conditions).fill_null(value=False)
+
+
+def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence[str]) -> pl.Expr:
+    """Return a selection that is true for a cell whose centre has cos θ = v_z / |v| in the range.
+
+    columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c. A 1D model has no
+    direction of a cell, thus the function stops with an error for it. See get_cell_selection for the edges.
+    """
+    if "vel_z_mid_on_c" not in columns:
+        exit_with_error(
+            "a 1D model has no direction of a cell, thus -dirbin, -costhetamin, and -costhetamax cannot select cells",
+            "Remove -dirbin, -costhetamin, and -costhetamax",
+        )
+    return get_cell_selection(
+        thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
+    )

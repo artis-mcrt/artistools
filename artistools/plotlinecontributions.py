@@ -21,13 +21,16 @@ from artistools.linecontributions import LINEKEYS
 from artistools.linecontributions import parse_ions
 from artistools.linecontributions import TROUGHSAMPLESPERCELL
 from artistools.misc import addarg_averageoverphi
+from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
+from artistools.misc import format_costheta_range
 from artistools.misc import get_artis_option
+from artistools.misc import get_costheta_range
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_selected_timestep
@@ -42,12 +45,10 @@ from artistools.misc import print_warning
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.dirbins import check_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
-from artistools.plottools import addarg_costhetarange
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
 from artistools.plottools import get_cell_widths_kmps
-from artistools.plottools import get_costheta_range
 from artistools.plottools import get_grid_corner_velocity_kmps
 from artistools.plottools import get_velocity_bin_edges_kmps
 from artistools.plottools import get_velocity_unit
@@ -380,10 +381,10 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
             f" grid at {format_velocity(cornervelocity_kmps, unit)}, thus no cell is in front of the photosphere",
             "Give a lower -photospherevelocity",
         )
-    if args.costhetamin is not None or args.costhetamax is not None:
+    if args.dirbin is not None or args.costhetamin is not None or args.costhetamax is not None:
         exit_with_error(
             "the trough estimate needs all the cells in front of the photosphere",
-            "Remove -costhetamin and -costhetamax, or remove -troughdirbin",
+            "Remove -dirbin, -costhetamin, and -costhetamax, or remove -troughdirbin",
         )
     return args.troughdirbin, photospherevelocity_kmps
 
@@ -504,7 +505,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     troughsettings = get_trough_settings(args, unit)
     velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax_kmps, unit)
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
-    costhetarange = get_costheta_range(args.costhetamin, args.costhetamax)
+    costhetarange = get_costheta_range(args)
     inputs = get_cell_line_inputs(
         args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, costhetarange, args.taumin
     )
@@ -552,7 +553,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     title = f"{get_model_name(args.modelpath)} {get_timestep_time(args.modelpath, timestep):.2f} d"
     if costhetarange is not None:
-        title += f", {costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}"
+        title += f", {format_costheta_range(costhetarange)}"
     label_line_axes(axes, args, unit, title, hastrough=troughsettings is not None)
 
     outputfile = Path(args.outputfile)
@@ -574,7 +575,7 @@ def print_trough_method(
 
     dopplershift is the value of USE_RELATIVISTIC_DOPPLER_SHIFT in artisoptions.h, or None with no such option.
     """
-    directionlabel = get_dirbin_labels([dirbin], average_over_phi=averageoverphi, usedegrees=True)[dirbin]
+    directionlabel = get_dirbin_labels([dirbin], average_over_phi=averageoverphi)[dirbin]
     observertext = (
         f"at the centre cos θ of direction bin {dirbin} ({directionlabel}), as the mean over the phi bins"
         if averageoverphi

@@ -77,9 +77,12 @@ from artistools.misc.cliutils import suggest_flags as suggest_flags
 from artistools.misc.cliutils import suggest_names as suggest_names
 from artistools.misc.cliutils import trim_or_pad as trim_or_pad
 from artistools.misc.cliutils import UnsupportedArgument as UnsupportedArgument
+from artistools.misc.dirbins import addarg_costhetarange as addarg_costhetarange
 from artistools.misc.dirbins import average_direction_bins as average_direction_bins
 from artistools.misc.dirbins import check_averaging_angles as check_averaging_angles
+from artistools.misc.dirbins import format_costheta_range as format_costheta_range
 from artistools.misc.dirbins import get_costheta_bins as get_costheta_bins
+from artistools.misc.dirbins import get_costheta_range as get_costheta_range
 from artistools.misc.dirbins import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
 from artistools.misc.dirbins import get_dirbin_definitions as get_dirbin_definitions
 from artistools.misc.dirbins import get_dirbins as get_dirbins

@@ -3237,15 +3237,16 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
         " with vmin = 0.1c and vmax = 0.2c" in (capsys.readouterr().out)
     )
 
-    # -costhetamin selects the cells near the pole at +z, as for -dirbin 90 of the spectra
-    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-costhetamin", "0.8"])
-    costhetarange = at.plottools.get_costheta_range(args.costhetamin, args.costhetamax)
-    dfpolarcells = at.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, costhetarange)
+    # -costhetamin selects the cells near the pole at +z, and -dirbin 90 selects the same cells
     expectedpolar = set(
         dfvelocities.filter((pl.col("vel_r_mid_on_c") >= 0.1) & (pl.col("costheta") >= 0.8))["modelgridindex"]
     )
     assert 0 < len(expectedpolar) < len(set(dfestimators["modelgridindex"]))
-    assert set(dfpolarcells["modelgridindex"]) == expectedpolar & set(dfestimators["modelgridindex"])
+    for selectionargs in (["-costhetamin", "0.8"], ["-dirbin", "90"]):
+        args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", *selectionargs])
+        costhetarange = at.misc.get_costheta_range(args)
+        dfpolarcells = at.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, costhetarange)
+        assert set(dfpolarcells["modelgridindex"]) == expectedpolar & set(dfestimators["modelgridindex"])
 
     args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
     assert at.plotopacity.get_cells_text(None, args.vmin, args.vmax) == (
@@ -8448,6 +8449,21 @@ def test_values_warn_about_a_cell_with_no_estimators_at_one_timestep(capsys: pyt
     warn_missing_rows(dfvalues, [0, 1], modelgridindex=None)
 
     assert "modelgridindex 1 has no estimators at timestep 1" in capsys.readouterr().err
+
+
+def test_values_warn_about_a_requested_cell_in_the_direction_range(capsys: pytest.CaptureFixture[str]) -> None:
+    """-dirbin with -cell warns about a requested cell in the range that has no estimators, e.g. a cell with no matter.
+
+    The warning took only the cells of the table, thus such a cell gave no warning. Cell 932 is near the pole and holds
+    no matter. Cell 402 is near the equator, thus it is outside the range, and it gives no warning.
+    """
+    from artistools.values import main
+
+    main(argsraw=["Te", "-ts", "25", "-dirbin", "90", "-cell", "402,644,932", str(modelpath_classic_3d)])
+
+    stderr = capsys.readouterr().err
+    assert "modelgridindex 932 has no estimators" in stderr
+    assert "402" not in stderr
 
 
 def test_values_with_quiet_print_only_the_table(capsys: pytest.CaptureFixture[str]) -> None:

@@ -26,6 +26,7 @@ from polars.io.plugins import register_io_source
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbolset
 from artistools.atomic import get_ion_levels
 from artistools.atomic import roman_numerals
@@ -71,6 +72,12 @@ UNITS_BY_SUFFIX: Mapping[str, str] = MappingProxyType({
     "_on_c": "c",
     "_en_erg": "erg",
     "_days": "days",
+})
+
+# The first and the last atomic number of each group of add_element_group_mass_fractions
+ELEMENT_GROUP_Z_RANGES: Mapping[str, tuple[int, int]] = MappingProxyType({
+    "lanthanides": (57, 71),
+    "actinides": (89, 103),
 })
 
 # Suffixes that make a variant of one quantity in other units, e.g. vel_r_mid, vel_r_mid_on_c, and
@@ -1201,6 +1208,7 @@ def join_cell_modeldata(
         for colname in dfmodel.collect_schema().names()
         if not colname.startswith("vel_") and colname not in {"inputcellid", "modelgridindex", "mass_g"}
     })
+    dfmodel = add_element_group_mass_fractions(dfmodel)
     return estimators.join(
         dfmodel, on="modelgridindex", how="inner", suffix="_initmodel", maintain_order="left"
     ).with_columns(
@@ -1209,6 +1217,21 @@ def join_cell_modeldata(
         volume_prevtimestep=pl.col("init_volume")
         * (pl.col("tmid_days_prevtimestep") / modelmeta["t_model_init_days"]) ** 3,
     ), modelmeta
+
+
+def add_element_group_mass_fractions(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
+    """Add init_X_lanthanides and init_X_actinides, the sums of the mass fractions of the elements of each group.
+
+    The model data must hold the mass fraction of each element as init_X_<element>, e.g. init_X_La from abundances.txt.
+    A group gets no column when the model data has no element of it. An element with no column counts as zero.
+    """
+    columns = set(dfmodel.collect_schema().names())
+    groupfractions = {}
+    for groupname, (zmin, zmax) in ELEMENT_GROUP_Z_RANGES.items():
+        elementcolumns = [colname for z in range(zmin, zmax + 1) if (colname := f"init_X_{get_elsymbol(z)}") in columns]
+        if elementcolumns:
+            groupfractions[f"init_X_{groupname}"] = pl.sum_horizontal(elementcolumns)
+    return dfmodel.with_columns(**groupfractions)
 
 
 def lazyframe_from_estimator_dict(estimators: dict[tuple[int, int], t.Any]) -> pl.LazyFrame:
