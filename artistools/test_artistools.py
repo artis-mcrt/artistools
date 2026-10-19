@@ -7218,18 +7218,27 @@ def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pyt
     # The run folder comes before the target of the link, thus the search for the copy also reads the damaged log
     (modelfolder / "job_from_ts0005").mkdir()
     (modelfolder / "job_from_ts0005" / "output_0-0.txt.gz").write_bytes(b"not gzip data")
+    # a run folder with no rank-0 log and a last line with no number also give a run with no core hours
+    (modelfolder / "job_from_ts0030").mkdir()
+    (modelfolder / "job_from_ts0030" / "output_1-0.txt").write_text(
+        logtext_of_runfolder["job_from_ts0000"], encoding="utf-8"
+    )
+    (modelfolder / "job_from_ts0040").mkdir()
+    (modelfolder / "job_from_ts0040" / "output_0-0.txt").write_text("sn3d finished = core hours\n", encoding="utf-8")
     (modelfolder / "light_curve.out").write_text("", encoding="utf-8")
     artistools.__main__.main(argsraw=["corehours", str(modelfolder / "light_curve.out"), "--json"])
     captured = capsys.readouterr()
     corehours = json.loads(captured.out)
     assert "output_0-0.txt.gz is unreadable" in captured.err
-    assert [job["core_hours"] is None for job in corehours["jobs"]] == [False, True, False, True]
+    assert "job_from_ts0030 has the logs of other ranks and no rank-0 log" in captured.err
+    assert "job_from_ts0040/output_0-0.txt has a line with values that the command cannot read" in captured.err
+    assert [job["core_hours"] is None for job in corehours["jobs"]] == [False, True, False, True, True, True]
     assert corehours["total_core_hours"] is None
     assert corehours["tasks"] is None
 
     artistools.__main__.main(argsraw=["corehours", str(modelfolder)])
     table = capsys.readouterr().out
-    assert "WARNING: the log is empty or unreadable." in table
+    assert "WARNING: the log is missing, empty, or unreadable." in table
     assert "WARNING: some logs give no core hours. The CPU time omits their runs." in table
     assert "Tasks:" not in table
 

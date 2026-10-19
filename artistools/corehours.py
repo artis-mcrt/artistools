@@ -14,6 +14,7 @@ from itertools import starmap
 from operator import itemgetter
 from pathlib import Path
 
+from artistools.logsummary import get_folder_log_ranks
 from artistools.logsummary import get_unique_logfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import firstexisting_or_none
@@ -154,15 +155,22 @@ def get_run_core_hours(loglines: Sequence[str]) -> RunCoreHours:
 
 
 def read_run_core_hours(logfile: Path) -> RunCoreHours | None:
-    """Return the core hours of the run of an sn3d log, or None for an empty log or a damaged log."""
+    """Return the core hours of the run of an sn3d log, or None for an empty log or a damaged log.
+
+    The other runs keep their values, and the table shows the damaged log.
+    """
     try:
         with zopen(logfile) as flog:
             loglines = flog.readlines()
     except (OSError, EOFError, UnicodeDecodeError, *get_decompress_errors()) as exc:
-        # the other runs keep their values, and the table shows the damaged log
         print_warning(f"{logfile} is unreadable: {exc}")
         return None
-    return get_run_core_hours(loglines) if loglines else None
+    try:
+        return get_run_core_hours(loglines) if loglines else None
+    except (ValueError, IndexError) as exc:
+        # e.g. the last line of a log that stopped during a write
+        print_warning(f"{logfile} has a line with values that the command cannot read: {exc}")
+        return None
 
 
 @on_model_host
@@ -170,18 +178,26 @@ def read_model_core_hours(modelfolder: Path) -> list[RunOfLog]:
     """Return the rank-0 log of each run folder of a model, with True for a copy, and the core hours of its run.
 
     The model folder holds a link or a copy of the rank-0 log of its last run. get_unique_logfiles finds that copy, and
-    the table shows it as a duplicate, thus a user sees that the sum counts that run one time. The host of a remote
-    model reads the logs.
+    the table shows it as a duplicate, thus a user sees that the sum counts that run one time. A folder with the logs
+    of other ranks and no rank-0 log has a run with no core hours, thus it gets the path of the missing log and None.
+    The host of a remote model reads the logs.
     """
-    logfiles = [
-        logfile
-        for folder in get_run_subfolders(modelfolder)
-        if (logfile := firstexisting_or_none("output_0-0.txt", folder=folder, search_subfolders=False)) is not None
-    ]
+    logfiles: list[Path] = []
+    missinglogfiles: list[Path] = []
+    for folder in get_run_subfolders(modelfolder):
+        logfile = firstexisting_or_none("output_0-0.txt", folder=folder, search_subfolders=False)
+        if logfile is not None:
+            logfiles.append(logfile)
+        elif get_folder_log_ranks(folder):
+            print_warning(f"{folder} has the logs of other ranks and no rank-0 log, thus its run has no core hours")
+            missinglogfiles.append(folder / "output_0-0.txt")
     uniquelogfiles = set(get_unique_logfiles(modelfolder, logfiles))
     return [
-        (logfile, False, read_run_core_hours(logfile)) if logfile in uniquelogfiles else (logfile, True, None)
-        for logfile in logfiles
+        *(
+            (logfile, False, read_run_core_hours(logfile)) if logfile in uniquelogfiles else (logfile, True, None)
+            for logfile in logfiles
+        ),
+        *((logfile, False, None) for logfile in missinglogfiles),
     ]
 
 
@@ -191,7 +207,7 @@ def format_run_lines(logfile: Path, col1width: int, iscopy: bool, run: RunCoreHo
     if iscopy:
         return [f"{logfilecolumn}\n  ignored duplicate log", ""]
     if run is None:
-        return [f"{logfilecolumn}  WARNING: the log is empty or unreadable.", ""]
+        return [f"{logfilecolumn}  WARNING: the log is missing, empty, or unreadable.", ""]
     lines: list[str] = []
     if run.core_hours is not None:
         lines.append(f"{logfilecolumn}{run.core_hours:8.1f} core-h")
