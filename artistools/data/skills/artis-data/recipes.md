@@ -303,7 +303,14 @@ Do these steps in this sequence, for each direction bin:
    median of step 2. The estimate has no emission of the lines, no limb darkening, and only the ranked lines. If the
    estimate gives a deep trough and the spectrum does not, the emission of the lines can fill the trough. As an
    alternative, lines of different ions can change the feature.
-5. Compare the composition of the cells of each direction with `at.scan_estimators(..., join_modeldata=True)` and
+5. Compare the line blanketing of each direction. Run `artistools plotopacity -modelpath <modelpath> -t <days> -vmin
+   <v> -costhetamin 0.8 -cellaverage median --write_data`, with the median of step 2 as `-vmin`. Then run the same
+   command with `-costhetamin 0 -costhetamax 0.2`. `-vmin` needs a unit, e.g. `0.157c` or `47000km/s`. Use
+   `-cellaverage median`. A few dense cells can make the means of the two directions almost equal. The expansion
+   opacity sums all the lines of all the ions. A larger opacity at the wavelengths of the trough and of the continuum
+   on its blue side can hide the feature. Compare the opacity at these wavelengths with the opacity at the wavelength
+   of the line.
+6. Compare the composition of the cells of each direction with `at.scan_estimators(..., join_modeldata=True)` and
    `at.get_modeldata(..., get_elemabundances=True)`. Select the cells by cos θ = v_z / |v| of the cell centre.
    Examples of the values are:
    - Ye;
@@ -321,5 +328,10 @@ Possible errors:
   the velocity range where the median is above 1.
 - The velocity of the last interaction is a radial velocity, and not a velocity along the line of sight. An electron
   scattering also sets it. In a kilonova, a range with no strong line still holds many weak lines.
+- The trough estimate takes a sharp photosphere and pure absorption. If many lines are optically thick in front of the
+  photosphere (step 5), the light scatters many times, and the estimate gives a trough that is too deep.
+- `plotlinecontributions` and `linecontributions` calculate each pair of a cell and a line. For a wide range with all
+  the ions of a kilonova, give `-ions` or `-taumin 1`. `-taumin` leaves out each line that cannot reach that
+  tau_sobolev in any cell.
 - `-dirbin 90` holds the directions with 0.8 ≤ cos θ ≤ 1, i.e. 0° to 37°, as a mean over phi. `-costhetamin 0.8`
   selects the cells of the same cone. A 1D model has no direction.

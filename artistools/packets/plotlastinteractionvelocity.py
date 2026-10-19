@@ -21,7 +21,6 @@ from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
-from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
@@ -29,9 +28,9 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import resolve_outputfile
+from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.misc.general import get_bin_index_expr
-from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_velocity_of_columns_expr
 from artistools.packets.core import get_packets
 from artistools.plottools import addarg_velocityunit
@@ -58,57 +57,77 @@ VELOCITYHISTOGRAMBINS = 2000
 
 def get_last_interaction_velocity_quartiles(
     modelpath: Path,
-    dirbin: int,
+    dirbins: Sequence[int],
     lambdamin: float,
     lambdamax: float,
     position: t.Literal["em", "trueem"],
     histogrambinwidth_kmps: float,
-) -> tuple[pl.DataFrame, int]:
-    """Return the velocity quartiles of the last interaction of each timestep, and the number with no position.
+    timerange_days: tuple[float, float],
+) -> dict[int, tuple[pl.DataFrame, int]]:
+    """Return, for each direction bin, the velocity quartiles of the last interaction of each timestep.
 
-    The packets are the escaped r-packets of the direction bin with a rest-frame wavelength from lambdamin to
-    lambdamax at the escape. A packet takes the timestep of its arrival time. The quartiles take the energy of each
-    packet as the weight, and each velocity takes the centre of its bin of the histogram.
+    Each value of the dictionary also gives the number of packets with no position. The packets are the escaped
+    r-packets with a rest-frame wavelength from lambdamin to lambdamax at the escape. A packet takes the timestep of its
+    arrival time, and a timestep is in the result if its mid time is in timerange_days. The quartiles take the energy
+    of each packet as the weight, and each velocity takes the centre of its bin of the histogram. One scan of the
+    packets gives the quartiles of all the direction bins. A direction bin takes all the phi bins of its costheta bin,
+    and -1 takes all the directions.
     """
     _, lzpackets = get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
-    lzpackets, _ = filter_packets_dirbin(lzpackets, dirbin, average_over_phi=True)
-    timeedges = [*get_timestep_times(modelpath, loc="start"), get_timestep_times(modelpath, loc="end")[-1]]
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tends = get_timestep_times(modelpath, loc="end")
+    timemids = get_timestep_times(modelpath, loc="mid")
+    timesteps = [timestep for timestep, tmid in enumerate(timemids) if timerange_days[0] <= tmid <= timerange_days[1]]
+    if not timesteps:
+        return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
+    timeedges = [*tstarts, tends[-1]]
     velocity_kmps = get_emission_velocity_of_columns_expr(position, lzpackets.collect_schema().names()) / km_to_cm
+    # the filter of the arrival time comes first, thus the scan reads only the row groups of the selected timesteps
     dfhistogram = (
         lzpackets
+        .filter(pl.col("t_arrive_d").is_between(tstarts[timesteps[0]], tends[timesteps[-1]], closed="left"))
         .filter((c_ang_per_s / pl.col("nu_rf")).is_between(lambdamin, lambdamax))
         .select(
             "e_rf",
+            "costhetabin",
             timestep=get_bin_index_expr(pl.col("t_arrive_d"), timeedges),
             # a packet with no record has a velocity of NaN, and the cast gives it no bin
             velocitybin=(velocity_kmps / histogrambinwidth_kmps).floor().cast(pl.Int64, strict=False),
         )
-        .filter(pl.col("timestep").is_between(0, len(timeedges) - 2))
-        .group_by("timestep", "velocitybin")
+        .filter(pl.col("timestep").is_in(timesteps))
+        .group_by("costhetabin", "timestep", "velocitybin")
         .agg(pl.col("e_rf").cast(pl.Float64).sum(), packetcount=pl.len())
         .collect()
     )
-    norecordcount = int(dfhistogram.filter(pl.col("velocitybin").is_null())["packetcount"].sum())
-    timemids = get_timestep_times(modelpath, loc="mid")
-    dfquartiles = (
-        dfhistogram
-        .filter(pl.col("velocitybin").is_not_null())
-        .with_columns(velocity_kmps=(pl.col("velocitybin").cast(pl.Float64) + 0.5) * histogrambinwidth_kmps)
-        .group_by("timestep")
-        .agg(
-            packetcount=pl.col("packetcount").sum(),
-            **{
-                f"velocity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr("velocity_kmps", "e_rf", quantile)
-                for quantile in (0.25, 0.5, 0.75)
-            },
+
+    nphibins = get_viewingdirection_phibincount()
+    results = {}
+    for dirbin in dirbins:
+        dfdirbin = dfhistogram if dirbin == -1 else dfhistogram.filter(pl.col("costhetabin") == dirbin // nphibins)
+        dfdirbin = dfdirbin.group_by("timestep", "velocitybin").agg(pl.col("e_rf", "packetcount").sum())
+        norecordcount = int(dfdirbin.filter(pl.col("velocitybin").is_null())["packetcount"].sum())
+        dfquartiles = (
+            dfdirbin
+            .filter(pl.col("velocitybin").is_not_null())
+            .with_columns(velocity_kmps=(pl.col("velocitybin").cast(pl.Float64) + 0.5) * histogrambinwidth_kmps)
+            .group_by("timestep")
+            .agg(
+                packetcount=pl.col("packetcount").sum(),
+                **{
+                    f"velocity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
+                        "velocity_kmps", "e_rf", quantile
+                    )
+                    for quantile in (0.25, 0.5, 0.75)
+                },
+            )
+            .with_columns(
+                time_days=pl.col("timestep").replace_strict(range(len(timemids)), timemids, return_dtype=pl.Float64)
+            )
+            .sort("timestep")
+            .select("timestep", "time_days", "packetcount", pl.col("^velocity_q.*$"))
         )
-        .with_columns(
-            time_days=pl.col("timestep").replace_strict(range(len(timemids)), timemids, return_dtype=pl.Float64)
-        )
-        .sort("timestep")
-        .select("timestep", "time_days", "packetcount", pl.col("^velocity_q.*$"))
-    )
-    return dfquartiles, norecordcount
+        results[dirbin] = (dfquartiles, norecordcount)
+    return results
 
 
 def print_method(
@@ -155,16 +174,15 @@ def plot_velocity_against_time(
         histogrambinwidth_kmps = get_grid_corner_velocity_kmps(modelmeta) / VELOCITYHISTOGRAMBINS
         print_method(position, args.xmin, args.xmax, histogrambinwidth_kmps)
         dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=True, usedegrees=True)
+        timerange_days = (
+            -math.inf if args.timemin is None else args.timemin,
+            math.inf if args.timemax is None else args.timemax,
+        )
+        quartilesofdirbin = get_last_interaction_velocity_quartiles(
+            modelpath, args.dirbin, args.xmin, args.xmax, position, histogrambinwidth_kmps, timerange_days
+        )
         for dirbin in args.dirbin:
-            dfquartiles, norecordcount = get_last_interaction_velocity_quartiles(
-                modelpath, dirbin, args.xmin, args.xmax, position, histogrambinwidth_kmps
-            )
-            dfquartiles = dfquartiles.filter(
-                pl.col("time_days").is_between(
-                    -math.inf if args.timemin is None else args.timemin,
-                    math.inf if args.timemax is None else args.timemax,
-                )
-            )
+            dfquartiles, norecordcount = quartilesofdirbin[dirbin]
             label = f"{get_model_name(modelpath)}, {dirbinlabels[dirbin]}"
             if norecordcount > 0:
                 print_detail(f"{label}: {norecordcount} packets have no record of the position, thus no velocity")
@@ -265,14 +283,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             "the command needs the wavelength range of the packets",
             "Give -lambdamin and -lambdamax, e.g. -lambdamin 7200 -lambdamax 7800",
         )
-    nphibins = get_viewingdirection_phibincount()
-    ndirbins = get_viewingdirectionbincount()
     for dirbin in args.dirbin:
-        if dirbin != -1 and not (0 <= dirbin < ndirbins and dirbin % nphibins == 0):
-            exit_with_error(
-                f"-dirbin {dirbin} is not the first direction bin of a costheta bin",
-                f"Give -1 for all the directions, or a multiple of {nphibins} from 0 to {ndirbins - nphibins}",
-            )
+        check_costheta_dirbin(dirbin, "-dirbin", allowall=True)
     args.modelpath = normalize_path_list(args.modelpath)
     unit = get_velocity_unit(args.modelpath[0], args.velocityunit)
 

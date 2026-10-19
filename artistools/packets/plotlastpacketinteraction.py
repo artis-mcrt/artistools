@@ -28,13 +28,12 @@ from artistools.misc import get_model_name
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
-from artistools.misc import get_viewingdirection_phibincount
-from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import resolve_outputfile
+from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
@@ -712,13 +711,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.timedays is None:
         exit_with_error("the time is missing", "Give the time in days, e.g. -timedays 300")
 
-    nphibins = get_viewingdirection_phibincount()
-    ndirbins = get_viewingdirectionbincount()
-    if args.dirbin != -1 and not (0 <= args.dirbin < ndirbins and args.dirbin % nphibins == 0):
-        exit_with_error(
-            f"-dirbin {args.dirbin} is not the first direction bin of a costheta bin",
-            f"Give -1 for all directions, or a multiple of {nphibins} from 0 to {ndirbins - nphibins}",
-        )
+    check_costheta_dirbin(args.dirbin, "-dirbin", allowall=True)
 
     # get_atomic_number gives -1 for a text that is no element symbol, and 0 for the free neutron, which has no lines
     atomic_number = get_atomic_number(args.element) if args.element else None

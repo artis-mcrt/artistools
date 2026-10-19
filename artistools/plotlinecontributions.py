@@ -1,7 +1,6 @@
 """Plot the Sobolev emission and the Sobolev optical depth of the strongest lines in a range, against velocity."""
 
 import argparse
-import math
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -15,12 +14,14 @@ from artistools.constants import km_to_cm
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import get_selected_timestep
 from artistools.inputmodel import get_modeldata
+from artistools.linecontributions import addarg_taumin
 from artistools.linecontributions import get_cell_line_inputs
 from artistools.linecontributions import get_line_velocity_profiles
 from artistools.linecontributions import get_ranked_line_summary
 from artistools.linecontributions import get_sobolev_trough
 from artistools.linecontributions import LINEKEYS
 from artistools.linecontributions import parse_ions
+from artistools.linecontributions import TROUGHSUBPOINTS
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -34,8 +35,6 @@ from artistools.misc import get_artis_option
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_time
-from artistools.misc import get_viewingdirection_phibincount
-from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
@@ -43,10 +42,13 @@ from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
+from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
+from artistools.plottools import addarg_costhetarange
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
+from artistools.plottools import get_costheta_range
 from artistools.plottools import get_grid_corner_velocity_kmps
 from artistools.plottools import get_velocity_bin_edges_kmps
 from artistools.plottools import get_velocity_unit
@@ -204,17 +206,14 @@ def plot_trough_estimate(
     relativisticdoppler = get_artis_option(modelpath, "USE_RELATIVISTIC_DOPPLER_SHIFT") == "true"
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     cellwidth_kmps = modelmeta["wid_init"] / (modelmeta["t_model_init_days"] * day_to_s) / km_to_cm
-    binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
-    if binwidth_kmps < cellwidth_kmps:
-        maxbincount = max(1, math.floor((velocityedges_kmps[-1] - velocityedges_kmps[0]) / cellwidth_kmps))
-        print_warning(
-            f"The velocity bins of {format_velocity(binwidth_kmps, unit)} are narrower than a cell of"
-            f" {format_velocity(cellwidth_kmps, unit)}. A cell puts all its volume in the bin of its centre. Thus the"
-            f" trough depth changes from bin to bin, and the depth can be above 1 - exp(-tau). Give -nvelocitybins"
-            f" {maxbincount} or less"
-        )
     dfdepths, dfblend = get_sobolev_trough(
-        profiles, inputs, dirbin, photospherevelocity_kmps, velocityedges_kmps, relativisticdoppler=relativisticdoppler
+        profiles,
+        inputs,
+        dirbin,
+        photospherevelocity_kmps,
+        velocityedges_kmps,
+        cellwidth_kmps,
+        relativisticdoppler=relativisticdoppler,
     )
     plot_trough(ax, dfdepths, dfranked, colours, unit, photospherevelocity_kmps)
     print_trough_method(
@@ -271,13 +270,7 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
         if args.photospherevelocity is not None:
             exit_with_error("-photospherevelocity applies only to the trough estimate", "Give -troughdirbin too")
         return None
-    nphibins = get_viewingdirection_phibincount()
-    ndirbins = get_viewingdirectionbincount()
-    if not (0 <= args.troughdirbin < ndirbins and args.troughdirbin % nphibins == 0):
-        exit_with_error(
-            f"-troughdirbin {args.troughdirbin} is not the first direction bin of a costheta bin",
-            f"Give a multiple of {nphibins} from 0 to {ndirbins - nphibins}, e.g. 90 for the pole at +z",
-        )
+    check_costheta_dirbin(args.troughdirbin, "-troughdirbin", allowall=False)
     _, modelmeta = get_modeldata(args.modelpath, printwarningsonly=True)
     if modelmeta["dimensions"] != 3:
         # a cell of a 2D model is a ring, and a cell of a 1D model is a shell
@@ -313,19 +306,6 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
     return args.troughdirbin, photospherevelocity_kmps
 
 
-def get_costheta_range(costhetamin: float | None, costhetamax: float | None) -> tuple[float, float] | None:
-    """Return the range of cos θ of -costhetamin and -costhetamax, or None to keep each cell."""
-    if costhetamin is None and costhetamax is None:
-        return None
-    costhetarange = (-1.0 if costhetamin is None else costhetamin, 1.0 if costhetamax is None else costhetamax)
-    if not -1.0 <= costhetarange[0] < costhetarange[1] <= 1.0:
-        exit_with_error(
-            f"-costhetamin {costhetarange[0]:g} and -costhetamax {costhetarange[1]:g} give no range of cos θ",
-            "Give -1 ≤ -costhetamin < -costhetamax ≤ 1",
-        )
-    return costhetarange
-
-
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
@@ -349,22 +329,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     addarg_velocitybins(parser)
-    parser.add_argument(
-        "-costhetamin",
-        type=float,
-        help=(
-            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole of -dirbin 90."
-            " Default: -1"
-        ),
-    )
-    parser.add_argument(
-        "-costhetamax",
-        type=float,
-        help=(
-            "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 for the equator with -costhetamin -0.2."
-            " Default: 1"
-        ),
-    )
+    addarg_costhetarange(parser)
+    addarg_taumin(parser)
     parser.add_argument(
         "-troughdirbin",
         type=int,
@@ -389,6 +355,53 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_darkmode(parser)
 
 
+def print_profile_method(
+    profiles: "LineVelocityProfiles", velocityedges_kmps: Sequence[float], unit: t.Literal["kmps", "c"]
+) -> None:
+    """Print the velocity bins, the quantities of the two panels, and the part of the emission in the bins."""
+    print_detail(
+        f"{len(velocityedges_kmps) - 1} velocity bins of {format_velocity(velocityedges_kmps[1], unit)} from 0 to"
+        f" {format_velocity(velocityedges_kmps[-1], unit)}. Each cell goes in the bin of the radial velocity of its"
+        " centre"
+    )
+    print_detail(
+        "The emission panel gives the emission of the cells in each bin, divided by the width of the bin. The panel"
+        " also divides it by the emission of the line in all the cells. The legend gives the fraction of the emission"
+        " of all the lines. The tau_sobolev panel gives the median tau_sobolev of the cells in each bin, with the"
+        " volume of each cell as the weight"
+    )
+    totalemission = float(profiles.dfsummary["emission_erg_per_s"].sum())
+    if totalemission > 0.0:
+        binnedfraction = float(profiles.dfalllines["emission_erg_per_s"].sum()) / totalemission
+        if binnedfraction < 1.0 - 1e-6:
+            print_detail(
+                f"The bins hold {binnedfraction:.1%} of the emission of the lines. The rest is outside the bins"
+            )
+
+
+def label_line_axes(
+    axes: "npt.NDArray[np.object_]",
+    args: argparse.Namespace,
+    unit: t.Literal["kmps", "c"],
+    title: str,
+    *,
+    hastrough: bool,
+) -> None:
+    """Set the axis properties, the labels, the legend, and the title of the panels."""
+    # -xmin and -xmax give the wavelength range of the lines, thus they do not set the limits of the velocity axis
+    set_axis_properties(axes[0], args, xlimits=(None, None, "-xmin"), setyaxis=False)
+    unitlabel = VELOCITYUNIT_AXISLABELS[unit]
+    axes[-1].set_xlabel(
+        f"Velocity [{unitlabel}]: radial, and line of sight in the trough panel"
+        if hastrough
+        else f"Radial velocity [{unitlabel}]"
+    )
+    axes[0].set_ylabel(rf"$\Delta L / \Delta v / L$ [{INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
+    axes[1].set_ylabel(r"median $\tau_\mathrm{Sobolev}$")
+    set_legend(axes[0], args)
+    set_plot_title(axes[0], title, args)
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot the Sobolev emission and the Sobolev optical depth of the strongest lines against velocity."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -407,28 +420,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
     costhetarange = get_costheta_range(args.costhetamin, args.costhetamax)
     inputs = get_cell_line_inputs(
-        args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, costhetarange
+        args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, costhetarange, args.taumin
     )
     profiles = get_line_velocity_profiles(inputs, velocityedges_kmps, args.rankby, args.maxlines)
 
-    print_detail(
-        f"{args.nvelocitybins} velocity bins of {format_velocity(velocityedges_kmps[1], unit)} from 0 to"
-        f" {format_velocity(velocityedges_kmps[-1], unit)}. Each cell goes in the bin of the radial velocity of its"
-        " centre"
-    )
-    print_detail(
-        "The emission panel gives the emission of the cells in each bin, divided by the width of the bin. The panel"
-        " also divides it by the emission of the line in all the cells. The legend gives the fraction of the emission"
-        " of all the lines. The tau_sobolev panel gives the median tau_sobolev of the cells in each bin, with the"
-        " volume of each cell as the weight"
-    )
-    totalemission = float(profiles.dfsummary["emission_erg_per_s"].sum())
-    if totalemission > 0.0:
-        binnedfraction = float(profiles.dfalllines["emission_erg_per_s"].sum()) / totalemission
-        if binnedfraction < 1.0 - 1e-6:
-            print_detail(
-                f"The bins hold {binnedfraction:.1%} of the emission of the lines. The rest is outside the bins"
-            )
+    print_profile_method(profiles, velocityedges_kmps, unit)
 
     dfranked = profiles.dfranked.with_columns(label=get_line_label())
     dflinesummary = get_ranked_line_summary(profiles).with_columns(label=get_line_label())
@@ -449,21 +445,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             axes[2], profiles, inputs, dfranked, colours, troughsettings, velocityedges_kmps, unit, args.modelpath
         )
 
-    # -xmin and -xmax give the wavelength range of the lines, thus they do not set the limits of the velocity axis
-    set_axis_properties(axes[0], args, xlimits=(None, None, "-xmin"), setyaxis=False)
-    unitlabel = VELOCITYUNIT_AXISLABELS[unit]
-    axes[-1].set_xlabel(
-        f"Velocity [{unitlabel}]: radial, and line of sight in the trough panel"
-        if troughsettings
-        else f"Radial velocity [{unitlabel}]"
-    )
-    axes[0].set_ylabel(rf"$\Delta L / \Delta v / L$ [{INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
-    axes[1].set_ylabel(r"median $\tau_\mathrm{Sobolev}$")
-    set_legend(axes[0], args)
     title = f"{get_model_name(args.modelpath)} {get_timestep_time(args.modelpath, timestep):.2f} d"
     if costhetarange is not None:
         title += f", {costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}"
-    set_plot_title(axes[0], title, args)
+    label_line_axes(axes, args, unit, title, hastrough=troughsettings is not None)
 
     outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME)
     output_data(args, tables, outputfile)
@@ -487,14 +472,20 @@ def print_trough_method(
         f" {format_velocity(photospherevelocity_kmps, unit)}"
     )
     print_detail(
-        "The depth at a line-of-sight velocity u is the sum of (1 - exp(-tau)) V_v / (du pi v_ph^2) over the cells on"
-        " the near side of the photosphere, inside the cylinder of its disk. V_v is the volume of the cell in velocity"
-        " space, du is the width of the velocity bin, and v_ph is the velocity of the photosphere"
+        "The depth at a line-of-sight velocity u is the sum of (1 - exp(-tau)) V_v / (du pi v_ph^2). The sum takes the"
+        " parts of the cells on the near side of the photosphere, inside the cylinder of its disk. V_v is the volume"
+        " in velocity space, du is the width of the velocity bin, and v_ph is the velocity of the photosphere. Each"
+        f" cell has {TROUGHSUBPOINTS**3} parts, thus it covers each bin that it crosses"
     )
     print_detail(
         f"The estimate has no emission of the lines, no limb darkening, and only the {linecount} ranked lines. A cell"
         " with a negative tau_sobolev (a population inversion) or with no tau_sobolev absorbs nothing. The blend of"
         " the lines is 1 - prod(1 - depth) at each wavelength"
+    )
+    print_warning(
+        "The estimate takes a sharp photosphere and pure absorption. Many optically thick lines in front of the"
+        " photosphere scatter the light many times. Then the real trough can be much less deep. plotopacity with"
+        " -vmin, -costhetamin, -costhetamax, and -cellaverage median gives the expansion opacity of each direction"
     )
     if relativisticdoppler:
         print_detail(

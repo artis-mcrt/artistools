@@ -54,6 +54,9 @@ def get_bin_index_expr(value: pl.Expr, edges: Iterable[float], right_closed: boo
     return pl.when(value.is_not_nan()).then(binindex)
 
 
+QUANTILE_RTOL: t.Final = 1e-12
+
+
 def get_weighted_quantile_expr(value: str, weight: str, quantile: float) -> pl.Expr:
     """Return an aggregation that gives the weighted quantile of a column, e.g. 0.5 for the weighted median.
 
@@ -71,7 +74,10 @@ def get_weighted_quantile_expr(value: str, weight: str, quantile: float) -> pl.E
     )
     values = pl.col(value).filter(isvalid)
     validweights = weights.filter(isvalid)
-    return values.sort().filter(validweights.sort_by(values).cum_sum() >= quantile * validweights.sum()).first()
+    # the sum and the cumulative sum add the weights in a different order. Thus with equal weights, a rounding error
+    # can move a quantile at the upper edge of a value into the next value. The tolerance keeps the lower value
+    threshold = quantile * validweights.sum() * (1.0 - QUANTILE_RTOL)
+    return values.sort().filter(validweights.sort_by(values).cum_sum() >= threshold).first()
 
 
 @functools.lru_cache

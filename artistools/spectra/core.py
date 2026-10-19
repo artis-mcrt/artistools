@@ -1745,8 +1745,8 @@ def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tup
     """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the grid corner, and the unit.
 
     A cell in the corner of a 2D grid or a 3D grid lies outside vmax. The last shell holds the
-    packets from these cells. The labels take units of c when vmax is at least 0.2 c, e.g. for a
-    kilonova, and km/s below that, e.g. for a supernova.
+    packets from these cells. The labels take the unit of get_auto_velocity_unit(), e.g. c for a kilonova and km/s for a
+    supernova.
     """
     from artistools.inputmodel import get_modeldata
 
@@ -1756,8 +1756,9 @@ def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tup
     if modelmeta["dimensions"] > 1:
         edges.append(vmax_kmps * math.sqrt(modelmeta["dimensions"]))
 
-    unit: t.Literal["kmps", "c"] = "c" if modelmeta["vmax_cmps"] / C_cm_per_s >= 0.2 else "kmps"
-    return edges, unit
+    from artistools.plottools import get_auto_velocity_unit
+
+    return edges, get_auto_velocity_unit(modelmeta["vmax_cmps"])
 
 
 def get_default_losvelocity_shells(modelpath: Path | str) -> tuple[list[float], t.Literal["kmps", "c"]]:

@@ -451,11 +451,13 @@ def get_cell_line_inputs(
     ions: Collection[tuple[int, int]] | None = None,
     exctemperature: str = "auto",
     costhetarange: tuple[float, float] | None = None,
+    taumin: float | None = None,
 ) -> CellLineInputs:
     """Read the data of the cells and of the lines in the wavelength range for get_cell_line_batches().
 
     costhetarange selects the cells with cos θ = v_z / |v| of the cell centre in the range, edges included. The z axis
-    is the polar axis of the direction bins. The function logs the method and the assumptions.
+    is the polar axis of the direction bins. taumin leaves out each line whose tau_sobolev cannot reach it in a cell,
+    see get_lines_that_can_reach_tau(). The function logs the method and the assumptions.
     """
     time_days = get_timestep_time(modelpath, timestep)
     temperaturecolumn = get_excitation_temperature_column(
@@ -557,6 +559,8 @@ def get_cell_line_inputs(
         f"{dflines.height} lines of {len(levelsofion)} ions from {lambdamin:g} to {lambdamax:g} Å. The wavelengths are"
         " vacuum wavelengths from the level energies"
     )
+    if taumin is not None:
+        dflines = get_lines_that_can_reach_tau(dflines, dfcells, levelsofion, nlteions, taumin, time_days)
     if dfcells.is_empty():
         exit_with_error(
             "no cell with matter has its centre in the range of cos θ",
@@ -589,9 +593,95 @@ def get_cell_line_inputs(
     return CellLineInputs(dfcells, dflines, levelsofion, dfnltepops, time_days)
 
 
+def get_lte_population_bounds(
+    nnion: "np.ndarray[t.Any, np.dtype[np.float64]]",
+    temperatures: "np.ndarray[t.Any, np.dtype[np.float64]]",
+    energies_ev: "np.ndarray[t.Any, np.dtype[np.float64]]",
+) -> "np.ndarray[t.Any, np.dtype[np.float64]]":
+    """Return max over the cells of n_ion exp(-E / k T) for each energy E above the ground level.
+
+    A cell that another cell beats in both n_ion and T cannot give the maximum for any E of zero or more. Thus only the
+    cells of the Pareto set go into the matrix, and that set is small.
+    """
+    isusable = (nnion > 0.0) & (temperatures > 0.0)
+    lognnion = np.log(nnion[isusable])
+    inversekt = 1.0 / (K_B_ev_per_K * temperatures[isusable])
+    if lognnion.size == 0:
+        return np.zeros_like(energies_ev)
+    # the hottest cell first: a cell stays only if it is denser than each hotter cell
+    order = np.argsort(inversekt, kind="stable")
+    sortedlog = lognnion[order]
+    previousmax = np.concatenate(([-np.inf], np.maximum.accumulate(sortedlog)[:-1]))
+    ispareto = sortedlog > previousmax
+    paretolog, paretoinversekt = sortedlog[ispareto], inversekt[order][ispareto]
+    return np.exp((paretolog[:, np.newaxis] - paretoinversekt[:, np.newaxis] * energies_ev[np.newaxis, :]).max(axis=0))
+
+
+def get_lines_that_can_reach_tau(
+    dflines: pl.DataFrame,
+    dfcells: pl.DataFrame,
+    levelsofion: dict[tuple[int, int], pl.DataFrame],
+    nlteions: Collection[tuple[int, int]],
+    taumin: float,
+    time_days: float,
+) -> pl.DataFrame:
+    """Return the lines whose tau_sobolev can reach taumin in a cell, and log the number of the other lines.
+
+    tau_sobolev <= (A lambda^3 t / 8 pi) (g_u / g_l) n_l. For an ion with LTE populations in each cell,
+    n_l = n_ion g_l exp(-(E_l - E_0) / k T_exc) / Z <= n_ion (g_l / g_0) exp(-(E_l - E_0) / k T_exc), because the
+    partition function Z is at least g_0. An ion with NLTE rows can have any population in a level, thus its bound takes
+    n_l <= n_ion. An ion with no nnion_ estimator has no bound, thus all its lines stay.
+    """
+    temperatures = dfcells["T_exc"].cast(pl.Float64).fill_null(0.0).to_numpy()
+    lineframes = []
+    for (Z, ion_stage), dfionlines in dflines.group_by("Z", "ion_stage", maintain_order=True):
+        assert isinstance(Z, int)
+        assert isinstance(ion_stage, int)
+        nnioncolumn = f"nnion_{get_ionstring(Z, ion_stage, sep='_')}"
+        if nnioncolumn not in dfcells.columns:
+            lineframes.append(dfionlines)
+            continue
+        nnion = dfcells[nnioncolumn].cast(pl.Float64).fill_null(0.0).to_numpy()
+        levels = levelsofion[Z, ion_stage]
+        energies_ev = levels["energy_ev"].to_numpy()
+        lowerlevels = dfionlines["lower"].to_numpy()
+        if (Z, ion_stage) in nlteions:
+            populationbound = np.full(dfionlines.height, nnion.max(initial=0.0))
+        else:
+            excitation_ev = energies_ev[lowerlevels] - energies_ev[0]
+            populationbound = (
+                get_lte_population_bounds(nnion, temperatures, excitation_ev)
+                * dfionlines["lower_g"].to_numpy()
+                / float(levels["g"][0])
+            )
+        taubound = (
+            dfionlines["A_per_s"].to_numpy()
+            * (dfionlines["lambda_angstroms"].to_numpy() / angstroms_per_cm) ** 3
+            * time_days
+            * day_to_s
+            / (8 * math.pi)
+            * dfionlines["upper_g"].to_numpy()
+            / dfionlines["lower_g"].to_numpy()
+            * populationbound
+        )
+        lineframes.append(dfionlines.filter(pl.Series(taubound >= taumin)))
+    dfkept = pl.concat(lineframes) if lineframes else dflines.clear()
+    print_detail(
+        f"-taumin {taumin:g} leaves out {dflines.height - dfkept.height} of {dflines.height} lines. A left-out line has"
+        " an upper bound of tau_sobolev below -taumin in each cell: (A lambda^3 t / 8 pi) (g_u / g_0) times the largest"
+        " n_ion exp(-(E_l - E_0) / k T_exc) of the cells for an ion with LTE populations, or (g_u / g_l) times the"
+        " largest n_ion for an ion with NLTE rows. The sums of the emission do not include these lines"
+    )
+    return dfkept
+
+
 def get_cell_line_batches(inputs: CellLineInputs) -> Iterator[pl.DataFrame]:
-    """Yield the table of get_cell_line_table() for each batch of cells."""
-    maxlevelcount = max(levels.height for levels in inputs.levelsofion.values())
+    """Yield the table of get_cell_line_table() for each batch of cells.
+
+    The ions with a line in the range set the size of a batch, because only these ions get populations.
+    """
+    ionswithlines = set(inputs.dflines.select("Z", "ion_stage").unique().iter_rows())
+    maxlevelcount = max(levels.height for ion, levels in inputs.levelsofion.items() if ion in ionswithlines)
     cellsperbatch = max(1, ROWSPERBATCH // max(inputs.dflines.height, maxlevelcount))
     for firstcell in range(0, inputs.dfcells.height, cellsperbatch):
         yield get_cell_line_table(
@@ -623,6 +713,7 @@ def get_line_contributions(
     exctemperature: str = "auto",
     *,
     percell: bool = False,
+    taumin: float | None = None,
 ) -> pl.DataFrame:
     """Return the emission of each line in the wavelength range, or with percell, one row for each cell and line.
 
@@ -630,7 +721,7 @@ def get_line_contributions(
     """
     celltables = []
     summaries = []
-    inputs = get_cell_line_inputs(modelpath, timestep, lambdamin, lambdamax, ions, exctemperature)
+    inputs = get_cell_line_inputs(modelpath, timestep, lambdamin, lambdamax, ions, exctemperature, taumin=taumin)
     for dfcelllines in get_cell_line_batches(inputs):
         summaries.append(get_line_summary(dfcelllines))
         if percell:
@@ -761,22 +852,31 @@ def get_ranked_line_summary(profiles: LineVelocityProfiles) -> pl.DataFrame:
     )
 
 
+# each cell of the trough estimate takes this number of points along each axis, thus a cell covers each bin of
+# the line-of-sight velocity that it crosses. Three points gave the analytic depth of a shell within 0.01
+TROUGHSUBPOINTS: t.Final = 3
+
+
 def get_sobolev_trough(
     profiles: LineVelocityProfiles,
     inputs: CellLineInputs,
     dirbin: int,
     photospherevelocity_kmps: float,
     velocityedges_kmps: Sequence[float],
+    cellwidth_kmps: float,
     *,
     relativisticdoppler: bool,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return the Sobolev absorption depth of each ranked line against the line-of-sight velocity, and of their blend.
 
     The observer is at the centre cos θ of the direction bin, and the depth is the mean over the centres of the phi
-    bins. The photosphere is a sphere at v_ph = photospherevelocity_kmps. A cell absorbs if its centre is on the near
+    bins. The photosphere is a sphere at v_ph = photospherevelocity_kmps. A part of a cell absorbs if it is on the near
     side of the photosphere, inside the cylinder of the photospheric disk. The depth at a line-of-sight velocity u is
-    sum((1 - exp(-tau)) V_v) / (du pi v_ph^2). V_v is the volume of the cell in velocity space, and du is the width of
-    the bin. Thus the depth is the fraction of the flux of a uniform disk that the line removes.
+    sum((1 - exp(-tau)) V_v) / (du pi v_ph^2). V_v is the volume in velocity space, and du is the width of the bin.
+    Thus the depth is the fraction of the flux of a uniform disk that the line removes.
+
+    Each cell is a cube of cellwidth_kmps, with TROUGHSUBPOINTS^3 points at the centres of its parts. Each point takes
+    its own line-of-sight velocity and its own part of the volume, thus a cell covers each bin that it crosses.
 
     The estimate has no emission of the line and no limb darkening. The blend is 1 - prod(1 - depth) of the lines at
     each wavelength. The wavelength of a bin comes from the Doppler factor of ARTIS for the line-of-sight velocity u of
@@ -789,44 +889,54 @@ def get_sobolev_trough(
     costhetabin = dirbin // nphibins
     costheta = (costhetalower[costhetabin] + costhetaupper[costhetabin]) / 2.0
     sintheta = math.sqrt(1.0 - costheta**2)
-    dfphi = pl.DataFrame({"phi": [2.0 * math.pi * (index + 0.5) / nphibins for index in range(nphibins)]})
 
+    vph_kmps = photospherevelocity_kmps
+    edges_kmps = np.array(velocityedges_kmps)
+    nbins = len(edges_kmps) - 1
+    binwidth_kmps = (edges_kmps[-1] - edges_kmps[0]) / nbins
     time_s = inputs.time_days * day_to_s
-    vph = photospherevelocity_kmps * km_to_cm
-    nbins = len(velocityedges_kmps) - 1
-    binwidth_cmps = (velocityedges_kmps[-1] - velocityedges_kmps[0]) / nbins * km_to_cm
-    vlos = (
-        pl.col("vel_x_mid") * sintheta * pl.col("phi").cos()
-        + pl.col("vel_y_mid") * sintheta * pl.col("phi").sin()
-        + pl.col("vel_z_mid") * costheta
+    dfcells = inputs.dfcells.select("modelgridindex", "vel_x_mid", "vel_y_mid", "vel_z_mid")
+    centres_kmps = dfcells.select(pl.exclude("modelgridindex")).to_numpy() / km_to_cm
+    # the offsets of the points of a cell from its centre, in units of the cell width
+    subpointfractions = (np.arange(TROUGHSUBPOINTS) + 0.5) / TROUGHSUBPOINTS - 0.5
+    offsets_kmps = cellwidth_kmps * np.array(np.meshgrid(*[subpointfractions] * 3, indexing="ij")).reshape(3, -1).T
+    points_kmps = centres_kmps[:, np.newaxis, :] + offsets_kmps[np.newaxis, :, :]
+    speedsquared = (points_kmps**2).sum(axis=2)
+
+    # a negative tau_sobolev is a population inversion, and a null one has no population. The estimate takes such a
+    # line as transparent
+    dflinecells = profiles.dfrankedcells.select(
+        *LINEKEYS,
+        "modelgridindex",
+        "volume",
+        absorbed=1.0 - (-pl.col("tau_sobolev").fill_null(0.0).clip(lower_bound=0.0)).exp(),
     )
-    impactsquared = pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2 + pl.col("vel_z_mid") ** 2 - vlos**2
-    isinfront = (impactsquared < vph**2) & (vlos > (vph**2 - impactsquared).clip(lower_bound=0.0).sqrt())
-    # a negative tau_sobolev is a population inversion. The estimate takes such a line as transparent
-    absorbedfraction = 1.0 - (-pl.col("tau_sobolev").fill_null(0.0).clip(lower_bound=0.0)).exp()
+    # the volume in velocity space [(km/s)^3] times the absorbed fraction, of each point of each cell and line
+    lineweights = []
+    for linekeys in profiles.dfranked.select(LINEKEYS).iter_rows():
+        islinekey = pl.all_horizontal(pl.col(key) == value for key, value in zip(LINEKEYS, linekeys, strict=True))
+        dfline = dfcells.select("modelgridindex").join(
+            dflinecells.filter(islinekey), on="modelgridindex", how="left", maintain_order="left"
+        )
+        cellweights = (dfline["absorbed"].fill_null(0.0) * dfline["volume"].fill_null(0.0)).to_numpy()
+        lineweights.append(cellweights / (time_s * km_to_cm) ** 3 / offsets_kmps.shape[0])
+
+    depths = np.zeros((profiles.dfranked.height, nbins))
+    for phiindex in range(nphibins):
+        phi = 2.0 * math.pi * (phiindex + 0.5) / nphibins
+        direction = np.array([sintheta * math.cos(phi), sintheta * math.sin(phi), costheta])
+        vlos_kmps = points_kmps @ direction
+        impactsquared = speedsquared - vlos_kmps**2
+        isinfront = (impactsquared < vph_kmps**2) & (
+            vlos_kmps > np.sqrt(np.clip(vph_kmps**2 - impactsquared, 0.0, None))
+        )
+        cellindices = np.nonzero(isinfront)[0]
+        frontvlos_kmps = vlos_kmps[isinfront]
+        for lineindex, weights in enumerate(lineweights):
+            histogram, _ = np.histogram(frontvlos_kmps, bins=edges_kmps, weights=weights[cellindices])
+            depths[lineindex] += histogram / (binwidth_kmps * math.pi * vph_kmps**2 * nphibins)
+
     binindices = list(range(nbins))
-    dflines = (
-        profiles.dfrankedcells
-        .select(*LINEKEYS, "modelgridindex", "volume", "tau_sobolev")
-        .join(
-            inputs.dfcells.select("modelgridindex", "vel_x_mid", "vel_y_mid", "vel_z_mid"),
-            on="modelgridindex",
-            how="left",
-        )
-        .join(dfphi, how="cross")
-        .with_columns(vlos=vlos)
-        .filter(isinfront)
-        .with_columns(velocitybin=get_velocity_bin_index_expr(pl.col("vlos") / km_to_cm, velocityedges_kmps))
-        .filter(pl.col("velocitybin").is_not_null())
-        .group_by(*LINEKEYS, "velocitybin")
-        .agg(
-            trough_depth=(absorbedfraction * pl.col("volume")).sum()
-            / time_s**3
-            / (binwidth_cmps * math.pi * vph**2 * nphibins)
-        )
-    )
-    # the cross join gives a row for each ranked line and each bin, thus a bin with no cell in front of the disk has a
-    # depth of zero
     dfdepths = (
         profiles.dfranked
         .select(LINEKEYS)
@@ -835,9 +945,8 @@ def get_sobolev_trough(
             how="cross",
             maintain_order="left_right",
         )
-        .join(dflines, on=[*LINEKEYS, "velocitybin"], how="left", maintain_order="left")
         .with_columns(
-            pl.col("trough_depth").fill_null(0.0),
+            trough_depth=pl.Series(depths.reshape(-1)),
             x_lower_kmps=pl.col("velocitybin").replace_strict(
                 binindices, velocityedges_kmps[:-1], return_dtype=pl.Float64
             ),
@@ -870,6 +979,18 @@ def get_sobolev_trough(
     return dfdepths.drop("velocitybin"), dfblend
 
 
+def addarg_taumin(parser: argparse.ArgumentParser) -> None:
+    """Add -taumin, which leaves out the lines that cannot reach a given tau_sobolev in any cell."""
+    parser.add_argument(
+        "-taumin",
+        type=float,
+        help=(
+            "Leave out each line whose upper bound of tau_sobolev in the cells is below this value. Use -taumin for a"
+            " wavelength range with very many lines. Default: no limit"
+        ),
+    )
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
@@ -885,6 +1006,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-maxlines", type=int, default=20, help="Number of lines in the table, with the most emission first"
     )
+    addarg_taumin(parser)
     parser.add_argument(
         "--percell",
         action="store_true",
@@ -911,7 +1033,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
     dftable = get_line_contributions(
-        args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, percell=args.percell
+        args.modelpath,
+        timestep,
+        args.xmin,
+        args.xmax,
+        ions,
+        args.exctemperature,
+        percell=args.percell,
+        taumin=args.taumin,
     )
 
     if not args.percell:

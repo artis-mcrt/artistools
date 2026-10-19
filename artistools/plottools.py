@@ -1965,6 +1965,8 @@ def make_colorbar_viewingangles(
 
 # the number of km/s in each unit of the velocity axis
 KMPS_PER_VELOCITYUNIT: t.Final = MappingProxyType({"kmps": 1.0, "c": C_cm_per_s / km_to_cm})
+# -velocityunit auto takes c for a model with a vmax of this fraction of c or more, e.g. a kilonova
+AUTO_VELOCITYUNIT_C_MIN_ON_C: t.Final = 0.2
 VELOCITYUNIT_LABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "c"})
 # the axis labels of a velocity and of the inverse of a velocity, as matplotlib text
 VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "$c$"})
@@ -2004,13 +2006,51 @@ def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps",
     from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-    vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
-    unit: t.Literal["kmps", "c"] = "c" if vmax_on_c >= 0.2 else "kmps"
+    unit = get_auto_velocity_unit(modelmeta["vmax_cmps"])
     print_detail(
         f"The velocity axis takes units of {VELOCITYUNIT_LABELS[unit]}, because the vmax of the model is"
-        f" {vmax_on_c:.3f} c (-velocityunit auto takes c for a vmax of 0.2 c or more)"
+        f" {modelmeta['vmax_cmps'] / C_cm_per_s:.3f} c (-velocityunit auto takes c for a vmax of"
+        f" {AUTO_VELOCITYUNIT_C_MIN_ON_C:g} c or more)"
     )
     return unit
+
+
+def get_auto_velocity_unit(vmax_cmps: float) -> t.Literal["kmps", "c"]:
+    """Return c for a model with a vmax of AUTO_VELOCITYUNIT_C_MIN_ON_C c or more, e.g. a kilonova, else km/s."""
+    return "c" if vmax_cmps / C_cm_per_s >= AUTO_VELOCITYUNIT_C_MIN_ON_C else "kmps"
+
+
+def addarg_costhetarange(parser: argparse.ArgumentParser) -> None:
+    """Add -costhetamin and -costhetamax, which select the cells by the direction of their centre."""
+    parser.add_argument(
+        "-costhetamin",
+        type=float,
+        help=(
+            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole of -dirbin 90."
+            " Default: -1"
+        ),
+    )
+    parser.add_argument(
+        "-costhetamax",
+        type=float,
+        help=(
+            "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 with -costhetamin 0 for the cells of -dirbin"
+            " 50. Default: 1"
+        ),
+    )
+
+
+def get_costheta_range(costhetamin: float | None, costhetamax: float | None) -> tuple[float, float] | None:
+    """Return the range of cos θ of -costhetamin and -costhetamax, or None to keep each cell."""
+    if costhetamin is None and costhetamax is None:
+        return None
+    costhetarange = (-1.0 if costhetamin is None else costhetamin, 1.0 if costhetamax is None else costhetamax)
+    if not -1.0 <= costhetarange[0] < costhetarange[1] <= 1.0:
+        exit_with_error(
+            f"-costhetamin {costhetarange[0]:g} and -costhetamax {costhetarange[1]:g} give no range of cos θ",
+            "Give -1 ≤ -costhetamin < -costhetamax ≤ 1",
+        )
+    return costhetarange
 
 
 def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:

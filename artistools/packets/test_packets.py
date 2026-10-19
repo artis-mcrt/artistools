@@ -692,6 +692,7 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
         "em_posy": [0.0] * 6,
         "em_posz": [0.0] * 6,
         "em_time": [emtime_s] * 5 + [-1.0],
+        "costhetabin": [9] * 6,
     })
     with mock.patch.object(plotlastinteractionvelocity, "get_packets", return_value=(1, dfpackets.lazy())):
         plotlastinteractionvelocity.main(
@@ -715,6 +716,44 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
     }
     for column, values in expected.items():
         assert np.allclose(dftable[column].to_numpy(), values, rtol=0.0, atol=15.0), column
+
+
+def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(tmp_path: Path) -> None:
+    """With real packets, the groups hold the luminosity of the escaped r-packets of the wavelength range and timestep.
+
+    The luminosity is the packet energy divided by the width of the timestep and the number of MPI ranks.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 7.0)
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
+    plotlastpacketinteraction.main(
+        argsraw=[],
+        modelpath=modelpath,
+        timedays=7.0,
+        groupby="ion",
+        wavelen=4000.0,
+        binwidth=1000.0,
+        outputfile=tmp_path / "groups.pdf",
+        write_data=True,
+    )
+    dfsummary = pl.read_csv(tmp_path / "groups_summary.txt", separator=" ", null_values="nan", comment_prefix="#")
+
+    nprocs, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfwindow = (
+        lzpackets
+        .filter(
+            pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"),
+            (at.constants.c_ang_per_s / pl.col("nu_rf")).is_between(3500.0, 4500.0, closed="none"),
+        )
+        .select("e_rf")
+        .collect()
+    )
+    luminosity = float(dfwindow["e_rf"].sum()) / ((t_end - t_start) * at.constants.day_to_s * nprocs)
+    assert dfsummary["packetcount"].sum() == dfwindow.height > 0
+    assert np.isclose(float(dfsummary["luminosity_erg_per_s"].sum()), luminosity, rtol=1e-6, atol=0.0)
 
 
 def test_a_position_outside_the_grid_gets_no_cell() -> None:
