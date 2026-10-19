@@ -4545,6 +4545,45 @@ def test_every_command_takes_quiet() -> None:
         assert flagsofdest.get("quiet") == ["--quiet", "-q"], f"{subcommand} must take --quiet"
 
 
+def test_every_time_and_wavelength_option_takes_a_unit() -> None:
+    """Each option of a time or a wavelength reads its value with a unit, thus "-t 12h" works on every command.
+
+    plotspectra reads -lambdamin as a number in the unit of -xunit, thus it alone takes a plain float.
+    """
+    import artistools.__main__
+    from artistools.misc.cliutils import time_days_arg
+    from artistools.misc.cliutils import time_days_range_arg
+    from artistools.misc.cliutils import wavelength_angstroms_arg
+
+    unittypes = {
+        "-timemin": {time_days_arg},
+        "-timemax": {time_days_arg},
+        "-timedays": {time_days_arg, time_days_range_arg},
+        "-lambdamin": {wavelength_angstroms_arg},
+        "-lambdamax": {wavelength_angstroms_arg},
+    }
+    checked = 0
+    for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
+        for action in subparser._actions:  # ruff:ignore[private-member-access]
+            if type(action).__name__ == "UnsupportedArgument" or subcommand in {"plotspectra", "spec"}:
+                continue
+            for flag in set(unittypes).intersection(action.option_strings):
+                assert action.type in unittypes[flag], f"{subcommand} {flag} reads no unit"
+                checked += 1
+    assert checked >= 20
+
+
+def test_every_command_that_reads_a_model_takes_explain() -> None:
+    """--explain shows the selection before a long read, thus each command with a model path must take it."""
+    import artistools.__main__
+    from artistools.misc.cliutils import MODELPATH_DESTS
+
+    for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
+        flagsofdest = get_flags_of_dest(subparser)
+        if any(dest in flagsofdest for dest in MODELPATH_DESTS):
+            assert flagsofdest.get("explain") == ["--explain"], f"{subcommand} must take --explain"
+
+
 def get_every_subcommand(parser: argparse.ArgumentParser) -> Iterator[tuple[str, argparse.ArgumentParser]]:
     """Give the name and the parser of each subcommand, at every depth of the tree."""
     for action in parser._actions:  # ruff:ignore[private-member-access]
