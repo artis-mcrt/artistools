@@ -7200,6 +7200,9 @@ def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pyt
     corehours = json.loads(capsys.readouterr().out)
     assert [job["duplicate"] for job in corehours["jobs"]] == [False, False, True]
     assert [job["estimate"] for job in corehours["jobs"]] == [False, True, False]
+    # the JSON gives the inputs of the estimate
+    assert np.isclose(corehours["jobs"][1]["wallclock_hours"], 1.0)
+    assert corehours["jobs"][1]["tasks"] == 4
     assert np.isclose(corehours["total_core_hours"], 12.0)
     assert np.isclose(corehours["wallclock_hours"], 3.0)
     assert corehours["tasks"] == 4
@@ -7211,15 +7214,16 @@ def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pyt
     assert "WARNING: sn3d did not finish. Estimated: (job: pktprop ts 10 to ts 10 grid-preprop" in table
     assert "CPU time:             12.000  core-h" in table
 
-    # a damaged log gives no core hours and no task count, thus the sum is not complete and the tasks are not known
-    (modelfolder / "job_from_ts0020").mkdir()
-    (modelfolder / "job_from_ts0020" / "output_0-0.txt.gz").write_bytes(b"not gzip data")
+    # a damaged log gives no core hours and no task count, thus the sum is not complete and the tasks are not known.
+    # The run folder comes before the target of the link, thus the search for the copy also reads the damaged log
+    (modelfolder / "job_from_ts0005").mkdir()
+    (modelfolder / "job_from_ts0005" / "output_0-0.txt.gz").write_bytes(b"not gzip data")
     (modelfolder / "light_curve.out").write_text("", encoding="utf-8")
     artistools.__main__.main(argsraw=["corehours", str(modelfolder / "light_curve.out"), "--json"])
     captured = capsys.readouterr()
     corehours = json.loads(captured.out)
     assert "output_0-0.txt.gz is unreadable" in captured.err
-    assert [job["core_hours"] is None for job in corehours["jobs"]] == [False, False, True, True]
+    assert [job["core_hours"] is None for job in corehours["jobs"]] == [False, True, False, True]
     assert corehours["total_core_hours"] is None
     assert corehours["tasks"] is None
 

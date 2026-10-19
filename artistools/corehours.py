@@ -11,6 +11,7 @@ import typing as t
 from collections.abc import Sequence
 from datetime import datetime
 from itertools import starmap
+from operator import itemgetter
 from pathlib import Path
 
 from artistools.logsummary import get_unique_logfiles
@@ -24,6 +25,7 @@ from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import zopen
 from artistools.misc.fileio import get_decompress_errors
+from artistools.misc.remote import on_model_host
 
 
 class RunCoreHours(t.NamedTuple):
@@ -37,6 +39,10 @@ class RunCoreHours(t.NamedTuple):
     estimate_text: str | None
     first_line: str
     last_line: str
+
+
+# the path of a rank-0 log, True for a copy of a different log, and the core hours of its run, or None
+type RunOfLog = tuple[Path, bool, RunCoreHours | None]
 
 
 def get_job_procs_threads(loglines: Sequence[str]) -> tuple[int, int] | None:
@@ -159,22 +165,24 @@ def read_run_core_hours(logfile: Path) -> RunCoreHours | None:
     return get_run_core_hours(loglines) if loglines else None
 
 
-def get_rank0_logfiles(modelfolders: Sequence[Path]) -> list[tuple[Path, bool]]:
-    """Return the rank-0 log of each run folder of the model folders in the order of the paths, with True for a copy.
+@on_model_host
+def read_model_core_hours(modelfolder: Path) -> list[RunOfLog]:
+    """Return the rank-0 log of each run folder of a model, with True for a copy, and the core hours of its run.
 
     The model folder holds a link or a copy of the rank-0 log of its last run. get_unique_logfiles finds that copy, and
-    the table shows it as a duplicate, thus a user sees that the sum counts that run one time.
+    the table shows it as a duplicate, thus a user sees that the sum counts that run one time. The host of a remote
+    model reads the logs.
     """
-    logfiles_with_iscopy: list[tuple[Path, bool]] = []
-    for modelfolder in modelfolders:
-        logfiles = [
-            logfile
-            for folder in get_run_subfolders(modelfolder)
-            if (logfile := firstexisting_or_none("output_0-0.txt", folder=folder, search_subfolders=False)) is not None
-        ]
-        uniquelogfiles = set(get_unique_logfiles(modelfolder, logfiles))
-        logfiles_with_iscopy.extend((logfile, logfile not in uniquelogfiles) for logfile in logfiles)
-    return sorted(logfiles_with_iscopy)
+    logfiles = [
+        logfile
+        for folder in get_run_subfolders(modelfolder)
+        if (logfile := firstexisting_or_none("output_0-0.txt", folder=folder, search_subfolders=False)) is not None
+    ]
+    uniquelogfiles = set(get_unique_logfiles(modelfolder, logfiles))
+    return [
+        (logfile, False, read_run_core_hours(logfile)) if logfile in uniquelogfiles else (logfile, True, None)
+        for logfile in logfiles
+    ]
 
 
 def format_run_lines(logfile: Path, col1width: int, iscopy: bool, run: RunCoreHours | None) -> list[str]:
@@ -208,6 +216,10 @@ def get_run_json(logfile: Path, iscopy: bool, run: RunCoreHours | None) -> dict[
     }
     if run is not None and run.timestep_range is not None:
         runjson["timestep_first"], runjson["timestep_last"] = run.timestep_range
+    if run is not None and run.isestimate:
+        # the estimate is the elapsed hours of the log times the number of tasks
+        runjson["wallclock_hours"] = run.wallclock_hours
+        runjson["tasks"] = run.ntasks
     return runjson
 
 
@@ -235,14 +247,11 @@ def get_summary_lines(
     return lines
 
 
-def print_core_hours(args: argparse.Namespace, logfiles_with_iscopy: Sequence[tuple[Path, bool]]) -> None:
+def print_core_hours(args: argparse.Namespace, runs: Sequence[RunOfLog]) -> None:
     """Print the core hours of each run and the sums, as a table or as JSON."""
-    col1width = max((len(str(logfile)) for logfile, _ in logfiles_with_iscopy), default=0) + 1
-    runs: list[tuple[Path, bool, RunCoreHours | None]] = []
-    for logfile, iscopy in logfiles_with_iscopy:
-        run = None if iscopy else read_run_core_hours(logfile)
-        runs.append((logfile, iscopy, run))
-        if not args.json:
+    if not args.json:
+        col1width = max((len(str(logfile)) for logfile, _, _ in runs), default=0) + 1
+        for logfile, iscopy, run in runs:
             print_product(args, "\n".join(format_run_lines(logfile, col1width, iscopy, run)))
 
     countedruns = [run for _, iscopy, run in runs if not iscopy]
@@ -304,5 +313,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Sum the core hours of the runs of ARTIS models from the rank-0 logs of sn3d."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    modelfolders = [get_model_folder(modelpath) for modelpath in normalize_path_list(args.modelpath)]
-    print_core_hours(args, get_rank0_logfiles(modelfolders))
+    runs = [
+        run
+        for modelpath in normalize_path_list(args.modelpath)
+        for run in read_model_core_hours(get_model_folder(modelpath))
+    ]
+    print_core_hours(args, sorted(runs, key=itemgetter(0)))
