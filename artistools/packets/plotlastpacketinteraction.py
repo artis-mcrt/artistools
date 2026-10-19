@@ -12,6 +12,8 @@ import polars as pl
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
+from artistools.atomic import get_ionstring
 from artistools.atomic import get_lineindices
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
@@ -40,6 +42,7 @@ from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_emission_velocity_of_columns_expr
 from artistools.packets.core import get_packets
+from artistools.packets.core import print_arrival_time_method
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -205,7 +208,6 @@ def packets_2d_hist_bin_and_ejecta_vel(
             )
             raise ValueError(message)
         position = "trueem"
-    print(f"t_min selected: {t_min} t_max_selected: {t_max}, is {Delta_t_secs} seconds")
     # a timestep holds the times from its start up to its end, and the end belongs to the next timestep
     dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="left"))
     # a packet with no record of the emission has a time of NaN, thus it is outside each bin of the histogram
@@ -229,9 +231,14 @@ def packets_2d_hist_bin_and_ejecta_vel(
         ).alias("hollow_cyl_vol_em")
     ).collect()
     energy_sum = float(dfpackets_selected["e_rf"].sum())
-    print(
-        "Directional 4pi-equivalent bol. luminosity of"
-        f" {energy_sum / nprocs_read / Delta_t_secs * inverse_solidangle_fraction}"
+    print_arrival_time_method(modelpath, [timestep], "the timestep that holds -timedays")
+    print_heatmap_method(
+        dfpackets_selected.height,
+        position,
+        Delta_beta,
+        energy_sum / nprocs_read / Delta_t_secs * inverse_solidangle_fraction,
+        ionlabel=None if Z is None else get_ionstring(Z, ion_stage_list[0]) if ion_stage_list else get_elsymbol(Z),
+        srIItriplet=srIItriplet,
     )
 
     # Step 2) create the heatmap. Normalise packet energy to modelgrid cell volume at packet emission time (lab frame)
@@ -265,13 +272,11 @@ def packets_2d_hist_bin_and_ejecta_vel(
 
     im = ax.imshow(z, origin="lower", cmap="viridis", extent=(xedges[0], xedges[-1], yedges[0], yedges[-1]))
     ax.set_aspect("equal")
-    ax.set_xlabel(r"$v_r$ [$c$]")
+    ax.set_xlabel(r"$v_{\rm cyl} = \sqrt{v_x^2 + v_y^2}$ [$c$]")
     ax.set_ylabel(r"$v_z$ [$c$]")
     cbar = fig.colorbar(im, ax=ax)
-    if colorlogscale:
-        cbar.set_label(r"log$_{10}$ volumetric emissivity [erg/(s cm$^3$)]")
-    else:
-        cbar.set_label(r"volumetric emissivity [erg/(s cm$^3$)]")
+    luminositylabel = r"observed luminosity per volume [erg/(s cm$^3$)]"
+    cbar.set_label(rf"log$_{{10}}$ {luminositylabel}" if colorlogscale else f"O{luminositylabel[1:]}")
 
     ax.set_xticks(np.linspace(xedges[0], xedges[-1], 6))
     ax.set_yticks(np.linspace(yedges[0], yedges[-1], 6))
@@ -279,12 +284,52 @@ def packets_2d_hist_bin_and_ejecta_vel(
     outfilename = resolve_outputfile(outputfile, start_of_filename + f"ts{timestep}_into_dirbin{dirbin}.pdf")
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
         assert args is not None
-        valuecolumn = "log10_emissivity_erg_per_s_per_cm3" if colorlogscale else "emissivity_erg_per_s_per_cm3"
+        valuecolumn = (
+            "log10_escaped_luminosity_erg_per_s_per_cm3" if colorlogscale else "escaped_luminosity_erg_per_s_per_cm3"
+        )
         # the empty table replaces a _summary file of the same name from an earlier command with -groupby
         output_data(
             args, {"": get_heatmap_table(z, xedges, yedges, valuecolumn), "_summary": pl.DataFrame()}, outfilename
         )
     save_figure(fig, outfilename, dpi=300, args=args)
+
+
+def print_heatmap_method(
+    packetcount: int,
+    position: t.Literal["em", "trueem"],
+    pixelwidth_on_c: float,
+    luminosity_erg_per_s: float,
+    *,
+    ionlabel: str | None,
+    srIItriplet: bool,
+) -> None:
+    """Print the selection of the packets of the 2D image, and the meaning of its colour."""
+    linetext = (
+        "a line of the Sr II triplet" if srIItriplet else "a line" if ionlabel is None else f"a line of {ionlabel}"
+    )
+    print_detail(
+        f"{packetcount} escaped r-packets of the direction bin arrive in the timestep and have a last absorption by"
+        f" {linetext}. The image takes only such packets"
+    )
+    if position == "em":
+        print_detail(
+            "The position is em_pos at em_time, the place of the last interaction. An electron scattering also sets"
+            " em_pos"
+        )
+    else:
+        print_detail("The position is trueem_pos at trueem_time, the place of the last thermal emission")
+    print_detail(
+        f"Each pixel is a ring around the z axis, from v_cyl to v_cyl + {pixelwidth_on_c:g} c and from v_z to v_z +"
+        f" {pixelwidth_on_c:g} c, with v_cyl = sqrt(v_x^2 + v_y^2). The command divides the energy of each packet by"
+        " the volume of its ring at the time of its last interaction. The colour is the sum of these values in the"
+        " ring, divided by the width of the timestep and by the number of packet files (one for each MPI rank). The"
+        " command then multiplies the colour by 4 pi divided by the solid angle of the direction bin"
+    )
+    print_detail(
+        "Thus the colour is the observed luminosity per unit volume at the place of the last interaction. It is not"
+        " the emissivity of the ejecta. The packets of the image give an observed luminosity of"
+        f" {luminosity_erg_per_s:.3e} erg/s (4 pi times the luminosity per unit solid angle)"
+    )
 
 
 def get_arrival_timestep(modelpath: Path, tdays: float) -> tuple[int, float, float]:
@@ -411,8 +456,9 @@ def plot_velocity_profiles_by_group(
     )
     luminosity_factor = inverse_solidangle_fraction / (delta_t_s * nprocs_read)
     dfgroupsummary = get_group_summary(dfpackets, typecolumn, dflabels, drawnnames, luminosity_factor)
+    print_arrival_time_method(modelpath, [timestep], "the timestep that holds -timedays")
     print_group_profile_method(
-        dfprofiles, dfpackets.height, position, typecolumn, t_min, t_max, velocityedges_kmps, dfgroupsummary, unit
+        dfprofiles, dfpackets.height, position, typecolumn, velocityedges_kmps, dfgroupsummary, unit
     )
 
     dftable = get_group_profile_table(dfprofiles, velocityedges_kmps, luminosity_factor, [*drawnnames, "Other"])
@@ -435,7 +481,8 @@ def plot_velocity_profiles_by_group(
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if wavelen is not None:
         start_of_filename = f"{start_of_filename}{wavelen:.0f}A_"
-    # the thermal emission and the absorption select different groups, thus their files must not replace each other
+    # the last absorption, the last thermal emission, and the last emission select different groups, thus the files
+    # must not replace each other
     kind = "absorption" if absorption else ("thermalemission" if trueem else "emission")
     outfilename = resolve_outputfile(
         outputfile, f"{start_of_filename}{kind}_by{groupby}_ts{timestep}_into_dirbin{dirbin}.pdf"
@@ -475,16 +522,25 @@ def print_group_profile_method(
     packetcount: int,
     position: t.Literal["em", "trueem"],
     typecolumn: str,
-    t_min: float,
-    t_max: float,
     velocityedges_kmps: Sequence[float],
     dfgroupsummary: pl.DataFrame,
     unit: t.Literal["kmps", "c"],
 ) -> None:
     """Print the method of the profiles, and the luminosity, velocity quartiles, and packet count of each group."""
+    grouptext = {
+        "emissiontype": "the line or the continuum process of its last emission",
+        "trueemissiontype": "the line or the continuum process of its last thermal emission",
+        "absorption_type": "the line of its last absorption",
+    }[typecolumn]
     print_detail(
-        f"{packetcount} escaped r-packets arrive from {t_min:.2f} to {t_max:.2f} d. The group of a packet is the"
-        f" {typecolumn} of the packet"
+        f"{packetcount} escaped r-packets of the direction bin arrive in the timestep. The group of a packet is"
+        f" {grouptext} ({typecolumn})"
+    )
+    print_detail(
+        "Each packet reaches the observer, thus the luminosity of a group is its part of the observed luminosity. It"
+        " is not the emission of the ejecta. A line that emits much in an optically thick region has only a small part"
+        " of the observed luminosity, because other lines absorb its photons again. plotlinecontributions gives the"
+        " emission of each line in each cell"
     )
     if position == "em":
         print_detail(
@@ -631,15 +687,15 @@ def get_heatmap_table(
 ) -> pl.DataFrame:
     """Return one row for each bin of the image, with the velocity edges of the bin in units of c.
 
-    The image has one row for each v_z bin and one column for each v_r bin. A bin that the image leaves blank has no
+    The image has one row for each v_z bin and one column for each v_cyl bin. A bin that the image leaves blank has no
     value.
     """
     nzbins, nrbins = image.shape
-    # the Fortran order keeps the v_z bins of one v_r bin together
+    # the Fortran order keeps the v_z bins of one v_cyl bin together
     values = np.ma.filled(image.astype(np.float64), np.nan).ravel(order="F")
     return pl.DataFrame({
-        "v_r_min_c": np.repeat(xedges[:-1], nzbins),
-        "v_r_max_c": np.repeat(xedges[1:], nzbins),
+        "v_cyl_min_c": np.repeat(xedges[:-1], nzbins),
+        "v_cyl_max_c": np.repeat(xedges[1:], nzbins),
         "v_z_min_c": np.tile(yedges[:-1], nrbins),
         "v_z_max_c": np.tile(yedges[1:], nrbins),
         valuecolumn: pl.Series(values, nan_to_null=True),

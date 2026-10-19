@@ -171,11 +171,14 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "cm^-3",
     ),
     (
-        "emissivity_erg_per_s_per_cm3",
-        "the 4 pi equivalent emissivity of the escaped packets of the direction bin, at their last interaction",
+        "escaped_luminosity_erg_per_s_per_cm3",
+        (
+            "the observed luminosity (4 pi times the luminosity per unit solid angle) of the escaped packets of the"
+            " direction bin, per unit volume at their last interaction. It is not the emissivity of the ejecta"
+        ),
         "erg/s/cm^3",
     ),
-    ("v_r_(min|max)_c", "the {0} edge of the bin of the cylindrical radial velocity at the last interaction", "c"),
+    ("v_cyl_(min|max)_c", "the {0} edge of the bin of sqrt(v_x^2 + v_y^2) at the last interaction", "c"),
     ("v_z_(min|max)_c", "the {0} edge of the bin of the z velocity at the last interaction", "c"),
     ("pos_(x|y|z)_mid_cm", "the {0} coordinate of the centre of the cell at the time of the model snapshot", "cm"),
     ("(x|y|z)_cm", "the {0} coordinate of a point of the line of the direction bin", "cm"),

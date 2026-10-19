@@ -9,8 +9,6 @@ import matplotlib.colors as mplcolors
 import numpy as np
 import polars as pl
 
-from artistools.constants import day_to_s
-from artistools.constants import km_to_cm
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import get_selected_timestep
 from artistools.inputmodel import get_modeldata
@@ -50,6 +48,7 @@ from artistools.plottools import addarg_costhetarange
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
+from artistools.plottools import get_cell_width_kmps
 from artistools.plottools import get_costheta_range
 from artistools.plottools import get_grid_corner_velocity_kmps
 from artistools.plottools import get_velocity_bin_edges_kmps
@@ -209,7 +208,7 @@ def plot_trough_estimate(
     dopplershift = get_artis_option(modelpath, "USE_RELATIVISTIC_DOPPLER_SHIFT")
     relativisticdoppler = dopplershift == "true"
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-    cellwidth_kmps = modelmeta["wid_init"] / (modelmeta["t_model_init_days"] * day_to_s) / km_to_cm
+    cellwidth_kmps = get_cell_width_kmps(modelmeta)
     partwidth_kmps = cellwidth_kmps / TROUGHSUBPOINTS
     binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
     if binwidth_kmps < partwidth_kmps:
@@ -308,10 +307,10 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
             f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
         )
     # a value in the wrong unit, e.g. 0.05 for 0.05 c on a km/s axis, gives a disk smaller than a part of a cell
-    partwidth_kmps = modelmeta["wid_init"] / (modelmeta["t_model_init_days"] * day_to_s) / km_to_cm / TROUGHSUBPOINTS
+    partwidth_kmps = get_cell_width_kmps(modelmeta) / TROUGHSUBPOINTS
     if photospherevelocity_kmps < partwidth_kmps:
         exit_with_error(
-            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is less than the width"
+            f"-photospherevelocity {args.photospherevelocity:g} {VELOCITYUNIT_LABELS[unit]} is less than the width"
             f" {format_velocity(partwidth_kmps, unit)} of a part of a cell, thus the trough estimate has no resolution",
             f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
         )
@@ -392,7 +391,9 @@ def print_profile_method(
         " centre"
     )
     print_detail(
-        "The emission panel gives the emission of the cells in each bin, divided by the width of the bin. The panel"
+        "The emission panel gives the emission of the cells in each bin, divided by the width of the bin. It shows"
+        " where each line emits. It does not show where the part of the line in the observed luminosity comes from."
+        " The panel"
         " also divides it by the emission of the line in all the cells. The legend gives the fraction of the emission"
         f" of {lineset}. The tau_sobolev panel gives the median tau_sobolev of the cells in each bin, with the"
         " volume of each cell as the weight"
@@ -534,16 +535,17 @@ def print_trough_method(
             " also has the transverse velocity v_t. A bin has no v_t, thus the blend is too blue by a fraction of"
             " about v_t^2 / (2 c^2)"
         )
-    elif dopplershift == "false":
+    elif dopplershift is not None:
         print_detail(
             "The wavelength of a bin is lambda_rest (1 - u / c) for the line-of-sight velocity u of its centre. This"
-            " is the Doppler factor of ARTIS, because artisoptions.h sets USE_RELATIVISTIC_DOPPLER_SHIFT = false"
+            " is the Doppler factor of ARTIS, because artisoptions.h sets USE_RELATIVISTIC_DOPPLER_SHIFT ="
+            f" {dopplershift}"
         )
     else:
         print_warning(
-            "The artisoptions.h of the model gives no USE_RELATIVISTIC_DOPPLER_SHIFT. Thus the wavelength of a bin"
-            " is lambda_rest (1 - u / c) for the line-of-sight velocity u of its centre. If ARTIS used the"
-            " relativistic factor, the blend is too blue by a fraction of about u^2 / (2 c^2)"
+            "The model folder has no artisoptions.h, or its artisoptions.h gives no USE_RELATIVISTIC_DOPPLER_SHIFT."
+            " Thus the wavelength of a bin is lambda_rest (1 - u / c) for the line-of-sight velocity u of its centre."
+            " If ARTIS used the relativistic factor, the blend is too blue by a fraction of about u^2 / (2 c^2)"
         )
     deepest = dfblend.top_k(1, by="trough_depth").row(0, named=True)
     print_detail(

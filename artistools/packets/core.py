@@ -33,6 +33,7 @@ from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import polars_source
+from artistools.misc import print_detail
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
@@ -189,6 +190,32 @@ def get_emission_velocity_of_columns_expr(position: t.Literal["em", "trueem"], p
             raise ValueError(msg)
         return pl.col("true_emission_velocity")
     return get_emission_velocity_expr(position)
+
+
+def print_arrival_time_method(modelpath: Path | str, timesteps: Sequence[int], selectiontext: str) -> None:
+    """Print the definition of the arrival time of a packet, and the timesteps that are the time bins.
+
+    selectiontext says how the command selected the timesteps, e.g. "the timestep that holds -timedays".
+    """
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tends = get_timestep_times(modelpath, loc="end")
+    print_detail(
+        "The arrival time of a packet is t_arrive = t_escape - (r . n) / c, with the escape time t_escape, the escape"
+        " position r, and the direction n. A distant observer sees the packet at t_arrive. The light that leaves the"
+        " centre of the ejecta at a time t arrives at t"
+    )
+    if len(timesteps) == 1:
+        timesteptext = f"timestep {timesteps[0]}, from {tstarts[timesteps[0]]:.3g} to {tends[timesteps[0]]:.3g} d"
+    else:
+        widths_days = [tends[timestep] - tstarts[timestep] for timestep in timesteps]
+        timesteptext = (
+            f"{len(timesteps)} timesteps from {tstarts[timesteps[0]]:.3g} to {tends[timesteps[-1]]:.3g} d, with a width"
+            f" from {min(widths_days):.3g} to {max(widths_days):.3g} d"
+        )
+    print_detail(
+        "The time bins are the ARTIS timesteps of the model, and a packet goes in the timestep that holds its arrival"
+        f" time. The command takes {selectiontext}: {timesteptext}"
+    )
 
 
 def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:

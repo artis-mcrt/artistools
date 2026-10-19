@@ -27,12 +27,14 @@ from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
+from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.misc.general import get_bin_index_expr
 from artistools.packets.core import get_emission_velocity_of_columns_expr
 from artistools.packets.core import get_packets
+from artistools.packets.core import print_arrival_time_method
 from artistools.plottools import addarg_velocityunit
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -68,8 +70,8 @@ def get_last_interaction_velocity_quartiles(
 
     Each value of the dictionary also gives the number of packets with no position. The packets are the escaped
     r-packets with a rest-frame wavelength from lambdamin to lambdamax at the escape. A packet takes the timestep of its
-    arrival time, and a timestep is in the result if its mid time is in timerange_days. A range with no mid time stops
-    the command with an error.
+    arrival time, and a timestep is in the result if its mid time is in timerange_days. A range with no mid time of
+    the model gives a warning and empty tables, because a different model can have timesteps in the range.
 
     The quartiles take the energy of each packet as the weight, and each velocity takes the centre of its bin of the
     histogram. One scan of the packets gives the quartiles of all the direction bins. A direction bin takes all the phi
@@ -81,10 +83,12 @@ def get_last_interaction_velocity_quartiles(
     timemids = get_timestep_times(modelpath, loc="mid")
     timesteps = [timestep for timestep, tmid in enumerate(timemids) if timerange_days[0] <= tmid <= timerange_days[1]]
     if not timesteps:
-        exit_with_error(
-            "no timestep has its mid time in the range of -timemin and -timemax",
-            f"Give a range that holds a mid time from {timemids[0]:.2f} to {timemids[-1]:.2f} d",
+        print_warning(
+            f"No timestep of {modelpath} has its mid time in the range of -timemin and -timemax. The mid times go from"
+            f" {timemids[0]:.2f} to {timemids[-1]:.2f} d"
         )
+        return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
+    print_arrival_time_method(modelpath, timesteps, "each timestep with a mid time from -timemin to -timemax")
     timeedges = [*tstarts, tends[-1]]
     velocity_kmps = get_emission_velocity_of_columns_expr(position, lzpackets.collect_schema().names()) / km_to_cm
     # the filter of the arrival time comes first, thus the scan reads only the row groups of the selected timesteps
@@ -141,7 +145,8 @@ def print_method(
     """Print the selection of the packets and the method of the quartiles."""
     print_detail(
         f"The packets are the escaped r-packets with a rest-frame wavelength from {lambdamin:g} to {lambdamax:g} Å at"
-        " the escape. A packet takes the timestep of its arrival time"
+        " the escape. Each packet reaches the observer. Thus the energy of a packet gives its part of the observed"
+        " luminosity in that wavelength range"
     )
     if position == "em":
         print_detail(
@@ -155,9 +160,10 @@ def print_method(
             " packets file has no trueem_pos, and its column true_emission_velocity then gives the velocity"
         )
     print_detail(
-        "In the plot, the curve of each series gives the median. The shaded region goes from the 25% quantile to the"
-        " 75% quantile, with the energy of each packet as the weight. The velocities come from a histogram with bins"
-        f" of {histogrambinwidth_kmps:.3g} km/s"
+        "In the plot, each point of a series is one timestep, at its mid time. The curve gives the median. The shaded"
+        " region goes from the 25% quantile to the 75% quantile. The energy of each packet is the weight."
+        " Thus half of the observed luminosity comes from a last interaction below the median velocity. The velocities"
+        f" come from a histogram with bins of {histogrambinwidth_kmps:.3g} km/s"
     )
 
 
@@ -228,6 +234,11 @@ def plot_velocity_against_time(
                 f" {format_velocity(float(medians[-1]), unit)} at {times[-1]:.2f} d"
             )
 
+    if not seriestables:
+        exit_with_error(
+            "no model has a packet in the range of wavelength and time",
+            "Give a different time range or a wider wavelength range",
+        )
     ax.set_xlabel("Time [d]")
     interaction = "thermal emission" if position == "trueem" else "interaction"
     ax.set_ylabel(f"Velocity of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
@@ -235,8 +246,8 @@ def plot_velocity_against_time(
     ax.set_ylim(bottom=0.0)
     set_legend(ax, args)
     tables = {
-        "": convert_velocity_columns(pl.concat(seriestables), unit) if seriestables else pl.DataFrame(),
-        "_summary": convert_velocity_columns(pl.DataFrame(summaryrows), unit) if summaryrows else pl.DataFrame(),
+        "": convert_velocity_columns(pl.concat(seriestables), unit),
+        "_summary": convert_velocity_columns(pl.DataFrame(summaryrows), unit),
     }
     return tables, fig
 

@@ -33,6 +33,7 @@ from matplotlib.text import Text
 
 from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import exit_with_error
 from artistools.misc import get_phibin_rank_ascending
@@ -2067,6 +2068,11 @@ def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
 def get_grid_corner_velocity_kmps(modelmeta: Mapping[str, t.Any]) -> float:
     """Return the radial velocity [km/s] of the corner of the model grid, which is vmax times sqrt(dimensions)."""
     return float(modelmeta["vmax_cmps"]) / km_to_cm * math.sqrt(modelmeta["dimensions"])
+
+
+def get_cell_width_kmps(modelmeta: Mapping[str, t.Any]) -> float:
+    """Return the width [km/s] of a cell of a Cartesian model grid in velocity space."""
+    return float(modelmeta["wid_init"]) / (float(modelmeta["t_model_init_days"]) * day_to_s) / km_to_cm
 
 
 def get_velocity_bin_edges_kmps(

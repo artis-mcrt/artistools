@@ -36,6 +36,7 @@ from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
 from artistools.misc import get_timestep_time
+from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import parse_cli_args
@@ -48,6 +49,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import get_provenance_lines
+from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.cliutils import write_data_table
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.dirbins import get_costheta_bins
@@ -578,19 +580,38 @@ def get_cell_line_inputs(
                 f"no line can reach a tau_sobolev of {taumin:g} in a cell, thus -taumin leaves out each line",
                 "Give a smaller -taumin, or a different wavelength range",
             )
-    print_detail(f"{dfcells.height} cells at the mid time {time_days:.2f} d of timestep {timestep}")
+    timestepstart_days = get_timestep_times(modelpath, loc="start")[timestep]
+    timestepend_days = get_timestep_times(modelpath, loc="end")[timestep]
+    print_detail(
+        f"{dfcells.height} cells. The populations and the temperatures are the estimators of timestep {timestep}, from"
+        f" {timestepstart_days:.3g} to {timestepend_days:.3g} d. ARTIS used them in that timestep, and the formulas"
+        f" take its mid time t = {time_days:.3g} d"
+    )
+    print_detail(
+        "t is the time since the explosion. It is not the arrival time that the packet commands use. A distant"
+        " observer sees the light that leaves a cell at the time t at the arrival time t (1 - u / c). u is the"
+        " line-of-sight velocity of the cell, positive towards the observer"
+    )
     print_detail(
         "tau_sobolev = (A lambda^3 t / 8 pi) (g_u n_l / g_l - n_u) at the mid time t of the timestep. A is the Einstein"
         " coefficient of the spontaneous emission, g is the statistical weight, and n is the population of the lower"
         " (l) or upper (u) level"
     )
     print_detail(
-        "The emission of a line in a cell is n_u A h nu beta times the volume of the cell. The escape probability is"
-        f" beta = (1 - exp(-tau)) / tau ({ESCAPE_PROBABILITY_REFERENCE})"
+        "The emission of a line in a cell is n_u A h nu beta times the volume of the cell. n_u A h nu is the"
+        " emissivity of the line. The escape probability beta = (1 - exp(-tau)) / tau removes the photons that the"
+        f" same line absorbs again in its resonance region ({ESCAPE_PROBABILITY_REFERENCE})"
     )
     print_detail(
-        "The emission is the energy that leaves the cell in the line each second. It is not the flux that escapes the"
-        " ejecta, and it does not subtract the absorption of the radiation field by the line"
+        "Thus the emission is the energy that leaves the resonance region in the line each second. In an optically"
+        " thick region, beta is about 1 / tau. Then the emission is much less than the emissivity times the volume"
+        " of the cell. The emission includes the photons that the line scatters from the radiation field. It does"
+        " not subtract the absorption of the radiation field by the line"
+    )
+    print_detail(
+        "The emission is not the part of the line in the observed luminosity. Other lines, the continuum, and the"
+        " electrons can absorb or scatter the photons after they leave the resonance region. plotlastpacketinteraction"
+        " -groupby line gives the part of each line in the observed luminosity, from the packets"
     )
     print_detail(
         "The level populations follow calculate_levelpop() of ARTIS. The columns n_lower_source and n_upper_source"
@@ -948,6 +969,9 @@ def get_sobolev_trough(
         )
         cellweights = (dfline["absorbed"].fill_null(0.0) * dfline["volume"].fill_null(0.0)).to_numpy()
         lineweights.append(cellweights / (time_s * km_to_cm) ** 3 / offsets_kmps.shape[0])
+    lineweightarray = np.array(lineweights)
+    # one bincount takes all the lines, because the bin of line i is at i * nbins + bin
+    linebinoffsets = np.arange(len(lineweights))[:, np.newaxis] * nbins
 
     depths = np.zeros((profiles.dfranked.height, nbins))
     for phiindex in range(nphibins):
@@ -966,8 +990,11 @@ def get_sobolev_trough(
             binindices = np.searchsorted(edges_kmps, vlos_kmps, side="right") - 1
             binindices[vlos_kmps == edges_kmps[-1]] = nbins - 1
             iscounted = isinfront & (binindices >= 0) & (binindices < nbins)
-            for lineindex, weights in enumerate(lineweights):
-                depths[lineindex] += np.bincount(binindices[iscounted], weights=weights[iscounted], minlength=nbins)
+            depths += np.bincount(
+                (linebinoffsets + binindices[iscounted]).reshape(-1),
+                weights=lineweightarray[:, iscounted].reshape(-1),
+                minlength=depths.size,
+            ).reshape(depths.shape)
     depths /= binwidth_kmps * math.pi * vph_kmps**2 * nphibins
 
     dfdepths = (
@@ -1040,7 +1067,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help='Ions of the lines, e.g. "Fe II,Co II". Default: each ion with a population in the model',
     )
     parser.add_argument(
-        "-maxlines", type=int, default=20, help="Number of lines in the table, with the most emission first"
+        "-maxlines",
+        type=positive_int_arg,
+        default=20,
+        help="Number of lines in the table, with the most emission first",
     )
     addarg_taumin(parser)
     parser.add_argument(
