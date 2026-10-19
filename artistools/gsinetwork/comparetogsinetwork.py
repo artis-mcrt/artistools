@@ -34,7 +34,9 @@ from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import df_filter_minmax_bracketed
+from artistools.misc import exit_with_error
 from artistools.misc import get_deposition
 from artistools.misc import get_grid_mapping
 from artistools.misc import get_model_name
@@ -45,6 +47,8 @@ from artistools.misc import output_data
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.misc.cliutils import time_days_arg
+from artistools.misc.cliutils import TIME_UNIT_HELP
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -70,9 +74,12 @@ def get_abundance_correction_factors(
     try:
         assoc_cells, mgi_of_propcells, direct_model_propgrid_map = get_grid_mapping(modelpath)
         for mgi in mgiplotlist:
-            assert mgi < 0 or assoc_cells.get(mgi, []), (
-                f"No propagation grid cells associated with model cell {mgi}, cannot plot abundances!"
-            )
+            if mgi >= 0 and not assoc_cells.get(mgi, []):
+                exit_with_error(
+                    f"no propagation grid cell belongs to the model cell {mgi}, thus the command cannot plot its"
+                    " abundances",
+                    "Give a different cell",
+                )
 
         if direct_model_propgrid_map:
             print("  detected direct mapping of model cells to propagation grid")
@@ -294,13 +301,13 @@ def get_series_table(
 
 
 def output_drawn_series(args: argparse.Namespace, drawnseries: Sequence[pl.DataFrame], figurepath: Path | str) -> None:
-    """Print or write the drawn series of a figure, with the points up to the time of -xmax.
+    """Print or write the drawn series of a figure, with the points up to the time of -timemax.
 
     The series of ARTIS and of GSINET have different times, thus the table has one row for each drawn point.
     """
     if not (getattr(args, "print_data", False) or getattr(args, "write_data", False)) or not drawnseries:
         return
-    output_data(args, {"": pl.concat(drawnseries).filter(is_in_range("time_days", None, args.xmax))}, figurepath)
+    output_data(args, {"": pl.concat(drawnseries).filter(is_in_range("time_days", None, args.timemax))}, figurepath)
 
 
 def plot_qdot(
@@ -586,10 +593,11 @@ def get_particledata(
 
     except FileNotFoundError:
         print(f"No network calculation for particle {particleid}")
-        # make sure we weren't requesting abundance data for this particle that has no network data
         if arr_strnuc_z_n:
-            print("ERROR:", particleid, arr_strnuc_z_n)
-        assert not arr_strnuc_z_n
+            exit_with_error(
+                f"particle {particleid} has no network calculation, thus it gives no abundance of"
+                f" {', '.join(strnuc for strnuc, _, _ in arr_strnuc_z_n)}"
+            )
         return pl.DataFrame()
 
     return particledata
@@ -783,8 +791,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
     addarg_darkmode(parser)
+    addarg_show(parser)
     addarg_data_output(parser)
-    addarg_modelpath(parser, default=Path(), helptext="Path for ARTIS files")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
 
     parser.add_argument(
         "-mergerroot",
@@ -796,7 +805,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # the plots went to the model folder before the command read -o, thus that folder stays the default
     addarg_output(parser, kind="folder", helptext="Folder for the plots (default: the model folder)")
 
-    parser.add_argument("-xmax", default=None, type=float, help="Maximum time in days to plot")
+    parser.add_argument("-timemax", type=time_days_arg, help=f"Maximum time to plot. {TIME_UNIT_HELP}")
+    # the earlier name of -timemax
+    parser.add_argument("-xmax", dest="timemax", type=time_days_arg, help=argparse.SUPPRESS)
 
     # the help named a list such as 4,5,6, and nargs="*" with the type int took "4 5 6" and refused
     # that list. One builder gives every command the same text: a number, a range 3-7, or a list 4,5,6
@@ -842,7 +853,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         mgiplotlist=args.modelgridindex or [],
         arr_species=args.species,
         args=args,
-        timedaysmax=args.xmax,
+        timedaysmax=args.timemax,
         nogsinet=args.nogsinet,
         outputfolder=Path(args.outputfile) if args.outputfile else None,
     )

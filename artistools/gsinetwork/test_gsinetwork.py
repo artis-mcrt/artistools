@@ -19,7 +19,7 @@ modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 @pytest.mark.benchmark
 def test_decayproducts(mockplot: mock.MagicMock, tmp_path: Path, trajectory_copy: Path) -> None:
     at.gsinetwork.decayproducts.main(
-        argsraw=[], trajectoryroot=trajectory_copy, tmin=0.1, tmax=0.1, nsteps=1, outputpath=tmp_path
+        argsraw=[], trajectoryroot=trajectory_copy, timemin=0.1, timemax=0.1, nsteps=1, outputpath=tmp_path
     )
 
     expected_y_arrays = [
@@ -64,8 +64,8 @@ def test_decayproducts_parquet_output(tmp_path: Path, trajectory_copy: Path, mon
     at.gsinetwork.decayproducts.main(
         argsraw=[],
         trajectoryroot=trajectory_copy,
-        tmin=0.1,
-        tmax=0.1,
+        timemin=0.1,
+        timemax=0.1,
         nsteps=1,
         outputpath=outputpath_requested,
         parquet=True,
@@ -305,7 +305,13 @@ def test_decayproducts_counts_each_trajectory_in_one_ye_bin(tmp_path: Path, traj
 
     with mock.patch.object(decayproducts, "plot_decay_powers", side_effect=record_decay_powers):
         decayproducts.main(
-            argsraw=[], trajectoryroot=trajectory_copy, tmin=0.1, tmax=0.1, nsteps=1, yemax=0.75, outputpath=tmp_path
+            argsraw=[],
+            trajectoryroot=trajectory_copy,
+            timemin=0.1,
+            timemax=0.1,
+            nsteps=1,
+            yemax=0.75,
+            outputpath=tmp_path,
         )
 
     # the low bin holds no trajectory below Ye 0.25, thus the trajectory on the boundary is in the mid bin alone
@@ -341,7 +347,13 @@ def test_decayproducts_skips_a_ye_bin_with_no_network_data(
 
     with mock.patch.object(decayproducts, "plot_decay_powers", side_effect=record_bin):
         decayproducts.main(
-            argsraw=[], trajectoryroot=trajectory_copy, tmin=0.1, tmax=0.1, nsteps=1, yemax=0.75, outputpath=tmp_path
+            argsraw=[],
+            trajectoryroot=trajectory_copy,
+            timemin=0.1,
+            timemax=0.1,
+            nsteps=1,
+            yemax=0.75,
+            outputpath=tmp_path,
         )
 
     assert "low" not in plottedbins

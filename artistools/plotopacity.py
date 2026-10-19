@@ -26,10 +26,11 @@ from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.ejectaopacity import get_opacity_columns
 from artistools.ejectaopacity import get_opacity_lines
 from artistools.ejectaopacity import get_planck_mean_opacities
-from artistools.ejectaopacity import get_selected_timestep
 from artistools.ejectaopacity import print_planck_mean_method
 from artistools.inputmodel import get_cell_selection
+from artistools.inputmodel import get_costheta_selection
 from artistools.misc import addarg_axislimits
+from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -43,9 +44,11 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_yscale
 from artistools.misc import df_filter_minmax_bracketed
-from artistools.misc import exit_with_error
+from artistools.misc import format_costheta_range
+from artistools.misc import get_costheta_range
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
 from artistools.misc import get_weighted_quantile_expr
@@ -56,9 +59,9 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.misc.general import get_progress_class
-from artistools.plottools import addarg_costhetarange
-from artistools.plottools import get_costheta_range
+from artistools.plottools import get_velocity_label
 from artistools.plottools import make_frame_figure
+from artistools.plottools import parse_velocity_argument
 from artistools.plottools import RESIDUALROWHEIGHT
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
@@ -66,8 +69,6 @@ from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
 from artistools.plottools import set_log_ticks_every_decade
 from artistools.plottools import set_plot_title
-from artistools.spectra import get_velocity_label
-from artistools.spectra import parse_velocity_argument
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping
@@ -511,21 +512,15 @@ def select_cells_in_ranges(
     """
     if vmin is None and vmax is None and costhetarange is None:
         return dfestimators
-    if costhetarange is not None and "vel_z_mid_on_c" not in dfestimators.columns:
-        exit_with_error(
-            "the cells of a 1D model have no direction, thus -costhetamin and -costhetamax cannot select cells",
-            "Remove -costhetamin and -costhetamax",
-        )
-
     speedoflight_kmps = C_cm_per_s / km_to_cm
     dfselected = dfestimators.filter(
         get_cell_selection(
             vmin=None if vmin is None else vmin[0] / speedoflight_kmps,
             vmax=None if vmax is None else vmax[0] / speedoflight_kmps,
-            thetamin=None if costhetarange is None else math.degrees(math.acos(costhetarange[1])),
-            thetamax=None if costhetarange is None else math.degrees(math.acos(costhetarange[0])),
         )
     )
+    if costhetarange is not None:
+        dfselected = dfselected.filter(get_costheta_selection(costhetarange, dfestimators.columns))
     boundstext = get_selection_bounds_text(vmin, vmax, costhetarange)
     print_detail(
         f"{dfselected.height} of {dfestimators.height} cells with estimators are in the range with {boundstext}"
@@ -544,7 +539,7 @@ def get_selection_bounds_text(
     """Return the bounds of the velocity and the cos θ of the selected cells, e.g. "vmin = 0.1c and 0.8 ≤ cos θ ≤ 1"."""
     bounds = [get_velocity_bounds_text(vmin, vmax)] if vmin is not None or vmax is not None else []
     if costhetarange is not None:
-        bounds.append(f"{costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}")
+        bounds.append(format_costheta_range(costhetarange))
     return " and ".join(bounds)
 
 
@@ -618,7 +613,7 @@ def parse_taucap(text: str) -> float:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path(), helptext="Path of the ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     addarg_timestep(parser, helptext="Timestep to plot, e.g. 40 or last")
     addarg_timedays(parser, kind="str")
     addarg_modelgridindex(
@@ -729,7 +724,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     temperaturecolumn = get_excitation_temperature_column(args.modelpath, args.exctemperature)
-    costhetarange = get_costheta_range(args.costhetamin, args.costhetamax)
+    costhetarange = get_costheta_range(args)
     dfestimators = select_cells_in_ranges(
         get_cell_estimators(args.modelpath, timestep, modelgridindex, temperaturecolumn),
         args.vmin,

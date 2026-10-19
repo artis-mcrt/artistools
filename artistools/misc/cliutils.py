@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import copy
 import dataclasses as dc
 import itertools
 import math
@@ -21,9 +22,12 @@ import matplotlib.colors as mplcolors
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import SuggestingArgumentParser
+from artistools.constants import day_to_s
+from artistools.constants import hour_to_s
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import print_saved
+from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import write_text_file_atomic
 from artistools.misc.remote import model_path_from_text
 
@@ -155,6 +159,7 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
             + (". Use -2 to select all viewing angles" if allow_select_all else "")
         ),
     )
+    parser.set_defaults(allowalldirbins=allow_select_all)
 
     parser.add_argument(
         "--usedegrees",
@@ -689,6 +694,74 @@ def addarg_timestep(parser: argparse.ArgumentParser, *, default: t.Any = None, h
     )
 
 
+def addarg_plotinvalidpart(parser: argparse.ArgumentParser, plotted: str) -> None:
+    """Add --plotinvalidpart, which also takes the times outside the valid range of the arrival times.
+
+    plotted names what the command then plots, e.g. "the spectra".
+    """
+    parser.add_argument(
+        "--plotinvalidpart",
+        action="store_true",
+        help=(
+            f"Plot {plotted} also outside the valid range of the arrival times. At these times, the light from a part"
+            " of the ejecta does not reach the observer, because of the light travel time"
+        ),
+    )
+
+
+def addarg_averageoverphi(parser: argparse.ArgumentParser, optionname: str = "-dirbin") -> None:
+    """Add --average_over_phi_angle, which makes a direction bin of optionname into the mean over its phi bins.
+
+    The option has the meaning of --average_over_phi_angle of plotspectra. With the option, -dirbin 90 takes the
+    costheta bin 0.8 to 1. Without it, -dirbin 90 takes the one direction bin 90.
+    """
+    parser.add_argument(
+        "--average_over_phi_angle",
+        action="store_true",
+        help=(
+            f"Take the mean over the phi bins of the costheta bin of {optionname}. Then {optionname} must be the first"
+            " bin of its costheta bin, e.g. 90 for the pole at +z"
+        ),
+    )
+
+
+def addarg_wavelengthrange(parser: argparse.ArgumentParser, selected: str) -> None:
+    """Add -lambdamin and -lambdamax (also -xmin and -xmax), which select a range of wavelength in Angstroms.
+
+    selected names what the range selects, e.g. "the lines". A plot command with a wavelength axis takes
+    addarg_axislimits, because there -xmin and -xmax are the limits of the axis.
+    """
+    parser.add_argument(
+        "-xmin",
+        "-lambdamin",
+        type=wavelength_angstroms_arg,
+        help=f"Minimum wavelength of {selected}. {WAVELENGTH_UNIT_HELP}",
+    )
+    parser.add_argument(
+        "-xmax",
+        "-lambdamax",
+        type=wavelength_angstroms_arg,
+        help=f"Maximum wavelength of {selected}. {WAVELENGTH_UNIT_HELP}",
+    )
+    parser.set_defaults(xrangeisselection=True)
+
+
+def addarg_sliceaxis(parser: argparse.ArgumentParser, *, default: str, helptext: str) -> None:
+    """Add -axis, which names a half-axis of a 3D model, e.g. +z or -x. A bare axis name, e.g. z, gives the + side."""
+    parser.add_argument(
+        "-axis",
+        default=default,
+        choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
+        help=f"{helptext}. Hint: for a negative half-axis use e.g. -axis=-z",
+    )
+
+
+def resolve_slice_axis(args: argparse.Namespace) -> None:
+    """Set args.sliceaxis to the axis name of -axis, and args.positive_axis to whether it names the + side."""
+    args.positive_axis = args.axis[0] != "-"
+    args.sliceaxis = args.axis.lstrip("+-")
+
+
 def addarg_timedays(
     parser: argparse.ArgumentParser,
     *,
@@ -705,24 +778,25 @@ def addarg_timedays(
     flags = ("-timedays", "-time", "-t")
     if kind == "rangestr":
         group.add_argument(
-            *flags, dest="timedays", nargs="?", help=helptext or "Range of times in days to plot (e.g. 50-100)"
+            *flags,
+            dest="timedays",
+            nargs="?",
+            type=time_days_range_arg,
+            help=f"{helptext or 'Range of times to plot (e.g. 50-100)'}. {TIME_UNIT_HELP}",
         )
     elif kind == "float":
-        group.add_argument(*flags, type=float, help=helptext or "Time in days to plot")
+        group.add_argument(*flags, type=time_days_arg, help=f"{helptext or 'Time to plot'}. {TIME_UNIT_HELP}")
     else:
-        group.add_argument(*flags, help=helptext or "Time in days to plot")
+        group.add_argument(*flags, type=time_days_range_arg, help=f"{helptext or 'Time to plot'}. {TIME_UNIT_HELP}")
 
 
 def addarg_timeminmax(
-    parser: argparse.ArgumentParser,
-    *,
-    helptext_min: str = "Lower time in days",
-    helptext_max: str = "Upper time in days",
+    parser: argparse.ArgumentParser, *, helptext_min: str = "Lower time", helptext_max: str = "Upper time"
 ) -> None:
     """Add the -timemin and -timemax arguments bounding a time range in days."""
     group = arggroup(parser, "time selection")
-    group.add_argument("-timemin", type=float, help=helptext_min)
-    group.add_argument("-timemax", type=float, help=helptext_max)
+    group.add_argument("-timemin", type=time_days_arg, help=f"{helptext_min}. {TIME_UNIT_HELP}")
+    group.add_argument("-timemax", type=time_days_arg, help=f"{helptext_max}. {TIME_UNIT_HELP}")
 
 
 def addarg_axislimits(
@@ -735,18 +809,25 @@ def addarg_axislimits(
     include_x: bool = True,
     include_y: bool = True,
     wavelength_aliases: bool = False,
+    xtype: Callable[[str], float] | None = None,
 ) -> None:
     """Add the -xmin/-xmax and -ymin/-ymax plot range arguments.
 
-    A command whose x axis is a wavelength in Angstroms takes wavelength_aliases, which adds the
-    -lambdamin and -lambdamax spellings of the same arguments.
+    A command whose x axis is a wavelength takes wavelength_aliases, which adds the -lambdamin and -lambdamax
+    spellings of the same arguments. Its x axis is in Angstroms, thus a value can also give a different unit, e.g.
+    600nm. plotspectra has its own type, because the unit of its axis comes from -xunit.
     """
     group = arggroup(parser, "appearance")
     if include_x:
         xminflags = ("-xmin", "-lambdamin") if wavelength_aliases else ("-xmin",)
         xmaxflags = ("-xmax", "-lambdamax") if wavelength_aliases else ("-xmax",)
-        group.add_argument(*xminflags, dest="xmin", type=float, default=xmindefault, help=xminhelp)
-        group.add_argument(*xmaxflags, dest="xmax", type=float, default=xmaxdefault, help=xmaxhelp)
+        if xtype is None:
+            xtype = wavelength_angstroms_arg if wavelength_aliases else float
+        if xtype is wavelength_angstroms_arg:
+            xminhelp = f"{xminhelp}. {WAVELENGTH_UNIT_HELP}"
+            xmaxhelp = f"{xmaxhelp}. {WAVELENGTH_UNIT_HELP}"
+        group.add_argument(*xminflags, dest="xmin", type=xtype, default=xmindefault, help=xminhelp)
+        group.add_argument(*xmaxflags, dest="xmax", type=xtype, default=xmaxdefault, help=xmaxhelp)
     if include_y:
         group.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis minimum")
         group.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
@@ -801,6 +882,105 @@ def positive_float_arg(text: str) -> float:
         msg = f"{text} is not a finite number above 0"
         raise argparse.ArgumentTypeError(msg)
     return value
+
+
+# a number, then an optional unit, e.g. 600nm, 2.5 d, or 1e5. The unit starts with a character that no number holds
+VALUE_WITH_UNIT_PATTERN: t.Final = re.compile(r"\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*([^\d\s.+-].*?)?\s*")
+
+# the size of each unit of a time value in days. A value with no unit has the unit "", which is days
+TIME_UNITS_IN_DAYS: t.Final[Mapping[str, float]] = MappingProxyType({
+    "": 1.0,
+    "d": 1.0,
+    "day": 1.0,
+    "days": 1.0,
+    "h": hour_to_s / day_to_s,
+    "hour": hour_to_s / day_to_s,
+    "hours": hour_to_s / day_to_s,
+    "s": 1.0 / day_to_s,
+})
+
+# the help text of each option that takes a time
+TIME_UNIT_HELP: t.Final = "A value with no unit is in days. A unit is optional, e.g. 12h"
+
+# the help text of each option that takes a wavelength in Angstroms
+WAVELENGTH_UNIT_HELP: t.Final = "A value with no unit is in Angstroms. A unit is optional, e.g. 600nm"
+
+# a hyphen that ends a time and starts the next one. A hyphen of an exponent, e.g. 1e-2, follows a digit and an e
+TIME_RANGE_SEPARATOR: t.Final = re.compile(r"(?<=[0-9.a-zA-Z])(?<![0-9.][eE])-")
+
+
+def split_value_and_unit(text: str) -> tuple[float, str]:
+    """Return the number and the unit of a command line value, e.g. (600.0, "nm") for 600nm.
+
+    A value with no unit gives the unit "". A text that does not start with a number gives a ValueError.
+    """
+    if (match := VALUE_WITH_UNIT_PATTERN.fullmatch(text)) is None:
+        msg = f"{text!r} is not a number with an optional unit"
+        raise ValueError(msg)
+    return float(match.group(1)), match.group(2) or ""
+
+
+def time_days_arg(text: str) -> float:
+    """Return the time in days of a command line value, e.g. 300, 300d, 12h, or 2.6e7s.
+
+    A value with no unit is in days.
+    """
+    unitnames = ", ".join(name for name in TIME_UNITS_IN_DAYS if len(name) == 1)
+    try:
+        number, unit = split_value_and_unit(text)
+    except ValueError:
+        msg = f"'{text}' is not a time. Give a number of days, or a number with one of the units {unitnames}"
+        raise argparse.ArgumentTypeError(msg) from None
+    if unit.lower() not in TIME_UNITS_IN_DAYS:
+        msg = f"'{unit}' in '{text}' is not a unit of time. Give one of the units {unitnames}, or no unit for days"
+        raise argparse.ArgumentTypeError(msg)
+    return number * TIME_UNITS_IN_DAYS[unit.lower()]
+
+
+def time_days_range_arg(text: str) -> str:
+    """Return a time or a time range in days, e.g. "250-300" for 250d-300d. A text with no unit stays the same.
+
+    A command reads the time text after the parse, e.g. with parse_timedays_range. Thus the text with a unit becomes
+    the same text in days, and a text with no unit keeps its form, e.g. in the label of a plot. deposition also reads
+    a list such as 1,5,30, thus each item of a list takes the same conversion.
+    """
+    if "," in text:
+        return ",".join(time_days_range_arg(item) for item in text.split(","))
+    try:
+        float(text)
+    except ValueError:
+        pass
+    else:
+        return text
+    parts = TIME_RANGE_SEPARATOR.split(text.strip())
+    if len(parts) > 2:
+        msg = f"'{text}' is not a time or a time range. Give a time or a time range, e.g. 300, 300d, or 250d-300d"
+        raise argparse.ArgumentTypeError(msg)
+    days = [time_days_arg(part) for part in parts]
+    if not any(split_value_and_unit(part)[1] for part in parts):
+        return text
+    return "-".join(f"{value:.10g}" for value in days)
+
+
+def wavelength_angstroms_arg(text: str) -> float:
+    """Return the wavelength in Angstroms of a command line value, e.g. 6000, 6000A, 600nm, or 0.6micron.
+
+    A value with no unit is in Angstroms. A unit is one of the wavelength units of -xunit of plotspectra.
+    """
+    from artistools.spectra.core import convert_xunit_aliases_to_canonical
+    from artistools.spectra.core import XUNITS
+
+    unitnames = ", ".join(name for name, xunit in XUNITS.items() if xunit.kind == "wavelength")
+    try:
+        number, unit = split_value_and_unit(text)
+        xunit = XUNITS[convert_xunit_aliases_to_canonical(unit)] if unit else XUNITS["angstrom"]
+    except ValueError:
+        msg = f"'{text}' is not a wavelength. Give a number of Angstroms, or a number with one of the units {unitnames}"
+        raise argparse.ArgumentTypeError(msg) from None
+    if xunit.kind != "wavelength":
+        msg = f"'{text}' is not a wavelength. Give one of the units {unitnames}, or no unit for Angstroms"
+        raise argparse.ArgumentTypeError(msg)
+    return number * xunit.unit_in_base_units
 
 
 def series_value_arg[T](convert: Callable[[str], T]) -> Callable[[str], T | None]:
@@ -1174,30 +1354,61 @@ def confirm_overwrite(folders: Iterable[Path | str], filenames: Sequence[str], f
     e.g. model.txt for model.txt.zst. A command calls this function before the work starts, thus a refusal costs no
     time. Nobody can answer when stdin is not a terminal, thus the command then stops if it has no --force.
     """
-    existingfiles = [
-        path
-        for folder in folders
-        for filename in filenames
-        for path in get_file_copies(Path(folder, filename))
-        if path.is_file()
-    ]
+    confirm_overwrite_of_files(
+        [
+            path
+            for folder in folders
+            for filename in filenames
+            for path in get_file_copies(Path(folder, filename))
+            if path.is_file()
+        ],
+        force,
+    )
+
+
+def confirm_overwrite_matches(folder: Path | str, patterns: Sequence[str], force: bool) -> None:
+    """Apply confirm_overwrite to the files of folder that match the glob patterns, e.g. "spectrum_ts*.txt".
+
+    A command whose file names hold a timestep or a value from the data takes patterns, because the command does not
+    know the names before the work starts.
+    """
+    confirm_overwrite_of_files(
+        sorted({path for pattern in patterns for path in Path(folder).glob(pattern) if path.is_file()}), force
+    )
+
+
+def confirm_overwrite_of_files(existingfiles: Sequence[Path], force: bool) -> None:
+    """Warn about each file that exists, and stop the command if the user does not agree to overwrite them."""
     if not existingfiles:
         return
 
     for path in existingfiles:
         print_warning(f"{path} exists")
-    if force:
-        return
+    if not force and not user_agrees("Overwrite the files?"):
+        exit_with_error(
+            "The command stopped, and it did not overwrite the files", "Give -f or --force to overwrite them"
+        )
 
+
+def confirm_deletion(files: Sequence[Path], force: bool) -> None:
+    """List the files, and stop the command if the user does not agree to delete them, as rm -i does."""
+    for path in files:
+        print_detail(path)
+    if not force and not user_agrees(f"Delete the {len(files)} files?"):
+        exit_with_error("The command stopped, and it did not delete the files", "Give -f or --force to delete them")
+
+
+def user_agrees(question: str) -> bool:
+    """Ask a question of the form (y/n) on the terminal, and return True for the answer yes.
+
+    Nobody can answer when stdin is not a terminal, thus the answer is then no.
+    """
     reply = ""
     if sys.stdin.isatty():
         # the end of the input, e.g. from Ctrl-D, is the answer "no"
         with contextlib.suppress(EOFError):
-            reply = input("Overwrite the files? (y/n) ")
-    if reply.strip().lower() not in {"y", "yes"}:
-        exit_with_error(
-            "The command stopped, and it did not overwrite the files", "Give -f or --force to overwrite them"
-        )
+            reply = input(f"{question} (y/n) ")
+    return reply.strip().lower() in {"y", "yes"}
 
 
 def addarg_verbose(parser: argparse.ArgumentParser) -> None:
@@ -1259,9 +1470,26 @@ def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", com
     A value or a column name that contains a space has quotes, which polars and pandas read. Each line of commentlines
     goes before the table with "# " at its start, which pl.read_csv(comment_prefix="#") and np.loadtxt skip. A file
     replaces a symbolic link at its path, because write_text_file_atomic does not write through a link.
+
+    A file with the suffix .json or .parquet takes that format, as the suffix of a figure sets its format. A JSON file
+    holds an object with the keys "comments" and "rows", and a missing value is null. A parquet file keeps
+    commentlines in its metadata key "comments".
     """
+    suffix = destination.suffix.lower() if isinstance(destination, Path) else ""
+    if isinstance(destination, Path) and suffix == ".parquet":
+        write_parquet_atomic(dfdata, destination, metadata={"comments": "\n".join(commentlines)})
+        return
 
     def write_to_stream(stream: t.TextIO) -> None:
+        if suffix == ".json":
+            import json
+
+            import polars.selectors as cs
+
+            rows = dfdata.with_columns(cs.float().fill_nan(None)).to_dicts()
+            json.dump({"comments": list(commentlines), "rows": rows}, stream, default=str, indent=1)
+            stream.write("\n")
+            return
         stream.writelines(f"# {line}\n" for line in commentlines)
         dfdata.write_csv(stream, separator=" ", null_value="nan")
 
@@ -1269,6 +1497,48 @@ def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", com
         write_text_file_atomic(destination, write_to_stream)
     else:
         write_to_stream(destination)
+
+
+def addarg_table_output(parser: argparse.ArgumentParser) -> None:
+    """Add -o and -f to a command that prints a table.
+
+    The command can then write the table to a file in place of the standard output.
+    """
+    addarg_output(
+        parser,
+        kind="file",
+        helptext=(
+            "Write the table to this file in place of the standard output. The suffix .json or .parquet gives that"
+            " format, and another suffix gives text"
+        ),
+    )
+    addarg_force(parser)
+
+
+def resolve_table_outputfile(args: argparse.Namespace, defaultname: str) -> Path | None:
+    """Return the file that -o names, or None when the user gives no -o. Without -o, the command prints its table.
+
+    A -o path with no file extension names a folder, which takes defaultname. The function does the overwrite check
+    here, before the work starts. -f skips the check.
+    """
+    if not args.outputfile:
+        return None
+    outputfile = resolve_outputfile(args.outputfile, defaultname)
+    confirm_overwrite([outputfile.parent], [outputfile.name], force=getattr(args, "force", False))
+    return outputfile
+
+
+def print_or_write_table(
+    args: argparse.Namespace, dftable: "pl.DataFrame", outputfile: Path | None, commentlines: Sequence[str] = ()
+) -> None:
+    """Print the table with no -o, or write it to outputfile with the provenance lines and commentlines."""
+    if outputfile is None:
+        print_product(args, dftable)
+        return
+
+    make_output_folder(outputfile.parent, "writes")
+    write_data_table(dftable, outputfile, commentlines=[*get_provenance_lines(args), *commentlines])
+    print_saved(outputfile)
 
 
 def get_provenance_lines(args: argparse.Namespace) -> list[str]:
@@ -1371,6 +1641,8 @@ def addarg_yscale(parser: argparse.ArgumentParser, *, default: str = "auto") -> 
             f" The default is {default}"
         ),
     )
+    # the older spelling of "-yscale log"
+    parser.add_argument("--logscaley", action="store_true", help=argparse.SUPPRESS)
     parser.set_defaults(defaultyscale=default)
 
 
@@ -1454,7 +1726,7 @@ def check_time_selection(
     arguments, thus a second call for a second model path would read its own output as a second range.
 
     The test reads the arguments that the user wrote, because a value can be the same as the default of
-    the parser: plottransitions gives -timestep a default of "last", and a user can also type that value.
+    the parser: a command can give -timestep a default of "last", and a user can also type that value.
 
     set_args_from_dict makes a keyword argument of the API into a default of the parser, thus a value
     that differs from the default counts, and so does a name that kwargs holds. A name that carries
@@ -1512,6 +1784,172 @@ def check_time_selection(
         exit_with_error(f"{', '.join(ways)} name the time range in more than one way", "Give only one of them")
 
 
+def check_range_order(args: argparse.Namespace) -> None:
+    """Stop when a range of the selection has a lower end above its upper end.
+
+    Such a range selects no data, thus the command gave an empty plot or an error after a long read. Two equal ends
+    select one time, e.g. for decayproducts. The limits of a plot axis can have the opposite order, e.g. for a
+    magnitude, thus this function checks only a range of the selection.
+    """
+    bounds = [("timemin", "timemax", "-timemin", "-timemax")]
+    if getattr(args, "xrangeisselection", False):
+        bounds.append(("xmin", "xmax", "-lambdamin", "-lambdamax"))
+    for lowerdest, upperdest, lowerflag, upperflag in bounds:
+        lower, upper = getattr(args, lowerdest, None), getattr(args, upperdest, None)
+        if isinstance(lower, float | int) and isinstance(upper, float | int) and lower > upper:
+            exit_with_error(
+                f"{lowerflag} {lower:g} is above {upperflag} {upper:g}, thus the range selects nothing",
+                f"Give the lower end to {lowerflag} and the upper end to {upperflag}",
+            )
+
+
+def check_direction_bins(args: argparse.Namespace) -> None:
+    """Stop when -plotviewingangle names a bin that does not exist, before the command reads the spectra."""
+    from artistools.misc.dirbins import get_viewingdirectionbincount
+
+    dirbins = getattr(args, "plotviewingangle", None)
+    if not dirbins:
+        return
+    ndirbins = get_viewingdirectionbincount()
+    specialbins = {-1, -2} if getattr(args, "allowalldirbins", False) else {-1}
+    if badbins := [dirbin for dirbin in dirbins if dirbin not in specialbins and not 0 <= dirbin < ndirbins]:
+        specialtext = (
+            "-1 for all the directions, -2 for each bin," if -2 in specialbins else "-1 for all the directions,"
+        )
+        exit_with_error(
+            f"-plotviewingangle {' '.join(map(str, badbins))} names no direction bin",
+            f"Give {specialtext} or a bin from 0 to {ndirbins - 1}",
+        )
+
+
+def resolve_args(
+    parser: argparse.ArgumentParser,
+    args: argparse.Namespace,
+    argsraw: "Sequence[str] | None" = None,
+    kwargs: "Collection[str] | None" = None,
+) -> None:
+    """Check the arguments of a command and complete them after the parse, before the command reads data.
+
+    The dispatcher and parse_cli_args both call this function, thus each entry point makes the same checks. A check
+    that needs only the arguments belongs here, because then a mistake costs no time.
+    """
+    assert isinstance(parser, SuggestingArgumentParser), "every parser of a command is this class"
+    check_time_selection(parser, args, argsraw, kwargs)
+    check_range_order(args)
+    check_direction_bins(args)
+    resolve_output_argument(args)
+    resolve_yscale(args)
+
+
+# the dests that hold the model paths of a command. plotspectra names its dest specpath, because a path can also name
+# a reference spectrum
+MODELPATH_DESTS: t.Final = ("modelpath", "specpath")
+
+
+def addarg_common(parser: argparse.ArgumentParser) -> None:
+    """Add the arguments that every command takes: --quiet, and --explain for a command that reads a model.
+
+    The dispatcher and parse_cli_args both call this function, thus no module declares these arguments.
+    """
+    addarg_quiet(parser)
+    if any(action.dest in MODELPATH_DESTS for action in parser._actions):  # ruff:ignore[private-member-access]
+        arggroup(parser, "output").add_argument(
+            "--explain",
+            action="store_true",
+            help=(
+                "Print the model folders, the selection, and the output files that the arguments give, then stop."
+                " The command then reads no data"
+            ),
+        )
+
+
+def print_explanation(
+    parser: argparse.ArgumentParser, args: argparse.Namespace, parsedargs: argparse.Namespace
+) -> None:
+    """Print what the command reads and writes, as the arguments give it. Read no data.
+
+    parsedargs holds the arguments before resolve_args, thus a value that resolve_args sets, e.g. the scale "auto" of
+    the y axis, is not a value of the user. The lines give each argument of the user with its value after the
+    conversion of the units. They also give:
+
+    - the model folders;
+    - the timesteps of the time selection;
+    - the direction bins;
+    - the output file.
+    """
+    print_heading("The arguments select these data and files. --explain stops the command before it reads the data")
+    for action in parser._actions:  # ruff:ignore[private-member-access]
+        if action.dest in {"help", "explain", "quiet", *MODELPATH_DESTS} or not hasattr(args, action.dest):
+            continue
+        parsedvalue = getattr(parsedargs, action.dest, None)
+        if parsedvalue is not None and parsedvalue != parser.get_default(action.dest):
+            flag = action.option_strings[0] if action.option_strings else action.dest
+            print_detail(f"{flag} = {getattr(args, action.dest)}")
+
+    # normalize_path_list gives the working folder for None, thus a command with no such dest gives no path
+    for dest in (dest for dest in MODELPATH_DESTS if hasattr(args, dest)):
+        for modelpath in normalize_path_list(getattr(args, dest)):
+            explain_model_selection(modelpath, args)
+
+    if (outputfile := getattr(args, "outputfile", None)) is not None:
+        existstext = (
+            " (the file exists, thus the command asks before it overwrites it)" if Path(outputfile).exists() else ""
+        )
+        print_detail(f"output: {outputfile}{existstext}")
+
+
+def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:
+    """Print the model folder, the timesteps of the time selection, and the direction bins for one model path."""
+    from artistools.misc.dirbins import get_dirbin_labels
+    from artistools.misc.fileio import folder_is_artis_model
+    from artistools.misc.fileio import get_model_folder
+    from artistools.misc.remote import is_remote_path
+    from artistools.misc.timesteps import get_time_range
+
+    if is_remote_path(modelpath):
+        print_detail(f"model: {modelpath} (a remote model. --explain reads no file of it)")
+        return
+    modelfolder = get_model_folder(modelpath)
+    if not modelfolder.is_dir():
+        print_detail(f"model: {modelfolder} does not exist")
+        return
+    if not folder_is_artis_model(modelfolder):
+        # plotspectra also reads a reference spectrum, which is a file outside a model folder
+        print_detail(f"path: {modelpath} (no model folder, because {modelfolder} holds no input.txt)")
+        return
+    print_detail(f"model: {modelfolder}")
+
+    timeselection = {name: getattr(args, name, None) for name in ("timestep", "timemin", "timemax", "timedays")}
+    if any(value is not None for value in timeselection.values()):
+        try:
+            timestepmin, timestepmax, timemin, timemax = get_time_range(
+                modelfolder,
+                timestep_range_str=timeselection["timestep"],
+                timemin=timeselection["timemin"],
+                timemax=timeselection["timemax"],
+                timedays_range_str=timeselection["timedays"],
+            )
+        except (OSError, ValueError) as exc:
+            print_detail(f"time: the selection gives an error: {exc}")
+        else:
+            print_detail(
+                f"time: timesteps {timestepmin} to {timestepmax}, which cover {timemin:.3f} to {timemax:.3f} d"
+            )
+
+    if dirbins := [dirbin for dirbin in getattr(args, "plotviewingangle", None) or [] if dirbin != -2]:
+        try:
+            labels = get_dirbin_labels(
+                dirbins,
+                average_over_phi=getattr(args, "average_over_phi_angle", False),
+                average_over_theta=getattr(args, "average_over_theta_angle", False),
+            )
+        except ValueError as exc:
+            print_detail(f"direction: the selection gives an error: {exc}")
+        else:
+            for dirbin, label in labels.items():
+                print_detail(f"direction bin {dirbin}: {label}")
+
+
 def parse_cli_args(
     addargsfunc: Callable[[argparse.ArgumentParser], None],
     description: str | None,
@@ -1529,15 +1967,17 @@ def parse_cli_args(
 
     parser = SuggestingArgumentParser(formatter_class=CustomArgHelpFormatter, description=description)
     addargsfunc(parser)
-    # the dispatcher adds --quiet to the parser that it builds, thus a direct call needs it here
-    addarg_quiet(parser)
+    # the dispatcher adds --quiet and --explain to the parser that it builds, thus a direct call needs them here
+    addarg_common(parser)
     kwargs = kwargs or {}
     set_args_from_dict(parser, kwargs)
     tokens = [] if argsraw is None and kwargs else argsraw
     args = parser.parse_args(separate_trailing_folders(tokens))
-    check_time_selection(parser, args, tokens, kwargs)
-    resolve_output_argument(args)
-    resolve_yscale(args)
+    parsedargs = copy.copy(args)
+    resolve_args(parser, args, tokens, kwargs)
+    if getattr(args, "explain", False):
+        print_explanation(parser, args, parsedargs)
+        raise SystemExit(0)
 
     return args
 

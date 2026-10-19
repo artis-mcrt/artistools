@@ -499,7 +499,7 @@ def write_frames(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, positional=True, default=Path())
     addarg_timestep(parser)
     addarg_timeminmax(parser)
     # the old spellings stay as aliases, because a script and a note hold them. SUPPRESS keeps the

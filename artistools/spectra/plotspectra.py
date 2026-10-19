@@ -1,7 +1,6 @@
 """Artistools - spectra plotting functions."""
 
 import argparse
-import contextlib
 import math
 import typing as t
 from collections.abc import Callable
@@ -41,6 +40,7 @@ from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_pathoption
+from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_residuals
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
@@ -51,6 +51,7 @@ from artistools.misc import addarg_verbose
 from artistools.misc import addarg_viewingangle
 from artistools.misc import addarg_yscale
 from artistools.misc import apply_time_range_args
+from artistools.misc import check_time_range_is_valid
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
@@ -58,7 +59,6 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_model_folders
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
-from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_logname
@@ -101,6 +101,7 @@ from artistools.plottools import get_summary_table
 from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
 from artistools.plottools import make_frame_figure_with_residuals
+from artistools.plottools import parse_velocity_argument
 from artistools.plottools import plain_label
 from artistools.plottools import print_dirbin_summary
 from artistools.plottools import print_series_summary
@@ -121,8 +122,8 @@ from artistools.spectra.core import convert_xunit_aliases_to_canonical
 from artistools.spectra.core import DEFAULT_YE_SHELLS
 from artistools.spectra.core import EmissionEvent
 from artistools.spectra.core import FluxContributionTuple
-from artistools.spectra.core import get_default_losvelocity_shells
-from artistools.spectra.core import get_default_velocity_shells
+from artistools.spectra.core import get_default_lineofsightvelocity_shells
+from artistools.spectra.core import get_default_radialvelocity_shells
 from artistools.spectra.core import get_dfspectrum_x_y_with_units
 from artistools.spectra.core import get_flux_contributions
 from artistools.spectra.core import get_flux_contributions_from_packets
@@ -140,13 +141,12 @@ from artistools.spectra.core import get_xunit
 from artistools.spectra.core import make_averaged_vspecfiles
 from artistools.spectra.core import make_virtual_spectra_summed_file
 from artistools.spectra.core import NO_SAMPLED_EMISSION_HELP
-from artistools.spectra.core import parse_velocity_argument
 from artistools.spectra.core import parse_xunit_argument
 from artistools.spectra.core import print_integrated_flux
 from artistools.spectra.core import SHELLCOLUMNS
 from artistools.spectra.core import sort_and_reduce_flux_contribution_list
 from artistools.spectra.core import timeshift_fluxscale_co56law
-from artistools.spectra.writespectra import write_flambda_spectra
+from artistools.spectra.writespectra import write_flambda_spectra_of_models
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -183,38 +183,6 @@ def path_is_reference_spectrum(filepath: str | Path) -> bool:
     name as well, thus the folder decides: an ARTIS model folder holds input.txt beside its output files.
     """
     return path_is_reference_data(filepath, "data/refspectra")
-
-
-def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
-    """Warn, or raise unless allow_invalid, when the requested times fall outside the model's packet arrival range."""
-    with contextlib.suppress(FileNotFoundError):
-        timesteplast, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
-        problem_messages: list[str] = []
-        if validrange_start_days is validrange_end_days is None:
-            problem_messages.append("The model has no valid time range days")
-        if validrange_start_days is not None and timemin < validrange_start_days:
-            problem_messages.append(
-                f"timemin {timemin} days is before the start of the valid range at {validrange_start_days:.2f} days"
-            )
-        if validrange_end_days is not None and timemax > validrange_end_days:
-            problem_messages.append(
-                f"timemax {timemax} days is after the end of the valid range at {validrange_end_days:.2f} days"
-            )
-
-        if problem_messages and not allow_invalid:
-            lastend_days = get_timestep_times(modelpath, loc="end")[timesteplast]
-            if timemin > lastend_days:
-                # ARTIS wrote no spectrum after the last timestep of the model, thus --plotinvalidpart gives no plot
-                problem_messages.append(
-                    f"ARTIS calculated the timesteps up to {timesteplast}, which ends at"
-                    f" {lastend_days:.2f} days. Thus the model has no spectrum at this time"
-                )
-            else:
-                problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")
-            raise ValueError("\n".join(problem_messages))
-
-        for message in problem_messages:
-            print_warning(message)
 
 
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
@@ -1213,11 +1181,12 @@ def plot_artis_spectrum(
         return []
 
     # f_lambda is per Angstrom at 1 Mpc. The plotted columns give the values of the plot, thus they follow
-    # -distmpc, --normalised, -xunit, and -yvariable. --shownoise draws the band y * (1 +- relnoise)
+    # -distmpc, --normalised, -xunit, and -yvariable. A spectrum from packets also gives the relative Monte Carlo noise
+    # of each bin, as the table of plotlightcurves does. --shownoise only draws the band y * (1 +- relnoise)
     xcolumn = f"x_plotted_{args.xunit}"
     gridtables: list[pl.DataFrame] = []
     for seriessuffix, dfspectrum in drawnseries:
-        hasnoise = args.shownoise and "yrelnoise" in dfspectrum.columns
+        hasnoise = "yrelnoise" in dfspectrum.columns
         hasedges = "x_lower" in dfspectrum.columns
         add_to_grid_tables(
             gridtables,
@@ -2259,6 +2228,18 @@ def draw_plot(
     }
 
 
+# the earlier names of the velocity shell groupings, which a script can hold
+GROUPBY_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({
+    "velocity": "radialvelocity",
+    "losvelocity": "lineofsightvelocity",
+})
+
+
+def get_groupby_choice(text: str) -> str:
+    """Return the -groupby choice of a command line value, with the current name of an earlier name."""
+    return GROUPBY_ALIASES.get(text, text)
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument(
@@ -2288,11 +2269,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_maxpacketfiles(parser)
 
-    parser.add_argument(
-        "--plotinvalidpart",
-        action="store_true",
-        help="Plot the spectra even if it falls outside the valid time range (due to light travel times)",
-    )
+    addarg_plotinvalidpart(parser, "the spectra")
 
     parser.add_argument("--emissionabsorption", action="store_true", help="Implies --showemission and --showabsorption")
 
@@ -2371,8 +2348,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_axislimits(
         parser,
-        include_y=False,
         wavelength_aliases=True,
+        xtype=float,
         xminhelp="Plot range: minimum x range",
         xmaxhelp="Plot range: maximum x range",
     )
@@ -2399,10 +2376,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " the models"
         ),
     )
-
-    parser.add_argument("-ymin", type=float, default=None, help="Plot range: y-axis")
-
-    parser.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis")
 
     parser.add_argument(
         "--hidemodeltimerange", action="store_true", help='Hide the "at (+/- x.xd)" from the line labels'
@@ -2451,12 +2424,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-groupby",
         default=None,
-        choices=["element", "ion", "line", "nuc", "nucmass", "velocity", "losvelocity", "ye"],
+        type=get_groupby_choice,
+        choices=["element", "ion", "line", "nuc", "nucmass", "radialvelocity", "lineofsightvelocity", "ye"],
         help=(
-            "Use a different colour for each element, ion, line, or nuclide with --showemission, or for each shell"
-            " of the last interaction: velocity bins the radial velocity, losvelocity the velocity along the line of"
-            " sight, and ye the initial electron fraction of the cell. The element of a gamma packet is the element"
-            " of its nuclide. Every choice but ion implies --frompackets"
+            "Use a different colour for each group with --showemission. A group is an element, an ion, a line, a"
+            " nuclide, or a shell of the last interaction. radialvelocity bins the radial velocity."
+            " lineofsightvelocity bins the velocity along the line of sight. ye bins the initial electron fraction of"
+            " the cell. The element of a gamma packet is the element of its nuclide. Each choice except ion implies"
+            " --frompackets"
         ),
     )
 
@@ -2467,15 +2442,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="velocity",
         help=(
-            "Edges of the shells of -groupby velocity or losvelocity, in km/s, e.g. 0 5000 10000 20000, or as a"
-            " fraction of c, e.g. 0c 0.1c 0.2c 0.3c. A value with a c suffix also puts the labels in units of c."
-            " The default is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D"
-            " grid, with the labels in units of c when vmax is at least 0.2 c"
+            "Edges of the shells of -groupby radialvelocity or lineofsightvelocity, in km/s, e.g. 0 5000 10000 20000,"
+            " or as a fraction of c, e.g. 0c 0.1c 0.2c 0.3c. A value with a c suffix also puts the labels in units of"
+            " c. The default is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D"
+            " grid. The labels are in units of c when vmax is 0.2 c or more"
         ),
     )
 
     parser.add_argument(
-        "-emissionvelocityrange",
+        "-emissionradialvelocityrange",
         type=parse_velocity_argument,
         nargs=2,
         default=None,
@@ -2490,7 +2465,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-emissionlosvelocityrange",
+        "-emissionlineofsightvelocityrange",
         type=parse_velocity_argument,
         nargs=2,
         default=None,
@@ -2498,10 +2473,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Keep only the emission and the absorption from a range of the velocity along the line of sight. A"
             " positive velocity is motion toward the observer, and a value can be negative, e.g. -0.05c 0.05c. The"
-            " other rules of -emissionvelocityrange apply. The two ranges together keep a packet that is inside"
+            " other rules of -emissionradialvelocityrange apply. The two ranges together keep a packet that is inside"
             " both ranges"
         ),
     )
+
+    # the earlier names of the two velocity ranges
+    for oldname, newname in (
+        ("-emissionvelocityrange", "emissionradialvelocityrange"),
+        ("-emissionlosvelocityrange", "emissionlineofsightvelocityrange"),
+    ):
+        parser.add_argument(oldname, dest=newname, type=parse_velocity_argument, nargs=2, help=argparse.SUPPRESS)
 
     parser.add_argument(
         "-yeshells",
@@ -2536,9 +2518,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 
     addarg_yscale(parser)
-
-    # the older spelling of "-yscale log"
-    parser.add_argument("--logscaley", action="store_true", help="Use log scale for y values")
 
     parser.add_argument("--hidenetspectrum", action="store_true", help="Hide net spectrum")
 
@@ -2664,8 +2643,8 @@ DEFAULT_MAXSERIESCOUNT: t.Final = 14
 
 # the argument and the name in the title of the velocity range of each shell grouping
 VELOCITYRANGEARGS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
-    "velocity": ("emissionvelocityrange", "radial velocity"),
-    "losvelocity": ("emissionlosvelocityrange", "line-of-sight velocity"),
+    "radialvelocity": ("emissionradialvelocityrange", "radial velocity"),
+    "lineofsightvelocity": ("emissionlineofsightvelocityrange", "line-of-sight velocity"),
 })
 
 
@@ -2758,7 +2737,9 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
         # check_emission_plot_args stops the command
         if args.modelspecpaths:
             getdefault = (
-                get_default_losvelocity_shells if args.groupby == "losvelocity" else get_default_velocity_shells
+                get_default_lineofsightvelocity_shells
+                if args.groupby == "lineofsightvelocity"
+                else get_default_radialvelocity_shells
             )
             args.shelledges, args.shellunit = getdefault(args.modelspecpaths[0])
     elif args.velocityshells is not None:
@@ -3039,14 +3020,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             msg = f"--output_spectra writes a folder of files, thus -o must name a folder and not {outputfile}"
             raise ValueError(msg)
         outdirectory = make_output_folder(outputfile, "writes") if outputfile is not None else None
-        for modelpath in args.specpath:
-            # the file names hold no model name, thus several models get a subfolder each
-            modeloutdirectory = (
-                outdirectory / get_model_name(modelpath)
-                if outdirectory is not None and len(args.specpath) > 1
-                else outdirectory
-            )
-            write_flambda_spectra(modelpath, outdirectory=modeloutdirectory)
+        # --output_spectra keeps its overwrite with no prompt. The command writespectra asks first
+        write_flambda_spectra_of_models(args.specpath, outdirectory, force=True)
 
     else:
         fig, _axes, tables = make_plot(args)

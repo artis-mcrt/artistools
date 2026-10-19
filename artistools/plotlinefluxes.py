@@ -56,6 +56,8 @@ from artistools.misc.general import get_bin_index_expr
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import get_packets
+from artistools.packets.core import get_relative_error_expr
+from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
@@ -177,7 +179,10 @@ def get_line_luminosities_from_packets(
 ) -> pl.DataFrame:
     """Get the emission line luminosities of the requested features vs time.
 
-    The returned values are luminosities in [erg/s]: they are not divided by 4 pi d^2 for any observer distance.
+    The values are luminosities in erg/s. The function does not divide them by 4 pi d^2, because they are for no
+    specific observer distance. The
+    column {colname}_relnoise of each feature gives the relative Monte Carlo noise sqrt(sum(e^2)) / sum(e) of the
+    luminosity. A bin with no packet has no noise value.
     """
     arr_tstart, arr_tend, arr_tmid = get_timebins(modelpath, arr_tstart, arr_tend)
     arr_timedelta = np.array(arr_tend) - np.array(arr_tstart)
@@ -209,22 +214,21 @@ def get_line_luminosities_from_packets(
             dfpackets
             .filter(pl.col(emtypecolumn).is_in(feature.linelistindices))
             .group_by("timebin")
-            .agg(e_rf_sum=pl.col("e_rf").sum()),
+            .agg(e_rf_sum=pl.col("e_rf").sum(), relnoise=get_relative_error_expr(pl.col("e_rf"))),
             on="timebin",
             how="left",
         )
         .sort("timebin")
-        .select(pl.col("e_rf_sum").fill_null(0.0) / nprocs_read / (day_to_s * pl.col("timedelta_days")))
+        .select(
+            (pl.col("e_rf_sum").fill_null(0.0) / nprocs_read / (day_to_s * pl.col("timedelta_days"))).alias(
+                feature.colname
+            ),
+            pl.col("relnoise").alias(f"{feature.colname}_relnoise"),
+        )
         for feature in emfeatures
     ])
 
-    return pl.DataFrame({
-        "time": arr_tmid,
-        **{
-            feature.colname: dfluminosity.to_series().to_numpy()
-            for feature, dfluminosity in zip(emfeatures, dfluminosities, strict=True)
-        },
-    })
+    return pl.concat([pl.DataFrame({"time": arr_tmid}), *dfluminosities], how="horizontal")
 
 
 def get_line_luminosities_from_pops(
@@ -520,6 +524,48 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     return get_comparison_table("Flörs W7", dfmodel["epoch"].to_list(), dfmodel["NIR_VIS_ratio"].to_list())
 
 
+def add_ratio_noise(dflcdata: pl.DataFrame, featurecolnames: Sequence[str]) -> pl.DataFrame:
+    """Add the relative Monte Carlo noise of the ratio of two features, and log the method and each noisy time.
+
+    A ratio of two independent sums has the relative noise sqrt(r1^2 + r2^2), where r1 and r2 are the relative noises
+    of the sums. A table with no noise column, e.g. from --frompops, stays the same.
+    """
+    noisecolumns = [f"{colname}_relnoise" for colname in featurecolnames]
+    if not set(noisecolumns) <= set(dflcdata.columns):
+        return dflcdata
+
+    # the + of an expression gives null when one noise is null. pl.sum_horizontal leaves out a null
+    dflcdata = dflcdata.with_columns(
+        fratio_relnoise=sum((pl.col(column) ** 2 for column in noisecolumns), start=pl.lit(0.0)).sqrt()
+    )
+    print(
+        "  noise: the relative Monte Carlo noise of a feature is sqrt(Σ e²) / Σ e over its packet energies e. The noise"
+        " of the ratio is the root of the sum of the squares of the two noises"
+    )
+    noisytimes = dflcdata.filter(pl.col("fratio_relnoise") > NOISY_RELATIVE_ERROR)["time"].to_list()
+    if noisytimes:
+        print_warning(
+            f"the ratio has a relative noise above {NOISY_RELATIVE_ERROR:.0%} at {len(noisytimes)} of"
+            f" {dflcdata.height} times, e.g. {noisytimes[0]:.1f} d. Read more packet files, or give wider time bins"
+        )
+    return dflcdata
+
+
+def check_ratio_features_share_no_line(feature0: FeatureTuple, feature1: FeatureTuple) -> None:
+    """Stop the command if the two features of the ratio share a line.
+
+    A packet of a shared line counts in both luminosities. Thus the two sums are not independent, and the ratio and its
+    noise are not correct, e.g. two identical features give a ratio of 1 and a noise above 0.
+    """
+    sharedlines = set(feature0.linelistindices) & set(feature1.linelistindices)
+    if sharedlines:
+        exit_with_error(
+            f"the features {feature0.featurelabel} and {feature1.featurelabel} of the ratio share {len(sharedlines)}"
+            " lines, thus a packet of such a line counts in both luminosities",
+            "Give the first two -emfeaturesearch values wavelength ranges with no common line",
+        )
+
+
 def get_comparison_table(series: str, time_days: Sequence[float], fratios: Sequence[float]) -> pl.DataFrame:
     """Return the points of one comparison series of the line ratio plot, e.g. a fit of observations."""
     return pl.DataFrame(
@@ -551,6 +597,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         print_heading(get_model_logname(modelpath, modellabel))
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
+        check_ratio_features_share_no_line(emfeatures[0], emfeatures[1])
 
         dflcdata = (
             get_line_luminosities_from_pops(
@@ -568,6 +615,8 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         )
 
         dflcdata = dflcdata.with_columns(fratio=pl.col(emfeatures[1].colname) / pl.col(emfeatures[0].colname))
+        # fratio divides the second feature by the first, thus a later feature takes no part in its noise
+        dflcdata = add_ratio_noise(dflcdata, [emfeatures[0].colname, emfeatures[1].colname])
         axis.set_ylabel(
             r"F$_{\mathrm{" + emfeatures[1].featurelabel + r"}}$ / F$_{\mathrm{" + emfeatures[0].featurelabel + r"}}$"
         )
@@ -592,7 +641,20 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         if args.dashes[modelindex]:
             plotkwargs["dashes"] = args.dashes[modelindex]
 
-        axis.plot(dflcdata["time"], dflcdata["fratio"], label=modellabel, **plotkwargs)
+        if "fratio_relnoise" in dflcdata.columns:
+            # check_ratio_features_share_no_line makes the packets of the two features differ, thus their noises add
+            # in quadrature
+            axis.errorbar(
+                dflcdata["time"],
+                dflcdata["fratio"],
+                yerr=(dflcdata["fratio"] * dflcdata["fratio_relnoise"].fill_null(np.nan)).to_numpy(),
+                label=modellabel,
+                elinewidth=1.0,
+                capsize=0,
+                **plotkwargs,
+            )
+        else:
+            axis.plot(dflcdata["time"], dflcdata["fratio"], label=modellabel, **plotkwargs)
 
         tablemodelname = get_model_name(modelpath)
         if tablemodelname in tablemodelnames:
@@ -601,7 +663,12 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
             print_warning(f"the data table gives the column of {modelpath} the model name {tablemodelname}")
         tablemodelnames.add(tablemodelname)
         plotteddata.append(
-            dflcdata.select("time", fratio=pl.col("fratio")).rename({"fratio": f"fratio_{tablemodelname}"})
+            dflcdata.select(
+                "time", "fratio", *(["fratio_relnoise"] if "fratio_relnoise" in dflcdata.columns else [])
+            ).rename(
+                {"fratio": f"fratio_{tablemodelname}", "fratio_relnoise": f"fratio_relnoise_{tablemodelname}"},
+                strict=False,
+            )
         )
 
         tmin = min(tmin, dflcdata.select(pl.col("time").min()).item())
@@ -978,7 +1045,11 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(
-        parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders with spec.out or packets files"
+        parser,
+        positional=True,
+        multiplepaths=True,
+        default=[],
+        helptext="Paths of the ARTIS models with spec.out or packets files",
     )
 
     addarg_seriesstyle(parser, colordefault=[f"C{i}" for i in range(10)])

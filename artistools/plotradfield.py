@@ -50,6 +50,7 @@ from artistools.misc import print_saved
 from artistools.misc import read_rank_outputfiles
 from artistools.misc import resolve_frameset_paths
 from artistools.misc.cliutils import format_range_list
+from artistools.plottools import addarg_cellvelocity
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_exponent_label
@@ -444,7 +445,7 @@ def get_drawn_series_table(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, positional=True, default=Path())
 
     addarg_timedays(parser, kind="str")
 
@@ -452,7 +453,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_modelgridindex(parser, helptext="Model grid cell to plot, or a range e.g. 3-7")
 
-    parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
+    addarg_cellvelocity(parser)
 
     parser.add_argument("--nospec", action="store_true", help="Don't plot the emergent spectrum")
 
@@ -494,10 +495,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     pdf_list: list[str] = []
     modelgridindexlist: list[int] = []
 
-    if args.velocity >= 0.0:
-        mgi = get_mgi_of_velocity_kms(modelpath, args.velocity)
-        assert mgi is not None, f"Could not find a cell with velocity {args.velocity:.3f} km/s"
-        modelgridindexlist = [mgi]
+    if args.velocity_kmps is not None:
+        modelgridindexlist = [get_mgi_of_velocity_kms(modelpath, args.velocity_kmps)]
     else:
         modelgridindexlist = args.modelgridindex or [0]
 

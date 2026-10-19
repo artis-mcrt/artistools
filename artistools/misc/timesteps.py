@@ -228,6 +228,62 @@ def get_bad_timestep_message(modelpath: Path | str, timestep: int) -> str:
     )
 
 
+def get_selected_timestep(
+    modelpath: Path | str,
+    timestep: str | int | None,
+    timedays: str | float | None,
+    *,
+    defaulttimestep: str | None = None,
+) -> int:
+    """Return the timestep that -timestep or -timedays gives, or exit with an error.
+
+    defaulttimestep, e.g. "last", applies when the user gives neither. It is not the default of -timestep. If it were,
+    a -timedays value would always count as a second time.
+    """
+    if timedays is not None:
+        if timestep is not None:
+            exit_with_error("specify only one of -timestep and -timedays")
+        return get_timestep_of_timedays(modelpath, timedays)
+
+    selectedtimestep = get_single_timestep(timestep if timestep is not None else defaulttimestep, modelpath)
+    if selectedtimestep is None:
+        exit_with_error("the command has no time", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
+
+    return selectedtimestep
+
+
+def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, allow_invalid: bool) -> None:
+    """Warn, or raise unless allow_invalid, when the times are outside the valid range of the arrival times."""
+    with contextlib.suppress(FileNotFoundError):
+        timesteplast, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
+        problem_messages: list[str] = []
+        if validrange_start_days is validrange_end_days is None:
+            problem_messages.append("The model has no valid range of the arrival times")
+        if validrange_start_days is not None and timemin < validrange_start_days:
+            problem_messages.append(
+                f"timemin {timemin} days is before the start of the valid range at {validrange_start_days:.2f} days"
+            )
+        if validrange_end_days is not None and timemax > validrange_end_days:
+            problem_messages.append(
+                f"timemax {timemax} days is after the end of the valid range at {validrange_end_days:.2f} days"
+            )
+
+        if problem_messages and not allow_invalid:
+            lastend_days = get_timestep_times(modelpath, loc="end")[timesteplast]
+            if timemin > lastend_days:
+                # ARTIS wrote no output after the last timestep of the model, thus --plotinvalidpart gives no plot
+                problem_messages.append(
+                    f"ARTIS calculated the timesteps up to {timesteplast}, which ends at"
+                    f" {lastend_days:.2f} days. Thus the model has no output at this time"
+                )
+            else:
+                problem_messages.append("To override this error and plot anyway, run with --plotinvalidpart")
+            raise ValueError("\n".join(problem_messages))
+
+        for message in problem_messages:
+            print_warning(message)
+
+
 def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> int | None:
     """Return the one timestep that -timestep names, or None when it names none.
 

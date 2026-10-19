@@ -12,10 +12,12 @@ from artistools.atomic import get_atomic_masses
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.estimators.core import read_estimators
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_timestep
+from artistools.misc import confirm_overwrite
 from artistools.misc import get_single_timestep
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
@@ -27,10 +29,11 @@ DEFAULTOUTPUTNAME = "massfracs.txt"
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, positional=True, default=Path())
     addarg_timestep(parser, default=14, helptext="Timestep number to export")
     addarg_modelgridindex(parser, default=[0], helptext="Range of cell numbers to export")
     addarg_output(parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path to output file of mass fractions")
+    addarg_force(parser)
 
 
 def get_massfraction_lines(
@@ -70,6 +73,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, main.__doc__, args, argsraw, kwargs)
 
     modelpath = Path(args.modelpath)
+    confirm_overwrite([Path(args.outputfile).parent], (Path(args.outputfile).name,), force=args.force)
     timestep = get_single_timestep(args.timestep, modelpath)
     assert timestep is not None, "-timestep holds a default, thus it names a timestep"
     # the standard atomic weights, not the masses in compositiondata.txt, which only cover the elements that

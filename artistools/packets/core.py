@@ -30,6 +30,7 @@ from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
+from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
@@ -272,9 +273,13 @@ def get_relative_error_expr(energy: pl.Expr) -> pl.Expr:
 
 
 def addarg_velocitykind(parser: argparse.ArgumentParser) -> None:
-    """Add -velocity, which selects the radial or the line-of-sight velocity of the last interaction."""
+    """Add -velocitykind, which selects the radial or the line-of-sight velocity of the last interaction.
+
+    The other commands take -velocity for the velocity of a cell, thus this option has a different name. -velocity
+    stays as a hidden alias of it, because the first release of the option had that name.
+    """
     parser.add_argument(
-        "-velocity",
+        "-velocitykind",
         dest="velocitykind",
         choices=["radial", "lineofsight"],
         default="radial",
@@ -284,6 +289,8 @@ def addarg_velocitykind(parser: argparse.ArgumentParser) -> None:
             " shift of a P Cygni profile"
         ),
     )
+    # the default of velocitykind comes from the option before, because argparse takes the first default
+    parser.add_argument("-velocity", dest="velocitykind", choices=["radial", "lineofsight"], help=argparse.SUPPRESS)
 
 
 def get_last_interaction_velocity_expr(
@@ -293,7 +300,7 @@ def get_last_interaction_velocity_expr(
     if velocitykind == "radial":
         return get_emission_velocity_of_columns_expr(position, packetcolumns)
     if f"{position}_posx" not in packetcolumns:
-        msg = f"The packets hold no {position}_pos, thus they give no line-of-sight velocity. Give -velocity radial"
+        msg = f"The packets hold no {position}_pos, thus they give no line-of-sight velocity. Give -velocitykind radial"
         raise ValueError(msg)
     return get_emission_velocity_lineofsight_expr(position)
 
@@ -641,10 +648,10 @@ def get_packets_rankbatch_parquetpath(
 ) -> Path:
     """Return the path of the parquet cache of a batch of ranks."""
     strpacket = "vpackets" if virtual else "packets"
-    return (
+    return get_parquet_cache_name(
         modelpath
         / strpacket
-        / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+        / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet"
     )
 
 
@@ -692,7 +699,10 @@ def get_first_packets_file(modelpath: Path) -> Path | None:
         return textfile
     # the name of the cache needs the number of ranks in input.txt, thus the function reads that file only if a
     # cache exists
-    if not any((modelpath / "packets").glob("packetsbatch00_*.parquet.tmp")):
+    if not any(
+        any((modelpath / "packets").glob(pattern))
+        for pattern in ("packetsbatch00_*.parquet", "packetsbatch00_*.parquet.tmp")
+    ):
         return None
     (batchindex, batch_mpiranks), *_ = get_packets_mpirank_groups(modelpath, maxpacketfiles=None)
     parquetfile = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual=False)
@@ -718,7 +728,7 @@ def get_packets_column_names(modelpath: Path) -> list[str] | None:
     packetsfile = get_first_packets_file(modelpath)
     if packetsfile is None:
         return None
-    if packetsfile.name.endswith(".parquet.tmp"):
+    if packetsfile.name.endswith((".parquet", ".parquet.tmp")):
         return list(pl.read_parquet_schema(packetsfile))
     return get_packets_text_columns(packetsfile, modelpath)
 

@@ -26,20 +26,20 @@ from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
-from artistools.misc import exit_with_error
 from artistools.misc import get_artis_option
 from artistools.misc import get_artis_source_text
 from artistools.misc import get_model_logname
 from artistools.misc import get_npts_model
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
-from artistools.misc import get_single_timestep
-from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc.cliutils import wavelength_angstroms_arg
+from artistools.misc.cliutils import WAVELENGTH_UNIT_HELP
 from artistools.misc.general import get_bin_index_expr
 from artistools.rustext import sum_binned_line_opacities
 
@@ -297,20 +297,6 @@ def get_planck_mean_opacities(dfbinnedopacities: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def get_selected_timestep(modelpath: Path | str, timestep: str | int | None, timedays: str | None) -> int:
-    """Return the timestep that -timestep or -timedays gives, or exit with an error."""
-    if timedays is not None:
-        if timestep is not None:
-            exit_with_error("specify only one of -timestep and -timedays")
-        return get_timestep_of_timedays(modelpath, timedays)
-
-    selectedtimestep = get_single_timestep(timestep, modelpath)
-    if selectedtimestep is None:
-        exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
-
-    return selectedtimestep
-
-
 def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:
     """Return LTEPOP_EXCITATION_USE_TJ of the artisoptions.h of the model.
 
@@ -458,7 +444,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_timestep(parser, helptext="Timestep number to select")
     addarg_timedays(parser, kind="str", helptext="Time in days to select")
-    addarg_modelpath(parser, default=Path(), helptext="Path of ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     parser.add_argument(
         "--show_binned_opacities",
         action="store_true",
@@ -469,11 +455,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # every command that reads a range of wavelengths takes both spellings, thus -xmin reaches this
     # command as well. This one bins the opacities over that range, and it draws no plot
     parser.add_argument(
-        "-xmin", "-lambdamin", type=float, default=20.0, help="Minimum wavelength in Angstroms for binned opacities"
+        "-xmin",
+        "-lambdamin",
+        type=wavelength_angstroms_arg,
+        default=20.0,
+        help=f"Minimum wavelength of the binned opacities. {WAVELENGTH_UNIT_HELP}",
     )
     parser.add_argument(
-        "-xmax", "-lambdamax", type=float, default=50000.0, help="Maximum wavelength in Angstroms for binned opacities"
+        "-xmax",
+        "-lambdamax",
+        type=wavelength_angstroms_arg,
+        default=50000.0,
+        help=f"Maximum wavelength of the binned opacities. {WAVELENGTH_UNIT_HELP}",
     )
+    parser.set_defaults(xrangeisselection=True)
     parser.add_argument(
         "-deltalambda", type=float, default=10.0, help="Wavelength bin width in Angstroms for binned opacities"
     )

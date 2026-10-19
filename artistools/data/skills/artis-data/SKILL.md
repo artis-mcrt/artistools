@@ -68,12 +68,20 @@ The physics options change the meaning of many outputs. More commands help befor
 - `artistools report <modelpath>` makes an HTML page with the check, the summary, the logs, and standard figures.
 - `artistools values Te nne -t 300 -modelgridindex 12 <modelpath>` prints the raw estimators of cells and timesteps,
   with no average and the unit in each column name. Use it for the value of one cell, in place of Python.
+- `-dirbin 90` selects the cells whose centre is in the cos θ range of a direction bin, e.g. near the pole. `values`,
+  `plotestimators`, `plotopacity`, and `plotlinecontributions` take it. Use it to compare two directions, e.g.
+  `artistools plotestimators init_X_lanthanides Ye -t 10 -dirbin 50 <modelpath> --print_data --quiet`. The summary
+  table gives the mean with the mass of each cell as the weight for a mass fraction and for Ye.
 
 Each plot command prints the plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te
 -t 300 <modelpath> --print_data --quiet`. Use it to check a result, or for a quick answer with no Python. A value or a
 column name that contains a space has quotes. `--write_data` writes the table to a file, and the file starts with "# "
 lines that give the command. Read such a file with `pl.read_csv(path, separator=" ", comment_prefix="#",
 null_values="nan")`.
+
+`--explain` prints the time steps, the direction bins, and the output file that the arguments select. Then it stops
+before it reads the data. A time or a wavelength can have a unit, e.g. `-t 12h` or `-lambdamin 600nm`. A value with no unit
+is in days or in Angstroms.
 
 Without `--quiet`, plotestimators, plotlightcurves, and plotspectra also log one summary line for each drawn series.
 Read these lines before you calculate a value yourself. `--print_data` and `--write_data` also give the same values
@@ -584,6 +592,9 @@ print(f"luminosity in the spectrum: {luminosity:.3e} erg/s")
   - get the columns with `at.packets.get_packets_column_names(modelpath)`, which writes no cache;
   - give `maxpacketfiles=100` to read only the packets files of the first 100 ranks;
   - select the columns and filter the rows before `.collect()`.
+
+  `artistools cache make <modelpath>` writes all the caches of a model at one time, and `artistools cache list` gives
+  them.
 
   `get_packets_column_names` gives the columns of the packets files. The LazyFrame does not have some of these columns,
   and it adds other columns, e.g. `t_arrive_d` and `dirbin`.

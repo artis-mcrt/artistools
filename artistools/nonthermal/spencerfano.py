@@ -28,19 +28,20 @@ from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
-from artistools.misc import get_single_timestep
-from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
+from artistools.plottools import addarg_cellvelocity
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -176,7 +177,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
     addarg_darkmode(parser)
-    addarg_modelpath(parser, default=Path())
+    addarg_show(parser)
+    addarg_modelpath(parser, positional=True, default=Path())
 
     addarg_timedays(parser, kind="str")
 
@@ -185,7 +187,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # the command solves one cell, thus the help names no range
     addarg_modelgridindex(parser, default=[0], helptext="Model grid cell to solve, e.g. 12")
 
-    parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
+    addarg_cellvelocity(parser)
 
     parser.add_argument("-npts", type=int, default=4096, help="Number of points in the energy grid")
 
@@ -286,18 +288,13 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
     The function sets args.timestep, args.modelgridindex, and args.timedays to the resolved values, because
     the name of the plot file holds them.
     """
-    if args.timedays:
-        args.timestep = get_timestep_of_timedays(modelpath, args.timedays)
-    else:
-        args.timestep = get_single_timestep(args.timestep, modelpath)
-        if args.timestep is None:
-            exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last")
+    args.timestep = get_selected_timestep(modelpath, args.timestep, args.timedays)
 
     dfmodel, modelmeta = get_modeldata(modelpath)
     # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
     modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
-    if args.velocity >= 0.0:
-        args.modelgridindex = get_mgi_of_velocity_kms(modelpath, args.velocity)
+    if args.velocity_kmps is not None:
+        args.modelgridindex = get_mgi_of_velocity_kms(modelpath, args.velocity_kmps)
     else:
         args.modelgridindex = get_single_modelgridindex(args.modelgridindex)
     assert isinstance(args.modelgridindex, int)

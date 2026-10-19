@@ -1687,7 +1687,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (6, "b125fa1943d9fa52"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (7, "0c768aefa4af6926"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2261,6 +2261,22 @@ def test_average_direction_bins_rejects_missing_bins(monkeypatch: pytest.MonkeyP
         dirbins.average_direction_bins(averaged, overangle="phi")
 
 
+def test_centre_direction_of_each_dirbin_is_in_that_dirbin() -> None:
+    """The packet binning of ARTIS puts the centre direction of each direction bin into that bin.
+
+    The trough estimate of plotlinecontributions took phi = 2 pi (phibin + 0.5) / nphibins. The phi bins of ARTIS
+    descend and reverse at the middle bin, thus -troughdirbin 90 put the observer in a different direction bin.
+    """
+    from artistools.packets.core import add_packet_directions_lazypolars
+    from artistools.packets.core import bin_packet_directions_polars
+
+    ndirbins = at.misc.get_viewingdirectionbincount()
+    directions = np.array([dirbins.get_dirbin_centre_direction(dirbin) for dirbin in range(ndirbins)])
+    dfdirections = pl.DataFrame({"dirx": directions[:, 0], "diry": directions[:, 1], "dirz": directions[:, 2]})
+    dfbinned = bin_packet_directions_polars(add_packet_directions_lazypolars(dfdirections)).collect()
+    assert dfbinned["dirbin"].to_list() == list(range(ndirbins))
+
+
 def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
     """A timestep range gives no times in days, so the timestep bounds must be used even when not clamping."""
     write_timesteps_out(tmp_path)
@@ -2422,14 +2438,18 @@ def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
         at.misc.check_time_selection(parser, parser.parse_args(argsraw))
 
 
+def get_parser_with_a_default_timestep() -> "at.commands.SuggestingArgumentParser":
+    """Return a parser of -timestep with the default last, and of -timedays."""
+    parser = at.commands.SuggestingArgumentParser()
+    at.misc.addarg_timestep(parser, default="last")
+    at.misc.addarg_timedays(parser, kind="float")
+    return parser
+
+
 def test_check_time_selection_reads_a_flag_that_repeats_its_default() -> None:
     """A value that the user typed counts, even when it is the same as the default of the parser."""
-    import artistools.plottransitions
-
-    parser = at.commands.SuggestingArgumentParser()
-    artistools.plottransitions.addargs(parser)
+    parser = get_parser_with_a_default_timestep()
     default = parser.get_default("timestep")
-    assert default is not None, "this test needs a command whose -timestep has a default"
 
     # the user names both, and the timestep happens to be the default, thus a test of the value alone
     # would miss the conflict
@@ -2440,12 +2460,8 @@ def test_check_time_selection_reads_a_flag_that_repeats_its_default() -> None:
 
 
 def test_check_time_selection_counts_a_default_as_absent() -> None:
-    """Plottransitions gives -timestep a default, thus that default must not count as a second range."""
-    import artistools.plottransitions
-
-    parser = at.commands.SuggestingArgumentParser()
-    artistools.plottransitions.addargs(parser)
-    assert parser.get_default("timestep") is not None, "this test needs a command whose -timestep has a default"
+    """A default of -timestep must not count as a second range."""
+    parser = get_parser_with_a_default_timestep()
 
     # the user named only -timedays, thus the default timestep must not raise
     at.misc.check_time_selection(parser, parser.parse_args(["-timedays", "300"]))
@@ -3560,18 +3576,6 @@ def test_getpath_and_version_keep_their_product_with_quiet(capsys: pytest.Captur
     assert capsys.readouterr().out.strip() == f"artistools {importlib.metadata.version('artistools')}"
 
 
-def test_a_folder_that_the_command_refuses_names_the_remedy(capsys: pytest.CaptureFixture[str]) -> None:
-    """The error must name the folder and not a "--" that the user never wrote, and it must name -modelpath."""
-    import artistools.__main__
-
-    modelpath = at.get_path("testdata") / "testmodel"
-    with pytest.raises(SystemExit):
-        artistools.__main__.main(argsraw=["timesteps", str(modelpath)])
-    message = capsys.readouterr().err
-    assert f"unrecognized arguments: {modelpath}" in message
-    assert f"-modelpath {modelpath}" in message
-
-
 def test_a_hidden_command_stays_out_of_the_suggestions(capsys: pytest.CaptureFixture[str]) -> None:
     """The help hides server and describeinputmodel, thus a suggestion, the list, and tab completion leave them out."""
     import artistools.__main__
@@ -3857,12 +3861,20 @@ def test_one_timestep_grid_from_timesteps_out_and_from_input_txt_gives_one_range
 
 
 def test_the_last_costheta_bin_holds_cos_theta_of_one() -> None:
-    """ARTIS puts a packet with cos θ = 1 in the last bin, thus the label of that bin includes its upper edge."""
+    """ARTIS puts a packet with cos θ = 1 in the last bin, thus the label of that bin includes its upper edge.
+
+    The labels in degrees give the same edges. θ decreases as cos θ increases, thus a bin is closed at its upper θ.
+    """
     from artistools.misc.dirbins import get_costheta_bins
 
     _, _, labels = get_costheta_bins(usedegrees=False)
     assert labels[-1] == "0.8 ≤ cos θ ≤ 1.0"
     assert labels[-2] == "0.6 ≤ cos θ < 0.8"
+
+    _, _, degreelabels = get_costheta_bins(usedegrees=True)
+    assert degreelabels[-1] == "0° ≤ θ ≤ 37°"
+    assert degreelabels[5] == "78° < θ ≤ 90°"
+    assert degreelabels[0] == "143° < θ ≤ 180°"
 
 
 def test_a_direction_bin_outside_the_bins_gives_a_message() -> None:
@@ -4083,3 +4095,113 @@ def test_artis_option_function_with_trailing_return_type_is_not_a_value() -> Non
     from artistools.misc.modelinfo import parse_artis_options
 
     assert parse_artis_options("constexpr auto F(int a) -> bool { return f(a); }\n") == {}
+
+
+def test_selected_timestep_takes_a_default_only_when_no_time_is_given() -> None:
+    """-timedays gives its time when the command has a default timestep. The default applies only when there is no time.
+
+    plottransitions gave -timestep the default last, thus a shared check would take each -timedays as a second time.
+    """
+    modelpath = at.get_path("testdata") / "testmodel"
+    lasttimestep = len(at.get_timestep_times(modelpath)) - 1
+    assert at.misc.get_selected_timestep(modelpath, None, None, defaulttimestep="last") == lasttimestep
+    assert at.misc.get_selected_timestep(modelpath, None, 300.0, defaulttimestep="last") == (
+        at.misc.get_timestep_of_timedays(modelpath, 300.0)
+    )
+    with pytest.raises(SystemExit):
+        at.misc.get_selected_timestep(modelpath, "5", 300.0)
+    with pytest.raises(SystemExit):
+        at.misc.get_selected_timestep(modelpath, None, None)
+
+
+def test_confirm_overwrite_matches_stops_for_a_file_of_the_pattern(tmp_path: Path) -> None:
+    """A command whose file names hold a timestep asks before it overwrites, as a command of fixed names does.
+
+    writespectra, writecomparisondata, and five other data commands overwrote their files with no prompt.
+    """
+    (tmp_path / "spectrum_ts03_1.20d.txt").write_text("x", encoding="utf-8")
+    at.misc.confirm_overwrite_matches(tmp_path, ("other_*.txt",), force=False)
+    # pytest gives no terminal, thus nobody can answer, and the command stops without --force
+    with pytest.raises(SystemExit):
+        at.misc.confirm_overwrite_matches(tmp_path, ("spectrum_ts*.txt",), force=False)
+    at.misc.confirm_overwrite_matches(tmp_path, ("spectrum_ts*.txt",), force=True)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("250-300", "250-300"),
+        ("1e-2-2e-2", "1e-2-2e-2"),
+        ("250d-300d", "250-300"),
+        ("12h-36h", "0.5-1.5"),
+        ("86400s", "1"),
+        ("1,5,30", "1,5,30"),
+        ("1d,12h-36h,30", "1,0.5-1.5,30"),
+    ],
+)
+def test_time_days_range_arg_splits_at_the_range_hyphen_only(text: str, expected: str) -> None:
+    """Convert a time range with units to days, and keep a text with no unit, which a plot label can show.
+
+    A hyphen of an exponent, e.g. 1e-2, is not the hyphen of the range. deposition reads a list such as 1,5,30.
+    """
+    from artistools.misc.cliutils import time_days_range_arg
+
+    assert time_days_range_arg(text) == expected
+
+
+def test_wavelength_and_time_units_convert_to_the_unit_of_the_command() -> None:
+    """Give a wavelength in Angstroms and a time in days, and refuse a unit of a different quantity."""
+    from artistools.misc.cliutils import time_days_arg
+    from artistools.misc.cliutils import wavelength_angstroms_arg
+
+    assert [wavelength_angstroms_arg(text) for text in ("6000", "600nm", "0.6micron", "6000Å")] == [6000.0] * 4
+    assert np.isclose(time_days_arg("2.592e6s"), 30.0, rtol=1e-12)
+    for convert, text in ((wavelength_angstroms_arg, "2keV"), (time_days_arg, "3yr")):
+        with pytest.raises(argparse.ArgumentTypeError):
+            convert(text)
+
+
+def test_explain_reads_no_packets_and_gives_the_timesteps(capsys: pytest.CaptureFixture[str]) -> None:
+    """Print the timesteps of the selection for --explain, and stop before the command reads a packet."""
+    from artistools.__main__ import main
+
+    modelfolder = at.get_path("testdata") / "test-classicmode_3d"
+    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", side_effect=AssertionError):
+        main(argsraw=["plotlastpacketinteraction", str(modelfolder), "-t", "6.5d", "-lambdamin", "300nm", "--explain"])
+    stdout = capsys.readouterr().out
+    assert "-xmin = 3000.0" in stdout
+    assert f"model: {modelfolder}" in stdout
+    assert "time: timesteps" in stdout
+
+
+def test_reversed_wavelength_selection_stops_before_the_read(capsys: pytest.CaptureFixture[str]) -> None:
+    """Stop at the parse when -lambdamin is above -lambdamax, because such a range selects no packet."""
+    from artistools.__main__ import main
+
+    modelfolder = at.get_path("testdata") / "test-classicmode_3d"
+    with (
+        mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", side_effect=AssertionError),
+        pytest.raises(SystemExit) as excinfo,
+    ):
+        main(argsraw=["plotlastpacketinteraction", str(modelfolder), "-lambdamin", "8000", "-lambdamax", "3000"])
+    assert excinfo.value.code == 1
+    assert "-lambdamin 8000 is above -lambdamax 3000" in capsys.readouterr().err
+
+
+def test_write_data_table_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
+    """Write JSON with null for NaN, because JSON has no NaN, and keep the comment lines in each format."""
+    import json
+
+    from artistools.misc.cliutils import write_data_table
+
+    dftable = pl.DataFrame({"name": ["a", "b"], "value": [1.5, math.nan]})
+    write_data_table(dftable, tmp_path / "table.json", commentlines=["made by a test"])
+    content = json.loads((tmp_path / "table.json").read_text(encoding="utf-8"))
+    assert content == {
+        "comments": ["made by a test"],
+        "rows": [{"name": "a", "value": 1.5}, {"name": "b", "value": None}],
+    }
+
+    write_data_table(dftable, tmp_path / "table.parquet", commentlines=["made by a test"])
+    pltest.assert_frame_equal(pl.read_parquet(tmp_path / "table.parquet"), dftable)
+    assert pl.read_parquet_metadata(tmp_path / "table.parquet")["comments"] == "made by a test"

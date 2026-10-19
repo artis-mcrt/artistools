@@ -97,6 +97,9 @@ def get_epilog() -> str:
         + '\n\nRun "artistools <command> --help" for the arguments of one command.'
         + "\nA command that reads a model takes its folder with -modelpath. Most of these commands also take the"
         + "\nfolder as the last positional argument."
+        + "\nA time or a wavelength can have a unit, e.g. -t 12h or -lambdamin 600nm. A value with no unit"
+        + "\nis in days or in Angstroms. --explain prints what the arguments select. Then it stops before it"
+        + "\nreads the data."
         + "\nSet ARTISTOOLS_TRACEBACK=1 to get the full traceback of an error."
     )
 
@@ -170,6 +173,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     ),
     "model commands": ("inputmodel", "makevpktinput"),
     "data commands": (
+        "cache",
         "deposition",
         "ejectaopacity",
         "exportmassfractions",
@@ -209,6 +213,18 @@ DESCRIBEINPUTMODEL = CommandSpec(
 )
 
 subcommandtree: CommandTree = {
+    "cache": CommandSpec(
+        "cache",
+        helptext="Make, list, or delete the parquet caches of the text output of an ARTIS model.",
+        note=(
+            "A reader converts a text file to a cache at the first read. 'make' does all the conversions at one"
+            " time, e.g. in the job script after a run of ARTIS."
+        ),
+        examples=(
+            ("make .", "the caches of the input model, the line list, the estimators, and the packets"),
+            ("list .", "the caches of the model and their sizes"),
+        ),
+    ),
     "catalog": CommandSpec(
         "catalog",
         helptext="Make a table of the ARTIS models below a folder, with one row for each model.",
@@ -221,7 +237,11 @@ subcommandtree: CommandTree = {
     "check": CommandSpec(
         "check",
         helptext="Check whether the results of an ARTIS model deserve trust, and give one row for each check.",
-        note="--frompackets also reads the escaped packets to find the Monte Carlo noise of the light curve.",
+        aliases=("doctor",),
+        note=(
+            "The checks also examine the input files, the caches, and the range of the arrival times. --frompackets"
+            " also reads the escaped packets to find the Monte Carlo noise of the light curve."
+        ),
         examples=((".", "the checks of the results of the model"),),
     ),
     "comparetogsinetwork": CommandSpec(
@@ -342,12 +362,7 @@ subcommandtree: CommandTree = {
         "make1dslicefrom3dmodel": CommandSpec(
             "inputmodel.make1dslicefrom3d",
             helptext="Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice.",
-            examples=(
-                (
-                    "-inputfolder . -axis x -outputfolder 1dslice",
-                    "a 1D slice of the 3D model along x, in the folder 1dslice",
-                ),
-            ),
+            examples=((". -axis x -o 1dslice", "a 1D slice of the 3D model along x, in the folder 1dslice"),),
             exampletestfolder="testmodel_3d_10^3",
         ),
         "makeartismodel": CommandSpec(
@@ -411,7 +426,7 @@ subcommandtree: CommandTree = {
         "to_tardis": CommandSpec(
             "inputmodel.to_tardis",
             helptext="Convert an ARTIS format model to TARDIS format.",
-            examples=(("-inputpath .", "the TARDIS model file of the input model"),),
+            examples=((".", "the TARDIS model file of the input model"),),
         ),
     },
     "installskill": CommandSpec(
@@ -481,8 +496,8 @@ subcommandtree: CommandTree = {
         examples=(
             (". -lambdamin 7000 -lambdamax 8000", "the median and the quartiles for all the directions"),
             (
-                ". -lambdamin 7000 -lambdamax 8000 -dirbin 0 50 90",
-                "the same for the two poles and the bin above the equator",
+                ". -lambdamin 7000 -lambdamax 8000 -dirbin 0 50 90 --average_over_phi_angle",
+                "the same for the two poles and the costheta bin above the equator",
             ),
         ),
         exampletestfolder="test-classicmode_3d",
@@ -496,9 +511,9 @@ subcommandtree: CommandTree = {
             " view from the level populations."
         ),
         examples=(
-            (". -t 7", "the last interactions of the packets that arrive at 7 days"),
+            (". -t 6.5", "the last interactions of the packets that arrive at 6.5 days"),
             (
-                ". -t 7 -groupby ion -lambdamin 3500 -lambdamax 4500",
+                ". -t 6.5 -groupby ion -lambdamin 3500 -lambdamax 4500",
                 "the luminosity of each ion against the velocity, for the packets from 3500 to 4500 Å",
             ),
         ),
@@ -528,7 +543,10 @@ subcommandtree: CommandTree = {
                 "where the lines with the largest tau_sobolev from 6000 to 6400 Å form at 7 days",
             ),
             (
-                ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau -troughdirbin 90 -photospherevelocity 15000",
+                (
+                    ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau -troughdirbin 90"
+                    " --average_over_phi_angle -photospherevelocity 15000km/s"
+                ),
                 "the same, with a Sobolev estimate of the trough for the observer at the pole",
             ),
         ),
@@ -563,8 +581,8 @@ subcommandtree: CommandTree = {
         note=(
             "The plot shows the expansion opacity, the line-binned opacity, and the line-binned opacity with"
             " each Sobolev optical depth limited to 1. Without -cell, it shows the mean over all cells, weighted"
-            " by mass. -vmin, -vmax, -costhetamin, and -costhetamax select the cells, e.g. the cells in front of the"
-            " photosphere of one direction."
+            " by mass. -vmin, -vmax, -dirbin, -costhetamin, and -costhetamax select the cells, e.g. the cells in front"
+            " of the photosphere of one direction."
         ),
         examples=(
             ("-modelpath . -ts 40 -xmin 3000 -xmax 4000", "the opacities at timestep 40, from 3000 to 4000 Angstroms"),
@@ -861,12 +879,12 @@ def get_subcommand_of_script(scriptname: str) -> tuple[str, ...]:
 
 def addcommandargs(parser: argparse.ArgumentParser, spec: CommandSpec) -> None:
     """Add the arguments of one subcommand to a parser, and record how to run it."""
-    from artistools.misc import addarg_quiet
+    from artistools.misc.cliutils import addarg_common
 
     submodule = importlib.import_module(f"artistools.{spec.module}")
     submodule.addargs(parser)
-    # run_command alone implements --quiet, thus every command takes it and no module declares it
-    addarg_quiet(parser)
+    # run_command alone implements --quiet, and __main__ implements --explain, thus no module declares them
+    addarg_common(parser)
     # __main__ tests the arguments against the defaults of this parser, thus it needs the parser itself.
     # parse_cli_args cannot make that test, because it returns at once for a parsed namespace, which is
     # what the dispatcher gives it
@@ -1168,8 +1186,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     def get_folder_help(self, words: "Sequence[str]") -> str:
         """Return the help line for words that this command refuses and that name a folder, or an empty string.
 
-        A command reads its positional paths as one group. A command with no positional path reads the folder from
-        -modelpath alone.
+        A command reads its positional paths as one group.
         """
         from artistools.misc.cliutils import KeepGivenPaths
         from artistools.misc.remote import is_remote_path
@@ -1179,8 +1196,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             return ""
         if any(isinstance(action, KeepGivenPaths) for action in self._actions):
             return "Write the paths in one group, in front of the options or after them"
-        if "-modelpath" in self._option_string_actions:
-            return f"This command reads the folder from -modelpath, e.g. -modelpath {folder}"
         return ""
 
     @t.override

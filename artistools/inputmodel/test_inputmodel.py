@@ -723,7 +723,7 @@ def test_makemodel_dimensionreduce_takes_only_a_lower_dimension(capsys: pytest.C
 
 
 def test_maketardismodel(tmp_path: Path) -> None:
-    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=tmp_path)
+    at.inputmodel.to_tardis.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path)
 
     csvytext = (tmp_path / f"{at.get_model_name(modelpath)}.csvy").read_text(encoding="utf-8")
     assert csvytext.startswith("---\n")
@@ -847,7 +847,7 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
     assert dfnucabund["fileindex"].to_list() == [0, 0, 1, 1]
     assert dfnucabund["massfrac"].to_list() == pytest.approx([10**-11.1798, 4 * 10**-1.27404] * 2)
 
-    with pytest.raises(KeyError, match="nz-plane00003"):
+    with pytest.raises(FileNotFoundError, match="nz-plane00003"):
         at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(tmp_path, 7, ["nz-plane00003"])
 
 
@@ -929,9 +929,9 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(
     warnings = capsys.readouterr().err
     for filename in ("nz-plane00002", "nz-plane00003", "nz-plane00004", "nz-plane00005"):
         assert f"{filename} in 1.tar.xz" in warnings
-    with pytest.raises(KeyError, match="nz-plane00002"):
+    with pytest.raises(FileNotFoundError, match="nz-plane00002"):
         reader(tmp_path / "bad", 1, ["nz-plane00001", "nz-plane00002"])
-    with pytest.raises(KeyError, match="nz-plane00003"):
+    with pytest.raises(FileNotFoundError, match="nz-plane00003"):
         reader(tmp_path / "bad", 1, ["nz-plane00003"])
 
 
@@ -2242,6 +2242,28 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_pat
         np.testing.assert_allclose(dftable[f"vel_{axis}_on_c"], vel_mid_on_c, rtol=1e-5)
 
 
+def test_a_cache_of_the_earlier_name_stays_in_use(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Use a cache named *.parquet.tmp, from before the caches took the name *.parquet, and do not convert again.
+
+    If a rename of the caches had no such rule, artistools would convert the data of each model again. This takes a
+    long time for a large model. A cache of the current name wins when both exist.
+    """
+    textfile = tmp_path / "model.txt"
+    textfile.write_text("x", encoding="utf-8")
+    legacycache = tmp_path / "model.txt.parquet.tmp"
+    legacycache.write_bytes(b"")
+    assert at.inputmodel.core.get_parquet_cache_path(textfile) == legacycache
+
+    currentcache = tmp_path / "model.txt.parquet"
+    currentcache.write_bytes(b"")
+    assert at.inputmodel.core.get_parquet_cache_path(textfile) == currentcache
+
+    at.inputmodel.core.remove_parquet_cache(textfile)
+    assert not currentcache.exists()
+    assert not legacycache.exists()
+    capsys.readouterr()
+
+
 @pytest.mark.benchmark
 def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True)
@@ -2306,7 +2328,7 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
 
     # the first load reads the text file, and it writes a cache, because the file is larger than 2 MiB.
     # The second load reads that cache
-    cachefilepath = outpath / "model.txt.parquet.tmp"
+    cachefilepath = outpath / "model.txt.parquet"
     for loadnumber in (0, 1):
         assert cachefilepath.is_file() == (loadnumber == 1)
         capsys.readouterr()
@@ -4443,9 +4465,7 @@ def test_make1dslicefrom3dmodel(tmp_path: Path) -> None:
     from artistools.inputmodel import make1dslicefrom3d
 
     outfolder = tmp_path / "slice"
-    make1dslicefrom3d.main(
-        argsraw=[], inputfolder=modelpath_3d, outputfolder=str(outfolder), pdfoutputfile=str(tmp_path / "slice.pdf")
-    )
+    make1dslicefrom3d.main(argsraw=[str(modelpath_3d), "-o", str(outfolder), "-opdf", str(tmp_path / "slice.pdf")])
 
     dfmodel, modelmeta = at.inputmodel.get_modeldata(outfolder, get_elemabundances=True, printwarningsonly=True)
     # the 10 x 10 x 10 grid has 5 cells on each side of the origin

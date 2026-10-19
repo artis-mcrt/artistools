@@ -25,6 +25,7 @@ Lsun_to_erg_per_s = 3.826e33  # Solar luminosity [erg/s]
 Mbol_sun = 4.74  # Absolute bolometric magnitude of the Sun
 
 day_to_s = 86400.0  # Day [s]
+hour_to_s = 3600.0  # Hour [s]
 
 angstroms_per_cm = 1e8  # Centimetre [Angstrom]
 angstroms_per_micron = 1e4  # Micrometre [Angstrom]

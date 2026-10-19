@@ -42,7 +42,6 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
-from artistools.misc.cliutils import positive_float_arg
 from artistools.misc.cliutils import positive_int_arg
 
 # the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
@@ -1476,17 +1475,6 @@ def save_figure(
         open_file(outpath)
 
 
-def save_or_show(fig: mplfig.Figure, outputfile: "Path | str | None", args: argparse.Namespace) -> None:
-    """Save the figure when an output file was given, otherwise show it. Close the figure either way."""
-    if outputfile:
-        save_figure(fig, outputfile, args=args)
-    else:
-        if getattr(args, "darkmode", False):
-            apply_dark_colours(fig, *DARKMODE_COLOURS)
-        plt.show()
-        plt.close(fig)
-
-
 def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) -> None:
     """Set the plot title, unless -notitle was given, placing it inside the axes for -inset_title."""
     # a command that defines neither flag still gets a title, thus a caller does not have to declare a
@@ -1976,30 +1964,31 @@ VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "$c$"}
 INVERSE_VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "(km/s)$^{-1}$", "c": "$c^{-1}$"})
 
 
-def addarg_velocityunit(parser: argparse.ArgumentParser, usetext: str = "") -> None:
-    """Add -velocityunit. usetext ends the help text, e.g. " of -groupby"."""
+def addarg_velocityunit(parser: argparse.ArgumentParser) -> None:
+    """Add -velocityunit, the unit of the velocity axis and of the logs."""
     parser.add_argument(
         "-velocityunit",
         choices=["auto", "kmps", "c"],
         default="auto",
         help=(
-            f"Unit of the velocity axis{usetext}: km/s or c. The value auto takes c for a model with a vmax of 0.2 c"
-            " or more, e.g. a kilonova, and km/s for a different model"
+            "Unit of the velocity axis: kmps (km/s) or c. The value auto takes c for a model with a vmax of 0.2 c or"
+            " more, e.g. a kilonova. Otherwise it takes kmps"
         ),
     )
 
 
-def addarg_velocitybins(parser: argparse.ArgumentParser, usetext: str = "") -> None:
-    """Add -nvelocitybins, -velocitymax, and -velocityunit. usetext ends each help text, e.g. " of -groupby"."""
+def addarg_velocitybins(parser: argparse.ArgumentParser) -> None:
+    """Add -nvelocitybins, -velocitymax, and -velocityunit."""
     parser.add_argument(
-        "-nvelocitybins", type=positive_int_arg, default=25, help=f"Number of velocity bins of equal width{usetext}"
+        "-nvelocitybins", type=positive_int_arg, default=25, help="Number of velocity bins of equal width"
     )
     parser.add_argument(
         "-velocitymax",
-        type=positive_float_arg,
-        help=f"Upper edge of the velocity bins{usetext}, in the unit of -velocityunit. Default: the corner of the grid",
+        dest="velocitymax_kmps",
+        type=positive_velocity_kmps_arg,
+        help="Upper edge of the velocity bins, with its unit, e.g. 0.3c or 90000km/s. Default: the corner of the grid",
     )
-    addarg_velocityunit(parser, usetext)
+    addarg_velocityunit(parser)
 
 
 def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps", "c"]:
@@ -2025,39 +2014,6 @@ def get_auto_velocity_unit(vmax_cmps: float) -> t.Literal["kmps", "c"]:
     return "c" if vmax_cmps / C_cm_per_s >= AUTO_VELOCITYUNIT_C_MIN_ON_C else "kmps"
 
 
-def addarg_costhetarange(parser: argparse.ArgumentParser) -> None:
-    """Add -costhetamin and -costhetamax, which select the cells by the direction of their centre."""
-    parser.add_argument(
-        "-costhetamin",
-        type=float,
-        help=(
-            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole of -dirbin 90."
-            " Default: -1"
-        ),
-    )
-    parser.add_argument(
-        "-costhetamax",
-        type=float,
-        help=(
-            "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 with -costhetamin 0 for the cells of -dirbin"
-            " 50. Default: 1"
-        ),
-    )
-
-
-def get_costheta_range(costhetamin: float | None, costhetamax: float | None) -> tuple[float, float] | None:
-    """Return the range of cos θ of -costhetamin and -costhetamax, or None to keep each cell."""
-    if costhetamin is None and costhetamax is None:
-        return None
-    costhetarange = (-1.0 if costhetamin is None else costhetamin, 1.0 if costhetamax is None else costhetamax)
-    if not -1.0 <= costhetarange[0] < costhetarange[1] <= 1.0:
-        exit_with_error(
-            f"-costhetamin {costhetarange[0]:g} and -costhetamax {costhetarange[1]:g} give no range of cos θ",
-            "Give -1 ≤ -costhetamin < -costhetamax ≤ 1",
-        )
-    return costhetarange
-
-
 def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
     """Return the text of a velocity in the unit of the velocity axis."""
     if unit == "c":
@@ -2078,28 +2034,20 @@ def get_cell_widths_kmps(modelmeta: Mapping[str, t.Any]) -> tuple[float, float, 
 
 
 def get_velocity_bin_edges_kmps(
-    modelpath: "Path | str", nbins: int, velocitymax: float | None, unit: t.Literal["kmps", "c"]
+    modelpath: "Path | str", nbins: int, velocitymax_kmps: float | None, unit: t.Literal["kmps", "c"]
 ) -> list[float]:
-    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax or to the grid corner.
+    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax_kmps or to the grid corner.
 
-    velocitymax is in the unit of the velocity axis. The corner of a 2D grid or a 3D grid is outside vmax. A cell in a
-    corner can hold much of the emission or the optical depth, e.g. in the fast ejecta of a kilonova.
+    unit is the unit of the log text. The corner of a 2D grid or a 3D grid is outside vmax. A cell in a corner can hold
+    much of the emission or the optical depth, e.g. in the fast ejecta of a kilonova.
     """
     if nbins < 1:
         exit_with_error(f"-nvelocitybins {nbins} gives no bins", "Give a number of 1 or more")
-    if velocitymax is not None:
-        if velocitymax <= 0.0:
-            exit_with_error(f"-velocitymax {velocitymax} gives no range", "Give a velocity above 0")
-        if unit == "c" and velocitymax > 1.0:
-            exit_with_error(
-                f"-velocitymax {velocitymax} is above the speed of light, and the velocity axis takes units of c",
-                "Give -velocitymax in units of c, or give -velocityunit kmps",
-            )
-        velocitymax_kmps = velocitymax * KMPS_PER_VELOCITYUNIT[unit]
+    if velocitymax_kmps is not None:
         if velocitymax_kmps > KMPS_PER_VELOCITYUNIT["c"]:
             exit_with_error(
-                f"-velocitymax {velocitymax} km/s is above the speed of light",
-                f"Give a velocity of {KMPS_PER_VELOCITYUNIT['c']:.0f} km/s or less",
+                f"-velocitymax {format_velocity(velocitymax_kmps, unit)} is above the speed of light",
+                "Give a velocity of 1c or less",
             )
     else:
         from artistools.inputmodel import get_modeldata
@@ -2111,6 +2059,80 @@ def get_velocity_bin_edges_kmps(
             f" is vmax times the square root of the number of dimensions ({modelmeta['dimensions']})"
         )
     return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
+
+
+def parse_velocity_argument(value: str, *, requireunit: bool = False) -> tuple[float, t.Literal["kmps", "c"]]:
+    """Return the velocity [km/s] and the unit of a command line value, e.g. 5000km/s or 0.1c.
+
+    A number with no unit is in km/s. With requireunit, a number with no unit gives an error.
+    """
+    text = value.strip()
+    unit: t.Literal["kmps", "c"]
+    if text.lower().endswith("km/s"):
+        numbertext, unit = text[: -len("km/s")], "kmps"
+    elif text.lower().endswith("c"):
+        numbertext, unit = text[:-1], "c"
+    else:
+        numbertext, unit = text, "kmps"
+    helptext = "Give a number that ends in km/s, e.g. 5000km/s, or a fraction of c, e.g. 0.1c"
+    if requireunit and numbertext == text:
+        msg = f"'{value}' has no unit. {helptext}"
+        raise argparse.ArgumentTypeError(msg)
+    try:
+        number = float(numbertext)
+    except ValueError:
+        number = math.nan
+    if not math.isfinite(number):
+        msg = f"'{value}' is not a finite velocity. {helptext}"
+        raise argparse.ArgumentTypeError(msg)
+
+    return (number * C_cm_per_s / km_to_cm if unit == "c" else number), unit
+
+
+def get_velocity_label(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
+    """Return a velocity in the unit that the user gave, e.g. 0.1c or 5000 km/s."""
+    return f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
+
+
+def positive_velocity_kmps_arg(text: str) -> float:
+    """Return the velocity [km/s] of a command line value with its unit, e.g. 0.1c or 30000km/s, when it is above 0.
+
+    A bare number gives an error, because its unit is not clear. The unit of the axis can come from the model, with
+    -velocityunit auto.
+    """
+    velocity_kmps, _ = parse_velocity_argument(text, requireunit=True)
+    if velocity_kmps <= 0.0:
+        msg = f"'{text}' is not a velocity above 0"
+        raise argparse.ArgumentTypeError(msg)
+    return velocity_kmps
+
+
+def velocity_kmps_arg(text: str) -> float:
+    """Return the velocity [km/s] of a command line value, e.g. 5000, 5000km/s, or 0.02c. A bare number is in km/s."""
+    return parse_velocity_argument(text)[0]
+
+
+def addarg_cellvelocity(
+    container: "argparse.ArgumentParser | argparse._MutuallyExclusiveGroup",  # pyright: ignore[reportPrivateUsage]
+    *,
+    multiple: bool = False,
+) -> None:
+    """Add -velocity (-v), which selects the cell of a 1D model by its radial velocity, into args.velocity_kmps.
+
+    A number with no unit is in km/s, and a value can also take a unit, e.g. 0.02c. With multiple, the option takes
+    one or more values and gives a list.
+    """
+    container.add_argument(
+        "-velocity",
+        "-v",
+        dest="velocity_kmps",
+        type=velocity_kmps_arg,
+        nargs="+" if multiple else None,
+        help=(
+            "Select the cell of a 1D model by its radial velocity, e.g. 5000 (km/s), 5000km/s, or 0.02c"
+            + (". Give more than one value for more than one cell" if multiple else "")
+        ),
+    )
 
 
 def get_signed_velocity_bin_edges_kmps(velocityedges_kmps: Sequence[float]) -> list[float]:

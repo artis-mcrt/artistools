@@ -961,12 +961,15 @@ def test_command_groups_name_every_visible_command() -> None:
 
 
 def test_cli_bad_argument_gives_short_error(capsys: pytest.CaptureFixture[str]) -> None:
-    """A bad argument value must exit with a one-line error on stderr instead of a traceback."""
+    """A bad argument value must exit with a one-line error on stderr instead of a traceback.
+
+    The type of -timedays reads the time, thus argparse refuses the value with its exit status 2 before any read.
+    """
     import artistools.__main__
 
     with pytest.raises(SystemExit) as excinfo:
         artistools.__main__.main(argsraw=["plotspectra", str(modelpath), "-timedays", "banana"])
-    assert excinfo.value.code == 1
+    assert excinfo.value.code == 2
     captured = capsys.readouterr()
     assert "banana" in captured.err
     assert "Traceback" not in captured.err
@@ -1127,8 +1130,8 @@ def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
     assert (tmp_path / "map.png").read_bytes().startswith(pngmagic)
 
 
-def test_every_command_that_saves_a_plot_has_darkmode() -> None:
-    """--darkmode applies to each plot file, thus each command that saves a plot must accept it.
+def test_every_command_that_saves_a_plot_has_darkmode_show_and_open() -> None:
+    """--darkmode, --show, and --open apply to each plot file, thus each command that saves a plot must accept them.
 
     Only the commands with --show had --darkmode, thus e.g. plotlogfiles wrote a light PDF file. A command can save
     the plot in a module that it imports, e.g. makeartismodel with --downscaleplot, thus the check follows the imports.
@@ -1137,7 +1140,7 @@ def test_every_command_that_saves_a_plot_has_darkmode() -> None:
     import re
 
     # matplotlib, plotly, and pyvista each have a function that writes a plot file
-    savesplot = re.compile(r"save_figure\(|savefig\(|save_or_show\(|write_image\(|write_html\(|screenshot=")
+    savesplot = re.compile(r"save_figure\(|savefig\(|write_image\(|write_html\(|screenshot=")
     packagefolder = Path(at.__file__).parent
     # plottools defines save_figure, and each module that draws a plot imports it
     writermodules = {
@@ -1152,6 +1155,7 @@ def test_every_command_that_saves_a_plot_has_darkmode() -> None:
         return [spec for node in tree.values() for spec in (walktree(node) if isinstance(node, dict) else [node])]
 
     plotmodules = 0
+    missingflags: list[str] = []
     for spec in walktree(at.commands.subcommandtree):
         module = importlib.import_module(f"artistools.{spec.module}")
         importedmodules = set(re.findall(r"^from (artistools[\w.]*) import", inspect.getsource(module), re.MULTILINE))
@@ -1163,6 +1167,9 @@ def test_every_command_that_saves_a_plot_has_darkmode() -> None:
         actions = parser._actions  # ruff:ignore[private-member-access]
         flags = {flag for action in actions for flag in action.option_strings}
         assert "--darkmode" in flags, f"{spec.module} saves a plot but has no --darkmode"
+        missingflags.extend(f"{spec.module} {flag}" for flag in ("--show", "--open") if flag not in flags)
+    # save_figure reads --show and --open, thus each command that saves a plot also gives them
+    assert not missingflags
     assert plotmodules >= 22
 
 
@@ -1335,7 +1342,7 @@ def test_plotspherical_gif(tmp_path: Path) -> None:
 @pytest.mark.benchmark
 def test_logfiles(mockplot: mock.MagicMock) -> None:
     """Log file timings are parsed for every stage and rank, and plotted one page per timestep."""
-    logfilepaths = at.plotlogfiles.read_logfiles(modelpath_classic_3d)
+    logfilepaths = at.plotlogfiles.get_model_logfiles(modelpath_classic_3d)
     # compressed log files must be read too, not skipped
     assert sorted(path.name for path in logfilepaths) == [
         "output_0-0.txt",
@@ -1469,7 +1476,10 @@ def test_writecomparisondata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     The default model path "." gave an empty model name, e.g. spectra__artisnebular.txt.
     """
     monkeypatch.chdir(modelpath)
-    at.writecomparisondata.main(argsraw=[], modelpath=Path(), outputpath=tmp_path, selected_timesteps=list(range(99)))
+    # CodSpeed runs a benchmark more than one time in one folder, thus the later runs find the files of the first
+    at.writecomparisondata.main(
+        argsraw=[], modelpath=Path(), outputpath=tmp_path, selected_timesteps=list(range(99)), force=True
+    )
 
     assert sorted(path.name for path in tmp_path.iterdir()) == [
         "edep_testmodel_artisnebular.txt",
@@ -2271,12 +2281,16 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
 
 @pytest.mark.parametrize(
     ("photospherevelocity", "errortext"),
-    [("350000", "above the speed of light"), ("0.05", "a third of the width of a cell")],
+    [("350000km/s", "above the speed of light"), ("0.05", "has no unit"), ("10km/s", "a third of the width of a cell")],
 )
-def test_plotlinecontributions_stops_for_a_photosphere_velocity_in_the_wrong_unit(
+def test_plotlinecontributions_stops_for_a_photosphere_velocity_with_no_unit_or_no_resolution(
     photospherevelocity: str, errortext: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Stop before the estimators for a km/s value above c, and for a value in units of c on a km/s axis."""
+    """Stop before the estimators for a velocity above c, a number with no unit, or a disk smaller than a cell.
+
+    A bare number took the unit of -velocityunit, whose default depends on the model, thus 0.05 meant for 0.05 c gave
+    0.05 km/s.
+    """
     with pytest.raises(SystemExit):
         at.plotlinecontributions.main(
             argsraw=[
@@ -2371,6 +2385,7 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
             edges,
             (cellwidth_kmps, cellwidth_kmps, cellwidth_kmps),
             relativisticdoppler=relativisticdoppler,
+            averageoverphi=True,
         )
 
     edges = [1000.0 * index for index in range(9)]
@@ -2446,7 +2461,9 @@ def get_trough_of_box_grid(
     profiles = LineVelocityProfiles(pl.DataFrame(), pl.DataFrame(lines), pl.DataFrame(), pl.DataFrame(), dfrankedcells)
     inputs = CellLineInputs(dfcells, pl.DataFrame(), {}, pl.DataFrame(), 1.0)
     edges = [1000.0 * index for index in range(9)]
-    return get_sobolev_trough(profiles, inputs, 90, 4000.0, edges, widths, relativisticdoppler=False)
+    return get_sobolev_trough(
+        profiles, inputs, 90, 4000.0, edges, widths, relativisticdoppler=False, averageoverphi=True
+    )
 
 
 def test_sobolev_trough_blends_lines_on_each_ray_and_takes_each_cell_width() -> None:
@@ -3220,15 +3237,16 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
         " with vmin = 0.1c and vmax = 0.2c" in (capsys.readouterr().out)
     )
 
-    # -costhetamin selects the cells near the pole at +z, as for -dirbin 90 of the spectra
-    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-costhetamin", "0.8"])
-    costhetarange = at.plottools.get_costheta_range(args.costhetamin, args.costhetamax)
-    dfpolarcells = at.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, costhetarange)
+    # -costhetamin selects the cells near the pole at +z, and -dirbin 90 selects the same cells
     expectedpolar = set(
         dfvelocities.filter((pl.col("vel_r_mid_on_c") >= 0.1) & (pl.col("costheta") >= 0.8))["modelgridindex"]
     )
     assert 0 < len(expectedpolar) < len(set(dfestimators["modelgridindex"]))
-    assert set(dfpolarcells["modelgridindex"]) == expectedpolar & set(dfestimators["modelgridindex"])
+    for selectionargs in (["-costhetamin", "0.8"], ["-dirbin", "90"]):
+        args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", *selectionargs])
+        costhetarange = at.misc.get_costheta_range(args)
+        dfpolarcells = at.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, costhetarange)
+        assert set(dfpolarcells["modelgridindex"]) == expectedpolar & set(dfestimators["modelgridindex"])
 
     args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
     assert at.plotopacity.get_cells_text(None, args.vmin, args.vmax) == (
@@ -3576,6 +3594,22 @@ def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: 
     assert dftable["time"].is_between(4.5, 6.5).all()
     assert dftable.height > 0
     assert read_data_file(tmp_path / "linefluxes_comparisons.txt")["time"].is_between(4.5, 6.5).all()
+
+
+def test_linefluxes_refuse_two_features_that_share_a_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A packet of a line that both features hold counted in both sums, thus the ratio noise was not correct.
+
+    Two identical features gave a ratio of exactly 1 and a noise above 0.
+    """
+    with pytest.raises(SystemExit):
+        at.plotlinefluxes.main(
+            argsraw=[],
+            modelpath=[modelpath_classic_3d],
+            emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 7155, 7100, 7200)],
+            outputfile=tmp_path / "linefluxes.pdf",
+        )
+    assert "of the ratio share" in capsys.readouterr().err
+    assert not (tmp_path / "linefluxes.pdf").exists()
 
 
 def test_linefluxes_floers_ratio_file_with_no_w7_model(tmp_path: Path) -> None:
@@ -4266,9 +4300,9 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
         artistools.lightcurve.plotlightcurve.addargs: (
             ["--plot_cmf", "-timedaysmin", "260", "--title", "x"],
             ("plotcmf", "timemin", "title"),
-            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "--title"),
+            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "--title", "-xmin", "-xmax"),
         ),
-        artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("tmin",), ()),
+        artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("timemin",), ()),
     }
     for addargs, (argsraw, dests, hidden) in cases.items():
         parser = argparse.ArgumentParser()
@@ -4528,6 +4562,45 @@ def test_every_command_takes_quiet() -> None:
         assert flagsofdest.get("quiet") == ["--quiet", "-q"], f"{subcommand} must take --quiet"
 
 
+def test_every_time_and_wavelength_option_takes_a_unit() -> None:
+    """Each option of a time or a wavelength reads its value with a unit, thus "-t 12h" works on every command.
+
+    plotspectra reads -lambdamin as a number in the unit of -xunit, thus it alone takes a plain float.
+    """
+    import artistools.__main__
+    from artistools.misc.cliutils import time_days_arg
+    from artistools.misc.cliutils import time_days_range_arg
+    from artistools.misc.cliutils import wavelength_angstroms_arg
+
+    unittypes = {
+        "-timemin": {time_days_arg},
+        "-timemax": {time_days_arg},
+        "-timedays": {time_days_arg, time_days_range_arg},
+        "-lambdamin": {wavelength_angstroms_arg},
+        "-lambdamax": {wavelength_angstroms_arg},
+    }
+    checked = 0
+    for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
+        for action in subparser._actions:  # ruff:ignore[private-member-access]
+            if type(action).__name__ == "UnsupportedArgument" or subcommand in {"plotspectra", "spec"}:
+                continue
+            for flag in set(unittypes).intersection(action.option_strings):
+                assert action.type in unittypes[flag], f"{subcommand} {flag} reads no unit"
+                checked += 1
+    assert checked >= 20
+
+
+def test_every_command_that_reads_a_model_takes_explain() -> None:
+    """--explain shows the selection before a long read, thus each command with a model path must take it."""
+    import artistools.__main__
+    from artistools.misc.cliutils import MODELPATH_DESTS
+
+    for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
+        flagsofdest = get_flags_of_dest(subparser)
+        if any(dest in flagsofdest for dest in MODELPATH_DESTS):
+            assert flagsofdest.get("explain") == ["--explain"], f"{subcommand} must take --explain"
+
+
 def get_every_subcommand(parser: argparse.ArgumentParser) -> Iterator[tuple[str, argparse.ArgumentParser]]:
     """Give the name and the parser of each subcommand, at every depth of the tree."""
     for action in parser._actions:  # ruff:ignore[private-member-access]
@@ -4781,9 +4854,9 @@ def test_v_keeps_the_meaning_that_each_command_gave_it() -> None:
     import artistools.__main__
 
     olddestof = {
-        "plotradfield": "velocity",
-        "plotnltepops": "velocity",
-        "spencerfano": "velocity",
+        "plotradfield": "velocity_kmps",
+        "plotnltepops": "velocity_kmps",
+        "spencerfano": "velocity_kmps",
         "makeartismodel1dslicefromcone": "rhoscale",
     }
     seen = set()
@@ -5007,9 +5080,9 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
             modulename = modulebycommand[subcommand]
             module = REPOPATH / "artistools" / Path(*modulename.split(".")).with_suffix(".py")
             text = module.read_text(encoding="utf-8")
-            assert "resolve_outputfile" in text or "resolve_frameset_paths" in text, (
-                f"{subcommand} writes one file, thus it must name that file"
-            )
+            assert any(
+                name in text for name in ("resolve_outputfile", "resolve_frameset_paths", "resolve_table_outputfile")
+            ), f"{subcommand} writes one file, thus it must name that file"
 
     assert withoutput > 20, "the tree must hold many commands that write output"
 
@@ -5049,7 +5122,7 @@ def test_the_help_of_a_long_command_holds_no_wall_of_flags() -> None:
 
     shortcommand = subactions[0].choices["timesteps"].format_usage()
     assert "[options]" not in shortcommand, "a command of few flags names them"
-    assert "-modelpath" in shortcommand
+    assert "modelpath" in shortcommand
 
     # a default that says nothing stays out of the help text
     estimatorshelp = subactions[0].choices["plotestimators"].format_help()
@@ -5631,7 +5704,9 @@ def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> Non
 
     # ARTIS wrote no timestep after the last one, thus the file gives zero there and the export goes on
     lasttimestep = len(at.get_timestep_times(modelpath)) - 1
-    at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[lasttimestep])
+    at.writecomparisondata.main(
+        argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[lasttimestep], force=True
+    )
     datalines = [
         line for line in (tmp_path / "edep_testmodel_artisnebular.txt").read_text().splitlines() if line[0] != "#"
     ]
@@ -6454,10 +6529,10 @@ def test_viewer_removes_an_option_of_two_values_with_its_values_alone() -> None:
     remove_options took each token up to the next flag, as for nargs "*", thus the command lost a path after the values.
     """
     parser = viewercore.make_parser(at.spectra.plotspectra.addargs)
-    tokens = ["-emissionvelocityrange", "1000", "2000", "mymodel", "-xmin", "5"]
-    assert viewercore.remove_options(parser, tokens, {"emissionvelocityrange"}) == ["mymodel", "-xmin", "5"]
+    tokens = ["-emissionradialvelocityrange", "1000", "2000", "mymodel", "-xmin", "5"]
+    assert viewercore.remove_options(parser, tokens, {"emissionradialvelocityrange"}) == ["mymodel", "-xmin", "5"]
     rows, othertokens = viewercore.split_option_rows(parser, tokens)
-    assert rows == (("-emissionvelocityrange", ("1000", "2000")), ("-xmin", ("5",)))
+    assert rows == (("-emissionradialvelocityrange", ("1000", "2000")), ("-xmin", ("5",)))
     assert othertokens == ["mymodel"]
 
 
@@ -8197,7 +8272,7 @@ def test_check_that_fails_gives_an_error_row_and_the_other_checks_run() -> None:
 
     with mock.patch("artistools.check.check_temperature_limits", side_effect=RuntimeError("no\nestimators")):
         dfresults = get_check_results(modelpath_classic_3d)
-    assert dfresults.height == 6
+    assert dfresults.height == 9
     assert dfresults.filter(pl.col("check") == "temperature limits").select("status", "detail").row(0) == (
         "error",
         "RuntimeError: no estimators",
@@ -8376,6 +8451,21 @@ def test_values_warn_about_a_cell_with_no_estimators_at_one_timestep(capsys: pyt
     assert "modelgridindex 1 has no estimators at timestep 1" in capsys.readouterr().err
 
 
+def test_values_warn_about_a_requested_cell_in_the_direction_range(capsys: pytest.CaptureFixture[str]) -> None:
+    """-dirbin with -cell warns about a requested cell in the range that has no estimators, e.g. a cell with no matter.
+
+    The warning took only the cells of the table, thus such a cell gave no warning. Cell 932 is near the pole and holds
+    no matter. Cell 402 is near the equator, thus it is outside the range, and it gives no warning.
+    """
+    from artistools.values import main
+
+    main(argsraw=["Te", "-ts", "25", "-dirbin", "90", "-cell", "402,644,932", str(modelpath_classic_3d)])
+
+    stderr = capsys.readouterr().err
+    assert "modelgridindex 932 has no estimators" in stderr
+    assert "402" not in stderr
+
+
 def test_values_with_quiet_print_only_the_table(capsys: pytest.CaptureFixture[str]) -> None:
     """--quiet must leave only the table on the standard output, thus a script can read it directly."""
     import artistools.__main__
@@ -8399,3 +8489,85 @@ def test_values_of_an_unknown_variable_name_the_listing(capsys: pytest.CaptureFi
     assert "'Tee' is not a variable" in stderr
     assert "Did you mean Te?" in stderr
     assert "--listvariables" in stderr
+
+
+def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Path) -> None:
+    """Delete the caches and the leftover files of a stopped conversion, and keep each file that is not a cache.
+
+    A deleted lock file can give the lock to two writers. A parquet file of a different name belongs to the user, also
+    when it ends in .out.parquet.
+    """
+    from artistools.cache import main as cachemain
+
+    deleted = [
+        "model.txt.parquet",
+        "linelist.out.parquet.tmp",
+        "packets/packetsbatch00_0000_0003.out.parquet",
+        "12411848.slurm/estimbatch00_0000_0003.out.parquet",
+        "packets/.packetsbatch01_0004_0007.out.parquet.partialab12.partial",
+        "12411848.slurm/.estimators_allranks.out.parquet.parts9x/ts00001_part00000.parquet",
+    ]
+    kept = [
+        "packets/.packetsbatch00_0000_0003.out.parquet.replace-lock",
+        "spectrum_data.parquet",
+        "science.out.parquet",
+        "analysis/.analysis.parts.backup/notes.txt",
+        "model.txt",
+    ]
+    for name in [*deleted, *kept]:
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("x")
+
+    cachemain(argsraw=["delete", "-f", str(tmp_path)])
+
+    assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted(kept)
+
+
+def test_check_names_the_missing_input_files_and_the_leftover_files(tmp_path: Path) -> None:
+    """Give a warning for each missing input file and for the files that a stopped conversion left."""
+    from artistools.check import check_caches
+    from artistools.check import check_input_files
+
+    (tmp_path / "input.txt").write_text("")
+    (tmp_path / "model.txt.zst").write_text("")
+    (tmp_path / "packets").mkdir()
+    (tmp_path / "packets" / ".packetsbatch00_0000_0003.out.parquet.partialab12.partial").write_text("x")
+
+    status, detail = check_input_files(tmp_path)
+    assert status == "warning"
+    assert "model.txt" not in detail
+    assert "no abundances.txt" in detail
+    assert "no adata.txt" in detail
+    status, detail = check_caches(tmp_path)
+    assert status == "warning"
+    assert "1 leftover files of conversions that stopped" in detail
+
+
+def test_linefluxes_ratio_noise_adds_the_noise_of_the_two_features_in_quadrature() -> None:
+    """Give each feature the noise sqrt(sum(e^2)) / sum(e) of its packets, and the ratio the root of the sum of squares.
+
+    A time bin with no packet of a feature has no noise value, thus its ratio has none either.
+    """
+    from artistools.plotlinefluxes import add_ratio_noise
+    from artistools.plotlinefluxes import FeatureTuple
+    from artistools.plotlinefluxes import get_line_luminosities_from_packets
+
+    features = [
+        FeatureTuple(f"feature{index}", "label", 1000.0, [index], 990.0, 1010.0, 26, 2, [1], [0]) for index in (1, 2)
+    ]
+    dfpackets = pl.LazyFrame({
+        "trueemissiontype": [1, 1, 1, 2, 2],
+        "e_rf": [1.0, 2.0, 3.0, 4.0, 4.0],
+        "t_arrive_d": [1.5, 1.5, 1.5, 1.5, 2.5],
+    })
+    with mock.patch.object(at.plotlinefluxes, "get_packets", return_value=(1, dfpackets)):
+        dflcdata = get_line_luminosities_from_packets(
+            "trueemissiontype", features, modelpath_classic_3d, arr_tstart=[1.0, 2.0], arr_tend=[2.0, 3.0]
+        )
+    assert np.isclose(dflcdata["feature1_relnoise"][0], math.sqrt(1 + 4 + 9) / 6, rtol=1e-12)
+    assert dflcdata["feature1_relnoise"][1] is None
+    assert np.allclose(dflcdata["feature2_relnoise"].to_numpy(), [1.0, 1.0], rtol=1e-12, atol=0)
+
+    dfratio = add_ratio_noise(dflcdata.with_columns(fratio=pl.lit(1.0)), ["feature1", "feature2"])
+    assert np.isclose(dfratio["fratio_relnoise"][0], math.sqrt((math.sqrt(14) / 6) ** 2 + 1), rtol=1e-12)
+    assert dfratio["fratio_relnoise"][1] is None

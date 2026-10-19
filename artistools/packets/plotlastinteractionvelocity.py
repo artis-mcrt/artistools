@@ -10,14 +10,19 @@ import polars as pl
 
 from artistools.constants import c_ang_per_s
 from artistools.constants import km_to_cm
+from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timeminmax
+from artistools.misc import addarg_wavelengthrange
 from artistools.misc import exit_with_error
+from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
@@ -28,8 +33,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
-from artistools.misc.dirbins import check_costheta_dirbin
+from artistools.misc.dirbins import check_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.misc.general import get_bin_index_expr
 from artistools.packets.core import addarg_velocitykind
@@ -70,19 +74,26 @@ def get_last_interaction_velocity_quartiles(
     velocitykind: t.Literal["radial", "lineofsight"],
     histogrambinwidth_kmps: float,
     timerange_days: tuple[float, float],
+    *,
+    plotinvalidpart: bool,
+    averageoverphi: bool = False,
+    maxpacketfiles: int | None = None,
 ) -> dict[int, tuple[pl.DataFrame, int]]:
     """Return, for each direction bin, the velocity quartiles of the last interaction of each timestep.
 
     Each value of the dictionary also gives the number of packets with no position. The packets are the escaped
     r-packets with a rest-frame wavelength from lambdamin to lambdamax at the escape. A packet takes the timestep of its
     arrival time, and a timestep is in the result if its mid time is in timerange_days. A range with no mid time of
-    the model gives a warning and empty tables, because a different model can have timesteps in the range.
+    the model gives a warning and empty tables, because a different model can have timesteps in the range. A timestep
+    outside the valid range of the arrival times holds only a part of the light, thus only plotinvalidpart keeps it.
 
     The quartiles take the energy of each packet as the weight, and each velocity takes the centre of its bin of the
     histogram. One scan of the packets gives the quartiles of all the direction bins. A direction bin takes all the phi
     bins of its costheta bin, and -1 takes all the directions.
     """
-    _, lzpackets = get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    _, lzpackets = get_packets(
+        modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+    )
     tstarts = get_timestep_times(modelpath, loc="start")
     tends = get_timestep_times(modelpath, loc="end")
     timemids = get_timestep_times(modelpath, loc="mid")
@@ -93,6 +104,10 @@ def get_last_interaction_velocity_quartiles(
             f" {timemids[0]:.2f} to {timemids[-1]:.2f} d"
         )
         return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
+    if not plotinvalidpart:
+        timesteps = get_timesteps_in_valid_range(modelpath, timesteps)
+        if not timesteps:
+            return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
     print_arrival_time_method(modelpath, timesteps, "each timestep with a mid time from -timemin to -timemax")
     print_last_interaction_convention(modelpath)
     timeedges = [*tstarts, tends[-1]]
@@ -110,12 +125,13 @@ def get_last_interaction_velocity_quartiles(
         .select(
             "e_rf",
             "costhetabin",
+            "dirbin",
             timestep=get_bin_index_expr(pl.col("t_arrive_d"), timeedges),
             # a packet with no record has a velocity of NaN, and the cast gives it no bin
             velocitybin=(velocity_kmps / histogrambinwidth_kmps).floor().cast(pl.Int64, strict=False),
         )
         .filter(pl.col("timestep").is_in(timesteps))
-        .group_by("costhetabin", "timestep", "velocitybin")
+        .group_by("costhetabin", "dirbin", "timestep", "velocitybin")
         .agg(
             pl.col("e_rf").cast(pl.Float64).sum(),
             energysquared=(pl.col("e_rf").cast(pl.Float64) ** 2).sum(),
@@ -127,7 +143,12 @@ def get_last_interaction_velocity_quartiles(
     nphibins = get_viewingdirection_phibincount()
     results = {}
     for dirbin in dirbins:
-        dfdirbin = dfhistogram if dirbin == -1 else dfhistogram.filter(pl.col("costhetabin") == dirbin // nphibins)
+        if dirbin == -1:
+            dfdirbin = dfhistogram
+        elif averageoverphi:
+            dfdirbin = dfhistogram.filter(pl.col("costhetabin") == dirbin // nphibins)
+        else:
+            dfdirbin = dfhistogram.filter(pl.col("dirbin") == dirbin)
         dfdirbin = dfdirbin.group_by("timestep", "velocitybin").agg(
             pl.col("e_rf", "energysquared", "packetcount").sum()
         )
@@ -157,6 +178,36 @@ def get_last_interaction_velocity_quartiles(
         )
         results[dirbin] = (dfquartiles, norecordcount)
     return results
+
+
+def get_timesteps_in_valid_range(modelpath: Path, timesteps: Sequence[int]) -> list[int]:
+    """Return the timesteps inside the valid range of the arrival times, and log the timesteps that it leaves out."""
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tends = get_timestep_times(modelpath, loc="end")
+    try:
+        _, validstart_days, validend_days = get_escaped_arrivalrange(modelpath)
+    except FileNotFoundError:
+        return list(timesteps)
+    validtimesteps = [
+        timestep
+        for timestep in timesteps
+        if validstart_days is not None
+        and validend_days is not None
+        and tstarts[timestep] >= validstart_days
+        and tends[timestep] <= validend_days
+    ]
+    if len(validtimesteps) < len(timesteps):
+        rangetext = (
+            "The model has no valid range of the arrival times"
+            if validstart_days is None or validend_days is None
+            else f"The valid range of the arrival times is {validstart_days:.3g} to {validend_days:.3g} d"
+        )
+        print_warning(
+            f"{rangetext}, thus the command leaves out {len(timesteps) - len(validtimesteps)} of {len(timesteps)}"
+            f" timesteps of {modelpath}. The light of a part of the ejecta does not reach the observer in them."
+            " --plotinvalidpart keeps them"
+        )
+    return validtimesteps
 
 
 def print_method(
@@ -203,7 +254,7 @@ def plot_velocity_against_time(
         _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
         histogrambinwidth_kmps = get_grid_corner_velocity_kmps(modelmeta) / VELOCITYHISTOGRAMBINS
         print_method(position, args.velocitykind, args.xmin, args.xmax, histogrambinwidth_kmps)
-        dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=True, usedegrees=True)
+        dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=args.average_over_phi_angle)
         timerange_days = (
             -math.inf if args.timemin is None else args.timemin,
             math.inf if args.timemax is None else args.timemax,
@@ -217,6 +268,9 @@ def plot_velocity_against_time(
             args.velocitykind,
             histogrambinwidth_kmps,
             timerange_days,
+            plotinvalidpart=args.plotinvalidpart,
+            averageoverphi=args.average_over_phi_angle,
+            maxpacketfiles=args.maxpacketfiles,
         )
         for dirbin in args.dirbin:
             dfquartiles, norecordcount = quartilesofdirbin[dirbin]
@@ -296,27 +350,16 @@ def plot_velocity_against_time(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of ARTIS models")
-    parser.add_argument(
-        "-xmin",
-        "-lambdamin",
-        type=float,
-        help="Minimum rest-frame wavelength of the packets at the escape in Angstroms",
-    )
-    parser.add_argument(
-        "-xmax",
-        "-lambdamax",
-        type=float,
-        help="Maximum rest-frame wavelength of the packets at the escape in Angstroms",
-    )
+    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of the ARTIS models")
+    addarg_wavelengthrange(parser, "the packets at the escape, in the rest frame,")
     parser.add_argument(
         "-dirbin",
         type=int,
         nargs="+",
         default=[-1],
         help=(
-            "The first direction bin of each costheta bin, e.g. 0 50 90. Each series takes all the phi bins of its"
-            " costheta bin. The value -1 takes all the directions"
+            "The direction bins of the escaped packets, as in plotspectra, e.g. 0 55 99. --average_over_phi_angle"
+            " takes all the phi bins of the costheta bin of each. The value -1 takes all the directions"
         ),
     )
     addarg_timeminmax(parser)
@@ -330,6 +373,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="file", defaultname=DEFAULTOUTPUTNAME, helptext="Path/filename for the plot file")
     addarg_figscale(parser)
     addarg_data_output(parser)
+    addarg_plotinvalidpart(parser, "the timesteps")
+    addarg_averageoverphi(parser)
+    addarg_maxpacketfiles(parser)
     addarg_show(parser)
     addarg_darkmode(parser)
 
@@ -343,11 +389,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             "Give -lambdamin and -lambdamax, e.g. -lambdamin 7200 -lambdamax 7800",
         )
     for dirbin in args.dirbin:
-        check_costheta_dirbin(dirbin, "-dirbin", allowall=True)
+        check_dirbin(dirbin, "-dirbin", averageoverphi=args.average_over_phi_angle, allowall=True)
     args.modelpath = normalize_path_list(args.modelpath)
     unit = get_velocity_unit(args.modelpath[0], args.velocityunit)
 
     tables, fig = plot_velocity_against_time(args, unit)
-    outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME)
+    outputfile = Path(args.outputfile)
     output_data(args, tables, outputfile)
     save_figure(fig, outputfile, args=args)

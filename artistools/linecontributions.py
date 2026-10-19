@@ -24,17 +24,16 @@ from artistools.constants import km_to_cm
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import get_excitation_temperature_column
 from artistools.ejectaopacity import get_opacity_atomic_data
-from artistools.ejectaopacity import get_selected_timestep
 from artistools.estimators import scan_estimators
-from artistools.inputmodel import get_cell_selection
-from artistools.misc import addarg_force
+from artistools.inputmodel import get_costheta_selection
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_output
+from artistools.misc import addarg_table_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
-from artistools.misc import confirm_overwrite
+from artistools.misc import addarg_wavelengthrange
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
@@ -43,16 +42,13 @@ from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
-from artistools.misc import print_product
-from artistools.misc import print_saved
+from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
+from artistools.misc import resolve_table_outputfile
 from artistools.misc.cliutils import CommaJoinAction
-from artistools.misc.cliutils import get_provenance_lines
 from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.cliutils import write_data_table
 from artistools.misc.columns import get_column_description_lines
-from artistools.misc.dirbins import get_costheta_bins
+from artistools.misc.dirbins import get_dirbin_centre_direction
 from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
 from artistools.plottools import get_velocity_bin_index_expr
@@ -552,18 +548,9 @@ def get_cell_line_inputs(
         )
 
     if costhetarange is not None:
-        if "vel_z_mid" not in estimatorcolumns:
-            exit_with_error(
-                "a 1D model has no direction of a cell, thus -costhetamin and -costhetamax cannot select cells",
-                "Remove -costhetamin and -costhetamax",
-            )
         # a cell on a bound stays in the selection, although the Float32 error of the velocities can move it across
         # the bound. The cell at the centre of the grid has no direction, thus the selection leaves it out
-        lfestimators = lfestimators.filter(
-            get_cell_selection(
-                thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
-            )
-        )
+        lfestimators = lfestimators.filter(get_costheta_selection(costhetarange, estimatorcolumns))
         print_detail(
             f"The cells have cos θ = v_z / |v| of the cell centre from {costhetarange[0]:g} to {costhetarange[1]:g}."
             " The z axis is the polar axis of the direction bins"
@@ -590,7 +577,7 @@ def get_cell_line_inputs(
         if costhetarange is not None:
             exit_with_error(
                 "no cell with matter has its centre in the range of cos θ",
-                "Give a wider range of -costhetamin and -costhetamax",
+                "Give a wider range of cos θ, or a different -dirbin",
             )
         exit_with_error(f"the estimators hold no cell for timestep {timestep}", "Give a different time")
 
@@ -944,12 +931,14 @@ def get_sobolev_trough(
     cellwidths_kmps: tuple[float, float, float],
     *,
     relativisticdoppler: bool,
+    averageoverphi: bool,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return the Sobolev absorption depth of each ranked line against the line-of-sight velocity, and of their blend.
 
-    The observer is at the centre cos θ of the direction bin, and the depth is the mean over the centres of the phi
-    bins. The photosphere is a sphere at v_ph = photospherevelocity_kmps. Rays go from the photospheric disk towards
-    the observer, on a square grid of impact points in velocity space. In a homologous flow, a ray at the impact point p
+    The observer is at the centre of the direction bin. With averageoverphi, the observer is at the centre cos θ of
+    the bin, and the depth is the mean over the centres of the phi bins. The photosphere is a sphere at
+    v_ph = photospherevelocity_kmps. Rays go from the photospheric disk towards the observer, on a square grid of
+    impact points in velocity space. In a homologous flow, a ray at the impact point p
     meets a line at one point, where the line-of-sight velocity u gives the Doppler shift of the line. The point
     absorbs if it is in a cell and on the near side of the photosphere, u > sqrt(v_ph^2 - p^2). A ray then has the
     transmission exp(-tau) of that cell. Each cell is a box with the widths cellwidths_kmps along x, y, and z.
@@ -968,10 +957,11 @@ def get_sobolev_trough(
     estimate does not take. Thus the blend is too blue by a fraction of about v_t^2 / (2 c^2).
     """
     nphibins = get_viewingdirection_phibincount()
-    costhetalower, costhetaupper, _ = get_costheta_bins(usedegrees=False)
-    costhetabin = dirbin // nphibins
-    costheta = (costhetalower[costhetabin] + costhetaupper[costhetabin]) / 2.0
-    sintheta = math.sqrt(1.0 - costheta**2)
+    firstdirbin = dirbin - dirbin % nphibins
+    directions = [
+        get_dirbin_centre_direction(observerdirbin)
+        for observerdirbin in (range(firstdirbin, firstdirbin + nphibins) if averageoverphi else [dirbin])
+    ]
     vph_kmps = photospherevelocity_kmps
     c_kmps = C_cm_per_s / km_to_cm
     widths_kmps = np.array(cellwidths_kmps)
@@ -1041,17 +1031,13 @@ def get_sobolev_trough(
         cells[u <= nearsideu_kmps[:, np.newaxis]] = -1
         return cells
 
-    directions = [
-        np.array([sintheta * math.cos(phi), sintheta * math.sin(phi), costheta])
-        for phi in 2.0 * math.pi * (np.arange(nphibins) + 0.5) / nphibins
-    ]
     depths = np.zeros((profiles.dfranked.height, nbins))
     for direction in directions:
         cells = get_cells_on_rays(direction, usamples_kmps[np.newaxis, :])
         for lineindex in range(len(taus)):
             absorbed = 1.0 - np.exp(-taus[lineindex][cells])
             depths[lineindex] += absorbed.mean(axis=0).reshape(nbins, samplesperbin).mean(axis=1)
-    depths /= nphibins
+    depths /= len(directions)
 
     dfdepths = (
         profiles.dfranked
@@ -1089,7 +1075,10 @@ def get_sobolev_trough(
             cells = get_cells_on_rays(direction, np.clip(beta, 0.0, None)[np.newaxis, :] * c_kmps)
             sumtau += taus[lineindex][cells]
         transmission += np.exp(-sumtau).mean(axis=0)
-    dfblend = pl.DataFrame({"lambda_angstroms": lambdagrid_angstroms, "trough_depth": 1.0 - transmission / nphibins})
+    dfblend = pl.DataFrame({
+        "lambda_angstroms": lambdagrid_angstroms,
+        "trough_depth": 1.0 - transmission / len(directions),
+    })
     return dfdepths, dfblend
 
 
@@ -1106,18 +1095,22 @@ def addarg_taumin(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def addargs(parser: argparse.ArgumentParser) -> None:
-    """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
+def addarg_lineselection(parser: argparse.ArgumentParser) -> None:
+    """Add the model path, the time, the wavelength range, and the ions that select the lines of the line commands."""
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     addarg_timestep(parser, helptext="Timestep number to select")
     addarg_timedays(parser, kind="str", helptext="Time in days to select")
-    parser.add_argument("-xmin", "-lambdamin", type=float, help="Minimum wavelength of the lines in Angstroms")
-    parser.add_argument("-xmax", "-lambdamax", type=float, help="Maximum wavelength of the lines in Angstroms")
+    addarg_wavelengthrange(parser, "the lines")
     parser.add_argument(
         "-ions",
         action=CommaJoinAction,
         help='Ions of the lines, e.g. "Fe II,Co II". Default: each ion with a population in the model',
     )
+
+
+def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
+    addarg_lineselection(parser)
     parser.add_argument(
         "-maxlines",
         type=positive_int_arg,
@@ -1131,8 +1124,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Give one row for each cell and line, with the populations, tau_sobolev, and the emission",
     )
     addarg_excitationtemperature(parser)
-    addarg_output(parser, kind="file", helptext="Path/filename for the output text file")
-    addarg_force(parser)
+    addarg_table_output(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -1141,9 +1133,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.xmin is None or args.xmax is None:
         exit_with_error("give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
 
-    outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME) if args.outputfile else None
-    if outputfile is not None:
-        confirm_overwrite([outputfile.parent], [outputfile.name], force=args.force)
+    outputfile = resolve_table_outputfile(args, DEFAULTOUTPUTNAME)
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     print(f"Line contributions of {get_model_logname(args.modelpath)} at timestep {timestep}")
@@ -1171,8 +1161,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         dftable = shown
 
-    print_product(args, dftable)
-    if outputfile is not None:
-        commentlines = [*get_provenance_lines(args), *get_column_description_lines(dftable.columns)]
-        write_data_table(dftable, outputfile, commentlines=commentlines)
-        print_saved(outputfile)
+    print_or_write_table(args, dftable, outputfile, get_column_description_lines(dftable.columns))

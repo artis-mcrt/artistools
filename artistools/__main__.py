@@ -3,6 +3,7 @@
 
 import argparse
 import contextlib
+import copy
 import os
 import shlex
 import sys
@@ -77,15 +78,27 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
         print(f"The command took {elapsed:.1f} seconds", file=sys.stderr)
 
 
+def resolve_or_explain(
+    argparser: argparse.ArgumentParser, args: argparse.Namespace, argsraw: Sequence[str] | None
+) -> bool:
+    """Check and complete the arguments of the command, and return True when --explain printed the plan in its place."""
+    from artistools.misc.cliutils import print_explanation
+    from artistools.misc.cliutils import resolve_args
+
+    parsedargs = copy.copy(args)
+    resolve_args(argparser, args, argsraw)
+    if not getattr(args, "explain", False):
+        return False
+    print_explanation(argparser, args, parsedargs)
+    return True
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None) -> None:
     """Parse and run an artistools subcommand."""
     import argcomplete
 
     from artistools.commands import build_script_parser
     from artistools.commands import get_hidden_commands
-    from artistools.misc import check_time_selection
-    from artistools.misc import resolve_output_argument
-    from artistools.misc import resolve_yscale
     from artistools.misc import separate_trailing_folders
 
     # a per-command console script such as plotartisestimators runs this same function. The name that
@@ -115,11 +128,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     try:
-        if (argparser := getattr(args, "argparser", None)) is not None:
-            check_time_selection(argparser, args, argsraw)
-            # the parser of the command recorded what it writes, thus -o takes its rule here
-            resolve_output_argument(args)
-            resolve_yscale(args)
+        if (argparser := getattr(args, "argparser", None)) is not None and resolve_or_explain(argparser, args, argsraw):
+            return
 
         run_command(func, args)
     except KeyboardInterrupt:

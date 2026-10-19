@@ -1,6 +1,7 @@
 """Miscellaneous helpers, split into focused submodules and re-exported here."""
 
 from artistools.misc.cliutils import addarg_action as addarg_action
+from artistools.misc.cliutils import addarg_averageoverphi as addarg_averageoverphi
 from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
 from artistools.misc.cliutils import addarg_darkmode as addarg_darkmode
 from artistools.misc.cliutils import addarg_data_output as addarg_data_output
@@ -16,22 +17,28 @@ from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath
 from artistools.misc.cliutils import addarg_notitle as addarg_notitle
 from artistools.misc.cliutils import addarg_output as addarg_output
 from artistools.misc.cliutils import addarg_pathoption as addarg_pathoption
+from artistools.misc.cliutils import addarg_plotinvalidpart as addarg_plotinvalidpart
 from artistools.misc.cliutils import addarg_positional_items as addarg_positional_items
 from artistools.misc.cliutils import addarg_quiet as addarg_quiet
 from artistools.misc.cliutils import addarg_residuals as addarg_residuals
 from artistools.misc.cliutils import addarg_seriesstyle as addarg_seriesstyle
 from artistools.misc.cliutils import addarg_show as addarg_show
+from artistools.misc.cliutils import addarg_sliceaxis as addarg_sliceaxis
+from artistools.misc.cliutils import addarg_table_output as addarg_table_output
 from artistools.misc.cliutils import addarg_timedays as addarg_timedays
 from artistools.misc.cliutils import addarg_timeminmax as addarg_timeminmax
 from artistools.misc.cliutils import addarg_timestep as addarg_timestep
 from artistools.misc.cliutils import addarg_unsupported as addarg_unsupported
 from artistools.misc.cliutils import addarg_verbose as addarg_verbose
 from artistools.misc.cliutils import addarg_viewingangle as addarg_viewingangle
+from artistools.misc.cliutils import addarg_wavelengthrange as addarg_wavelengthrange
 from artistools.misc.cliutils import addarg_yscale as addarg_yscale
 from artistools.misc.cliutils import artis_subfolders as artis_subfolders
 from artistools.misc.cliutils import check_time_selection as check_time_selection
 from artistools.misc.cliutils import color_arg as color_arg
+from artistools.misc.cliutils import confirm_deletion as confirm_deletion
 from artistools.misc.cliutils import confirm_overwrite as confirm_overwrite
+from artistools.misc.cliutils import confirm_overwrite_matches as confirm_overwrite_matches
 from artistools.misc.cliutils import exit_with_error as exit_with_error
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import format_frame_path as format_frame_path
@@ -52,6 +59,7 @@ from artistools.misc.cliutils import parse_range_list as parse_range_list
 from artistools.misc.cliutils import print_detail as print_detail
 from artistools.misc.cliutils import print_error as print_error
 from artistools.misc.cliutils import print_heading as print_heading
+from artistools.misc.cliutils import print_or_write_table as print_or_write_table
 from artistools.misc.cliutils import print_product as print_product
 from artistools.misc.cliutils import print_warning as print_warning
 from artistools.misc.cliutils import require_action as require_action
@@ -60,6 +68,8 @@ from artistools.misc.cliutils import resolve_output_argument as resolve_output_a
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import resolve_positional_modelpath as resolve_positional_modelpath
 from artistools.misc.cliutils import resolve_series_styles as resolve_series_styles
+from artistools.misc.cliutils import resolve_slice_axis as resolve_slice_axis
+from artistools.misc.cliutils import resolve_table_outputfile as resolve_table_outputfile
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import separate_trailing_folders as separate_trailing_folders
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
@@ -67,9 +77,12 @@ from artistools.misc.cliutils import suggest_flags as suggest_flags
 from artistools.misc.cliutils import suggest_names as suggest_names
 from artistools.misc.cliutils import trim_or_pad as trim_or_pad
 from artistools.misc.cliutils import UnsupportedArgument as UnsupportedArgument
+from artistools.misc.dirbins import addarg_costhetarange as addarg_costhetarange
 from artistools.misc.dirbins import average_direction_bins as average_direction_bins
 from artistools.misc.dirbins import check_averaging_angles as check_averaging_angles
+from artistools.misc.dirbins import format_costheta_range as format_costheta_range
 from artistools.misc.dirbins import get_costheta_bins as get_costheta_bins
+from artistools.misc.dirbins import get_costheta_range as get_costheta_range
 from artistools.misc.dirbins import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
 from artistools.misc.dirbins import get_dirbin_definitions as get_dirbin_definitions
 from artistools.misc.dirbins import get_dirbins as get_dirbins
@@ -92,6 +105,7 @@ from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import get_file_state as get_file_state
 from artistools.misc.fileio import get_model_folder as get_model_folder
+from artistools.misc.fileio import get_parquet_cache_name as get_parquet_cache_name
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import open_file as open_file
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model
@@ -135,8 +149,10 @@ from artistools.misc.modelinfo import get_wid_init_at_tmodel as get_wid_init_at_
 from artistools.misc.modelinfo import print_modelpath as print_modelpath
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc.timesteps import apply_time_range_args as apply_time_range_args
+from artistools.misc.timesteps import check_time_range_is_valid as check_time_range_is_valid
 from artistools.misc.timesteps import get_deposition as get_deposition
 from artistools.misc.timesteps import get_escaped_arrivalrange as get_escaped_arrivalrange
+from artistools.misc.timesteps import get_selected_timestep as get_selected_timestep
 from artistools.misc.timesteps import get_single_timestep as get_single_timestep
 from artistools.misc.timesteps import get_time_range as get_time_range
 from artistools.misc.timesteps import get_time_range_text as get_time_range_text

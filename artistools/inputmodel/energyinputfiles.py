@@ -18,15 +18,19 @@ from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
+from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.misc import read_wsv
 from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
 from artistools.plottools import make_frame_figure
-from artistools.plottools import save_or_show
+from artistools.plottools import save_figure
 
 
 def cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
@@ -113,15 +117,15 @@ def make_energy_files(cellmass_grams: npt.NDArray[np.floating], outputpath: Path
 
     energydistributiondata = make_energydistribution_of_mass(cellmass_grams, E_tot_per_gram)
 
-    print("Writing energydistribution.txt")
     with Path(outputpath, "energydistribution.txt").open("w", encoding="utf-8") as fmodel:
         fmodel.write(f"{len(energydistributiondata['cell_energy'])}\n")  # write number of points
         fmodel.writelines(f"{cellid}\t{cell_energy:g}\n" for cellid, cell_energy in energydistributiondata.iter_rows())
 
-    print("Writing energyrate.txt")
+    print_saved(Path(outputpath, "energydistribution.txt"))
     with Path(outputpath, "energyrate.txt").open("w", encoding="utf-8") as fmodel:
         fmodel.write(f"{len(times_and_rate['times'])}\n")  # write number of points
         times_and_rate.write_csv(fmodel, separator="\t", include_header=False, float_precision=10)
+    print_saved(Path(outputpath, "energyrate.txt"))
 
 
 def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
@@ -229,8 +233,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate"
         ),
     )
-    addarg_modelpath(parser, default=Path())
-    addarg_output(parser, kind="file", helptext="Path for the plot, or omit to show it interactively")
+    addarg_modelpath(parser, positional=True, default=Path())
+    addarg_output(parser, kind="file", helptext="Path for the plot of plotrate")
+    addarg_force(parser)
+    addarg_show(parser)
 
     addarg_figscale(parser)
     addarg_darkmode(parser)
@@ -246,6 +252,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = Path(args.modelpath)
 
     if args.action == "plotrate":
+        plotfile = resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf")
+        confirm_overwrite([plotfile.parent], [plotfile.name], force=args.force)
         fig, axesgrid = make_frame_figure(args)
         axis = axesgrid[0][0]
         plot_energy_rate(modelpath, axis)
@@ -253,10 +261,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         axis.set_ylabel("Nuclear heating power [erg/s]")
         axis.set_xscale("log")
         axis.set_yscale("log")
-        # -o promises that a path with no file extension names a folder, and an empty -o shows the plot
-        save_or_show(
-            fig, resolve_outputfile(args.outputfile, "energyfiles_plotrate.pdf") if args.outputfile else None, args
-        )
+        save_figure(fig, plotfile, args=args)
 
     elif args.action == "describe":
         etot, energydistribution = get_etot_fromfile(modelpath)

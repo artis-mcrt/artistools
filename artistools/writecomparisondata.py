@@ -1,6 +1,7 @@
 """Tools to get artis output in the required format for the code comparison workshop."""
 
 import argparse
+import glob
 import math
 import typing as t
 from collections.abc import Sequence
@@ -22,8 +23,10 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite_matches
 from artistools.misc import exit_with_error
 from artistools.misc import get_deposition
 from artistools.misc import get_runfolders
@@ -304,11 +307,12 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, multiplepaths=True, default=[], helptext="Paths to ARTIS folders")
+    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of the ARTIS models")
 
     parser.add_argument("-selected_timesteps", default=[], nargs="*", type=int, help="Selected ARTIS timesteps")
 
     addarg_output(parser, kind="folder", default=Path())
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -325,10 +329,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         raise ValueError(msg)
 
     args.outputfile.mkdir(parents=True, exist_ok=True)
+    # the name of "." is empty, thus the model name comes from the absolute path of the folder
+    modelids = [Path(modelpath).absolute().name.split("_")[0] for modelpath in modelpathlist]
+    # each file name holds the model and a quantity, e.g. phys_<model>_artisnebular.txt
+    # a folder name can hold a character of a glob pattern, e.g. "[", thus the pattern takes the name as text
+    confirm_overwrite_matches(
+        args.outputfile, [f"*_{glob.escape(model_id)}_artisnebular.txt" for model_id in modelids], force=args.force
+    )
 
-    for modelpath in modelpathlist:
-        # the name of "." is empty, thus the model name comes from the absolute path of the folder
-        model_id = Path(modelpath).absolute().name.split("_")[0]
+    for modelpath, model_id in zip(modelpathlist, modelids, strict=True):
         print(f"{model_id=}")
 
         allnonemptymgilist = (

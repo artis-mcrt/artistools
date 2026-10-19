@@ -12,8 +12,10 @@ import polars.selectors as cs
 from artistools.lightcurve.core import find_lightcurve_file
 from artistools.lightcurve.core import get_bolometric_luminosities
 from artistools.lightcurve.core import scan_lightcurve
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite
 from artistools.misc import get_model_name
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
@@ -61,6 +63,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Integrate the direction-resolved spectra instead of reading light_curve.out",
     )
     addarg_output(parser, kind="folder", default=Path())
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -76,15 +79,21 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     outputpath = Path(args.outputfile)
     outputpath.mkdir(parents=True, exist_ok=True)
+    # the two sources hold different columns, thus each one writes a file of its own
+    suffix = "_fromspectra" if args.fromspectra else ""
+    modelpaths = normalize_path_list(args.modelpath)
+    confirm_overwrite(
+        [outputpath],
+        [f"bol_lightcurvedata_{get_model_name(modelpath)}{suffix}.txt" for modelpath in modelpaths],
+        force=args.force,
+    )
 
-    for modelpath in normalize_path_list(args.modelpath):
+    for modelpath in modelpaths:
         modelname = get_model_name(modelpath)
         lightcurvedataframe = (
             get_bol_lc_from_spec(modelpath) if args.fromspectra else get_bol_lc_from_lightcurveout(modelpath)
         )
 
-        # the two sources hold different columns, thus each one writes a file of its own
-        suffix = "_fromspectra" if args.fromspectra else ""
         outfilepath = outputpath / f"bol_lightcurvedata_{modelname}{suffix}.txt"
         with outfilepath.open("w", encoding="utf-8") as f:
             f.write(f"{header}\n")

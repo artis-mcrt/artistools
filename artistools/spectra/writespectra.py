@@ -7,13 +7,18 @@ from pathlib import Path
 
 import polars as pl
 
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite_matches
 from artistools.misc import exit_with_error
 from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
+from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
+from artistools.misc import print_warning
 from artistools.misc.remote import split_remote_path
 from artistools.spectra.core import get_spectra
 
@@ -30,25 +35,25 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
     print_saved(outfilepath)
 
 
-def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> None:
-    """Write the spectrum of each timestep of the valid time range to a text file.
+def get_spectra_outdirectory(modelpath: Path, outdirectory: Path | None) -> Path:
+    """Return outdirectory, or the spectra folder of the model when the caller gives none."""
+    if outdirectory is not None:
+        return outdirectory
+    # a folder below a remote path would make a local folder of the same name, and that folder would then hide
+    # the remote model. Thus the files of a remote model go to the working folder. The host and the whole path
+    # give each model its own folder, e.g. spectra/vae26/home/scratch/mymodel
+    if (remote := split_remote_path(modelpath)) is not None:
+        host, hostpath = remote
+        return Path("spectra", host, *("home" if part == "~" else part for part in hostpath.parts if part != "/"))
+    return Path(modelpath, "spectra")
+
+
+def write_flambda_spectra(modelpath: Path, outdirectory: Path) -> None:
+    """Write the spectrum of each timestep of the valid time range to a text file in outdirectory.
 
     Each file holds lambda_angstroms and f_lambda, and its name gives the timestep and the time in days. A model
-    with direction bins also gets one file of the first polar angle bin for each timestep. The files go to
-    outdirectory, or to the spectra folder of the model when the caller gives none.
+    with direction bins also gets one file of the first polar angle bin for each timestep.
     """
-    if outdirectory is None:
-        # a folder below a remote path would make a local folder of the same name, and that folder would then hide
-        # the remote model. Thus the files of a remote model go to the working folder. The host and the whole path
-        # give each model its own folder, e.g. spectra/vae26/home/scratch/mymodel
-        if (remote := split_remote_path(modelpath)) is not None:
-            host, hostpath = remote
-            outdirectory = Path(
-                "spectra", host, *("home" if part == "~" else part for part in hostpath.parts if part != "/")
-            )
-        else:
-            outdirectory = Path(modelpath, "spectra")
-
     outdirectory.mkdir(parents=True, exist_ok=True)
 
     tmids = get_timestep_times(modelpath, loc="mid")
@@ -86,16 +91,54 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
             )
 
 
+def write_flambda_spectra_of_models(modelpaths: Sequence[Path], outdirectory: Path | None, *, force: bool) -> None:
+    """Write the spectra of write_flambda_spectra for each model.
+
+    The file names hold no model name, thus each of several models gets a subfolder of outdirectory with its name.
+    Two models can have the same name, thus the second one gets its index after the name, e.g. mymodel_1. The default
+    folder of a model is its spectra folder.
+    """
+    subfoldernames: list[str] = []
+    for modelindex, modelpath in enumerate(modelpaths):
+        modelname = get_model_name(modelpath)
+        # the second model would replace the files of the first, and the check of the overwrite saw no file. A name
+        # with the index can also be the name of a model, e.g. mymodel_2, thus the index grows until the name is new
+        suffixindex = modelindex
+        while modelname in subfoldernames:
+            modelname = f"{get_model_name(modelpath)}_{suffixindex}"
+            suffixindex += 1
+        if modelname != get_model_name(modelpath) and outdirectory is not None and len(modelpaths) > 1:
+            print_warning(f"{modelpath} has the name of an earlier model, thus its folder is {modelname}")
+        subfoldernames.append(modelname)
+    modeloutdirectories = [
+        get_spectra_outdirectory(
+            modelpath,
+            outdirectory / subfoldername if outdirectory is not None and len(modelpaths) > 1 else outdirectory,
+        )
+        for modelpath, subfoldername in zip(modelpaths, subfoldernames, strict=True)
+    ]
+    # the check of all the folders comes before the first model, thus a refusal leaves no partial output. Each file
+    # name holds a timestep, and the valid timesteps come from the data, thus the check takes patterns
+    for modeloutdirectory in modeloutdirectories:
+        confirm_overwrite_matches(modeloutdirectory, ("spectrum_ts*.txt", "spectrum_polar00_ts*.txt"), force=force)
+
+    for modelpath, modeloutdirectory in zip(modelpaths, modeloutdirectories, strict=True):
+        write_flambda_spectra(modelpath, modeloutdirectory)
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of the ARTIS models")
     addarg_output(
         parser, kind="folder", helptext="Folder for the spectrum files (default: the spectra folder of the model)"
     )
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write ARTIS spectra for each timestep to individual text files."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    write_flambda_spectra(args.modelpath, outdirectory=args.outputfile)
+    write_flambda_spectra_of_models(
+        normalize_path_list(args.modelpath), Path(args.outputfile) if args.outputfile else None, force=args.force
+    )

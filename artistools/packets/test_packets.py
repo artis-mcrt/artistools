@@ -588,7 +588,7 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
             "c",
             ions=None,
             srIItriplet=False,
-            colorlogscale=False,
+            logcolorscale=False,
             trueem=True,
             lambdarange=None,
             outputfile=None,
@@ -643,13 +643,14 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
     ):
         plotlastpacketinteraction.main(
             argsraw=[],
+            plotinvalidpart=True,
             modelpath=modelpath,
             timedays=tdays,
             groupby="ion",
             absorption=absorption,
             maxseriescount=1,
             nvelocitybins=2,
-            velocitymax=10000.0 / kmps_per_unit,
+            velocitymax_kmps=10000.0,
             velocityunit=velocityunit,
             outputfile=tmp_path / "profile.pdf",
             write_data=True,
@@ -710,10 +711,12 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
         "em_posz": [0.0] * 6,
         "em_time": [emtime_s] * 5 + [-1.0],
         "costhetabin": [9] * 6,
+        "dirbin": [90] * 6,
     })
     with mock.patch.object(plotlastinteractionvelocity, "get_packets", return_value=(1, dfpackets.lazy())):
         plotlastinteractionvelocity.main(
             argsraw=[],
+            plotinvalidpart=True,
             modelpath=[modelpath],
             xmin=7000.0,
             xmax=8000.0,
@@ -747,13 +750,13 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
     from artistools.packets import plotlastpacketinteraction
 
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
-    timestep = at.misc.get_timestep_of_timedays(modelpath, 7.0)
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 6.5)
     t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
     t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
     plotlastpacketinteraction.main(
         argsraw=[],
         modelpath=modelpath,
-        timedays=7.0,
+        timedays=6.5,
         groupby="ion",
         xmin=3500.0,
         xmax=4500.0,
@@ -778,20 +781,20 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
 
 
 def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path: Path) -> None:
-    """-velocity lineofsight bins (em_pos . dir) / em_time from minus to plus the last edge.
+    """-velocitykind lineofsight bins (em_pos . dir) / em_time from minus to plus the last edge.
 
     The plot had only the radial velocity, which cannot separate the blue side and the red side of a P Cygni profile.
     """
     from artistools.packets import plotlastpacketinteraction
 
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
-    timestep = at.misc.get_timestep_of_timedays(modelpath, 7.0)
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 6.5)
     t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
     t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
     plotlastpacketinteraction.main(
         argsraw=[],
         modelpath=modelpath,
-        timedays=7.0,
+        timedays=6.5,
         groupby="element",
         nvelocitybins=5,
         velocitykind="lineofsight",
@@ -923,7 +926,7 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
             "c",
             ions=None,
             srIItriplet=False,
-            colorlogscale=False,
+            logcolorscale=False,
             trueem=True,
             lambdarange=None,
             outputfile=None,
@@ -987,7 +990,12 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
 
     modelpath = at.get_path("testdata") / "testmodel"
     plotlastpacketinteraction.main(argsraw=["-modelpath", str(modelpath), "-timedays", "300", "-o", str(tmp_path)])
-    assert (tmp_path / "testmodel_allions_t_arrive_d_300.0_ts54_into_dirbin-1.pdf").is_file()
+    assert any(tmp_path.glob("testmodel_allions_t_arrive_d_*_ts54_into_dirbin-1.pdf"))
+
+    # -timestep selects the same arrival time bin, as in the other commands
+    timestepfolder = tmp_path / "timestep"
+    plotlastpacketinteraction.main(argsraw=[str(modelpath), "-timestep", "54", "-o", str(timestepfolder)])
+    assert any(timestepfolder.glob("testmodel_allions_t_arrive_d_*_ts54_into_dirbin-1.pdf"))
 
     # -tdays is the old spelling, and -o can also name the file
     outputfile = tmp_path / "lastinteraction.pdf"
@@ -999,10 +1007,10 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
     ("argsraw", "expectedmessage"),
     [
         (["-element", "Xx"], "-element Xx is no element symbol"),
-        (["-dirbin", "100"], "-dirbin 100 is not the first direction bin"),
-        (["-dirbin", "35"], "-dirbin 35 is not the first direction bin"),
-        (["-dirbin", "-10"], "-dirbin -10 is not the first direction bin"),
-        ([], "the time is missing"),
+        (["-dirbin", "100"], "-dirbin 100 is no direction bin"),
+        (["-dirbin", "35", "--average_over_phi_angle"], "-dirbin 35 is not the first direction bin"),
+        (["-dirbin", "-10"], "-dirbin -10 is no direction bin"),
+        ([], "the command has no time"),
         (["-lambdamin", "3500"], "the wavelength range needs two ends"),
         (["--absorption", "--use_thermalemissiontype"], "--absorption takes the last absorption"),
     ],
@@ -1040,9 +1048,9 @@ def test_timestep_of_a_time_at_the_start_of_a_timestep() -> None:
 
 
 @mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
-@pytest.mark.parametrize("colorlogscale", [False, True], ids=["linear", "log"])
+@pytest.mark.parametrize("logcolorscale", [False, True], ids=["linear", "log"])
 def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
-    mockimshow: mock.MagicMock, colorlogscale: bool, tmp_path: Path
+    mockimshow: mock.MagicMock, logcolorscale: bool, tmp_path: Path
 ) -> None:
     """Each row of the table gives the edges of one bin and the value that the image shows in that bin."""
     from artistools.packets import plotlastpacketinteraction
@@ -1053,16 +1061,16 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
         modelpath=at.get_path("testdata") / "testmodel",
         timedays=300,
         outputfile=outputfile,
-        colorlogscale=colorlogscale,
+        logcolorscale=logcolorscale,
         velocityunit="c",
-        velocitymax=0.5,
+        velocitymax_kmps=0.5 * at.constants.C_cm_per_s / at.constants.km_to_cm,
         write_data=True,
     )
 
     image = mockimshow.call_args.args[1]
     dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
     valuecolumn = (
-        "log10_escaped_luminosity_erg_per_s_per_cm3" if colorlogscale else "escaped_luminosity_erg_per_s_per_cm3"
+        "log10_escaped_luminosity_erg_per_s_per_cm3" if logcolorscale else "escaped_luminosity_erg_per_s_per_cm3"
     )
     assert dftable.height == image.size
     assert dftable[valuecolumn].null_count() == int(np.ma.count_masked(image))
@@ -1076,7 +1084,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
     imagevalues = np.ma.filled(image[rowindices, columnindices].astype(float), np.nan)
     assert np.allclose(dftable[valuecolumn].to_numpy(), imagevalues, rtol=1e-12, atol=0.0, equal_nan=True)
 
-    if colorlogscale:
+    if logcolorscale:
         # the log scale took the natural logarithm, and the colour bar and the table named it log
         plotlastpacketinteraction.main(
             argsraw=[],
@@ -1084,7 +1092,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
             timedays=300,
             outputfile=tmp_path / "linear.pdf",
             velocityunit="c",
-            velocitymax=0.5,
+            velocitymax_kmps=0.5 * at.constants.C_cm_per_s / at.constants.km_to_cm,
             write_data=True,
         )
         dflinear = pl.read_csv(tmp_path / "linear.txt", separator=" ", null_values="nan", comment_prefix="#")
@@ -1107,7 +1115,7 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
     from artistools.packets import plotlastpacketinteraction
 
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
-    timedays = 6.9
+    timedays = 6.5
     timestep = at.get_timestep_of_timedays(modelpath, timedays)
     tstart = at.get_timestep_times(modelpath, loc="start")[timestep]
     tend = at.get_timestep_times(modelpath, loc="end")[timestep]
@@ -1121,6 +1129,75 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
     assert (
         f"{dfarrived.height} escaped r-packets of the direction bin arrive in the timestep\n" in capsys.readouterr().out
     )
+
+
+def test_packet_commands_check_the_valid_range_of_the_arrival_times(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Plotlastpacketinteraction stops for a timestep after the valid range, and plotlastinteractionvelocity skips it.
+
+    The two commands took any timestep, and the light of a part of the ejecta did not reach the observer in some of
+    them. --plotinvalidpart keeps them, as in plotspectra and plotlightcurves.
+    """
+    from artistools.packets import plotlastinteractionvelocity
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    _, _, validend_days = at.misc.get_escaped_arrivalrange(modelpath)
+    assert validend_days is not None
+    with pytest.raises(SystemExit):
+        plotlastpacketinteraction.main(argsraw=[str(modelpath), "-t", "7", "-o", str(tmp_path / "image.pdf")])
+    assert "after the end of the valid range" in capsys.readouterr().err
+    plotlastpacketinteraction.main(
+        argsraw=[str(modelpath), "-t", "7", "--plotinvalidpart", "-o", str(tmp_path / "image.pdf")]
+    )
+
+    for plotinvalidpart in (False, True):
+        outputfile = tmp_path / f"velocity_{plotinvalidpart}.pdf"
+        plotlastinteractionvelocity.main(
+            argsraw=[str(modelpath), "-lambdamin", "3000", "-lambdamax", "8000", "-o", str(outputfile)],
+            plotinvalidpart=plotinvalidpart,
+            write_data=True,
+        )
+        dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
+        timestepends = at.get_timestep_times(modelpath, loc="end")
+        latestend_days = max(timestepends[timestep] for timestep in dftable["timestep"].to_list())
+        assert (latestend_days > validend_days) == plotinvalidpart
+
+
+def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(tmp_path: Path) -> None:
+    """-dirbin N takes the one direction bin N, and --average_over_phi_angle takes all the phi bins of its costheta bin.
+
+    The packet commands always took the costheta bin, thus -dirbin 10 selected other directions than in plotspectra.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 6.5)
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
+    _, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfarrived = (
+        lzpackets
+        .filter(pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"))
+        .select("dirbin", "costhetabin")
+        .collect()
+    )
+    cases: list[tuple[list[str], int]] = [
+        ([], dfarrived.filter(pl.col("dirbin") == 50).height),
+        (["--average_over_phi_angle"], dfarrived.filter(pl.col("costhetabin") == 5).height),
+    ]
+    for extraargs, expectedcount in cases:
+        outputfile = tmp_path / f"groups{len(extraargs)}.pdf"
+        plotlastpacketinteraction.main(
+            argsraw=[str(modelpath), "-t", "6.5", "-groupby", "element", "-dirbin", "50", *extraargs],
+            outputfile=outputfile,
+            write_data=True,
+        )
+        dfsummary = pl.read_csv(
+            outputfile.with_name(f"{outputfile.stem}_summary.txt"), separator=" ", null_values="nan", comment_prefix="#"
+        )
+        assert int(dfsummary["packetcount"].sum()) == expectedcount > 0
 
 
 def make_filterpackets_model(tmp_path: Path) -> Path:

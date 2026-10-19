@@ -12,8 +12,10 @@ import polars as pl
 from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import RHO_FROM_LOGRHO
 from artistools.misc import addarg_action
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
 from artistools.misc import require_action
@@ -63,16 +65,16 @@ def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
             fYe, separator="\t", include_header=False, float_precision=10
         )
 
-    print("Saved Ye.txt")
+    print_saved(Path(outputfilepath, "Ye.txt"))
 
 
-def all_cells_same_opacity(modelpath: str | Path, ngrid: int, kappa: float = 0.1) -> None:
-    """Write an opacity.txt giving every cell the same grey opacity [cm2/g]."""
-    with Path(modelpath, "opacity.txt").open("w", encoding="utf-8") as fopacity:
+def all_cells_same_opacity(outputfolder: str | Path, ngrid: int, kappa: float = 0.1) -> None:
+    """Write an opacity.txt into outputfolder that gives every cell the same grey opacity [cm2/g]."""
+    with Path(outputfolder, "opacity.txt").open("w", encoding="utf-8") as fopacity:
         fopacity.write(f"{ngrid}\n")
         fopacity.writelines(f"{cellid + 1}    {kappa}\n" for cellid in range(ngrid))
 
-    print_saved(Path(modelpath, "opacity.txt"))
+    print_saved(Path(outputfolder, "opacity.txt"))
 
 
 def get_opacity_from_file(modelpath: Path | str) -> npt.NDArray[np.float64]:
@@ -93,8 +95,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " describe: report the opacities in an existing opacity.txt"
         ),
     )
-    addarg_modelpath(parser, default=Path())
+    addarg_modelpath(parser, positional=True, default=Path())
     addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write opacity.txt into (uniform)")
+    addarg_force(parser)
     parser.add_argument("-kappa", type=float, default=0.1, help="Grey opacity for every cell [cm2/g] (uniform)")
 
 
@@ -107,6 +110,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = Path(args.modelpath)
 
     if args.action == "uniform":
+        confirm_overwrite([args.outputfile], ("opacity.txt",), force=args.force)
         _, modelmeta = get_modeldata(modelpath)
         all_cells_same_opacity(Path(args.outputfile), modelmeta["npts_model"], kappa=args.kappa)
     else:

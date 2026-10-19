@@ -1,17 +1,27 @@
 """Check whether the results of an ARTIS model deserve trust, and give one row for each check.
 
-The checks read the rank-0 logs, the estimators, deposition.out, and light_curve.out. --frompackets also reads the
-escaped packets to find the Monte Carlo noise of the light curve. Each check runs alone, thus a check that fails gives
-a row with the status "error", and the other checks still run. A status is "ok", "warning", "error", or "not checked".
+The checks read these files:
+
+- the input files;
+- the rank-0 logs;
+- the estimators;
+- deposition.out;
+- light_curve.out.
+
+--frompackets also reads the escaped packets to find the Monte Carlo noise of the light curve. Each check runs alone,
+thus a check that fails gives a row with the status "error", and the other checks still run. A status is "ok",
+"warning", "error", or "not checked".
 """
 
 import argparse
 import itertools
 import typing as t
 from collections.abc import Callable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import polars as pl
@@ -29,8 +39,11 @@ from artistools.logsummary import get_log_summary
 from artistools.logsummary import get_logfiles
 from artistools.logsummary import get_logged_rank_count
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_table_output
 from artistools.misc import exit_with_error
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_deposition
+from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_folder
 from artistools.misc import get_run_subfolders
 from artistools.misc import get_runfolders
@@ -38,8 +51,9 @@ from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_dir
 from artistools.misc import print_detail
-from artistools.misc import print_product
+from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
+from artistools.misc import resolve_table_outputfile
 from artistools.misc.cliutils import format_range_list
 from artistools.misc.remote import on_model_host
 
@@ -53,6 +67,14 @@ KATZ_RATIO_RANGE: t.Final = (0.8, 1.2)
 
 # a relative Monte Carlo noise of the luminosity of a time step above this value gives a warning
 PACKET_RELNOISE_MAX = 0.1
+
+# the input files that the readers need, and the readers of each one
+INPUTFILE_READERS: t.Final[Mapping[str, str]] = MappingProxyType({
+    "model.txt": "the readers of the cells",
+    "abundances.txt": "the readers of the initial abundances",
+    "compositiondata.txt": "the readers of the ions",
+    "adata.txt": "the readers of the levels and the lines",
+})
 
 # the deposition column of the Katz test. Each gamma ray and particle channel adds to it, and it is the energy that
 # heats the ejecta. The eps_ columns give the decay energy before the thermalisation, which is not the heating
@@ -461,6 +483,47 @@ def check_packet_noise(modelpath: Path, frompackets: bool) -> tuple[str, str]:
     return ("warning" if worst["relnoise"] > PACKET_RELNOISE_MAX else "ok"), detail
 
 
+def check_input_files(modelpath: Path) -> tuple[str, str]:
+    """Find the input files that the readers of artistools need, and return the status and the detail."""
+    missing = [
+        f"{filename} ({readers})"
+        for filename, readers in INPUTFILE_READERS.items()
+        if firstexisting_or_none(filename, folder=modelpath, search_subfolders=False) is None
+    ]
+    if not missing:
+        return "ok", f"the model folder holds {', '.join(INPUTFILE_READERS)}"
+    return "warning", f"the model folder holds no {'; no '.join(missing)}"
+
+
+def check_caches(modelpath: Path) -> tuple[str, str]:
+    """Count the parquet caches and the files of conversions that stopped, and return the status and the detail."""
+    from artistools.cache import find_cache_files
+
+    caches, leftovers = find_cache_files(modelpath)
+    sizemb = sum(path.stat().st_size for path in caches) / 1e6
+    detail = f"{len(caches)} parquet caches of {sizemb:.1f} MB (artistools cache list gives them)"
+    if leftovers:
+        return "warning", (
+            f"{detail}, and {len(leftovers)} leftover files of conversions that stopped, e.g. {leftovers[0].name}."
+            " artistools cache delete deletes them"
+        )
+    return "ok", detail
+
+
+def check_arrival_range(modelpath: Path) -> tuple[str, str]:
+    """Find the range of the arrival times where the light of all the ejecta reaches the observer."""
+    _, validstart_days, validend_days = get_escaped_arrivalrange(modelpath)
+    if validstart_days is None or validend_days is None:
+        return "warning", (
+            "no arrival time has the light of all the ejecta, because the light travel time across the ejecta is"
+            " longer than the time range of the model"
+        )
+    return "ok", (
+        f"the light of all the ejecta reaches the observer from {validstart_days:.2f} to {validend_days:.2f} d."
+        " The commands that read packets use only this range. --plotinvalidpart also shows the other times"
+    )
+
+
 def run_check(checkfunction: Callable[[], tuple[str, str]]) -> tuple[str, str]:
     """Run one check, and return its status and its detail. A check that fails gives the status "error"."""
     try:
@@ -487,11 +550,14 @@ def get_check_results(modelpath: Path, frompackets: bool = False) -> pl.DataFram
         msg = f"The model folder {modelpath} does not exist"
         raise FileNotFoundError(msg)
     checks: list[tuple[str, Callable[[], tuple[str, str]]]] = [
+        ("input files", partial(check_input_files, modelpath)),
+        ("caches", partial(check_caches, modelpath)),
         ("log messages", partial(check_log_messages, modelpath)),
         ("temperature limits", partial(check_temperature_limits, modelpath)),
         ("complete time steps", partial(check_complete_timesteps, modelpath)),
         ("restarts", partial(check_restarts, modelpath)),
         ("energy", partial(check_energy, modelpath)),
+        ("arrival times", partial(check_arrival_range, modelpath)),
         ("packet noise", partial(check_packet_noise, modelpath, frompackets)),
     ]
     rows = [(checkname, *run_check(checkfunction)) for checkname, checkfunction in checks]
@@ -501,6 +567,7 @@ def get_check_results(modelpath: Path, frompackets: bool = False) -> pl.DataFram
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, default=Path())
+    addarg_table_output(parser)
     parser.add_argument(
         "--frompackets",
         action="store_true",
@@ -514,7 +581,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelfolder = get_model_folder(args.modelpath)
     if not path_is_dir(modelfolder):
         exit_with_error(f"The model folder {modelfolder} does not exist", "Give a model folder")
+    outputfile = resolve_table_outputfile(args, "check.txt")
     dfresults = get_check_results(modelfolder, frompackets=args.frompackets)
-    print_product(args, dfresults)
+    print_or_write_table(args, dfresults, outputfile)
     for checkname, status, detail in dfresults.filter(pl.col("status").is_in(["warning", "error"])).iter_rows():
         print_warning(f"{checkname} ({status}): {detail}")

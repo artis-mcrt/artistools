@@ -10,8 +10,8 @@ import numpy as np
 import polars as pl
 
 from artistools.ejectaopacity import addarg_excitationtemperature
-from artistools.ejectaopacity import get_selected_timestep
 from artistools.inputmodel import get_modeldata
+from artistools.linecontributions import addarg_lineselection
 from artistools.linecontributions import addarg_taumin
 from artistools.linecontributions import get_cell_line_inputs
 from artistools.linecontributions import get_line_velocity_profiles
@@ -20,18 +20,20 @@ from artistools.linecontributions import get_sobolev_trough
 from artistools.linecontributions import LINEKEYS
 from artistools.linecontributions import parse_ions
 from artistools.linecontributions import TROUGHSAMPLESPERCELL
+from artistools.misc import addarg_averageoverphi
+from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
-from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
-from artistools.misc import addarg_timedays
-from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
+from artistools.misc import format_costheta_range
 from artistools.misc import get_artis_option
+from artistools.misc import get_costheta_range
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_weighted_quantile_expr
@@ -40,30 +42,25 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc import resolve_outputfile
-from artistools.misc.cliutils import CommaJoinAction
-from artistools.misc.cliutils import positive_float_arg
 from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.dirbins import check_costheta_dirbin
+from artistools.misc.dirbins import check_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
-from artistools.plottools import addarg_costhetarange
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
 from artistools.plottools import get_cell_widths_kmps
-from artistools.plottools import get_costheta_range
 from artistools.plottools import get_grid_corner_velocity_kmps
 from artistools.plottools import get_velocity_bin_edges_kmps
 from artistools.plottools import get_velocity_unit
 from artistools.plottools import INVERSE_VELOCITYUNIT_AXISLABELS
 from artistools.plottools import KMPS_PER_VELOCITYUNIT
 from artistools.plottools import make_frame_figure
+from artistools.plottools import positive_velocity_kmps_arg
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import VELOCITYUNIT_AXISLABELS
-from artistools.plottools import VELOCITYUNIT_LABELS
 
 if t.TYPE_CHECKING:
     import matplotlib.axes as mplax
@@ -221,6 +218,8 @@ def plot_trough_estimate(
     velocityedges_kmps: Sequence[float],
     unit: t.Literal["kmps", "c"],
     modelpath: Path,
+    *,
+    averageoverphi: bool,
 ) -> dict[str, pl.DataFrame]:
     """Draw the Sobolev estimate of the trough of the ranked lines, log its method, and return its tables."""
     dirbin, photospherevelocity_kmps = troughsettings
@@ -235,14 +234,24 @@ def plot_trough_estimate(
         velocityedges_kmps,
         get_cell_widths_kmps(modelmeta),
         relativisticdoppler=relativisticdoppler,
+        averageoverphi=averageoverphi,
     )
     plot_trough(ax, dfdepths, dfranked, colours, unit, photospherevelocity_kmps)
-    print_trough_method(dirbin, photospherevelocity_kmps, unit, dfranked.height, dfblend, dopplershift=dopplershift)
+    print_trough_method(
+        dirbin,
+        photospherevelocity_kmps,
+        unit,
+        dfranked.height,
+        dfblend,
+        dopplershift=dopplershift,
+        averageoverphi=averageoverphi,
+    )
     # the gas in front of the photosphere moves towards the observer, thus its light arrives at about t (1 - v_ph / c)
     arrival_days = inputs.time_days * (1.0 - photospherevelocity_kmps / KMPS_PER_VELOCITYUNIT["c"])
     print_detail(
         "To test the estimate, compare it with the absorption of each line in the packet spectrum of the same"
-        f" direction: artistools plotspectra {modelpath} --frompackets -dirbin {dirbin} --average_over_phi_angle"
+        f" direction: artistools plotspectra {modelpath} --frompackets -dirbin {dirbin}"
+        f"{' --average_over_phi_angle' if averageoverphi else ''}"
         f" --showabsorption -groupby line -timedays {arrival_days:.3g}. The light of the gas in front of the"
         f" photosphere arrives at about t (1 - v_ph / c) = {arrival_days:.3g} d"
     )
@@ -334,10 +343,10 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
     The function checks the options before the command reads the estimators.
     """
     if args.troughdirbin is None:
-        if args.photospherevelocity is not None:
+        if args.photospherevelocity_kmps is not None:
             exit_with_error("-photospherevelocity applies only to the trough estimate", "Give -troughdirbin too")
         return None
-    check_costheta_dirbin(args.troughdirbin, "-troughdirbin", allowall=False)
+    check_dirbin(args.troughdirbin, "-troughdirbin", averageoverphi=args.average_over_phi_angle, allowall=False)
     _, modelmeta = get_modeldata(args.modelpath, printwarningsonly=True)
     if modelmeta["dimensions"] != 3:
         # a cell of a 2D model is a ring, and a cell of a 1D model is a shell
@@ -346,54 +355,43 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
             " such vector",
             "Remove -troughdirbin",
         )
-    if args.photospherevelocity is None or args.photospherevelocity <= 0.0:
+    photospherevelocity_kmps = args.photospherevelocity_kmps
+    if photospherevelocity_kmps is None:
         exit_with_error(
             "the trough estimate needs the velocity of the photosphere",
             "Give -photospherevelocity, e.g. the median of plotlastinteractionvelocity for a range with no strong line",
         )
-    photospherevelocity_kmps = args.photospherevelocity * KMPS_PER_VELOCITYUNIT[unit]
     if photospherevelocity_kmps >= KMPS_PER_VELOCITYUNIT["c"]:
         exit_with_error(
-            f"-photospherevelocity {args.photospherevelocity:g} {VELOCITYUNIT_LABELS[unit]} is at or above the speed"
-            " of light",
-            f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
+            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is at or above the speed of light",
+            "Give a velocity below 1c",
         )
-    # a value in the wrong unit, e.g. 0.05 for 0.05 c on a km/s axis, gives a disk much smaller than a cell
     partwidth_kmps = min(get_cell_widths_kmps(modelmeta)) / TROUGHSAMPLESPERCELL
     if photospherevelocity_kmps < partwidth_kmps:
         exit_with_error(
-            f"-photospherevelocity {args.photospherevelocity:g} {VELOCITYUNIT_LABELS[unit]} is less than"
+            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is less than"
             f" {format_velocity(partwidth_kmps, unit)}, a third of the width of a cell, thus the trough estimate has no"
             " resolution",
-            f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
+            "Give a larger -photospherevelocity",
         )
     cornervelocity_kmps = get_grid_corner_velocity_kmps(modelmeta)
     if photospherevelocity_kmps >= cornervelocity_kmps:
         exit_with_error(
             f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is at or above the corner of the"
             f" grid at {format_velocity(cornervelocity_kmps, unit)}, thus no cell is in front of the photosphere",
-            f"Give a lower velocity in units of {VELOCITYUNIT_LABELS[unit]}",
+            "Give a lower -photospherevelocity",
         )
-    if args.costhetamin is not None or args.costhetamax is not None:
+    if args.dirbin is not None or args.costhetamin is not None or args.costhetamax is not None:
         exit_with_error(
             "the trough estimate needs all the cells in front of the photosphere",
-            "Remove -costhetamin and -costhetamax, or remove -troughdirbin",
+            "Remove -dirbin, -costhetamin, and -costhetamax, or remove -troughdirbin",
         )
     return args.troughdirbin, photospherevelocity_kmps
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
-    addarg_timestep(parser, helptext="Timestep number to select")
-    addarg_timedays(parser, kind="str", helptext="Time in days to select")
-    parser.add_argument("-xmin", "-lambdamin", type=float, help="Minimum wavelength of the lines in Angstroms")
-    parser.add_argument("-xmax", "-lambdamax", type=float, help="Maximum wavelength of the lines in Angstroms")
-    parser.add_argument(
-        "-ions",
-        action=CommaJoinAction,
-        help='Ions of the lines, e.g. "Fe II,Co II". Default: each ion with a population in the model',
-    )
+    addarg_lineselection(parser)
     parser.add_argument("-maxlines", type=positive_int_arg, default=8, help="Number of lines to plot")
     parser.add_argument(
         "-rankby",
@@ -411,16 +409,19 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-troughdirbin",
         type=int,
         help=(
-            "Add a Sobolev estimate of the absorption trough for an observer in the costheta bin of this direction bin,"
-            " e.g. 90 for the pole at +z. The estimate takes the mean over the phi bins"
+            "Add a Sobolev estimate of the absorption trough for an observer at the centre of this direction bin. The"
+            " bins are the same as in plotspectra. With --average_over_phi_angle, give the first bin of a costheta"
+            " bin, e.g. 90 for the pole at +z"
         ),
     )
+    addarg_averageoverphi(parser, "-troughdirbin")
     parser.add_argument(
         "-photospherevelocity",
-        type=positive_float_arg,
+        dest="photospherevelocity_kmps",
+        type=positive_velocity_kmps_arg,
         help=(
-            "Velocity of the photosphere of -troughdirbin, in the unit of -velocityunit. plotlastinteractionvelocity"
-            " gives an estimate"
+            "Velocity of the photosphere of -troughdirbin, with its unit, e.g. 0.157c or 47000km/s."
+            " plotlastinteractionvelocity gives an estimate"
         ),
     )
     addarg_excitationtemperature(parser)
@@ -502,9 +503,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     unit = get_velocity_unit(args.modelpath, args.velocityunit)
     troughsettings = get_trough_settings(args, unit)
-    velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax, unit)
+    velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax_kmps, unit)
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
-    costhetarange = get_costheta_range(args.costhetamin, args.costhetamax)
+    costhetarange = get_costheta_range(args)
     inputs = get_cell_line_inputs(
         args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, costhetarange, args.taumin
     )
@@ -538,15 +539,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     }
     if troughsettings is not None:
         tables |= plot_trough_estimate(
-            axes[2], profiles, inputs, dfranked, colours, troughsettings, velocityedges_kmps, unit, args.modelpath
+            axes[2],
+            profiles,
+            inputs,
+            dfranked,
+            colours,
+            troughsettings,
+            velocityedges_kmps,
+            unit,
+            args.modelpath,
+            averageoverphi=args.average_over_phi_angle,
         )
 
     title = f"{get_model_name(args.modelpath)} {get_timestep_time(args.modelpath, timestep):.2f} d"
     if costhetarange is not None:
-        title += f", {costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}"
+        title += f", {format_costheta_range(costhetarange)}"
     label_line_axes(axes, args, unit, title, hastrough=troughsettings is not None)
 
-    outputfile = resolve_outputfile(args.outputfile, DEFAULTOUTPUTNAME)
+    outputfile = Path(args.outputfile)
     output_data(args, tables, outputfile)
     save_figure(fig, outputfile, args=args)
 
@@ -559,15 +569,20 @@ def print_trough_method(
     dfblend: pl.DataFrame,
     *,
     dopplershift: str | None,
+    averageoverphi: bool,
 ) -> None:
     """Print the method and the assumptions of the trough estimate, and the deepest point of the blend.
 
     dopplershift is the value of USE_RELATIVISTIC_DOPPLER_SHIFT in artisoptions.h, or None with no such option.
     """
-    directionlabel = get_dirbin_labels([dirbin], average_over_phi=True, usedegrees=True)[dirbin]
+    directionlabel = get_dirbin_labels([dirbin], average_over_phi=averageoverphi)[dirbin]
+    observertext = (
+        f"at the centre cos θ of direction bin {dirbin} ({directionlabel}), as the mean over the phi bins"
+        if averageoverphi
+        else f"at the centre of direction bin {dirbin} ({directionlabel})"
+    )
     print_detail(
-        f"The trough panel is a Sobolev estimate for an observer at the centre cos θ of direction bin {dirbin}"
-        f" ({directionlabel}), as the mean over the phi bins. The photosphere is a sphere at"
+        f"The trough panel is a Sobolev estimate for an observer {observertext}. The photosphere is a sphere at"
         f" {format_velocity(photospherevelocity_kmps, unit)}"
     )
     print_detail(

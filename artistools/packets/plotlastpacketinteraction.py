@@ -21,16 +21,22 @@ from artistools.atomic import roman_numerals
 from artistools.constants import c_ang_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
+from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
-from artistools.misc import addarg_unsupported
+from artistools.misc import addarg_timestep
+from artistools.misc import addarg_wavelengthrange
+from artistools.misc import check_time_range_is_valid
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
@@ -43,7 +49,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.dirbins import check_costheta_dirbin
+from artistools.misc.dirbins import check_dirbin
 from artistools.misc.dirbins import get_costheta_bins
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.packets.core import addarg_velocitykind
@@ -81,7 +87,10 @@ if t.TYPE_CHECKING:
 
 
 def get_required_packets(
-    modelpath: Path, ions: Sequence[tuple[int | None, int | None]] | None, srII_triplet: bool = False
+    modelpath: Path,
+    ions: Sequence[tuple[int | None, int | None]] | None,
+    srII_triplet: bool = False,
+    maxpacketfiles: int | None = None,
 ) -> tuple[int, pl.LazyFrame]:
     """Return the escaped r-packets, or with ions, the escaped r-packets that a line of the ions last absorbed.
 
@@ -89,7 +98,7 @@ def get_required_packets(
     takes the place of ions.
     """
     nprocs_read, dfpackets = get_packets(
-        modelpath=modelpath, maxpacketfiles=None, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
+        modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
     if srII_triplet:
@@ -128,6 +137,8 @@ def get_reduced_packet_set(
     srII_triplet: bool = False,
     *,
     absorption: bool = False,
+    averageoverphi: bool = False,
+    maxpacketfiles: int | None = None,
 ) -> tuple[int, pl.LazyFrame, float]:
     """Get packets in specific escape angle bins for observer direction.
 
@@ -140,13 +151,17 @@ def get_reduced_packet_set(
     """
     from artistools.spectra.core import get_boundbound_absorption_freq_expr
 
-    nprocs_read, dfpackets_selected = get_required_packets(modelpath, ions, srII_triplet=srII_triplet)
+    nprocs_read, dfpackets_selected = get_required_packets(
+        modelpath, ions, srII_triplet=srII_triplet, maxpacketfiles=maxpacketfiles
+    )
     frequency = get_boundbound_absorption_freq_expr() if absorption else pl.col("nu_rf")
     dfpackets_selected = dfpackets_selected.with_columns((c_ang_per_s / frequency).alias("lambda_rf"))
 
     if lambdarange is not None:
         dfpackets_selected = dfpackets_selected.filter(pl.col("lambda_rf").is_between(*lambdarange))
-    dfpackets_selected, solidangle_factor = filter_packets_dirbin(dfpackets_selected, dirbin, average_over_phi=True)
+    dfpackets_selected, solidangle_factor = filter_packets_dirbin(
+        dfpackets_selected, dirbin, average_over_phi=averageoverphi
+    )
 
     return nprocs_read, dfpackets_selected, solidangle_factor
 
@@ -170,7 +185,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     *,
     ions: Sequence[tuple[int | None, int | None]] | None,
     srIItriplet: bool,
-    colorlogscale: bool,
+    logcolorscale: bool,
     trueem: bool,
     lambdarange: tuple[float, float] | None,
     outputfile: Path | None,
@@ -198,7 +213,14 @@ def packets_2d_hist_bin_and_ejecta_vel(
         start_of_filename += "allions_"
 
     nprocs_read, lzpackets, inverse_solidangle_fraction = get_reduced_packet_set(
-        modelpath, dirbin, ions, lambdarange=lambdarange, srII_triplet=srIItriplet, absorption=absorption
+        modelpath,
+        dirbin,
+        ions,
+        lambdarange=lambdarange,
+        srII_triplet=srIItriplet,
+        absorption=absorption,
+        averageoverphi=getattr(args, "average_over_phi_angle", False),
+        maxpacketfiles=getattr(args, "maxpacketfiles", None),
     )
 
     start_of_filename += f"t_arrive_d_{tdays}_"
@@ -283,7 +305,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     )
 
     heatmap = np.ma.masked_less_equal(hist2D * luminosityfactor, 0.0)
-    if colorlogscale:
+    if logcolorscale:
         heatmap = np.ma.log10(heatmap)
 
     # an image with a colorbar keeps plt.subplots: fig.colorbar takes space that the
@@ -305,7 +327,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     ax.set_ylabel(rf"$v_z$ [{VELOCITYUNIT_AXISLABELS[unit]}]")
     cbar = fig.colorbar(im, ax=ax)
     luminositylabel = r"observed luminosity per volume [erg/(s cm$^3$)]"
-    cbar.set_label(rf"log$_{{10}}$ {luminositylabel}" if colorlogscale else f"O{luminositylabel[1:]}")
+    cbar.set_label(rf"log$_{{10}}$ {luminositylabel}" if logcolorscale else f"O{luminositylabel[1:]}")
     if dirbin != -1:
         draw_observer_direction(ax, dirbin, 0.8 * velocitymax_kmps / kmpsperunit)
 
@@ -313,7 +335,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
         assert args is not None
         valuecolumn = (
-            "log10_escaped_luminosity_erg_per_s_per_cm3" if colorlogscale else "escaped_luminosity_erg_per_s_per_cm3"
+            "log10_escaped_luminosity_erg_per_s_per_cm3" if logcolorscale else "escaped_luminosity_erg_per_s_per_cm3"
         )
         # the empty table replaces a _summary file of the same name from an earlier command with -groupby
         output_data(
@@ -496,7 +518,13 @@ def plot_velocity_profiles_by_group(
     position: t.Literal["em", "trueem"] = "trueem" if trueem else "em"
     typecolumn = "absorption_type" if absorption else ("trueemissiontype" if trueem else "emissiontype")
     nprocs_read, lzdfpackets, inverse_solidangle_fraction = get_reduced_packet_set(
-        modelpath, dirbin, None, lambdarange=lambdarange, absorption=absorption
+        modelpath,
+        dirbin,
+        None,
+        lambdarange=lambdarange,
+        absorption=absorption,
+        averageoverphi=getattr(args, "average_over_phi_angle", False),
+        maxpacketfiles=getattr(args, "maxpacketfiles", None),
     )
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
     delta_t_s = (t_max - t_min) * day_to_s
@@ -551,7 +579,9 @@ def plot_velocity_profiles_by_group(
     if lambdarange is not None:
         titleparts.append(f"{lambdarange[0]:.0f}-{lambdarange[1]:.0f} Å")
     if dirbin != -1:
-        titleparts.append(get_dirbin_labels([dirbin], average_over_phi=True, usedegrees=True)[dirbin])
+        titleparts.append(
+            get_dirbin_labels([dirbin], average_over_phi=getattr(args, "average_over_phi_angle", False))[dirbin]
+        )
     ax.set_title(", ".join(titleparts))
     set_legend(ax, args)
 
@@ -790,7 +820,7 @@ def get_heatmap_table(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     addarg_darkmode(parser)
 
     addarg_timedays(
@@ -799,19 +829,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Time in days. The plot takes the packets that arrive in the timestep of this time",
     )
     parser.add_argument("-tdays", dest="timedays", type=float, help=argparse.SUPPRESS)
-    addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
+    addarg_timestep(parser, helptext="Timestep of the arrival time of the packets, e.g. 40, or last")
 
-    parser.add_argument(
-        "-xmin",
-        "-lambdamin",
-        type=float,
-        help=(
-            "Minimum rest-frame wavelength of the packets in Angstroms, at the escape or with --absorption, at the last"
-            " absorption. Default: no limit"
-        ),
-    )
-    parser.add_argument(
-        "-xmax", "-lambdamax", type=float, help="Maximum rest-frame wavelength of the packets in Angstroms"
+    addarg_wavelengthrange(
+        parser, "the packets in the rest frame, at the escape or with --absorption at the last absorption,"
     )
     # the earlier form of the wavelength range: a centre and a width
     parser.add_argument("-wavelen", type=float, help=argparse.SUPPRESS)
@@ -834,16 +855,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=-1,
         help=(
-            "The first direction bin of a costheta bin, e.g. 0, 10, or 90. The plot takes all the phi bins of that"
-            " costheta bin. The value -1 takes all directions"
+            "The direction bin of the escaped packets, as in plotspectra. --average_over_phi_angle takes all the phi"
+            " bins of its costheta bin. The value -1 takes all directions"
         ),
     )
     parser.add_argument(
         "-groupby",
         choices=["element", "ion", "line"],
         help=(
-            "Plot the luminosity per unit velocity against the velocity (-velocity) of the last interaction. Draw one"
-            " series for each element, ion, or line of the last emission. Without this option, the plot is a 2D image"
+            "Plot the luminosity per unit velocity against the velocity (-velocitykind) of the last interaction."
+            " Draw one series for each element, ion, or line of the last emission. Without this option, the plot is"
+            " a 2D image"
         ),
     )
     parser.add_argument(
@@ -865,10 +887,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_velocitykind(parser)
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
     parser.add_argument(
-        "--colorlogscale",
+        "--logcolorscale",
         action="store_true",
         help="Show the log10 of the observed luminosity per unit volume in the 2D image",
     )
+    # the earlier name of --logcolorscale
+    parser.add_argument("--colorlogscale", dest="logcolorscale", action="store_true", help=argparse.SUPPRESS)
 
     parser.add_argument(
         "--use_thermalemissiontype",
@@ -880,6 +904,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_figscale(parser)
     addarg_show(parser)
     addarg_data_output(parser)
+    addarg_plotinvalidpart(parser, "the packets")
+    addarg_averageoverphi(parser)
+    addarg_maxpacketfiles(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -900,17 +927,27 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             "Give one of the two options",
         )
 
-    if args.timedays is None:
-        exit_with_error("the time is missing", "Give the time in days, e.g. -timedays 300")
+    # the arrival time bins are the timesteps, thus -timestep and -timedays select the same bin
+    selectedtimestep = get_selected_timestep(Path(args.modelpath), args.timestep, args.timedays)
+    args.timedays = get_timestep_time(Path(args.modelpath), selectedtimestep)
+    try:
+        check_time_range_is_valid(
+            Path(args.modelpath),
+            get_timestep_times(Path(args.modelpath), loc="start")[selectedtimestep],
+            get_timestep_times(Path(args.modelpath), loc="end")[selectedtimestep],
+            args.plotinvalidpart,
+        )
+    except ValueError as exc:
+        exit_with_error(str(exc))
 
-    check_costheta_dirbin(args.dirbin, "-dirbin", allowall=True)
+    check_dirbin(args.dirbin, "-dirbin", averageoverphi=args.average_over_phi_angle, allowall=True)
 
     ions = get_selected_ions(args)
 
     if args.groupby is None and args.velocitykind != "radial":
         exit_with_error(
-            "-velocity applies only with -groupby. The 2D image always gives v_cyl and v_z",
-            "Remove -velocity, or give -groupby",
+            "-velocitykind applies only with -groupby. The 2D image always gives v_cyl and v_z",
+            "Remove -velocitykind, or give -groupby",
         )
     if args.groupby is not None:
         plot_velocity_profiles_from_args(args, ions)
@@ -924,12 +961,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.dirbin,
         args.nvelocitybins,
         None
-        if args.velocitymax is None
-        else get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit)[-1],
+        if args.velocitymax_kmps is None
+        else get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax_kmps, unit)[-1],
         unit,
         ions=ions,
         srIItriplet=args.srIItriplet,
-        colorlogscale=args.colorlogscale,
+        logcolorscale=args.logcolorscale,
         trueem=args.use_thermalemissiontype,
         lambdarange=get_lambdarange(args),
         outputfile=args.outputfile,
@@ -985,7 +1022,7 @@ def plot_velocity_profiles_from_args(
     for option, isgiven in (
         ("-ions", ions is not None),
         ("--srIItriplet", args.srIItriplet),
-        ("--colorlogscale", args.colorlogscale),
+        ("--logcolorscale", args.logcolorscale),
     ):
         if isgiven:
             exit_with_error(
@@ -994,7 +1031,7 @@ def plot_velocity_profiles_from_args(
             )
     modelpath = Path(args.modelpath)
     unit = get_velocity_unit(modelpath, args.velocityunit)
-    velocityedges_kmps = get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit)
+    velocityedges_kmps = get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax_kmps, unit)
     if args.velocitykind == "lineofsight":
         # a line-of-sight velocity can be negative, thus each side of zero gets -nvelocitybins bins
         velocityedges_kmps = get_signed_velocity_bin_edges_kmps(velocityedges_kmps)

@@ -23,11 +23,15 @@ from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_identity
+from artistools.misc import get_parquet_cache_name
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
+from artistools.misc import print_detail
+from artistools.misc import print_saved
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
@@ -496,7 +500,7 @@ def read_parquet_cache(
 def get_parquet_cache_path(textfilepath: Path) -> Path:
     """Return the path of the parquet cache of a text file that get_text_source_cached reads."""
     # model_a.1.txt and model_a.2.txt must not share a cache, thus remove only a compression suffix
-    return textfilepath.with_name(f"{without_compressed_extension(textfilepath).name}.parquet.tmp")
+    return get_parquet_cache_name(textfilepath.with_name(f"{without_compressed_extension(textfilepath).name}.parquet"))
 
 
 def remove_parquet_cache(textfilepath: Path) -> None:
@@ -505,8 +509,8 @@ def remove_parquet_cache(textfilepath: Path) -> None:
     The cache check accepts a modification time within MTIME_TOLERANCE_S of its stamp. Thus the time of
     a text file that the caller wrote again soon after a read cannot show that the cache is stale.
     """
-    parquetfilepath = get_parquet_cache_path(textfilepath)
-    if parquetfilepath.is_file():
+    # a cache of the earlier name and a cache of the current name can both exist
+    while (parquetfilepath := get_parquet_cache_path(textfilepath)).is_file():
         print(f"Deleting {parquetfilepath}, because it is the cache of the old {textfilepath.name}")
         parquetfilepath.unlink(missing_ok=True)
 
@@ -1295,23 +1299,29 @@ def save_modeldata(
             write_artis_csv(dfmodel, fmodel)
 
     remove_parquet_cache(modelfilepath)
-    print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
+    print_saved(modelfilepath)
+    print_detail(f"took {time.perf_counter() - timestart:.1f} seconds")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
-    """Return the modelgridindex of the cell whose outer velocity brackets the given velocity."""
-    if np.isnan(velocity):
-        return None
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int:
+    """Return the modelgridindex of the first cell of a 1D model with an outer velocity [km/s] of velocity or above."""
+    # a negative value was the default that gave no velocity, and searchsorted takes it as the first cell
+    if velocity < 0.0:
+        exit_with_error(f"-velocity {velocity:g} km/s is below zero", "Give a radial velocity of 0 or more")
     dfmodel, modelmeta = get_modeldata(modelpath)
-    assert modelmeta["dimensions"] == 1, "get_mgi_of_velocity_kms only works for 1D models"
+    if modelmeta["dimensions"] != 1:
+        exit_with_error(
+            f"-velocity selects a shell of a 1D model, and this model has {modelmeta['dimensions']} dimensions",
+            "Give -modelgridindex",
+        )
     arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy()
 
     mgi_upper = int(np.searchsorted(arr_vouter, velocity))
     if mgi_upper >= len(arr_vouter):
-        msg = f"Velocity {velocity} is larger than all cell outer velocities. Velocity list: {arr_vouter}"
-        raise AssertionError(msg)
-    assert arr_vouter[mgi_upper] >= velocity if mgi_upper < len(arr_vouter) else True
-    assert arr_vouter[mgi_upper - 1] < velocity if mgi_upper > 0 else True
+        exit_with_error(
+            f"-velocity {velocity:g} km/s is above the outer velocity {arr_vouter[-1]:g} km/s of the last cell",
+            "Give a lower velocity",
+        )
     return mgi_upper
 
 
@@ -1422,7 +1432,8 @@ def save_initelemabundances(
         write_artis_csv(dfelabundances, fabund)
 
     remove_parquet_cache(abundancefilename)
-    print(f"wrote {abundancefilename} (took {time.perf_counter() - timestart:.1f} seconds)")
+    print_saved(abundancefilename)
+    print_detail(f"took {time.perf_counter() - timestart:.1f} seconds")
 
 
 def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = ".") -> None:
@@ -1785,3 +1796,19 @@ def get_cell_selection(
         return pl.repeat(value=True, n=pl.len())
 
     return pl.all_horizontal(conditions).fill_null(value=False)
+
+
+def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence[str]) -> pl.Expr:
+    """Return a selection that is true for a cell whose centre has cos θ = v_z / |v| in the range.
+
+    columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c. A 1D model has no
+    direction of a cell, thus the function stops with an error for it. See get_cell_selection for the edges.
+    """
+    if "vel_z_mid_on_c" not in columns:
+        exit_with_error(
+            "a 1D model has no direction of a cell, thus -dirbin, -costhetamin, and -costhetamax cannot select cells",
+            "Remove -dirbin, -costhetamin, and -costhetamax",
+        )
+    return get_cell_selection(
+        thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
+    )

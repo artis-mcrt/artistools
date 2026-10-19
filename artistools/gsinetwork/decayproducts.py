@@ -29,6 +29,7 @@ from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
 from artistools.misc import get_file_identity
 from artistools.misc import parallel_map
@@ -36,6 +37,8 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import write_parquet_atomic
+from artistools.misc.cliutils import time_days_arg
+from artistools.misc.cliutils import TIME_UNIT_HELP
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -47,6 +50,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_legend(parser)
     addarg_darkmode(parser)
+    addarg_show(parser)
     parser.add_argument(
         "-trajectoryroot", "-trajroot", required=True, type=Path, help="Path to nuclear network trajectory folder"
     )
@@ -55,9 +59,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory"
     )
 
-    parser.add_argument("-timemin", "-tmin", dest="tmin", type=float, default=0.1, help="Minimum time in days")
+    parser.add_argument("-timemin", "-tmin", type=time_days_arg, default=0.1, help=f"Minimum time. {TIME_UNIT_HELP}")
 
-    parser.add_argument("-timemax", "-tmax", dest="tmax", type=float, default=80.0, help="Maximum time in days")
+    parser.add_argument("-timemax", "-tmax", type=time_days_arg, default=80.0, help=f"Maximum time. {TIME_UNIT_HELP}")
 
     parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
 
@@ -454,9 +458,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
 
     # set timesteps logarithmically
-    log_t_compar_min_s = np.log10(args.tmin)
-    log_t_compar_max_s = np.log10(args.tmax)
-    arr_t_day = 10 ** (np.linspace(log_t_compar_min_s, log_t_compar_max_s, args.nsteps, endpoint=True))
+    arr_t_day = np.logspace(np.log10(args.timemin), np.log10(args.timemax), args.nsteps, endpoint=True)
 
     # get masses of trajectories
     summarypath = Path(args.trajectoryroot, "summary-all.dat")

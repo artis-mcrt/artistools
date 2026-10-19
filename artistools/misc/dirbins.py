@@ -1,5 +1,6 @@
 """Viewing-direction (costheta/phi) bin definitions, labels, selection, and averaging."""
 
+import argparse
 import math
 import typing as t
 from collections.abc import Sequence
@@ -263,8 +264,10 @@ def get_costheta_bins(usedegrees: bool) -> tuple[tuple[float, ...], tuple[float,
         thetabins_upper = np.arccos(costhetabins_lower) / np.pi * 180
         thetabins_lower = np.arccos(costhetabins_upper) / np.pi * 180
 
+        # the edges of θ come from the edges of cos θ, thus a closed edge of cos θ gives a closed edge of θ
         binlabels = [
-            f"{lower:.0f}° < θ < {upper:.0f}°" for lower, upper in zip(thetabins_lower, thetabins_upper, strict=False)
+            f"{lower:.0f}° {'≤' if binindex == ncosthetabins - 1 else '<'} θ ≤ {upper:.0f}°"
+            for binindex, (lower, upper) in enumerate(zip(thetabins_lower, thetabins_upper, strict=True))
         ]
     else:
         # ARTIS puts a packet with cos θ = 1 in the last bin, thus that bin includes its upper edge
@@ -273,6 +276,20 @@ def get_costheta_bins(usedegrees: bool) -> tuple[tuple[float, ...], tuple[float,
             for binindex, (lower, upper) in enumerate(zip(costhetabins_lower, costhetabins_upper, strict=True))
         ]
     return tuple(float(x) for x in costhetabins_lower), tuple(costhetabins_upper), binlabels
+
+
+def get_dirbin_centre_direction(dirbin: int) -> npt.NDArray[np.float64]:
+    """Return the unit vector at the centre cos θ and the centre phi of a direction bin. The polar axis is +z.
+
+    The phi bins of ARTIS descend and reverse at the middle bin, thus the phi of a bin comes from get_phi_bins.
+    """
+    costhetabin, phibin = divmod(dirbin, get_viewingdirection_phibincount())
+    costhetalower, costhetaupper, _ = get_costheta_bins(usedegrees=False)
+    philower, phiupper, _ = get_phi_bins(usedegrees=False)
+    costheta = (costhetalower[costhetabin] + costhetaupper[costhetabin]) / 2.0
+    phi = (philower[phibin] + phiupper[phibin]) / 2.0
+    sintheta = math.sqrt(1.0 - costheta**2)
+    return np.array([sintheta * math.cos(phi), sintheta * math.sin(phi), costheta])
 
 
 def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str]]:
@@ -369,6 +386,24 @@ def get_dirbin_labels(
     return angle_definitions
 
 
+def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall: bool) -> None:
+    """Exit with an error if dirbin is not a direction bin. With allowall, -1 for all the directions is also valid.
+
+    With averageoverphi, as with --average_over_phi_angle of plotspectra, dirbin must be the first bin of its costheta
+    bin.
+    """
+    from artistools.misc.cliutils import exit_with_error
+
+    if averageoverphi:
+        check_costheta_dirbin(dirbin, optionname, allowall=allowall)
+        return
+    ndirbins = get_viewingdirectionbincount()
+    if (allowall and dirbin == -1) or 0 <= dirbin < ndirbins:
+        return
+    alltext = "-1 for all the directions, or " if allowall else ""
+    exit_with_error(f"{optionname} {dirbin} is no direction bin", f"Give {alltext}a bin from 0 to {ndirbins - 1}")
+
+
 def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> None:
     """Exit with an error if dirbin is not the first direction bin of a costheta bin, or -1 when allowall is true."""
     from artistools.misc.cliutils import exit_with_error
@@ -382,3 +417,77 @@ def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> No
         f"{optionname} {dirbin} is not the first direction bin of a costheta bin",
         f"Give {alltext}a multiple of {nphibins} from 0 to {ndirbins - nphibins}, e.g. 90 for the pole at +z",
     )
+
+
+def addarg_costhetarange(parser: argparse.ArgumentParser) -> None:
+    """Add -dirbin, -costhetamin, and -costhetamax, which select the cells by the direction of their centre."""
+    parser.add_argument(
+        "-dirbin",
+        type=int,
+        help=(
+            "Select the cells whose centre has cos θ = v_z / |v| in the cos θ range of this direction bin, at all phi."
+            " Give the direction bin with phi bin 0 in the cos θ bin, e.g. 90 for the pole at +z or 50 for"
+            " 0 ≤ cos θ ≤ 0.2. These are the direction bins of the spectra and the light curves"
+        ),
+    )
+    parser.add_argument(
+        "-costhetamin",
+        type=float,
+        help=(
+            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole of -dirbin 90."
+            " Default: -1"
+        ),
+    )
+    parser.add_argument(
+        "-costhetamax",
+        type=float,
+        help=(
+            "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 with -costhetamin 0 for the cells of -dirbin"
+            " 50. Default: 1"
+        ),
+    )
+
+
+def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[float, float] | None:
+    """Return the range of cos θ of -dirbin or of -costhetamin and -costhetamax, or None to keep each cell.
+
+    The range of -dirbin includes both edges, as the range of -costhetamin and -costhetamax does. Thus a cell with
+    its centre on an edge is in two adjacent bins. With quiet, the function does not log the range of -dirbin.
+    """
+    from artistools.misc.cliutils import exit_with_error
+    from artistools.misc.cliutils import print_detail
+
+    if args.dirbin is not None:
+        if args.costhetamin is not None or args.costhetamax is not None:
+            exit_with_error(
+                "-dirbin gives a range of cos θ, thus -costhetamin and -costhetamax do not apply",
+                "Remove -dirbin, or remove -costhetamin and -costhetamax",
+            )
+        check_costheta_dirbin(args.dirbin, "-dirbin", allowall=False)
+        costhetalowers, costhetauppers, _ = get_costheta_bins(usedegrees=False)
+        costhetabin = args.dirbin // get_viewingdirection_phibincount()
+        costhetarange = (costhetalowers[costhetabin], costhetauppers[costhetabin])
+        if not quiet:
+            print_detail(
+                f"-dirbin {args.dirbin} selects the cells whose centre has {format_costheta_range(costhetarange)},"
+                " at all phi. The z axis is the polar axis of the direction bins"
+            )
+        return costhetarange
+
+    if args.costhetamin is None and args.costhetamax is None:
+        return None
+    costhetarange = (
+        -1.0 if args.costhetamin is None else args.costhetamin,
+        1.0 if args.costhetamax is None else args.costhetamax,
+    )
+    if not -1.0 <= costhetarange[0] < costhetarange[1] <= 1.0:
+        exit_with_error(
+            f"-costhetamin {costhetarange[0]:g} and -costhetamax {costhetarange[1]:g} give no range of cos θ",
+            "Give -1 ≤ -costhetamin < -costhetamax ≤ 1",
+        )
+    return costhetarange
+
+
+def format_costheta_range(costhetarange: tuple[float, float]) -> str:
+    """Return the text of a range of cos θ of the cells, e.g. "0 ≤ cos θ ≤ 0.2". The range includes both edges."""
+    return f"{costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}"

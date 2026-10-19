@@ -1919,7 +1919,7 @@ def test_the_stamp_of_a_batch_cache_decides_the_conversion(tmp_path: Path) -> No
     from artistools.misc.fileio import rankbatch_parquet_staleness
 
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
-    assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet.tmp"
+    assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet"
 
     # a cache that no conversion wrote yet needs the conversion
     assert (
@@ -3570,7 +3570,8 @@ def test_deposition_ye_range_needs_a_model_with_ye(tmp_path: Path, capsys: pytes
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54", ye="0.25-0.35", outputfile=outfile)
 
     # the one cell of the model is inside the range, thus the table gives the rate of that cell
-    lines = outfile.read_text(encoding="utf-8").splitlines()
+    # the provenance lines of the command come first
+    lines = [line for line in outfile.read_text(encoding="utf-8").splitlines() if not line.startswith("# ")]
     assert lines[0].endswith("in 1 of 1 cells with matter, with an init_Ye of 0.25 to 0.35")
     assert float(lines[3].split()[3]) == pytest.approx(
         at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_per_ion"].item(), rel=1e-3
@@ -3672,7 +3673,8 @@ def test_deposition_writes_a_table(tmp_path: Path, capsys: pytest.CaptureFixture
     outfile = tmp_path / "deposition.txt"
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54,last", outputfile=outfile)
 
-    lines = outfile.read_text(encoding="utf-8").splitlines()
+    # the provenance lines of the command come first
+    lines = [line for line in outfile.read_text(encoding="utf-8").splitlines() if not line.startswith("# ")]
     assert lines[0].startswith(at.get_model_name(modeldir))
     assert lines[1].split() == ["timestep", "t_days", "dep_per_volume", "dep_per_ion", "dep_per_mass"]
     assert lines[2].split() == ["[d]", "[eV/s/cm^3]", "[eV/s]", "[eV/s/g]"]
@@ -6156,3 +6158,71 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
     assert f"Te: {maxtempcount} points are at MAXTEMP" in output
     # a density has no temperature limit of ARTIS
     assert dfsummary.filter(pl.col("series") == "rho")["mintemp_point_count"].is_null().all()
+
+
+def test_element_group_mass_fractions_take_only_the_elements_of_the_group() -> None:
+    """init_X_lanthanides is the sum of La to Lu. It does not include Ba and Hf, or the column of one nuclide.
+
+    The model has no actinide, thus it gets no column of the actinides.
+    """
+    from artistools.estimators.core import add_element_group_mass_fractions
+
+    dfmodel = pl.LazyFrame({
+        "init_X_Ba": [0.5],
+        "init_X_La": [0.01],
+        "init_X_Nd": [0.02],
+        "init_X_Nd142": [0.015],
+        "init_X_Lu": [0.004],
+        "init_X_Hf": [0.3],
+    })
+    dfgroups = add_element_group_mass_fractions(dfmodel).collect()
+    assert np.isclose(dfgroups["init_X_lanthanides"].item(), 0.034, rtol=1e-12)
+    assert "init_X_actinides" not in dfgroups.columns
+
+
+def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(tmp_path: Path) -> None:
+    """-dirbin 50 keeps the cells with 0 ≤ cos θ ≤ 0.2 at the centre, and init_X_Fe uses the cell masses as weights.
+
+    Te uses the volume as the weight. A mean of a mass fraction with that weight gave too much weight to the cells of
+    low density.
+    """
+    timestep = 25
+    plotestimators.main(
+        argsraw=["-timestep", str(timestep)],
+        modelpath=modelpath_classic_3d,
+        outputfile=tmp_path,
+        dirbin=50,
+        plotlist=[["init_X_Fe", "Te"]],
+        write_data=True,
+    )
+    (summaryfile,) = tmp_path.glob("*_summary.txt")
+    dfsummary = pl.read_csv(summaryfile, separator=" ", null_values="nan", comment_prefix="#")
+
+    _, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    dfcells = (
+        at.estimators
+        .scan_estimators(modelpath_classic_3d, timestep=(timestep,), join_modeldata=True)
+        .select(
+            "init_X_Fe",
+            "Te",
+            "volume",
+            mass=pl.col("rho") * pl.col("volume"),
+            costheta=pl.col("vel_z_mid") / pl.col("vel_r_mid"),
+            isinsidevmax=pl.col("vel_r_mid") <= modelmeta["vmax_cmps"],
+        )
+        .filter(pl.col("costheta").is_between(0.0, 0.2), pl.col("isinsidevmax"))
+        .collect()
+    )
+    assert dfcells.height > 0
+    rowfe = dfsummary.filter(pl.col("series") == "init_X_Fe").row(0, named=True)
+    rowte = dfsummary.filter(pl.col("series") == "Te").row(0, named=True)
+    assert rowfe["value_count"] == rowte["value_count"] == dfcells.height
+    assert rowfe["method"] == "cell mass times time step duration"
+    massmean, volumemean, temean = dfcells.select(
+        massmean=pl.col("init_X_Fe").dot("mass") / pl.col("mass").sum(),
+        volumemean=pl.col("init_X_Fe").dot("volume") / pl.col("volume").sum(),
+        temean=pl.col("Te").dot("volume") / pl.col("volume").sum(),
+    ).row(0)
+    assert not np.isclose(massmean, volumemean, rtol=1e-2)
+    assert np.isclose(rowfe["value_mean"], massmean, rtol=1e-6)
+    assert np.isclose(rowte["value_mean"], temean, rtol=1e-6)

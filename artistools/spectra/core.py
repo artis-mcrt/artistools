@@ -1731,8 +1731,8 @@ def print_line_label_convention() -> None:
 
 # the packet column of the last interaction and of the last thermal emission for each shell grouping
 SHELLCOLUMNS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
-    "velocity": ("emission_velocity", "true_emission_velocity"),
-    "losvelocity": ("emission_velocity_lineofsight", "true_emission_velocity_lineofsight"),
+    "radialvelocity": ("emission_velocity", "true_emission_velocity"),
+    "lineofsightvelocity": ("emission_velocity_lineofsight", "true_emission_velocity_lineofsight"),
     "ye": ("em_ye", "trueem_ye"),
 })
 
@@ -1741,7 +1741,9 @@ DEFAULT_YE_SHELLS: t.Final[tuple[float, ...]] = (*(index * 0.05 for index in ran
 
 
 @on_model_host
-def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tuple[list[float], t.Literal["kmps", "c"]]:
+def get_default_radialvelocity_shells(
+    modelpath: Path | str, nshells: int = 10
+) -> tuple[list[float], t.Literal["kmps", "c"]]:
     """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the grid corner, and the unit.
 
     A cell in the corner of a 2D grid or a 3D grid lies outside vmax. The last shell holds the
@@ -1761,12 +1763,12 @@ def get_default_velocity_shells(modelpath: Path | str, nshells: int = 10) -> tup
     return edges, get_auto_velocity_unit(modelmeta["vmax_cmps"])
 
 
-def get_default_losvelocity_shells(modelpath: Path | str) -> tuple[list[float], t.Literal["kmps", "c"]]:
+def get_default_lineofsightvelocity_shells(modelpath: Path | str) -> tuple[list[float], t.Literal["kmps", "c"]]:
     """Return the edges [km/s] of 10 equal shells from -vmax to vmax, plus one shell to each corner, and the unit.
 
     A positive velocity along the line of sight is motion toward the observer.
     """
-    edges, unit = get_default_velocity_shells(modelpath, nshells=5)
+    edges, unit = get_default_radialvelocity_shells(modelpath, nshells=5)
     return [*(-edge for edge in reversed(edges[1:])), *edges], unit
 
 
@@ -1779,39 +1781,6 @@ def check_edges_increase(edges: Sequence[float], description: str) -> None:
     ):
         msg = f"The {description} must be finite, increase, and give at least one interval, not {list(edges)}"
         raise ValueError(msg)
-
-
-def parse_velocity_argument(value: str, *, requireunit: bool = False) -> tuple[float, t.Literal["kmps", "c"]]:
-    """Return the velocity [km/s] and the unit of a command line value, e.g. 5000km/s or 0.1c.
-
-    A number with no unit is in km/s, unless requireunit is True. A command that takes no unit then gives an error.
-    """
-    text = value.strip()
-    unit: t.Literal["kmps", "c"]
-    if text.lower().endswith("km/s"):
-        numbertext, unit = text[: -len("km/s")], "kmps"
-    elif text.lower().endswith("c"):
-        numbertext, unit = text[:-1], "c"
-    else:
-        numbertext, unit = text, "kmps"
-    helptext = "Give a number that ends in km/s, e.g. 5000km/s, or a fraction of c, e.g. 0.1c"
-    if requireunit and numbertext == text:
-        msg = f"'{value}' has no unit. {helptext}"
-        raise argparse.ArgumentTypeError(msg)
-    try:
-        number = float(numbertext)
-    except ValueError:
-        number = math.nan
-    if not math.isfinite(number):
-        msg = f"'{value}' is not a finite velocity. {helptext}"
-        raise argparse.ArgumentTypeError(msg)
-
-    return (number * C_cm_per_s / km_to_cm if unit == "c" else number), unit
-
-
-def get_velocity_label(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
-    """Return a velocity in the unit that the user gave, e.g. 0.1c or 5000 km/s."""
-    return f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
 
 
 def get_shell_labels(shelledges: Sequence[float], unit: t.Literal["kmps", "c", "ye"] = "kmps") -> list[str]:
@@ -1975,7 +1944,7 @@ def add_ye_columns(
 def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby: str, usethermal: bool) -> pl.LazyFrame:
     """Add the packet column that a shell grouping bins, for the last interaction and for the last thermal emission.
 
-    A velocity range reads the column of the velocity grouping or of the losvelocity grouping. The
+    A velocity range reads the column of the radialvelocity grouping or of the lineofsightvelocity grouping. The
     packets module gives NaN or null to the thermal column of a packet with no thermal emission record.
     """
     lastcolumn, thermalcolumn = SHELLCOLUMNS[groupby]
@@ -1999,7 +1968,7 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
         lzdfpackets = add_ye_columns(lzdfpackets, modelpath, positions, thermalfromvelocity)
     else:
         get_velocity_expr = (
-            get_emission_velocity_expr if groupby == "velocity" else get_emission_velocity_lineofsight_expr
+            get_emission_velocity_expr if groupby == "radialvelocity" else get_emission_velocity_lineofsight_expr
         )
         lzdfpackets = lzdfpackets.with_columns(**{
             column: get_velocity_expr(position) for column, position in positions
@@ -2052,7 +2021,7 @@ def get_flux_contributions_from_packets(
     """Return the emission and absorption contributions binned from the packets, and the flux and wavelength arrays.
 
     groupby selects the group of each packet: ion, line, nuclide, nuclide mass, or a shell of the
-    radial velocity (velocity), of the velocity along the line of sight (losvelocity), or of the
+    radial velocity (radialvelocity), of the velocity along the line of sight (lineofsightvelocity), or of the
     initial electron fraction of the cell (ye).
 
     emissionevent selects the emission of each packet: the last interaction, the last thermal emission, or
@@ -2071,7 +2040,7 @@ def get_flux_contributions_from_packets(
     position of its last emission. Thus the shell and the velocity of an absorption always come from the
     last interaction.
 
-    velocityranges maps the key velocity, the key losvelocity, or both to the two edges [km/s] of a
+    velocityranges maps the key radialvelocity, the key lineofsightvelocity, or both to the two edges [km/s] of a
     range. The keys name the radial velocity and the velocity along the line of sight. Each contribution
     then holds only the packets inside each range. The lower edge is inside the range.
     """
@@ -2102,7 +2071,7 @@ def get_flux_contributions_from_packets(
         emtypecolumn = "trueemissiontype" if usethermal else "emissiontype"
     velocityranges = velocityranges or {}
     for rangegrouping, rangeedges in velocityranges.items():
-        assert rangegrouping in {"velocity", "losvelocity"}
+        assert rangegrouping in {"radialvelocity", "lineofsightvelocity"}
         check_edges_increase(rangeedges, f"edges of the {rangegrouping} range")
     if directionbins_are_vpkt_observers and (groupby in SHELLCOLUMNS or velocityranges):
         msg = "A virtual packet holds no emission position, thus a shell and a velocity range cannot select it"

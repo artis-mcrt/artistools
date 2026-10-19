@@ -26,6 +26,7 @@ from polars.io.plugins import register_io_source
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbolset
 from artistools.atomic import get_ion_levels
 from artistools.atomic import roman_numerals
@@ -37,6 +38,7 @@ from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_mpiranklist
+from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_runfolders
 from artistools.misc import get_timesteps
 from artistools.misc import path_is_codecomparison
@@ -70,6 +72,12 @@ UNITS_BY_SUFFIX: Mapping[str, str] = MappingProxyType({
     "_on_c": "c",
     "_en_erg": "erg",
     "_days": "days",
+})
+
+# The first and the last atomic number of each group of add_element_group_mass_fractions
+ELEMENT_GROUP_Z_RANGES: Mapping[str, tuple[int, int]] = MappingProxyType({
+    "lanthanides": (57, 71),
+    "actinides": (89, 103),
 })
 
 # Suffixes that make a variant of one quantity in other units, e.g. vel_r_mid, vel_r_mid_on_c, and
@@ -405,8 +413,8 @@ def estimator_colsortkey(col: str) -> str:
 
 def get_rankbatch_parquetpath(folderpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int) -> Path:
     """Return the path of the parquet cache for one batch of MPI ranks."""
-    filename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
-    return Path(folderpath) / filename
+    filename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet"
+    return get_parquet_cache_name(Path(folderpath) / filename)
 
 
 # With the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes the estimators of all ranks into this file of a run
@@ -1200,6 +1208,7 @@ def join_cell_modeldata(
         for colname in dfmodel.collect_schema().names()
         if not colname.startswith("vel_") and colname not in {"inputcellid", "modelgridindex", "mass_g"}
     })
+    dfmodel = add_element_group_mass_fractions(dfmodel)
     return estimators.join(
         dfmodel, on="modelgridindex", how="inner", suffix="_initmodel", maintain_order="left"
     ).with_columns(
@@ -1208,6 +1217,21 @@ def join_cell_modeldata(
         volume_prevtimestep=pl.col("init_volume")
         * (pl.col("tmid_days_prevtimestep") / modelmeta["t_model_init_days"]) ** 3,
     ), modelmeta
+
+
+def add_element_group_mass_fractions(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
+    """Add init_X_lanthanides and init_X_actinides, the sums of the mass fractions of the elements of each group.
+
+    The model data must hold the mass fraction of each element as init_X_<element>, e.g. init_X_La from abundances.txt.
+    A group gets no column when the model data has no element of it. An element with no column counts as zero.
+    """
+    columns = set(dfmodel.collect_schema().names())
+    groupfractions = {}
+    for groupname, (zmin, zmax) in ELEMENT_GROUP_Z_RANGES.items():
+        elementcolumns = [colname for z in range(zmin, zmax + 1) if (colname := f"init_X_{get_elsymbol(z)}") in columns]
+        if elementcolumns:
+            groupfractions[f"init_X_{groupname}"] = pl.sum_horizontal(elementcolumns)
+    return dfmodel.with_columns(**groupfractions)
 
 
 def lazyframe_from_estimator_dict(estimators: dict[tuple[int, int], t.Any]) -> pl.LazyFrame:

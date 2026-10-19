@@ -13,16 +13,19 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
+from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
 from artistools.misc import get_costheta_bins
 from artistools.misc import get_phi_bins
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import import_optional
+from artistools.misc import open_file
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
-from artistools.misc import resolve_outputfile
+from artistools.misc import print_saved
 from artistools.plottools import TRANSPARENT_DARKMODE_FORMATS
 
 
@@ -206,20 +209,23 @@ def viewing_angles_visualisation(
             fig.write_html(outfile, auto_play=False)
         else:
             fig.write_image(outfile)
-        print(f"Figure saved as {outfile}")
+        print_saved(outfile)
 
     if show_plot:
         fig.show()
+    if outfile and getattr(args, "open", False):
+        open_file(outfile)
 
     return (isomin, isomax)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("modelfile", help="The path of the ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     addarg_output(
         parser,
         kind="file",
+        defaultname="plotviewingangles.html",
         helptext="The name of the output file. A name that holds 'html' gives an html file with the animation",
     )
     parser.add_argument("-isomin", type=float, help="The smallest density of the colour scale")
@@ -233,7 +239,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=1.0,
         help="The length of the direction bin lines, in units of the size of the box",
     )
-    parser.add_argument("--show_plot", action="store_true", help="Show the plot after the command saves it")
+    addarg_show(parser)
+    # the earlier name of --show
+    parser.add_argument("--show_plot", dest="show", action="store_true", help=argparse.SUPPRESS)
     addarg_darkmode(parser)
     addarg_data_output(parser)
 
@@ -252,16 +260,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     viewing_angles_visualisation(
-        modelfile=args.modelfile,
-        # -o promises that a path with no file extension names a folder, which the command makes
-        outfile=str(resolve_outputfile(args.outputfile, "plotviewingangles.html")) if args.outputfile else None,
+        modelfile=str(args.modelpath),
+        outfile=str(args.outputfile),
         isomin=args.isomin,
         isomax=args.isomax,
         opacity=args.opacity,
         surface_count=args.surface_count,
         linewidth=args.linewidth,
         linelength=args.linelength,
-        show_plot=args.show_plot,
+        show_plot=args.show,
         darkmode=args.darkmode,
         args=args,
     )

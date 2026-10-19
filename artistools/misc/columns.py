@@ -254,6 +254,14 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     # the line fluxes
     ("time", "the middle of the time bin, from the explosion", "days"),
     ("fratio", "the luminosity of the second feature divided by the luminosity of the first feature", ""),
+    (
+        "fratio_relnoise(_.+)?",
+        (
+            "the relative Monte Carlo noise of fratio, sqrt(r1^2 + r2^2), where r1 and r2 are the noises"
+            " sqrt(sum(e^2)) / sum(e) of the two features"
+        ),
+        "",
+    ),
     ("fratio_.+", "the luminosity of the second feature divided by the luminosity of the first feature", ""),
     ("feature", "the emission feature, or reference for a point of the reference data", ""),
     ("log10nne", "the base-10 logarithm of the electron density of the cell of the last emission", "log10(cm^-3)"),
@@ -381,7 +389,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     (
         "velocity_luminosity_q(25|50|75)_kmps",
         (
-            "the velocity (radial or line-of-sight, -velocity) of the last interaction or of the last thermal"
+            "the velocity (radial or line-of-sight, -velocitykind) of the last interaction or of the last thermal"
             " emission at the {0}% quantile of the packet energy of the group or the timestep"
         ),
         "km/s",
@@ -389,7 +397,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     (
         "velocity_luminosity_q(25|50|75)_c",
         (
-            "the velocity (radial or line-of-sight, -velocity) of the last interaction or of the last thermal"
+            "the velocity (radial or line-of-sight, -velocitykind) of the last interaction or of the last thermal"
             " emission at the {0}% quantile of the packet energy of the group or the timestep"
         ),
         "c",

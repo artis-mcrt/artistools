@@ -519,7 +519,7 @@ def test_spectra_velocity_shell_contributions() -> None:
     # the corner of the 3D grid lies at sqrt(3) times vmax, which is 50 091 km/s
     shells = [0.0, 10000.0, 20000.0, 30000.0, 51000.0]
     contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
-        groupby="velocity", shelledges=shells
+        groupby="radialvelocity", shelledges=shells
     )
     contributions_ion, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
 
@@ -539,11 +539,12 @@ def test_spectra_velocity_shell_contributions() -> None:
 
 
 @pytest.mark.parametrize(
-    ("rangegrouping", "rangeedges"), [("velocity", (10000.0, 20000.0)), ("losvelocity", (-10000.0, 5000.0))]
+    ("rangegrouping", "rangeedges"),
+    [("radialvelocity", (10000.0, 20000.0)), ("lineofsightvelocity", (-10000.0, 5000.0))],
 )
 def test_spectra_velocity_range_contributions(rangegrouping: str, rangeedges: tuple[float, float]) -> None:
     """The ion groups of a velocity range hold the emission and the absorption of the shell with the same edges."""
-    shells = [-51000.0 if rangegrouping == "losvelocity" else 0.0, *rangeedges, 51000.0]
+    shells = [-51000.0 if rangegrouping == "lineofsightvelocity" else 0.0, *rangeedges, 51000.0]
     contributions_shells, _, array_lambda = get_contributions_classic_3d(groupby=rangegrouping, shelledges=shells)
     (shelllabel,) = atspectra.get_shell_labels(rangeedges)
     (shell,) = (contrib for contrib in contributions_shells if contrib.linelabel == shelllabel)
@@ -565,15 +566,15 @@ def test_spectra_two_velocity_ranges_keep_the_packets_inside_both() -> None:
     losedges = (-10000.0, 5000.0)
     radialedges = (10000.0, 20000.0)
     contributions_shells, _, _ = get_contributions_classic_3d(
-        groupby="losvelocity", shelledges=list(losedges), velocityranges={"velocity": radialedges}
+        groupby="lineofsightvelocity", shelledges=list(losedges), velocityranges={"radialvelocity": radialedges}
     )
     (shell,) = contributions_shells
 
     _, array_flambda_emission_total, _ = get_contributions_classic_3d(
-        groupby="ion", velocityranges={"velocity": radialedges, "losvelocity": losedges}
+        groupby="ion", velocityranges={"radialvelocity": radialedges, "lineofsightvelocity": losedges}
     )
     _, array_flambda_emission_total_radial, _ = get_contributions_classic_3d(
-        groupby="ion", velocityranges={"velocity": radialedges}
+        groupby="ion", velocityranges={"radialvelocity": radialedges}
     )
 
     assert np.allclose(array_flambda_emission_total, shell.array_flambda_emission, rtol=1e-6, atol=0.0)
@@ -587,7 +588,7 @@ def test_spectra_no_thermal_emission_record_gives_no_thermal_velocity() -> None:
     lies above 11 000 km/s. Thus a packet below 10 000 km/s has no thermal emission record.
     """
     contributions, _, _ = get_contributions_classic_3d(
-        groupby="velocity", emissionevent="thermal", shelledges=[0.0, 10000.0, 51000.0], getabsorption=False
+        groupby="radialvelocity", emissionevent="thermal", shelledges=[0.0, 10000.0, 51000.0], getabsorption=False
     )
     fluxes = {contrib.linelabel: contrib.fluxcontrib for contrib in contributions}
     assert "[0, 10000) km/s" not in fluxes
@@ -595,7 +596,7 @@ def test_spectra_no_thermal_emission_record_gives_no_thermal_velocity() -> None:
     assert fluxes["[10000, 51000) km/s"] > 0.0
 
     contributions_range, _, _ = get_contributions_classic_3d(
-        emissionevent="thermal", velocityranges={"velocity": (0.0, 10000.0)}, getabsorption=False
+        emissionevent="thermal", velocityranges={"radialvelocity": (0.0, 10000.0)}, getabsorption=False
     )
     assert not contributions_range
 
@@ -664,20 +665,45 @@ def test_spectraemissionplot_of_a_model_with_no_sampled_emission_gives_a_message
     assert "SAMPLE_RPKT_EMISSION" in errortext
 
 
+def test_spectra_takes_the_earlier_names_of_the_velocity_groupings() -> None:
+    """-groupby velocity and losvelocity, and the earlier names of the velocity ranges, stay valid in a script."""
+    from artistools.spectra import plotspectra
+
+    args = at.misc.parse_cli_args(
+        plotspectra.addargs,
+        None,
+        None,
+        [
+            "-groupby",
+            "losvelocity",
+            "-emissionvelocityrange",
+            "1000",
+            "2000",
+            "-emissionlosvelocityrange",
+            "0c",
+            "0.1c",
+        ],
+    )
+    assert args.groupby == "lineofsightvelocity"
+    assert args.emissionradialvelocityrange == [(1000.0, "kmps"), (2000.0, "kmps")]
+    assert args.emissionlineofsightvelocityrange[1][1] == "c"
+    assert at.misc.parse_cli_args(plotspectra.addargs, None, None, ["-groupby", "velocity"]).groupby == "radialvelocity"
+
+
 def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     """A shell edge is a number in km/s, or a fraction of c with a c suffix, and the labels keep that unit."""
-    assert atspectra.parse_velocity_argument("5000") == (5000.0, "kmps")
-    assert atspectra.parse_velocity_argument("5000 km/s") == (5000.0, "kmps")
-    assert atspectra.parse_velocity_argument("5000km/s", requireunit=True) == (5000.0, "kmps")
+    assert at.plottools.parse_velocity_argument("5000") == (5000.0, "kmps")
+    assert at.plottools.parse_velocity_argument("5000 km/s") == (5000.0, "kmps")
+    assert at.plottools.parse_velocity_argument("5000km/s", requireunit=True) == (5000.0, "kmps")
     with pytest.raises(argparse.ArgumentTypeError, match="has no unit"):
-        atspectra.parse_velocity_argument("5000", requireunit=True)
-    velocity_kmps, unit = atspectra.parse_velocity_argument("0.1C")
+        at.plottools.parse_velocity_argument("5000", requireunit=True)
+    velocity_kmps, unit = at.plottools.parse_velocity_argument("0.1C")
     assert unit == "c"
     assert np.isclose(velocity_kmps, 29979.2458)
 
     for badvalue in ("fast", "inf", "infc", "nan"):
         with pytest.raises(argparse.ArgumentTypeError, match="not a finite velocity"):
-            atspectra.parse_velocity_argument(badvalue)
+            at.plottools.parse_velocity_argument(badvalue)
 
     shells = [0.0, 29979.2458, 59958.4916]
     assert atspectra.get_shell_labels(shells, "c") == ["[0, 0.1) c", "[0.1, 0.2) c"]
@@ -729,14 +755,14 @@ def test_spectra_velocity_shell_order_counts_not_set_against_the_limit() -> None
 
 def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> None:
     """The default shells take km/s below a vmax of 0.2 c, and units of c from 0.2 c."""
-    edges, unit = atspectra.get_default_velocity_shells(modelpath_classic_3d)
+    edges, unit = atspectra.get_default_radialvelocity_shells(modelpath_classic_3d)
     assert unit == "kmps"
     assert len(edges) == 12
     assert np.isclose(edges[10], 28920.2, rtol=1e-4)
 
     fastmeta = {"vmax_cmps": 0.3 * 2.99792458e10, "dimensions": 1}
     with mock.patch("artistools.inputmodel.get_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
-        edges, unit = atspectra.get_default_velocity_shells("fastmodel", nshells=3)
+        edges, unit = atspectra.get_default_radialvelocity_shells("fastmodel", nshells=3)
     assert unit == "c"
     assert atspectra.get_shell_labels(edges, unit) == ["[0, 0.1) c", "[0.1, 0.2) c", "[0.2, 0.3) c"]
 
@@ -745,7 +771,7 @@ def test_spectra_losvelocity_shell_contributions() -> None:
     """A line-of-sight shell holds the packets by the signed velocity along the packet direction."""
     shells = [-51000.0, -20000.0, 0.0, 20000.0, 51000.0]
     contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
-        groupby="losvelocity", shelledges=shells
+        groupby="lineofsightvelocity", shelledges=shells
     )
     _, array_flambda_emission_total_ion, _ = get_contributions_classic_3d(groupby="ion")
 
@@ -803,14 +829,14 @@ def test_spectra_ye_of_a_model_whose_cell_ids_start_at_zero(tmp_path: Path) -> N
 
 def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
     with pytest.raises(ValueError, match="needs the shell edges"):
-        get_contributions_classic_3d(groupby="velocity")
+        get_contributions_classic_3d(groupby="radialvelocity")
 
     for badshells in ([0.0, 20000.0, 10000.0], [0.0, math.inf], [0.0, math.nan, 20000.0]):
         with pytest.raises(ValueError, match="must be finite, increase"):
-            get_contributions_classic_3d(groupby="velocity", shelledges=badshells)
+            get_contributions_classic_3d(groupby="radialvelocity", shelledges=badshells)
 
-    with pytest.raises(ValueError, match="edges of the losvelocity range must be finite, increase"):
-        get_contributions_classic_3d(velocityranges={"losvelocity": (5000.0, -5000.0)})
+    with pytest.raises(ValueError, match="edges of the lineofsightvelocity range must be finite, increase"):
+        get_contributions_classic_3d(velocityranges={"lineofsightvelocity": (5000.0, -5000.0)})
 
 
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
@@ -823,7 +849,7 @@ def test_spectraemissionplot_velocity_shells(mockstackplot: mock.MagicMock, tmp_
         timemin=4,
         timemax=6.5,
         emissionabsorption=True,
-        groupby="velocity",
+        groupby="radialvelocity",
     )
 
     assert mockstackplot.call_count == 2
@@ -841,7 +867,7 @@ def test_spectraemissionplot_velocity_shells_in_units_of_c(mockstackplot: mock.M
         timemin=4,
         timemax=6.5,
         showemission=True,
-        groupby="velocity",
+        groupby="radialvelocity",
         velocityshells=["0c", "0.04c", "0.06c", "0.1c"],
     )
 
@@ -861,7 +887,7 @@ def test_spectraemissionplot_velocity_ranges(
         argsraw=[
             str(modelpath_classic_3d),
             "--showemission",
-            "-emissionlosvelocityrange",
+            "-emissionlineofsightvelocityrange",
             "-0.05c",
             "0.05c",
             "-timemin",
@@ -885,8 +911,8 @@ def test_spectraemissionplot_velocity_ranges(
         timemin=4,
         timemax=6.5,
         showemission=True,
-        emissionvelocityrange=["0.04c", "0.06c"],
-        emissionlosvelocityrange=[-15000, 15000],
+        emissionradialvelocityrange=["0.04c", "0.06c"],
+        emissionlineofsightvelocityrange=[-15000, 15000],
     )
 
     assert mockstackplot.call_count == 2
@@ -905,7 +931,7 @@ def test_spectraemissionplot_linewidth_arg(mockplot: mock.MagicMock, tmp_path: P
         timemin=4,
         timemax=6.5,
         showemission=True,
-        groupby="velocity",
+        groupby="radialvelocity",
         velocityshells=["0c", "0.04c", "0.06c", "0.1c"],
         linewidth=[0.5, 7.0],
         write_data=True,
@@ -969,10 +995,10 @@ def test_spectraemissionplot_losvelocity_shells(mockstackplot: mock.MagicMock, t
         timemin=4,
         timemax=6.5,
         showemission=True,
-        groupby="losvelocity",
+        groupby="lineofsightvelocity",
     )
 
-    edges, _ = atspectra.get_default_losvelocity_shells(modelpath_classic_3d)
+    edges, _ = atspectra.get_default_lineofsightvelocity_shells(modelpath_classic_3d)
     assert len(edges) == 13
     assert edges[0] == -edges[-1]
     assert 2 <= len(mockstackplot.call_args_list[0].args[2]) <= 12
@@ -990,7 +1016,7 @@ def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
         timemin=4,
         timemax=6.5,
         showemission=True,
-        groupby="velocity",
+        groupby="radialvelocity",
         velocityshells=list(np.linspace(8000.0, 28000.0, 21)),
         maxseriescount=3,
     )
@@ -1007,7 +1033,11 @@ def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
 )
 @pytest.mark.parametrize(
     "optionargs",
-    [{"groupby": "velocity"}, {"emissionvelocityrange": [5000, 10000]}, {"emissionlosvelocityrange": [-5000, 5000]}],
+    [
+        {"groupby": "radialvelocity"},
+        {"emissionradialvelocityrange": [5000, 10000]},
+        {"emissionlineofsightvelocityrange": [-5000, 5000]},
+    ],
 )
 def test_spectraemissionplot_refuses_packets_with_no_emission_position(
     tmp_path: Path,
@@ -1084,8 +1114,8 @@ def test_spectra_gamma_packets_group_by_emission_velocity(monkeypatch: pytest.Mo
     monkeypatch.setattr(atspectra, "get_packets", get_packets)
     lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
     expected = {
-        "velocity": {"[0, 10000) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
-        "losvelocity": {"[-10000, 0) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
+        "radialvelocity": {"[0, 10000) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
+        "lineofsightvelocity": {"[-10000, 0) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
     }
     for groupby, expectedenergies in expected.items():
         contributions, array_flambda_emission_total, _ = atspectra.get_flux_contributions_from_packets(
@@ -1119,7 +1149,7 @@ def test_spectraemissionplot_gamma_shells_need_an_emission_position(tmp_path: Pa
             timedays=300,
             showemission=True,
             gamma=True,
-            groupby="velocity",
+            groupby="radialvelocity",
             outputfile=tmp_path / "gammashells.pdf",
         )
 
@@ -1133,7 +1163,7 @@ def test_spectraemissionplot_velocity_shells_reject_an_empty_selection(tmp_path:
             timemin=4,
             timemax=6.5,
             showemission=True,
-            groupby="velocity",
+            groupby="radialvelocity",
             velocityshells=["0.5c", "0.6c"],
             normalised=True,
             outputfile=tmp_path / "empty.pdf",
@@ -1526,6 +1556,40 @@ def test_writespectra(tmp_path: Path) -> None:
     at.spectra.writespectra.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
 
     assert list(tmp_path.glob("spectrum_ts*.txt"))
+
+
+def test_writespectra_asks_for_all_the_models_before_the_first_model(tmp_path: Path) -> None:
+    """A refusal for the second model leaves no files of the first model.
+
+    Each model asked before its own files, thus a refusal for the second model came after the work of the first.
+    """
+    secondfolder = tmp_path / at.get_model_name(modelpath_classic_3d)
+    secondfolder.mkdir()
+    (secondfolder / "spectrum_ts05_5.00d.txt").write_text("x", encoding="utf-8")
+    # pytest gives no terminal, thus nobody can answer, and the command stops without --force
+    with pytest.raises(SystemExit):
+        at.spectra.writespectra.main(argsraw=[str(modelpath), str(modelpath_classic_3d), "-o", str(tmp_path)])
+    assert not list(tmp_path.glob(f"{at.get_model_name(modelpath)}/spectrum_ts*.txt"))
+
+
+def test_writespectra_gives_two_models_of_one_name_two_folders(tmp_path: Path) -> None:
+    """Two models of one name had one folder, and the second model replaced the files of the first with no prompt."""
+    at.spectra.writespectra.main(argsraw=[str(modelpath), str(modelpath), "-o", str(tmp_path)])
+    modelname = at.get_model_name(modelpath)
+    assert list(tmp_path.glob(f"{modelname}/spectrum_ts*.txt"))
+    assert list(tmp_path.glob(f"{modelname}_1/spectrum_ts*.txt"))
+
+
+def test_writespectra_folder_names_stay_unique_when_a_model_has_a_name_with_an_index(tmp_path: Path) -> None:
+    """Give the models foo, foo_2, and foo three folders. The third model took foo_2, the folder of the second."""
+    names = {Path("a"): "foo", Path("b"): "foo_2", Path("c"): "foo"}
+    with (
+        mock.patch.object(at.spectra.writespectra, "get_model_name", side_effect=names.__getitem__),
+        mock.patch.object(at.spectra.writespectra, "write_flambda_spectra") as mockwrite,
+    ):
+        at.spectra.writespectra.write_flambda_spectra_of_models(list(names), tmp_path, force=False)
+    folders = [call.args[1] for call in mockwrite.call_args_list]
+    assert len(set(folders)) == 3
 
 
 def test_hiding_the_x_tick_labels_holds_the_width_and_the_frame(tmp_path: Path) -> None:
@@ -2643,15 +2707,15 @@ def test_spectraemissionplot_forwards_the_velocity_ranges(mockgetcontributions: 
         timemin=4,
         timemax=6.5,
         showemission=True,
-        emissionvelocityrange=["0.04c", "0.06c"],
-        emissionlosvelocityrange=[-15000, 15000],
+        emissionradialvelocityrange=["0.04c", "0.06c"],
+        emissionlineofsightvelocityrange=[-15000, 15000],
     )
 
     velocityranges = mockgetcontributions.call_args.kwargs["velocityranges"]
-    assert set(velocityranges) == {"velocity", "losvelocity"}
-    assert np.isclose(velocityranges["velocity"][0], 0.04 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
-    assert np.isclose(velocityranges["velocity"][1], 0.06 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
-    assert velocityranges["losvelocity"] == (-15000.0, 15000.0)
+    assert set(velocityranges) == {"radialvelocity", "lineofsightvelocity"}
+    assert np.isclose(velocityranges["radialvelocity"][0], 0.04 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
+    assert np.isclose(velocityranges["radialvelocity"][1], 0.06 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
+    assert velocityranges["lineofsightvelocity"] == (-15000.0, 15000.0)
 
 
 def test_read_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4310,9 +4374,10 @@ def test_deltax_refuses_a_bin_edge_at_or_below_zero() -> None:
 def test_shell_groupby_with_no_model_gives_the_error_of_the_emission_plot(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """-groupby velocity with only a reference spectrum stops with the message of the emission plot.
+    """-groupby radialvelocity with only a reference spectrum stops with the message of the emission plot.
 
-    The default shells came from the first model before the check, thus the command raised IndexError.
+    The default shells came from the first model before the check, thus the command raised IndexError. The test gives
+    the earlier name velocity, which a script can hold.
     """
     with pytest.raises(SystemExit):
         at.spectra.plot(
@@ -4573,3 +4638,13 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
     assert np.isclose(
         4 * math.pi * at.constants.megaparsec_to_cm**2 * integral, modelrow["luminosity_erg_per_s"], rtol=0.02
     )
+
+
+def test_packet_spectrum_table_gives_the_noise_without_shownoise(capsys: pytest.CaptureFixture[str]) -> None:
+    """Give the relative Monte Carlo noise of each bin in the table of a spectrum from packets.
+
+    The column came only with --shownoise, thus a reader of the table could not see that a feature was noise.
+    """
+    at.spectra.plotspectra.main(argsraw=[str(modelpath), "--frompackets", "-t", "300", "--print_data"])
+    header = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("lambda_angstroms "))
+    assert "flux_relnoise" in header
