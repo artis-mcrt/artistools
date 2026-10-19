@@ -427,7 +427,7 @@ def addarg_costhetarange(parser: argparse.ArgumentParser) -> None:
         help=(
             "Select the cells whose centre has cos θ = v_z / |v| in the cos θ range of this direction bin, at all phi."
             " Give the direction bin with phi bin 0 in the cos θ bin, e.g. 90 for the pole at +z or 50 for"
-            " 0 ≤ cos θ ≤ 0.2. The bins are the same as in plotspectra"
+            " 0 ≤ cos θ ≤ 0.2. These are the direction bins of the spectra and the light curves"
         ),
     )
     parser.add_argument(
