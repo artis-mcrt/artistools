@@ -33,9 +33,8 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
-from artistools.misc import get_single_timestep
-from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import import_optional
 from artistools.misc import parse_cli_args
@@ -288,12 +287,7 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
     The function sets args.timestep, args.modelgridindex, and args.timedays to the resolved values, because
     the name of the plot file holds them.
     """
-    if args.timedays:
-        args.timestep = get_timestep_of_timedays(modelpath, args.timedays)
-    else:
-        args.timestep = get_single_timestep(args.timestep, modelpath)
-        if args.timestep is None:
-            exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep last")
+    args.timestep = get_selected_timestep(modelpath, args.timestep, args.timedays)
 
     dfmodel, modelmeta = get_modeldata(modelpath)
     # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s

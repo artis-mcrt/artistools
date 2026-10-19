@@ -57,9 +57,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory"
     )
 
-    parser.add_argument("-timemin", "-tmin", dest="tmin", type=float, default=0.1, help="Minimum time in days")
+    parser.add_argument("-timemin", "-tmin", type=float, default=0.1, help="Minimum time in days")
 
-    parser.add_argument("-timemax", "-tmax", dest="tmax", type=float, default=80.0, help="Maximum time in days")
+    parser.add_argument("-timemax", "-tmax", type=float, default=80.0, help="Maximum time in days")
 
     parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
 
@@ -456,9 +456,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
 
     # set timesteps logarithmically
-    log_t_compar_min_s = np.log10(args.tmin)
-    log_t_compar_max_s = np.log10(args.tmax)
-    arr_t_day = 10 ** (np.linspace(log_t_compar_min_s, log_t_compar_max_s, args.nsteps, endpoint=True))
+    arr_t_day = np.logspace(np.log10(args.timemin), np.log10(args.timemax), args.nsteps, endpoint=True)
 
     # get masses of trajectories
     summarypath = Path(args.trajectoryroot, "summary-all.dat")

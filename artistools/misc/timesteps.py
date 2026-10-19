@@ -228,14 +228,24 @@ def get_bad_timestep_message(modelpath: Path | str, timestep: int) -> str:
     )
 
 
-def get_selected_timestep(modelpath: Path | str, timestep: str | int | None, timedays: str | None) -> int:
-    """Return the timestep that -timestep or -timedays gives, or exit with an error."""
+def get_selected_timestep(
+    modelpath: Path | str,
+    timestep: str | int | None,
+    timedays: str | float | None,
+    *,
+    defaulttimestep: str | None = None,
+) -> int:
+    """Return the timestep that -timestep or -timedays gives, or exit with an error.
+
+    defaulttimestep, e.g. "last", applies when the user gives neither. It is not the default of -timestep, because
+    -timedays then always gave a second time.
+    """
     if timedays is not None:
         if timestep is not None:
             exit_with_error("specify only one of -timestep and -timedays")
         return get_timestep_of_timedays(modelpath, timedays)
 
-    selectedtimestep = get_single_timestep(timestep, modelpath)
+    selectedtimestep = get_single_timestep(timestep if timestep is not None else defaulttimestep, modelpath)
     if selectedtimestep is None:
         exit_with_error("no time was given", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
 

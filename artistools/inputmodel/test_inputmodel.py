@@ -847,7 +847,7 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
     assert dfnucabund["fileindex"].to_list() == [0, 0, 1, 1]
     assert dfnucabund["massfrac"].to_list() == pytest.approx([10**-11.1798, 4 * 10**-1.27404] * 2)
 
-    with pytest.raises(KeyError, match="nz-plane00003"):
+    with pytest.raises(FileNotFoundError, match="nz-plane00003"):
         at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(tmp_path, 7, ["nz-plane00003"])
 
 
@@ -929,9 +929,9 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(
     warnings = capsys.readouterr().err
     for filename in ("nz-plane00002", "nz-plane00003", "nz-plane00004", "nz-plane00005"):
         assert f"{filename} in 1.tar.xz" in warnings
-    with pytest.raises(KeyError, match="nz-plane00002"):
+    with pytest.raises(FileNotFoundError, match="nz-plane00002"):
         reader(tmp_path / "bad", 1, ["nz-plane00001", "nz-plane00002"])
-    with pytest.raises(KeyError, match="nz-plane00003"):
+    with pytest.raises(FileNotFoundError, match="nz-plane00003"):
         reader(tmp_path / "bad", 1, ["nz-plane00003"])
 
 

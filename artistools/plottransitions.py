@@ -39,9 +39,8 @@ from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
 from artistools.misc import get_model_name
+from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
-from artistools.misc import get_single_timestep
-from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -340,7 +339,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timedays(parser, kind="str")
 
-    addarg_timestep(parser, default="last")
+    addarg_timestep(parser, helptext="Timestep to plot, e.g. 40, or last. Default: last")
 
     addarg_modelgridindex(parser, default=[0], helptext="Model grid cell to plot, e.g. 12")
 
@@ -421,12 +420,7 @@ def get_ionlist() -> list[tuple[int, int]]:
 
 def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellConditions:
     """Read the time, the velocity, and the estimators of the selected cell and timestep."""
-    timestep = (
-        get_timestep_of_timedays(modelpath, args.timedays)
-        if args.timedays
-        else get_single_timestep(args.timestep, modelpath)
-    )
-    assert timestep is not None, "-timestep holds a default, thus it names a timestep"
+    timestep = get_selected_timestep(modelpath, args.timestep, args.timedays, defaulttimestep="last")
 
     dfmodel, modelmeta = get_modeldata(modelpath)
     # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s

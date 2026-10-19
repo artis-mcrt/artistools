@@ -4064,3 +4064,20 @@ def test_artis_option_function_with_trailing_return_type_is_not_a_value() -> Non
     from artistools.misc.modelinfo import parse_artis_options
 
     assert parse_artis_options("constexpr auto F(int a) -> bool { return f(a); }\n") == {}
+
+
+def test_selected_timestep_takes_a_default_only_when_no_time_is_given() -> None:
+    """-timedays with a default timestep of the command gives that time, and the default applies to no time alone.
+
+    plottransitions gave -timestep the default last, thus a shared check would take each -timedays as a second time.
+    """
+    modelpath = at.get_path("testdata") / "testmodel"
+    lasttimestep = len(at.get_timestep_times(modelpath)) - 1
+    assert at.misc.get_selected_timestep(modelpath, None, None, defaulttimestep="last") == lasttimestep
+    assert at.misc.get_selected_timestep(modelpath, None, 300.0, defaulttimestep="last") == (
+        at.misc.get_timestep_of_timedays(modelpath, 300.0)
+    )
+    with pytest.raises(SystemExit):
+        at.misc.get_selected_timestep(modelpath, "5", 300.0)
+    with pytest.raises(SystemExit):
+        at.misc.get_selected_timestep(modelpath, None, None)

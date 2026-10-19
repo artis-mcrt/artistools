@@ -558,7 +558,8 @@ def get_trajectory_timestepfiles_nuc_abund(
             f"The trajectory of particle {particleid} has no abundance file {missingfiles[0]}."
             f" {describe_leftout_files(Path(traj_root), particleid)}"
         )
-        raise KeyError(msg)
+        # the other readers of a missing trajectory file raise FileNotFoundError, and the callers catch that type
+        raise FileNotFoundError(msg)
 
     dfnucabund = (
         dfrows
