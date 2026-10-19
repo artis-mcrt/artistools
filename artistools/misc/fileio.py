@@ -118,8 +118,8 @@ def without_compressed_extension(filepath: Path) -> Path:
     return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
 
 
-def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], object]) -> None:
-    """Write a text file through a temporary file in the same folder, then put the file at its path in one step.
+def write_file_atomic(filepath: Path, write: Callable[[t.IO[bytes]], object]) -> None:
+    """Write a binary file through a temporary file in the same folder, then put the file at its path in one step.
 
     os.replace puts the new file in the place of a symbolic link, and it does not write through the link. A model
     folder of a different user can hold a link with the name of an output file, e.g. a link to ~/.bashrc. A new file
@@ -136,13 +136,26 @@ def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], object]) 
     # O_EXCL fails for a name that exists, e.g. a link, and the kernel takes the umask away from the mode 0666
     fd = os.open(partialfilepath, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        with os.fdopen(fd, "wb") as stream:
             write(stream)
         if deststat is not None and stat.S_ISREG(deststat.st_mode):
             partialfilepath.chmod(stat.S_IMODE(deststat.st_mode))
         partialfilepath.replace(filepath)
     finally:
         partialfilepath.unlink(missing_ok=True)
+
+
+def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], object]) -> None:
+    """Write a UTF-8 text file with write_file_atomic."""
+
+    def write_text(stream: t.IO[bytes]) -> None:
+        textstream = io.TextIOWrapper(stream, encoding="utf-8")
+        write(textstream)
+        textstream.flush()
+        # the binary stream stays open, because write_file_atomic closes it
+        textstream.detach()
+
+    write_file_atomic(filepath, write_text)
 
 
 def get_file_copies(filepath: Path) -> list[Path]:

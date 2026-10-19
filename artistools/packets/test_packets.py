@@ -1141,9 +1141,13 @@ def get_packet_types(packetsfile: Path, modelpath: Path) -> pl.DataFrame:
     return at.packets.core.readfile_text(packetsfile, columns).select("type_id", "escape_type_id")
 
 
-def test_filterpackets_keeps_only_the_escaped_rpkts(tmp_path: Path) -> None:
+def test_filterpackets_keeps_only_the_escaped_rpkts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     modelpath = make_filterpackets_model(tmp_path)
     packetsfolder = modelpath / "packets"
+    # a small frame size makes several zstd frames in each output file
+    monkeypatch.setattr(at.packets.filterpackets, "LINES_PER_FRAME", 1000)
+    parquetcache = at.packets.core.get_packets_rankbatch_parquetpath(modelpath, (0, 1), 0, virtual=False)
+    parquetcache.write_bytes(b"")
     escaped_rpkt = (pl.col("type_id") == at.packets.core.type_ids["TYPE_ESCAPE"]) & (
         pl.col("escape_type_id") == at.packets.core.type_ids["TYPE_RPKT"]
     )
@@ -1171,3 +1175,28 @@ def test_filterpackets_dry_run_changes_no_file(tmp_path: Path, capsys: pytest.Ca
 
     assert {path.name: path.read_bytes() for path in packetsfolder.iterdir()} == contents_before
     assert "In 2 of 2 packets files, the filter removes" in capsys.readouterr().out
+
+
+def test_filterpackets_keeps_a_file_with_no_escaped_rpkt(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    modelpath = make_filterpackets_model(tmp_path)
+    packetsfile = modelpath / "packets" / "packets00_0001.out"
+    columns = at.packets.core.get_packets_text_columns(packetsfile, modelpath)
+    type_id_index = columns.index("type_id")
+    escape_type_id_index = columns.index("escape_type_id")
+    lines = packetsfile.read_text(encoding="utf-8").splitlines(keepends=True)
+    packetsfile.write_text(
+        "".join(
+            line
+            for line in lines
+            if line.startswith("#")
+            or (line.split()[type_id_index], line.split()[escape_type_id_index])
+            != at.packets.filterpackets.ESCAPED_RPKT_TYPES
+        ),
+        encoding="utf-8",
+    )
+    contents_before = packetsfile.read_bytes()
+
+    at.packets.filterpackets.main(argsraw=[str(modelpath), "-f"])
+
+    assert packetsfile.read_bytes() == contents_before
+    assert f"{packetsfile}: no escaped r-packets, thus the filter keeps the file" in capsys.readouterr().out
