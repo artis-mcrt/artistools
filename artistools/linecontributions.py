@@ -205,11 +205,35 @@ def get_lte_ion_populations(
 def get_nlte_ion_populations(
     dfcells: pl.DataFrame, levels: pl.DataFrame, neededframe: pl.DataFrame, dfnltepops: pl.DataFrame
 ) -> pl.DataFrame:
-    """Return the population of each level of neededframe in each cell from the NLTE rows, see get_ion_populations."""
+    """Return the population of each level of neededframe in each cell from the NLTE rows, see get_ion_populations.
+
+    The highest NLTE level and the superlevel come from the rows of each cell, as in nltepops/core.py. A level that only
+    a different cell resolves is in the superlevel of this cell.
+    """
+    dfcellswithlast = dfcells.join(
+        dfnltepops.group_by("modelgridindex").agg(lastnltelevel=pl.col("level").max()),
+        on="modelgridindex",
+        how="left",
+        maintain_order="left",
+    )
+    return pl.concat([
+        get_nlte_ion_populations_below_level(
+            dfgroup.drop("lastnltelevel"),
+            levels,
+            neededframe,
+            dfnltepops.filter(pl.col("modelgridindex").is_in(dfgroup["modelgridindex"].implode())),
+            int(lastnltelevel),
+        )
+        for (lastnltelevel,), dfgroup in dfcellswithlast.group_by("lastnltelevel", maintain_order=True)
+    ])
+
+
+def get_nlte_ion_populations_below_level(
+    dfcells: pl.DataFrame, levels: pl.DataFrame, neededframe: pl.DataFrame, dfnltepops: pl.DataFrame, lastnltelevel: int
+) -> pl.DataFrame:
+    """Return the populations of get_nlte_ion_populations for cells with the same highest NLTE level lastnltelevel."""
     temperatures = dfcells["T_exc"].cast(pl.Float64).to_numpy()
     cellcolumn = dfcells.select("modelgridindex")
-    lastnltelevel = dfnltepops.select(pl.col("level").max()).item()
-    assert isinstance(lastnltelevel, int)
     dfresolved = (
         dfnltepops
         .filter(pl.col("level") >= 0)
@@ -896,10 +920,19 @@ def get_ranked_line_summary(profiles: LineVelocityProfiles) -> pl.DataFrame:
     )
 
 
-# each cell of the trough estimate has this number of points along each axis. Thus a cell puts its volume in each bin
-# of the line-of-sight velocity that it crosses. With bins as wide as a cell, three points gave the analytic depth of a
-# shell within 0.01
-TROUGHSUBPOINTS: t.Final = 3
+# the rays of the trough estimate sample the photospheric disk, and each velocity bin along the line of sight, with this
+# number of points across the narrowest width of a cell. Three gave the analytic depth of a shell within 0.01
+TROUGHSAMPLESPERCELL: t.Final = 3
+
+# the disk has at least this number of rays across its radius, for a photosphere that is small against a cell
+TROUGHMINRAYSPERRADIUS: t.Final = 10
+
+
+def get_doppler_factor(
+    beta: "np.ndarray[t.Any, np.dtype[np.float64]]", *, relativisticdoppler: bool
+) -> "np.ndarray[t.Any, np.dtype[np.float64]]":
+    """Return lambda_observed / lambda_rest of ARTIS for the line-of-sight velocity beta = u / c, with no v_t term."""
+    return np.sqrt((1.0 - beta) / (1.0 + beta)) if relativisticdoppler else 1.0 - beta
 
 
 def get_sobolev_trough(
@@ -908,96 +941,117 @@ def get_sobolev_trough(
     dirbin: int,
     photospherevelocity_kmps: float,
     velocityedges_kmps: Sequence[float],
-    cellwidth_kmps: float,
+    cellwidths_kmps: tuple[float, float, float],
     *,
     relativisticdoppler: bool,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return the Sobolev absorption depth of each ranked line against the line-of-sight velocity, and of their blend.
 
     The observer is at the centre cos θ of the direction bin, and the depth is the mean over the centres of the phi
-    bins. The photosphere is a sphere at v_ph = photospherevelocity_kmps. A part of a cell absorbs if it is on the near
-    side of the photosphere, inside the cylinder of the photospheric disk. The depth at a line-of-sight velocity u is
-    sum((1 - exp(-tau)) V_v) / (du pi v_ph^2). V_v is the volume in velocity space, and du is the width of the bin.
-    Thus the depth is the fraction of the flux of a uniform disk that the line removes.
+    bins. The photosphere is a sphere at v_ph = photospherevelocity_kmps. Rays go from the photospheric disk towards
+    the observer, on a square grid of impact points in velocity space. In a homologous flow, a ray at the impact point p
+    meets a line at one point, where the line-of-sight velocity u gives the Doppler shift of the line. The point
+    absorbs if it is in a cell and on the near side of the photosphere, u > sqrt(v_ph^2 - p^2). A ray then has the
+    transmission exp(-tau) of that cell. Each cell is a box with the widths cellwidths_kmps along x, y, and z.
 
-    The bins of u have the width of the bins of velocityedges_kmps. They continue past its last edge up to the
-    fastest part of a cell, thus a low -velocitymax keeps all the absorption. Each cell is a cube of cellwidth_kmps,
-    with TROUGHSUBPOINTS^3 points at the centres of its parts. Each point takes its own line-of-sight velocity and its
-    own part of the volume, thus a cell puts its volume in each bin that it crosses.
+    The depth of a line in a bin of u is 1 - the mean transmission over the rays and over points of u in the bin. Thus
+    the depth is the fraction of the flux of a uniform disk that the line removes. The bins of u have the width of the
+    bins of velocityedges_kmps. They continue past its last edge up to the fastest corner of a cell, thus a low
+    -velocitymax keeps all the absorption.
 
-    The estimate has no emission of the line and no limb darkening. The blend is 1 - prod(1 - depth) of the lines at
-    each wavelength. The depth of a line goes linearly between the wavelengths of the bin centres. The first bin and
-    the last bin keep their depth from their centre to their outer edge.
+    The blend is 1 - the mean over the rays of prod(exp(-tau)) of the lines at each wavelength. Each ray takes the
+    product before the mean, thus two lines that absorb the same part of the disk do not remove its flux two times.
+    The estimate has no emission of the lines and no limb darkening.
 
     The wavelength of a velocity u comes from the Doppler factor of ARTIS: 1 - u / c, or with relativisticdoppler,
-    sqrt((1 - u / c) / (1 + u / c)). The relativistic factor of ARTIS also has the transverse velocity v_t, which a
-    bin does not hold. Thus the blend is too blue by a fraction of about v_t^2 / (2 c^2). A bin with its centre at or
-    above c gives no wavelength.
+    sqrt((1 - u / c) / (1 + u / c)). The relativistic factor of ARTIS also has the transverse velocity v_t, which the
+    estimate does not take. Thus the blend is too blue by a fraction of about v_t^2 / (2 c^2).
     """
     nphibins = get_viewingdirection_phibincount()
     costhetalower, costhetaupper, _ = get_costheta_bins(usedegrees=False)
     costhetabin = dirbin // nphibins
     costheta = (costhetalower[costhetabin] + costhetaupper[costhetabin]) / 2.0
     sintheta = math.sqrt(1.0 - costheta**2)
-
     vph_kmps = photospherevelocity_kmps
-    time_s = inputs.time_days * day_to_s
-    dfcells = inputs.dfcells.select("modelgridindex", "vel_x_mid", "vel_y_mid", "vel_z_mid")
-    centres_kmps = dfcells.select(pl.exclude("modelgridindex")).to_numpy() / km_to_cm
-    # the offsets of the points of a cell from its centre, in units of the cell width
-    subpointfractions = (np.arange(TROUGHSUBPOINTS) + 0.5) / TROUGHSUBPOINTS - 0.5
-    offsets_kmps = cellwidth_kmps * np.array(np.meshgrid(*[subpointfractions] * 3, indexing="ij")).reshape(3, -1).T
+    c_kmps = C_cm_per_s / km_to_cm
+    widths_kmps = np.array(cellwidths_kmps)
+    samplewidth_kmps = float(widths_kmps.min()) / TROUGHSAMPLESPERCELL
 
-    binwidth_kmps = (velocityedges_kmps[-1] - velocityedges_kmps[0]) / (len(velocityedges_kmps) - 1)
-    maxspeed_kmps = float(np.linalg.norm(centres_kmps, axis=1).max() + np.linalg.norm(offsets_kmps, axis=1).max())
-    extrabincount = max(0, math.ceil((maxspeed_kmps - velocityedges_kmps[-1]) / binwidth_kmps))
-    edges_kmps = np.append(velocityedges_kmps, velocityedges_kmps[-1] + binwidth_kmps * np.arange(1, extrabincount + 1))
-    nbins = len(edges_kmps) - 1
+    # a dense grid of the cell index of each box. A box with no cell has the index -1, and the tau of each line has a
+    # last value of 0 for it
+    centres_kmps = inputs.dfcells.select("vel_x_mid", "vel_y_mid", "vel_z_mid").to_numpy() / km_to_cm
+    gridlower_kmps = centres_kmps.min(axis=0) - widths_kmps / 2.0
+    boxindices = np.rint((centres_kmps - gridlower_kmps) / widths_kmps - 0.5).astype(np.int64)
+    gridshape = tuple(int(n) for n in boxindices.max(axis=0) + 1)
+    cellofbox = np.full(gridshape, -1, dtype=np.int64)
+    cellofbox[tuple(boxindices.T)] = np.arange(len(centres_kmps))
 
     # a negative tau_sobolev is a population inversion, and a null one has no population. The estimate takes such a
     # line as transparent
     dflinecells = profiles.dfrankedcells.select(
-        *LINEKEYS,
-        "modelgridindex",
-        "volume",
-        absorbed=1.0 - (-pl.col("tau_sobolev").fill_null(0.0).clip(lower_bound=0.0)).exp(),
+        *LINEKEYS, "modelgridindex", tau=pl.col("tau_sobolev").fill_null(0.0).clip(lower_bound=0.0)
     )
-    # the volume in velocity space [(km/s)^3] times the absorbed fraction, of each point of each cell and line
-    lineweights = []
-    for linekeys in profiles.dfranked.select(LINEKEYS).iter_rows():
+    cellindex = inputs.dfcells.select("modelgridindex")
+    taus = np.zeros((profiles.dfranked.height, len(centres_kmps) + 1))
+    for lineindex, linekeys in enumerate(profiles.dfranked.select(LINEKEYS).iter_rows()):
         islinekey = pl.all_horizontal(pl.col(key) == value for key, value in zip(LINEKEYS, linekeys, strict=True))
-        dfline = dfcells.select("modelgridindex").join(
-            dflinecells.filter(islinekey), on="modelgridindex", how="left", maintain_order="left"
-        )
-        cellweights = (dfline["absorbed"].fill_null(0.0) * dfline["volume"].fill_null(0.0)).to_numpy()
-        lineweights.append(cellweights / (time_s * km_to_cm) ** 3 / offsets_kmps.shape[0])
-    lineweightarray = np.array(lineweights)
-    # one bincount takes all the lines, because the bin of line i is at i * nbins + bin
-    linebinoffsets = np.arange(len(lineweights))[:, np.newaxis] * nbins
+        dfline = cellindex.join(dflinecells.filter(islinekey), on="modelgridindex", how="left", maintain_order="left")
+        taus[lineindex, :-1] = dfline["tau"].fill_null(0.0).to_numpy()
 
+    # the impact points of the rays, with equal areas of the disk
+    raywidth_kmps = min(samplewidth_kmps, vph_kmps / TROUGHMINRAYSPERRADIUS)
+    raycoords = np.arange(-vph_kmps + raywidth_kmps / 2.0, vph_kmps, raywidth_kmps)
+    impact1, impact2 = (axis.ravel() for axis in np.meshgrid(raycoords, raycoords, indexing="ij"))
+    isondisk = impact1**2 + impact2**2 < vph_kmps**2
+    impact1, impact2 = impact1[isondisk], impact2[isondisk]
+    nearsideu_kmps = np.sqrt(vph_kmps**2 - impact1**2 - impact2**2)
+
+    binwidth_kmps = (velocityedges_kmps[-1] - velocityedges_kmps[0]) / (len(velocityedges_kmps) - 1)
+    maxspeed_kmps = float(np.linalg.norm(np.abs(centres_kmps) + widths_kmps / 2.0, axis=1).max())
+    extrabincount = max(0, math.ceil((maxspeed_kmps - velocityedges_kmps[-1]) / binwidth_kmps))
+    edges_kmps = np.append(velocityedges_kmps, velocityedges_kmps[-1] + binwidth_kmps * np.arange(1, extrabincount + 1))
+    nbins = len(edges_kmps) - 1
+    samplesperbin = max(TROUGHSAMPLESPERCELL, math.ceil(binwidth_kmps / samplewidth_kmps))
+    usamples_kmps = (
+        edges_kmps[:-1, np.newaxis] + binwidth_kmps * (np.arange(samplesperbin) + 0.5)[np.newaxis, :] / samplesperbin
+    ).ravel()
+
+    def get_cells_on_rays(
+        direction: "np.ndarray[t.Any, np.dtype[np.float64]]", u_kmps: "np.ndarray[t.Any, np.dtype[np.float64]]"
+    ) -> "np.ndarray[t.Any, np.dtype[np.int64]]":
+        """Return the cell index of the point at u_kmps on each ray, or -1 for no cell or the far side of the disk.
+
+        u_kmps has one row for each ray, or one row for all the rays.
+        """
+        # two directions perpendicular to the line of sight make the plane of the impact points
+        helper = np.array([1.0, 0.0, 0.0]) if abs(direction[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+        axis1 = np.cross(direction, helper)
+        axis1 /= np.linalg.norm(axis1)
+        axis2 = np.cross(direction, axis1)
+        u = np.broadcast_to(u_kmps, (len(impact1), u_kmps.shape[-1]))
+        indices = []
+        for axis in range(3):
+            coord_kmps = (impact1 * axis1[axis] + impact2 * axis2[axis])[:, np.newaxis] + u * direction[axis]
+            indices.append(np.floor((coord_kmps - gridlower_kmps[axis]) / widths_kmps[axis]).astype(np.int64))
+        isingrid = np.all(
+            [(index >= 0) & (index < size) for index, size in zip(indices, gridshape, strict=True)], axis=0
+        )
+        cells = np.full(u.shape, -1, dtype=np.int64)
+        cells[isingrid] = cellofbox[tuple(index[isingrid] for index in indices)]
+        cells[u <= nearsideu_kmps[:, np.newaxis]] = -1
+        return cells
+
+    directions = [
+        np.array([sintheta * math.cos(phi), sintheta * math.sin(phi), costheta])
+        for phi in 2.0 * math.pi * (np.arange(nphibins) + 0.5) / nphibins
+    ]
     depths = np.zeros((profiles.dfranked.height, nbins))
-    for phiindex in range(nphibins):
-        phi = 2.0 * math.pi * (phiindex + 0.5) / nphibins
-        direction = np.array([sintheta * math.cos(phi), sintheta * math.sin(phi), costheta])
-        # one point of each cell at a time keeps each array at one value for each cell
-        for offset_kmps in offsets_kmps:
-            points_kmps = centres_kmps + offset_kmps
-            vlos_kmps = points_kmps @ direction
-            impactsquared = (points_kmps**2).sum(axis=1) - vlos_kmps**2
-            isinfront = (impactsquared < vph_kmps**2) & (
-                vlos_kmps > np.sqrt(np.clip(vph_kmps**2 - impactsquared, 0.0, None))
-            )
-            # np.histogram sorted the velocities again for each line. These bins are the same: a bin holds its lower
-            # edge, and the last bin also holds its upper edge
-            binindices = np.searchsorted(edges_kmps, vlos_kmps, side="right") - 1
-            binindices[vlos_kmps == edges_kmps[-1]] = nbins - 1
-            iscounted = isinfront & (binindices >= 0) & (binindices < nbins)
-            depths += np.bincount(
-                (linebinoffsets + binindices[iscounted]).reshape(-1),
-                weights=lineweightarray[:, iscounted].reshape(-1),
-                minlength=depths.size,
-            ).reshape(depths.shape)
-    depths /= binwidth_kmps * math.pi * vph_kmps**2 * nphibins
+    for direction in directions:
+        cells = get_cells_on_rays(direction, usamples_kmps[np.newaxis, :])
+        for lineindex in range(len(taus)):
+            absorbed = 1.0 - np.exp(-taus[lineindex][cells])
+            depths[lineindex] += absorbed.mean(axis=0).reshape(nbins, samplesperbin).mean(axis=1)
+    depths /= nphibins
 
     dfdepths = (
         profiles.dfranked
@@ -1011,45 +1065,31 @@ def get_sobolev_trough(
         .select(*LINEKEYS, "trough_depth", "x_lower_kmps", "x_upper_kmps")
     )
 
-    edges_on_c = edges_kmps * km_to_cm / C_cm_per_s
-    bincentres_on_c = (edges_on_c[:-1] + edges_on_c[1:]) / 2.0
-    # the corner of a fast grid can be above c, and a cell with matter cannot be there
-    belowcbincount = int(np.count_nonzero(bincentres_on_c < 1.0))
-    outeredge_on_c = edges_on_c[belowcbincount : belowcbincount + 1]
-    outeredge_on_c = outeredge_on_c[outeredge_on_c < 1.0]
-    betas = np.concatenate((edges_on_c[:1], bincentres_on_c[:belowcbincount], outeredge_on_c))
-    dopplerfactors = np.sqrt((1.0 - betas) / (1.0 + betas)) if relativisticdoppler else 1.0 - betas
     lambdarests_angstroms = profiles.dfranked["lambda_angstroms"].to_numpy()
-    samplesofline = [
-        np.concatenate((
-            linedepths[:1],
-            linedepths[:belowcbincount],
-            linedepths[belowcbincount - 1 : belowcbincount][: len(outeredge_on_c)],
-        ))
+    # the grid ends at the outer edge of the last bin with a depth, thus empty bins at high velocity keep its resolution
+    fastest_kmps = [
+        float(edges_kmps[int(np.flatnonzero(linedepths > 0.0)[-1]) + 1])
         for linedepths in depths
+        if np.any(linedepths > 0.0)
     ]
-    # the grid ends at the shortest wavelength with a depth, thus empty bins at high velocity keep its resolution
-    shortestlambdas_angstroms = [
-        lambdarest_angstroms * dopplerfactors[min(int(np.flatnonzero(samples > 0.0)[-1]) + 1, len(samples) - 1)]
-        for lambdarest_angstroms, samples in zip(lambdarests_angstroms, samplesofline, strict=True)
-        if np.any(samples > 0.0)
-    ]
+    fastestbeta = min(max(fastest_kmps, default=float(edges_kmps[-1])) / c_kmps, 1.0 - 1e-6)
     lambdagrid_angstroms = np.linspace(
-        min(shortestlambdas_angstroms, default=lambdarests_angstroms.min() * dopplerfactors.min()),
+        lambdarests_angstroms.min()
+        * float(get_doppler_factor(np.array(fastestbeta), relativisticdoppler=relativisticdoppler)),
         lambdarests_angstroms.max(),
         400,
     )
-    transmission = np.ones_like(lambdagrid_angstroms)
-    for lambdarest_angstroms, samples in zip(lambdarests_angstroms, samplesofline, strict=True):
-        # np.interp needs increasing x, and a larger velocity gives a shorter wavelength
-        transmission *= 1.0 - np.clip(
-            np.interp(
-                lambdagrid_angstroms, lambdarest_angstroms * dopplerfactors[::-1], samples[::-1], left=0.0, right=0.0
-            ),
-            0.0,
-            1.0,
-        )
-    dfblend = pl.DataFrame({"lambda_angstroms": lambdagrid_angstroms, "trough_depth": 1.0 - transmission})
+    transmission = np.zeros_like(lambdagrid_angstroms)
+    for direction in directions:
+        sumtau = np.zeros((len(impact1), len(lambdagrid_angstroms)))
+        for lineindex, lambdarest_angstroms in enumerate(lambdarests_angstroms):
+            ratio = lambdagrid_angstroms / lambdarest_angstroms
+            beta = (1.0 - ratio**2) / (1.0 + ratio**2) if relativisticdoppler else 1.0 - ratio
+            # a wavelength above the rest wavelength has a negative u, which is behind the photosphere
+            cells = get_cells_on_rays(direction, np.clip(beta, 0.0, None)[np.newaxis, :] * c_kmps)
+            sumtau += taus[lineindex][cells]
+        transmission += np.exp(-sumtau).mean(axis=0)
+    dfblend = pl.DataFrame({"lambda_angstroms": lambdagrid_angstroms, "trough_depth": 1.0 - transmission / nphibins})
     return dfdepths, dfblend
 
 

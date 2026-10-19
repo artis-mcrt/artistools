@@ -2270,7 +2270,8 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
 
 
 @pytest.mark.parametrize(
-    ("photospherevelocity", "errortext"), [("350000", "above the speed of light"), ("0.05", "a part of a cell")]
+    ("photospherevelocity", "errortext"),
+    [("350000", "above the speed of light"), ("0.05", "a third of the width of a cell")],
 )
 def test_plotlinecontributions_stops_for_a_photosphere_velocity_in_the_wrong_unit(
     photospherevelocity: str, errortext: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -2363,7 +2364,13 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
         )
         inputs = CellLineInputs(dfcells, pl.DataFrame(), {}, pl.DataFrame(), time_days)
         return get_sobolev_trough(
-            profiles, inputs, dirbin, vph_kmps, edges, cellwidth_kmps, relativisticdoppler=relativisticdoppler
+            profiles,
+            inputs,
+            dirbin,
+            vph_kmps,
+            edges,
+            (cellwidth_kmps, cellwidth_kmps, cellwidth_kmps),
+            relativisticdoppler=relativisticdoppler,
         )
 
     edges = [1000.0 * index for index in range(9)]
@@ -2379,11 +2386,11 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
         # the plateau from 4000 to 8000 km/s gives the wavelengths of the Doppler shift of 5000 Å
         assert 4866.0 < deepest["lambda_angstroms"] < 4934.0
 
-    # a cell of the 10^3 grid is 2000 km/s wide, and each bin is 400 km/s wide. The plateau ends at 8062 km/s, and the
-    # coarse cells make its edge uneven, thus the test takes the bins from 4400 to 7600 km/s
+    # a cell of the 10^3 grid is 2000 km/s wide, and each bin is 400 km/s wide. Near the z axis the shell of these
+    # cells ends at the cell face at z = 8000 km/s, thus the test takes the bins from 4400 to 7200 km/s
     dfdepths, _ = get_shell_trough(10, [400.0 * index for index in range(21)], 90, relativisticdoppler=False)
-    dfplateau = dfdepths.filter(pl.col("x_lower_kmps").is_between(4400.0, 7200.0))
-    assert np.allclose(dfplateau["trough_depth"].to_numpy(), absorbed, rtol=0.0, atol=0.07)
+    dfplateau = dfdepths.filter(pl.col("x_lower_kmps").is_between(4400.0, 6800.0))
+    assert np.allclose(dfplateau["trough_depth"].to_numpy(), absorbed, rtol=0.0, atol=0.02)
 
     # the bins continue past the last edge with the same width, thus the plateau above the photosphere stays
     dfshort, dfshortblend = get_shell_trough(64, edges[:4], 90, relativisticdoppler=False)
@@ -2395,10 +2402,78 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
     shortestlambda_angstroms = float(dfshortblend["lambda_angstroms"].to_numpy().min())
     assert 5000.0 * (1 - 11000.0 / c_kmps) < shortestlambda_angstroms < 5000.0 * (1 - 9000.0 / c_kmps)
 
-    # one bin gives its depth to each wavelength of the blend, from the rest wavelength to the outer edge of the bin
+    # the blend samples the rays at each wavelength, thus one wide bin still gives the plateau of the shell
     dfonebin, dfonebinblend = get_shell_trough(10, [0.0, 2.0 * vmax_kmps], 90, relativisticdoppler=False)
     assert dfonebin.height == 1
-    assert np.allclose(dfonebinblend["trough_depth"].to_numpy(), dfonebin["trough_depth"].item(), rtol=1e-6, atol=0.0)
+    assert np.isclose(dfonebinblend["trough_depth"].to_numpy().max(), absorbed, rtol=0.0, atol=0.07)
+
+
+def get_trough_of_box_grid(
+    gridshape: tuple[int, int, int],
+    tauofcell: "Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]",
+    nlines: int,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Return the trough of nlines lines at 5000 Å with the same tau_sobolev, on a grid from -10000 to 10000 km/s.
+
+    tauofcell gives the tau_sobolev of each cell from the velocities of the cell centres [km/s].
+    """
+    from artistools.linecontributions import CellLineInputs
+    from artistools.linecontributions import get_sobolev_trough
+    from artistools.linecontributions import LineVelocityProfiles
+
+    vmax_kmps = 1.0e4
+    widths = (2 * vmax_kmps / gridshape[0], 2 * vmax_kmps / gridshape[1], 2 * vmax_kmps / gridshape[2])
+    centres = [-vmax_kmps + width * (np.arange(ncells) + 0.5) for ncells, width in zip(gridshape, widths, strict=True)]
+    vx, vy, vz = (axis.ravel() for axis in np.meshgrid(*centres, indexing="ij"))
+    modelgridindex = np.arange(len(vx))
+    lines = [
+        {"ion": "X I", "lambda_angstroms": 5000.0, "lower": 0, "upper": upper, "A_per_s": 1.0}
+        for upper in range(1, nlines + 1)
+    ]
+    dfrankedcells = pl.concat([
+        pl.DataFrame({
+            **{key: [value] * len(vx) for key, value in line.items()},
+            "modelgridindex": modelgridindex,
+            "volume": np.ones(len(vx)),
+            "tau_sobolev": tauofcell(vx, vy, vz),
+        })
+        for line in lines
+    ])
+    dfcells = pl.DataFrame({
+        "modelgridindex": modelgridindex,
+        **{f"vel_{axis}_mid": values * at.constants.km_to_cm for axis, values in zip("xyz", (vx, vy, vz), strict=True)},
+    })
+    profiles = LineVelocityProfiles(pl.DataFrame(), pl.DataFrame(lines), pl.DataFrame(), pl.DataFrame(), dfrankedcells)
+    inputs = CellLineInputs(dfcells, pl.DataFrame(), {}, pl.DataFrame(), 1.0)
+    edges = [1000.0 * index for index in range(9)]
+    return get_sobolev_trough(profiles, inputs, 90, 4000.0, edges, widths, relativisticdoppler=False)
+
+
+def test_sobolev_trough_blends_lines_on_each_ray_and_takes_each_cell_width() -> None:
+    """Two lines that absorb the same half of the disk remove half of its flux, and a cell has a width on each axis.
+
+    The blend was 1 - prod(1 - depth) of the depths over the disk, which gave 0.75 for two saturated lines on the same
+    half of the disk. The rays also took the x width of a cell for each axis.
+    """
+    tau = 50.0
+
+    def get_halfshell_tau(vx: np.ndarray, vy: np.ndarray, vz: np.ndarray) -> np.ndarray:
+        speed = np.sqrt(vx**2 + vy**2 + vz**2)
+        return np.where((speed > 3600.0) & (speed < 9000.0) & (vx > 0.0), tau, 0.0)
+
+    dfdepths, dfblend = get_trough_of_box_grid((48, 48, 48), get_halfshell_tau, nlines=2)
+    dfplateau = dfdepths.filter(pl.col("x_lower_kmps").is_between(4000.0, 6000.0))
+    assert np.allclose(dfplateau["trough_depth"].to_numpy(), 0.5, rtol=0.0, atol=0.03)
+    assert np.isclose(float(dfblend["trough_depth"].to_numpy().max()), 0.5, rtol=0.0, atol=0.03)
+
+    def get_shell_tau(vx: np.ndarray, vy: np.ndarray, vz: np.ndarray) -> np.ndarray:
+        speed = np.sqrt(vx**2 + vy**2 + vz**2)
+        return np.where((speed > 3600.0) & (speed < 9000.0), 2.0, 0.0)
+
+    # the cells are twice as wide along z as along x and y
+    dfdepths, _ = get_trough_of_box_grid((64, 64, 32), get_shell_tau, nlines=1)
+    dfplateau = dfdepths.filter(pl.col("x_lower_kmps").is_between(4000.0, 6000.0))
+    assert np.allclose(dfplateau["trough_depth"].to_numpy(), -math.expm1(-2.0), rtol=0.0, atol=0.02)
 
 
 def test_linecontributions_taumin_keeps_each_line_that_reaches_it() -> None:
@@ -2472,6 +2547,63 @@ def test_taumin_keeps_a_line_whose_lower_level_is_above_the_nlte_levels() -> Non
         dfcells.with_columns(modelgridindex=pl.col("modelgridindex") + 1, nnion_Fe_II=pl.lit(math.nan)),
     ])
     assert get_lines_that_can_reach_tau(dflines, dfwithnan, levelsofion, {(26, 2)}, tau, time_days=1.0).height == 1
+
+
+def test_linecontributions_takes_the_nlte_levels_of_each_cell() -> None:
+    """A level that only a different cell resolves takes the superlevel population of this cell.
+
+    The highest NLTE level was the maximum over all the cells. A cell that resolves fewer levels then got a null
+    population for a level of its superlevel, and the line had no tau_sobolev in that cell.
+    """
+    from artistools.linecontributions import get_cell_line_table
+    from artistools.linecontributions import NLTEPOPS_SCHEMA
+
+    dfcells = pl.DataFrame({
+        "modelgridindex": [0, 1],
+        "velocity_kmps": [5000.0, 6000.0],
+        "volume": [1e45, 1e45],
+        "Te": [1e4, 1e4],
+        "nne": [1e8, 1e8],
+        "T_exc": [1e4, 1e4],
+        "nnion_Fe_II": [1.0, 1.0],
+    })
+    levelsofion = {
+        (26, 2): pl.DataFrame({
+            "level": [0, 1, 2, 3],
+            "g": [1.0, 3.0, 5.0, 7.0],
+            "energy_ev": [0.0, 0.5, 1.0, 3.0],
+            "levelname": ["a", "b", "c", "d"],
+        })
+    }
+    dflines = pl.DataFrame({
+        "Z": [26],
+        "ion_stage": [2],
+        "ion": ["Fe II"],
+        "lambda_angstroms": [6200.0],
+        "lower": [2],
+        "upper": [3],
+        "A_per_s": [1e4],
+        "lower_g": [5.0],
+        "upper_g": [7.0],
+    })
+    # cell 0 resolves levels 0 and 1, and cell 1 resolves levels 0 to 2. Each cell has a superlevel row (level -1)
+    dfnltepops = pl.DataFrame(
+        {
+            "modelgridindex": [0, 0, 0, 1, 1, 1, 1],
+            "Z": [26] * 7,
+            "ion_stage": [2] * 7,
+            "level": [0, 1, -1, 0, 1, 2, -1],
+            "n_NLTE": [0.5, 0.2, 0.3, 0.5, 0.2, 0.2, 0.1],
+        },
+        schema=NLTEPOPS_SCHEMA,
+    )
+    dfcelllines = get_cell_line_table(dfcells, dflines, levelsofion, dfnltepops, time_days=1.0).sort("modelgridindex")
+    assert dfcelllines["n_lower_source"].to_list() == ["superlevel", "NLTE"]
+    assert dfcelllines["n_upper_source"].to_list() == ["superlevel", "superlevel"]
+    assert dfcelllines["n_lower_per_cm3"].null_count() == 0
+    assert np.isclose(dfcelllines["n_lower_per_cm3"][1], 0.2, rtol=1e-12, atol=0.0)
+    # in cell 0, the superlevel holds levels 2 and 3, thus level 2 takes its Boltzmann share of 0.3
+    assert 0.0 < dfcelllines["n_lower_per_cm3"][0] < 0.3
 
 
 def test_linecontributions_writes_a_file_only_with_the_output_option(

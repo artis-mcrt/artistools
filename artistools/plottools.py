@@ -2070,9 +2070,11 @@ def get_grid_corner_velocity_kmps(modelmeta: Mapping[str, t.Any]) -> float:
     return float(modelmeta["vmax_cmps"]) / km_to_cm * math.sqrt(modelmeta["dimensions"])
 
 
-def get_cell_width_kmps(modelmeta: Mapping[str, t.Any]) -> float:
-    """Return the width [km/s] of a cell of a Cartesian model grid in velocity space."""
-    return float(modelmeta["wid_init"]) / (float(modelmeta["t_model_init_days"]) * day_to_s) / km_to_cm
+def get_cell_widths_kmps(modelmeta: Mapping[str, t.Any]) -> tuple[float, float, float]:
+    """Return the widths [km/s] along x, y, and z of a cell of a 3D Cartesian model grid in velocity space."""
+    t_model_init_s = float(modelmeta["t_model_init_days"]) * day_to_s
+    widths = [float(modelmeta[f"wid_init_{axis}"]) / t_model_init_s / km_to_cm for axis in "xyz"]
+    return widths[0], widths[1], widths[2]
 
 
 def get_velocity_bin_edges_kmps(

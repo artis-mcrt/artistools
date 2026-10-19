@@ -724,6 +724,10 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
     dftable = pl.read_csv(tmp_path / "velocity.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dftable["timestep"].to_list() == [25, 26]
     assert dftable["packetcount"].to_list() == [3, 1]
+    # sqrt(sum(e^2)) / sum(e) of the energies 1, 2, and 1, and of one packet
+    assert np.allclose(
+        dftable["luminosity_relative_error"].to_numpy(), [math.sqrt(6.0) / 4.0, 1.0], rtol=1e-9, atol=0.0
+    )
     # the histogram bins of the test model are 25 km/s wide, and each velocity takes the centre of its bin
     expected = {
         "velocity_luminosity_q25_kmps": [3000.0, 7000.0],

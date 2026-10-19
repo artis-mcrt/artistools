@@ -19,7 +19,7 @@ from artistools.linecontributions import get_ranked_line_summary
 from artistools.linecontributions import get_sobolev_trough
 from artistools.linecontributions import LINEKEYS
 from artistools.linecontributions import parse_ions
-from artistools.linecontributions import TROUGHSUBPOINTS
+from artistools.linecontributions import TROUGHSAMPLESPERCELL
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -50,7 +50,7 @@ from artistools.plottools import addarg_costhetarange
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
-from artistools.plottools import get_cell_width_kmps
+from artistools.plottools import get_cell_widths_kmps
 from artistools.plottools import get_costheta_range
 from artistools.plottools import get_grid_corner_velocity_kmps
 from artistools.plottools import get_velocity_bin_edges_kmps
@@ -227,23 +227,13 @@ def plot_trough_estimate(
     dopplershift = get_artis_option(modelpath, "USE_RELATIVISTIC_DOPPLER_SHIFT")
     relativisticdoppler = dopplershift == "true"
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-    cellwidth_kmps = get_cell_width_kmps(modelmeta)
-    partwidth_kmps = cellwidth_kmps / TROUGHSUBPOINTS
-    binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
-    if binwidth_kmps < partwidth_kmps:
-        print_warning(
-            f"The width {format_velocity(binwidth_kmps, unit)} of the velocity bins is less than the width"
-            f" {format_velocity(partwidth_kmps, unit)} of a part of a cell. A part puts all its volume in one bin, thus"
-            " the trough depth changes from bin to bin, and it can be above 1 - exp(-tau). Give -nvelocitybins"
-            f" {max(1, int(velocityedges_kmps[-1] // partwidth_kmps))} or less"
-        )
     dfdepths, dfblend = get_sobolev_trough(
         profiles,
         inputs,
         dirbin,
         photospherevelocity_kmps,
         velocityedges_kmps,
-        cellwidth_kmps,
+        get_cell_widths_kmps(modelmeta),
         relativisticdoppler=relativisticdoppler,
     )
     plot_trough(ax, dfdepths, dfranked, colours, unit, photospherevelocity_kmps)
@@ -368,12 +358,13 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
             " of light",
             f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
         )
-    # a value in the wrong unit, e.g. 0.05 for 0.05 c on a km/s axis, gives a disk smaller than a part of a cell
-    partwidth_kmps = get_cell_width_kmps(modelmeta) / TROUGHSUBPOINTS
+    # a value in the wrong unit, e.g. 0.05 for 0.05 c on a km/s axis, gives a disk much smaller than a cell
+    partwidth_kmps = min(get_cell_widths_kmps(modelmeta)) / TROUGHSAMPLESPERCELL
     if photospherevelocity_kmps < partwidth_kmps:
         exit_with_error(
-            f"-photospherevelocity {args.photospherevelocity:g} {VELOCITYUNIT_LABELS[unit]} is less than the width"
-            f" {format_velocity(partwidth_kmps, unit)} of a part of a cell, thus the trough estimate has no resolution",
+            f"-photospherevelocity {args.photospherevelocity:g} {VELOCITYUNIT_LABELS[unit]} is less than"
+            f" {format_velocity(partwidth_kmps, unit)}, a third of the width of a cell, thus the trough estimate has no"
+            " resolution",
             f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
         )
     cornervelocity_kmps = get_grid_corner_velocity_kmps(modelmeta)
@@ -580,16 +571,18 @@ def print_trough_method(
         f" {format_velocity(photospherevelocity_kmps, unit)}"
     )
     print_detail(
-        "The depth at a line-of-sight velocity u is the sum of (1 - exp(-tau)) V_v / (du pi v_ph^2). The sum takes the"
-        " parts of the cells on the near side of the photosphere, inside the cylinder of its disk. V_v is the volume"
-        " in velocity space, du is the width of a bin of u, and v_ph is the velocity of the photosphere. Each"
-        f" cell has {TROUGHSUBPOINTS**3} parts, thus it puts its volume in each bin that it crosses. The bins of u have"
-        " the width of the velocity bins, and they continue to the fastest part of a cell"
+        "Rays go from the photospheric disk towards the observer, with"
+        f" {TROUGHSAMPLESPERCELL} rays across the narrowest width of a cell. A ray meets a line at the point where"
+        " the line-of-sight velocity u gives its Doppler shift, and the cell there transmits exp(-tau) of its flux. A"
+        " point behind the near side of the photosphere absorbs nothing. The depth in a bin of u is 1 - the mean"
+        " transmission over the rays and over the bin. The bins of u have the width of the velocity bins, and they"
+        " continue to the fastest corner of a cell"
     )
     print_detail(
         f"The estimate has no emission of the lines, no limb darkening, and only the {linecount} ranked lines. A cell"
-        " with a negative tau_sobolev (a population inversion) or with no tau_sobolev absorbs nothing. The blend of"
-        " the lines is 1 - prod(1 - depth) at each wavelength"
+        " with a negative tau_sobolev (a population inversion) or with no tau_sobolev absorbs nothing. At each"
+        " wavelength, the blend is 1 - the mean over the rays of prod(exp(-tau)) of the lines. Thus two lines that"
+        " absorb the same part of the disk do not remove its flux two times"
     )
     print_warning(
         "The estimate takes a sharp photosphere and pure absorption. Many optically thick lines in front of the"

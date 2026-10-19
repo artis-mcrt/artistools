@@ -35,6 +35,7 @@ from artistools.misc.general import get_bin_index_expr
 from artistools.packets.core import addarg_velocitykind
 from artistools.packets.core import get_last_interaction_velocity_expr
 from artistools.packets.core import get_packets
+from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.packets.core import print_arrival_time_method
 from artistools.packets.core import print_last_interaction_convention
 from artistools.packets.core import print_velocity_method
@@ -58,9 +59,6 @@ DEFAULTOUTPUTNAME = "plotlastinteractionvelocity.pdf"
 # the quartiles come from a histogram of the velocity, because a timestep can hold 4e8 packets and their sort needs
 # much memory. This number of bins up to the grid corner gives a resolution far below the width of a cell
 VELOCITYHISTOGRAMBINS = 2000
-
-# a timestep with fewer packets gets a warning, because 100 packets of one energy give a luminosity error of 10 %
-LOWPACKETCOUNT: t.Final = 100
 
 
 def get_last_interaction_velocity_quartiles(
@@ -118,7 +116,11 @@ def get_last_interaction_velocity_quartiles(
         )
         .filter(pl.col("timestep").is_in(timesteps))
         .group_by("costhetabin", "timestep", "velocitybin")
-        .agg(pl.col("e_rf").cast(pl.Float64).sum(), packetcount=pl.len())
+        .agg(
+            pl.col("e_rf").cast(pl.Float64).sum(),
+            energysquared=(pl.col("e_rf").cast(pl.Float64) ** 2).sum(),
+            packetcount=pl.len(),
+        )
         .collect()
     )
 
@@ -126,7 +128,9 @@ def get_last_interaction_velocity_quartiles(
     results = {}
     for dirbin in dirbins:
         dfdirbin = dfhistogram if dirbin == -1 else dfhistogram.filter(pl.col("costhetabin") == dirbin // nphibins)
-        dfdirbin = dfdirbin.group_by("timestep", "velocitybin").agg(pl.col("e_rf", "packetcount").sum())
+        dfdirbin = dfdirbin.group_by("timestep", "velocitybin").agg(
+            pl.col("e_rf", "energysquared", "packetcount").sum()
+        )
         norecordcount = int(dfdirbin.filter(pl.col("velocitybin").is_null())["packetcount"].sum())
         dfquartiles = (
             dfdirbin
@@ -135,6 +139,7 @@ def get_last_interaction_velocity_quartiles(
             .group_by("timestep")
             .agg(
                 packetcount=pl.col("packetcount").sum(),
+                luminosity_relative_error=pl.col("energysquared").sum().sqrt() / pl.col("e_rf").sum(),
                 **{
                     f"velocity_luminosity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
                         "velocity_kmps", "e_rf", quantile
@@ -146,7 +151,9 @@ def get_last_interaction_velocity_quartiles(
                 time_days=pl.col("timestep").replace_strict(range(len(timemids)), timemids, return_dtype=pl.Float64)
             )
             .sort("timestep")
-            .select("timestep", "time_days", "packetcount", pl.col("^velocity_luminosity_q.*$"))
+            .select(
+                "timestep", "time_days", "packetcount", "luminosity_relative_error", pl.col("^velocity_luminosity_q.*$")
+            )
         )
         results[dirbin] = (dfquartiles, norecordcount)
     return results
@@ -249,11 +256,15 @@ def plot_velocity_against_time(
                 "velocity_luminosity_q50_min_kmps": float(medians.min()),
                 "velocity_luminosity_q50_max_kmps": float(medians.max()),
             })
-            noisytimes = dfquartiles.filter(pl.col("packetcount") < LOWPACKETCOUNT)["time_days"].to_list()
+            # the packets can have different energies, thus the error comes from the energies and not from the counts
+            noisytimes = dfquartiles.filter(pl.col("luminosity_relative_error") > NOISY_RELATIVE_ERROR)[
+                "time_days"
+            ].to_list()
             if noisytimes:
                 print_warning(
-                    f"{label}: {len(noisytimes)} of {dfquartiles.height} timesteps have fewer than {LOWPACKETCOUNT}"
-                    f" packets, e.g. at {noisytimes[0]:.2f} d. Their quartiles come from few packets"
+                    f"{label}: {len(noisytimes)} of {dfquartiles.height} timesteps have a relative error"
+                    f" sqrt(sum(e^2)) / sum(e) above {NOISY_RELATIVE_ERROR:.0%}, e.g. at {noisytimes[0]:.2f} d. Their"
+                    " quartiles come from few packets"
                 )
             print_detail(
                 f"{label}: {int(dfquartiles['packetcount'].sum())} packets in {dfquartiles.height} timesteps, median"
