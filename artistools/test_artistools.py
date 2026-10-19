@@ -8435,6 +8435,21 @@ def test_values_warn_about_a_cell_with_no_estimators_at_one_timestep(capsys: pyt
     assert "modelgridindex 1 has no estimators at timestep 1" in capsys.readouterr().err
 
 
+def test_values_warn_about_a_requested_cell_in_the_direction_range(capsys: pytest.CaptureFixture[str]) -> None:
+    """-dirbin with -cell warns about a requested cell in the range that has no estimators, e.g. a cell with no matter.
+
+    The warning took only the cells of the table, thus such a cell gave no warning. Cell 932 is near the pole and holds
+    no matter. Cell 402 is near the equator, thus it is outside the range, and it gives no warning.
+    """
+    from artistools.values import main
+
+    main(argsraw=["Te", "-ts", "25", "-dirbin", "90", "-cell", "402,644,932", str(modelpath_classic_3d)])
+
+    stderr = capsys.readouterr().err
+    assert "modelgridindex 932 has no estimators" in stderr
+    assert "402" not in stderr
+
+
 def test_values_with_quiet_print_only_the_table(capsys: pytest.CaptureFixture[str]) -> None:
     """--quiet must leave only the table on the standard output, thus a script can read it directly."""
     import artistools.__main__

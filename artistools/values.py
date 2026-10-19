@@ -15,7 +15,9 @@ import polars as pl
 from artistools.constants import km_to_cm
 from artistools.estimators import get_units
 from artistools.estimators import scan_estimators
+from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_costheta_selection
+from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
@@ -225,6 +227,26 @@ def warn_missing_rows(dfvalues: pl.DataFrame, timesteps: Sequence[int], modelgri
             )
 
 
+def get_cells_in_costheta_range(modelpath: Path, cells: Sequence[int], costhetarange: tuple[float, float]) -> list[int]:
+    """Return the cells of the list whose centre has cos θ = v_z / |v| in the range.
+
+    A cell of the list outside the range has no row, and it can hold estimators. Thus warn_missing_rows must not
+    name it.
+    """
+    lzmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    dfcells = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+    return (
+        dfcells
+        .filter(
+            pl.col("modelgridindex").is_in(cells),
+            get_costheta_selection(costhetarange, dfcells.collect_schema().names()),
+        )
+        .select("modelgridindex")
+        .collect()["modelgridindex"]
+        .to_list()
+    )
+
+
 def require_model_folder(modelpath: Path) -> None:
     """Stop with an error message when the path does not name a model folder."""
     if path_is_codecomparison(modelpath) or folder_is_artis_model(modelpath):
@@ -300,8 +322,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     if dfvalues.is_empty():
         exit_with_error("the selected cells hold no estimators at the selected timesteps", "Select different cells")
-    # a cell of -modelgridindex outside the range of cos θ has estimators but no row, thus do not warn about it
-    warn_missing_rows(dfvalues, timesteps, args.modelgridindex if costhetarange is None else None)
+    expectedcells = (
+        get_cells_in_costheta_range(modelpath, args.modelgridindex, costhetarange)
+        if args.modelgridindex is not None and costhetarange is not None
+        else args.modelgridindex
+    )
+    warn_missing_rows(dfvalues, timesteps, expectedcells)
 
     methodlines = get_method_lines(modelpath, variables, timesteps, dfvalues, costhetarange)
     for line in methodlines:
