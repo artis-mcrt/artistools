@@ -1919,7 +1919,7 @@ def test_the_stamp_of_a_batch_cache_decides_the_conversion(tmp_path: Path) -> No
     from artistools.misc.fileio import rankbatch_parquet_staleness
 
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
-    assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet.tmp"
+    assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet"
 
     # a cache that no conversion wrote yet needs the conversion
     assert (

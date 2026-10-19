@@ -2243,6 +2243,28 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_pat
 
 
 @pytest.mark.benchmark
+def test_a_cache_of_the_earlier_name_stays_in_use(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A cache named *.parquet.tmp, from before the caches took the name *.parquet, is read and not converted again.
+
+    A rename of the caches with no such rule would make each model convert its data again, which takes long for a
+    large model. A cache of the current name wins when both exist.
+    """
+    textfile = tmp_path / "model.txt"
+    textfile.write_text("x", encoding="utf-8")
+    legacycache = tmp_path / "model.txt.parquet.tmp"
+    legacycache.write_bytes(b"")
+    assert at.inputmodel.core.get_parquet_cache_path(textfile) == legacycache
+
+    currentcache = tmp_path / "model.txt.parquet"
+    currentcache.write_bytes(b"")
+    assert at.inputmodel.core.get_parquet_cache_path(textfile) == currentcache
+
+    at.inputmodel.core.remove_parquet_cache(textfile)
+    assert not currentcache.exists()
+    assert not legacycache.exists()
+    capsys.readouterr()
+
+
 def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True)
     dfmodel = lzdfmodel.collect()
@@ -2306,7 +2328,7 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
 
     # the first load reads the text file, and it writes a cache, because the file is larger than 2 MiB.
     # The second load reads that cache
-    cachefilepath = outpath / "model.txt.parquet.tmp"
+    cachefilepath = outpath / "model.txt.parquet"
     for loadnumber in (0, 1):
         assert cachefilepath.is_file() == (loadnumber == 1)
         capsys.readouterr()

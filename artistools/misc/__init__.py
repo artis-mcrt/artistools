@@ -100,6 +100,7 @@ from artistools.misc.fileio import get_file_identity as get_file_identity
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
 from artistools.misc.fileio import get_file_state as get_file_state
 from artistools.misc.fileio import get_model_folder as get_model_folder
+from artistools.misc.fileio import get_parquet_cache_name as get_parquet_cache_name
 from artistools.misc.fileio import merge_pdf_files as merge_pdf_files
 from artistools.misc.fileio import open_file as open_file
 from artistools.misc.fileio import path_is_artis_model as path_is_artis_model

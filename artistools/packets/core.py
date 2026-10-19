@@ -30,6 +30,7 @@ from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
+from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
@@ -647,10 +648,10 @@ def get_packets_rankbatch_parquetpath(
 ) -> Path:
     """Return the path of the parquet cache of a batch of ranks."""
     strpacket = "vpackets" if virtual else "packets"
-    return (
+    return get_parquet_cache_name(
         modelpath
         / strpacket
-        / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
+        / f"{strpacket}batch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet"
     )
 
 
@@ -698,7 +699,10 @@ def get_first_packets_file(modelpath: Path) -> Path | None:
         return textfile
     # the name of the cache needs the number of ranks in input.txt, thus the function reads that file only if a
     # cache exists
-    if not any((modelpath / "packets").glob("packetsbatch00_*.parquet.tmp")):
+    if not any(
+        any((modelpath / "packets").glob(pattern))
+        for pattern in ("packetsbatch00_*.parquet", "packetsbatch00_*.parquet.tmp")
+    ):
         return None
     (batchindex, batch_mpiranks), *_ = get_packets_mpirank_groups(modelpath, maxpacketfiles=None)
     parquetfile = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual=False)
@@ -724,7 +728,7 @@ def get_packets_column_names(modelpath: Path) -> list[str] | None:
     packetsfile = get_first_packets_file(modelpath)
     if packetsfile is None:
         return None
-    if packetsfile.name.endswith(".parquet.tmp"):
+    if packetsfile.name.endswith((".parquet", ".parquet.tmp")):
         return list(pl.read_parquet_schema(packetsfile))
     return get_packets_text_columns(packetsfile, modelpath)
 

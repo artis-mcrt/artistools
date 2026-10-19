@@ -37,6 +37,7 @@ from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_mpiranklist
+from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_runfolders
 from artistools.misc import get_timesteps
 from artistools.misc import path_is_codecomparison
@@ -405,8 +406,8 @@ def estimator_colsortkey(col: str) -> str:
 
 def get_rankbatch_parquetpath(folderpath: Path | str, batch_mpiranks: Sequence[int], batchindex: int) -> Path:
     """Return the path of the parquet cache for one batch of MPI ranks."""
-    filename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet.tmp"
-    return Path(folderpath) / filename
+    filename = f"estimbatch{batchindex:02d}_{batch_mpiranks[0]:04d}_{batch_mpiranks[-1]:04d}.out.parquet"
+    return get_parquet_cache_name(Path(folderpath) / filename)
 
 
 # With the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes the estimators of all ranks into this file of a run

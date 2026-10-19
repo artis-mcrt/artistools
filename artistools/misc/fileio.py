@@ -1491,6 +1491,21 @@ def temporary_parts_folder(parquetfilepath: Path) -> Generator[Path]:
         yield Path(partsfoldername)
 
 
+# the parquet caches had this suffix after .parquet up to 2026-10. write_parquet_atomic writes a temporary file with a
+# dot at the start of its name, thus the suffix said nothing about a temporary file
+LEGACY_CACHE_SUFFIX: t.Final = ".tmp"
+
+
+def get_parquet_cache_name(cachepath: Path) -> Path:
+    """Return cachepath, or the cache of the earlier name cachepath + ".tmp" when only that file exists.
+
+    A model keeps a cache of the earlier name, thus a reader takes it and the model converts no data again. A new cache
+    takes the name cachepath.
+    """
+    legacypath = cachepath.with_name(cachepath.name + LEGACY_CACHE_SUFFIX)
+    return legacypath if not cachepath.exists() and legacypath.is_file() else cachepath
+
+
 def write_parquet_atomic(
     pldf: pl.DataFrame | pl.LazyFrame,
     parquetfilepath: Path,

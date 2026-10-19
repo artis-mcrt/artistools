@@ -27,6 +27,7 @@ from artistools.constants import hc_in_ev_angstrom
 from artistools.constants import K_B_ev_per_K
 from artistools.constants import peck_reeder_air_coefficients
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_parquet_cache_name
 from artistools.misc import polars_source
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import get_file_identity
@@ -1331,8 +1332,7 @@ def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
     # the path identifies the text source of the cache. A compression of the text keeps its modification time, thus
     # the path has no compression extension
     textsource = without_compressed_extension(textfile).relative_to(modelpath).as_posix()
-    # the .tmp suffix marks this as a regenerable cache, matching every other parquet file artistools writes
-    parquetfile = Path(modelpath, "linelist.out.parquet.tmp")
+    parquetfile = get_parquet_cache_name(Path(modelpath, "linelist.out.parquet"))
     textsource_mtime = textfile.stat().st_mtime
     # leave a stale file in place: write_parquet_atomic() puts the new one at the path in one step. The
     # identity comes from before the check below, thus a fresh file that a rival process installs after

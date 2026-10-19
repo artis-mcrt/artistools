@@ -27,6 +27,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_identity
+from artistools.misc import get_parquet_cache_name
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
 from artistools.misc import print_detail
@@ -499,7 +500,7 @@ def read_parquet_cache(
 def get_parquet_cache_path(textfilepath: Path) -> Path:
     """Return the path of the parquet cache of a text file that get_text_source_cached reads."""
     # model_a.1.txt and model_a.2.txt must not share a cache, thus remove only a compression suffix
-    return textfilepath.with_name(f"{without_compressed_extension(textfilepath).name}.parquet.tmp")
+    return get_parquet_cache_name(textfilepath.with_name(f"{without_compressed_extension(textfilepath).name}.parquet"))
 
 
 def remove_parquet_cache(textfilepath: Path) -> None:
@@ -508,8 +509,8 @@ def remove_parquet_cache(textfilepath: Path) -> None:
     The cache check accepts a modification time within MTIME_TOLERANCE_S of its stamp. Thus the time of
     a text file that the caller wrote again soon after a read cannot show that the cache is stale.
     """
-    parquetfilepath = get_parquet_cache_path(textfilepath)
-    if parquetfilepath.is_file():
+    # a cache of the earlier name and a cache of the current name can both exist
+    while (parquetfilepath := get_parquet_cache_path(textfilepath)).is_file():
         print(f"Deleting {parquetfilepath}, because it is the cache of the old {textfilepath.name}")
         parquetfilepath.unlink(missing_ok=True)
 
