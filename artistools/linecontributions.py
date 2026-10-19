@@ -26,9 +26,8 @@ from artistools.ejectaopacity import get_excitation_temperature_column
 from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import get_cell_selection
-from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_output
+from artistools.misc import addarg_table_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_wavelengthrange
@@ -1134,8 +1133,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Give one row for each cell and line, with the populations, tau_sobolev, and the emission",
     )
     addarg_excitationtemperature(parser)
-    addarg_output(parser, kind="file", helptext="Path/filename for the output text file")
-    addarg_force(parser)
+    addarg_table_output(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

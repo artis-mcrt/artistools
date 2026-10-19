@@ -20,8 +20,8 @@ from artistools.estimators import scan_estimators
 from artistools.inputmodel import get_initelemabundances
 from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_action
-from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_table_output
 from artistools.misc import confirm_deletion
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
@@ -30,9 +30,10 @@ from artistools.misc import get_runfolders
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_dir
 from artistools.misc import print_detail
-from artistools.misc import print_product
+from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import require_action
+from artistools.misc import resolve_table_outputfile
 from artistools.packets import has_packets_files
 from artistools.packets.core import get_packets_batch_parquet_paths
 
@@ -185,7 +186,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     addarg_modelpath(parser, positional=True, default=Path())
-    addarg_force(parser)
+    addarg_table_output(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -196,15 +197,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if not path_is_dir(modelfolder):
         exit_with_error(f"The model folder {modelfolder} does not exist", "Give a model folder")
 
+    outputfile = resolve_table_outputfile(args, f"cache_{args.action}.txt") if args.action != "delete" else None
     match args.action:
         case "make":
             dfresults = make_caches(modelfolder)
-            print_product(args, dfresults)
+            print_or_write_table(args, dfresults, outputfile)
             if (dfresults["status"] == "error").any():
                 exit_with_error("artistools could not make all the caches", "The table above gives each error")
         case "list":
             dftable = get_cache_table(modelfolder)
-            print_product(args, dftable)
+            print_or_write_table(args, dftable, outputfile)
             print_detail(f"total: {dftable['size_mb'].sum():.1f} MB in {dftable.height} files")
             if (dftable["kind"] == "leftover").any():
                 print_warning("a conversion stopped and left files. 'artistools cache delete' deletes them")

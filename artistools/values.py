@@ -15,11 +15,10 @@ import polars as pl
 from artistools.constants import km_to_cm
 from artistools.estimators import get_units
 from artistools.estimators import scan_estimators
-from artistools.misc import addarg_force
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
-from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
+from artistools.misc import addarg_table_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
@@ -249,16 +248,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timeminmax(parser)
 
-    addarg_output(
-        parser,
-        kind="file",
-        helptext=(
-            "Write the table to this file with lines of provenance at the start, and not to the standard output."
-            " The default file name is values.txt"
-        ),
-    )
-
-    addarg_force(parser)
+    addarg_table_output(parser)
 
     addarg_verbose(parser)
 

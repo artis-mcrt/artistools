@@ -21,8 +21,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
-from artistools.misc import addarg_force
-from artistools.misc import addarg_output
+from artistools.misc import addarg_table_output
 from artistools.misc import exit_with_error
 from artistools.misc import folder_is_artis_model
 from artistools.misc import get_artis_options
@@ -234,8 +233,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=Path(),
         help="The folder to search for model folders. The default is the working folder",
     )
-    addarg_output(parser, kind="file", helptext="Write the table to this file in place of the standard output")
-    addarg_force(parser)
+    addarg_table_output(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

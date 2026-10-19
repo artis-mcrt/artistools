@@ -27,6 +27,7 @@ from artistools.constants import hour_to_s
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import print_saved
+from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import write_text_file_atomic
 from artistools.misc.remote import model_path_from_text
 
@@ -1468,9 +1469,26 @@ def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", com
     A value or a column name that contains a space has quotes, which polars and pandas read. Each line of commentlines
     goes before the table with "# " at its start, which pl.read_csv(comment_prefix="#") and np.loadtxt skip. A file
     replaces a symbolic link at its path, because write_text_file_atomic does not write through a link.
+
+    A file with the suffix .json or .parquet takes that format, as the suffix of a figure sets its format. A JSON file
+    holds an object with the keys "comments" and "rows", and a missing value is null. A parquet file keeps
+    commentlines in its metadata key "comments".
     """
+    suffix = destination.suffix.lower() if isinstance(destination, Path) else ""
+    if isinstance(destination, Path) and suffix == ".parquet":
+        write_parquet_atomic(dfdata, destination, metadata={"comments": "\n".join(commentlines)})
+        return
 
     def write_to_stream(stream: t.TextIO) -> None:
+        if suffix == ".json":
+            import json
+
+            import polars.selectors as cs
+
+            rows = dfdata.with_columns(cs.float().fill_nan(None)).to_dicts()
+            json.dump({"comments": list(commentlines), "rows": rows}, stream, default=str, indent=1)
+            stream.write("\n")
+            return
         stream.writelines(f"# {line}\n" for line in commentlines)
         dfdata.write_csv(stream, separator=" ", null_value="nan")
 
@@ -1478,6 +1496,19 @@ def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", com
         write_text_file_atomic(destination, write_to_stream)
     else:
         write_to_stream(destination)
+
+
+def addarg_table_output(parser: argparse.ArgumentParser) -> None:
+    """Add -o and -f to a command that prints a table, thus the table can go to a file in place of the output."""
+    addarg_output(
+        parser,
+        kind="file",
+        helptext=(
+            "Write the table to this file in place of the standard output. The suffix .json or .parquet gives that"
+            " format, and another suffix gives text"
+        ),
+    )
+    addarg_force(parser)
 
 
 def resolve_table_outputfile(args: argparse.Namespace, defaultname: str) -> Path | None:

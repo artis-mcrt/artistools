@@ -24,6 +24,7 @@ from artistools.misc.cliutils import addarg_residuals as addarg_residuals
 from artistools.misc.cliutils import addarg_seriesstyle as addarg_seriesstyle
 from artistools.misc.cliutils import addarg_show as addarg_show
 from artistools.misc.cliutils import addarg_sliceaxis as addarg_sliceaxis
+from artistools.misc.cliutils import addarg_table_output as addarg_table_output
 from artistools.misc.cliutils import addarg_timedays as addarg_timedays
 from artistools.misc.cliutils import addarg_timeminmax as addarg_timeminmax
 from artistools.misc.cliutils import addarg_timestep as addarg_timestep

@@ -4173,3 +4173,22 @@ def test_reversed_wavelength_selection_stops_before_the_read(capsys: pytest.Capt
         )
     assert excinfo.value.code == 1
     assert "-lambdamin 8000 is above -lambdamax 3000" in capsys.readouterr().err
+
+
+def test_write_data_table_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
+    """Write JSON with null for NaN, because JSON has no NaN, and keep the comment lines in each format."""
+    import json
+
+    from artistools.misc.cliutils import write_data_table
+
+    dftable = pl.DataFrame({"name": ["a", "b"], "value": [1.5, math.nan]})
+    write_data_table(dftable, tmp_path / "table.json", commentlines=["made by a test"])
+    content = json.loads((tmp_path / "table.json").read_text(encoding="utf-8"))
+    assert content == {
+        "comments": ["made by a test"],
+        "rows": [{"name": "a", "value": 1.5}, {"name": "b", "value": None}],
+    }
+
+    write_data_table(dftable, tmp_path / "table.parquet", commentlines=["made by a test"])
+    pltest.assert_frame_equal(pl.read_parquet(tmp_path / "table.parquet"), dftable)
+    assert pl.read_parquet_metadata(tmp_path / "table.parquet")["comments"] == "made by a test"

@@ -32,6 +32,7 @@ from artistools.logsummary import get_log_summary
 from artistools.logsummary import get_logfiles
 from artistools.logsummary import get_logged_rank_count
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_table_output
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_deposition
@@ -43,8 +44,9 @@ from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_dir
 from artistools.misc import print_detail
-from artistools.misc import print_product
+from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
+from artistools.misc import resolve_table_outputfile
 from artistools.misc.cliutils import format_range_list
 from artistools.misc.remote import on_model_host
 
@@ -558,6 +560,7 @@ def get_check_results(modelpath: Path, frompackets: bool = False) -> pl.DataFram
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, default=Path())
+    addarg_table_output(parser)
     parser.add_argument(
         "--frompackets",
         action="store_true",
@@ -571,7 +574,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelfolder = get_model_folder(args.modelpath)
     if not path_is_dir(modelfolder):
         exit_with_error(f"The model folder {modelfolder} does not exist", "Give a model folder")
+    outputfile = resolve_table_outputfile(args, "check.txt")
     dfresults = get_check_results(modelfolder, frompackets=args.frompackets)
-    print_product(args, dfresults)
+    print_or_write_table(args, dfresults, outputfile)
     for checkname, status, detail in dfresults.filter(pl.col("status").is_in(["warning", "error"])).iter_rows():
         print_warning(f"{checkname} ({status}): {detail}")
