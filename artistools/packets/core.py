@@ -1,5 +1,6 @@
 """Read ARTIS packets and virtual packets files, caching them as parquet, and bin them by viewing direction."""
 
+import argparse
 import contextlib
 import datetime as dt
 import math
@@ -25,6 +26,7 @@ from artistools.inputmodel import get_modeldata
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
@@ -33,6 +35,7 @@ from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import polars_source
+from artistools.misc import print_detail
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
@@ -175,6 +178,73 @@ def get_emission_velocity_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     ).sqrt() / get_emission_time_expr(position)
 
 
+def get_emission_velocity_of_columns_expr(position: t.Literal["em", "trueem"], packetcolumns: Sequence[str]) -> pl.Expr:
+    """Return the radial velocity [cm/s] of get_emission_velocity_expr() from the columns that the packets hold.
+
+    An old packets file holds true_emission_velocity and no position of the thermal emission. For a packet with no
+    record, get_packets gives that velocity a value of NaN, as get_emission_velocity_expr() does.
+    """
+    if position == "trueem" and "trueem_posx" not in packetcolumns:
+        if "true_emission_velocity" not in packetcolumns:
+            msg = (
+                "The packets hold no position and no velocity of the thermal emission. Remove --use_thermalemissiontype"
+            )
+            raise ValueError(msg)
+        return pl.col("true_emission_velocity")
+    return get_emission_velocity_expr(position)
+
+
+def print_last_interaction_convention(modelpath: Path | str) -> None:
+    """Print which events of ARTIS set the emission type, the position of the last interaction, and the absorption.
+
+    rpkt.cc and macroatom.cc of ARTIS give these rules, and the code of 2012 already had them.
+    """
+    print_detail(
+        "In ARTIS, an emission sets emissiontype, em_pos, and em_time. An electron scattering keeps emissiontype, but"
+        " it sets em_pos and em_time. Thus em_pos is the place of the last interaction, and emissiontype can come"
+        " from an earlier event. Each absorption sets absorption_type"
+    )
+    if get_artis_option(modelpath, "RPKT_BOUNDBOUND_THERMALISATION_PROBABILITY") in {None, "std::nullopt"}:
+        print_detail(
+            "A line absorption activates a macro atom, and its radiative de-excitation is an emission. Thus a"
+            " resonance scattering (an absorption and an emission by the same line) and a fluorescence each set"
+            " emissiontype and em_pos. A thermal emission (trueemissiontype) is the emission of a k-packet, or of a"
+            " macro atom that a collision or a non-thermal electron activated. A later line scattering keeps it"
+        )
+    else:
+        print_detail(
+            "artisoptions.h sets RPKT_BOUNDBOUND_THERMALISATION_PROBABILITY, thus a line event is a scattering or a"
+            " thermalisation, and not a macro atom. A line scattering keeps emissiontype, but it sets em_pos, as an"
+            " electron scattering does. A thermalisation emits the packet again with the emissiontype NOT SET"
+        )
+
+
+def print_arrival_time_method(modelpath: Path | str, timesteps: Sequence[int], selectiontext: str) -> None:
+    """Print the definition of the arrival time of a packet, and the timesteps that are the time bins.
+
+    selectiontext says how the command selected the timesteps, e.g. "the timestep that holds -timedays".
+    """
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tends = get_timestep_times(modelpath, loc="end")
+    print_detail(
+        "The arrival time of a packet is t_arrive = t_escape - (r . n) / c, with the escape time t_escape, the escape"
+        " position r, and the direction n. A distant observer sees the packet at t_arrive. The light that leaves the"
+        " centre of the ejecta at a time t arrives at t"
+    )
+    if len(timesteps) == 1:
+        timesteptext = f"timestep {timesteps[0]}, from {tstarts[timesteps[0]]:.3g} to {tends[timesteps[0]]:.3g} d"
+    else:
+        widths_days = [tends[timestep] - tstarts[timestep] for timestep in timesteps]
+        timesteptext = (
+            f"{len(timesteps)} timesteps from {tstarts[timesteps[0]]:.3g} to {tends[timesteps[-1]]:.3g} d, with a width"
+            f" from {min(widths_days):.3g} to {max(widths_days):.3g} d"
+        )
+    print_detail(
+        "The time bins are the ARTIS timesteps of the model, and a packet goes in the timestep that holds its arrival"
+        f" time. The command takes {selectiontext}: {timesteptext}"
+    )
+
+
 def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     """Return the line-of-sight velocity [cm/s] of the last interaction (em) or the last thermal emission (trueem).
 
@@ -187,6 +257,62 @@ def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) 
         + pl.col(f"{position}_posy") * pl.col("diry")
         + pl.col(f"{position}_posz") * pl.col("dirz")
     ) / get_emission_time_expr(position)
+
+
+# a sum of packet energies with a relative error above this fraction gets a warning. 100 packets of one energy give 0.1
+NOISY_RELATIVE_ERROR: t.Final = 0.1
+
+
+def get_relative_error_expr(energy: pl.Expr) -> pl.Expr:
+    """Return the relative Monte Carlo error sqrt(sum(e^2)) / sum(e) of a sum of packet energies.
+
+    For n packets of one energy, the error is 1 / sqrt(n).
+    """
+    return (energy.cast(pl.Float64) ** 2).sum().sqrt() / energy.cast(pl.Float64).sum()
+
+
+def addarg_velocitykind(parser: argparse.ArgumentParser) -> None:
+    """Add -velocity, which selects the radial or the line-of-sight velocity of the last interaction."""
+    parser.add_argument(
+        "-velocity",
+        dest="velocitykind",
+        choices=["radial", "lineofsight"],
+        default="radial",
+        help=(
+            "The velocity of the last interaction or of the last thermal emission: the radial velocity, or the"
+            " line-of-sight velocity, positive towards the observer. The line-of-sight velocity gives the Doppler"
+            " shift of a P Cygni profile"
+        ),
+    )
+
+
+def get_last_interaction_velocity_expr(
+    position: t.Literal["em", "trueem"], velocitykind: t.Literal["radial", "lineofsight"], packetcolumns: Sequence[str]
+) -> pl.Expr:
+    """Return the radial or the line-of-sight velocity [cm/s] of the last interaction or the last thermal emission."""
+    if velocitykind == "radial":
+        return get_emission_velocity_of_columns_expr(position, packetcolumns)
+    if f"{position}_posx" not in packetcolumns:
+        msg = f"The packets hold no {position}_pos, thus they give no line-of-sight velocity. Give -velocity radial"
+        raise ValueError(msg)
+    return get_emission_velocity_lineofsight_expr(position)
+
+
+def print_velocity_method(
+    position: t.Literal["em", "trueem"], velocitykind: t.Literal["radial", "lineofsight"]
+) -> None:
+    """Print the definition of the velocity of the last interaction or of the last thermal emission."""
+    event = "last interaction" if position == "em" else "last thermal emission"
+    if velocitykind == "radial":
+        print_detail(f"The velocity is |{position}_pos| / {position}_time, the radial velocity of the {event}")
+        if position == "trueem":
+            print_detail("An old packets file has no trueem_pos, and its column true_emission_velocity is the velocity")
+    else:
+        print_detail(
+            f"The velocity is ({position}_pos . n) / {position}_time, the line-of-sight velocity of the {event}, with"
+            " the direction n of the packet at the escape. A positive velocity is towards the observer. A line that"
+            " emits or absorbs at a positive velocity gives a wavelength below its rest wavelength"
+        )
 
 
 def get_modelgridindex_from_velocity_expr(velocity: pl.Expr, dfmodel: pl.LazyFrame) -> pl.Expr:

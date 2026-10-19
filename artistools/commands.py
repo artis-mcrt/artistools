@@ -154,8 +154,10 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "plotdensity",
         "plotestimators",
         "plotinitialcomposition",
+        "plotlastinteractionvelocity",
         "plotlastpacketinteraction",
         "plotlightcurves",
+        "plotlinecontributions",
         "plotlinefluxes",
         "plotlogfiles",
         "plotnltepops",
@@ -447,11 +449,38 @@ subcommandtree: CommandTree = {
         examples=(("rho Fe .", "the density and the mass fraction of Fe in a slice of a 3D model"),),
         exampletestfolder="test-classicmode_3d",
     ),
+    "plotlastinteractionvelocity": CommandSpec(
+        "packets.plotlastinteractionvelocity",
+        helptext="Plot the velocity of the last interaction of the escaped packets in a wavelength range against time.",
+        note=(
+            "In a range with no strong line, the median is an estimate of the velocity of the photosphere. Give it to"
+            " plotlinecontributions -photospherevelocity."
+        ),
+        examples=(
+            (". -lambdamin 7000 -lambdamax 8000", "the median and the quartiles for all the directions"),
+            (
+                ". -lambdamin 7000 -lambdamax 8000 -dirbin 0 50 90",
+                "the same for the two poles and the bin above the equator",
+            ),
+        ),
+        exampletestfolder="test-classicmode_3d",
+    ),
     "plotlastpacketinteraction": CommandSpec(
         "packets.plotlastpacketinteraction",
         helptext="Plot the last interaction of a packet.",
-        note="The plot gives the properties of that interaction against the velocity of the ejecta.",
-        examples=(("-modelpath . -t 300", "the last interactions of the packets that arrive at 300 days"),),
+        note=(
+            "The plot gives the properties of that interaction against the velocity of the ejecta. -groupby gives the"
+            " luminosity of each element, ion, or line against the velocity, and plotlinecontributions gives the same"
+            " view from the level populations."
+        ),
+        examples=(
+            (". -t 7", "the last interactions of the packets that arrive at 7 days"),
+            (
+                ". -t 7 -groupby ion -lambdamin 3500 -lambdamax 4500",
+                "the luminosity of each ion against the velocity, for the packets from 3500 to 4500 Å",
+            ),
+        ),
+        exampletestfolder="test-classicmode_3d",
     ),
     "plotlightcurves": CommandSpec(
         "lightcurve.plotlightcurve",
@@ -459,6 +488,29 @@ subcommandtree: CommandTree = {
         helptext="Plot ARTIS light curves.",
         examples=((".", "the light curve of a model"),),
         aliases=("lc", "plotlightcurve"),
+    ),
+    "plotlinecontributions": CommandSpec(
+        "plotlinecontributions",
+        helptext="Plot the Sobolev emission and the Sobolev optical depth of the strongest lines against velocity.",
+        note=(
+            "The values come from the estimators and the level populations, as in linecontributions."
+            " plotlastpacketinteraction -groupby gives the same view from the packets."
+        ),
+        examples=(
+            (
+                ". -timedays 7 -lambdamin 3000 -lambdamax 10000",
+                "where the 8 lines with the most emission from 3000 to 10000 Å form at 7 days",
+            ),
+            (
+                ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau",
+                "where the lines with the largest tau_sobolev from 6000 to 6400 Å form at 7 days",
+            ),
+            (
+                ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau -troughdirbin 90 -photospherevelocity 15000",
+                "the same, with a Sobolev estimate of the trough for the observer at the pole",
+            ),
+        ),
+        exampletestfolder="test-classicmode_3d",
     ),
     "plotlinefluxes": CommandSpec(
         "plotlinefluxes",
@@ -489,7 +541,8 @@ subcommandtree: CommandTree = {
         note=(
             "The plot shows the expansion opacity, the line-binned opacity, and the line-binned opacity with"
             " each Sobolev optical depth limited to 1. Without -cell, it shows the mean over all cells, weighted"
-            " by mass."
+            " by mass. -vmin, -vmax, -costhetamin, and -costhetamax select the cells, e.g. the cells in front of the"
+            " photosphere of one direction."
         ),
         examples=(
             ("-modelpath . -ts 40 -xmin 3000 -xmax 4000", "the opacities at timestep 40, from 3000 to 4000 Angstroms"),

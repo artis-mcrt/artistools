@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import cache
 from functools import partial
+from types import MappingProxyType
 
 import matplotlib as mpl
 import matplotlib.artist as mplartist
@@ -31,6 +32,9 @@ from matplotlib.patches import Patch
 from matplotlib.text import Text
 
 from artistools.commands import get_path
+from artistools.constants import C_cm_per_s
+from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.misc import exit_with_error
 from artistools.misc import get_phibin_rank_ascending
 from artistools.misc import get_viewingdirection_costhetabincount
@@ -38,6 +42,8 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
+from artistools.misc.cliutils import positive_float_arg
+from artistools.misc.cliutils import positive_int_arg
 
 # the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
 # the wavelength range, the spectra of a kilonova are above 0.026 of the top at each time. The light curve of a
@@ -1958,3 +1964,188 @@ def make_colorbar_viewingangles(
     cbar.locator = mplticker.FixedLocator(ticklocs)
     cbar.formatter = mplticker.FixedFormatter(ticklabels)
     cbar.update_ticks()
+
+
+# the number of km/s in each unit of the velocity axis
+KMPS_PER_VELOCITYUNIT: t.Final = MappingProxyType({"kmps": 1.0, "c": C_cm_per_s / km_to_cm})
+# -velocityunit auto takes c for a model with a vmax of this fraction of c or more, e.g. a kilonova
+AUTO_VELOCITYUNIT_C_MIN_ON_C: t.Final = 0.2
+VELOCITYUNIT_LABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "c"})
+# the axis labels of a velocity and of the inverse of a velocity, as matplotlib text
+VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "$c$"})
+INVERSE_VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "(km/s)$^{-1}$", "c": "$c^{-1}$"})
+
+
+def addarg_velocityunit(parser: argparse.ArgumentParser, usetext: str = "") -> None:
+    """Add -velocityunit. usetext ends the help text, e.g. " of -groupby"."""
+    parser.add_argument(
+        "-velocityunit",
+        choices=["auto", "kmps", "c"],
+        default="auto",
+        help=(
+            f"Unit of the velocity axis{usetext}: km/s or c. The value auto takes c for a model with a vmax of 0.2 c"
+            " or more, e.g. a kilonova, and km/s for a different model"
+        ),
+    )
+
+
+def addarg_velocitybins(parser: argparse.ArgumentParser, usetext: str = "") -> None:
+    """Add -nvelocitybins, -velocitymax, and -velocityunit. usetext ends each help text, e.g. " of -groupby"."""
+    parser.add_argument(
+        "-nvelocitybins", type=positive_int_arg, default=25, help=f"Number of velocity bins of equal width{usetext}"
+    )
+    parser.add_argument(
+        "-velocitymax",
+        type=positive_float_arg,
+        help=f"Upper edge of the velocity bins{usetext}, in the unit of -velocityunit. Default: the corner of the grid",
+    )
+    addarg_velocityunit(parser, usetext)
+
+
+def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps", "c"]:
+    """Return the unit of the velocity axis that -velocityunit selects, and log the reason for the value auto."""
+    if choice == "kmps":
+        return "kmps"
+    if choice == "c":
+        return "c"
+    from artistools.inputmodel import get_modeldata
+
+    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    unit = get_auto_velocity_unit(modelmeta["vmax_cmps"])
+    print_detail(
+        f"The velocity axis takes units of {VELOCITYUNIT_LABELS[unit]}, because the vmax of the model is"
+        f" {modelmeta['vmax_cmps'] / C_cm_per_s:.3f} c (-velocityunit auto takes c for a vmax of"
+        f" {AUTO_VELOCITYUNIT_C_MIN_ON_C:g} c or more)"
+    )
+    return unit
+
+
+def get_auto_velocity_unit(vmax_cmps: float) -> t.Literal["kmps", "c"]:
+    """Return c for a model with a vmax of AUTO_VELOCITYUNIT_C_MIN_ON_C c or more, e.g. a kilonova, else km/s."""
+    return "c" if vmax_cmps / C_cm_per_s >= AUTO_VELOCITYUNIT_C_MIN_ON_C else "kmps"
+
+
+def addarg_costhetarange(parser: argparse.ArgumentParser) -> None:
+    """Add -costhetamin and -costhetamax, which select the cells by the direction of their centre."""
+    parser.add_argument(
+        "-costhetamin",
+        type=float,
+        help=(
+            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole of -dirbin 90."
+            " Default: -1"
+        ),
+    )
+    parser.add_argument(
+        "-costhetamax",
+        type=float,
+        help=(
+            "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 with -costhetamin 0 for the cells of -dirbin"
+            " 50. Default: 1"
+        ),
+    )
+
+
+def get_costheta_range(costhetamin: float | None, costhetamax: float | None) -> tuple[float, float] | None:
+    """Return the range of cos θ of -costhetamin and -costhetamax, or None to keep each cell."""
+    if costhetamin is None and costhetamax is None:
+        return None
+    costhetarange = (-1.0 if costhetamin is None else costhetamin, 1.0 if costhetamax is None else costhetamax)
+    if not -1.0 <= costhetarange[0] < costhetarange[1] <= 1.0:
+        exit_with_error(
+            f"-costhetamin {costhetarange[0]:g} and -costhetamax {costhetarange[1]:g} give no range of cos θ",
+            "Give -1 ≤ -costhetamin < -costhetamax ≤ 1",
+        )
+    return costhetarange
+
+
+def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
+    """Return the text of a velocity in the unit of the velocity axis."""
+    if unit == "c":
+        return f"{velocity_kmps / KMPS_PER_VELOCITYUNIT['c']:.3f} c"
+    return f"{velocity_kmps:.0f} km/s"
+
+
+def get_grid_corner_velocity_kmps(modelmeta: Mapping[str, t.Any]) -> float:
+    """Return the radial velocity [km/s] of the corner of the model grid, which is vmax times sqrt(dimensions)."""
+    return float(modelmeta["vmax_cmps"]) / km_to_cm * math.sqrt(modelmeta["dimensions"])
+
+
+def get_cell_widths_kmps(modelmeta: Mapping[str, t.Any]) -> tuple[float, float, float]:
+    """Return the widths [km/s] along x, y, and z of a cell of a 3D Cartesian model grid in velocity space."""
+    t_model_init_s = float(modelmeta["t_model_init_days"]) * day_to_s
+    widths = [float(modelmeta[f"wid_init_{axis}"]) / t_model_init_s / km_to_cm for axis in "xyz"]
+    return widths[0], widths[1], widths[2]
+
+
+def get_velocity_bin_edges_kmps(
+    modelpath: "Path | str", nbins: int, velocitymax: float | None, unit: t.Literal["kmps", "c"]
+) -> list[float]:
+    """Return the edges [km/s] of nbins bins of equal width, from zero to velocitymax or to the grid corner.
+
+    velocitymax is in the unit of the velocity axis. The corner of a 2D grid or a 3D grid is outside vmax. A cell in a
+    corner can hold much of the emission or the optical depth, e.g. in the fast ejecta of a kilonova.
+    """
+    if nbins < 1:
+        exit_with_error(f"-nvelocitybins {nbins} gives no bins", "Give a number of 1 or more")
+    if velocitymax is not None:
+        if velocitymax <= 0.0:
+            exit_with_error(f"-velocitymax {velocitymax} gives no range", "Give a velocity above 0")
+        if unit == "c" and velocitymax > 1.0:
+            exit_with_error(
+                f"-velocitymax {velocitymax} is above the speed of light, and the velocity axis takes units of c",
+                "Give -velocitymax in units of c, or give -velocityunit kmps",
+            )
+        velocitymax_kmps = velocitymax * KMPS_PER_VELOCITYUNIT[unit]
+        if velocitymax_kmps > KMPS_PER_VELOCITYUNIT["c"]:
+            exit_with_error(
+                f"-velocitymax {velocitymax} km/s is above the speed of light",
+                f"Give a velocity of {KMPS_PER_VELOCITYUNIT['c']:.0f} km/s or less",
+            )
+    else:
+        from artistools.inputmodel import get_modeldata
+
+        _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+        velocitymax_kmps = get_grid_corner_velocity_kmps(modelmeta)
+        print_detail(
+            f"The velocity bins end at {format_velocity(velocitymax_kmps, unit)}, the corner of the model grid. This"
+            f" is vmax times the square root of the number of dimensions ({modelmeta['dimensions']})"
+        )
+    return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
+
+
+def get_signed_velocity_bin_edges_kmps(velocityedges_kmps: Sequence[float]) -> list[float]:
+    """Return the edges [km/s] from minus the last edge to the last edge, from edges that start at zero."""
+    return [-edge for edge in velocityedges_kmps[:0:-1]] + list(velocityedges_kmps)
+
+
+def convert_velocity_columns(dftable: pl.DataFrame, unit: t.Literal["kmps", "c"]) -> pl.DataFrame:
+    """Return the table with each velocity column and each value per unit velocity in the unit of the axis.
+
+    The code calculates in km/s. A column with the word kmps in its name, e.g. x_lower_kmps, is a velocity, and the
+    word becomes the unit, e.g. x_lower_c. A column that ends in _per_kmps is a value per unit velocity, e.g. a
+    luminosity per km/s. It becomes a value per unit of the axis.
+    """
+    if unit == "kmps":
+        return dftable
+    kmpsperunit = KMPS_PER_VELOCITYUNIT[unit]
+
+    def convert(column: str) -> pl.Expr:
+        if column.endswith("_per_kmps"):
+            return (pl.col(column) * kmpsperunit).alias(column.removesuffix("_per_kmps") + f"_per_{unit}")
+        words = column.split("_")
+        if "kmps" in words:
+            return (pl.col(column) / kmpsperunit).alias("_".join(unit if word == "kmps" else word for word in words))
+        return pl.col(column)
+
+    return dftable.select(convert(column) for column in dftable.columns)
+
+
+def get_velocity_bin_index_expr(velocity_kmps: pl.Expr, velocityedges_kmps: Sequence[float]) -> pl.Expr:
+    """Return the index of the velocity bin, or null for a velocity outside the bins.
+
+    A bin holds its lower edge, and the last bin also holds its upper edge.
+    """
+    nbins = len(velocityedges_kmps) - 1
+    lower, upper = velocityedges_kmps[0], velocityedges_kmps[-1]
+    binindex = ((velocity_kmps - lower) / (upper - lower) * nbins).floor().cast(pl.Int64).clip(upper_bound=nbins - 1)
+    return pl.when(velocity_kmps.is_between(lower, upper)).then(binindex)

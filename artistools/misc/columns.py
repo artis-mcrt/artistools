@@ -143,8 +143,18 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("timemax_days", "the end of the range of arrival times of the map", "days"),
     (
         "luminosity_erg_per_s",
-        "the isotropic-equivalent luminosity in the observer frame, of a pixel of a map or of the drawn spectrum",
+        "the isotropic-equivalent luminosity in the observer frame of a map pixel, the spectrum, or a velocity bin",
         "erg/s",
+    ),
+    (
+        "luminosity_per_velocity_erg_per_s_per_kmps",
+        "the isotropic-equivalent luminosity of the packets of the velocity bin, divided by the width of the bin",
+        "erg/s/(km/s)",
+    ),
+    (
+        "luminosity_per_velocity_erg_per_s_per_c",
+        "the isotropic-equivalent luminosity of the packets of the velocity bin, divided by the width of the bin",
+        "erg/s/c",
     ),
     ("emvelocityoverc", "the energy-weighted mean speed of the packets at their last interaction", "c"),
     ("emvelocityoverc_sigma", "the energy-weighted standard deviation of the speed at the last interaction", "c"),
@@ -161,11 +171,16 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "cm^-3",
     ),
     (
-        "emissivity_erg_per_s_per_cm3",
-        "the 4 pi equivalent emissivity of the escaped packets of the direction bin, at their last interaction",
+        "escaped_luminosity_erg_per_s_per_cm3",
+        (
+            "the observed luminosity (4 pi times the luminosity per unit solid angle) of the escaped packets of the"
+            " direction bin, per unit volume at their last interaction. It is not the emissivity of the ejecta"
+        ),
         "erg/s/cm^3",
     ),
-    ("v_r_(min|max)_c", "the {0} edge of the bin of the cylindrical radial velocity at the last interaction", "c"),
+    ("v_cyl_(min|max)_kmps", "the {0} edge of the bin of sqrt(v_x^2 + v_y^2) at the last interaction", "km/s"),
+    ("v_cyl_(min|max)_c", "the {0} edge of the bin of sqrt(v_x^2 + v_y^2) at the last interaction", "c"),
+    ("v_z_(min|max)_kmps", "the {0} edge of the bin of the z velocity at the last interaction", "km/s"),
     ("v_z_(min|max)_c", "the {0} edge of the bin of the z velocity at the last interaction", "c"),
     ("pos_(x|y|z)_mid_cm", "the {0} coordinate of the centre of the cell at the time of the model snapshot", "cm"),
     ("(x|y|z)_cm", "the {0} coordinate of a point of the line of the direction bin", "cm"),
@@ -200,17 +215,26 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("lambda_angstroms_(lower|upper)", "the {0} edge of the wavelength bin", "Å"),
     (
         "exopac_cm2_per_g",
-        "the expansion opacity of the lines in the wavelength bin, as the mass-weighted mean of the cells",
+        (
+            "the expansion opacity of the lines in the wavelength bin, as the mass-weighted mean or median of the"
+            " cells (-cellaverage)"
+        ),
         "cm^2/g",
     ),
     (
         "linebinned_cm2_per_g",
-        "the line-binned opacity, from the sum of the Sobolev optical depths, as the mass-weighted mean of the cells",
+        (
+            "the line-binned opacity, from the sum of the Sobolev optical depths, as the mass-weighted mean or median"
+            " of the cells (-cellaverage)"
+        ),
         "cm^2/g",
     ),
     (
         "linebinned_cap(.+)_cm2_per_g",
-        "the line-binned opacity with each Sobolev optical depth capped at {0}, as the mass-weighted mean of the cells",
+        (
+            "the line-binned opacity with each Sobolev optical depth capped at {0}, as the mass-weighted mean or median"
+            " of the cells (-cellaverage)"
+        ),
         "cm^2/g",
     ),
     ("(\\w+)_movingaverage_cm2_per_g", "the moving average over the wavelength of the opacity {0}", "cm^2/g"),
@@ -280,6 +304,103 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("emission_fraction", "the emission of the line divided by the emission of all the lines in the range", ""),
     ("velocity_kmps_emission_mean", "the mean radial velocity of the cells, with the emission as the weight", "km/s"),
     ("Te_emission_mean", "the mean electron temperature of the cells, with the emission as the weight", "K"),
+    (
+        "emission_per_velocity_erg_per_s_per_kmps",
+        "the emission of the cells in the velocity bin, divided by the width of the bin",
+        "erg/s/(km/s)",
+    ),
+    (
+        "emission_per_velocity_erg_per_s_per_c",
+        "the emission of the cells in the velocity bin, divided by the width of the bin",
+        "erg/s/c",
+    ),
+    (
+        "emission_fraction_per_kmps",
+        (
+            "the emission of the line in the velocity bin, divided by the width of the bin and by the emission in all"
+            " the cells"
+        ),
+        "(km/s)^-1",
+    ),
+    (
+        "emission_fraction_per_c",
+        (
+            "the emission of the line in the velocity bin, divided by the width of the bin and by the emission in all"
+            " the cells"
+        ),
+        "c^-1",
+    ),
+    (
+        "tau_sobolev_volume_mean",
+        "the mean tau_sobolev of the cells in the velocity bin, with the volume as the weight",
+        "",
+    ),
+    (
+        "tau_sobolev_volume_median",
+        "the median tau_sobolev of the cells in the velocity bin, with the volume as the weight",
+        "",
+    ),
+    (
+        "volume_fraction_tau_sobolev_above_1",
+        (
+            "the volume of the cells with a tau_sobolev above 1 in the velocity bin, divided by the volume of the cells"
+            " with matter in the bin"
+        ),
+        "",
+    ),
+    ("velocity_c_at_tau_sobolev_max", "the radial velocity of the cell with the maximum tau_sobolev", "c"),
+    (
+        "velocity_emission_q(25|50|75)_kmps",
+        "the radial velocity at the {0}% quantile of the emission of the line in the cells",
+        "km/s",
+    ),
+    (
+        "velocity_emission_q(25|50|75)_c",
+        "the radial velocity at the {0}% quantile of the emission of the line in the cells",
+        "c",
+    ),
+    (
+        "velocity_median_tau_above_1_(min|max)_kmps",
+        "the {0}imum velocity of the velocity bins where the median tau_sobolev of the line is above 1",
+        "km/s",
+    ),
+    (
+        "velocity_median_tau_above_1_(min|max)_c",
+        "the {0}imum velocity of the velocity bins where the median tau_sobolev of the line is above 1",
+        "c",
+    ),
+    ("cellcount", "the number of cells of the row, e.g. of a velocity bin", ""),
+    # the trough estimate of plotlinecontributions
+    (
+        "trough_depth",
+        "the Sobolev estimate of the fraction of the flux of the photospheric disk that the line or the blend removes",
+        "",
+    ),
+    # the groups of plotlastpacketinteraction -groupby and the series of plotlastinteractionvelocity
+    ("luminosity_fraction", "the luminosity of the group divided by the luminosity of all the groups", ""),
+    (
+        "velocity_luminosity_q(25|50|75)_kmps",
+        (
+            "the velocity (radial or line-of-sight, -velocity) of the last interaction or of the last thermal"
+            " emission at the {0}% quantile of the packet energy of the group or the timestep"
+        ),
+        "km/s",
+    ),
+    (
+        "velocity_luminosity_q(25|50|75)_c",
+        (
+            "the velocity (radial or line-of-sight, -velocity) of the last interaction or of the last thermal"
+            " emission at the {0}% quantile of the packet energy of the group or the timestep"
+        ),
+        "c",
+    ),
+    ("velocity_luminosity_q50_(min|max)_kmps", "the {0}imum median velocity of the timesteps of the series", "km/s"),
+    ("velocity_luminosity_q50_(min|max)_c", "the {0}imum median velocity of the timesteps of the series", "c"),
+    (
+        "luminosity_relative_error",
+        "the relative Monte Carlo error sqrt(sum(e^2)) / sum(e) of the energies e of the packets of the row",
+        "",
+    ),
     # the logs of ARTIS
     ("mpirank", "the index of the MPI rank", ""),
     ("update_grid_s", "the time that the MPI rank took to update the grid in the timestep", "s"),
@@ -292,6 +413,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("W", "the dilution factor of the radiation field of the cell", None),
     ("nne", "the number density of the free electrons in the cell", None),
     ("rho", "the density of the cell", None),
+    ("volume", "the volume of the cell at the mid time of the timestep", None),
     ("beta", "the radial velocity of the centre of the cell", None),
     ("velocity_kmps", "the radial velocity of the centre of the cell", "km/s"),
     ("vel_r_mid(_kmps|_on_c)?", "the radial velocity of the centre of the cell", None),

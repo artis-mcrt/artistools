@@ -54,6 +54,32 @@ def get_bin_index_expr(value: pl.Expr, edges: Iterable[float], right_closed: boo
     return pl.when(value.is_not_nan()).then(binindex)
 
 
+QUANTILE_RTOL: t.Final = 1e-12
+
+
+def get_weighted_quantile_expr(value: str, weight: str, quantile: float) -> pl.Expr:
+    """Return an aggregation that gives the weighted quantile of a column, e.g. 0.5 for the weighted median.
+
+    The result is the smallest value whose cumulative weight, in the order of the values, reaches the quantile of the
+    total weight. A value has an effect only if the value and its weight are not null or NaN, and the weight is above
+    zero. Use the expression in group_by().agg(). A group with no value that has an effect gives null.
+    """
+    weights = pl.col(weight).cast(pl.Float64)
+    # polars takes NaN as larger than each number, thus a NaN weight needs its own test
+    isvalid = (
+        pl.col(value).is_not_null()
+        & pl.col(value).cast(pl.Float64).is_not_nan()
+        & weights.is_not_nan()
+        & (weights > 0.0)
+    )
+    values = pl.col(value).filter(isvalid)
+    validweights = weights.filter(isvalid)
+    # the sum and the cumulative sum add the weights in a different order. Thus with equal weights, a rounding error
+    # can move a quantile at the upper edge of a value into the next value. The tolerance keeps the lower value
+    threshold = quantile * validweights.sum() * (1.0 - QUANTILE_RTOL)
+    return values.sort().filter(validweights.sort_by(values).cum_sum() >= threshold).first()
+
+
 @functools.lru_cache
 def savgol_coeffs(window_length: int, polyorder: int) -> npt.NDArray[np.float64]:
     """Return the Savitzky-Golay smoothing coefficients for a centred window."""

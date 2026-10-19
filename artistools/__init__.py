@@ -60,6 +60,7 @@ from artistools import misc as misc
 from artistools import nltepops as nltepops
 from artistools import nonthermal as nonthermal
 from artistools import packets as packets
+from artistools import plotlinecontributions as plotlinecontributions
 from artistools import plotlinefluxes as plotlinefluxes
 from artistools import plotlogfiles as plotlogfiles
 from artistools import plotopacity as plotopacity

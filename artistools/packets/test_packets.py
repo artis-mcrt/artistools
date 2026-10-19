@@ -577,14 +577,254 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
     with mock.patch.object(
         plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
     ):
+        c_kmps = at.constants.C_cm_per_s / at.constants.km_to_cm
         plotlastpacketinteraction.packets_2d_hist_bin_and_ejecta_vel(
-            modelpath, tdays=tdays, srIItriplet=False, colorlogscale=False, dirbin=-1, trueem=True
+            modelpath,
+            tdays,
+            -1,
+            25,
+            0.5 * c_kmps,
+            "c",
+            ions=None,
+            srIItriplet=False,
+            colorlogscale=False,
+            trueem=True,
+            lambdarange=None,
+            outputfile=None,
+            args=None,
+            absorption=False,
         )
 
     assert mocksavefigure.call_count == 1
     heatmap = mockimshow.call_args.args[1].T
     assert heatmap.count() == 1
     assert heatmap[0, 25] > 0.0
+
+
+@pytest.mark.parametrize(("absorption", "velocityunit"), [(False, "kmps"), (True, "kmps"), (False, "c")])
+def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_each_velocity_bin(
+    tmp_path: Path, absorption: bool, velocityunit: str
+) -> None:
+    """The group of a packet comes from its emission type, or with --absorption, from its absorption type.
+
+    The groups after -maxseriescount and the codes with no line join Other, and a packet above the bins is in no bin.
+    -velocityunit c gives -velocitymax, the bin edges, and the luminosity per unit velocity in units of c. A group with
+    no packet in the bins also joins Other. NOT SET with no position took the only series and drew zero in each bin.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    tdays = 7.0
+    timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    delta_t_s = (at.get_timestep_times(modelpath, loc="end")[timestep] - t_start) * at.constants.day_to_s
+    emtime_s = 6.0 * at.constants.day_to_s
+    kmps_per_unit = at.constants.C_cm_per_s / at.constants.km_to_cm if velocityunit == "c" else 1.0
+    # rows 0 and 3 of the linelist are lines of Fe IV and Ni IV, and the next code is a free-free emission. The last
+    # packet has no record of its position, and its NOT SET group has more energy than the Fe IV group
+    typecodes = [0, 0, 0, 0, 3, -9999999, -9999000]
+    velocities_kmps = [2000.0, 3000.0, 7000.0, 12000.0, 7000.0, 7000.0, 0.0]
+    energies = [2e40, 2e40, 2e40, 2e40, 1e40, 0.5e40, 9e40]
+    othertypecodes = [957] * len(typecodes)
+    dfpackets = pl.DataFrame({
+        "t_arrive_d": [t_start] * len(typecodes),
+        "e_rf": energies,
+        "emissiontype": othertypecodes if absorption else typecodes,
+        "absorption_type": typecodes if absorption else othertypecodes,
+        "em_posx": [velocity * at.constants.km_to_cm * emtime_s for velocity in velocities_kmps],
+        "em_posy": [0.0] * len(typecodes),
+        "em_posz": [0.0] * len(typecodes),
+        "em_time": [emtime_s] * (len(typecodes) - 1) + [-1.0],
+    })
+
+    with mock.patch.object(
+        plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
+    ):
+        plotlastpacketinteraction.main(
+            argsraw=[],
+            modelpath=modelpath,
+            timedays=tdays,
+            groupby="ion",
+            absorption=absorption,
+            maxseriescount=1,
+            nvelocitybins=2,
+            velocitymax=10000.0 / kmps_per_unit,
+            velocityunit=velocityunit,
+            outputfile=tmp_path / "profile.pdf",
+            write_data=True,
+        )
+
+    dftable = pl.read_csv(tmp_path / "profile.txt", separator=" ", null_values="nan", comment_prefix="#")
+    luminosities = {
+        (label, round(xlower * kmps_per_unit)): (luminosity, perunitvelocity)
+        for label, xlower, luminosity, perunitvelocity in dftable.select(
+            "label",
+            f"x_lower_{velocityunit}",
+            "luminosity_erg_per_s",
+            f"luminosity_per_velocity_erg_per_s_per_{velocityunit}",
+        ).iter_rows()
+    }
+    # an absorption has no free-free label, thus its code joins Other as a code with no line
+    expected = {("Fe IV", 0): 4e40, ("Fe IV", 5000): 2e40, ("Other", 0): 0.0, ("Other", 5000): 1.5e40}
+    assert luminosities.keys() == expected.keys()
+    binwidth = 5000.0 / kmps_per_unit
+    for key, energy in expected.items():
+        luminosity, perunitvelocity = luminosities[key]
+        assert np.isclose(luminosity, energy / delta_t_s, rtol=1e-6, atol=0.0), key
+        assert np.isclose(perunitvelocity, energy / delta_t_s / binwidth, rtol=1e-6, atol=0.0), key
+
+    # the summary includes the Fe IV packet above the bins, and the median velocity takes the energy as the weight
+    dfsummary = pl.read_csv(tmp_path / "profile_summary.txt", separator=" ", null_values="nan", comment_prefix="#")
+    summaryrows = {row["label"]: row for row in dfsummary.iter_rows(named=True)}
+    assert summaryrows.keys() == {"Fe IV", "Other"}
+    assert summaryrows["Fe IV"]["packetcount"] == 4
+    assert np.isclose(summaryrows["Fe IV"]["luminosity_erg_per_s"], 8e40 / delta_t_s, rtol=1e-6, atol=0.0)
+    for label, median_kmps in (("Fe IV", 3000.0), ("Other", 7000.0)):
+        median = summaryrows[label][f"velocity_luminosity_q50_{velocityunit}"]
+        assert np.isclose(median * kmps_per_unit, median_kmps, rtol=1e-6, atol=0.0), label
+
+
+def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_timestep(tmp_path: Path) -> None:
+    """A packet takes the timestep of its arrival time, and the quartiles take the energy of each packet as the weight.
+
+    A packet at the start time of a timestep is in that timestep, and a packet outside the wavelength range is in no
+    timestep. A packet with no record of the position has a NaN velocity, and the strict cast of its bin stopped the
+    command. It is in no bin now.
+    """
+    from artistools.packets import plotlastinteractionvelocity
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    tstarts = at.get_timestep_times(modelpath, loc="start")
+    emtime_s = 5.0 * at.constants.day_to_s
+    # three packets are in timestep 25, one is at the start time of timestep 26, and one is outside the wavelength
+    # range. The last packet is in timestep 25 and has no record of the position
+    velocities_kmps = [3000.0, 5000.0, 9000.0, 7000.0, 1000.0, 0.0]
+    lambdas_angstroms = [7500.0, 7500.0, 7500.0, 7500.0, 9000.0, 7500.0]
+    dfpackets = pl.DataFrame({
+        "t_arrive_d": [tstarts[25] + 0.01] * 3 + [tstarts[26]] + [tstarts[25] + 0.01] * 2,
+        "e_rf": [1e40, 2e40, 1e40, 1e40, 5e40, 9e40],
+        "nu_rf": [at.constants.c_ang_per_s / lambda_angstroms for lambda_angstroms in lambdas_angstroms],
+        "em_posx": [velocity * at.constants.km_to_cm * emtime_s for velocity in velocities_kmps],
+        "em_posy": [0.0] * 6,
+        "em_posz": [0.0] * 6,
+        "em_time": [emtime_s] * 5 + [-1.0],
+        "costhetabin": [9] * 6,
+    })
+    with mock.patch.object(plotlastinteractionvelocity, "get_packets", return_value=(1, dfpackets.lazy())):
+        plotlastinteractionvelocity.main(
+            argsraw=[],
+            modelpath=[modelpath],
+            xmin=7000.0,
+            xmax=8000.0,
+            velocityunit="kmps",
+            outputfile=tmp_path / "velocity.pdf",
+            write_data=True,
+        )
+
+    dftable = pl.read_csv(tmp_path / "velocity.txt", separator=" ", null_values="nan", comment_prefix="#")
+    assert dftable["timestep"].to_list() == [25, 26]
+    assert dftable["packetcount"].to_list() == [3, 1]
+    # sqrt(sum(e^2)) / sum(e) of the energies 1, 2, and 1, and of one packet
+    assert np.allclose(
+        dftable["luminosity_relative_error"].to_numpy(), [math.sqrt(6.0) / 4.0, 1.0], rtol=1e-9, atol=0.0
+    )
+    # the histogram bins of the test model are 25 km/s wide, and each velocity takes the centre of its bin
+    expected = {
+        "velocity_luminosity_q25_kmps": [3000.0, 7000.0],
+        "velocity_luminosity_q50_kmps": [5000.0, 7000.0],
+        "velocity_luminosity_q75_kmps": [5000.0, 7000.0],
+    }
+    for column, values in expected.items():
+        assert np.allclose(dftable[column].to_numpy(), values, rtol=0.0, atol=15.0), column
+
+
+def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(tmp_path: Path) -> None:
+    """With real packets, the groups hold the luminosity of the escaped r-packets of the wavelength range and timestep.
+
+    The luminosity is the packet energy divided by the width of the timestep and the number of MPI ranks.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 7.0)
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
+    plotlastpacketinteraction.main(
+        argsraw=[],
+        modelpath=modelpath,
+        timedays=7.0,
+        groupby="ion",
+        xmin=3500.0,
+        xmax=4500.0,
+        outputfile=tmp_path / "groups.pdf",
+        write_data=True,
+    )
+    dfsummary = pl.read_csv(tmp_path / "groups_summary.txt", separator=" ", null_values="nan", comment_prefix="#")
+
+    nprocs, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfwindow = (
+        lzpackets
+        .filter(
+            pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"),
+            (at.constants.c_ang_per_s / pl.col("nu_rf")).is_between(3500.0, 4500.0),
+        )
+        .select("e_rf")
+        .collect()
+    )
+    luminosity = float(dfwindow["e_rf"].sum()) / ((t_end - t_start) * at.constants.day_to_s * nprocs)
+    assert dfsummary["packetcount"].sum() == dfwindow.height > 0
+    assert np.isclose(float(dfsummary["luminosity_erg_per_s"].sum()), luminosity, rtol=1e-6, atol=0.0)
+
+
+def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path: Path) -> None:
+    """-velocity lineofsight bins (em_pos . dir) / em_time from minus to plus the last edge.
+
+    The plot had only the radial velocity, which cannot separate the blue side and the red side of a P Cygni profile.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    timestep = at.misc.get_timestep_of_timedays(modelpath, 7.0)
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
+    plotlastpacketinteraction.main(
+        argsraw=[],
+        modelpath=modelpath,
+        timedays=7.0,
+        groupby="element",
+        nvelocitybins=5,
+        velocitykind="lineofsight",
+        outputfile=tmp_path / "groups.pdf",
+        write_data=True,
+    )
+    dftable = pl.read_csv(tmp_path / "groups.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfbins = (
+        dftable.group_by("x_lower_kmps", "x_upper_kmps").agg(pl.col("luminosity_erg_per_s").sum()).sort("x_lower_kmps")
+    )
+    edges = [*dfbins["x_lower_kmps"].to_list(), float(dfbins["x_upper_kmps"][-1])]
+    assert len(edges) == 11
+    assert np.isclose(edges[0], -edges[-1], rtol=1e-9, atol=0.0)
+
+    nprocs, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfwindow = (
+        lzpackets
+        .filter(pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"))
+        .select(
+            pl.col("e_rf").cast(pl.Float64),
+            velocity_kmps=(
+                pl.col("em_posx") * pl.col("dirx")
+                + pl.col("em_posy") * pl.col("diry")
+                + pl.col("em_posz") * pl.col("dirz")
+            )
+            / (pl.col("em_time") * at.constants.km_to_cm),
+        )
+        .collect()
+    )
+    velocities = dfwindow["velocity_kmps"].to_numpy()
+    assert velocities.min() < 0.0 < velocities.max()
+    luminosityfactor = 1.0 / ((t_end - t_start) * at.constants.day_to_s * nprocs)
+    expected, _ = np.histogram(velocities, bins=edges, weights=dfwindow["e_rf"].to_numpy() * luminosityfactor)
+    assert np.allclose(dfbins["luminosity_erg_per_s"].to_numpy(), expected, rtol=1e-6, atol=0.0)
 
 
 def test_a_position_outside_the_grid_gets_no_cell() -> None:
@@ -672,8 +912,22 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
     with mock.patch.object(
         plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
     ):
+        c_kmps = at.constants.C_cm_per_s / at.constants.km_to_cm
         plotlastpacketinteraction.packets_2d_hist_bin_and_ejecta_vel(
-            modelpath, tdays=tdays, srIItriplet=False, colorlogscale=False, dirbin=-1, trueem=True
+            modelpath,
+            tdays,
+            -1,
+            25,
+            0.5 * c_kmps,
+            "c",
+            ions=None,
+            srIItriplet=False,
+            colorlogscale=False,
+            trueem=True,
+            lambdarange=None,
+            outputfile=None,
+            args=None,
+            absorption=False,
         )
 
     assert mocksavefigure.call_count == 1
@@ -732,7 +986,7 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
 
     modelpath = at.get_path("testdata") / "testmodel"
     plotlastpacketinteraction.main(argsraw=["-modelpath", str(modelpath), "-timedays", "300", "-o", str(tmp_path)])
-    assert (tmp_path / "testmodel_allelements_allions_t_arrive_d_300.0_ts54_into_dirbin-1.pdf").is_file()
+    assert (tmp_path / "testmodel_allions_t_arrive_d_300.0_ts54_into_dirbin-1.pdf").is_file()
 
     # -tdays is the old spelling, and -o can also name the file
     outputfile = tmp_path / "lastinteraction.pdf"
@@ -748,6 +1002,8 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
         (["-dirbin", "35"], "-dirbin 35 is not the first direction bin"),
         (["-dirbin", "-10"], "-dirbin -10 is not the first direction bin"),
         ([], "the time is missing"),
+        (["-lambdamin", "3500"], "the wavelength range needs two ends"),
+        (["--absorption", "--use_thermalemissiontype"], "--absorption takes the last absorption"),
     ],
 )
 def test_lastpacketinteraction_refuses_a_selection_that_matches_no_packet(
@@ -797,20 +1053,24 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
         timedays=300,
         outputfile=outputfile,
         colorlogscale=colorlogscale,
+        velocityunit="c",
+        velocitymax=0.5,
         write_data=True,
     )
 
     image = mockimshow.call_args.args[1]
     dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
-    valuecolumn = "log10_emissivity_erg_per_s_per_cm3" if colorlogscale else "emissivity_erg_per_s_per_cm3"
+    valuecolumn = (
+        "log10_escaped_luminosity_erg_per_s_per_cm3" if colorlogscale else "escaped_luminosity_erg_per_s_per_cm3"
+    )
     assert dftable.height == image.size
     assert dftable[valuecolumn].null_count() == int(np.ma.count_masked(image))
     assert dftable[valuecolumn].null_count() < dftable.height
 
-    # the image has one row for each v_z bin of 0.02 c from -0.5 c, and one column for each v_r bin of 0.02 c
+    # the image has one row for each v_z bin of 0.02 c from -0.5 c, and one column for each v_cyl bin of 0.02 c
     rowindices = np.rint((dftable["v_z_min_c"].to_numpy() + 0.5) / 0.02).astype(int)
-    columnindices = np.rint(dftable["v_r_min_c"].to_numpy() / 0.02).astype(int)
-    assert np.allclose(dftable["v_r_max_c"] - dftable["v_r_min_c"], 0.02, rtol=1e-9, atol=0.0)
+    columnindices = np.rint(dftable["v_cyl_min_c"].to_numpy() / 0.02).astype(int)
+    assert np.allclose(dftable["v_cyl_max_c"] - dftable["v_cyl_min_c"], 0.02, rtol=1e-9, atol=0.0)
     assert np.allclose(dftable["v_z_max_c"] - dftable["v_z_min_c"], 0.02, rtol=1e-9, atol=0.0)
     imagevalues = np.ma.filled(image[rowindices, columnindices].astype(float), np.nan)
     assert np.allclose(dftable[valuecolumn].to_numpy(), imagevalues, rtol=1e-12, atol=0.0, equal_nan=True)
@@ -822,13 +1082,41 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
             modelpath=at.get_path("testdata") / "testmodel",
             timedays=300,
             outputfile=tmp_path / "linear.pdf",
+            velocityunit="c",
+            velocitymax=0.5,
             write_data=True,
         )
         dflinear = pl.read_csv(tmp_path / "linear.txt", separator=" ", null_values="nan", comment_prefix="#")
         assert np.allclose(
             10 ** dftable[valuecolumn].to_numpy(),
-            dflinear["emissivity_erg_per_s_per_cm3"].to_numpy(),
+            dflinear["escaped_luminosity_erg_per_s_per_cm3"].to_numpy(),
             rtol=1e-9,
             atol=0.0,
             equal_nan=True,
         )
+
+
+def test_lastpacketinteraction_image_takes_each_escaped_packet(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The 2D image takes the escaped r-packets that no line absorbed, too.
+
+    The image took only the packets with a last absorption by a line.
+    """
+    from artistools.packets import plotlastpacketinteraction
+
+    modelpath = at.get_path("testdata") / "test-classicmode_3d"
+    timedays = 6.9
+    timestep = at.get_timestep_of_timedays(modelpath, timedays)
+    tstart = at.get_timestep_times(modelpath, loc="start")[timestep]
+    tend = at.get_timestep_times(modelpath, loc="end")[timestep]
+    _, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfarrived = lzpackets.filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="left")).collect()
+    assert dfarrived.filter(pl.col("absorption_type") < 0).height > 0
+
+    plotlastpacketinteraction.main(
+        argsraw=[], modelpath=modelpath, timedays=timedays, outputfile=tmp_path / "lastinteraction.pdf"
+    )
+    assert (
+        f"{dfarrived.height} escaped r-packets of the direction bin arrive in the timestep\n" in capsys.readouterr().out
+    )

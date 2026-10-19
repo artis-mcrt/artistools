@@ -43,10 +43,12 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_yscale
 from artistools.misc import df_filter_minmax_bracketed
+from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
+from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import is_in_range
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -54,6 +56,8 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.misc.general import get_progress_class
+from artistools.plottools import addarg_costhetarange
+from artistools.plottools import get_costheta_range
 from artistools.plottools import make_frame_figure
 from artistools.plottools import RESIDUALROWHEIGHT
 from artistools.plottools import save_figure
@@ -102,6 +106,14 @@ def get_opacity_series(taucaps: Sequence[float]) -> list[tuple[str, str, "mplt.L
     ]
 
 
+# the step of the histogram of log10 of the opacity for -cellaverage median. A median is the middle of its bin, thus
+# its error is at most half a step: 0.005 dex, or 1.2 %
+OPACITYMEDIAN_LOGSTEP: t.Final = 0.01
+
+# the columns that name one bin of a histogram of log10 of an opacity
+OPACITYHISTOGRAMKEYS: t.Final = ("lambda_angstroms_binindex", "column", "histogrambin", "isfinite")
+
+
 def get_massweighted_opacities(
     adata: pl.DataFrame,
     time_days: float,
@@ -109,18 +121,30 @@ def get_massweighted_opacities(
     lambda_bin_edges: Sequence[float],
     planckrange: tuple[float, float] | None = None,
     taucaps: Sequence[float] = DEFAULT_TAUCAPS,
+    cellaverage: t.Literal["mean", "median"] = "mean",
 ) -> tuple[pl.DataFrame, float]:
-    """Return the mean binned opacities over the cells, and the mean Planck mean of the expansion opacity.
+    """Return the mean or the median of the binned opacities over the cells, and the mean Planck mean.
 
-    The mass of each cell is the weight of both means. For one cell, the result is the opacity of that cell. The bins
-    have one width. The Planck mean takes the bins with a middle in planckrange. A planckrange of None, or a model with
-    no cell temperature, gives a Planck mean of NaN.
+    The mass of each cell is the weight of each mean and of the median. A few dense cells can make the mean much
+    larger than the opacity of a typical cell. The median then gives the opacity of a typical cell. The median is the
+    middle of a bin of a histogram of log10 of the opacity, with steps of OPACITYMEDIAN_LOGSTEP. Each batch of cells
+    adds its histogram to one sum, because a model with many cells has too many values to keep. A cell with an
+    opacity of zero or less goes in a bin of its own.
+
+    For one cell, the mean is the opacity of that cell, and the median is within half a step of it. The bins have one
+    width. The Planck mean takes the bins with a middle in planckrange. A planckrange of None, or a model with no
+    cell temperature, gives a Planck mean of NaN. A NaN or an infinite opacity in a cell gives a median of NaN.
 
     The column linecount gives the number of lines in each bin. It counts each line that the opacities sum, thus it
     is the same for each cell.
     """
     if dfestimators.height > 1:
-        print_detail(f"The curves are the mass-weighted mean of the opacities of {dfestimators.height} cells")
+        print_detail(f"The curves are the mass-weighted {cellaverage} of the opacities of {dfestimators.height} cells")
+    if cellaverage == "median":
+        print_detail(
+            "The median is the middle of a bin of a histogram of log10 of the opacity. The bins have a width of"
+            f" {OPACITYMEDIAN_LOGSTEP:g} dex"
+        )
     if planckrange is not None:
         print_planck_mean_method(*planckrange)
     lambda_bin_edges = list(lambda_bin_edges)
@@ -129,6 +153,7 @@ def get_massweighted_opacities(
     opacitycolumns = get_opacity_columns(taucaps)
 
     batchsums: list[pl.DataFrame] = []
+    dfhistogram: pl.DataFrame | None = None
     planckmean_times_mass = 0.0
     planckmass = 0.0
     # the bar gives the rate and the time until the end, which a model of many cells needs
@@ -136,11 +161,20 @@ def get_massweighted_opacities(
         get_cell_batches(dfestimators, len(lambda_bin_edges) - 1), desc="Calculating the opacities", unit="batch"
     ):
         dfbinnedopacities = get_expansion_opacities(opacitylines, dfcellbatch, lambda_bin_edges, time_days, taucaps)
-        batchsums.append(
-            dfbinnedopacities.group_by("lambda_angstroms_binindex").agg(
-                (pl.col(*opacitycolumns) * pl.col("mass_g")).sum(), pl.col("mass_g").sum()
+        if cellaverage == "median":
+            dfbatchhistogram = get_opacity_histograms(dfbinnedopacities, opacitycolumns)
+            # a list of the histograms of all the batches grows with the number of cells, and their sum does not
+            dfhistogram = (
+                dfbatchhistogram
+                if dfhistogram is None
+                else sum_opacity_histograms(pl.concat([dfhistogram, dfbatchhistogram]))
             )
-        )
+        else:
+            batchsums.append(
+                dfbinnedopacities.group_by("lambda_angstroms_binindex").agg(
+                    (pl.col(*opacitycolumns) * pl.col("mass_g")).sum(), pl.col("mass_g").sum()
+                )
+            )
         if planckrange is None:
             continue
         dfplanckmean = get_planck_mean_opacities(
@@ -151,15 +185,23 @@ def get_massweighted_opacities(
 
     linecounts = opacitylines.dflines.group_by("lambda_angstroms_binindex").agg(linecount=pl.len())
     # the index of a bin gives its middle, thus the sums of the batches need no float key
+    dfaverages = (
+        get_median_of_histograms(dfhistogram, opacitycolumns)
+        if dfhistogram is not None
+        else (
+            pl
+            .concat(batchsums)
+            .group_by("lambda_angstroms_binindex")
+            .agg(pl.all().sum())
+            .with_columns(pl.col(*opacitycolumns) / pl.col("mass_g"))
+        )
+    )
     dfopacities = (
-        pl
-        .concat(batchsums)
-        .group_by("lambda_angstroms_binindex")
-        .agg(pl.all().sum())
+        dfaverages
         .join(linecounts, on="lambda_angstroms_binindex", how="left")
         .sort("lambda_angstroms_binindex")
         .select(
-            pl.col(*opacitycolumns) / pl.col("mass_g"),
+            pl.col(*opacitycolumns),
             pl.col("linecount").fill_null(0),
             lambda_angstroms_bin_mid=lambda_bin_edges[0] + (pl.col("lambda_angstroms_binindex") + 0.5) * deltalambda,
             lambda_angstroms_lower=lambda_bin_edges[0] + pl.col("lambda_angstroms_binindex") * deltalambda,
@@ -167,6 +209,61 @@ def get_massweighted_opacities(
         )
     )
     return dfopacities, planckmean_times_mass / planckmass if planckmass > 0.0 else math.nan
+
+
+def get_opacity_histograms(dfbinnedopacities: pl.DataFrame, opacitycolumns: Sequence[str]) -> pl.DataFrame:
+    """Return the mass of the cells in each bin of log10 of each opacity, for each wavelength bin.
+
+    The column histogrambin gives the bin of log10 of the opacity, and the bin of an opacity of zero or less is null.
+    The column isfinite is false for a NaN or an infinite opacity, which has no bin.
+    """
+    return pl.concat([
+        dfbinnedopacities.select(
+            "lambda_angstroms_binindex",
+            "mass_g",
+            column=pl.lit(column),
+            isfinite=pl.col(column).is_finite(),
+            # polars takes NaN as larger than each number, thus the strict cast needs the test of a finite value
+            histogrambin=pl.when(pl.col(column).is_finite() & (pl.col(column) > 0.0)).then(
+                (pl.col(column).log10() / OPACITYMEDIAN_LOGSTEP).floor().cast(pl.Int64)
+            ),
+        ).pipe(sum_opacity_histograms)
+        for column in opacitycolumns
+    ])
+
+
+def sum_opacity_histograms(dfhistograms: pl.DataFrame) -> pl.DataFrame:
+    """Return the sum of the mass in each bin of the histograms, with the columns in one order for pl.concat."""
+    return (
+        dfhistograms.group_by(OPACITYHISTOGRAMKEYS).agg(pl.col("mass_g").sum()).select(*OPACITYHISTOGRAMKEYS, "mass_g")
+    )
+
+
+def get_median_of_histograms(dfhistograms: pl.DataFrame, opacitycolumns: Sequence[str]) -> pl.DataFrame:
+    """Return the mass-weighted median of each opacity in each wavelength bin, from the sum of the histograms.
+
+    The median takes the middle of its bin of log10 of the opacity, and the null bin of an opacity of zero or less
+    gives zero. A cell with a NaN or an infinite opacity gives a median of NaN. A NaN opacity also gives a mean of
+    NaN.
+    """
+    return (
+        dfhistograms
+        .with_columns(
+            value=pl
+            .when(pl.col("histogrambin").is_null())
+            .then(0.0)
+            .otherwise(10.0 ** ((pl.col("histogrambin").cast(pl.Float64) + 0.5) * OPACITYMEDIAN_LOGSTEP))
+        )
+        .group_by("lambda_angstroms_binindex", "column")
+        .agg(
+            median=pl
+            .when(pl.col("isfinite").all())
+            .then(get_weighted_quantile_expr("value", "mass_g", 0.5))
+            .otherwise(math.nan)
+        )
+        .pivot(on="column", index="lambda_angstroms_binindex", values="median")
+        .select("lambda_angstroms_binindex", *opacitycolumns)
+    )
 
 
 def get_computed_bin_edges(
@@ -402,31 +499,53 @@ def get_velocity_bounds_text(
     return " and ".join(bounds)
 
 
-def select_velocity_range(
+def select_cells_in_ranges(
     dfestimators: pl.DataFrame,
     vmin: tuple[float, t.Literal["kmps", "c"]] | None,
     vmax: tuple[float, t.Literal["kmps", "c"]] | None,
+    costhetarange: tuple[float, float] | None = None,
 ) -> pl.DataFrame:
-    """Return the cells with a mid-point velocity in the range, and print the number of cells that match."""
-    if vmin is None and vmax is None:
+    """Return the cells with a mid-point velocity and a cos θ of the centre in the ranges, and print their number.
+
+    cos θ = v_z / |v| of the cell centre, and the z axis is the polar axis of the direction bins.
+    """
+    if vmin is None and vmax is None and costhetarange is None:
         return dfestimators
+    if costhetarange is not None and "vel_z_mid_on_c" not in dfestimators.columns:
+        exit_with_error(
+            "the cells of a 1D model have no direction, thus -costhetamin and -costhetamax cannot select cells",
+            "Remove -costhetamin and -costhetamax",
+        )
 
     speedoflight_kmps = C_cm_per_s / km_to_cm
     dfselected = dfestimators.filter(
         get_cell_selection(
             vmin=None if vmin is None else vmin[0] / speedoflight_kmps,
             vmax=None if vmax is None else vmax[0] / speedoflight_kmps,
+            thetamin=None if costhetarange is None else math.degrees(math.acos(costhetarange[1])),
+            thetamax=None if costhetarange is None else math.degrees(math.acos(costhetarange[0])),
         )
     )
-    boundstext = get_velocity_bounds_text(vmin, vmax)
+    boundstext = get_selection_bounds_text(vmin, vmax, costhetarange)
     print_detail(
-        f"{dfselected.height} of {dfestimators.height} cells with estimators are in the velocity range"
-        f" with {boundstext}"
+        f"{dfselected.height} of {dfestimators.height} cells with estimators are in the range with {boundstext}"
     )
     if dfselected.is_empty():
-        msg = f"No cell with estimators is in the velocity range with {boundstext}"
+        msg = f"No cell with estimators is in the range with {boundstext}"
         raise ValueError(msg)
     return dfselected
+
+
+def get_selection_bounds_text(
+    vmin: tuple[float, t.Literal["kmps", "c"]] | None,
+    vmax: tuple[float, t.Literal["kmps", "c"]] | None,
+    costhetarange: tuple[float, float] | None,
+) -> str:
+    """Return the bounds of the velocity and the cos θ of the selected cells, e.g. "vmin = 0.1c and 0.8 ≤ cos θ ≤ 1"."""
+    bounds = [get_velocity_bounds_text(vmin, vmax)] if vmin is not None or vmax is not None else []
+    if costhetarange is not None:
+        bounds.append(f"{costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}")
+    return " and ".join(bounds)
 
 
 def get_average_cell(dfestimators: pl.DataFrame) -> pl.DataFrame:
@@ -468,6 +587,8 @@ def get_cells_text(
     vmin: tuple[float, t.Literal["kmps", "c"]] | None,
     vmax: tuple[float, t.Literal["kmps", "c"]] | None,
     averagetemperaturetext: str | None = None,
+    costhetarange: tuple[float, float] | None = None,
+    cellaverage: str = "mean",
 ) -> str:
     """Return the text of the title that names the cells of the plot, with each velocity in the unit of the user.
 
@@ -475,10 +596,10 @@ def get_cells_text(
     """
     if modelgridindex is not None:
         return f"cell {modelgridindex}"
-    boundstext = get_velocity_bounds_text(vmin, vmax)
+    boundstext = get_selection_bounds_text(vmin, vmax, costhetarange)
     cellstext = f"the cells with {boundstext}" if boundstext else "all cells"
     if averagetemperaturetext is None:
-        return f"mass-weighted mean of {cellstext}"
+        return f"mass-weighted {cellaverage} of {cellstext}"
     return f"mean composition of {cellstext} at {averagetemperaturetext}"
 
 
@@ -516,6 +637,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             ),
         )
 
+    addarg_costhetarange(parser)
+
     # the command bins the opacities over the range of the plot, thus a smaller range takes less time
     addarg_axislimits(
         parser,
@@ -545,6 +668,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument("--logscalex", action="store_true", help="Use a log scale for the wavelength axis")
+    parser.add_argument(
+        "-cellaverage",
+        choices=["mean", "median"],
+        default="mean",
+        help=(
+            "Average over the cells: the mass-weighted mean, or the mass-weighted median. A few dense cells can make"
+            " the mean much larger than the opacity of a typical cell"
+        ),
+    )
     parser.add_argument(
         "--averagecell",
         action="store_true",
@@ -597,8 +729,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     temperaturecolumn = get_excitation_temperature_column(args.modelpath, args.exctemperature)
-    dfestimators = select_velocity_range(
-        get_cell_estimators(args.modelpath, timestep, modelgridindex, temperaturecolumn), args.vmin, args.vmax
+    costhetarange = get_costheta_range(args.costhetamin, args.costhetamax)
+    dfestimators = select_cells_in_ranges(
+        get_cell_estimators(args.modelpath, timestep, modelgridindex, temperaturecolumn),
+        args.vmin,
+        args.vmax,
+        costhetarange,
     )
     averagetemperaturetext = None
     if args.averagecell and modelgridindex is None:
@@ -612,13 +748,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         lambda_bin_edges=lambda_bin_edges,
         planckrange=(args.xmin, args.xmax) if args.showplanckmean else None,
         taucaps=args.taucaps,
+        cellaverage=args.cellaverage,
     )
 
     # the frame takes one column of the page, thus the cells take a second line of the title
-    title = (
-        f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep})\n"
-        f"{get_cells_text(modelgridindex, args.vmin, args.vmax, averagetemperaturetext)}"
+    cellstext = get_cells_text(
+        modelgridindex, args.vmin, args.vmax, averagetemperaturetext, costhetarange, args.cellaverage
     )
+    title = f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep})\n{cellstext}"
     windowbins = get_window_bins(args.movingaveragewidth, deltalambda)
     dfmovingaverages = (
         get_moving_averages(dfopacities, windowbins, get_opacity_columns(args.taucaps))
