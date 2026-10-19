@@ -502,6 +502,62 @@ def test_a_binned_line_with_empty_bins_ends_at_the_edge_of_its_bin() -> None:
     assert np.allclose(ax.get_lines()[0].get_xdata(), [0.0, 0.5, 9.5, 10.0])
 
 
+def test_histogram_breaks_the_line_at_a_gap_between_bins() -> None:
+    """--histogram draws each bin across its edges, and a gap between two bins breaks the line and the area."""
+    from artistools.estimators.plotestimators import draw_series
+
+    dflinepoints = pl.DataFrame({
+        "xbin_lower": [0.0, 1.0, 3.0],
+        "xbin_upper": [1.0, 2.0, 4.0],
+        "xvalue_binned": [0.5, 1.5, 3.5],
+        "yvalue_binned": [1.0, 2.0, 3.0],
+        "yvalue_binned_min": [0.5, 1.5, 2.5],
+        "yvalue_binned_max": [1.5, 2.5, 3.5],
+    })
+    ax = mplfig.Figure().add_subplot()
+    draw_series(dflinepoints, None, ax, label=None, args=argparse.Namespace(markers=False), xbinwidth=1.0)
+
+    line = ax.get_lines()[0]
+    nan = np.nan
+    assert np.allclose(line.get_xdata(), [0.0, 1.0, 1.0, 2.0, nan, 3.0, 4.0], equal_nan=True)
+    assert np.allclose(line.get_ydata(), [1.0, 1.0, 2.0, 2.0, nan, 3.0, 3.0], equal_nan=True)
+    # fill_between makes one polygon for each continuous part of the line
+    assert len(ax.collections[0].get_paths()) == 2
+
+
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_histogram_shows_the_velocity_range_of_each_shell(
+    mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 1D model with no bins gives each shell a step from its inner velocity to its outer velocity.
+
+    The x axis then reaches the inner edge of the first shell and the outer edge of the last shell, and not their
+    middles.
+    """
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=CLASSIC1DPATH,
+        classicartis=True,
+        outputfile=tmp_path,
+        timestep="30",
+        plotlist=[["Te"]],
+        histogram=True,
+        print_data=True,
+    )
+    output = capsys.readouterr().out
+    headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
+    dftable = pl.read_csv(io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ")
+    lower = dftable["velocity_kmps_lower"].to_numpy()
+    upper = dftable["velocity_kmps_upper"].to_numpy()
+    assert lower[0] == 0.0
+    assert np.allclose(lower[1:], upper[:-1], rtol=1e-6, atol=0.0)
+    assert ((lower < dftable["velocity_kmps"].to_numpy()) & (dftable["velocity_kmps"].to_numpy() < upper)).all()
+
+    ax = mockplot.call_args_list[0].args[0]
+    assert np.allclose(ax.get_xlim(), (0.0, upper[-1]), rtol=1e-6, atol=0.0)
+    assert np.allclose(mockplot.call_args_list[0].args[1], np.column_stack([lower, upper]).ravel(), rtol=1e-6, atol=0)
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d_x_axis(mockplot: mock.MagicMock) -> None:
     plotlist = PLOTLIST_IONS
@@ -5592,7 +5648,9 @@ def test_time_axis_takes_no_automatic_bins() -> None:
         "modelgridindex": [cell for _ in tmids for cell in range(ncells)],
         "tmid_days": [tmid for tmid in tmids for _ in range(ncells)],
     })
-    args = argparse.Namespace(xmin=None, xmax=None, xbins=None, markers=False, colorbyion=False, modelgridindex=None)
+    args = argparse.Namespace(
+        xmin=None, xmax=None, xbins=None, markers=False, colorbyion=False, modelgridindex=None, histogram=False
+    )
     xlist, _, timesteps, dfplot = plotestimators.get_xlist("time", estimators, None, args)
     assert args.xbins is None
     assert xlist == list(tmids)

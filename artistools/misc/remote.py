@@ -117,7 +117,7 @@ MAX_MESSAGE_BYTES = 16 * 1024**3
 
 # increase the server protocol when a reader with the decorator on_model_host changes its arguments or its result.
 # Also increase it for a new format of a message. Then a clone with the protocol of the release needs no build on a host
-SERVER_PROTOCOL = 4
+SERVER_PROTOCOL = 5
 
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
 # standard output first, thus the client ignores each line before this one

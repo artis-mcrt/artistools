@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (4, "1bce6ae4beb8f682"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (5, "1bce6ae4beb8f682"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
