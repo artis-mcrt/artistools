@@ -1181,11 +1181,12 @@ def plot_artis_spectrum(
         return []
 
     # f_lambda is per Angstrom at 1 Mpc. The plotted columns give the values of the plot, thus they follow
-    # -distmpc, --normalised, -xunit, and -yvariable. --shownoise draws the band y * (1 +- relnoise)
+    # -distmpc, --normalised, -xunit, and -yvariable. A spectrum from packets also gives the relative Monte Carlo noise
+    # of each bin, as the table of plotlightcurves does. --shownoise only draws the band y * (1 +- relnoise)
     xcolumn = f"x_plotted_{args.xunit}"
     gridtables: list[pl.DataFrame] = []
     for seriessuffix, dfspectrum in drawnseries:
-        hasnoise = args.shownoise and "yrelnoise" in dfspectrum.columns
+        hasnoise = "yrelnoise" in dfspectrum.columns
         hasedges = "x_lower" in dfspectrum.columns
         add_to_grid_tables(
             gridtables,
