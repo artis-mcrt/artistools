@@ -723,7 +723,7 @@ def test_makemodel_dimensionreduce_takes_only_a_lower_dimension(capsys: pytest.C
 
 
 def test_maketardismodel(tmp_path: Path) -> None:
-    at.inputmodel.to_tardis.main(argsraw=[], inputpath=modelpath, outputpath=tmp_path)
+    at.inputmodel.to_tardis.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path)
 
     csvytext = (tmp_path / f"{at.get_model_name(modelpath)}.csvy").read_text(encoding="utf-8")
     assert csvytext.startswith("---\n")

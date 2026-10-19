@@ -1231,13 +1231,31 @@ def confirm_overwrite(folders: Iterable[Path | str], filenames: Sequence[str], f
     e.g. model.txt for model.txt.zst. A command calls this function before the work starts, thus a refusal costs no
     time. Nobody can answer when stdin is not a terminal, thus the command then stops if it has no --force.
     """
-    existingfiles = [
-        path
-        for folder in folders
-        for filename in filenames
-        for path in get_file_copies(Path(folder, filename))
-        if path.is_file()
-    ]
+    confirm_overwrite_of_files(
+        [
+            path
+            for folder in folders
+            for filename in filenames
+            for path in get_file_copies(Path(folder, filename))
+            if path.is_file()
+        ],
+        force,
+    )
+
+
+def confirm_overwrite_matches(folder: Path | str, patterns: Sequence[str], force: bool) -> None:
+    """Apply confirm_overwrite to the files of folder that match the glob patterns, e.g. "spectrum_ts*.txt".
+
+    A command whose file names hold a timestep or a value from the data takes patterns, because the names are not
+    known before the work.
+    """
+    confirm_overwrite_of_files(
+        sorted({path for pattern in patterns for path in Path(folder).glob(pattern) if path.is_file()}), force
+    )
+
+
+def confirm_overwrite_of_files(existingfiles: Sequence[Path], force: bool) -> None:
+    """Warn about each file that exists, and stop the command if the user does not agree to overwrite them."""
     if not existingfiles:
         return
 

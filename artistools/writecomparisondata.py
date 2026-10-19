@@ -22,8 +22,10 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite_matches
 from artistools.misc import exit_with_error
 from artistools.misc import get_deposition
 from artistools.misc import get_runfolders
@@ -309,6 +311,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-selected_timesteps", default=[], nargs="*", type=int, help="Selected ARTIS timesteps")
 
     addarg_output(parser, kind="folder", default=Path())
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -325,10 +328,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         raise ValueError(msg)
 
     args.outputfile.mkdir(parents=True, exist_ok=True)
+    # the name of "." is empty, thus the model name comes from the absolute path of the folder
+    modelids = [Path(modelpath).absolute().name.split("_")[0] for modelpath in modelpathlist]
+    # each file name holds the model and a quantity, e.g. phys_<model>_artisnebular.txt
+    confirm_overwrite_matches(
+        args.outputfile, [f"*_{model_id}_artisnebular.txt" for model_id in modelids], force=args.force
+    )
 
-    for modelpath in modelpathlist:
-        # the name of "." is empty, thus the model name comes from the absolute path of the folder
-        model_id = Path(modelpath).absolute().name.split("_")[0]
+    for modelpath, model_id in zip(modelpathlist, modelids, strict=True):
         print(f"{model_id=}")
 
         allnonemptymgilist = (

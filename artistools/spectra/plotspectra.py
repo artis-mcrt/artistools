@@ -146,7 +146,7 @@ from artistools.spectra.core import print_integrated_flux
 from artistools.spectra.core import SHELLCOLUMNS
 from artistools.spectra.core import sort_and_reduce_flux_contribution_list
 from artistools.spectra.core import timeshift_fluxscale_co56law
-from artistools.spectra.writespectra import write_flambda_spectra
+from artistools.spectra.writespectra import write_flambda_spectra_of_models
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -3016,14 +3016,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             msg = f"--output_spectra writes a folder of files, thus -o must name a folder and not {outputfile}"
             raise ValueError(msg)
         outdirectory = make_output_folder(outputfile, "writes") if outputfile is not None else None
-        for modelpath in args.specpath:
-            # the file names hold no model name, thus several models get a subfolder each
-            modeloutdirectory = (
-                outdirectory / get_model_name(modelpath)
-                if outdirectory is not None and len(args.specpath) > 1
-                else outdirectory
-            )
-            write_flambda_spectra(modelpath, outdirectory=modeloutdirectory)
+        # --output_spectra keeps its overwrite with no prompt. The command writespectra asks first
+        write_flambda_spectra_of_models(args.specpath, outdirectory, force=True)
 
     else:
         fig, _axes, tables = make_plot(args)

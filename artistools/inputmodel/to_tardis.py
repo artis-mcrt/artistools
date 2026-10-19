@@ -12,20 +12,26 @@ import polars.selectors as cs
 from artistools.atomic import get_atomic_number
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_modeldata
+from artistools.misc import addarg_force
+from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
+from artistools.misc.remote import model_path_from_text
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("-inputpath", "-i", default=".", help="Path of input ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
+    # the earlier name of the model path
+    parser.add_argument("-inputpath", "-i", dest="modelpath", type=model_path_from_text, help=argparse.SUPPRESS)
 
-    parser.add_argument("-temperature", "-T", default=10000, help="Temperature to use in TARDIS file")
+    parser.add_argument("-temperature", "-T", type=float, default=10000.0, help="Temperature [K] to use in TARDIS file")
 
-    parser.add_argument("-dilution_factor", "-W", default=1.0, help="Dilution factor to use in TARDIS file")
+    parser.add_argument("-dilution_factor", "-W", type=float, default=1.0, help="Dilution factor to use in TARDIS file")
 
     parser.add_argument(
         "-abundtype",
@@ -42,6 +48,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Folder for the TARDIS model file, which has the name of the model",
         default=Path(),
     )
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -51,7 +58,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     temperature = args.temperature
     dilution_factor = args.dilution_factor
 
-    modelpath = Path(args.inputpath)
+    modelpath = Path(args.modelpath)
+    # the file has the name of the model, thus the check needs no data and comes before the work
+    confirm_overwrite([args.outputfile], (f"{get_model_name(modelpath)}.csvy",), force=args.force)
 
     pldfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
     if modelmeta["dimensions"] != 1:

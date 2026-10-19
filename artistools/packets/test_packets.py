@@ -1182,10 +1182,11 @@ def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(
         .select("dirbin", "costhetabin")
         .collect()
     )
-    for extraargs, expectedcount in (
+    cases: list[tuple[list[str], int]] = [
         ([], dfarrived.filter(pl.col("dirbin") == 50).height),
         (["--average_over_phi_angle"], dfarrived.filter(pl.col("costhetabin") == 5).height),
-    ):
+    ]
+    for extraargs, expectedcount in cases:
         outputfile = tmp_path / f"groups{len(extraargs)}.pdf"
         plotlastpacketinteraction.main(
             argsraw=[str(modelpath), "-t", "6.5", "-groupby", "element", "-dirbin", "50", *extraargs],

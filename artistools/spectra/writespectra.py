@@ -7,11 +7,15 @@ from pathlib import Path
 
 import polars as pl
 
+from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import confirm_overwrite_matches
 from artistools.misc import exit_with_error
 from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
+from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
 from artistools.misc.remote import split_remote_path
@@ -30,7 +34,7 @@ def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
     print_saved(outfilepath)
 
 
-def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> None:
+def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None, *, force: bool) -> None:
     """Write the spectrum of each timestep of the valid time range to a text file.
 
     Each file holds lambda_angstroms and f_lambda, and its name gives the timestep and the time in days. A model
@@ -50,6 +54,8 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
             outdirectory = Path(modelpath, "spectra")
 
     outdirectory.mkdir(parents=True, exist_ok=True)
+    # each file name holds a timestep, and the valid timesteps come from the data, thus the check takes patterns
+    confirm_overwrite_matches(outdirectory, ("spectrum_ts*.txt", "spectrum_polar00_ts*.txt"), force=force)
 
     tmids = get_timestep_times(modelpath, loc="mid")
 
@@ -86,16 +92,33 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path | None = None) -> 
             )
 
 
+def write_flambda_spectra_of_models(modelpaths: Sequence[Path], outdirectory: Path | None, *, force: bool) -> None:
+    """Write the spectra of write_flambda_spectra for each model.
+
+    The file names hold no model name, thus each of several models gets a subfolder of outdirectory with its name.
+    """
+    for modelpath in modelpaths:
+        modeloutdirectory = (
+            outdirectory / get_model_name(modelpath)
+            if outdirectory is not None and len(modelpaths) > 1
+            else outdirectory
+        )
+        write_flambda_spectra(modelpath, outdirectory=modeloutdirectory, force=force)
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, default=Path())
+    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of ARTIS models")
     addarg_output(
         parser, kind="folder", helptext="Folder for the spectrum files (default: the spectra folder of the model)"
     )
+    addarg_force(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write ARTIS spectra for each timestep to individual text files."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    write_flambda_spectra(args.modelpath, outdirectory=args.outputfile)
+    write_flambda_spectra_of_models(
+        normalize_path_list(args.modelpath), Path(args.outputfile) if args.outputfile else None, force=args.force
+    )

@@ -4081,3 +4081,16 @@ def test_selected_timestep_takes_a_default_only_when_no_time_is_given() -> None:
         at.misc.get_selected_timestep(modelpath, "5", 300.0)
     with pytest.raises(SystemExit):
         at.misc.get_selected_timestep(modelpath, None, None)
+
+
+def test_confirm_overwrite_matches_stops_for_a_file_of_the_pattern(tmp_path: Path) -> None:
+    """A command whose file names hold a timestep asks before it overwrites, as a command of fixed names does.
+
+    writespectra, writecomparisondata, and five other data commands overwrote their files with no prompt.
+    """
+    (tmp_path / "spectrum_ts03_1.20d.txt").write_text("x", encoding="utf-8")
+    at.misc.confirm_overwrite_matches(tmp_path, ("other_*.txt",), force=False)
+    # pytest gives no terminal, thus nobody can answer, and the command stops without --force
+    with pytest.raises(SystemExit):
+        at.misc.confirm_overwrite_matches(tmp_path, ("spectrum_ts*.txt",), force=False)
+    at.misc.confirm_overwrite_matches(tmp_path, ("spectrum_ts*.txt",), force=True)

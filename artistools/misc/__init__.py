@@ -36,6 +36,7 @@ from artistools.misc.cliutils import artis_subfolders as artis_subfolders
 from artistools.misc.cliutils import check_time_selection as check_time_selection
 from artistools.misc.cliutils import color_arg as color_arg
 from artistools.misc.cliutils import confirm_overwrite as confirm_overwrite
+from artistools.misc.cliutils import confirm_overwrite_matches as confirm_overwrite_matches
 from artistools.misc.cliutils import exit_with_error as exit_with_error
 from artistools.misc.cliutils import flatten_list as flatten_list
 from artistools.misc.cliutils import format_frame_path as format_frame_path

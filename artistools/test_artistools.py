@@ -5642,7 +5642,9 @@ def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> Non
 
     # ARTIS wrote no timestep after the last one, thus the file gives zero there and the export goes on
     lasttimestep = len(at.get_timestep_times(modelpath)) - 1
-    at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[lasttimestep])
+    at.writecomparisondata.main(
+        argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[lasttimestep], force=True
+    )
     datalines = [
         line for line in (tmp_path / "edep_testmodel_artisnebular.txt").read_text().splitlines() if line[0] != "#"
     ]

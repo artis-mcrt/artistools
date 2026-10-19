@@ -13,6 +13,7 @@ from artistools.constants import c_ang_per_s
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_force
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -20,6 +21,7 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_unsupported
+from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import get_viewingdirectionbincount
@@ -229,6 +231,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     addarg_modelpath(parser, positional=True, helptext="Path to ARTIS folder (vspecfiles, bollightcurve)")
     addarg_output(parser, kind="folder", helptext="Folder for the written HESMA files", default=Path())
+    addarg_force(parser)
     # not -outputfile/-o, because addarg_outputpath above already claims -o for the folder
     parser.add_argument(
         "-plotfile", type=Path, help="Path for the plot. Default: hesma_<action>.pdf in the working folder"
@@ -273,23 +276,25 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     plotfile = resolve_outputfile(args.plotfile, f"hesma_{args.action}.pdf")
 
     if args.action == "vspecfiles":
-        make_hesma_vspecfiles(require(args.modelpath, "-modelpath", args.action), outputpath)
+        modelpath = require(args.modelpath, "-modelpath", args.action)
+        confirm_overwrite([outputpath], (f"{get_model_name(modelpath)}_vspec_res.dat",), force=args.force)
+        make_hesma_vspecfiles(modelpath, outputpath)
 
     elif args.action == "bollightcurve":
+        modelpath = require(args.modelpath, "-modelpath", args.action)
+        confirm_overwrite([outputpath], (f"doubledet_2021_{get_model_name(modelpath)}.dat",), force=args.force)
         make_hesma_bol_lightcurve(
-            require(args.modelpath, "-modelpath", args.action),
+            modelpath,
             outputpath,
             require(args.timemin, "-timemin", args.action),
             require(args.timemax, "-timemax", args.action),
         )
 
     elif args.action == "widthluminosity":
+        modelname = require(args.modelname, "-modelname", args.action)
+        confirm_overwrite([outputpath], (f"{modelname}_width-luminosity.dat",), force=args.force)
         make_hesma_peakmag_dm15_dm40(
-            args.band,
-            require(args.pathtofiles, "-pathtofiles", args.action),
-            require(args.modelname, "-modelname", args.action),
-            outputpath,
-            dm40=args.dm40,
+            args.band, require(args.pathtofiles, "-pathtofiles", args.action), modelname, outputpath, dm40=args.dm40
         )
 
     elif args.action == "plotwidthluminosity":
