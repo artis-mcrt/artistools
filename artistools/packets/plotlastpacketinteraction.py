@@ -26,6 +26,7 @@ from artistools.misc import addarg_unsupported
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_of_timedays
+from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
@@ -37,7 +38,7 @@ from artistools.misc import resolve_outputfile
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
-from artistools.packets.core import get_emission_velocity_expr
+from artistools.packets.core import get_emission_velocity_of_columns_expr
 from artistools.packets.core import get_packets
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
@@ -57,6 +58,8 @@ from artistools.rustext import get_bin_indices
 from artistools.rustext import sum_weights_in_bins
 
 if t.TYPE_CHECKING:
+    from collections.abc import Mapping
+
     import matplotlib.axes as mplax
 
 
@@ -118,13 +121,16 @@ def get_reduced_packet_set(
     (4 pi / solidangle) of the direction bin. `get_required_packets()` selects the packets for the
     given element and ion filters. If `wavelen` and `binwidth` both have a value, the function keeps
     only the packets in that wavelength slice. The slice applies to the rest-frame wavelength at the escape, or with
-    absorption, at the last absorption. The function then keeps only the packets of the direction bin.
+    absorption, at the last absorption. ARTIS records no wavelength for a free-free or a bound-free absorption, thus
+    the slice leaves out its packet, as plotspectra does. The function then keeps only the packets of the direction bin.
     """
+    from artistools.spectra.core import get_boundbound_absorption_freq_expr
+
     nprocs_read, dfpackets_selected = get_required_packets(
         modelpath, Z, ion_stage, srII_triplet=srII_triplet, onlylineabsorptions=onlylineabsorptions
     )
-    frequencycolumn = "absorption_freq" if absorption else "nu_rf"
-    dfpackets_selected = dfpackets_selected.with_columns((c_ang_per_s / pl.col(frequencycolumn)).alias("lambda_rf"))
+    frequency = get_boundbound_absorption_freq_expr() if absorption else pl.col("nu_rf")
+    dfpackets_selected = dfpackets_selected.with_columns((c_ang_per_s / frequency).alias("lambda_rf"))
 
     if wavelen is not None and binwidth is not None:
         lam_min = wavelen - binwidth / 2
@@ -161,7 +167,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
     """
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if wavelen is not None:
-        start_of_filename = f"{start_of_filename}{wavelen:.0f}A_"
+        # the slice of absorption selects different packets, thus its files must not replace the files of the escape
+        start_of_filename = f"{start_of_filename}{wavelen:.0f}A_{'absorption_' if absorption else ''}"
     start_of_filename = f"{start_of_filename}Z={Z}_" if Z else f"{start_of_filename}allelements_"
     start_of_filename = f"{start_of_filename}I={ion_stage_str}_" if ion_stage_str else f"{start_of_filename}allions_"
 
@@ -273,7 +280,10 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
         assert args is not None
         valuecolumn = "log10_emissivity_erg_per_s_per_cm3" if colorlogscale else "emissivity_erg_per_s_per_cm3"
-        output_data(args, {"": get_heatmap_table(z, xedges, yedges, valuecolumn)}, outfilename)
+        # the empty table replaces a _summary file of the same name from an earlier command with -groupby
+        output_data(
+            args, {"": get_heatmap_table(z, xedges, yedges, valuecolumn), "_summary": pl.DataFrame()}, outfilename
+        )
     save_figure(fig, outfilename, dpi=300, args=args)
 
 
@@ -366,10 +376,11 @@ def plot_velocity_profiles_by_group(
     )
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
     delta_t_s = (t_max - t_min) * day_to_s
+    velocity = get_emission_velocity_of_columns_expr(position, lzdfpackets.collect_schema().names())
     dfpackets = (
         lzdfpackets
         .filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="left"))
-        .select(typecolumn, "e_rf", velocity_kmps=get_emission_velocity_expr(position) / km_to_cm)
+        .select(typecolumn, "e_rf", velocity_kmps=velocity / km_to_cm)
         .collect()
     )
     if dfpackets.is_empty():
@@ -377,6 +388,7 @@ def plot_velocity_profiles_by_group(
             f"no escaped r-packet of the selection arrives from {t_min:.2f} to {t_max:.2f} d",
             "Give a different time, a wider wavelength range, or -dirbin -1",
         )
+    print_group_selection(wavelen, binwidth, groupby, absorption=absorption)
 
     dflines = get_linelist_label_columns(modelpath, groupby)
     typecodes = dfpackets[typecolumn].unique()
@@ -399,11 +411,12 @@ def plot_velocity_profiles_by_group(
     dftable = get_group_profile_table(dfprofiles, velocityedges_kmps, luminosity_factor, [*drawnnames, "Other"])
     fig, axesgrid = make_frame_figure(args, aspect=0.6)
     ax = axesgrid[0, 0]
-    draw_group_profiles(ax, dftable, velocityedges_kmps, unit)
+    fractionoflabel = dict(zip(dfgroupsummary["label"], dfgroupsummary["luminosity_fraction"], strict=True))
+    draw_group_profiles(ax, dftable, velocityedges_kmps, unit, fractionoflabel)
     interaction = "absorption" if absorption else ("thermal emission" if trueem else "interaction")
     ax.set_xlabel(f"Radial velocity of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
     ax.set_ylabel(rf"$\Delta L / \Delta v$ [erg s$^{{-1}}$ {INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
-    titleparts = [f"{get_model_name(modelpath)} {(t_min + t_max) / 2:.2f} d"]
+    titleparts = [f"{get_model_name(modelpath)} {get_timestep_time(modelpath, timestep):.2f} d"]
     if wavelen is not None and binwidth is not None:
         titleparts.append(f"{wavelen - binwidth / 2:.0f}-{wavelen + binwidth / 2:.0f} Å")
     if dirbin != -1:
@@ -425,6 +438,26 @@ def plot_velocity_profiles_by_group(
             outfilename,
         )
     save_figure(fig, outfilename, args=args)
+
+
+def print_group_selection(wavelen: float | None, binwidth: float | None, groupby: str, *, absorption: bool) -> None:
+    """Print the wavelength selection of the packets of -groupby, the position of an absorption, and the line labels."""
+    from artistools.spectra.core import print_line_label_convention
+
+    if wavelen is not None and binwidth is not None:
+        event = "last absorption" if absorption else "escape"
+        print_detail(
+            f"The packets have a rest-frame wavelength from {wavelen - binwidth / 2:g} to {wavelen + binwidth / 2:g} Å"
+            f" at the {event}"
+        )
+    if absorption:
+        print_detail(
+            f"The group of a packet is the {groupby} of its last absorption. That absorption happens at the position"
+            " of the last emission, thus em_pos gives its velocity. ARTIS records no wavelength for a free-free or a"
+            " bound-free absorption"
+        )
+    if groupby == "line":
+        print_line_label_convention()
 
 
 def print_group_profile_method(
@@ -449,7 +482,10 @@ def print_group_profile_method(
             " also sets em_pos, thus a packet that scatters after its last emission gives the place of the scattering"
         )
     else:
-        print_detail("The velocity is |trueem_pos| / trueem_time, the radial velocity of the last thermal emission")
+        print_detail(
+            "The velocity is |trueem_pos| / trueem_time, the radial velocity of the last thermal emission. An old"
+            " packets file has no trueem_pos, and its column true_emission_velocity then gives the velocity"
+        )
     nbins = len(velocityedges_kmps) - 1
     binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
     print_detail(
@@ -547,25 +583,33 @@ def get_group_profile_table(
 
 
 def draw_group_profiles(
-    ax: "mplax.Axes", dftable: pl.DataFrame, velocityedges_kmps: Sequence[float], unit: t.Literal["kmps", "c"]
+    ax: "mplax.Axes",
+    dftable: pl.DataFrame,
+    velocityedges_kmps: Sequence[float],
+    unit: t.Literal["kmps", "c"],
+    fractionoflabel: "Mapping[str, float]",
 ) -> None:
     """Draw the sum of all the groups, and one step series for each group, with its fraction of the luminosity.
 
-    dftable is in km/s, and the axis takes the velocity unit unit.
+    dftable is in km/s, and the axis takes the velocity unit unit. fractionoflabel gives the fraction of the luminosity
+    of all the selected packets, as the log and the _summary table give it.
     """
     kmpsperunit = KMPS_PER_VELOCITYUNIT[unit]
     edges = np.array(velocityedges_kmps) / kmpsperunit
     yvalues = "luminosity_per_velocity_erg_per_s_per_kmps"
     dftotal = dftable.group_by("x_lower_kmps").agg(pl.col(yvalues).sum()).sort("x_lower_kmps")
-    totalluminosity = float(dftable["luminosity_erg_per_s"].sum())
     ax.stairs(
         dftotal[yvalues].to_numpy() * kmpsperunit, edges, label="All packets in the bins", color="black", linewidth=1.5
     )
     for (label,), dfgroup in dftable.group_by("label", maintain_order=True):
-        fraction = float(dfgroup["luminosity_erg_per_s"].sum()) / totalluminosity if totalluminosity > 0 else 0.0
         # stairs with `color=None` draws black and not the next colour of the cycle
         color = "grey" if label == "Other" else get_next_color(ax)
-        ax.stairs(dfgroup[yvalues].to_numpy() * kmpsperunit, edges, label=f"{label} ({fraction:.1%})", color=color)
+        ax.stairs(
+            dfgroup.sort("x_lower_kmps")[yvalues].to_numpy() * kmpsperunit,
+            edges,
+            label=f"{label} ({fractionoflabel[str(label)]:.1%})",
+            color=color,
+        )
     ax.set_xlim(edges[0], edges[-1])
     ax.set_ylim(bottom=0.0)
 

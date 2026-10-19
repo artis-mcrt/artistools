@@ -34,6 +34,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import remote
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.general import get_bin_index_expr
+from artistools.misc.general import get_weighted_quantile_expr
 from artistools.viewertools.core import run_command_step_with_warning
 
 
@@ -1241,6 +1242,31 @@ def test_bin_index_of_nan_is_null_and_of_an_outside_value_is_outside_the_bins() 
     # plotestimators bins an integer column for -x timestep or -x modelgridindex, and the NaN test must accept it
     dfint = pl.DataFrame({"x": [0, 1, 2, None]}, schema={"x": pl.Int32})
     assert dfint.lazy().select(get_bin_index_expr(x, [0.5, 1.5])).collect().to_series().to_list() == [-1, 0, 1, None]
+
+
+def test_weighted_quantile_ignores_a_value_with_no_weight() -> None:
+    """Each quantile took the value at a NaN weight, and a group with no positive weight gave its smallest value.
+
+    A value with a weight of zero, null, or NaN has no effect, and a group with no positive weight gives null. Thus a
+    line with no emission in any cell has no velocity quartiles of its emission.
+    """
+    df = pl.DataFrame({
+        "group": [1, 1, 1, 1, 2, 2, 2, 3, 3],
+        "value": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, math.nan],
+        "weight": [1.0, math.nan, 1.0, 1.0, 0.0, None, 0.0, 1.0, 1.0],
+    })
+    dfquantiles = df.group_by("group", maintain_order=True).agg(
+        q25=get_weighted_quantile_expr("value", "weight", 0.25),
+        q50=get_weighted_quantile_expr("value", "weight", 0.5),
+        q75=get_weighted_quantile_expr("value", "weight", 0.75),
+    )
+    expected = pl.DataFrame({
+        "group": [1, 2, 3],
+        "q25": [1.0, None, 8.0],
+        "q50": [3.0, None, 8.0],
+        "q75": [4.0, None, 8.0],
+    })
+    pltest.assert_frame_equal(dfquantiles, expected)
 
 
 def test_df_filter_minmax_bracketed() -> None:

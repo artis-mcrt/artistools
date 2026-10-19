@@ -1707,6 +1707,28 @@ def get_absorption_type_labels(typecodes: pl.Series, dflines: pl.DataFrame, grou
     ]).collect()
 
 
+def get_boundbound_absorption_freq_expr() -> pl.Expr:
+    """Return the frequency of the last absorption of a packet, or null for a free-free or a bound-free absorption.
+
+    ARTIS sets absorption_freq only at a bound-bound absorption. A free-free or a bound-free absorption keeps the
+    frequency of an earlier line, and exspec leaves it out of absorption.out. A null frequency fails each filter.
+    """
+    absorptiontype = pl.col("absorption_type")
+    return pl.when((absorptiontype >= 0) | (absorptiontype == ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY)).then(
+        pl.col("absorption_freq")
+    )
+
+
+def print_line_label_convention() -> None:
+    """Print the convention of the wavelength in the label of a line."""
+    print(
+        "Grouping by line. Line labels are wavelengths in air between 2,000-20,000 Å,"
+        " and vacuum wavelengths outside this range."
+        " The refractive index of air comes from Peck & Reeder (1972), J. Opt. Soc. Am., 62, 958."
+        " This matches the NIST default options and many astrophysics papers."
+    )
+
+
 # the packet column of the last interaction and of the last thermal emission for each shell grouping
 SHELLCOLUMNS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
     "velocity": ("emission_velocity", "true_emission_velocity"),
@@ -2093,12 +2115,7 @@ def get_flux_contributions_from_packets(
         raise ValueError(msg)
 
     if groupby == "line":
-        print(
-            "Grouping by line. Line labels are wavelengths in air between 2,000-20,000 Å,"
-            " and vacuum wavelengths outside this range."
-            " The refractive index of air comes from Peck & Reeder (1972), J. Opt. Soc. Am., 62, 958."
-            " This matches the NIST default options and many astrophysics papers."
-        )
+        print_line_label_convention()
 
     if gamma:
         assert groupby in {"element", "nuc", "nucmass", *SHELLCOLUMNS}
@@ -2174,14 +2191,9 @@ def get_flux_contributions_from_packets(
     lzdfpackets = lzdfpackets.filter(condition_nu_emit | condition_nu_abs)
 
     if getabsorption:
-        # ARTIS sets absorption_freq only at a bound-bound absorption. A free-free or a bound-free absorption keeps the
-        # frequency of an earlier line, and exspec leaves it out of absorption.out. A null frequency fails each filter
-        absorptiontype = pl.col("absorption_type")
-        lzdfpackets = lzdfpackets.with_columns(
-            absorption_freq=pl.when(
-                (absorptiontype >= 0) | (absorptiontype == ABSTYPE_BOUNDBOUND_EXPANSIONOPACITY)
-            ).then(pl.col("absorption_freq"))
-        ).filter(condition_nu_emit | condition_nu_abs)
+        lzdfpackets = lzdfpackets.with_columns(absorption_freq=get_boundbound_absorption_freq_expr()).filter(
+            condition_nu_emit | condition_nu_abs
+        )
 
     if velocityranges:
 

@@ -58,13 +58,20 @@ def get_weighted_quantile_expr(value: str, weight: str, quantile: float) -> pl.E
     """Return an aggregation that gives the weighted quantile of a column, e.g. 0.5 for the weighted median.
 
     The result is the smallest value whose cumulative weight, in the order of the values, reaches the quantile of the
-    total weight. A null or NaN value, and a value with a weight of zero or null, have no effect. Use the expression in
-    group_by().agg(). A group with no valid value gives null.
+    total weight. A value has an effect only if the value and its weight are not null or NaN, and the weight is above
+    zero. Use the expression in group_by().agg(). A group with no value that has an effect gives null.
     """
-    isvalid = pl.col(value).is_not_null() & pl.col(value).cast(pl.Float64).is_not_nan()
+    weights = pl.col(weight).cast(pl.Float64)
+    # polars takes NaN as larger than each number, thus a NaN weight needs its own test
+    isvalid = (
+        pl.col(value).is_not_null()
+        & pl.col(value).cast(pl.Float64).is_not_nan()
+        & weights.is_not_nan()
+        & (weights > 0.0)
+    )
     values = pl.col(value).filter(isvalid)
-    weights = pl.col(weight).filter(isvalid).fill_null(0.0)
-    return values.sort().filter(weights.sort_by(values).cum_sum() >= quantile * weights.sum()).first()
+    validweights = weights.filter(isvalid)
+    return values.sort().filter(validweights.sort_by(values).cum_sum() >= quantile * validweights.sum()).first()
 
 
 @functools.lru_cache

@@ -26,6 +26,7 @@ from artistools.ejectaopacity import get_excitation_temperature_column
 from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.ejectaopacity import get_selected_timestep
 from artistools.estimators import scan_estimators
+from artistools.inputmodel import get_cell_selection
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -523,9 +524,13 @@ def get_cell_line_inputs(
                 "a 1D model has no direction of a cell, thus -costhetamin and -costhetamax cannot select cells",
                 "Remove -costhetamin and -costhetamax",
             )
-        # the cell at the centre of the grid has no direction, and the division gives NaN, thus no range holds it
-        costheta = pl.col("vel_z_mid") / pl.col("vel_r_mid")
-        lfestimators = lfestimators.filter(costheta.is_between(*costhetarange))
+        # a cell on a bound stays in the selection, although the Float32 error of the velocities can move it across
+        # the bound. The cell at the centre of the grid has no direction, thus the selection leaves it out
+        lfestimators = lfestimators.filter(
+            get_cell_selection(
+                thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
+            )
+        )
         print_detail(
             f"The cells have cos θ = v_z / |v| of the cell centre from {costhetarange[0]:g} to {costhetarange[1]:g}."
             " The z axis is the polar axis of the direction bins"
@@ -540,7 +545,7 @@ def get_cell_line_inputs(
             "volume",
             pl.col(temperaturecolumn).alias("T_exc"),
             pl.col("^nnion_.*$"),
-            # the trough estimate needs the velocity vector of the cell centre. Only a 2D or 3D model has it
+            # the trough estimate needs the velocity vector of the cell centre. Only a 3D model has its three parts
             cs.by_name("vel_x_mid", "vel_y_mid", "vel_z_mid", require_all=False),
             velocity_kmps=pl.col("vel_r_mid_on_c") * C_cm_per_s / km_to_cm,
         )
@@ -761,6 +766,8 @@ def get_sobolev_trough(
     dirbin: int,
     photospherevelocity_kmps: float,
     velocityedges_kmps: Sequence[float],
+    *,
+    relativisticdoppler: bool,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Return the Sobolev absorption depth of each ranked line against the line-of-sight velocity, and of their blend.
 
@@ -771,7 +778,10 @@ def get_sobolev_trough(
     the bin. Thus the depth is the fraction of the flux of a uniform disk that the line removes.
 
     The estimate has no emission of the line and no limb darkening. The blend is 1 - prod(1 - depth) of the lines at
-    each wavelength, from the relativistic Doppler shift of the bin centres.
+    each wavelength. The wavelength of a bin comes from the Doppler factor of ARTIS for the line-of-sight velocity u of
+    its centre: 1 - u / c, or with relativisticdoppler, sqrt((1 - u / c) / (1 + u / c)). The relativistic factor of
+    ARTIS also has the transverse velocity v_t, which a bin does not hold. Thus the blend is too blue by a fraction of
+    about v_t^2 / (2 c^2). A bin with its centre at or above c gives no wavelength.
     """
     nphibins = get_viewingdirection_phibincount()
     costhetalower, costhetaupper, _ = get_costheta_bins(usedegrees=False)
@@ -819,7 +829,11 @@ def get_sobolev_trough(
     dfdepths = (
         profiles.dfranked
         .select(LINEKEYS)
-        .join(pl.DataFrame({"velocitybin": binindices}, schema={"velocitybin": pl.Int64}), how="cross")
+        .join(
+            pl.DataFrame({"velocitybin": binindices}, schema={"velocitybin": pl.Int64}),
+            how="cross",
+            maintain_order="left_right",
+        )
         .join(dflines, on=[*LINEKEYS, "velocitybin"], how="left", maintain_order="left")
         .with_columns(
             pl.col("trough_depth").fill_null(0.0),
@@ -835,16 +849,23 @@ def get_sobolev_trough(
     bincentres_on_c = (
         (np.array(velocityedges_kmps[:-1]) + np.array(velocityedges_kmps[1:])) / 2.0 * km_to_cm / C_cm_per_s
     )
-    dopplerfactors = np.sqrt((1.0 - bincentres_on_c) / (1.0 + bincentres_on_c))
-    lambdarestvalues = profiles.dfranked["lambda_angstroms"].to_numpy()
-    lambdagrid = np.linspace(lambdarestvalues.min() * dopplerfactors.min(), lambdarestvalues.max(), 400)
-    transmission = np.ones_like(lambdagrid)
-    for lambdarest, dfline in zip(lambdarestvalues, dfdepths.partition_by(LINEKEYS, maintain_order=True), strict=True):
+    # the corner of a fast grid can be above c, and a cell with matter cannot be there
+    isbelowc = bincentres_on_c < 1.0
+    betas = bincentres_on_c[isbelowc]
+    dopplerfactors = np.sqrt((1.0 - betas) / (1.0 + betas)) if relativisticdoppler else 1.0 - betas
+    lambdarests_angstroms = profiles.dfranked["lambda_angstroms"].to_numpy()
+    lambdagrid_angstroms = np.linspace(
+        lambdarests_angstroms.min() * dopplerfactors.min(), lambdarests_angstroms.max(), 400
+    )
+    transmission = np.ones_like(lambdagrid_angstroms)
+    for dfline in dfdepths.partition_by(LINEKEYS, maintain_order=True):
         # np.interp needs increasing x, and a larger velocity gives a shorter wavelength
-        linelambdas = lambdarest * dopplerfactors[::-1]
-        depths = dfline.sort("velocitybin")["trough_depth"].to_numpy()[::-1]
-        transmission *= 1.0 - np.clip(np.interp(lambdagrid, linelambdas, depths, left=0.0, right=0.0), 0.0, 1.0)
-    dfblend = pl.DataFrame({"lambda_angstroms": lambdagrid, "trough_depth": 1.0 - transmission})
+        linelambdas_angstroms = float(dfline["lambda_angstroms"][0]) * dopplerfactors[::-1]
+        depths = dfline.sort("velocitybin")["trough_depth"].to_numpy()[isbelowc][::-1]
+        transmission *= 1.0 - np.clip(
+            np.interp(lambdagrid_angstroms, linelambdas_angstroms, depths, left=0.0, right=0.0), 0.0, 1.0
+        )
+    dfblend = pl.DataFrame({"lambda_angstroms": lambdagrid_angstroms, "trough_depth": 1.0 - transmission})
     return dfdepths.drop("velocitybin"), dfblend
 
 

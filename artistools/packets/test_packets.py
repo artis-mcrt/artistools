@@ -672,24 +672,26 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
     """A packet takes the timestep of its arrival time, and the quartiles take the energy of each packet as the weight.
 
     A packet at the start time of a timestep is in that timestep, and a packet outside the wavelength range is in no
-    timestep.
+    timestep. A packet with no record of the position has a NaN velocity, and the strict cast of its bin stopped the
+    command. It is in no bin now.
     """
     from artistools.packets import plotlastinteractionvelocity
 
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
     tstarts = at.get_timestep_times(modelpath, loc="start")
     emtime_s = 5.0 * at.constants.day_to_s
-    # three packets of timestep 25, one of timestep 26 at its start time, and one packet outside the wavelength range
-    velocities_kmps = [3000.0, 5000.0, 9000.0, 7000.0, 1000.0]
-    lambdas_angstroms = [7500.0, 7500.0, 7500.0, 7500.0, 9000.0]
+    # three packets are in timestep 25, one is at the start time of timestep 26, and one is outside the wavelength
+    # range. The last packet is in timestep 25 and has no record of the position
+    velocities_kmps = [3000.0, 5000.0, 9000.0, 7000.0, 1000.0, 0.0]
+    lambdas_angstroms = [7500.0, 7500.0, 7500.0, 7500.0, 9000.0, 7500.0]
     dfpackets = pl.DataFrame({
-        "t_arrive_d": [tstarts[25] + 0.01] * 3 + [tstarts[26], tstarts[25] + 0.01],
-        "e_rf": [1e40, 2e40, 1e40, 1e40, 5e40],
+        "t_arrive_d": [tstarts[25] + 0.01] * 3 + [tstarts[26]] + [tstarts[25] + 0.01] * 2,
+        "e_rf": [1e40, 2e40, 1e40, 1e40, 5e40, 9e40],
         "nu_rf": [at.constants.c_ang_per_s / lambda_angstroms for lambda_angstroms in lambdas_angstroms],
         "em_posx": [velocity * at.constants.km_to_cm * emtime_s for velocity in velocities_kmps],
-        "em_posy": [0.0] * 5,
-        "em_posz": [0.0] * 5,
-        "em_time": [emtime_s] * 5,
+        "em_posy": [0.0] * 6,
+        "em_posz": [0.0] * 6,
+        "em_time": [emtime_s] * 5 + [-1.0],
     })
     with mock.patch.object(plotlastinteractionvelocity, "get_packets", return_value=(1, dfpackets.lazy())):
         plotlastinteractionvelocity.main(

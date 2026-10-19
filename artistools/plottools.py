@@ -2020,6 +2020,11 @@ def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
     return f"{velocity_kmps:.0f} km/s"
 
 
+def get_grid_corner_velocity_kmps(modelmeta: Mapping[str, t.Any]) -> float:
+    """Return the radial velocity [km/s] of the corner of the model grid, which is vmax times sqrt(dimensions)."""
+    return float(modelmeta["vmax_cmps"]) / km_to_cm * math.sqrt(modelmeta["dimensions"])
+
+
 def get_velocity_bin_edges_kmps(
     modelpath: "Path | str", nbins: int, velocitymax: float | None, unit: t.Literal["kmps", "c"]
 ) -> list[float]:
@@ -2039,11 +2044,16 @@ def get_velocity_bin_edges_kmps(
                 "Give -velocitymax in units of c, or give -velocityunit kmps",
             )
         velocitymax_kmps = velocitymax * KMPS_PER_VELOCITYUNIT[unit]
+        if velocitymax_kmps > KMPS_PER_VELOCITYUNIT["c"]:
+            exit_with_error(
+                f"-velocitymax {velocitymax} km/s is above the speed of light",
+                f"Give a velocity of {KMPS_PER_VELOCITYUNIT['c']:.0f} km/s or less",
+            )
     else:
         from artistools.inputmodel import get_modeldata
 
         _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-        velocitymax_kmps = modelmeta["vmax_cmps"] / km_to_cm * math.sqrt(modelmeta["dimensions"])
+        velocitymax_kmps = get_grid_corner_velocity_kmps(modelmeta)
         print_detail(
             f"The velocity bins end at {format_velocity(velocitymax_kmps, unit)}, the corner of the model grid. This"
             f" is vmax times the square root of the number of dimensions ({modelmeta['dimensions']})"

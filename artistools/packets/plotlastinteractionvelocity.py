@@ -32,11 +32,12 @@ from artistools.misc import resolve_outputfile
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.misc.general import get_bin_index_expr
 from artistools.packets.core import filter_packets_dirbin
-from artistools.packets.core import get_emission_velocity_expr
+from artistools.packets.core import get_emission_velocity_of_columns_expr
 from artistools.packets.core import get_packets
 from artistools.plottools import addarg_velocityunit
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
+from artistools.plottools import get_grid_corner_velocity_kmps
 from artistools.plottools import get_velocity_unit
 from artistools.plottools import KMPS_PER_VELOCITYUNIT
 from artistools.plottools import make_frame_figure
@@ -72,14 +73,15 @@ def get_last_interaction_velocity_quartiles(
     _, lzpackets = get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     lzpackets, _ = filter_packets_dirbin(lzpackets, dirbin, average_over_phi=True)
     timeedges = [*get_timestep_times(modelpath, loc="start"), get_timestep_times(modelpath, loc="end")[-1]]
-    velocity_kmps = get_emission_velocity_expr(position) / km_to_cm
+    velocity_kmps = get_emission_velocity_of_columns_expr(position, lzpackets.collect_schema().names()) / km_to_cm
     dfhistogram = (
         lzpackets
         .filter((c_ang_per_s / pl.col("nu_rf")).is_between(lambdamin, lambdamax))
         .select(
             "e_rf",
             timestep=get_bin_index_expr(pl.col("t_arrive_d"), timeedges),
-            velocitybin=(velocity_kmps / histogrambinwidth_kmps).floor().cast(pl.Int64),
+            # a packet with no record has a velocity of NaN, and the cast gives it no bin
+            velocitybin=(velocity_kmps / histogrambinwidth_kmps).floor().cast(pl.Int64, strict=False),
         )
         .filter(pl.col("timestep").is_between(0, len(timeedges) - 2))
         .group_by("timestep", "velocitybin")
@@ -124,7 +126,10 @@ def print_method(
             " em_pos"
         )
     else:
-        print_detail("The velocity is |trueem_pos| / trueem_time, the radial velocity of the last thermal emission")
+        print_detail(
+            "The velocity is |trueem_pos| / trueem_time, the radial velocity of the last thermal emission. An old"
+            " packets file has no trueem_pos, and its column true_emission_velocity then gives the velocity"
+        )
     print_detail(
         "In the plot, the curve of each series gives the median. The shaded region goes from the 25% quantile to the"
         " 75% quantile, with the energy of each packet as the weight. The velocities come from a histogram with bins"
@@ -147,9 +152,7 @@ def plot_velocity_against_time(
     for modelpath in args.modelpath:
         print_modelpath(modelpath)
         _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-        histogrambinwidth_kmps = (
-            modelmeta["vmax_cmps"] / km_to_cm * math.sqrt(modelmeta["dimensions"]) / VELOCITYHISTOGRAMBINS
-        )
+        histogrambinwidth_kmps = get_grid_corner_velocity_kmps(modelmeta) / VELOCITYHISTOGRAMBINS
         print_method(position, args.xmin, args.xmax, histogrambinwidth_kmps)
         dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=True, usedegrees=True)
         for dirbin in args.dirbin:
@@ -166,7 +169,8 @@ def plot_velocity_against_time(
                 print_detail(f"{label}: no packet in the range of wavelength and time")
                 continue
             times = dfquartiles["time_days"].to_numpy()
-            (line,) = ax.plot(times, dfquartiles["velocity_q50_kmps"].to_numpy() / kmpsperunit, label=label)
+            # a line with no marker draws nothing for a series of one timestep, and the marker shows each timestep
+            (line,) = ax.plot(times, dfquartiles["velocity_q50_kmps"].to_numpy() / kmpsperunit, marker=".", label=label)
             ax.fill_between(
                 times,
                 dfquartiles["velocity_q25_kmps"].to_numpy() / kmpsperunit,

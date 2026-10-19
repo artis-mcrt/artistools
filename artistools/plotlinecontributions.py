@@ -1,6 +1,7 @@
 """Plot the Sobolev emission and the Sobolev optical depth of the strongest lines in a range, against velocity."""
 
 import argparse
+import math
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -9,8 +10,11 @@ import matplotlib.colors as mplcolors
 import numpy as np
 import polars as pl
 
+from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.ejectaopacity import get_selected_timestep
+from artistools.inputmodel import get_modeldata
 from artistools.linecontributions import get_cell_line_inputs
 from artistools.linecontributions import get_line_velocity_profiles
 from artistools.linecontributions import get_ranked_line_summary
@@ -26,6 +30,7 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
+from artistools.misc import get_artis_option
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_time
@@ -35,12 +40,14 @@ from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
+from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
+from artistools.plottools import get_grid_corner_velocity_kmps
 from artistools.plottools import get_velocity_bin_edges_kmps
 from artistools.plottools import get_velocity_unit
 from artistools.plottools import INVERSE_VELOCITYUNIT_AXISLABELS
@@ -51,11 +58,13 @@ from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import VELOCITYUNIT_AXISLABELS
+from artistools.plottools import VELOCITYUNIT_LABELS
 
 if t.TYPE_CHECKING:
     import matplotlib.axes as mplax
     import numpy.typing as npt
 
+    from artistools.linecontributions import CellLineInputs
     from artistools.linecontributions import LineVelocityProfiles
 
 DEFAULTOUTPUTNAME = "plotlinecontributions.pdf"
@@ -179,6 +188,50 @@ def plot_trough(
     ax.set_ylim(0.0, 1.0)
 
 
+def plot_trough_estimate(
+    ax: "mplax.Axes",
+    profiles: "LineVelocityProfiles",
+    inputs: "CellLineInputs",
+    dfranked: pl.DataFrame,
+    colours: dict[str, str],
+    troughsettings: tuple[int, float],
+    velocityedges_kmps: Sequence[float],
+    unit: t.Literal["kmps", "c"],
+    modelpath: Path,
+) -> dict[str, pl.DataFrame]:
+    """Draw the Sobolev estimate of the trough of the ranked lines, log its method, and return its tables."""
+    dirbin, photospherevelocity_kmps = troughsettings
+    relativisticdoppler = get_artis_option(modelpath, "USE_RELATIVISTIC_DOPPLER_SHIFT") == "true"
+    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    cellwidth_kmps = modelmeta["wid_init"] / (modelmeta["t_model_init_days"] * day_to_s) / km_to_cm
+    binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
+    if binwidth_kmps < cellwidth_kmps:
+        maxbincount = max(1, math.floor((velocityedges_kmps[-1] - velocityedges_kmps[0]) / cellwidth_kmps))
+        print_warning(
+            f"The velocity bins of {format_velocity(binwidth_kmps, unit)} are narrower than a cell of"
+            f" {format_velocity(cellwidth_kmps, unit)}. A cell puts all its volume in the bin of its centre. Thus the"
+            f" trough depth changes from bin to bin, and the depth can be above 1 - exp(-tau). Give -nvelocitybins"
+            f" {maxbincount} or less"
+        )
+    dfdepths, dfblend = get_sobolev_trough(
+        profiles, inputs, dirbin, photospherevelocity_kmps, velocityedges_kmps, relativisticdoppler=relativisticdoppler
+    )
+    plot_trough(ax, dfdepths, dfranked, colours, unit, photospherevelocity_kmps)
+    print_trough_method(
+        dirbin, photospherevelocity_kmps, unit, dfranked.height, dfblend, relativisticdoppler=relativisticdoppler
+    )
+    ax.set_ylabel("Trough depth")
+    return {
+        "_trough": convert_velocity_columns(
+            dfdepths.join(dfranked.select(*LINEKEYS, "label"), on=list(LINEKEYS), how="left").select(
+                "label", pl.exclude("label")
+            ),
+            unit,
+        ),
+        "_troughblend": dfblend,
+    }
+
+
 def print_ranked_lines(dflinesummary: pl.DataFrame, rankby: str, unit: t.Literal["kmps", "c"]) -> None:
     """Print the emission fraction, the velocity quartiles of the emission, and the range of a median tau above 1."""
     rankedby = "the most emission" if rankby == "emission" else "the largest tau_sobolev in a cell"
@@ -210,7 +263,10 @@ def print_ranked_lines(dflinesummary: pl.DataFrame, rankby: str, unit: t.Literal
 
 
 def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) -> tuple[int, float] | None:
-    """Return the direction bin and the velocity of the photosphere [km/s] for the trough estimate, or None."""
+    """Return the direction bin and the velocity of the photosphere [km/s] for the trough estimate, or None.
+
+    The function checks the options before the command reads the estimators.
+    """
     if args.troughdirbin is None:
         if args.photospherevelocity is not None:
             exit_with_error("-photospherevelocity applies only to the trough estimate", "Give -troughdirbin too")
@@ -222,17 +278,39 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
             f"-troughdirbin {args.troughdirbin} is not the first direction bin of a costheta bin",
             f"Give a multiple of {nphibins} from 0 to {ndirbins - nphibins}, e.g. 90 for the pole at +z",
         )
+    _, modelmeta = get_modeldata(args.modelpath, printwarningsonly=True)
+    if modelmeta["dimensions"] != 3:
+        # a cell of a 2D model is a ring, and a cell of a 1D model is a shell
+        exit_with_error(
+            f"the trough estimate needs the velocity vector of each cell, and a {modelmeta['dimensions']}D model has no"
+            " such vector",
+            "Remove -troughdirbin",
+        )
     if args.photospherevelocity is None or args.photospherevelocity <= 0.0:
         exit_with_error(
             "the trough estimate needs the velocity of the photosphere",
             "Give -photospherevelocity, e.g. the median of plotlastinteractionvelocity for a range with no strong line",
+        )
+    if unit == "c" and args.photospherevelocity > 1.0:
+        exit_with_error(
+            f"-photospherevelocity {args.photospherevelocity:g} is above the speed of light, and the velocity axis"
+            " takes units of c",
+            "Give -photospherevelocity in units of c, or give -velocityunit kmps",
+        )
+    photospherevelocity_kmps = args.photospherevelocity * KMPS_PER_VELOCITYUNIT[unit]
+    cornervelocity_kmps = get_grid_corner_velocity_kmps(modelmeta)
+    if photospherevelocity_kmps >= cornervelocity_kmps:
+        exit_with_error(
+            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is at or above the corner of the"
+            f" grid at {format_velocity(cornervelocity_kmps, unit)}, thus no cell is in front of the photosphere",
+            f"Give a lower velocity in units of {VELOCITYUNIT_LABELS[unit]}",
         )
     if args.costhetamin is not None or args.costhetamax is not None:
         exit_with_error(
             "the trough estimate needs all the cells in front of the photosphere",
             "Remove -costhetamin and -costhetamax, or remove -troughdirbin",
         )
-    return args.troughdirbin, args.photospherevelocity * KMPS_PER_VELOCITYUNIT[unit]
+    return args.troughdirbin, photospherevelocity_kmps
 
 
 def get_costheta_range(costhetamin: float | None, costhetamax: float | None) -> tuple[float, float] | None:
@@ -316,6 +394,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
         exit_with_error("give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
+    if args.maxlines < 1:
+        exit_with_error(f"-maxlines {args.maxlines} gives no lines", "Give a number of 1 or more")
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     print(f"Line contributions of {get_model_logname(args.modelpath)} at timestep {timestep}")
@@ -329,11 +409,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     inputs = get_cell_line_inputs(
         args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, costhetarange
     )
-    if troughsettings is not None and "vel_z_mid" not in inputs.dfcells.columns:
-        exit_with_error(
-            "the cells of a 1D model have no direction, thus the trough estimate is not possible",
-            "Remove -troughdirbin",
-        )
     profiles = get_line_velocity_profiles(inputs, velocityedges_kmps, args.rankby, args.maxlines)
 
     print_detail(
@@ -362,23 +437,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     fig, axesgrid = make_frame_figure(args, rows=3 if troughsettings else 2, aspect=0.45)
     axes = axesgrid[:, 0]
     dfdrawn, colours = plot_line_profiles(axes, profiles, dfranked, velocityedges_kmps, unit)
+    # the empty tables replace the trough files of the same name from an earlier command
     tables = {
         "": dfdrawn,
         "_summary": convert_velocity_columns(dflinesummary.select("label", pl.exclude("label")), unit),
+        "_trough": pl.DataFrame(),
+        "_troughblend": pl.DataFrame(),
     }
     if troughsettings is not None:
-        dirbin, photospherevelocity_kmps = troughsettings
-        dfdepths, dfblend = get_sobolev_trough(profiles, inputs, dirbin, photospherevelocity_kmps, velocityedges_kmps)
-        plot_trough(axes[2], dfdepths, dfranked, colours, unit, photospherevelocity_kmps)
-        print_trough_method(dirbin, photospherevelocity_kmps, unit, dfranked.height, dfblend)
-        axes[2].set_ylabel("Trough depth")
-        tables["_trough"] = convert_velocity_columns(
-            dfdepths.join(dfranked.select(*LINEKEYS, "label"), on=list(LINEKEYS), how="left").select(
-                "label", pl.exclude("label")
-            ),
-            unit,
+        tables |= plot_trough_estimate(
+            axes[2], profiles, inputs, dfranked, colours, troughsettings, velocityedges_kmps, unit, args.modelpath
         )
-        tables["_troughblend"] = dfblend
 
     # -xmin and -xmax give the wavelength range of the lines, thus they do not set the limits of the velocity axis
     set_axis_properties(axes[0], args, xlimits=(None, None, "-xmin"), setyaxis=False)
@@ -402,7 +471,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 def print_trough_method(
-    dirbin: int, photospherevelocity_kmps: float, unit: t.Literal["kmps", "c"], linecount: int, dfblend: pl.DataFrame
+    dirbin: int,
+    photospherevelocity_kmps: float,
+    unit: t.Literal["kmps", "c"],
+    linecount: int,
+    dfblend: pl.DataFrame,
+    *,
+    relativisticdoppler: bool,
 ) -> None:
     """Print the method and the assumptions of the trough estimate, and the deepest point of the blend."""
     directionlabel = get_dirbin_labels([dirbin], average_over_phi=True, usedegrees=True)[dirbin]
@@ -417,9 +492,22 @@ def print_trough_method(
         " space, du is the width of the velocity bin, and v_ph is the velocity of the photosphere"
     )
     print_detail(
-        f"The estimate has no emission of the lines, no limb darkening, and only the {linecount} ranked lines. The"
-        " blend of the lines is 1 - prod(1 - depth) at each wavelength"
+        f"The estimate has no emission of the lines, no limb darkening, and only the {linecount} ranked lines. A cell"
+        " with a negative tau_sobolev (a population inversion) or with no tau_sobolev absorbs nothing. The blend of"
+        " the lines is 1 - prod(1 - depth) at each wavelength"
     )
+    if relativisticdoppler:
+        print_detail(
+            "The wavelength of a bin is lambda_rest sqrt((1 - u / c) / (1 + u / c)) for the line-of-sight velocity u"
+            " of its centre. artisoptions.h sets USE_RELATIVISTIC_DOPPLER_SHIFT, thus the Doppler factor of ARTIS"
+            " also has the transverse velocity v_t. A bin has no v_t, thus the blend is too blue by a fraction of"
+            " about v_t^2 / (2 c^2)"
+        )
+    else:
+        print_detail(
+            "The wavelength of a bin is lambda_rest (1 - u / c) for the line-of-sight velocity u of its centre. This"
+            " is the Doppler factor of ARTIS, because artisoptions.h does not set USE_RELATIVISTIC_DOPPLER_SHIFT"
+        )
     deepest = dfblend.top_k(1, by="trough_depth").row(0, named=True)
     print_detail(
         f"The blend has its largest depth {deepest['trough_depth']:.3f} at {deepest['lambda_angstroms']:.0f} Å"

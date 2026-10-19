@@ -175,6 +175,22 @@ def get_emission_velocity_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     ).sqrt() / get_emission_time_expr(position)
 
 
+def get_emission_velocity_of_columns_expr(position: t.Literal["em", "trueem"], packetcolumns: Sequence[str]) -> pl.Expr:
+    """Return the radial velocity [cm/s] of get_emission_velocity_expr() from the columns that the packets hold.
+
+    An old packets file holds true_emission_velocity and no position of the thermal emission. For a packet with no
+    record, get_packets gives that velocity a value of NaN, as get_emission_velocity_expr() does.
+    """
+    if position == "trueem" and "trueem_posx" not in packetcolumns:
+        if "true_emission_velocity" not in packetcolumns:
+            msg = (
+                "The packets hold no position and no velocity of the thermal emission. Remove --use_thermalemissiontype"
+            )
+            raise ValueError(msg)
+        return pl.col("true_emission_velocity")
+    return get_emission_velocity_expr(position)
+
+
 def get_emission_velocity_lineofsight_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     """Return the line-of-sight velocity [cm/s] of the last interaction (em) or the last thermal emission (trueem).
 

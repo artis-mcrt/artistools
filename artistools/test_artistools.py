@@ -2280,13 +2280,15 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
         absorbed * (upper**3 - lower**3) / (3 * (upper - lower) * vph_kmps**2) if upper <= vph_kmps else absorbed
         for lower, upper in itertools.pairwise(edges)
     ]
-    for dirbin in (90, 50):
-        dfdepths, dfblend = get_sobolev_trough(profiles, inputs, dirbin, vph_kmps, edges)
+    for dirbin, relativisticdoppler in ((90, True), (50, False)):
+        dfdepths, dfblend = get_sobolev_trough(
+            profiles, inputs, dirbin, vph_kmps, edges, relativisticdoppler=relativisticdoppler
+        )
         assert np.allclose(dfdepths["trough_depth"].to_numpy(), expected, rtol=0.0, atol=0.01), dirbin
         deepest = dfblend.top_k(1, by="trough_depth").row(0, named=True)
         assert np.isclose(deepest["trough_depth"], absorbed, rtol=0.01, atol=0.0)
-        # the plateau from 4000 to 8000 km/s gives the wavelengths of the relativistic Doppler shift of 5000 Å
-        assert 4868.0 < deepest["lambda_angstroms"] < 4934.0
+        # the plateau from 4000 to 8000 km/s gives the wavelengths of the Doppler shift of 5000 Å
+        assert 4866.0 < deepest["lambda_angstroms"] < 4934.0
 
 
 def test_linecontributions_writes_a_file_only_with_the_output_option(
