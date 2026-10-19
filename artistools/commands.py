@@ -170,6 +170,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
     ),
     "model commands": ("inputmodel", "makevpktinput"),
     "data commands": (
+        "cache",
         "deposition",
         "ejectaopacity",
         "exportmassfractions",
@@ -207,6 +208,18 @@ DESCRIBEINPUTMODEL = CommandSpec(
 )
 
 subcommandtree: CommandTree = {
+    "cache": CommandSpec(
+        "cache",
+        helptext="Make, list, or delete the parquet caches of the text output of an ARTIS model.",
+        note=(
+            "A reader converts a text file to a cache at the first read. 'make' does all the conversions at one"
+            " time, e.g. in the job script after a run of ARTIS."
+        ),
+        examples=(
+            ("make .", "the caches of the input model, the line list, the estimators, and the packets"),
+            ("list .", "the caches of the model and their sizes"),
+        ),
+    ),
     "catalog": CommandSpec(
         "catalog",
         helptext="Make a table of the ARTIS models below a folder, with one row for each model.",

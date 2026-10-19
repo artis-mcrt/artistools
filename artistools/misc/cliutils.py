@@ -1261,18 +1261,31 @@ def confirm_overwrite_of_files(existingfiles: Sequence[Path], force: bool) -> No
 
     for path in existingfiles:
         print_warning(f"{path} exists")
-    if force:
-        return
+    if not force and not user_agrees("Overwrite the files?"):
+        exit_with_error(
+            "The command stopped, and it did not overwrite the files", "Give -f or --force to overwrite them"
+        )
 
+
+def confirm_deletion(files: Sequence[Path], force: bool) -> None:
+    """List the files, and stop the command if the user does not agree to delete them, as rm -i does."""
+    for path in files:
+        print_detail(path)
+    if not force and not user_agrees(f"Delete the {len(files)} files?"):
+        exit_with_error("The command stopped, and it did not delete the files", "Give -f or --force to delete them")
+
+
+def user_agrees(question: str) -> bool:
+    """Ask a question of the form (y/n) on the terminal, and return True for the answer yes.
+
+    Nobody can answer when stdin is not a terminal, thus the answer is then no.
+    """
     reply = ""
     if sys.stdin.isatty():
         # the end of the input, e.g. from Ctrl-D, is the answer "no"
         with contextlib.suppress(EOFError):
-            reply = input("Overwrite the files? (y/n) ")
-    if reply.strip().lower() not in {"y", "yes"}:
-        exit_with_error(
-            "The command stopped, and it did not overwrite the files", "Give -f or --force to overwrite them"
-        )
+            reply = input(f"{question} (y/n) ")
+    return reply.strip().lower() in {"y", "yes"}
 
 
 def addarg_verbose(parser: argparse.ArgumentParser) -> None:

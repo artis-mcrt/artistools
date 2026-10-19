@@ -585,6 +585,9 @@ print(f"luminosity in the spectrum: {luminosity:.3e} erg/s")
   - give `maxpacketfiles=100` to read only the packets files of the first 100 ranks;
   - select the columns and filter the rows before `.collect()`.
 
+  `artistools cache make <modelpath>` writes all the caches of a model at one time, and `artistools cache list` gives
+  them.
+
   `get_packets_column_names` gives the columns of the packets files. The LazyFrame does not have some of these columns,
   and it adds other columns, e.g. `t_arrive_d` and `dirbin`.
 - `at.get_inputparams(modelpath)` gives a dict of the parameters of `input.txt`.

@@ -8321,3 +8321,28 @@ def test_values_of_an_unknown_variable_name_the_listing(capsys: pytest.CaptureFi
     assert "'Tee' is not a variable" in stderr
     assert "Did you mean Te?" in stderr
     assert "--listvariables" in stderr
+
+
+def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Path) -> None:
+    """Delete the caches and the leftovers of a stopped conversion, and keep each file that is not a cache.
+
+    A deleted lock file can give the lock to two writers. A parquet file of --write_data belongs to the user.
+    """
+    from artistools.cache import main as cachemain
+
+    deleted = [
+        "model.txt.parquet",
+        "linelist.out.parquet.tmp",
+        "packets/packetsbatch00_0000_0003.out.parquet",
+        "12411848.slurm/estimbatch00_0000_0003.out.parquet",
+        "packets/.packetsbatch01_0004_0007.out.parquet.partialab12.partial",
+        "12411848.slurm/.estimators_allranks.out.parquet.parts9x/ts00001_part00000.parquet",
+    ]
+    kept = ["packets/.packetsbatch00_0000_0003.out.parquet.replace-lock", "spectrum_data.parquet", "model.txt"]
+    for name in [*deleted, *kept]:
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("x")
+
+    cachemain(argsraw=["delete", "-f", str(tmp_path)])
+
+    assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted(kept)
