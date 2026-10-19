@@ -185,6 +185,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "catalog",
         "check",
         "completions",
+        "corehours",
         "describe",
         "getpath",
         "installskill",
@@ -234,6 +235,16 @@ subcommandtree: CommandTree = {
         helptext="Give the instructions for tab completion.",
         note="With a shell name, e.g. zsh, the command prints the code that the instructions write to a file.",
         examples=(("zsh", "the code of tab completion for zsh"),),
+    ),
+    "corehours": CommandSpec(
+        "corehours",
+        helptext="Sum the core hours of the runs of ARTIS models from the rank-0 logs of sn3d.",
+        note=(
+            "A run that stopped early gets an estimate from the timestamps of its log. The sum counts a copy of a log"
+            " in the model folder one time."
+        ),
+        examples=((".", "the core hours of each run and the sums"), (". --json", "the same values as JSON")),
+        exampletestfolder="test-classicmode_3d",
     ),
     "deposition": CommandSpec(
         "estimators.deposition",
