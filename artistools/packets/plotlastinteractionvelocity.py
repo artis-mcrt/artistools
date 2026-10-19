@@ -160,7 +160,10 @@ def plot_velocity_against_time(
                 modelpath, dirbin, args.xmin, args.xmax, position, histogrambinwidth_kmps
             )
             dfquartiles = dfquartiles.filter(
-                pl.col("time_days").is_between(args.timemin or -math.inf, args.timemax or math.inf)
+                pl.col("time_days").is_between(
+                    -math.inf if args.timemin is None else args.timemin,
+                    math.inf if args.timemax is None else args.timemax,
+                )
             )
             label = f"{get_model_name(modelpath)}, {dirbinlabels[dirbin]}"
             if norecordcount > 0:

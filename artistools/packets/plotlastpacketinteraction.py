@@ -413,7 +413,8 @@ def plot_velocity_profiles_by_group(
     ax = axesgrid[0, 0]
     fractionoflabel = dict(zip(dfgroupsummary["label"], dfgroupsummary["luminosity_fraction"], strict=True))
     draw_group_profiles(ax, dftable, velocityedges_kmps, unit, fractionoflabel)
-    interaction = "absorption" if absorption else ("thermal emission" if trueem else "interaction")
+    # with --absorption the velocity is still the one of em_pos, which an electron scattering after the absorption moves
+    interaction = "thermal emission" if trueem else "interaction"
     ax.set_xlabel(f"Radial velocity of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
     ax.set_ylabel(rf"$\Delta L / \Delta v$ [erg s$^{{-1}}$ {INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
     titleparts = [f"{get_model_name(modelpath)} {get_timestep_time(modelpath, timestep):.2f} d"]
@@ -453,8 +454,9 @@ def print_group_selection(wavelen: float | None, binwidth: float | None, groupby
     if absorption:
         print_detail(
             f"The group of a packet is the {groupby} of its last absorption. That absorption happens at the position"
-            " of the last emission, thus em_pos gives its velocity. ARTIS records no wavelength for a free-free or a"
-            " bound-free absorption"
+            " of the last emission, thus em_pos gives its velocity. An electron scattering after the last emission also"
+            " sets em_pos, thus the axis gives the velocity of the last interaction. ARTIS records no wavelength for a"
+            " free-free or a bound-free absorption"
         )
     if groupby == "line":
         print_line_label_convention()

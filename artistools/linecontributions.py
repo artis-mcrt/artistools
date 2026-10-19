@@ -706,7 +706,8 @@ def get_line_velocity_profiles(
             emission_erg_per_s=pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0).sum(),
             tau_sobolev_volume_mean=(tau * pl.col("volume")).filter(tau.is_not_null()).sum() / volumewithtau.sum(),
             tau_sobolev_volume_median=get_weighted_quantile_expr("tau_sobolev", "volume", 0.5),
-            volume_fraction_tau_sobolev_above_1=pl.col("volume").filter(tau > 1.0).sum() / volumewithtau.sum(),
+            # a cell with no tau_sobolev is transparent, as in the trough estimate, thus its volume stays in the bin
+            volume_fraction_tau_sobolev_above_1=pl.col("volume").filter(tau > 1.0).sum() / pl.col("volume").sum(),
             cellcount=pl.len(),
         )
         .with_columns(
