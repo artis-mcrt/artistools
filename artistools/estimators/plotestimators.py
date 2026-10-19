@@ -311,8 +311,21 @@ class SubplotSettings(t.TypedDict, total=False):
     elementcolours: bool
 
 
+# the edges of two adjacent bins can differ by a rounding error, e.g. of a float32 column or of a sum of timestep
+# widths. An edge near zero has a large relative error, thus the tolerance is this fraction of a bin width
+HISTOGRAM_EDGE_TOLERANCE: t.Final = 1e-4
+
+
 def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.LazyFrame:
-    """Return the average line of a series in each x bin, with the minimum and the maximum of the bin."""
+    """Return the average line of a series in each x bin, with the minimum and the maximum of the bin.
+
+    With --histogram, the series holds the edges of each point, and each bin takes the lowest and the highest edge.
+    """
+    edgeexprs = (
+        [pl.col("xbin_lower").min(), pl.col("xbin_upper").max()]
+        if "xbin_lower" in dfseries.collect_schema().names()
+        else []
+    )
     dflinepoints = (
         dfseries
         # a cell with no value, a NaN, or an infinity, e.g. a ratio with a divisor of 0, must not change the mean of its
@@ -320,6 +333,7 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
         .filter(pl.col("yvalue").cast(pl.Float64).is_finite().fill_null(value=False))
         .group_by("xvalue_binned")
         .agg(
+            *edgeexprs,
             # every weight of a bin can be zero, e.g. an element that is absent from the bin has no mass.
             # Equal weights make the weighted average the plain average, thus the bin keeps its point
             yvalue_binned=pl
@@ -333,12 +347,34 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
     )
 
     filterfunc = get_filterfunc(args)
-    if filterfunc is not None:
+    if filterfunc is not None and edgeexprs:
+        # the bins on the two sides of a gap are not neighbours, thus the filter smooths each run of adjacent bins
+        windowlength = int(args.filtersavgol[0]) if getattr(args, "filtersavgol", None) else 1
+
+        def filter_run(yvalues: pl.Series) -> pl.Series:
+            # a Savitzky-Golay filter needs at least one window of points
+            return yvalues if yvalues.len() < windowlength else pl.Series(filterfunc(yvalues.to_numpy()))
+
+        dflinepoints = dflinepoints.with_columns(
+            pl.col("yvalue_binned").map_batches(filter_run, return_dtype=pl.self_dtype()).over(get_bin_run_expr())
+        )
+    elif filterfunc is not None:
         dflinepoints = dflinepoints.with_columns(
             pl.col("yvalue_binned").map_batches(filterfunc, return_dtype=pl.self_dtype())
         )
 
     return dflinepoints
+
+
+def get_bin_run_expr() -> pl.Expr:
+    """Return the number of the run of adjacent bins that holds each bin, for bins in the order of x.
+
+    A bin that does not start at the upper edge of the bin before it starts a new run.
+    """
+    edgetolerance = HISTOGRAM_EDGE_TOLERANCE * (pl.col("xbin_upper") - pl.col("xbin_lower")).min()
+    return (
+        ((pl.col("xbin_lower") - pl.col("xbin_upper").shift(1)).abs() > edgetolerance).fill_null(value=False).cum_sum()
+    )
 
 
 def extend_line_to_its_ends(dflinepoints: pl.DataFrame, startfromzero: bool, xbinwidth: float | None) -> pl.DataFrame:
@@ -359,6 +395,25 @@ def extend_line_to_its_ends(dflinepoints: pl.DataFrame, startfromzero: bool, xbi
     if startfromzero:
         dflinepoints = repeat_endpoint(dflinepoints, 0.0, atstart=True)
     return dflinepoints
+
+
+def get_histogram_steps(dflinepoints: pl.DataFrame) -> pl.DataFrame:
+    """Return the points of a histogram line, which gives the value of each bin across its full width.
+
+    A row of NaN values separates two bins with a gap between them, e.g. around an empty bin. Thus the line and the
+    shaded area do not cross the gap.
+    """
+    lower = dflinepoints.get_column("xbin_lower").cast(pl.Float64).to_numpy()
+    upper = dflinepoints.get_column("xbin_upper").cast(pl.Float64).to_numpy()
+    xsteps = np.column_stack([lower, upper]).ravel()
+    columns = {"xvalue_binned": xsteps}
+    for ycolumn in ("yvalue_binned", "yvalue_binned_min", "yvalue_binned_max"):
+        columns[ycolumn] = np.repeat(dflinepoints.get_column(ycolumn).cast(pl.Float64).to_numpy(), 2)
+
+    edgetolerance = HISTOGRAM_EDGE_TOLERANCE * float(np.min(upper - lower)) if lower.size > 0 else 0.0
+    gapafterbin = np.flatnonzero(~np.isclose(lower[1:], upper[:-1], rtol=0.0, atol=edgetolerance))
+    insertindices = 2 * gapafterbin + 2
+    return pl.DataFrame({name: np.insert(values, insertindices, np.nan) for name, values in columns.items()})
 
 
 def get_line_ends(figuredata: "LineFigureData", args: argparse.Namespace) -> tuple[bool, float | None]:
@@ -385,7 +440,8 @@ def draw_series(
 
     dflinepoints comes from get_line_points. dfpoints holds the xvalue and the yvalue of every point,
     and --markers draws them. -xbins 0 draws those points alone, with no average line. xbinwidth is the width of
-    each x bin, or None for a plot with no bins.
+    each x bin, or None for a plot with no bins. With --histogram, dflinepoints holds the edges of the bins, and the
+    line goes across the full width of each bin.
     """
     if dflinepoints is None:
         assert dfpoints is not None
@@ -393,7 +449,11 @@ def draw_series(
         draw_points(ax, dfpoints, plotkwargs.get("color") or get_next_color(ax), plotkwargs, label=label)
         return
 
-    dflinepoints = extend_line_to_its_ends(dflinepoints, startfromzero, xbinwidth)
+    dflinepoints = (
+        get_histogram_steps(dflinepoints)
+        if "xbin_lower" in dflinepoints.columns
+        else extend_line_to_its_ends(dflinepoints, startfromzero, xbinwidth)
+    )
     xvalues_binned = dflinepoints.get_column("xvalue_binned")
     yvalues_binned = dflinepoints.get_column("yvalue_binned")
 
@@ -1637,8 +1697,12 @@ def plot_series(
 
 def get_xlist(
     xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: argparse.Namespace
-) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame]:
-    """Return the x values, model grid indices, and timesteps to plot, along with the filtered estimators."""
+) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame, tuple[float, float]]:
+    """Return the x values, model grid indices, and timesteps to plot, the filtered estimators, and the x limits.
+
+    The x limits are -xmin and -xmax, or else the range of the x values. A histogram with the extent of each cell or
+    timestep takes the outer edges of the extents in place of the range.
+    """
     if timestepslist is not None:
         estimators = estimators.filter(pl.col("timestep").is_in(timestepslist))
 
@@ -1686,6 +1750,11 @@ def get_xlist(
     if args.xbins is None or args.xbins < 0:
         # the automatic bins need this. The full sort is small beside a round trip
         statexprs["xdeltamax"] = xvalues.sort().diff().max()
+    cellextent = get_cell_x_extent(xvariable, estimators.collect_schema().names()) if args.histogram else None
+    if cellextent is not None:
+        # the bins with no value of a series stay in the x range, as the x values of a plot with no histogram do
+        statexprs["xextentmin"] = cellextent[0].filter(hasxvalue).min()
+        statexprs["xextentmax"] = cellextent[1].filter(hasxvalue).max()
 
     inxrange = hasxvalue
     if args.xmin is not None:
@@ -1759,10 +1828,32 @@ def get_xlist(
             .with_columns(xbinindex=xbinindex)
             .filter(pl.col("xbinindex").is_between(0, len(xmids) - 1, closed="both"))
             .with_columns(xvalue_binned=pl.lit(pl.Series(xmids)).gather(pl.col("xbinindex")))
-            .drop("xbinindex")
         )
+        if args.histogram and xmax > xmin:
+            print_detail(f"--histogram draws each of the {args.xbins} bins from its lower edge to its upper edge")
+            estimators = estimators.with_columns(
+                xbin_lower=pl.lit(pl.Series(xlower)).gather(pl.col("xbinindex")),
+                xbin_upper=pl.lit(pl.Series(xupper)).gather(pl.col("xbinindex")),
+            )
+        estimators = estimators.drop("xbinindex")
     else:
         estimators = estimators.with_columns(xvalue_binned=pl.col("xvalue"))
+
+    xlimits = (xmin, xmax)
+    # a bin of a range of zero width has no width, thus the steps take the extent of the cells or the timesteps
+    if args.histogram and (not args.xbins or xmax <= xmin):
+        if cellextent is None:
+            exit_with_error(
+                f"--histogram needs the extent of each point on the horizontal axis, and -x {xvariable} gives none",
+                "Give -xbins N for a range of more than one x value. The histogram then shows the extent of each bin",
+            )
+        xlower, xupper, extentsource = cellextent
+        print_detail(f"--histogram draws {extentsource}, thus each step gives the value across the full extent")
+        estimators = estimators.with_columns(xbin_lower=xlower, xbin_upper=xupper)
+        xlimits = (
+            xstats["xextentmin"] if args.xmin is None else args.xmin,
+            xstats["xextentmax"] if args.xmax is None else args.xmax,
+        )
 
     estimators = estimators.filter(inxrange).sort("xvalue")
 
@@ -1770,7 +1861,40 @@ def get_xlist(
     if not xlist:
         raise NoEstimatorRowsError(get_no_rows_message(timestepslist, args))
 
-    return xlist, mgilist, timesteps, estimators
+    return xlist, mgilist, timesteps, estimators, xlimits
+
+
+def get_cell_x_extent(xvariable: str, columns: Collection[str]) -> tuple[pl.Expr, pl.Expr, str] | None:
+    """Return the lower edge and the upper edge of each point on the x axis and their source, or None if unknown.
+
+    A velocity axis takes the inner and the outer velocity of the cell. A time axis takes the start and the end of the
+    timestep. A cell number or a timestep number covers the interval of width 1 around it. A column with "_mid" in its
+    name, e.g. vel_x_mid_on_c of a line slice, takes the columns with "_min" and "_max" in its place.
+    """
+    lowercolumn, uppercolumn = xvariable.replace("_mid", "_min"), xvariable.replace("_mid", "_max")
+    if "_mid" in xvariable and lowercolumn in columns and uppercolumn in columns:
+        return pl.col(lowercolumn), pl.col(uppercolumn), f"each cell from {lowercolumn} to {uppercolumn} of the model"
+    if xvariable in {"velocity", "beta"}:
+        scalefactor = km_to_cm if xvariable == "velocity" else C_cm_per_s
+        return (
+            pl.col("vel_r_min") / scalefactor,
+            pl.col("vel_r_max") / scalefactor,
+            "each cell from its inner to its outer velocity (vel_r_min to vel_r_max of the model)",
+        )
+    if xvariable == "time":
+        return (
+            pl.col("tstart_days"),
+            pl.col("tstart_days") + pl.col("twidth_days"),
+            "each timestep from its start to its end (tstart_days and twidth_days of the timesteps)",
+        )
+    if xvariable in {"cellid", "modelgridindex", "timestep"}:
+        xcolumn = "timestep" if xvariable == "timestep" else "modelgridindex"
+        return (
+            pl.col(xcolumn) - 0.5,
+            pl.col(xcolumn) + 0.5,
+            f"each {xvariable} number from 0.5 below it to 0.5 above it",
+        )
+    return None
 
 
 class NoEstimatorRowsError(ValueError):
@@ -2138,11 +2262,9 @@ def get_line_figure_data(
 
     A plot of one cell against time gives the field cell, and a snapshot gives the fields timestep and timedays.
     """
-    xlist, mgilist, timestepslist, estimators = get_xlist(
+    _, mgilist, timestepslist, estimators, (xmin, xmax) = get_xlist(
         xvariable=xvariable, estimators=estimators, timestepslist=timestepslist, args=args
     )
-    xmin = args.xmin if args.xmin is not None else min(xlist)
-    xmax = args.xmax if args.xmax is not None else max(xlist)
 
     subplotplans = [
         get_subplot_plans(timestepslist, plotitems, mgilist, modelpath, estimators, args) for plotitems in plotlist
@@ -2274,6 +2396,7 @@ def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) 
     fields of the frame, e.g. the timestep, are columns, thus each row names its time. The column "points" is "line"
     for a point of the line and "markers" for a point of --markers, because a series with --markers draws both. The
     drawn line repeats its first and its last value at its ends, and the column bin_centre is false for these points.
+    With --histogram, the line gives each bin one time, with its edges in two more columns, and it repeats no points.
     """
     xcolumn = get_table_xcolumn(args.x)
     startfromzero, xbinwidth = get_line_ends(figuredata, args)
@@ -2281,7 +2404,19 @@ def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) 
     for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
         for series in seriesdatas:
             dfdrawn: list[tuple[str, pl.DataFrame]] = []
-            if series.dflinepoints is not None:
+            if series.dflinepoints is not None and "xbin_lower" in series.dflinepoints.columns:
+                dfdrawn.append((
+                    "line",
+                    series.dflinepoints.select(
+                        pl.col("xvalue_binned").alias(xcolumn),
+                        pl.col("xbin_lower").alias(f"{xcolumn}_lower"),
+                        pl.col("xbin_upper").alias(f"{xcolumn}_upper"),
+                        value=pl.col("yvalue_binned"),
+                        value_min=pl.col("yvalue_binned_min"),
+                        value_max=pl.col("yvalue_binned_max"),
+                    ),
+                ))
+            elif series.dflinepoints is not None:
                 dfdrawnline = extend_line_to_its_ends(
                     series.dflinepoints.with_columns(bin_centre=pl.lit(value=True)), startfromzero, xbinwidth
                 )
@@ -2978,6 +3113,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--markers", action="store_true", help="Plot markers instead of shaded area")
 
+    parser.add_argument(
+        "--histogram",
+        action="store_true",
+        help=(
+            "Draw each x bin as a horizontal step from its lower edge to its upper edge. Without bins, a step covers"
+            " the velocity range of the cell, the duration of the timestep, or a width of 1"
+        ),
+    )
+
     addarg_filter(parser)
 
     parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
@@ -3324,6 +3468,7 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
                 ("-filtermovingavg", bool(args.filtermovingavg)),
                 ("-filtersavgol", bool(args.filtersavgol)),
                 ("--markers", bool(args.markers)),
+                ("--histogram", bool(args.histogram)),
             )
             if given
         ]

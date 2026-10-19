@@ -185,6 +185,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "xmax",
     "xbins",
     "markers",
+    "histogram",
     "colorbyion",
     "figwidthscale",
 })
@@ -264,6 +265,7 @@ class ControlValues:
     # the items of each subplot, e.g. ("Te", "TR") or ("populations", "Fe II", "Fe III", "yscale=log")
     subplots: tuple[tuple[str, ...], ...]
     markers: bool
+    histogram: bool
     xbins: str
     colorbyion: bool
     figwidthscale: float
@@ -964,6 +966,7 @@ class EstimatorViewer:
             cells="" if args.modelgridindex is None else format_range_list(args.modelgridindex),
             subplots=subplots,
             markers=bool(args.markers),
+            histogram=bool(args.histogram),
             xbins="" if args.xbins is None else str(args.xbins),
             colorbyion=bool(args.colorbyion),
             figwidthscale=args.figwidthscale,
@@ -1043,6 +1046,8 @@ class EstimatorViewer:
             tokens += get_option_tokens("-xbins", values.xbins)
         if values.markers:
             tokens.append("--markers")
+        if values.histogram:
+            tokens.append("--histogram")
         if values.colorbyion:
             tokens.append("--colorbyion")
         if values.figwidthscale != 1.0:
@@ -1335,6 +1340,7 @@ BOOKKEEPING_COLUMNS: t.Final = frozenset({
     "titeration",
     "tmid_days",
     "tmid_days_prevtimestep",
+    "tstart_days",
     "twidth_days",
     "volume_prevtimestep",
 })
@@ -2208,9 +2214,11 @@ def open_window(
     # show_values adds a note to the text of these checkboxes, thus the tooltip gives the flag here
     markerscheck.setToolTip(f"{helptexts.get('markers', '')} (--markers)")
     colorbyioncheck.setToolTip(f"{helptexts.get('colorbyion', '')} (--colorbyion)")
+    histogramcheck = QtWidgets.QCheckBox("--histogram")
+    histogramcheck.setToolTip(helptexts.get("histogram", ""))
     add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("-xbins"), xbinsedit])
     add_row(xgrid, 1, [xminlabel, xminedit, xmaxlabel, xmaxedit])
-    add_row(xgrid, 2, [markerscheck, colorbyioncheck])
+    add_row(xgrid, 2, [markerscheck, colorbyioncheck, histogramcheck])
     smoothingbox = QtWidgets.QComboBox()
     smoothingbox.setMinimumWidth(120)
     for mode, modetext in SMOOTHING_MODES.items():
@@ -2348,6 +2356,7 @@ def open_window(
         xbox,
         markerscheck,
         colorbyioncheck,
+        histogramcheck,
         geometrybox,
         axisbox,
         coneanglebox,
@@ -3040,6 +3049,7 @@ def open_window(
         markersnote = " (on for -xbins 0)" if viewer.plotmarkers and not values.markers else ""
         markerscheck.setText(FLAG_LABELS["--markers"] + markersnote)
         colorbyioncheck.setChecked(values.colorbyion)
+        histogramcheck.setChecked(values.histogram)
         colorbyionnote = " (on for bins)" if viewer.plotcolorbyion and not values.colorbyion else ""
         colorbyioncheck.setText(FLAG_LABELS["--colorbyion"] + colorbyionnote)
         show_subplots()
@@ -3262,6 +3272,7 @@ def open_window(
                 viewer.values,
                 xbins=xbinsedit.text().strip(),
                 markers=markerscheck.isChecked(),
+                histogram=histogramcheck.isChecked(),
                 colorbyion=colorbyioncheck.isChecked(),
             )
         )
@@ -3826,6 +3837,7 @@ def open_window(
     xbinsedit.editingFinished.connect(on_style)
     markerscheck.toggled.connect(on_style)
     colorbyioncheck.toggled.connect(on_style)
+    histogramcheck.toggled.connect(on_style)
     defaultbutton.clicked.connect(lambda: apply_subplots(viewer.modeldata.defaultsubplots))
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
