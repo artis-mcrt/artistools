@@ -14,6 +14,7 @@ from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import zopen
+from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import with_compressed_extension
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_file_atomic
@@ -111,25 +112,26 @@ def write_filtered_packets_file(packetsfile: Path, modelfolder: Path) -> Path:
     # the new file takes the mode of the packets file, also when it replaces a file of a different name
     filemode = stat.S_IMODE(packetsfile.stat().st_mode)
     write_file_atomic(outpath, lambda fout: filter_packets_file(packetsfile, modelfolder, fout), mode=filemode)
-    if packetsfile != outpath:
-        packetsfile.unlink()
+    # another copy of the rank, e.g. a .gz file, still holds the removed packets
+    for filecopy in get_file_copies(outpath):
+        if filecopy != outpath:
+            filecopy.unlink(missing_ok=True)
     return outpath
 
 
-def remove_packets_caches(modelfolder: Path, packetsfiles: dict[int, Path], filteredranks: set[int]) -> None:
-    """Remove the parquet cache of each batch that holds a filtered rank.
+def get_rebuildable_packets_caches(modelfolder: Path, packetsfiles: dict[int, Path]) -> dict[int, Path]:
+    """Return the path of the parquet cache of the batch of each rank, for the batches that the text files rebuild.
 
     The readers compare the times of the text files with a tolerance. Thus a cache from a time just before the filter
-    can stay in use. The function keeps the cache of a batch that has no text file for a rank, because only the cache
-    holds the packets of that rank.
+    can stay in use, and the filter must remove it. A batch that has no text file for a rank is not in the result,
+    because only its cache holds the packets of that rank.
     """
-    for batchindex, batch_mpiranks in get_packets_mpirank_groups(modelfolder, maxpacketfiles=None):
-        if filteredranks.isdisjoint(batch_mpiranks) or not all(rank in packetsfiles for rank in batch_mpiranks):
-            continue
-        parquetpath = get_packets_rankbatch_parquetpath(modelfolder, batch_mpiranks, batchindex, virtual=False)
-        if parquetpath.is_file():
-            parquetpath.unlink()
-            print_detail(f"removed the cache {parquetpath}")
+    return {
+        rank: get_packets_rankbatch_parquetpath(modelfolder, batch_mpiranks, batchindex, virtual=False)
+        for batchindex, batch_mpiranks in get_packets_mpirank_groups(modelfolder, maxpacketfiles=None)
+        if all(rank in packetsfiles for rank in batch_mpiranks)
+        for rank in batch_mpiranks
+    }
 
 
 class FilteredFileSizes(t.NamedTuple):
@@ -141,11 +143,14 @@ class FilteredFileSizes(t.NamedTuple):
     size_out: float
 
 
-def filter_and_report_packets_file(packetsfile: Path, modelfolder: Path, dry_run: bool) -> FilteredFileSizes | None:
+def filter_and_report_packets_file(
+    packetsfile: Path, modelfolder: Path, dry_run: bool, parquetcache: Path | None
+) -> FilteredFileSizes | None:
     """Filter one packets file, or only count its packets with dry_run, and print the result.
 
     The function returns None for a file that the filter does not change. With dry_run, size_out is an estimate
-    from the fraction of the text that the filter keeps.
+    from the fraction of the text that the filter keeps. The function removes parquetcache before it replaces the
+    file, thus a stop after the replacement leaves no cache of the removed packets.
     """
     counts = filter_packets_file(packetsfile, modelfolder)
     if counts.packets_kept == counts.packets_in:
@@ -167,6 +172,9 @@ def filter_and_report_packets_file(packetsfile: Path, modelfolder: Path, dry_run
     if dry_run:
         return FilteredFileSizes(counts.packets_in, removed, size_in, (1 - removed_fraction) * size_in)
 
+    if parquetcache is not None and parquetcache.is_file():
+        parquetcache.unlink()
+        print_detail(f"removed the cache {parquetcache}")
     outpath = write_filtered_packets_file(packetsfile, modelfolder)
     size_out = outpath.stat().st_size
     print_detail(f"wrote {outpath}: {format_size(size_out)} ({size_out / size_in * 100:.1f}% of the input)")
@@ -208,13 +216,11 @@ def filter_packets_of_models(modelfolders: "Sequence[Path]", dry_run: bool, forc
 
     results: list[FilteredFileSizes] = []
     for modelfolder, packetsfiles_of_rank in packetsfiles_of_model.items():
-        filteredranks: set[int] = set()
+        parquetcaches = get_rebuildable_packets_caches(modelfolder, packetsfiles_of_rank)
         for rank, packetsfile in packetsfiles_of_rank.items():
-            if (result := filter_and_report_packets_file(packetsfile, modelfolder, dry_run)) is not None:
+            result = filter_and_report_packets_file(packetsfile, modelfolder, dry_run, parquetcaches.get(rank))
+            if result is not None:
                 results.append(result)
-                filteredranks.add(rank)
-        if filteredranks and not dry_run:
-            remove_packets_caches(modelfolder, packetsfiles_of_rank, filteredranks)
 
     print_filter_summary(results, len(packetsfiles), dry_run)
 

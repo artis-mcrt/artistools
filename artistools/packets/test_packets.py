@@ -1151,6 +1151,8 @@ def test_filterpackets_keeps_only_the_escaped_rpkts(tmp_path: Path, monkeypatch:
     parquetcache.write_bytes(b"")
     # the zstd file that replaces the uncompressed file must keep its mode
     (packetsfolder / "packets00_0001.out").chmod(0o640)
+    # a stale copy of a rank still holds the removed packets
+    (packetsfolder / "packets00_0001.out.gz").write_bytes(b"")
     escaped_rpkt = (pl.col("type_id") == at.packets.core.type_ids["TYPE_ESCAPE"]) & (
         pl.col("escape_type_id") == at.packets.core.type_ids["TYPE_RPKT"]
     )
