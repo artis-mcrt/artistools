@@ -118,12 +118,13 @@ def without_compressed_extension(filepath: Path) -> Path:
     return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath
 
 
-def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], object]) -> None:
-    """Write a text file through a temporary file in the same folder, then put the file at its path in one step.
+def write_file_atomic(filepath: Path, write: Callable[[t.IO[bytes]], object], mode: int | None = None) -> None:
+    """Write a binary file through a temporary file in the same folder, then put the file at its path in one step.
 
     os.replace puts the new file in the place of a symbolic link, and it does not write through the link. A model
     folder of a different user can hold a link with the name of an output file, e.g. a link to ~/.bashrc. A new file
     takes the mode 0666 less the umask, as a file of open() does. A file that replaces a regular file takes its mode.
+    A mode that is not None gives the mode of the new file in each case.
     """
     import secrets
     import stat
@@ -136,13 +137,28 @@ def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], object]) 
     # O_EXCL fails for a name that exists, e.g. a link, and the kernel takes the umask away from the mode 0666
     fd = os.open(partialfilepath, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        with os.fdopen(fd, "wb") as stream:
             write(stream)
-        if deststat is not None and stat.S_ISREG(deststat.st_mode):
-            partialfilepath.chmod(stat.S_IMODE(deststat.st_mode))
+        if mode is None and deststat is not None and stat.S_ISREG(deststat.st_mode):
+            mode = stat.S_IMODE(deststat.st_mode)
+        if mode is not None:
+            partialfilepath.chmod(mode)
         partialfilepath.replace(filepath)
     finally:
         partialfilepath.unlink(missing_ok=True)
+
+
+def write_text_file_atomic(filepath: Path, write: Callable[[t.TextIO], object]) -> None:
+    """Write a UTF-8 text file with write_file_atomic."""
+
+    def write_text(stream: t.IO[bytes]) -> None:
+        textstream = io.TextIOWrapper(stream, encoding="utf-8")
+        write(textstream)
+        textstream.flush()
+        # the binary stream stays open, because write_file_atomic closes it
+        textstream.detach()
+
+    write_file_atomic(filepath, write_text)
 
 
 def get_file_copies(filepath: Path) -> list[Path]:
@@ -178,13 +194,14 @@ def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
     return {".zst": zstd.open, ".gz": gzip.open, ".xz": lzma.open}[ext]  # ruff:ignore[banned-api]
 
 
-def write_zstd_lines(fileobj: t.IO[bytes], lines: Sequence[str]) -> None:
+def write_zstd_lines(fileobj: t.IO[bytes], lines: Sequence[str], compression_level: int | None = None) -> None:
     """Append the lines to an open binary file as one zstd frame.
 
     Each write_csv call with compression="zstd" adds one frame. ARTIS and zopen read a file of several frames.
+    A compression_level of None gives the default level of polars.
     """
     pl.DataFrame({"line": lines}, schema={"line": pl.String}).write_csv(
-        fileobj, include_header=False, quote_style="never", compression="zstd"
+        fileobj, include_header=False, quote_style="never", compression="zstd", compression_level=compression_level
     )
 
 
