@@ -173,6 +173,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "deposition",
         "ejectaopacity",
         "exportmassfractions",
+        "filterpackets",
         "gsinetworkdecayproducts",
         "hesma",
         "linecontributions",
@@ -279,6 +280,16 @@ subcommandtree: CommandTree = {
         helptext="Write the mass fractions of the elements.",
         note="The values come from the estimators, and the command writes a text file.",
         examples=(("-modelpath . -ts 40 -modelgridindex 0", "the mass fractions of cell 0 at timestep 40"),),
+    ),
+    "filterpackets": CommandSpec(
+        "packets.filterpackets",
+        helptext="Remove each packet except the escaped r-packets from the packets files of a model.",
+        note=(
+            "The filter makes the files smaller. It also removes the escaped gamma packets. Each filtered file"
+            " replaces its packets file as a zstd file."
+        ),
+        examples=((". --dry-run", "the number of packets and the size that the filter removes"),),
+        exampletestfolder="test-classicmode_3d",
     ),
     "getpath": CommandSpec(
         "commands",
