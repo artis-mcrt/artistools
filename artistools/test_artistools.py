@@ -1473,7 +1473,10 @@ def test_writecomparisondata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     The default model path "." gave an empty model name, e.g. spectra__artisnebular.txt.
     """
     monkeypatch.chdir(modelpath)
-    at.writecomparisondata.main(argsraw=[], modelpath=Path(), outputpath=tmp_path, selected_timesteps=list(range(99)))
+    # CodSpeed runs a benchmark more than one time in one folder, thus the later runs find the files of the first
+    at.writecomparisondata.main(
+        argsraw=[], modelpath=Path(), outputpath=tmp_path, selected_timesteps=list(range(99)), force=True
+    )
 
     assert sorted(path.name for path in tmp_path.iterdir()) == [
         "edep_testmodel_artisnebular.txt",
