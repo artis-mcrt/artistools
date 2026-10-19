@@ -474,9 +474,9 @@ subcommandtree: CommandTree = {
             " view from the level populations."
         ),
         examples=(
-            ("-modelpath . -t 7", "the last interactions of the packets that arrive at 7 days"),
+            (". -t 7", "the last interactions of the packets that arrive at 7 days"),
             (
-                "-modelpath . -t 7 -groupby ion -wavelen 4000 -binwidth 1000",
+                ". -t 7 -groupby ion -lambdamin 3500 -lambdamax 4500",
                 "the luminosity of each ion against the velocity, for the packets from 3500 to 4500 Å",
             ),
         ),

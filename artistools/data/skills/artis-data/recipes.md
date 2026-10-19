@@ -217,7 +217,7 @@ else:
 
 Question: at which velocities do the packets of a spectral feature last interact, and which lines emit them?
 
-- `artistools plotlastpacketinteraction -modelpath <modelpath> -t <days> -groupby line -wavelen <Å> -binwidth <Å>`
+- `artistools plotlastpacketinteraction <modelpath> -t <days> -groupby line -lambdamin <Å> -lambdamax <Å>`
   plots the luminosity of each line of the last emission against the radial velocity of the last interaction.
   `-groupby ion` and `-groupby element` give larger groups. `--absorption` selects the packets by the wavelength of
   their last absorption. It also groups them by the element, the ion, or the line of that absorption.

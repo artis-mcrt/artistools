@@ -736,8 +736,8 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
         modelpath=modelpath,
         timedays=7.0,
         groupby="ion",
-        wavelen=4000.0,
-        binwidth=1000.0,
+        xmin=3500.0,
+        xmax=4500.0,
         outputfile=tmp_path / "groups.pdf",
         write_data=True,
     )
@@ -748,7 +748,7 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
         lzpackets
         .filter(
             pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"),
-            (at.constants.c_ang_per_s / pl.col("nu_rf")).is_between(3500.0, 4500.0, closed="none"),
+            (at.constants.c_ang_per_s / pl.col("nu_rf")).is_between(3500.0, 4500.0),
         )
         .select("e_rf")
         .collect()
@@ -919,6 +919,8 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
         (["-dirbin", "35"], "-dirbin 35 is not the first direction bin"),
         (["-dirbin", "-10"], "-dirbin -10 is not the first direction bin"),
         ([], "the time is missing"),
+        (["-lambdamin", "3500"], "the wavelength range needs two ends"),
+        (["--absorption", "--use_thermalemissiontype"], "--absorption takes the last absorption"),
     ],
 )
 def test_lastpacketinteraction_refuses_a_selection_that_matches_no_packet(

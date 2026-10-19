@@ -102,8 +102,7 @@ def get_reduced_packet_set(
     dirbin: int,
     Z: Sequence[int] | None,
     ion_stage: Sequence[int] | None,
-    wavelen: float | None = None,
-    binwidth: float | None = None,
+    lambdarange: tuple[float, float] | None = None,
     srII_triplet: bool = False,
     *,
     absorption: bool = False,
@@ -112,9 +111,9 @@ def get_reduced_packet_set(
 
     The function returns the number of MPI ranks, the packets, and the solid-angle factor
     (4 pi / solidangle) of the direction bin. `get_required_packets()` selects the packets for the
-    given element and ion filters. If `wavelen` and `binwidth` both have a value, the function keeps
-    only the packets in that wavelength slice. The slice applies to the rest-frame wavelength at the escape, or with
-    absorption, at the last absorption. ARTIS records no wavelength for a free-free or a bound-free absorption, thus
+    given element and ion filters. A lambdarange keeps only the packets in that range of wavelength [Å], with
+    both ends. The range applies to the rest-frame wavelength at the escape, or with absorption, at the last
+    absorption. ARTIS records no wavelength for a free-free or a bound-free absorption, thus
     the slice leaves out its packet, as plotspectra does. The function then keeps only the packets of the direction bin.
     """
     from artistools.spectra.core import get_boundbound_absorption_freq_expr
@@ -123,13 +122,8 @@ def get_reduced_packet_set(
     frequency = get_boundbound_absorption_freq_expr() if absorption else pl.col("nu_rf")
     dfpackets_selected = dfpackets_selected.with_columns((c_ang_per_s / frequency).alias("lambda_rf"))
 
-    if wavelen is not None and binwidth is not None:
-        lam_min = wavelen - binwidth / 2
-        lam_max = wavelen + binwidth / 2
-
-        dfpackets_selected = dfpackets_selected.filter(
-            (pl.col("lambda_rf") > lam_min) & (pl.col("lambda_rf") < lam_max)
-        )
+    if lambdarange is not None:
+        dfpackets_selected = dfpackets_selected.filter(pl.col("lambda_rf").is_between(*lambdarange))
     dfpackets_selected, solidangle_factor = filter_packets_dirbin(dfpackets_selected, dirbin, average_over_phi=True)
 
     return nprocs_read, dfpackets_selected, solidangle_factor
@@ -144,8 +138,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     trueem: bool,
     Z: int | None = None,
     ion_stage_str: str | None = None,
-    wavelen: float | None = None,
-    binwidth: float | None = None,
+    lambdarange: tuple[float, float] | None = None,
     outputfile: Path | None = None,
     args: argparse.Namespace | None = None,
     *,
@@ -154,12 +147,14 @@ def packets_2d_hist_bin_and_ejecta_vel(
     """Plot a 2D histogram of packet emission position against ejecta velocity, and save the figure.
 
     An outputfile of None or of a folder gives the file a name from the selection of the packets. With absorption, the
-    wavelength slice applies to the wavelength of the last absorption.
+    wavelength range applies to the wavelength of the last absorption.
     """
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
-    if wavelen is not None:
+    if lambdarange is not None:
         # the slice of absorption selects different packets, thus its files must not replace the files of the escape
-        start_of_filename = f"{start_of_filename}{wavelen:.0f}A_{'absorption_' if absorption else ''}"
+        start_of_filename = (
+            f"{start_of_filename}{lambdarange[0]:.0f}-{lambdarange[1]:.0f}A_{'absorption_' if absorption else ''}"
+        )
     start_of_filename = f"{start_of_filename}Z={Z}_" if Z else f"{start_of_filename}allelements_"
     start_of_filename = f"{start_of_filename}I={ion_stage_str}_" if ion_stage_str else f"{start_of_filename}allions_"
 
@@ -174,8 +169,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
         dirbin,
         Z_list,
         ion_stage_list,
-        wavelen=wavelen,
-        binwidth=binwidth,
+        lambdarange=lambdarange,
         srII_triplet=srIItriplet,
         absorption=absorption,
     )
@@ -190,11 +184,10 @@ def packets_2d_hist_bin_and_ejecta_vel(
         required_cols = {"trueem_posx", "trueem_posy", "trueem_posz", "trueem_time"}
         missing_cols = required_cols - set(dfpackets.collect_schema().names())
         if missing_cols:
-            message = (
-                "--use_thermalemissiontype requires packets with columns "
-                f"{sorted(required_cols)} (missing {sorted(missing_cols)})"
+            exit_with_error(
+                f"the 2D image of --use_thermalemissiontype needs the packet columns {', '.join(sorted(missing_cols))}",
+                "Give -groupby, which can take the column true_emission_velocity of an old packets file",
             )
-            raise ValueError(message)
         position = "trueem"
     # a timestep holds the times from its start up to its end, and the end belongs to the next timestep
     dfpackets = dfpackets.filter(pl.col("t_arrive_d").is_between(t_min, t_max, closed="left"))
@@ -386,8 +379,7 @@ def plot_velocity_profiles_by_group(
     *,
     trueem: bool = False,
     absorption: bool = False,
-    wavelen: float | None = None,
-    binwidth: float | None = None,
+    lambdarange: tuple[float, float] | None = None,
     maxseriescount: int | None = 8,
     unit: t.Literal["kmps", "c"] = "kmps",
     outputfile: Path | None = None,
@@ -406,7 +398,7 @@ def plot_velocity_profiles_by_group(
     position: t.Literal["em", "trueem"] = "trueem" if trueem else "em"
     typecolumn = "absorption_type" if absorption else ("trueemissiontype" if trueem else "emissiontype")
     nprocs_read, lzdfpackets, inverse_solidangle_fraction = get_reduced_packet_set(
-        modelpath, dirbin, None, None, wavelen=wavelen, binwidth=binwidth, absorption=absorption
+        modelpath, dirbin, None, None, lambdarange=lambdarange, absorption=absorption
     )
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
     delta_t_s = (t_max - t_min) * day_to_s
@@ -422,7 +414,7 @@ def plot_velocity_profiles_by_group(
             f"no escaped r-packet of the selection arrives from {t_min:.2f} to {t_max:.2f} d",
             "Give a different time, a wider wavelength range, or -dirbin -1",
         )
-    print_group_selection(wavelen, binwidth, groupby, absorption=absorption)
+    print_group_selection(lambdarange, groupby, absorption=absorption)
 
     dflines = get_linelist_label_columns(modelpath, groupby)
     typecodes = dfpackets[typecolumn].unique()
@@ -453,16 +445,16 @@ def plot_velocity_profiles_by_group(
     ax.set_xlabel(f"Radial velocity of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
     ax.set_ylabel(rf"$\Delta L / \Delta v$ [erg s$^{{-1}}$ {INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
     titleparts = [f"{get_model_name(modelpath)} {get_timestep_time(modelpath, timestep):.2f} d"]
-    if wavelen is not None and binwidth is not None:
-        titleparts.append(f"{wavelen - binwidth / 2:.0f}-{wavelen + binwidth / 2:.0f} Å")
+    if lambdarange is not None:
+        titleparts.append(f"{lambdarange[0]:.0f}-{lambdarange[1]:.0f} Å")
     if dirbin != -1:
         titleparts.append(get_dirbin_labels([dirbin], average_over_phi=True, usedegrees=True)[dirbin])
     ax.set_title(", ".join(titleparts))
     set_legend(ax, args)
 
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
-    if wavelen is not None:
-        start_of_filename = f"{start_of_filename}{wavelen:.0f}A_"
+    if lambdarange is not None:
+        start_of_filename = f"{start_of_filename}{lambdarange[0]:.0f}-{lambdarange[1]:.0f}A_"
     # the last absorption, the last thermal emission, and the last emission select different groups, thus the files
     # must not replace each other
     kind = "absorption" if absorption else ("thermalemission" if trueem else "emission")
@@ -478,15 +470,14 @@ def plot_velocity_profiles_by_group(
     save_figure(fig, outfilename, args=args)
 
 
-def print_group_selection(wavelen: float | None, binwidth: float | None, groupby: str, *, absorption: bool) -> None:
+def print_group_selection(lambdarange: tuple[float, float] | None, groupby: str, *, absorption: bool) -> None:
     """Print the wavelength selection of the packets of -groupby, the position of an absorption, and the line labels."""
     from artistools.spectra.core import print_line_label_convention
 
-    if wavelen is not None and binwidth is not None:
+    if lambdarange is not None:
         event = "last absorption" if absorption else "escape"
         print_detail(
-            f"The packets have a rest-frame wavelength from {wavelen - binwidth / 2:g} to {wavelen + binwidth / 2:g} Å"
-            f" at the {event}"
+            f"The packets have a rest-frame wavelength from {lambdarange[0]:g} to {lambdarange[1]:g} Å at the {event}"
         )
     if absorption:
         print_detail(
@@ -686,7 +677,7 @@ def get_heatmap_table(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, required=True, helptext="Path to ARTIS simulation")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
     addarg_darkmode(parser)
 
     addarg_timedays(
@@ -697,8 +688,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-tdays", dest="timedays", type=float, help=argparse.SUPPRESS)
     addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
 
-    parser.add_argument("-wavelen", type=float, default=None, help="Central wavelength in Angstrom")
-    parser.add_argument("-binwidth", type=float, default=None, help="Wavelength bin width in Angstrom")
+    parser.add_argument(
+        "-xmin",
+        "-lambdamin",
+        type=float,
+        help=(
+            "Minimum rest-frame wavelength of the packets in Angstroms, at the escape or with --absorption, at the last"
+            " absorption. Default: no limit"
+        ),
+    )
+    parser.add_argument(
+        "-xmax", "-lambdamax", type=float, help="Maximum rest-frame wavelength of the packets in Angstroms"
+    )
+    # the earlier form of the wavelength range: a centre and a width
+    parser.add_argument("-wavelen", type=float, help=argparse.SUPPRESS)
+    parser.add_argument("-binwidth", type=float, help=argparse.SUPPRESS)
 
     parser.add_argument("-element", type=str, default=None, help="Element symbol")
     parser.add_argument("-ionstage", type=str, default=None, help="Ionisation stage (spectroscopic notation)")
@@ -737,12 +741,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     addarg_velocitybins(parser, " of -groupby")
     parser.add_argument("--srIItriplet", action="store_true", help="Plot packets from SrII triplet only")
-    parser.add_argument("--colorlogscale", action="store_true", help="Show the log10 of the emissivity in the 2D plot")
+    parser.add_argument(
+        "--colorlogscale",
+        action="store_true",
+        help="Show the log10 of the observed luminosity per unit volume in the 2D image",
+    )
 
     parser.add_argument(
         "--use_thermalemissiontype",
         action="store_true",
-        help="Plot true thermal emission rather than last interaction location",
+        help="Take the last thermal emission and not the last interaction",
     )
 
     addarg_output(parser, kind="file", helptext="Path/filename for the PDF file")
@@ -754,8 +762,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if (args.wavelen is None) != (args.binwidth is None):
-        message = "Wavelength mode requires both -wavelen and -binwidth to be provided."
-        raise ValueError(message)
+        exit_with_error("-wavelen and -binwidth give a range together", "Give -lambdamin and -lambdamax")
+    if args.wavelen is not None:
+        if args.xmin is not None or args.xmax is not None:
+            exit_with_error("give the wavelength range one time", "Remove -wavelen and -binwidth")
+        args.xmin, args.xmax = args.wavelen - args.binwidth / 2, args.wavelen + args.binwidth / 2
+    if (args.xmin is None) != (args.xmax is None):
+        exit_with_error("the wavelength range needs two ends", "Give -lambdamin and -lambdamax together")
+    if args.absorption and args.use_thermalemissiontype:
+        exit_with_error(
+            "--absorption takes the last absorption, and --use_thermalemissiontype takes the last thermal emission",
+            "Give one of the two options",
+        )
 
     if args.timedays is None:
         exit_with_error("the time is missing", "Give the time in days, e.g. -timedays 300")
@@ -780,12 +798,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         Z=atomic_number,
         trueem=args.use_thermalemissiontype,
         ion_stage_str=args.ionstage,
-        wavelen=args.wavelen,
-        binwidth=args.binwidth,
+        lambdarange=get_lambdarange(args),
         outputfile=args.outputfile,
         args=args,
         absorption=args.absorption,
     )
+
+
+def get_lambdarange(args: argparse.Namespace) -> tuple[float, float] | None:
+    """Return the range of rest-frame wavelength [Å] of -lambdamin and -lambdamax, or None for no limit."""
+    return None if args.xmin is None else (args.xmin, args.xmax)
 
 
 def plot_velocity_profiles_from_args(args: argparse.Namespace) -> None:
@@ -801,11 +823,6 @@ def plot_velocity_profiles_from_args(args: argparse.Namespace) -> None:
                 f"{option} applies to the 2D image, and -groupby gives one series for each group",
                 f"Remove {option}, or remove -groupby",
             )
-    if args.absorption and args.use_thermalemissiontype:
-        exit_with_error(
-            "--absorption takes the last absorption, and --use_thermalemissiontype takes the last thermal emission",
-            "Give one of the two options",
-        )
     modelpath = Path(args.modelpath)
     unit = get_velocity_unit(modelpath, args.velocityunit)
     plot_velocity_profiles_by_group(
@@ -816,8 +833,7 @@ def plot_velocity_profiles_from_args(args: argparse.Namespace) -> None:
         get_velocity_bin_edges_kmps(modelpath, args.nvelocitybins, args.velocitymax, unit),
         trueem=args.use_thermalemissiontype,
         absorption=args.absorption,
-        wavelen=args.wavelen,
-        binwidth=args.binwidth,
+        lambdarange=get_lambdarange(args),
         maxseriescount=args.maxseriescount,
         unit=unit,
         outputfile=args.outputfile,
