@@ -7211,6 +7211,24 @@ def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pyt
     assert "WARNING: sn3d did not finish. Estimated: (job: pktprop ts 10 to ts 10 grid-preprop" in table
     assert "CPU time:             12.000  core-h" in table
 
+    # a damaged log gives no core hours and no task count, thus the sum is not complete and the tasks are not known
+    (modelfolder / "job_from_ts0020").mkdir()
+    (modelfolder / "job_from_ts0020" / "output_0-0.txt.gz").write_bytes(b"not gzip data")
+    (modelfolder / "light_curve.out").write_text("", encoding="utf-8")
+    artistools.__main__.main(argsraw=["corehours", str(modelfolder / "light_curve.out"), "--json"])
+    captured = capsys.readouterr()
+    corehours = json.loads(captured.out)
+    assert "output_0-0.txt.gz is unreadable" in captured.err
+    assert [job["core_hours"] is None for job in corehours["jobs"]] == [False, False, True, True]
+    assert corehours["total_core_hours"] is None
+    assert corehours["tasks"] is None
+
+    artistools.__main__.main(argsraw=["corehours", str(modelfolder)])
+    table = capsys.readouterr().out
+    assert "WARNING: the log is empty or unreadable." in table
+    assert "WARNING: some logs give no core hours. The CPU time omits their runs." in table
+    assert "Tasks:" not in table
+
 
 def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]

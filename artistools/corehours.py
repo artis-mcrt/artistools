@@ -16,11 +16,14 @@ from pathlib import Path
 from artistools.logsummary import get_unique_logfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_model_folder
 from artistools.misc import get_run_subfolders
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
+from artistools.misc import print_warning
 from artistools.misc import zopen
+from artistools.misc.fileio import get_decompress_errors
 
 
 class RunCoreHours(t.NamedTuple):
@@ -145,26 +148,31 @@ def get_run_core_hours(loglines: Sequence[str]) -> RunCoreHours:
 
 
 def read_run_core_hours(logfile: Path) -> RunCoreHours | None:
-    """Return the core hours of the run of an sn3d log, or None for an empty log."""
-    with zopen(logfile) as flog:
-        loglines = flog.readlines()
+    """Return the core hours of the run of an sn3d log, or None for an empty log or a damaged log."""
+    try:
+        with zopen(logfile) as flog:
+            loglines = flog.readlines()
+    except (OSError, EOFError, UnicodeDecodeError, *get_decompress_errors()) as exc:
+        # the other runs keep their values, and the table shows the damaged log
+        print_warning(f"{logfile} is unreadable: {exc}")
+        return None
     return get_run_core_hours(loglines) if loglines else None
 
 
-def get_rank0_logfiles(modelpaths: Sequence[Path]) -> list[tuple[Path, bool]]:
-    """Return the rank-0 log of each run folder of the models in the order of the paths, with True for a copy.
+def get_rank0_logfiles(modelfolders: Sequence[Path]) -> list[tuple[Path, bool]]:
+    """Return the rank-0 log of each run folder of the model folders in the order of the paths, with True for a copy.
 
     The model folder holds a link or a copy of the rank-0 log of its last run. get_unique_logfiles finds that copy, and
     the table shows it as a duplicate, thus a user sees that the sum counts that run one time.
     """
     logfiles_with_iscopy: list[tuple[Path, bool]] = []
-    for modelpath in modelpaths:
+    for modelfolder in modelfolders:
         logfiles = [
             logfile
-            for folder in get_run_subfolders(modelpath)
+            for folder in get_run_subfolders(modelfolder)
             if (logfile := firstexisting_or_none("output_0-0.txt", folder=folder, search_subfolders=False)) is not None
         ]
-        uniquelogfiles = set(get_unique_logfiles(modelpath, logfiles))
+        uniquelogfiles = set(get_unique_logfiles(modelfolder, logfiles))
         logfiles_with_iscopy.extend((logfile, logfile not in uniquelogfiles) for logfile in logfiles)
     return sorted(logfiles_with_iscopy)
 
@@ -204,10 +212,16 @@ def get_run_json(logfile: Path, iscopy: bool, run: RunCoreHours | None) -> dict[
 
 
 def get_summary_lines(
-    ntasks_seen: set[int], ntasks: int | None, wallclock_hours: float | None, total_core_hours: float
+    ntasks_seen: set[int],
+    ntasks: int | None,
+    wallclock_hours: float | None,
+    total_core_hours: float,
+    has_runs_without_core_hours: bool,
 ) -> list[str]:
     """Return the lines of the summary after the table."""
     lines: list[str] = []
+    if has_runs_without_core_hours:
+        lines.append("WARNING: some logs give no core hours. The CPU time omits their runs.")
     if len(ntasks_seen) > 1:
         lines.append("WARNING: the jobs use different task counts. The summary omits the task count.")
     if ntasks is not None:
@@ -243,9 +257,11 @@ def print_core_hours(args: argparse.Namespace, logfiles_with_iscopy: Sequence[tu
     # an empty log or a run with no time value makes the sum of the wallclock hours incomplete
     iswallclockcomplete = all(run is not None and run.wallclock_hours is not None for run in countedruns)
     wallclock_hours = wallclock_hours_sum if iswallclockcomplete and total_core_hours > 0.0 else None
-    ntasks_seen = {run.ntasks for run in countedruns if run is not None and run.ntasks is not None}
-    # with a mix of task counts, the summary has no single task count
-    ntasks = next(iter(ntasks_seen)) if len(ntasks_seen) == 1 else None
+    has_runs_without_core_hours = any(run is None or run.core_hours is None for run in countedruns)
+    ntasks_of_runs = [None if run is None else run.ntasks for run in countedruns]
+    ntasks_seen = {ntasks for ntasks in ntasks_of_runs if ntasks is not None}
+    # a run with no task count can have a different count, thus each run must give the same count
+    ntasks = ntasks_of_runs[0] if None not in ntasks_of_runs and len(ntasks_seen) == 1 else None
     timestep_ranges = sorted(
         run.timestep_range for run in countedruns if run is not None and run.timestep_range is not None
     )
@@ -258,7 +274,7 @@ def print_core_hours(args: argparse.Namespace, logfiles_with_iscopy: Sequence[tu
                     "jobs": list(starmap(get_run_json, runs)),
                     "tasks": ntasks,
                     "wallclock_hours": wallclock_hours,
-                    "total_core_hours": total_core_hours,
+                    "total_core_hours": None if has_runs_without_core_hours else total_core_hours,
                     "timestep_ranges": [list(timestep_range) for timestep_range in timestep_ranges],
                 },
                 indent=2,
@@ -266,13 +282,21 @@ def print_core_hours(args: argparse.Namespace, logfiles_with_iscopy: Sequence[tu
         )
         return
 
-    print_product(args, "\n".join(get_summary_lines(ntasks_seen, ntasks, wallclock_hours, total_core_hours)))
+    print_product(
+        args,
+        "\n".join(
+            get_summary_lines(ntasks_seen, ntasks, wallclock_hours, total_core_hours, has_runs_without_core_hours)
+        ),
+    )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(
-        parser, positional=True, multiplepaths=True, helptext="The model folders. The default is the working folder"
+        parser,
+        positional=True,
+        multiplepaths=True,
+        helptext="The model folders, or files in them. The default is the working folder",
     )
     parser.add_argument("--json", action="store_true", help="Write the results as JSON in place of a table")
 
@@ -280,4 +304,5 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Sum the core hours of the runs of ARTIS models from the rank-0 logs of sn3d."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    print_core_hours(args, get_rank0_logfiles(normalize_path_list(args.modelpath)))
+    modelfolders = [get_model_folder(modelpath) for modelpath in normalize_path_list(args.modelpath)]
+    print_core_hours(args, get_rank0_logfiles(modelfolders))
