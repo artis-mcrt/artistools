@@ -7329,6 +7329,24 @@ def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
     assert pl.read_csv(io.StringIO(captured.out), separator=" ", null_values="nan")["count"].item() == 1
 
 
+def test_logsummary_log_that_cannot_be_read_is_not_a_copy(tmp_path: Path) -> None:
+    """A log with no read permission stopped the search for a copy, and the reader of that log reports the problem."""
+    from artistools.logsummary import are_copies
+
+    modellog = tmp_path / "output_0-0.txt"
+    modellog.write_text("sn3d launched\n", encoding="utf-8")
+    (tmp_path / "100.slurm").mkdir()
+    runlog = tmp_path / "100.slurm" / "output_0-0.txt"
+    runlog.write_text("sn3d launched\n", encoding="utf-8")
+    runlog.chmod(0)
+    try:
+        if os.access(runlog, os.R_OK):
+            pytest.skip("the user can read a file with no read permission, e.g. root")
+        assert not are_copies(modellog, runlog, comparetext=True)
+    finally:
+        runlog.chmod(0o644)
+
+
 def test_logsummary_reads_a_compressed_copy_of_a_log_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """A gzip copy of the log of a run in the model folder had a different name, and its messages counted twice."""
     import gzip
