@@ -2289,6 +2289,31 @@ def test_plotlinecontributions_stops_for_a_photosphere_velocity_in_the_wrong_uni
     assert errortext in captured.out + captured.err
 
 
+def test_plotlinecontributions_reports_an_arrival_time_outside_the_timesteps(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An arrival time before the first timestep or after the last one is outside each timestep.
+
+    The log clipped such a time to the first or the last timestep, but the packet commands keep no packet there.
+    """
+    from artistools.linecontributions import LineVelocityProfiles
+
+    tstarts = at.get_timestep_times(modelpath_classic_3d, loc="start")
+    tends = at.get_timestep_times(modelpath_classic_3d, loc="end")
+    dfrankedcells = pl.DataFrame({"velocity_kmps": [0.5 * at.constants.C_cm_per_s / at.constants.km_to_cm]})
+    profiles = LineVelocityProfiles(
+        pl.DataFrame(),
+        pl.DataFrame(),
+        pl.DataFrame(),
+        pl.DataFrame(),
+        dfrankedcells.with_columns(emission_erg_per_s=pl.lit(1.0)),
+    )
+    at.plotlinecontributions.print_arrival_times(modelpath_classic_3d, profiles, tstarts[0] * 1.01, "kmps")
+    assert "the first time in no timestep, because it is before the start" in capsys.readouterr().out
+    at.plotlinecontributions.print_arrival_times(modelpath_classic_3d, profiles, tends[-1] * 0.99, "kmps")
+    assert "the last time in no timestep, because it is after the end" in capsys.readouterr().out
+
+
 def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
     """A shell of constant tau_sobolev from 0.9 v_ph to 0.9 vmax gives the depth that the geometry gives.
 

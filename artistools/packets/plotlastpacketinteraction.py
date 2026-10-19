@@ -271,7 +271,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
         position,
         format_velocity(pixelwidth_kmps, unit),
         luminosityfactor,
-        histcount,
+        # a pixel with no packet has no error
+        np.sqrt(histsquared[hist2D > 0.0]) / hist2D[hist2D > 0.0],
         selectiontext=(
             "the Sr II triplet"
             if srIItriplet
@@ -351,15 +352,15 @@ def print_heatmap_method(
     position: t.Literal["em", "trueem"],
     pixelwidthtext: str,
     luminosityfactor: float,
-    pixelpacketcounts: "npt.NDArray[np.floating]",
+    pixelrelativeerrors: "npt.NDArray[np.floating]",
     *,
     selectiontext: str | None,
 ) -> None:
     """Print the selection of the packets of the 2D image, the meaning of its colour, and the luminosity in it.
 
     dfpackets holds the selected packets of the timestep, and dfinimage the packets inside the image.
-    pixelpacketcounts gives the number of packets of each pixel. selectiontext names the lines of the last
-    absorption that select the packets, or None for all the packets.
+    pixelrelativeerrors gives sqrt(sum(w^2)) / sum(w) of each pixel with packets. selectiontext names the lines of
+    the last absorption that select the packets, or None for all the packets.
     """
     if selectiontext is None:
         print_detail(f"{dfpackets.height} escaped r-packets of the direction bin arrive in the timestep")
@@ -386,12 +387,12 @@ def print_heatmap_method(
         "The data table gives the number of packets and the relative error sqrt(sum(w^2)) / sum(w) of each pixel, with"
         " the weight w of each packet"
     )
-    pixelcounts = pixelpacketcounts[pixelpacketcounts > 0]
-    if pixelcounts.size > 0 and float(np.median(pixelcounts)) < 1.0 / NOISY_RELATIVE_ERROR**2:
+    # the packets can have different energies, thus the error comes from the weights and not from the counts
+    if pixelrelativeerrors.size > 0 and float(np.median(pixelrelativeerrors)) > NOISY_RELATIVE_ERROR:
         print_warning(
-            f"The pixels that hold packets have a median of {float(np.median(pixelcounts)):g} packets, thus the colour"
-            " of a pixel has a large packet noise. Give a smaller -nvelocitybins, a wider wavelength range, or"
-            " -dirbin -1"
+            "The pixels that hold packets have a median relative error of"
+            f" {float(np.median(pixelrelativeerrors)):.0%}, thus the colour of a pixel has a large packet noise. Give"
+            " a smaller -nvelocitybins, a wider wavelength range, or -dirbin -1"
         )
     totalluminosity = float(dfpackets["e_rf"].sum()) * luminosityfactor
     imageluminosity = float(dfinimage["e_rf"].sum()) * luminosityfactor

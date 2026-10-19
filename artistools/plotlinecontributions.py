@@ -284,15 +284,22 @@ def print_arrival_times(
     beta = median_kmps / KMPS_PER_VELOCITYUNIT["c"]
     arrivalrange_days = (time_days * (1.0 - beta), time_days * (1.0 + beta))
     tstarts = get_timestep_times(modelpath, loc="start")
-    arrivaltimesteps = [
-        int(np.clip(np.searchsorted(tstarts, arrival_days, side="right") - 1, 0, len(tstarts) - 1))
-        for arrival_days in arrivalrange_days
-    ]
+    tends = get_timestep_times(modelpath, loc="end")
+
+    def get_timestep_text(arrival_days: float) -> str:
+        # the packet commands keep only the arrival times inside the timesteps
+        if arrival_days < tstarts[0]:
+            return f"no timestep, because it is before the start of the first timestep at {tstarts[0]:.3g} d"
+        if arrival_days >= tends[-1]:
+            return f"no timestep, because it is after the end of the last timestep at {tends[-1]:.3g} d"
+        return f"timestep {int(np.searchsorted(tstarts, arrival_days, side='right') - 1)}"
+
     print_detail(
         "Half of the emission of the ranked lines comes from cells below the radial velocity"
         f" {format_velocity(median_kmps, unit)}. A distant observer sees the light of the cells at that velocity from"
         f" {arrivalrange_days[0]:.3g} to {arrivalrange_days[1]:.3g} d, i.e. t (1 - v / c) to t (1 + v / c). The"
-        f" packet commands bin these arrival times in timesteps {arrivaltimesteps[0]} to {arrivaltimesteps[1]}"
+        f" packet commands put the first time in {get_timestep_text(arrivalrange_days[0])}. They put the last time in"
+        f" {get_timestep_text(arrivalrange_days[1])}"
     )
 
 
