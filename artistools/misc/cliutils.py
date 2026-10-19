@@ -698,8 +698,8 @@ def addarg_plotinvalidpart(parser: argparse.ArgumentParser, plotted: str) -> Non
         "--plotinvalidpart",
         action="store_true",
         help=(
-            f"Plot {plotted} also outside the valid time range. The light of a part of the ejecta does not reach the"
-            " observer at all of these times, because of the light travel time"
+            f"Plot {plotted} also outside the valid range of the arrival times. At these times, the light from a part"
+            " of the ejecta does not reach the observer, because of the light travel time"
         ),
     )
 
@@ -707,8 +707,8 @@ def addarg_plotinvalidpart(parser: argparse.ArgumentParser, plotted: str) -> Non
 def addarg_averageoverphi(parser: argparse.ArgumentParser, optionname: str = "-dirbin") -> None:
     """Add --average_over_phi_angle, which makes a direction bin of optionname into the mean over its phi bins.
 
-    The option has the meaning of --average_over_phi_angle of plotspectra, thus -dirbin 90 with it takes the costheta
-    bin 0.8 to 1, and without it the one direction bin 90.
+    The option has the meaning of --average_over_phi_angle of plotspectra. With the option, -dirbin 90 takes the
+    costheta bin 0.8 to 1. Without it, -dirbin 90 takes the one direction bin 90.
     """
     parser.add_argument(
         "--average_over_phi_angle",
@@ -1246,8 +1246,8 @@ def confirm_overwrite(folders: Iterable[Path | str], filenames: Sequence[str], f
 def confirm_overwrite_matches(folder: Path | str, patterns: Sequence[str], force: bool) -> None:
     """Apply confirm_overwrite to the files of folder that match the glob patterns, e.g. "spectrum_ts*.txt".
 
-    A command whose file names hold a timestep or a value from the data takes patterns, because the names are not
-    known before the work.
+    A command whose file names hold a timestep or a value from the data takes patterns, because the command does not
+    know the names before the work starts.
     """
     confirm_overwrite_of_files(
         sorted({path for pattern in patterns for path in Path(folder).glob(pattern) if path.is_file()}), force
@@ -1347,10 +1347,10 @@ def write_data_table(dfdata: "pl.DataFrame", destination: "Path | t.TextIO", com
 
 
 def resolve_table_outputfile(args: argparse.Namespace, defaultname: str) -> Path | None:
-    """Return the file that -o names for a command that prints its table without -o, or None with no -o.
+    """Return the file that -o names, or None when the user gives no -o. Without -o, the command prints its table.
 
-    A -o path with no file extension names a folder, which takes defaultname. The overwrite check of -f comes here,
-    thus before the work starts.
+    A -o path with no file extension names a folder, which takes defaultname. The function does the overwrite check
+    here, before the work starts. -f skips the check.
     """
     if not args.outputfile:
         return None

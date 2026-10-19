@@ -407,9 +407,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-troughdirbin",
         type=int,
         help=(
-            "Add a Sobolev estimate of the absorption trough for an observer at the centre of this direction bin, as in"
-            " plotspectra. --average_over_phi_angle takes the mean over the phi bins of its costheta bin, e.g. 90 for"
-            " the pole at +z"
+            "Add a Sobolev estimate of the absorption trough for an observer at the centre of this direction bin. The"
+            " bins are the same as in plotspectra. With --average_over_phi_angle, give the first bin of a costheta"
+            " bin, e.g. 90 for the pole at +z"
         ),
     )
     addarg_averageoverphi(parser, "-troughdirbin")

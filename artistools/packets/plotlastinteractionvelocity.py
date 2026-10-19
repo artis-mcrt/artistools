@@ -203,9 +203,9 @@ def get_timesteps_in_valid_range(modelpath: Path, timesteps: Sequence[int]) -> l
             else f"The valid range of the arrival times is {validstart_days:.3g} to {validend_days:.3g} d"
         )
         print_warning(
-            f"{rangetext}, thus {modelpath} leaves out {len(timesteps) - len(validtimesteps)} of {len(timesteps)}"
-            " timesteps. The light of a part of the ejecta does not reach the observer in them. --plotinvalidpart"
-            " keeps them"
+            f"{rangetext}, thus the command leaves out {len(timesteps) - len(validtimesteps)} of {len(timesteps)}"
+            f" timesteps of {modelpath}. The light of a part of the ejecta does not reach the observer in them."
+            " --plotinvalidpart keeps them"
         )
     return validtimesteps
 
@@ -350,7 +350,7 @@ def plot_velocity_against_time(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of ARTIS models")
+    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of the ARTIS models")
     addarg_wavelengthrange(parser, "the packets at the escape, in the rest frame,")
     parser.add_argument(
         "-dirbin",

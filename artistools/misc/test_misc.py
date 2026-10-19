@@ -4067,7 +4067,7 @@ def test_artis_option_function_with_trailing_return_type_is_not_a_value() -> Non
 
 
 def test_selected_timestep_takes_a_default_only_when_no_time_is_given() -> None:
-    """-timedays with a default timestep of the command gives that time, and the default applies to no time alone.
+    """-timedays gives its time when the command has a default timestep. The default applies only when there is no time.
 
     plottransitions gave -timestep the default last, thus a shared check would take each -timedays as a second time.
     """

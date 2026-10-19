@@ -170,7 +170,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_legend(parser)
     addarg_darkmode(parser)
     addarg_modelpath(
-        parser, positional=True, multiplepaths=True, default=[], helptext="Paths of ARTIS models with log files"
+        parser, positional=True, multiplepaths=True, default=[], helptext="Paths of the ARTIS models with log files"
     )
     addarg_output(
         parser,

@@ -1111,7 +1111,7 @@ def addarg_taumin(parser: argparse.ArgumentParser) -> None:
 
 def addarg_lineselection(parser: argparse.ArgumentParser) -> None:
     """Add the model path, the time, the wavelength range, and the ions that select the lines of the line commands."""
-    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     addarg_timestep(parser, helptext="Timestep number to select")
     addarg_timedays(parser, kind="str", helptext="Time in days to select")
     addarg_wavelengthrange(parser, "the lines")

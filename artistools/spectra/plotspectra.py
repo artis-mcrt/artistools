@@ -2422,10 +2422,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=get_groupby_choice,
         choices=["element", "ion", "line", "nuc", "nucmass", "radialvelocity", "lineofsightvelocity", "ye"],
         help=(
-            "Use a different colour for each element, ion, line, or nuclide with --showemission, or for each shell"
-            " of the last interaction: radialvelocity bins the radial velocity, lineofsightvelocity the velocity along"
-            " the line of sight, and ye the initial electron fraction of the cell. The element of a gamma packet is"
-            " the element of its nuclide. Every choice but ion implies --frompackets"
+            "Use a different colour for each group with --showemission. A group is an element, an ion, a line, a"
+            " nuclide, or a shell of the last interaction. radialvelocity bins the radial velocity."
+            " lineofsightvelocity bins the velocity along the line of sight. ye bins the initial electron fraction of"
+            " the cell. The element of a gamma packet is the element of its nuclide. Each choice except ion implies"
+            " --frompackets"
         ),
     )
 
@@ -2439,7 +2440,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "Edges of the shells of -groupby radialvelocity or lineofsightvelocity, in km/s, e.g. 0 5000 10000 20000,"
             " or as a fraction of c, e.g. 0c 0.1c 0.2c 0.3c. A value with a c suffix also puts the labels in units of"
             " c. The default is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D"
-            " grid, with the labels in units of c when vmax is at least 0.2 c"
+            " grid. The labels are in units of c when vmax is 0.2 c or more"
         ),
     )
 

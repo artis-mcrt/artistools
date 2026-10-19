@@ -221,7 +221,7 @@ def viewing_angles_visualisation(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     addarg_output(
         parser,
         kind="file",

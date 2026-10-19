@@ -822,7 +822,7 @@ def get_heatmap_table(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     addarg_darkmode(parser)
 
     addarg_timedays(

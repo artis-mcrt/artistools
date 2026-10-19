@@ -305,8 +305,8 @@ Do these steps in this sequence, for each direction bin:
    quartiles show the width of the region.
 3. Compare the optical depth of the lines in the cells of each direction: `artistools plotlinecontributions <modelpath>
    -t <days> -lambdamin <Å> -lambdamax <Å> -costhetamin 0.8`. These are the cells of the costheta bin of `-dirbin 90`.
-   For the cells of `-dirbin 50`, give `-costhetamin 0 -costhetamax 0.2`. A line makes an absorption trough only with tau_sobolev above
-   1 in front of the photosphere, i.e. at a velocity above the median of step 2.
+   For the cells of `-dirbin 50`, give `-costhetamin 0 -costhetamax 0.2`. A line makes an absorption trough only with
+   tau_sobolev above 1 in front of the photosphere, i.e. at a velocity above the median of step 2.
 4. Estimate the trough: `artistools plotlinecontributions ... -troughdirbin 90 --average_over_phi_angle
    -photospherevelocity <v>`, with the median of step 2 and its unit, e.g. `0.157c` or `47000km/s`. The estimate has no
    emission of the lines, no limb darkening, and only the ranked lines. If the estimate gives a deep trough and the
@@ -335,8 +335,9 @@ Possible errors:
 - A few dense cells can make the mean tau_sobolev of a bin much larger than its median. Use the median and the volume
   fraction with tau_sobolev above 1, which the bin table of `plotlinecontributions` gives. The `_summary` table gives
   the velocity range where the median is above 1.
-- The velocity of the last interaction is a radial velocity, and not a velocity along the line of sight. An electron
-  scattering also sets it. In a kilonova, a range with no strong line still holds many weak lines.
+- By default, the velocity of the last interaction is a radial velocity. Give `-velocitykind lineofsight` for the
+  velocity along the line of sight. An electron scattering also sets it. In a kilonova, a range with no strong line
+  still holds many weak lines.
 - The trough estimate takes a sharp photosphere and pure absorption. If many lines are optically thick in front of the
   photosphere (step 5), the light scatters many times, and the estimate gives a trough that is too deep.
 - `plotlinecontributions` and `linecontributions` calculate each pair of a cell and a line. For a wide range with all

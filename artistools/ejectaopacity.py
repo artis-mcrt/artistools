@@ -442,7 +442,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_timestep(parser, helptext="Timestep number to select")
     addarg_timedays(parser, kind="str", helptext="Time in days to select")
-    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
     parser.add_argument(
         "--show_binned_opacities",
         action="store_true",

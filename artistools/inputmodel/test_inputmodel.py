@@ -2242,12 +2242,11 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_pat
         np.testing.assert_allclose(dftable[f"vel_{axis}_on_c"], vel_mid_on_c, rtol=1e-5)
 
 
-@pytest.mark.benchmark
 def test_a_cache_of_the_earlier_name_stays_in_use(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """A cache named *.parquet.tmp, from before the caches took the name *.parquet, is read and not converted again.
+    """Use a cache named *.parquet.tmp, from before the caches took the name *.parquet, and do not convert again.
 
-    A rename of the caches with no such rule would make each model convert its data again, which takes long for a
-    large model. A cache of the current name wins when both exist.
+    If a rename of the caches had no such rule, artistools would convert the data of each model again. This takes a
+    long time for a large model. A cache of the current name wins when both exist.
     """
     textfile = tmp_path / "model.txt"
     textfile.write_text("x", encoding="utf-8")
@@ -2265,6 +2264,7 @@ def test_a_cache_of_the_earlier_name_stays_in_use(tmp_path: Path, capsys: pytest
     capsys.readouterr()
 
 
+@pytest.mark.benchmark
 def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=25, vmax=1000, t_model_init_days=1, includenico57=True)
     dfmodel = lzdfmodel.collect()

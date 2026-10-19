@@ -1995,7 +1995,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--plot_cmf", "--showcmf", "--show_cmf", dest="plotcmf", action="store_true", help=argparse.SUPPRESS
     )
 
-    addarg_plotinvalidpart(parser, "the entire light curve, with the parts that hold only a part of the light,")
+    addarg_plotinvalidpart(parser, "the light curve")
 
     parser.add_argument(
         "-deposition",

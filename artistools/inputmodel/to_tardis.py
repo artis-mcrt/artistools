@@ -29,9 +29,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # the earlier name of the model path
     parser.add_argument("-inputpath", "-i", dest="modelpath", type=model_path_from_text, help=argparse.SUPPRESS)
 
-    parser.add_argument("-temperature", "-T", type=float, default=10000.0, help="Temperature [K] to use in TARDIS file")
+    parser.add_argument("-temperature", "-T", type=float, default=10000.0, help="Temperature [K] for the TARDIS file")
 
-    parser.add_argument("-dilution_factor", "-W", type=float, default=1.0, help="Dilution factor to use in TARDIS file")
+    parser.add_argument("-dilution_factor", "-W", type=float, default=1.0, help="Dilution factor for the TARDIS file")
 
     parser.add_argument(
         "-abundtype",

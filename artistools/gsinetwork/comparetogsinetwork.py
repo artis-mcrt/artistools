@@ -791,7 +791,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_darkmode(parser)
     addarg_show(parser)
     addarg_data_output(parser)
-    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path for ARTIS files")
+    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the ARTIS model")
 
     parser.add_argument(
         "-mergerroot",

@@ -1971,8 +1971,8 @@ def addarg_velocityunit(parser: argparse.ArgumentParser) -> None:
         choices=["auto", "kmps", "c"],
         default="auto",
         help=(
-            "Unit of the velocity axis: km/s or c. The value auto takes c for a model with a vmax of 0.2 c or more,"
-            " e.g. a kilonova, and km/s for a different model"
+            "Unit of the velocity axis: kmps (km/s) or c. The value auto takes c for a model with a vmax of 0.2 c or"
+            " more, e.g. a kilonova. Otherwise it takes kmps"
         ),
     )
 
@@ -2097,7 +2097,7 @@ def get_velocity_bin_edges_kmps(
 def parse_velocity_argument(value: str, *, requireunit: bool = False) -> tuple[float, t.Literal["kmps", "c"]]:
     """Return the velocity [km/s] and the unit of a command line value, e.g. 5000km/s or 0.1c.
 
-    A number with no unit is in km/s, unless requireunit is True. A command that takes no unit then gives an error.
+    A number with no unit is in km/s. With requireunit, a number with no unit gives an error.
     """
     text = value.strip()
     unit: t.Literal["kmps", "c"]
@@ -2130,7 +2130,8 @@ def get_velocity_label(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> st
 def positive_velocity_kmps_arg(text: str) -> float:
     """Return the velocity [km/s] of a command line value with its unit, e.g. 0.1c or 30000km/s, when it is above 0.
 
-    A bare number has no unit, thus it gives an error. -velocityunit auto chooses the unit of the axis from the model.
+    A bare number gives an error, because its unit is not clear. The unit of the axis can come from the model, with
+    -velocityunit auto.
     """
     velocity_kmps, _ = parse_velocity_argument(text, requireunit=True)
     if velocity_kmps <= 0.0:

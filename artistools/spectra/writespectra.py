@@ -108,7 +108,7 @@ def write_flambda_spectra_of_models(modelpaths: Sequence[Path], outdirectory: Pa
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of ARTIS models")
+    addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of the ARTIS models")
     addarg_output(
         parser, kind="folder", helptext="Folder for the spectrum files (default: the spectra folder of the model)"
     )

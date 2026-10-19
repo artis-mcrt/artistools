@@ -982,7 +982,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         positional=True,
         multiplepaths=True,
         default=[],
-        helptext="Paths to ARTIS folders with spec.out or packets files",
+        helptext="Paths of the ARTIS models with spec.out or packets files",
     )
 
     addarg_seriesstyle(parser, colordefault=[f"C{i}" for i in range(10)])

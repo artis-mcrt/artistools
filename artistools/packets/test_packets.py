@@ -1009,7 +1009,7 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
         (["-dirbin", "100"], "-dirbin 100 is no direction bin"),
         (["-dirbin", "35", "--average_over_phi_angle"], "-dirbin 35 is not the first direction bin"),
         (["-dirbin", "-10"], "-dirbin -10 is no direction bin"),
-        ([], "no time was given"),
+        ([], "the command has no time"),
         (["-lambdamin", "3500"], "the wavelength range needs two ends"),
         (["--absorption", "--use_thermalemissiontype"], "--absorption takes the last absorption"),
     ],
@@ -1133,7 +1133,7 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
 def test_packet_commands_check_the_valid_range_of_the_arrival_times(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A timestep after the valid range stops the image, and the plot against time leaves out such timesteps.
+    """Plotlastpacketinteraction stops for a timestep after the valid range, and plotlastinteractionvelocity skips it.
 
     The two commands took any timestep, and the light of a part of the ejecta did not reach the observer in some of
     them. --plotinvalidpart keeps them, as in plotspectra and plotlightcurves.

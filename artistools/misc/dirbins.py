@@ -370,7 +370,7 @@ def get_dirbin_labels(
 
 
 def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall: bool) -> None:
-    """Exit with an error if dirbin is no direction bin, or -1 when allowall is true.
+    """Exit with an error if dirbin is not a direction bin. With allowall, -1 for all the directions is also valid.
 
     With averageoverphi, as with --average_over_phi_angle of plotspectra, dirbin must be the first bin of its costheta
     bin.

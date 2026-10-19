@@ -275,7 +275,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         positional=True,
         multiplepaths=True,
         default=[],
-        helptext="Path to ARTIS model folders with model.txt and abundances.txt",
+        helptext="Paths of the ARTIS models with model.txt and abundances.txt",
     )
 
     addarg_sliceaxis(parser, default="+x", helptext="Slice axis")
