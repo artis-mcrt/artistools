@@ -561,6 +561,11 @@ def get_cell_line_inputs(
     )
     if taumin is not None:
         dflines = get_lines_that_can_reach_tau(dflines, dfcells, levelsofion, nlteions, taumin, time_days)
+        if dflines.is_empty():
+            exit_with_error(
+                f"no line can reach a tau_sobolev of {taumin:g} in a cell, thus -taumin leaves out each line",
+                "Give a smaller -taumin, or a different wavelength range",
+            )
     if dfcells.is_empty():
         exit_with_error(
             "no cell with matter has its centre in the range of cos θ",
