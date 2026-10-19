@@ -119,7 +119,15 @@ def plot_line_profiles(
     binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
     alllinesemission = float(profiles.dfsummary["emission_erg_per_s"].sum())
     dfalllines = profiles.dfalllines.with_columns(
-        (pl.col("emission_erg_per_s") / binwidth_kmps / alllinesemission).alias(profilecolumn)
+        emission_per_velocity_erg_per_s_per_kmps=pl.col("emission_erg_per_s") / binwidth_kmps,
+        x_lower_kmps=pl.lit(pl.Series(velocityedges_kmps[:-1])).gather(pl.col("velocitybin")),
+        x_upper_kmps=pl.lit(pl.Series(velocityedges_kmps[1:])).gather(pl.col("velocitybin")),
+    ).with_columns(
+        pl
+        .when(pl.lit(alllinesemission > 0.0))
+        .then(pl.col("emission_per_velocity_erg_per_s_per_kmps") / alllinesemission)
+        .otherwise(0.0)
+        .alias(profilecolumn)
     )
     axes[0].stairs(
         get_bin_values(dfalllines, profilecolumn, 0.0) * kmpsperunit,
@@ -141,8 +149,9 @@ def plot_line_profiles(
     drawntau = []
     for label, emissionfraction in dfranked.select("label", "emission_fraction").iter_rows():
         dfline = dfdrawn.filter(pl.col("label") == label)
+        fractiontext = "no emission" if emissionfraction is None else f"{emissionfraction:.1%}"
         stairs = axes[0].stairs(
-            get_bin_values(dfline, profilecolumn, 0.0) * kmpsperunit, edges, label=f"{label} ({emissionfraction:.1%})"
+            get_bin_values(dfline, profilecolumn, 0.0) * kmpsperunit, edges, label=f"{label} ({fractiontext})"
         )
         colours[label] = mplcolors.to_hex(stairs.get_edgecolor())
         tauvalues = get_bin_values(dfline, "tau_sobolev_volume_median", np.nan)
@@ -159,7 +168,7 @@ def plot_line_profiles(
     axes[0].set_ylim(bottom=0.0)
     axes[0].set_xlim(edges[0], edges[-1])
 
-    dftable = dfdrawn.select(
+    linecolumns = [
         "label",
         *LINEKEYS,
         "x_lower_kmps",
@@ -171,7 +180,15 @@ def plot_line_profiles(
         "tau_sobolev_volume_mean",
         "volume_fraction_tau_sobolev_above_1",
         "cellcount",
-    ).sort("label", "x_lower_kmps")
+    ]
+    # the rows of the black curve have no line, and the profile of each line comes after them
+    dftable = pl.concat(
+        [
+            dfalllines.select(pl.lit(alllineslabel).alias("label"), pl.exclude("velocitybin")).sort("x_lower_kmps"),
+            dfdrawn.select(linecolumns).sort("label", "x_lower_kmps"),
+        ],
+        how="diagonal_relaxed",
+    ).select(linecolumns)
     return convert_velocity_columns(dftable, unit), colours
 
 
@@ -294,7 +311,7 @@ def print_ranked_lines(dflinesummary: pl.DataFrame, rankby: str, unit: t.Literal
         emissiontext = (
             f"{row['emission_fraction']:.1%} of the emission of {lineset}, velocity quartiles"
             f" {' '.join(format_velocity(value, unit) for value in quartiles)}"
-            if None not in quartiles
+            if None not in quartiles and row["emission_fraction"] is not None
             else "no emission"
         )
         tauabove1min_kmps = row["velocity_median_tau_above_1_min_kmps"]
@@ -443,6 +460,11 @@ def print_profile_method(
             print_detail(
                 f"The bins hold {binnedfraction:.1%} of the emission of the lines. The rest is outside the bins"
             )
+    else:
+        print_warning(
+            "The lines have no emission in the selected cells, thus the emission panel is empty. The cells can have"
+            " no population of the upper levels"
+        )
 
 
 def label_line_axes(

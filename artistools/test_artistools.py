@@ -2194,6 +2194,9 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
         **commonargs,
     )
     dfdrawn = pl.read_csv(tmp_path / "lines.txt", separator=" ", null_values="nan", comment_prefix="#")
+    # the rows of the black curve of all the lines come first, and they have no line
+    dfalllines = dfdrawn.filter(pl.col("ion").is_null())
+    dfdrawn = dfdrawn.filter(pl.col("ion").is_not_null())
 
     lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
     dfdirections = (
@@ -2220,6 +2223,19 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
 
     # the default bins end at the corner of the 3D grid
     binwidth_kmps = modelmeta["vmax_cmps"] / at.constants.km_to_cm * math.sqrt(3) / nbins
+    # the black curve sums the emission of all the lines, and the tables did not give it
+    dfallbins = (
+        dfcells
+        .group_by(velocitybin=(pl.col("velocity_kmps") / binwidth_kmps).floor().cast(pl.Int64))
+        .agg(pl.col("emission_erg_per_s").sum())
+        .sort("velocitybin")
+    )
+    assert np.allclose(
+        dfalllines.sort("x_lower_kmps")["emission_erg_per_s"].to_numpy(),
+        dfallbins.filter(pl.col("velocitybin") < nbins)["emission_erg_per_s"].to_numpy(),
+        rtol=1e-6,
+        atol=0.0,
+    )
     for line in dfranked.iter_rows(named=True):
         dflinecells = dfcells.filter(
             (pl.col("ion") == line["ion"]) & (pl.col("lower") == line["lower"]) & (pl.col("upper") == line["upper"])
@@ -2424,6 +2440,13 @@ def test_taumin_keeps_a_line_whose_lower_level_is_above_the_nlte_levels() -> Non
     tau = dfcelllines["tau_sobolev"].item()
     dfkept = get_lines_that_can_reach_tau(dflines, dfcells, levelsofion, {(26, 2)}, tau, time_days=1.0)
     assert dfkept.height == 1
+
+    # a second cell with a NaN estimator gave a bound of NaN, and the bound then left out the line
+    dfwithnan = pl.concat([
+        dfcells,
+        dfcells.with_columns(modelgridindex=pl.col("modelgridindex") + 1, nnion_Fe_II=pl.lit(math.nan)),
+    ])
+    assert get_lines_that_can_reach_tau(dflines, dfwithnan, levelsofion, {(26, 2)}, tau, time_days=1.0).height == 1
 
 
 def test_linecontributions_writes_a_file_only_with_the_output_option(

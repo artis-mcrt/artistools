@@ -406,7 +406,8 @@ def get_line_summary_of_batches(dfsummaries: Sequence[pl.DataFrame]) -> pl.DataF
             pl.col("cellcount_tau_sobolev_above_1").sum(),
         )
         .with_columns(
-            emission_fraction=emission / emission.sum(),
+            # with no emission in the selected cells, a fraction has no value
+            emission_fraction=pl.when(emission.sum() > 0.0).then(emission / emission.sum()),
             velocity_kmps_emission_mean=pl.when(emission > 0).then(pl.col("emission_times_velocity") / emission),
             Te_emission_mean=pl.when(emission > 0).then(pl.col("emission_times_Te") / emission),
         )
@@ -678,7 +679,8 @@ def get_lines_that_can_reach_tau(
         if nnioncolumn not in dfcells.columns:
             lineframes.append(dfionlines)
             continue
-        nnion = dfcells[nnioncolumn].cast(pl.Float64).fill_null(0.0).to_numpy()
+        # a NaN estimator has no population, and np.max would give NaN for the bound of the ion
+        nnion = dfcells[nnioncolumn].cast(pl.Float64).fill_nan(None).fill_null(0.0).to_numpy()
         levels = levelsofion[Z, ion_stage]
         energies_ev = levels["energy_ev"].to_numpy()
         lowerlevels = dfionlines["lower"].to_numpy()
