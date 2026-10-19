@@ -41,6 +41,8 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
+from artistools.misc.cliutils import positive_float_arg
+from artistools.misc.cliutils import positive_int_arg
 
 # the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
 # the wavelength range, the spectra of a kilonova are above 0.026 of the top at each time. The light curve of a
@@ -1988,10 +1990,12 @@ def addarg_velocityunit(parser: argparse.ArgumentParser, usetext: str = "") -> N
 
 def addarg_velocitybins(parser: argparse.ArgumentParser, usetext: str = "") -> None:
     """Add -nvelocitybins, -velocitymax, and -velocityunit. usetext ends each help text, e.g. " of -groupby"."""
-    parser.add_argument("-nvelocitybins", type=int, default=25, help=f"Number of velocity bins of equal width{usetext}")
+    parser.add_argument(
+        "-nvelocitybins", type=positive_int_arg, default=25, help=f"Number of velocity bins of equal width{usetext}"
+    )
     parser.add_argument(
         "-velocitymax",
-        type=float,
+        type=positive_float_arg,
         help=f"Upper edge of the velocity bins{usetext}, in the unit of -velocityunit. Default: the corner of the grid",
     )
     addarg_velocityunit(parser, usetext)

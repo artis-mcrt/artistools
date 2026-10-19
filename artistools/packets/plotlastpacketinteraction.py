@@ -33,6 +33,7 @@ from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import resolve_outputfile
+from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.packets.core import filter_packets_dirbin
@@ -305,7 +306,8 @@ def get_group_velocity_profiles(
 
     dfpackets has the columns typecolumn, e_rf, and velocity_kmps. dflabels gives the label of each type code. A
     code with no label and each group after the first maxseriescount groups join the group "Other". A packet
-    outside the velocity bins is in no bin.
+    outside the velocity bins is in no bin. A group with no packet in the bins has no series to draw, thus it also
+    joins "Other". An example is the group NOT SET of the thermal emission, because its packets have no position.
     """
     from artistools.spectra.core import rank_flux_series_names
 
@@ -314,20 +316,26 @@ def get_group_velocity_profiles(
         .lazy()
         .join(dflabels.lazy(), on=typecolumn, how="left", maintain_order="left")
         .with_columns(
-            label=pl.col("label").fill_null("Other"),
+            label=pl.col("label").fill_null(pl.lit("Other")),
             velocitybin=get_velocity_bin_index_expr(pl.col("velocity_kmps"), velocityedges_kmps),
         )
         .group_by("label", "velocitybin")
         .agg(energy=pl.col("e_rf").cast(pl.Float64).sum(), packetcount=pl.len())
         .collect()
     )
-    dftotals = dfgrouped.group_by("label").agg(pl.col("energy").sum()).sort("label")
+    dftotals = (
+        dfgrouped
+        .group_by("label")
+        .agg(pl.col("energy").sum(), binnedenergy=pl.col("energy").filter(pl.col("velocitybin").is_not_null()).sum())
+        .filter(pl.col("binnedenergy") > 0.0)
+        .sort("label")
+    )
     drawnnames, _ = rank_flux_series_names(
         dict(zip(dftotals["label"].to_list(), dftotals["energy"].to_list(), strict=True)), maxseriescount
     )
     dfprofiles = (
         dfgrouped
-        .with_columns(label=pl.when(pl.col("label").is_in(drawnnames)).then("label").otherwise(pl.lit("Other")))
+        .with_columns(label=pl.when(pl.col("label").is_in(drawnnames)).then(pl.col("label")).otherwise(pl.lit("Other")))
         .group_by("label", "velocitybin")
         .agg(pl.col("energy", "packetcount").sum())
         .sort("label", "velocitybin", nulls_last=True)
@@ -427,7 +435,8 @@ def plot_velocity_profiles_by_group(
     start_of_filename = "" if modelpath == Path() else f"{modelpath.name}_"
     if wavelen is not None:
         start_of_filename = f"{start_of_filename}{wavelen:.0f}A_"
-    kind = "absorption" if absorption else "emission"
+    # the thermal emission and the absorption select different groups, thus their files must not replace each other
+    kind = "absorption" if absorption else ("thermalemission" if trueem else "emission")
     outfilename = resolve_outputfile(
         outputfile, f"{start_of_filename}{kind}_by{groupby}_ts{timestep}_into_dirbin{dirbin}.pdf"
     )
@@ -536,7 +545,9 @@ def get_group_summary(
     return (
         dfpackets
         .join(dflabels, on=typecolumn, how="left", maintain_order="left")
-        .with_columns(label=pl.when(pl.col("label").is_in(list(drawnnames))).then("label").otherwise(pl.lit("Other")))
+        .with_columns(
+            label=pl.when(pl.col("label").is_in(list(drawnnames))).then(pl.col("label")).otherwise(pl.lit("Other"))
+        )
         .group_by("label")
         .agg(
             luminosity_erg_per_s=pl.col("e_rf").cast(pl.Float64).sum() * luminosity_factor,
@@ -682,7 +693,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "-maxseriescount",
-        type=int,
+        type=positive_int_arg,
         default=8,
         help='Number of groups that -groupby draws. The other groups join the group "Other"',
     )

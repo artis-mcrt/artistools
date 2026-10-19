@@ -42,6 +42,8 @@ from artistools.misc import print_modelpath
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc.cliutils import CommaJoinAction
+from artistools.misc.cliutils import positive_float_arg
+from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.plottools import addarg_costhetarange
@@ -93,12 +95,13 @@ def plot_line_profiles(
     dfranked: pl.DataFrame,
     velocityedges_kmps: Sequence[float],
     unit: t.Literal["kmps", "c"],
+    alllineslabel: str,
 ) -> tuple[pl.DataFrame, dict[str, str]]:
     """Draw the emission profile and the median tau_sobolev of each ranked line, and return the data and the colours.
 
     The emission profile of a line is its emission per unit velocity, divided by the emission of the line in all the
     cells. Thus a weak line and a strong line have profiles of the same size, and the legend gives the strength. The
-    emission panel also draws the profile of the sum of all the lines in the wavelength range. The median of
+    emission panel also draws the profile of the sum of the lines with the label alllineslabel. The median of
     tau_sobolev takes the volume of each cell as the weight. A few dense cells can make the mean much larger than the
     median, thus the table gives both. The axis and the drawn data take the velocity unit unit.
     """
@@ -120,7 +123,7 @@ def plot_line_profiles(
     axes[0].stairs(
         get_bin_values(dfalllines, profilecolumn, 0.0) * kmpsperunit,
         edges,
-        label="All lines in the range",
+        label=alllineslabel,
         color="black",
         linewidth=1.5,
     )
@@ -203,9 +206,19 @@ def plot_trough_estimate(
 ) -> dict[str, pl.DataFrame]:
     """Draw the Sobolev estimate of the trough of the ranked lines, log its method, and return its tables."""
     dirbin, photospherevelocity_kmps = troughsettings
-    relativisticdoppler = get_artis_option(modelpath, "USE_RELATIVISTIC_DOPPLER_SHIFT") == "true"
+    dopplershift = get_artis_option(modelpath, "USE_RELATIVISTIC_DOPPLER_SHIFT")
+    relativisticdoppler = dopplershift == "true"
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     cellwidth_kmps = modelmeta["wid_init"] / (modelmeta["t_model_init_days"] * day_to_s) / km_to_cm
+    partwidth_kmps = cellwidth_kmps / TROUGHSUBPOINTS
+    binwidth_kmps = velocityedges_kmps[1] - velocityedges_kmps[0]
+    if binwidth_kmps < partwidth_kmps:
+        print_warning(
+            f"The width {format_velocity(binwidth_kmps, unit)} of the velocity bins is less than the width"
+            f" {format_velocity(partwidth_kmps, unit)} of a part of a cell. A part puts all its volume in one bin, thus"
+            " the trough depth changes from bin to bin, and it can be above 1 - exp(-tau). Give -nvelocitybins"
+            f" {max(1, int(velocityedges_kmps[-1] // partwidth_kmps))} or less"
+        )
     dfdepths, dfblend = get_sobolev_trough(
         profiles,
         inputs,
@@ -216,9 +229,7 @@ def plot_trough_estimate(
         relativisticdoppler=relativisticdoppler,
     )
     plot_trough(ax, dfdepths, dfranked, colours, unit, photospherevelocity_kmps)
-    print_trough_method(
-        dirbin, photospherevelocity_kmps, unit, dfranked.height, dfblend, relativisticdoppler=relativisticdoppler
-    )
+    print_trough_method(dirbin, photospherevelocity_kmps, unit, dfranked.height, dfblend, dopplershift=dopplershift)
     ax.set_ylabel("Trough depth")
     return {
         "_trough": convert_velocity_columns(
@@ -231,25 +242,30 @@ def plot_trough_estimate(
     }
 
 
-def print_ranked_lines(dflinesummary: pl.DataFrame, rankby: str, unit: t.Literal["kmps", "c"]) -> None:
-    """Print the emission fraction, the velocity quartiles of the emission, and the range of a median tau above 1."""
+def print_ranked_lines(dflinesummary: pl.DataFrame, rankby: str, unit: t.Literal["kmps", "c"], lineset: str) -> None:
+    """Print the emission fraction, the velocity quartiles of the emission, and the range of a median tau above 1.
+
+    lineset names the lines of the ranking and of the fractions, e.g. "all the lines".
+    """
     rankedby = "the most emission" if rankby == "emission" else "the largest tau_sobolev in a cell"
     print_detail(
-        f"These are the {dflinesummary.height} lines with {rankedby}. The quartiles of the velocity take the emission"
-        " of each cell as the weight:"
+        f"These are the {dflinesummary.height} lines with {rankedby}, of {lineset}. The quartiles of the velocity"
+        " take the emission of each cell as the weight:"
     )
     for row in dflinesummary.iter_rows(named=True):
         quartiles = [row[f"velocity_emission_q{quantile}_kmps"] for quantile in (25, 50, 75)]
         emissiontext = (
-            f"{row['emission_fraction']:.1%} of the emission of the lines, velocity quartiles"
+            f"{row['emission_fraction']:.1%} of the emission of {lineset}, velocity quartiles"
             f" {' '.join(format_velocity(value, unit) for value in quartiles)}"
             if None not in quartiles
             else "no emission"
         )
-        taumin, taumax = row["velocity_median_tau_above_1_min_kmps"], row["velocity_median_tau_above_1_max_kmps"]
+        tauabove1min_kmps = row["velocity_median_tau_above_1_min_kmps"]
+        tauabove1max_kmps = row["velocity_median_tau_above_1_max_kmps"]
         taurangetext = (
-            f"median tau_sobolev above 1 from {format_velocity(taumin, unit)} to {format_velocity(taumax, unit)}"
-            if taumin is not None
+            f"median tau_sobolev above 1 from {format_velocity(tauabove1min_kmps, unit)} to"
+            f" {format_velocity(tauabove1max_kmps, unit)}"
+            if tauabove1min_kmps is not None
             else "median tau_sobolev of 1 or less in each bin"
         )
         tautext = (
@@ -284,13 +300,21 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
             "the trough estimate needs the velocity of the photosphere",
             "Give -photospherevelocity, e.g. the median of plotlastinteractionvelocity for a range with no strong line",
         )
-    if unit == "c" and args.photospherevelocity > 1.0:
-        exit_with_error(
-            f"-photospherevelocity {args.photospherevelocity:g} is above the speed of light, and the velocity axis"
-            " takes units of c",
-            "Give -photospherevelocity in units of c, or give -velocityunit kmps",
-        )
     photospherevelocity_kmps = args.photospherevelocity * KMPS_PER_VELOCITYUNIT[unit]
+    if photospherevelocity_kmps >= KMPS_PER_VELOCITYUNIT["c"]:
+        exit_with_error(
+            f"-photospherevelocity {args.photospherevelocity:g} {VELOCITYUNIT_LABELS[unit]} is at or above the speed"
+            " of light",
+            f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
+        )
+    # a value in the wrong unit, e.g. 0.05 for 0.05 c on a km/s axis, gives a disk smaller than a part of a cell
+    partwidth_kmps = modelmeta["wid_init"] / (modelmeta["t_model_init_days"] * day_to_s) / km_to_cm / TROUGHSUBPOINTS
+    if photospherevelocity_kmps < partwidth_kmps:
+        exit_with_error(
+            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is less than the width"
+            f" {format_velocity(partwidth_kmps, unit)} of a part of a cell, thus the trough estimate has no resolution",
+            f"Give -photospherevelocity in units of {VELOCITYUNIT_LABELS[unit]}, or change -velocityunit",
+        )
     cornervelocity_kmps = get_grid_corner_velocity_kmps(modelmeta)
     if photospherevelocity_kmps >= cornervelocity_kmps:
         exit_with_error(
@@ -318,7 +342,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action=CommaJoinAction,
         help='Ions of the lines, e.g. "Fe II,Co II". Default: each ion with a population in the model',
     )
-    parser.add_argument("-maxlines", type=int, default=8, help="Number of lines to plot")
+    parser.add_argument("-maxlines", type=positive_int_arg, default=8, help="Number of lines to plot")
     parser.add_argument(
         "-rankby",
         choices=["emission", "tau"],
@@ -341,7 +365,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "-photospherevelocity",
-        type=float,
+        type=positive_float_arg,
         help=(
             "Velocity of the photosphere of -troughdirbin, in the unit of -velocityunit. plotlastinteractionvelocity"
             " gives an estimate"
@@ -356,9 +380,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def print_profile_method(
-    profiles: "LineVelocityProfiles", velocityedges_kmps: Sequence[float], unit: t.Literal["kmps", "c"]
+    profiles: "LineVelocityProfiles", velocityedges_kmps: Sequence[float], unit: t.Literal["kmps", "c"], lineset: str
 ) -> None:
-    """Print the velocity bins, the quantities of the two panels, and the part of the emission in the bins."""
+    """Print the velocity bins, the quantities of the two panels, and the part of the emission in the bins.
+
+    lineset names the lines of the fractions of the emission, e.g. "all the lines".
+    """
     print_detail(
         f"{len(velocityedges_kmps) - 1} velocity bins of {format_velocity(velocityedges_kmps[1], unit)} from 0 to"
         f" {format_velocity(velocityedges_kmps[-1], unit)}. Each cell goes in the bin of the radial velocity of its"
@@ -367,7 +394,7 @@ def print_profile_method(
     print_detail(
         "The emission panel gives the emission of the cells in each bin, divided by the width of the bin. The panel"
         " also divides it by the emission of the line in all the cells. The legend gives the fraction of the emission"
-        " of all the lines. The tau_sobolev panel gives the median tau_sobolev of the cells in each bin, with the"
+        f" of {lineset}. The tau_sobolev panel gives the median tau_sobolev of the cells in each bin, with the"
         " volume of each cell as the weight"
     )
     totalemission = float(profiles.dfsummary["emission_erg_per_s"].sum())
@@ -424,15 +451,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     profiles = get_line_velocity_profiles(inputs, velocityedges_kmps, args.rankby, args.maxlines)
 
-    print_profile_method(profiles, velocityedges_kmps, unit)
+    # -taumin leaves out each line that cannot reach it, thus the sums of the emission take only the other lines
+    lineset = "all the lines" if args.taumin is None else "the lines that -taumin keeps"
+    if args.taumin is not None and args.rankby == "emission":
+        print_warning(
+            "-taumin can leave out an optically thin line, and such a line can emit much. Thus the ranking by"
+            " emission and the fractions of the emission take only the lines that -taumin keeps. Give -rankby tau,"
+            " or -ions in place of -taumin"
+        )
+    print_profile_method(profiles, velocityedges_kmps, unit, lineset)
 
     dfranked = profiles.dfranked.with_columns(label=get_line_label())
     dflinesummary = get_ranked_line_summary(profiles).with_columns(label=get_line_label())
-    print_ranked_lines(dflinesummary, args.rankby, unit)
+    print_ranked_lines(dflinesummary, args.rankby, unit, lineset)
 
     fig, axesgrid = make_frame_figure(args, rows=3 if troughsettings else 2, aspect=0.45)
     axes = axesgrid[:, 0]
-    dfdrawn, colours = plot_line_profiles(axes, profiles, dfranked, velocityedges_kmps, unit)
+    alllineslabel = "All lines in the range" if args.taumin is None else f"Lines that -taumin {args.taumin:g} keeps"
+    dfdrawn, colours = plot_line_profiles(axes, profiles, dfranked, velocityedges_kmps, unit, alllineslabel)
     # the empty tables replace the trough files of the same name from an earlier command
     tables = {
         "": dfdrawn,
@@ -462,9 +498,12 @@ def print_trough_method(
     linecount: int,
     dfblend: pl.DataFrame,
     *,
-    relativisticdoppler: bool,
+    dopplershift: str | None,
 ) -> None:
-    """Print the method and the assumptions of the trough estimate, and the deepest point of the blend."""
+    """Print the method and the assumptions of the trough estimate, and the deepest point of the blend.
+
+    dopplershift is the value of USE_RELATIVISTIC_DOPPLER_SHIFT in artisoptions.h, or None with no such option.
+    """
     directionlabel = get_dirbin_labels([dirbin], average_over_phi=True, usedegrees=True)[dirbin]
     print_detail(
         f"The trough panel is a Sobolev estimate for an observer at the centre cos θ of direction bin {dirbin}"
@@ -474,8 +513,9 @@ def print_trough_method(
     print_detail(
         "The depth at a line-of-sight velocity u is the sum of (1 - exp(-tau)) V_v / (du pi v_ph^2). The sum takes the"
         " parts of the cells on the near side of the photosphere, inside the cylinder of its disk. V_v is the volume"
-        " in velocity space, du is the width of the velocity bin, and v_ph is the velocity of the photosphere. Each"
-        f" cell has {TROUGHSUBPOINTS**3} parts, thus it covers each bin that it crosses"
+        " in velocity space, du is the width of a bin of u, and v_ph is the velocity of the photosphere. Each"
+        f" cell has {TROUGHSUBPOINTS**3} parts, thus it puts its volume in each bin that it crosses. The bins of u have"
+        " the width of the velocity bins, and they continue to the fastest part of a cell"
     )
     print_detail(
         f"The estimate has no emission of the lines, no limb darkening, and only the {linecount} ranked lines. A cell"
@@ -487,17 +527,23 @@ def print_trough_method(
         " photosphere scatter the light many times. Then the real trough can be much less deep. plotopacity with"
         " -vmin, -costhetamin, -costhetamax, and -cellaverage median gives the expansion opacity of each direction"
     )
-    if relativisticdoppler:
+    if dopplershift == "true":
         print_detail(
             "The wavelength of a bin is lambda_rest sqrt((1 - u / c) / (1 + u / c)) for the line-of-sight velocity u"
             " of its centre. artisoptions.h sets USE_RELATIVISTIC_DOPPLER_SHIFT, thus the Doppler factor of ARTIS"
             " also has the transverse velocity v_t. A bin has no v_t, thus the blend is too blue by a fraction of"
             " about v_t^2 / (2 c^2)"
         )
-    else:
+    elif dopplershift == "false":
         print_detail(
             "The wavelength of a bin is lambda_rest (1 - u / c) for the line-of-sight velocity u of its centre. This"
-            " is the Doppler factor of ARTIS, because artisoptions.h does not set USE_RELATIVISTIC_DOPPLER_SHIFT"
+            " is the Doppler factor of ARTIS, because artisoptions.h sets USE_RELATIVISTIC_DOPPLER_SHIFT = false"
+        )
+    else:
+        print_warning(
+            "The artisoptions.h of the model gives no USE_RELATIVISTIC_DOPPLER_SHIFT. Thus the wavelength of a bin"
+            " is lambda_rest (1 - u / c) for the line-of-sight velocity u of its centre. If ARTIS used the"
+            " relativistic factor, the blend is too blue by a fraction of about u^2 / (2 c^2)"
         )
     deepest = dfblend.top_k(1, by="trough_depth").row(0, named=True)
     print_detail(

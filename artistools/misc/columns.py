@@ -210,17 +210,26 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("lambda_angstroms_(lower|upper)", "the {0} edge of the wavelength bin", "Å"),
     (
         "exopac_cm2_per_g",
-        "the expansion opacity of the lines in the wavelength bin, as the mass-weighted mean of the cells",
+        (
+            "the expansion opacity of the lines in the wavelength bin, as the mass-weighted mean or median of the"
+            " cells (-cellaverage)"
+        ),
         "cm^2/g",
     ),
     (
         "linebinned_cm2_per_g",
-        "the line-binned opacity, from the sum of the Sobolev optical depths, as the mass-weighted mean of the cells",
+        (
+            "the line-binned opacity, from the sum of the Sobolev optical depths, as the mass-weighted mean or median"
+            " of the cells (-cellaverage)"
+        ),
         "cm^2/g",
     ),
     (
         "linebinned_cap(.+)_cm2_per_g",
-        "the line-binned opacity with each Sobolev optical depth capped at {0}, as the mass-weighted mean of the cells",
+        (
+            "the line-binned opacity with each Sobolev optical depth capped at {0}, as the mass-weighted mean or median"
+            " of the cells (-cellaverage)"
+        ),
         "cm^2/g",
     ),
     ("(\\w+)_movingaverage_cm2_per_g", "the moving average over the wavelength of the opacity {0}", "cm^2/g"),
@@ -328,7 +337,10 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ),
     (
         "volume_fraction_tau_sobolev_above_1",
-        "the volume of the cells with a tau_sobolev above 1 in the velocity bin, divided by the volume of the bin",
+        (
+            "the volume of the cells with a tau_sobolev above 1 in the velocity bin, divided by the volume of the cells"
+            " with matter in the bin"
+        ),
         "",
     ),
     ("velocity_c_at_tau_sobolev_max", "the radial velocity of the cell with the maximum tau_sobolev", "c"),

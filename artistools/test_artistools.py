@@ -2253,6 +2253,26 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
             assert np.isclose(row["volume_fraction_tau_sobolev_above_1"], volumefraction, rtol=1e-6, atol=0.0)
 
 
+@pytest.mark.parametrize(
+    ("photospherevelocity", "errortext"), [("350000", "above the speed of light"), ("0.05", "a part of a cell")]
+)
+def test_plotlinecontributions_stops_for_a_photosphere_velocity_in_the_wrong_unit(
+    photospherevelocity: str, errortext: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Stop before the estimators for a km/s value above c, and for a value in units of c on a km/s axis."""
+    with pytest.raises(SystemExit):
+        at.plotlinecontributions.main(
+            argsraw=[
+                *("-modelpath", str(modelpath_classic_3d), "-timestep", "25"),
+                *("-lambdamin", "6000", "-lambdamax", "6400", "-velocityunit", "kmps"),
+                *("-troughdirbin", "90", "-photospherevelocity", photospherevelocity),
+                *("-o", str(tmp_path / "lines.pdf")),
+            ]
+        )
+    captured = capsys.readouterr()
+    assert errortext in captured.out + captured.err
+
+
 def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
     """A shell of constant tau_sobolev from 0.9 v_ph to 0.9 vmax gives the depth that the geometry gives.
 
@@ -2261,6 +2281,9 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
     front, thus the depth is (1 - exp(-tau)) u^2 / v_ph^2, as a mean over the bin. A shell gives the same depth for
     each direction. On a coarse grid with bins narrower than a cell, a cell covers each bin that it crosses. The
     earlier code put the whole volume of a cell in the bin of its centre, and the depths then went from 0.24 to 1.11.
+
+    Bins that end below the photosphere, e.g. with -velocitymax, gave no plateau. One bin gave a blend above zero at
+    only one wavelength, because the blend went to zero at the centre of the outer bins.
     """
     from artistools.linecontributions import CellLineInputs
     from artistools.linecontributions import get_sobolev_trough
@@ -2308,7 +2331,7 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
     ]
     for dirbin, relativisticdoppler in ((90, True), (50, False)):
         dfdepths, dfblend = get_shell_trough(64, edges, dirbin, relativisticdoppler=relativisticdoppler)
-        assert np.allclose(dfdepths["trough_depth"].to_numpy(), expected, rtol=0.0, atol=0.01), dirbin
+        assert np.allclose(dfdepths["trough_depth"].to_numpy()[: len(expected)], expected, rtol=0.0, atol=0.01), dirbin
         deepest = dfblend.top_k(1, by="trough_depth").row(0, named=True)
         assert np.isclose(deepest["trough_depth"], absorbed, rtol=0.01, atol=0.0)
         # the plateau from 4000 to 8000 km/s gives the wavelengths of the Doppler shift of 5000 Å
@@ -2319,6 +2342,16 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
     dfdepths, _ = get_shell_trough(10, [400.0 * index for index in range(21)], 90, relativisticdoppler=False)
     dfplateau = dfdepths.filter(pl.col("x_lower_kmps").is_between(4400.0, 7200.0))
     assert np.allclose(dfplateau["trough_depth"].to_numpy(), absorbed, rtol=0.0, atol=0.07)
+
+    # the bins continue past the last edge with the same width, thus the plateau above the photosphere stays
+    dfshort, dfshortblend = get_shell_trough(64, edges[:4], 90, relativisticdoppler=False)
+    assert np.allclose(dfshort["trough_depth"].to_numpy()[: len(expected)], expected, rtol=0.0, atol=0.01)
+    assert np.isclose(dfshortblend["trough_depth"].to_numpy().max(), absorbed, rtol=0.01, atol=0.0)
+
+    # one bin gives its depth to each wavelength of the blend, from the rest wavelength to the outer edge of the bin
+    dfonebin, dfonebinblend = get_shell_trough(10, [0.0, 2.0 * vmax_kmps], 90, relativisticdoppler=False)
+    assert dfonebin.height == 1
+    assert np.allclose(dfonebinblend["trough_depth"].to_numpy(), dfonebin["trough_depth"].item(), rtol=1e-6, atol=0.0)
 
 
 def test_linecontributions_taumin_keeps_each_line_that_reaches_it() -> None:
@@ -2336,6 +2369,55 @@ def test_linecontributions_taumin_keeps_each_line_that_reaches_it() -> None:
     assert reachingkeys
     assert reachingkeys <= keptkeys
     assert len(keptkeys) < dfall.height
+
+
+def test_taumin_keeps_a_line_whose_lower_level_is_above_the_nlte_levels() -> None:
+    """The -taumin bound of an ion with NLTE rows takes n_l <= n_ion max(1, g_l / g_0).
+
+    A level above the NLTE levels of an ion with no superlevel takes n_0 (g_l / g_0) exp(-(E_l - E_0) / k T_exc), which
+    can be above n_ion. The earlier bound n_l <= n_ion left out such a line, although its tau_sobolev reached -taumin.
+    """
+    from artistools.linecontributions import get_cell_line_table
+    from artistools.linecontributions import get_lines_that_can_reach_tau
+    from artistools.linecontributions import NLTEPOPS_SCHEMA
+
+    dfcells = pl.DataFrame({
+        "modelgridindex": [0],
+        "velocity_kmps": [5000.0],
+        "volume": [1e45],
+        "Te": [1e4],
+        "nne": [1e8],
+        "T_exc": [1e4],
+        "nnion_Fe_II": [1.0],
+    })
+    levelsofion = {
+        (26, 2): pl.DataFrame({
+            "level": [0, 1, 2],
+            "g": [1.0, 9.0, 5.0],
+            "energy_ev": [0.0, 0.01, 2.0],
+            "levelname": ["a", "b", "c"],
+        })
+    }
+    dflines = pl.DataFrame({
+        "Z": [26],
+        "ion_stage": [2],
+        "ion": ["Fe II"],
+        "lambda_angstroms": [6230.4],
+        "lower": [1],
+        "upper": [2],
+        "A_per_s": [1e4],
+        "lower_g": [9.0],
+        "upper_g": [5.0],
+    })
+    # an NLTE row for the ground level and no superlevel row
+    dfnltepops = pl.DataFrame(
+        {"modelgridindex": [0], "Z": [26], "ion_stage": [2], "level": [0], "n_NLTE": [0.9]}, schema=NLTEPOPS_SCHEMA
+    )
+    dfcelllines = get_cell_line_table(dfcells, dflines, levelsofion, dfnltepops, time_days=1.0)
+    assert dfcelllines["n_lower_per_cm3"].item() > dfcells["nnion_Fe_II"].item()
+    tau = dfcelllines["tau_sobolev"].item()
+    dfkept = get_lines_that_can_reach_tau(dflines, dfcells, levelsofion, {(26, 2)}, tau, time_days=1.0)
+    assert dfkept.height == 1
 
 
 def test_linecontributions_writes_a_file_only_with_the_output_option(
@@ -2887,6 +2969,7 @@ def test_plotopacity_median_of_the_cells_agrees_with_the_median_of_each_bin() ->
     """-cellaverage median takes the mass-weighted median of the cells from a histogram of log10 of the opacity.
 
     The median of each wavelength bin agrees with the exact mass-weighted median within half a step of the histogram.
+    A NaN opacity stopped the median with an error of the strict cast of its bin. It now gives NaN, as in the mean.
     """
     from artistools.ejectaopacity import get_expansion_opacities
     from artistools.ejectaopacity import get_opacity_lines
@@ -2910,6 +2993,18 @@ def test_plotopacity_median_of_the_cells_agrees_with_the_median_of_each_bin() ->
     )
     ratio = dfmedian["exopac"].to_numpy() / dfexact["exact"].to_numpy()
     assert np.all(np.abs(np.log10(ratio)) <= 0.5 * at.plotopacity.OPACITYMEDIAN_LOGSTEP + 1e-9)
+
+    dfnancell = dfestimators.with_columns(
+        T_exc=pl
+        .when(pl.col("modelgridindex") == dfestimators["modelgridindex"][0])
+        .then(math.nan)
+        .otherwise(pl.col("T_exc"))
+    )
+    for cellaverage in ("mean", "median"):
+        dfnan, _ = at.plotopacity.get_massweighted_opacities(
+            adata, time_days, dfnancell, edges, taucaps=[], cellaverage=cellaverage
+        )
+        assert dfnan["exopac"].is_nan().all(), cellaverage
 
 
 def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.CaptureFixture[str]) -> None:

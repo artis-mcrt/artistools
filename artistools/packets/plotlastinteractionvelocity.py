@@ -68,10 +68,12 @@ def get_last_interaction_velocity_quartiles(
 
     Each value of the dictionary also gives the number of packets with no position. The packets are the escaped
     r-packets with a rest-frame wavelength from lambdamin to lambdamax at the escape. A packet takes the timestep of its
-    arrival time, and a timestep is in the result if its mid time is in timerange_days. The quartiles take the energy
-    of each packet as the weight, and each velocity takes the centre of its bin of the histogram. One scan of the
-    packets gives the quartiles of all the direction bins. A direction bin takes all the phi bins of its costheta bin,
-    and -1 takes all the directions.
+    arrival time, and a timestep is in the result if its mid time is in timerange_days. A range with no mid time stops
+    the command with an error.
+
+    The quartiles take the energy of each packet as the weight, and each velocity takes the centre of its bin of the
+    histogram. One scan of the packets gives the quartiles of all the direction bins. A direction bin takes all the phi
+    bins of its costheta bin, and -1 takes all the directions.
     """
     _, lzpackets = get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     tstarts = get_timestep_times(modelpath, loc="start")
@@ -79,7 +81,10 @@ def get_last_interaction_velocity_quartiles(
     timemids = get_timestep_times(modelpath, loc="mid")
     timesteps = [timestep for timestep, tmid in enumerate(timemids) if timerange_days[0] <= tmid <= timerange_days[1]]
     if not timesteps:
-        return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
+        exit_with_error(
+            "no timestep has its mid time in the range of -timemin and -timemax",
+            f"Give a range that holds a mid time from {timemids[0]:.2f} to {timemids[-1]:.2f} d",
+        )
     timeedges = [*tstarts, tends[-1]]
     velocity_kmps = get_emission_velocity_of_columns_expr(position, lzpackets.collect_schema().names()) / km_to_cm
     # the filter of the arrival time comes first, thus the scan reads only the row groups of the selected timesteps

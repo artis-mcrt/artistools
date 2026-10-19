@@ -110,6 +110,9 @@ def get_opacity_series(taucaps: Sequence[float]) -> list[tuple[str, str, "mplt.L
 # its error is at most half a step: 0.005 dex, or 1.2 %
 OPACITYMEDIAN_LOGSTEP: t.Final = 0.01
 
+# the columns that name one bin of a histogram of log10 of an opacity
+OPACITYHISTOGRAMKEYS: t.Final = ("lambda_angstroms_binindex", "column", "histogrambin", "isfinite")
+
 
 def get_massweighted_opacities(
     adata: pl.DataFrame,
@@ -124,24 +127,24 @@ def get_massweighted_opacities(
 
     The mass of each cell is the weight of each mean and of the median. A few dense cells can make the mean much
     larger than the opacity of a typical cell. The median then gives the opacity of a typical cell. The median is the
-    middle of a bin of a histogram of log10 of the opacity, with steps of OPACITYMEDIAN_LOGSTEP. The code adds the
-    histograms of the batches of cells, because a model with many cells has too many values to keep. A cell with an
+    middle of a bin of a histogram of log10 of the opacity, with steps of OPACITYMEDIAN_LOGSTEP. Each batch of cells
+    adds its histogram to one sum, because a model with many cells has too many values to keep. A cell with an
     opacity of zero or less goes in a bin of its own.
 
     For one cell, the mean is the opacity of that cell, and the median is within half a step of it. The bins have one
-    width. The Planck mean takes the bins with a middle in planckrange. A planckrange of None, or a model with no cell
-    temperature, gives a Planck mean of NaN.
+    width. The Planck mean takes the bins with a middle in planckrange. A planckrange of None, or a model with no
+    cell temperature, gives a Planck mean of NaN. A NaN or an infinite opacity in a cell gives a median of NaN.
 
     The column linecount gives the number of lines in each bin. It counts each line that the opacities sum, thus it
     is the same for each cell.
     """
     if dfestimators.height > 1:
         print_detail(f"The curves are the mass-weighted {cellaverage} of the opacities of {dfestimators.height} cells")
-        if cellaverage == "median":
-            print_detail(
-                "The median is the middle of a bin of a histogram of log10 of the opacity. The bins have a width of"
-                f" {OPACITYMEDIAN_LOGSTEP:g} dex"
-            )
+    if cellaverage == "median":
+        print_detail(
+            "The median is the middle of a bin of a histogram of log10 of the opacity. The bins have a width of"
+            f" {OPACITYMEDIAN_LOGSTEP:g} dex"
+        )
     if planckrange is not None:
         print_planck_mean_method(*planckrange)
     lambda_bin_edges = list(lambda_bin_edges)
@@ -150,6 +153,7 @@ def get_massweighted_opacities(
     opacitycolumns = get_opacity_columns(taucaps)
 
     batchsums: list[pl.DataFrame] = []
+    dfhistogram: pl.DataFrame | None = None
     planckmean_times_mass = 0.0
     planckmass = 0.0
     # the bar gives the rate and the time until the end, which a model of many cells needs
@@ -158,7 +162,13 @@ def get_massweighted_opacities(
     ):
         dfbinnedopacities = get_expansion_opacities(opacitylines, dfcellbatch, lambda_bin_edges, time_days, taucaps)
         if cellaverage == "median":
-            batchsums.append(get_opacity_histograms(dfbinnedopacities, opacitycolumns))
+            dfbatchhistogram = get_opacity_histograms(dfbinnedopacities, opacitycolumns)
+            # a list of the histograms of all the batches grows with the number of cells, and their sum does not
+            dfhistogram = (
+                dfbatchhistogram
+                if dfhistogram is None
+                else sum_opacity_histograms(pl.concat([dfhistogram, dfbatchhistogram]))
+            )
         else:
             batchsums.append(
                 dfbinnedopacities.group_by("lambda_angstroms_binindex").agg(
@@ -176,8 +186,8 @@ def get_massweighted_opacities(
     linecounts = opacitylines.dflines.group_by("lambda_angstroms_binindex").agg(linecount=pl.len())
     # the index of a bin gives its middle, thus the sums of the batches need no float key
     dfaverages = (
-        get_median_of_histograms(pl.concat(batchsums), opacitycolumns)
-        if cellaverage == "median"
+        get_median_of_histograms(dfhistogram, opacitycolumns)
+        if dfhistogram is not None
         else (
             pl
             .concat(batchsums)
@@ -205,33 +215,39 @@ def get_opacity_histograms(dfbinnedopacities: pl.DataFrame, opacitycolumns: Sequ
     """Return the mass of the cells in each bin of log10 of each opacity, for each wavelength bin.
 
     The column histogrambin gives the bin of log10 of the opacity, and the bin of an opacity of zero or less is null.
+    The column isfinite is false for a NaN or an infinite opacity, which has no bin.
     """
     return pl.concat([
-        dfbinnedopacities
-        .select(
+        dfbinnedopacities.select(
             "lambda_angstroms_binindex",
             "mass_g",
-            histogrambin=pl.when(pl.col(column) > 0.0).then(
+            column=pl.lit(column),
+            isfinite=pl.col(column).is_finite(),
+            # polars takes NaN as larger than each number, thus the strict cast needs the test of a finite value
+            histogrambin=pl.when(pl.col(column).is_finite() & (pl.col(column) > 0.0)).then(
                 (pl.col(column).log10() / OPACITYMEDIAN_LOGSTEP).floor().cast(pl.Int64)
             ),
-        )
-        .group_by("lambda_angstroms_binindex", "histogrambin")
-        .agg(pl.col("mass_g").sum())
-        .with_columns(column=pl.lit(column))
+        ).pipe(sum_opacity_histograms)
         for column in opacitycolumns
     ])
 
 
+def sum_opacity_histograms(dfhistograms: pl.DataFrame) -> pl.DataFrame:
+    """Return the sum of the mass in each bin of the histograms, with the columns in one order for pl.concat."""
+    return (
+        dfhistograms.group_by(OPACITYHISTOGRAMKEYS).agg(pl.col("mass_g").sum()).select(*OPACITYHISTOGRAMKEYS, "mass_g")
+    )
+
+
 def get_median_of_histograms(dfhistograms: pl.DataFrame, opacitycolumns: Sequence[str]) -> pl.DataFrame:
-    """Return the mass-weighted median of each opacity in each wavelength bin, from the sums of the histograms.
+    """Return the mass-weighted median of each opacity in each wavelength bin, from the sum of the histograms.
 
     The median takes the middle of its bin of log10 of the opacity, and the null bin of an opacity of zero or less
-    gives zero.
+    gives zero. A cell with a NaN or an infinite opacity gives a median of NaN. A NaN opacity also gives a mean of
+    NaN.
     """
     return (
         dfhistograms
-        .group_by("lambda_angstroms_binindex", "column", "histogrambin")
-        .agg(pl.col("mass_g").sum())
         .with_columns(
             value=pl
             .when(pl.col("histogrambin").is_null())
@@ -239,7 +255,12 @@ def get_median_of_histograms(dfhistograms: pl.DataFrame, opacitycolumns: Sequenc
             .otherwise(10.0 ** ((pl.col("histogrambin").cast(pl.Float64) + 0.5) * OPACITYMEDIAN_LOGSTEP))
         )
         .group_by("lambda_angstroms_binindex", "column")
-        .agg(median=get_weighted_quantile_expr("value", "mass_g", 0.5))
+        .agg(
+            median=pl
+            .when(pl.col("isfinite").all())
+            .then(get_weighted_quantile_expr("value", "mass_g", 0.5))
+            .otherwise(math.nan)
+        )
         .pivot(on="column", index="lambda_angstroms_binindex", values="median")
         .select("lambda_angstroms_binindex", *opacitycolumns)
     )

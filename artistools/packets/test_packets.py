@@ -594,7 +594,8 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
     """The group of a packet comes from its emission type, or with --absorption, from its absorption type.
 
     The groups after -maxseriescount and the codes with no line join Other, and a packet above the bins is in no bin.
-    -velocityunit c gives -velocitymax, the bin edges, and the luminosity per unit velocity in units of c.
+    -velocityunit c gives -velocitymax, the bin edges, and the luminosity per unit velocity in units of c. A group with
+    no packet in the bins also joins Other. NOT SET with no position took the only series and drew zero in each bin.
     """
     from artistools.packets import plotlastpacketinteraction
 
@@ -605,10 +606,11 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
     delta_t_s = (at.get_timestep_times(modelpath, loc="end")[timestep] - t_start) * at.constants.day_to_s
     emtime_s = 6.0 * at.constants.day_to_s
     kmps_per_unit = at.constants.C_cm_per_s / at.constants.km_to_cm if velocityunit == "c" else 1.0
-    # rows 0 and 3 of the linelist are lines of Fe IV and Ni IV, and the last code is a free-free emission
-    typecodes = [0, 0, 0, 0, 3, -9999999]
-    velocities_kmps = [2000.0, 3000.0, 7000.0, 12000.0, 7000.0, 7000.0]
-    energies = [2e40, 2e40, 2e40, 2e40, 1e40, 0.5e40]
+    # rows 0 and 3 of the linelist are lines of Fe IV and Ni IV, and the next code is a free-free emission. The last
+    # packet has no record of its position, and its NOT SET group has more energy than the Fe IV group
+    typecodes = [0, 0, 0, 0, 3, -9999999, -9999000]
+    velocities_kmps = [2000.0, 3000.0, 7000.0, 12000.0, 7000.0, 7000.0, 0.0]
+    energies = [2e40, 2e40, 2e40, 2e40, 1e40, 0.5e40, 9e40]
     othertypecodes = [957] * len(typecodes)
     dfpackets = pl.DataFrame({
         "t_arrive_d": [t_start] * len(typecodes),
@@ -618,7 +620,7 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
         "em_posx": [velocity * at.constants.km_to_cm * emtime_s for velocity in velocities_kmps],
         "em_posy": [0.0] * len(typecodes),
         "em_posz": [0.0] * len(typecodes),
-        "em_time": [emtime_s] * len(typecodes),
+        "em_time": [emtime_s] * (len(typecodes) - 1) + [-1.0],
     })
 
     with mock.patch.object(

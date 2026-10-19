@@ -67,6 +67,10 @@ ROWSPERBATCH = 4_000_000
 # for a small tau, (1 - exp(-tau)) / tau loses accuracy, thus a small tau takes the series 1 - tau / 2
 SMALLTAU = 1e-6
 
+# an estimator file gives each nnion_ value with about 5 digits. Thus a population of the nlte_*.out files can be above
+# the nnion_ value of its ion by about 1e-4 of that value
+NNION_RTOL: t.Final = 1e-3
+
 NLTEPOPS_SCHEMA = pl.Schema({
     "modelgridindex": pl.Int64,
     "Z": pl.Int64,
@@ -554,10 +558,18 @@ def get_cell_line_inputs(
         .sort("modelgridindex")
         .collect()
     )
+    # the bound of -taumin is zero with no cell, thus this check comes first
+    if dfcells.is_empty():
+        if costhetarange is not None:
+            exit_with_error(
+                "no cell with matter has its centre in the range of cos θ",
+                "Give a wider range of -costhetamin and -costhetamax",
+            )
+        exit_with_error(f"the estimators hold no cell for timestep {timestep}", "Give a different time")
 
     print_detail(
-        f"{dflines.height} lines of {len(levelsofion)} ions from {lambdamin:g} to {lambdamax:g} Å. The wavelengths are"
-        " vacuum wavelengths from the level energies"
+        f"{dflines.height} lines of {dflines.select('Z', 'ion_stage').n_unique()} ions from {lambdamin:g} to"
+        f" {lambdamax:g} Å. The wavelengths are vacuum wavelengths from the level energies"
     )
     if taumin is not None:
         dflines = get_lines_that_can_reach_tau(dflines, dfcells, levelsofion, nlteions, taumin, time_days)
@@ -566,11 +578,6 @@ def get_cell_line_inputs(
                 f"no line can reach a tau_sobolev of {taumin:g} in a cell, thus -taumin leaves out each line",
                 "Give a smaller -taumin, or a different wavelength range",
             )
-    if dfcells.is_empty():
-        exit_with_error(
-            "no cell with matter has its centre in the range of cos θ",
-            "Give a wider range of -costhetamin and -costhetamax",
-        )
     print_detail(f"{dfcells.height} cells at the mid time {time_days:.2f} d of timestep {timestep}")
     print_detail(
         "tau_sobolev = (A lambda^3 t / 8 pi) (g_u n_l / g_l - n_u) at the mid time t of the timestep. A is the Einstein"
@@ -634,8 +641,12 @@ def get_lines_that_can_reach_tau(
 
     tau_sobolev <= (A lambda^3 t / 8 pi) (g_u / g_l) n_l. For an ion with LTE populations in each cell,
     n_l = n_ion g_l exp(-(E_l - E_0) / k T_exc) / Z <= n_ion (g_l / g_0) exp(-(E_l - E_0) / k T_exc), because the
-    partition function Z is at least g_0. An ion with NLTE rows can have any population in a level, thus its bound takes
-    n_l <= n_ion. An ion with no nnion_ estimator has no bound, thus all its lines stay.
+    partition function Z is at least g_0.
+
+    For an ion with NLTE rows, an NLTE level and a level of the superlevel have n_l <= n_ion. A level above the NLTE
+    levels of an ion with no superlevel takes n_0 (g_l / g_0) exp(-(E_l - E_0) / k T_exc), which can be above n_ion.
+    Thus the bound takes n_l <= n_ion max(1, g_l / g_0), with a margin of NNION_RTOL. An ion with no nnion_ estimator
+    has no bound, thus all its lines stay.
     """
     temperatures = dfcells["T_exc"].cast(pl.Float64).fill_null(0.0).to_numpy()
     lineframes = []
@@ -651,7 +662,11 @@ def get_lines_that_can_reach_tau(
         energies_ev = levels["energy_ev"].to_numpy()
         lowerlevels = dfionlines["lower"].to_numpy()
         if (Z, ion_stage) in nlteions:
-            populationbound = np.full(dfionlines.height, nnion.max(initial=0.0))
+            populationbound = (
+                nnion.max(initial=0.0)
+                * np.maximum(1.0, dfionlines["lower_g"].to_numpy() / float(levels["g"][0]))
+                * (1.0 + NNION_RTOL)
+            )
         else:
             excitation_ev = energies_ev[lowerlevels] - energies_ev[0]
             populationbound = (
@@ -673,9 +688,10 @@ def get_lines_that_can_reach_tau(
     dfkept = pl.concat(lineframes) if lineframes else dflines.clear()
     print_detail(
         f"-taumin {taumin:g} leaves out {dflines.height - dfkept.height} of {dflines.height} lines. A left-out line has"
-        " an upper bound of tau_sobolev below -taumin in each cell: (A lambda^3 t / 8 pi) (g_u / g_0) times the largest"
-        " n_ion exp(-(E_l - E_0) / k T_exc) of the cells for an ion with LTE populations, or (g_u / g_l) times the"
-        " largest n_ion for an ion with NLTE rows. The sums of the emission do not include these lines"
+        " an upper bound of tau_sobolev below -taumin in each cell. For an ion with LTE populations, the bound is"
+        " (A lambda^3 t / 8 pi) (g_u / g_0) times the largest n_ion exp(-(E_l - E_0) / k T_exc) of the cells. For an"
+        " ion with NLTE rows, it is (A lambda^3 t / 8 pi) (g_u / g_l) max(1, g_l / g_0) times the largest n_ion. An"
+        " optically thin line can emit much, but the sums of the emission and the ranking by emission leave it out"
     )
     return dfkept
 
@@ -764,7 +780,8 @@ def get_line_velocity_profiles(
     - the emission and the number of cells;
     - the mean and the median of tau_sobolev, with the volume of each cell as the weight;
     - the volume fraction of the cells with a tau_sobolev above 1.
-    A cell outside the bins is in the summary, but not in a bin.
+    A cell with no tau_sobolev is transparent, as in the trough estimate, thus each value of the bin takes it as a
+    tau_sobolev of 0. A cell outside the bins is in the summary, but not in a bin.
     """
     velocitybin = get_velocity_bin_index_expr(pl.col("velocity_kmps"), velocityedges_kmps)
     summaries = []
@@ -793,16 +810,15 @@ def get_line_velocity_profiles(
     binindices = list(range(len(velocityedges_kmps) - 1))
     binwidth_kmps = (velocityedges_kmps[-1] - velocityedges_kmps[0]) / len(binindices)
     tau = pl.col("tau_sobolev")
-    volumewithtau = pl.col("volume").filter(tau.is_not_null())
     dfprofiles = (
         dfrankedcells
         .filter(pl.col("velocitybin").is_not_null())
+        .with_columns(tau.fill_null(0.0))
         .group_by(*LINEKEYS, "velocitybin")
         .agg(
             emission_erg_per_s=pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0).sum(),
-            tau_sobolev_volume_mean=(tau * pl.col("volume")).filter(tau.is_not_null()).sum() / volumewithtau.sum(),
+            tau_sobolev_volume_mean=(tau * pl.col("volume")).sum() / pl.col("volume").sum(),
             tau_sobolev_volume_median=get_weighted_quantile_expr("tau_sobolev", "volume", 0.5),
-            # a cell with no tau_sobolev is transparent, as in the trough estimate, thus its volume stays in the bin
             volume_fraction_tau_sobolev_above_1=pl.col("volume").filter(tau > 1.0).sum() / pl.col("volume").sum(),
             cellcount=pl.len(),
         )
@@ -857,8 +873,9 @@ def get_ranked_line_summary(profiles: LineVelocityProfiles) -> pl.DataFrame:
     )
 
 
-# each cell of the trough estimate takes this number of points along each axis, thus a cell covers each bin of
-# the line-of-sight velocity that it crosses. Three points gave the analytic depth of a shell within 0.01
+# each cell of the trough estimate has this number of points along each axis. Thus a cell puts its volume in each bin
+# of the line-of-sight velocity that it crosses. With bins as wide as a cell, three points gave the analytic depth of a
+# shell within 0.01
 TROUGHSUBPOINTS: t.Final = 3
 
 
@@ -880,14 +897,19 @@ def get_sobolev_trough(
     sum((1 - exp(-tau)) V_v) / (du pi v_ph^2). V_v is the volume in velocity space, and du is the width of the bin.
     Thus the depth is the fraction of the flux of a uniform disk that the line removes.
 
-    Each cell is a cube of cellwidth_kmps, with TROUGHSUBPOINTS^3 points at the centres of its parts. Each point takes
-    its own line-of-sight velocity and its own part of the volume, thus a cell covers each bin that it crosses.
+    The bins of u have the width of the bins of velocityedges_kmps. They continue past its last edge up to the
+    fastest part of a cell, thus a low -velocitymax keeps all the absorption. Each cell is a cube of cellwidth_kmps,
+    with TROUGHSUBPOINTS^3 points at the centres of its parts. Each point takes its own line-of-sight velocity and its
+    own part of the volume, thus a cell puts its volume in each bin that it crosses.
 
     The estimate has no emission of the line and no limb darkening. The blend is 1 - prod(1 - depth) of the lines at
-    each wavelength. The wavelength of a bin comes from the Doppler factor of ARTIS for the line-of-sight velocity u of
-    its centre: 1 - u / c, or with relativisticdoppler, sqrt((1 - u / c) / (1 + u / c)). The relativistic factor of
-    ARTIS also has the transverse velocity v_t, which a bin does not hold. Thus the blend is too blue by a fraction of
-    about v_t^2 / (2 c^2). A bin with its centre at or above c gives no wavelength.
+    each wavelength. The depth of a line goes linearly between the wavelengths of the bin centres. The first bin and
+    the last bin keep their depth from their centre to their outer edge.
+
+    The wavelength of a velocity u comes from the Doppler factor of ARTIS: 1 - u / c, or with relativisticdoppler,
+    sqrt((1 - u / c) / (1 + u / c)). The relativistic factor of ARTIS also has the transverse velocity v_t, which a
+    bin does not hold. Thus the blend is too blue by a fraction of about v_t^2 / (2 c^2). A bin with its centre at or
+    above c gives no wavelength.
     """
     nphibins = get_viewingdirection_phibincount()
     costhetalower, costhetaupper, _ = get_costheta_bins(usedegrees=False)
@@ -896,17 +918,18 @@ def get_sobolev_trough(
     sintheta = math.sqrt(1.0 - costheta**2)
 
     vph_kmps = photospherevelocity_kmps
-    edges_kmps = np.array(velocityedges_kmps)
-    nbins = len(edges_kmps) - 1
-    binwidth_kmps = (edges_kmps[-1] - edges_kmps[0]) / nbins
     time_s = inputs.time_days * day_to_s
     dfcells = inputs.dfcells.select("modelgridindex", "vel_x_mid", "vel_y_mid", "vel_z_mid")
     centres_kmps = dfcells.select(pl.exclude("modelgridindex")).to_numpy() / km_to_cm
     # the offsets of the points of a cell from its centre, in units of the cell width
     subpointfractions = (np.arange(TROUGHSUBPOINTS) + 0.5) / TROUGHSUBPOINTS - 0.5
     offsets_kmps = cellwidth_kmps * np.array(np.meshgrid(*[subpointfractions] * 3, indexing="ij")).reshape(3, -1).T
-    points_kmps = centres_kmps[:, np.newaxis, :] + offsets_kmps[np.newaxis, :, :]
-    speedsquared = (points_kmps**2).sum(axis=2)
+
+    binwidth_kmps = (velocityedges_kmps[-1] - velocityedges_kmps[0]) / (len(velocityedges_kmps) - 1)
+    maxspeed_kmps = float(np.linalg.norm(centres_kmps, axis=1).max() + np.linalg.norm(offsets_kmps, axis=1).max())
+    extrabincount = max(0, math.ceil((maxspeed_kmps - velocityedges_kmps[-1]) / binwidth_kmps))
+    edges_kmps = np.append(velocityedges_kmps, velocityedges_kmps[-1] + binwidth_kmps * np.arange(1, extrabincount + 1))
+    nbins = len(edges_kmps) - 1
 
     # a negative tau_sobolev is a population inversion, and a null one has no population. The estimate takes such a
     # line as transparent
@@ -930,58 +953,65 @@ def get_sobolev_trough(
     for phiindex in range(nphibins):
         phi = 2.0 * math.pi * (phiindex + 0.5) / nphibins
         direction = np.array([sintheta * math.cos(phi), sintheta * math.sin(phi), costheta])
-        vlos_kmps = points_kmps @ direction
-        impactsquared = speedsquared - vlos_kmps**2
-        isinfront = (impactsquared < vph_kmps**2) & (
-            vlos_kmps > np.sqrt(np.clip(vph_kmps**2 - impactsquared, 0.0, None))
-        )
-        cellindices = np.nonzero(isinfront)[0]
-        frontvlos_kmps = vlos_kmps[isinfront]
-        for lineindex, weights in enumerate(lineweights):
-            histogram, _ = np.histogram(frontvlos_kmps, bins=edges_kmps, weights=weights[cellindices])
-            depths[lineindex] += histogram / (binwidth_kmps * math.pi * vph_kmps**2 * nphibins)
+        # one point of each cell at a time keeps each array at one value for each cell
+        for offset_kmps in offsets_kmps:
+            points_kmps = centres_kmps + offset_kmps
+            vlos_kmps = points_kmps @ direction
+            impactsquared = (points_kmps**2).sum(axis=1) - vlos_kmps**2
+            isinfront = (impactsquared < vph_kmps**2) & (
+                vlos_kmps > np.sqrt(np.clip(vph_kmps**2 - impactsquared, 0.0, None))
+            )
+            # np.histogram sorted the velocities again for each line. These bins are the same: a bin holds its lower
+            # edge, and the last bin also holds its upper edge
+            binindices = np.searchsorted(edges_kmps, vlos_kmps, side="right") - 1
+            binindices[vlos_kmps == edges_kmps[-1]] = nbins - 1
+            iscounted = isinfront & (binindices >= 0) & (binindices < nbins)
+            for lineindex, weights in enumerate(lineweights):
+                depths[lineindex] += np.bincount(binindices[iscounted], weights=weights[iscounted], minlength=nbins)
+    depths /= binwidth_kmps * math.pi * vph_kmps**2 * nphibins
 
-    binindices = list(range(nbins))
     dfdepths = (
         profiles.dfranked
         .select(LINEKEYS)
         .join(
-            pl.DataFrame({"velocitybin": binindices}, schema={"velocitybin": pl.Int64}),
+            pl.DataFrame({"x_lower_kmps": edges_kmps[:-1], "x_upper_kmps": edges_kmps[1:]}),
             how="cross",
             maintain_order="left_right",
         )
-        .with_columns(
-            trough_depth=pl.Series(depths.reshape(-1)),
-            x_lower_kmps=pl.col("velocitybin").replace_strict(
-                binindices, velocityedges_kmps[:-1], return_dtype=pl.Float64
-            ),
-            x_upper_kmps=pl.col("velocitybin").replace_strict(
-                binindices, velocityedges_kmps[1:], return_dtype=pl.Float64
-            ),
-        )
+        .with_columns(trough_depth=pl.Series(depths.reshape(-1)))
+        .select(*LINEKEYS, "trough_depth", "x_lower_kmps", "x_upper_kmps")
     )
 
-    bincentres_on_c = (
-        (np.array(velocityedges_kmps[:-1]) + np.array(velocityedges_kmps[1:])) / 2.0 * km_to_cm / C_cm_per_s
-    )
+    edges_on_c = edges_kmps * km_to_cm / C_cm_per_s
+    bincentres_on_c = (edges_on_c[:-1] + edges_on_c[1:]) / 2.0
     # the corner of a fast grid can be above c, and a cell with matter cannot be there
-    isbelowc = bincentres_on_c < 1.0
-    betas = bincentres_on_c[isbelowc]
+    belowcbincount = int(np.count_nonzero(bincentres_on_c < 1.0))
+    outeredge_on_c = edges_on_c[belowcbincount : belowcbincount + 1]
+    outeredge_on_c = outeredge_on_c[outeredge_on_c < 1.0]
+    betas = np.concatenate((edges_on_c[:1], bincentres_on_c[:belowcbincount], outeredge_on_c))
     dopplerfactors = np.sqrt((1.0 - betas) / (1.0 + betas)) if relativisticdoppler else 1.0 - betas
     lambdarests_angstroms = profiles.dfranked["lambda_angstroms"].to_numpy()
     lambdagrid_angstroms = np.linspace(
         lambdarests_angstroms.min() * dopplerfactors.min(), lambdarests_angstroms.max(), 400
     )
     transmission = np.ones_like(lambdagrid_angstroms)
-    for dfline in dfdepths.partition_by(LINEKEYS, maintain_order=True):
+    for lambdarest_angstroms, linedepths in zip(lambdarests_angstroms, depths, strict=True):
+        belowcdepths = linedepths[:belowcbincount]
+        sampledepths = np.concatenate((belowcdepths[:1], belowcdepths, belowcdepths[-1:][: len(outeredge_on_c)]))
         # np.interp needs increasing x, and a larger velocity gives a shorter wavelength
-        linelambdas_angstroms = float(dfline["lambda_angstroms"][0]) * dopplerfactors[::-1]
-        depths = dfline.sort("velocitybin")["trough_depth"].to_numpy()[isbelowc][::-1]
         transmission *= 1.0 - np.clip(
-            np.interp(lambdagrid_angstroms, linelambdas_angstroms, depths, left=0.0, right=0.0), 0.0, 1.0
+            np.interp(
+                lambdagrid_angstroms,
+                lambdarest_angstroms * dopplerfactors[::-1],
+                sampledepths[::-1],
+                left=0.0,
+                right=0.0,
+            ),
+            0.0,
+            1.0,
         )
     dfblend = pl.DataFrame({"lambda_angstroms": lambdagrid_angstroms, "trough_depth": 1.0 - transmission})
-    return dfdepths.drop("velocitybin"), dfblend
+    return dfdepths, dfblend
 
 
 def addarg_taumin(parser: argparse.ArgumentParser) -> None:
@@ -991,7 +1021,8 @@ def addarg_taumin(parser: argparse.ArgumentParser) -> None:
         type=float,
         help=(
             "Leave out each line whose upper bound of tau_sobolev in the cells is below this value. Use -taumin for a"
-            " wavelength range with very many lines. Default: no limit"
+            " wavelength range with very many lines. An optically thin line can emit much, but the sums of the"
+            " emission and the ranking by emission then leave it out. Default: no limit"
         ),
     )
 
@@ -1050,9 +1081,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if not args.percell:
         shown = dftable.head(args.maxlines)
+        lineset = "all the lines" if args.taumin is None else "the lines that -taumin keeps"
         print_detail(
             f"The table gives {shown.height} of {dftable.height} lines, which emit"
-            f" {shown['emission_fraction'].sum():.1%} of the emission of all the lines. The means take the emission"
+            f" {shown['emission_fraction'].sum():.1%} of the emission of {lineset}. The means take the emission"
             " of each cell as the weight"
         )
         dftable = shown

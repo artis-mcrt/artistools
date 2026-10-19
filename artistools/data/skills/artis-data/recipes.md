@@ -332,6 +332,7 @@ Possible errors:
   photosphere (step 5), the light scatters many times, and the estimate gives a trough that is too deep.
 - `plotlinecontributions` and `linecontributions` calculate each pair of a cell and a line. For a wide range with all
   the ions of a kilonova, give `-ions` or `-taumin 1`. `-taumin` leaves out each line that cannot reach that
-  tau_sobolev in any cell.
+  tau_sobolev in any cell. In `plotlinecontributions`, use `-taumin` with `-rankby tau`. An optically thin line can
+  emit much, and the ranking by emission and the emission fractions take only the lines that `-taumin` keeps.
 - `-dirbin 90` holds the directions with 0.8 ≤ cos θ ≤ 1, i.e. 0° to 37°, as a mean over phi. `-costhetamin 0.8`
   selects the cells of the same cone. A 1D model has no direction.
