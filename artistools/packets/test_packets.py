@@ -1,5 +1,6 @@
 import math
 import os
+import stat
 from pathlib import Path
 from unittest import mock
 
@@ -1197,3 +1198,88 @@ def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(
             outputfile.with_name(f"{outputfile.stem}_summary.txt"), separator=" ", null_values="nan", comment_prefix="#"
         )
         assert int(dfsummary["packetcount"].sum()) == expectedcount > 0
+
+
+def make_filterpackets_model(tmp_path: Path) -> Path:
+    """Copy the packets files of the 3D test model, with the file of rank 1 as an uncompressed file."""
+    sourcemodel = at.get_path("testdata") / "test-classicmode_3d"
+    modelpath = tmp_path / "model"
+    (modelpath / "packets").mkdir(parents=True)
+    (modelpath / "input.txt").write_bytes((sourcemodel / "input.txt").read_bytes())
+    (modelpath / "packets" / "packets00_0000.out.zst").write_bytes(
+        (sourcemodel / "packets" / "packets00_0000.out.zst").read_bytes()
+    )
+    with at.zopen(sourcemodel / "packets" / "packets00_0001.out.zst", mode="rb") as fsource:
+        (modelpath / "packets" / "packets00_0001.out").write_bytes(fsource.read())
+    return modelpath
+
+
+def get_packet_types(packetsfile: Path, modelpath: Path) -> pl.DataFrame:
+    columns = at.packets.core.get_packets_text_columns(packetsfile, modelpath)
+    return at.packets.core.readfile_text(packetsfile, columns).select("type_id", "escape_type_id")
+
+
+def test_filterpackets_keeps_only_the_escaped_rpkts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    modelpath = make_filterpackets_model(tmp_path)
+    packetsfolder = modelpath / "packets"
+    # a small frame size makes several zstd frames in each output file
+    monkeypatch.setattr(at.packets.filterpackets, "LINES_PER_FRAME", 1000)
+    parquetcache = at.packets.core.get_packets_rankbatch_parquetpath(modelpath, (0, 1), 0, virtual=False)
+    parquetcache.write_bytes(b"")
+    # the zstd file that replaces the uncompressed file must keep its mode
+    (packetsfolder / "packets00_0001.out").chmod(0o640)
+    # a stale copy of a rank still holds the removed packets
+    (packetsfolder / "packets00_0001.out.gz").write_bytes(b"")
+    escaped_rpkt = (pl.col("type_id") == at.packets.core.type_ids["TYPE_ESCAPE"]) & (
+        pl.col("escape_type_id") == at.packets.core.type_ids["TYPE_RPKT"]
+    )
+    inputfiles = [packetsfolder / "packets00_0000.out.zst", packetsfolder / "packets00_0001.out"]
+    expected_counts = [get_packet_types(path, modelpath).filter(escaped_rpkt).height for path in inputfiles]
+    headerline = at.zopen(inputfiles[0]).readline()
+
+    at.packets.filterpackets.main(argsraw=[str(modelpath), "-f"])
+
+    assert sorted(path.name for path in packetsfolder.iterdir()) == ["packets00_0000.out.zst", "packets00_0001.out.zst"]
+    assert stat.S_IMODE((packetsfolder / "packets00_0001.out.zst").stat().st_mode) == 0o640
+    for rank, expected_count in enumerate(expected_counts):
+        outfile = packetsfolder / f"packets00_{rank:04d}.out.zst"
+        dfpackettypes = get_packet_types(outfile, modelpath)
+        assert 0 < dfpackettypes.height == expected_count
+        assert dfpackettypes.filter(~escaped_rpkt).is_empty()
+        assert at.zopen(outfile).readline() == headerline
+
+
+def test_filterpackets_dry_run_changes_no_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    modelpath = make_filterpackets_model(tmp_path)
+    packetsfolder = modelpath / "packets"
+    contents_before = {path.name: path.read_bytes() for path in packetsfolder.iterdir()}
+
+    at.packets.filterpackets.main(argsraw=[str(modelpath), "--dry-run"])
+
+    assert {path.name: path.read_bytes() for path in packetsfolder.iterdir()} == contents_before
+    assert "In 2 of 2 packets files, the filter removes" in capsys.readouterr().out
+
+
+def test_filterpackets_keeps_a_file_with_no_escaped_rpkt(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    modelpath = make_filterpackets_model(tmp_path)
+    packetsfile = modelpath / "packets" / "packets00_0001.out"
+    columns = at.packets.core.get_packets_text_columns(packetsfile, modelpath)
+    type_id_index = columns.index("type_id")
+    escape_type_id_index = columns.index("escape_type_id")
+    lines = packetsfile.read_text(encoding="utf-8").splitlines(keepends=True)
+    packetsfile.write_text(
+        "".join(
+            line
+            for line in lines
+            if line.startswith("#")
+            or (line.split()[type_id_index], line.split()[escape_type_id_index])
+            != at.packets.filterpackets.ESCAPED_RPKT_TYPES
+        ),
+        encoding="utf-8",
+    )
+    contents_before = packetsfile.read_bytes()
+
+    at.packets.filterpackets.main(argsraw=[str(modelpath), "-f"])
+
+    assert packetsfile.read_bytes() == contents_before
+    assert f"{packetsfile}: no escaped r-packets, thus the filter keeps the file" in capsys.readouterr().out
