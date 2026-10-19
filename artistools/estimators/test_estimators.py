@@ -525,6 +525,27 @@ def test_histogram_breaks_the_line_at_a_gap_between_bins() -> None:
     assert len(ax.collections[0].get_paths()) == 2
 
 
+def test_histogram_of_one_x_value_takes_the_extent_of_the_cell() -> None:
+    """A bin of a range of zero width has no width, thus the step takes the velocity range of the cell.
+
+    -xbins 1 for one cell gave two equal edges, and the histogram had a step of zero width.
+    """
+    estimators = pl.LazyFrame({
+        "timestep": [0, 0],
+        "modelgridindex": [3, 3],
+        "vel_r_min": [1.0e8, 1.0e8],
+        "vel_r_mid": [1.5e8, 1.5e8],
+        "vel_r_max": [2.0e8, 2.0e8],
+    })
+    args = argparse.Namespace(
+        xmin=None, xmax=None, xbins=1, markers=False, colorbyion=False, modelgridindex=None, histogram=True
+    )
+    _, _, _, dfplot = plotestimators.get_xlist("velocity", estimators, None, args)
+    dfedges = dfplot.select("xbin_lower", "xbin_upper").unique().collect()
+    assert dfedges.height == 1
+    assert np.allclose(dfedges.row(0), (1000.0, 2000.0), rtol=1e-9, atol=0.0)
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_histogram_shows_the_velocity_range_of_each_shell(
     mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]

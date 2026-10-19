@@ -1809,7 +1809,8 @@ def get_xlist(
             .filter(pl.col("xbinindex").is_between(0, len(xmids) - 1, closed="both"))
             .with_columns(xvalue_binned=pl.lit(pl.Series(xmids)).gather(pl.col("xbinindex")))
         )
-        if args.histogram:
+        if args.histogram and xmax > xmin:
+            print_detail(f"--histogram draws each of the {args.xbins} bins from its lower edge to its upper edge")
             estimators = estimators.with_columns(
                 xbin_lower=pl.lit(pl.Series(xlower)).gather(pl.col("xbinindex")),
                 xbin_upper=pl.lit(pl.Series(xupper)).gather(pl.col("xbinindex")),
@@ -1817,8 +1818,10 @@ def get_xlist(
         estimators = estimators.drop("xbinindex")
     else:
         estimators = estimators.with_columns(xvalue_binned=pl.col("xvalue"))
-        if args.histogram:
-            estimators = estimators.with_columns(get_cell_x_extent(xvariable))
+
+    # a bin of a range of zero width has no width, thus the steps take the extent of the cells or the timesteps
+    if args.histogram and (not args.xbins or xmax <= xmin):
+        estimators = estimators.with_columns(get_cell_x_extent(xvariable))
 
     estimators = estimators.filter(inxrange).sort("xvalue")
 
@@ -1838,20 +1841,29 @@ def get_cell_x_extent(xvariable: str) -> list[pl.Expr]:
     if xvariable not in {"velocity", "beta", "time", "cellid", "modelgridindex", "timestep"}:
         exit_with_error(
             f"--histogram needs the extent of each point on the horizontal axis, and -x {xvariable} gives none",
-            "Give -xbins N. The histogram then shows the extent of each bin",
+            "Give -xbins N for a range of more than one x value. The histogram then shows the extent of each bin",
         )
     if xvariable in {"velocity", "beta"}:
+        print_detail(
+            "--histogram draws each cell from its inner to its outer velocity (vel_r_min to vel_r_max of the model),"
+            " thus the plot gives the cell value at each velocity of the cell"
+        )
         scalefactor = km_to_cm if xvariable == "velocity" else C_cm_per_s
         return [
             (pl.col("vel_r_min") / scalefactor).alias("xbin_lower"),
             (pl.col("vel_r_max") / scalefactor).alias("xbin_upper"),
         ]
     if xvariable == "time":
+        print_detail(
+            "--histogram draws each timestep from its start to its end (tstart_days and twidth_days of the timesteps),"
+            " thus the plot gives the timestep value at each time of the timestep"
+        )
         return [
             pl.col("tstart_days").alias("xbin_lower"),
             (pl.col("tstart_days") + pl.col("twidth_days")).alias("xbin_upper"),
         ]
     xcolumn = "timestep" if xvariable == "timestep" else "modelgridindex"
+    print_detail(f"--histogram draws each {xvariable} number from 0.5 below it to 0.5 above it")
     return [(pl.col(xcolumn) - 0.5).alias("xbin_lower"), (pl.col(xcolumn) + 0.5).alias("xbin_upper")]
 
 
@@ -3434,6 +3446,7 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
                 ("-filtermovingavg", bool(args.filtermovingavg)),
                 ("-filtersavgol", bool(args.filtersavgol)),
                 ("--markers", bool(args.markers)),
+                ("--histogram", bool(args.histogram)),
             )
             if given
         ]
