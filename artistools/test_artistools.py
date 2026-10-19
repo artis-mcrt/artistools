@@ -6458,10 +6458,10 @@ def test_viewer_removes_an_option_of_two_values_with_its_values_alone() -> None:
     remove_options took each token up to the next flag, as for nargs "*", thus the command lost a path after the values.
     """
     parser = viewercore.make_parser(at.spectra.plotspectra.addargs)
-    tokens = ["-emissionvelocityrange", "1000", "2000", "mymodel", "-xmin", "5"]
-    assert viewercore.remove_options(parser, tokens, {"emissionvelocityrange"}) == ["mymodel", "-xmin", "5"]
+    tokens = ["-emissionradialvelocityrange", "1000", "2000", "mymodel", "-xmin", "5"]
+    assert viewercore.remove_options(parser, tokens, {"emissionradialvelocityrange"}) == ["mymodel", "-xmin", "5"]
     rows, othertokens = viewercore.split_option_rows(parser, tokens)
-    assert rows == (("-emissionvelocityrange", ("1000", "2000")), ("-xmin", ("5",)))
+    assert rows == (("-emissionradialvelocityrange", ("1000", "2000")), ("-xmin", ("5",)))
     assert othertokens == ["mymodel"]
 
 

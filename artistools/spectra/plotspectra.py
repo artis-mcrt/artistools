@@ -122,8 +122,8 @@ from artistools.spectra.core import convert_xunit_aliases_to_canonical
 from artistools.spectra.core import DEFAULT_YE_SHELLS
 from artistools.spectra.core import EmissionEvent
 from artistools.spectra.core import FluxContributionTuple
-from artistools.spectra.core import get_default_losvelocity_shells
-from artistools.spectra.core import get_default_velocity_shells
+from artistools.spectra.core import get_default_lineofsightvelocity_shells
+from artistools.spectra.core import get_default_radialvelocity_shells
 from artistools.spectra.core import get_dfspectrum_x_y_with_units
 from artistools.spectra.core import get_flux_contributions
 from artistools.spectra.core import get_flux_contributions_from_packets
@@ -2259,6 +2259,18 @@ def draw_plot(
     }
 
 
+# the earlier names of the velocity shell groupings, which a script can hold
+GROUPBY_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({
+    "velocity": "radialvelocity",
+    "losvelocity": "lineofsightvelocity",
+})
+
+
+def get_groupby_choice(text: str) -> str:
+    """Return the -groupby choice of a command line value, with the current name of an earlier name."""
+    return GROUPBY_ALIASES.get(text, text)
+
+
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument(
@@ -2451,12 +2463,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-groupby",
         default=None,
-        choices=["element", "ion", "line", "nuc", "nucmass", "velocity", "losvelocity", "ye"],
+        type=get_groupby_choice,
+        choices=["element", "ion", "line", "nuc", "nucmass", "radialvelocity", "lineofsightvelocity", "ye"],
         help=(
             "Use a different colour for each element, ion, line, or nuclide with --showemission, or for each shell"
-            " of the last interaction: velocity bins the radial velocity, losvelocity the velocity along the line of"
-            " sight, and ye the initial electron fraction of the cell. The element of a gamma packet is the element"
-            " of its nuclide. Every choice but ion implies --frompackets"
+            " of the last interaction: radialvelocity bins the radial velocity, lineofsightvelocity the velocity along"
+            " the line of sight, and ye the initial electron fraction of the cell. The element of a gamma packet is"
+            " the element of its nuclide. Every choice but ion implies --frompackets"
         ),
     )
 
@@ -2467,15 +2480,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="velocity",
         help=(
-            "Edges of the shells of -groupby velocity or losvelocity, in km/s, e.g. 0 5000 10000 20000, or as a"
-            " fraction of c, e.g. 0c 0.1c 0.2c 0.3c. A value with a c suffix also puts the labels in units of c."
-            " The default is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D"
+            "Edges of the shells of -groupby radialvelocity or lineofsightvelocity, in km/s, e.g. 0 5000 10000 20000,"
+            " or as a fraction of c, e.g. 0c 0.1c 0.2c 0.3c. A value with a c suffix also puts the labels in units of"
+            " c. The default is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D"
             " grid, with the labels in units of c when vmax is at least 0.2 c"
         ),
     )
 
     parser.add_argument(
-        "-emissionvelocityrange",
+        "-emissionradialvelocityrange",
         type=parse_velocity_argument,
         nargs=2,
         default=None,
@@ -2490,7 +2503,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-emissionlosvelocityrange",
+        "-emissionlineofsightvelocityrange",
         type=parse_velocity_argument,
         nargs=2,
         default=None,
@@ -2498,10 +2511,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Keep only the emission and the absorption from a range of the velocity along the line of sight. A"
             " positive velocity is motion toward the observer, and a value can be negative, e.g. -0.05c 0.05c. The"
-            " other rules of -emissionvelocityrange apply. The two ranges together keep a packet that is inside"
+            " other rules of -emissionradialvelocityrange apply. The two ranges together keep a packet that is inside"
             " both ranges"
         ),
     )
+
+    # the earlier names of the two velocity ranges
+    for oldname, newname in (
+        ("-emissionvelocityrange", "emissionradialvelocityrange"),
+        ("-emissionlosvelocityrange", "emissionlineofsightvelocityrange"),
+    ):
+        parser.add_argument(oldname, dest=newname, type=parse_velocity_argument, nargs=2, help=argparse.SUPPRESS)
 
     parser.add_argument(
         "-yeshells",
@@ -2664,8 +2684,8 @@ DEFAULT_MAXSERIESCOUNT: t.Final = 14
 
 # the argument and the name in the title of the velocity range of each shell grouping
 VELOCITYRANGEARGS: t.Final[Mapping[str, tuple[str, str]]] = MappingProxyType({
-    "velocity": ("emissionvelocityrange", "radial velocity"),
-    "losvelocity": ("emissionlosvelocityrange", "line-of-sight velocity"),
+    "radialvelocity": ("emissionradialvelocityrange", "radial velocity"),
+    "lineofsightvelocity": ("emissionlineofsightvelocityrange", "line-of-sight velocity"),
 })
 
 
@@ -2758,7 +2778,9 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
         # check_emission_plot_args stops the command
         if args.modelspecpaths:
             getdefault = (
-                get_default_losvelocity_shells if args.groupby == "losvelocity" else get_default_velocity_shells
+                get_default_lineofsightvelocity_shells
+                if args.groupby == "lineofsightvelocity"
+                else get_default_radialvelocity_shells
             )
             args.shelledges, args.shellunit = getdefault(args.modelspecpaths[0])
     elif args.velocityshells is not None:
