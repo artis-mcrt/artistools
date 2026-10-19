@@ -546,6 +546,43 @@ def test_histogram_of_one_x_value_takes_the_extent_of_the_cell() -> None:
     assert np.allclose(dfedges.row(0), (1000.0, 2000.0), rtol=1e-9, atol=0.0)
 
 
+def test_histogram_of_a_line_slice_takes_the_edges_of_the_cells(capsys: pytest.CaptureFixture[str]) -> None:
+    """A line slice plots against vel_x_mid_on_c, and --histogram refused that axis with no -xbins."""
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        outputfile=at.get_path("testoutput"),
+        timestep="10",
+        plotlist=[["Te"]],
+        slice="z=0,y=0",
+        histogram=True,
+        print_data=True,
+    )
+    output = capsys.readouterr().out
+    headerstart = output.rindex("\n", 0, output.index(" vel_x_mid_on_c ")) + 1
+    dftable = pl.read_csv(io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ")
+    lower = dftable["vel_x_mid_on_c_lower"].to_numpy()
+    upper = dftable["vel_x_mid_on_c_upper"].to_numpy()
+    # the float32 edges of adjacent cells differ by a rounding error
+    assert np.allclose(lower[1:], upper[:-1], rtol=0.0, atol=1e-4 * np.min(upper - lower))
+    assert (upper > lower).all()
+
+
+def test_histogram_joins_edges_with_a_rounding_error_near_zero() -> None:
+    """Two float32 edges near zero differ by 1e-8, and a relative tolerance broke the line there."""
+    from artistools.estimators.plotestimators import get_histogram_steps
+
+    dflinepoints = pl.DataFrame({
+        "xbin_lower": [-0.02, 0.0],
+        "xbin_upper": [-1e-8, 0.02],
+        "xvalue_binned": [-0.01, 0.01],
+        "yvalue_binned": [1.0, 2.0],
+        "yvalue_binned_min": [1.0, 2.0],
+        "yvalue_binned_max": [1.0, 2.0],
+    })
+    assert not get_histogram_steps(dflinepoints)["xvalue_binned"].is_nan().any()
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_histogram_shows_the_velocity_range_of_each_shell(
     mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]

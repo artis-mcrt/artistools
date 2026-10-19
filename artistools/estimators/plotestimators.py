@@ -383,8 +383,10 @@ def get_histogram_steps(dflinepoints: pl.DataFrame) -> pl.DataFrame:
     for ycolumn in ("yvalue_binned", "yvalue_binned_min", "yvalue_binned_max"):
         columns[ycolumn] = np.repeat(dflinepoints.get_column(ycolumn).cast(pl.Float64).to_numpy(), 2)
 
-    # compare with a tolerance, because the start of a timestep is a sum of the earlier widths and has a rounding error
-    gapafterbin = np.flatnonzero(~np.isclose(lower[1:], upper[:-1], rtol=1e-6, atol=0.0))
+    # the edges have rounding errors, e.g. a float32 column or a timestep start that sums the earlier widths. An edge
+    # near zero has a large relative error, thus the tolerance is a fraction of the bin width
+    edgetolerance = 1e-4 * float(np.min(upper - lower)) if lower.size > 0 else 0.0
+    gapafterbin = np.flatnonzero(~np.isclose(lower[1:], upper[:-1], rtol=0.0, atol=edgetolerance))
     insertindices = 2 * gapafterbin + 2
     return pl.DataFrame({name: np.insert(values, insertindices, np.nan) for name, values in columns.items()})
 
@@ -1821,7 +1823,7 @@ def get_xlist(
 
     # a bin of a range of zero width has no width, thus the steps take the extent of the cells or the timesteps
     if args.histogram and (not args.xbins or xmax <= xmin):
-        estimators = estimators.with_columns(get_cell_x_extent(xvariable))
+        estimators = estimators.with_columns(get_cell_x_extent(xvariable, estimators.collect_schema().names()))
 
     estimators = estimators.filter(inxrange).sort("xvalue")
 
@@ -1832,12 +1834,17 @@ def get_xlist(
     return xlist, mgilist, timesteps, estimators
 
 
-def get_cell_x_extent(xvariable: str) -> list[pl.Expr]:
+def get_cell_x_extent(xvariable: str, columns: Collection[str]) -> list[pl.Expr]:
     """Return the expressions of the lower and the upper edge of each point on the x axis, for --histogram.
 
     A velocity axis takes the inner and the outer velocity of the cell. A time axis takes the start and the end of the
-    timestep. A cell number or a timestep number covers the interval of width 1 around it.
+    timestep. A cell number or a timestep number covers the interval of width 1 around it. A column with "_mid" in its
+    name, e.g. vel_x_mid_on_c of a line slice, takes the columns with "_min" and "_max" in its place.
     """
+    lowercolumn, uppercolumn = xvariable.replace("_mid", "_min"), xvariable.replace("_mid", "_max")
+    if "_mid" in xvariable and lowercolumn in columns and uppercolumn in columns:
+        print_detail(f"--histogram draws each cell from {lowercolumn} to {uppercolumn} of the model")
+        return [pl.col(lowercolumn).alias("xbin_lower"), pl.col(uppercolumn).alias("xbin_upper")]
     if xvariable not in {"velocity", "beta", "time", "cellid", "modelgridindex", "timestep"}:
         exit_with_error(
             f"--histogram needs the extent of each point on the horizontal axis, and -x {xvariable} gives none",
