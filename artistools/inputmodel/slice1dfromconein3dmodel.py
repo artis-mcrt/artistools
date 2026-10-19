@@ -23,10 +23,12 @@ from artistools.inputmodel.core import savetologfile
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
+from artistools.misc import addarg_sliceaxis
 from artistools.misc import confirm_overwrite
 from artistools.misc import get_model_logname
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import resolve_slice_axis
 
 
 def make_cone(args: argparse.Namespace, dfmodel: pl.LazyFrame, logprint: Callable[..., None]) -> pl.DataFrame:
@@ -278,12 +280,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext="Path to ARTIS model folders with model.txt and abundances.txt",
     )
 
-    parser.add_argument(
-        "-axis",
-        default="+x",
-        choices=["+x", "-x", "+y", "-y", "+z", "-z"],
-        help="Slice axis. Hint: for negative use e.g. -axis=-z",
-    )
+    addarg_sliceaxis(parser, default="+x", helptext="Slice axis")
 
     parser.add_argument(
         "--makefromcone",
@@ -333,9 +330,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     args.modelpath = normalize_path_list(args.modelpath)
 
-    args.sliceaxis = args.axis[1]
-    assert args.axis[0] in {"+", "-"}
-    args.positive_axis = args.axis[0] == "+"
+    resolve_slice_axis(args)
 
     print(f"making model from slice around {args.axis} axis")
 

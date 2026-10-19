@@ -41,6 +41,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
+from artistools.plottools import addarg_cellvelocity
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -186,7 +187,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # the command solves one cell, thus the help names no range
     addarg_modelgridindex(parser, default=[0], helptext="Model grid cell to solve, e.g. 12")
 
-    parser.add_argument("-velocity", "-v", type=float, default=-1, help="Specify cell by velocity")
+    addarg_cellvelocity(parser)
 
     parser.add_argument("-npts", type=int, default=4096, help="Number of points in the energy grid")
 
@@ -292,8 +293,8 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
     dfmodel, modelmeta = get_modeldata(modelpath)
     # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
     modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
-    if args.velocity >= 0.0:
-        args.modelgridindex = get_mgi_of_velocity_kms(modelpath, args.velocity)
+    if args.velocity_kmps is not None:
+        args.modelgridindex = get_mgi_of_velocity_kms(modelpath, args.velocity_kmps)
     else:
         args.modelgridindex = get_single_modelgridindex(args.modelgridindex)
     assert isinstance(args.modelgridindex, int)

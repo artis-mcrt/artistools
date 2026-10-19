@@ -31,6 +31,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import addarg_wavelengthrange
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_logname
@@ -1106,18 +1107,22 @@ def addarg_taumin(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def addargs(parser: argparse.ArgumentParser) -> None:
-    """Add arguments to an argparse parser object."""
+def addarg_lineselection(parser: argparse.ArgumentParser) -> None:
+    """Add the model path, the time, the wavelength range, and the ions that select the lines of the line commands."""
     addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
     addarg_timestep(parser, helptext="Timestep number to select")
     addarg_timedays(parser, kind="str", helptext="Time in days to select")
-    parser.add_argument("-xmin", "-lambdamin", type=float, help="Minimum wavelength of the lines in Angstroms")
-    parser.add_argument("-xmax", "-lambdamax", type=float, help="Maximum wavelength of the lines in Angstroms")
+    addarg_wavelengthrange(parser, "the lines")
     parser.add_argument(
         "-ions",
         action=CommaJoinAction,
         help='Ions of the lines, e.g. "Fe II,Co II". Default: each ion with a population in the model',
     )
+
+
+def addargs(parser: argparse.ArgumentParser) -> None:
+    """Add arguments to an argparse parser object."""
+    addarg_lineselection(parser)
     parser.add_argument(
         "-maxlines",
         type=positive_int_arg,

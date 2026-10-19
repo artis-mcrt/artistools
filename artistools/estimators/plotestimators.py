@@ -69,6 +69,7 @@ from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
+from artistools.misc import addarg_sliceaxis
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
@@ -96,6 +97,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
+from artistools.misc import resolve_slice_axis
 from artistools.misc import suggest_names
 from artistools.misc.cliutils import color_arg
 from artistools.misc.cliutils import dashes_arg
@@ -3233,12 +3235,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with -axis",
     )
 
-    parser.add_argument(
-        "-axis",
-        default="+z",
-        choices=["+x", "-x", "+y", "-y", "+z", "-z"],
-        help="Choose an axis for use with -readonlymgi. Hint: for negative use e.g. -axis=-z",
-    )
+    addarg_sliceaxis(parser, default="+z", helptext="Choose an axis for use with -readonlymgi")
 
     parser.add_argument(
         "-slice",
@@ -3527,9 +3524,7 @@ def select_cells_along_axis(args: argparse.Namespace, modelpath: Path) -> None:
 
     The selection functions of slice1dfromconein3dmodel read these axis names from the arguments.
     """
-    args.sliceaxis = args.axis[1]
-    assert args.axis[0] in {"+", "-"}
-    args.positive_axis = args.axis[0] == "+"
+    resolve_slice_axis(args)
     otheraxes = [axisname for axisname in "xyz" if axisname != args.sliceaxis]
     args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 

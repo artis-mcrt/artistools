@@ -23,6 +23,7 @@ from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_identity
@@ -1298,20 +1299,22 @@ def save_modeldata(
     print(f"Wrote {modelfilepath} (took {time.perf_counter() - timestart:.1f} seconds)")
 
 
-def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int | None:
-    """Return the modelgridindex of the cell whose outer velocity brackets the given velocity."""
-    if np.isnan(velocity):
-        return None
+def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int:
+    """Return the modelgridindex of the first cell of a 1D model with an outer velocity [km/s] of velocity or above."""
     dfmodel, modelmeta = get_modeldata(modelpath)
-    assert modelmeta["dimensions"] == 1, "get_mgi_of_velocity_kms only works for 1D models"
+    if modelmeta["dimensions"] != 1:
+        exit_with_error(
+            f"-velocity selects a shell of a 1D model, and this model has {modelmeta['dimensions']} dimensions",
+            "Give -modelgridindex",
+        )
     arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy()
 
     mgi_upper = int(np.searchsorted(arr_vouter, velocity))
     if mgi_upper >= len(arr_vouter):
-        msg = f"Velocity {velocity} is larger than all cell outer velocities. Velocity list: {arr_vouter}"
-        raise AssertionError(msg)
-    assert arr_vouter[mgi_upper] >= velocity if mgi_upper < len(arr_vouter) else True
-    assert arr_vouter[mgi_upper - 1] < velocity if mgi_upper > 0 else True
+        exit_with_error(
+            f"-velocity {velocity:g} km/s is above the outer velocity {arr_vouter[-1]:g} km/s of the last cell",
+            "Give a lower velocity",
+        )
     return mgi_upper
 
 

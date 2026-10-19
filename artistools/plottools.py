@@ -2139,6 +2139,34 @@ def positive_velocity_kmps_arg(text: str) -> float:
     return velocity_kmps
 
 
+def velocity_kmps_arg(text: str) -> float:
+    """Return the velocity [km/s] of a command line value, e.g. 5000, 5000km/s, or 0.02c. A bare number is in km/s."""
+    return parse_velocity_argument(text)[0]
+
+
+def addarg_cellvelocity(
+    container: "argparse.ArgumentParser | argparse._MutuallyExclusiveGroup",  # pyright: ignore[reportPrivateUsage]
+    *,
+    multiple: bool = False,
+) -> None:
+    """Add -velocity (-v), which selects the cell of a 1D model by its radial velocity, into args.velocity_kmps.
+
+    A number with no unit is in km/s, and a value can also take a unit, e.g. 0.02c. With multiple, the option takes
+    one or more values and gives a list.
+    """
+    container.add_argument(
+        "-velocity",
+        "-v",
+        dest="velocity_kmps",
+        type=velocity_kmps_arg,
+        nargs="+" if multiple else None,
+        help=(
+            "Select the cell of a 1D model by its radial velocity, e.g. 5000 (km/s), 5000km/s, or 0.02c"
+            + (". Give more than one value for more than one cell" if multiple else "")
+        ),
+    )
+
+
 def get_signed_velocity_bin_edges_kmps(velocityedges_kmps: Sequence[float]) -> list[float]:
     """Return the edges [km/s] from minus the last edge to the last edge, from edges that start at zero."""
     return [-edge for edge in velocityedges_kmps[:0:-1]] + list(velocityedges_kmps)

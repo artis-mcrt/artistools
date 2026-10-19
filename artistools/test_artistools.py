@@ -4274,9 +4274,9 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
         artistools.lightcurve.plotlightcurve.addargs: (
             ["--plot_cmf", "-timedaysmin", "260", "--title", "x"],
             ("plotcmf", "timemin", "title"),
-            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "--title"),
+            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "--title", "-xmin", "-xmax"),
         ),
-        artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("tmin",), ()),
+        artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("timemin",), ()),
     }
     for addargs, (argsraw, dests, hidden) in cases.items():
         parser = argparse.ArgumentParser()
@@ -4789,9 +4789,9 @@ def test_v_keeps_the_meaning_that_each_command_gave_it() -> None:
     import artistools.__main__
 
     olddestof = {
-        "plotradfield": "velocity",
-        "plotnltepops": "velocity",
-        "spencerfano": "velocity",
+        "plotradfield": "velocity_kmps",
+        "plotnltepops": "velocity_kmps",
+        "spencerfano": "velocity_kmps",
         "makeartismodel1dslicefromcone": "rhoscale",
     }
     seen = set()

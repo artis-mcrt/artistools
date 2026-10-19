@@ -2415,14 +2415,18 @@ def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
         at.misc.check_time_selection(parser, parser.parse_args(argsraw))
 
 
+def get_parser_with_a_default_timestep() -> "at.commands.SuggestingArgumentParser":
+    """Return a parser of -timestep with the default last, and of -timedays."""
+    parser = at.commands.SuggestingArgumentParser()
+    at.misc.addarg_timestep(parser, default="last")
+    at.misc.addarg_timedays(parser, kind="float")
+    return parser
+
+
 def test_check_time_selection_reads_a_flag_that_repeats_its_default() -> None:
     """A value that the user typed counts, even when it is the same as the default of the parser."""
-    import artistools.plottransitions
-
-    parser = at.commands.SuggestingArgumentParser()
-    artistools.plottransitions.addargs(parser)
+    parser = get_parser_with_a_default_timestep()
     default = parser.get_default("timestep")
-    assert default is not None, "this test needs a command whose -timestep has a default"
 
     # the user names both, and the timestep happens to be the default, thus a test of the value alone
     # would miss the conflict
@@ -2433,12 +2437,8 @@ def test_check_time_selection_reads_a_flag_that_repeats_its_default() -> None:
 
 
 def test_check_time_selection_counts_a_default_as_absent() -> None:
-    """Plottransitions gives -timestep a default, thus that default must not count as a second range."""
-    import artistools.plottransitions
-
-    parser = at.commands.SuggestingArgumentParser()
-    artistools.plottransitions.addargs(parser)
-    assert parser.get_default("timestep") is not None, "this test needs a command whose -timestep has a default"
+    """A default of -timestep must not count as a second range."""
+    parser = get_parser_with_a_default_timestep()
 
     # the user named only -timedays, thus the default timestep must not raise
     at.misc.check_time_selection(parser, parser.parse_args(["-timedays", "300"]))

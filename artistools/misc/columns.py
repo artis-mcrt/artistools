@@ -381,7 +381,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     (
         "velocity_luminosity_q(25|50|75)_kmps",
         (
-            "the velocity (radial or line-of-sight, -velocity) of the last interaction or of the last thermal"
+            "the velocity (radial or line-of-sight, -velocitykind) of the last interaction or of the last thermal"
             " emission at the {0}% quantile of the packet energy of the group or the timestep"
         ),
         "km/s",
@@ -389,7 +389,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     (
         "velocity_luminosity_q(25|50|75)_c",
         (
-            "the velocity (radial or line-of-sight, -velocity) of the last interaction or of the last thermal"
+            "the velocity (radial or line-of-sight, -velocitykind) of the last interaction or of the last thermal"
             " emission at the {0}% quantile of the packet energy of the group or the timestep"
         ),
         "c",

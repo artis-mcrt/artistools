@@ -31,6 +31,7 @@ from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import addarg_wavelengthrange
 from artistools.misc import check_time_range_is_valid
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
@@ -822,17 +823,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-tdays", dest="timedays", type=float, help=argparse.SUPPRESS)
     addarg_timestep(parser, helptext="Timestep of the arrival time of the packets, e.g. 40, or last")
 
-    parser.add_argument(
-        "-xmin",
-        "-lambdamin",
-        type=float,
-        help=(
-            "Minimum rest-frame wavelength of the packets in Angstroms, at the escape or with --absorption, at the last"
-            " absorption. Default: no limit"
-        ),
-    )
-    parser.add_argument(
-        "-xmax", "-lambdamax", type=float, help="Maximum rest-frame wavelength of the packets in Angstroms"
+    addarg_wavelengthrange(
+        parser, "the packets in the rest frame, at the escape or with --absorption at the last absorption,"
     )
     # the earlier form of the wavelength range: a centre and a width
     parser.add_argument("-wavelen", type=float, help=argparse.SUPPRESS)
@@ -863,8 +855,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-groupby",
         choices=["element", "ion", "line"],
         help=(
-            "Plot the luminosity per unit velocity against the velocity (-velocity) of the last interaction. Draw one"
-            " series for each element, ion, or line of the last emission. Without this option, the plot is a 2D image"
+            "Plot the luminosity per unit velocity against the velocity (-velocitykind) of the last interaction."
+            " Draw one series for each element, ion, or line of the last emission. Without this option, the plot is"
+            " a 2D image"
         ),
     )
     parser.add_argument(
@@ -944,8 +937,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.groupby is None and args.velocitykind != "radial":
         exit_with_error(
-            "-velocity applies only with -groupby. The 2D image always gives v_cyl and v_z",
-            "Remove -velocity, or give -groupby",
+            "-velocitykind applies only with -groupby. The 2D image always gives v_cyl and v_z",
+            "Remove -velocitykind, or give -groupby",
         )
     if args.groupby is not None:
         plot_velocity_profiles_from_args(args, ions)

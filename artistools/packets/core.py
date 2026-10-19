@@ -272,9 +272,13 @@ def get_relative_error_expr(energy: pl.Expr) -> pl.Expr:
 
 
 def addarg_velocitykind(parser: argparse.ArgumentParser) -> None:
-    """Add -velocity, which selects the radial or the line-of-sight velocity of the last interaction."""
+    """Add -velocitykind, which selects the radial or the line-of-sight velocity of the last interaction.
+
+    The other commands take -velocity for the velocity of a cell, thus this option has a different name. -velocity
+    stays as a hidden alias of it, because the first release of the option had that name.
+    """
     parser.add_argument(
-        "-velocity",
+        "-velocitykind",
         dest="velocitykind",
         choices=["radial", "lineofsight"],
         default="radial",
@@ -284,6 +288,8 @@ def addarg_velocitykind(parser: argparse.ArgumentParser) -> None:
             " shift of a P Cygni profile"
         ),
     )
+    # the default of velocitykind comes from the option before, because argparse takes the first default
+    parser.add_argument("-velocity", dest="velocitykind", choices=["radial", "lineofsight"], help=argparse.SUPPRESS)
 
 
 def get_last_interaction_velocity_expr(
@@ -293,7 +299,7 @@ def get_last_interaction_velocity_expr(
     if velocitykind == "radial":
         return get_emission_velocity_of_columns_expr(position, packetcolumns)
     if f"{position}_posx" not in packetcolumns:
-        msg = f"The packets hold no {position}_pos, thus they give no line-of-sight velocity. Give -velocity radial"
+        msg = f"The packets hold no {position}_pos, thus they give no line-of-sight velocity. Give -velocitykind radial"
         raise ValueError(msg)
     return get_emission_velocity_lineofsight_expr(position)
 

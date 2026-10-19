@@ -779,7 +779,7 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
 
 
 def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path: Path) -> None:
-    """-velocity lineofsight bins (em_pos . dir) / em_time from minus to plus the last edge.
+    """-velocitykind lineofsight bins (em_pos . dir) / em_time from minus to plus the last edge.
 
     The plot had only the radial velocity, which cannot separate the blue side and the red side of a P Cygni profile.
     """

@@ -27,12 +27,14 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
+from artistools.misc import addarg_sliceaxis
 from artistools.misc import import_optional
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
+from artistools.misc import resolve_slice_axis
 from artistools.plottools import save_figure
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
@@ -460,12 +462,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-floorval", default=None, type=float, help="Set a floor value for colorscale. Expects float")
 
-    parser.add_argument(
-        "-axis",
-        default="+z",
-        choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
-        help="Slice axis for 2D plots. Hint: for negative use e.g. -axis=-z",
-    )
+    addarg_sliceaxis(parser, default="+z", helptext="Slice axis for 2D plots")
     addarg_data_output(parser)
     addarg_show(parser)
     addarg_darkmode(parser)
@@ -477,9 +474,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # the model folder is the last positional argument, thus "plotinitialcomposition Fe mymodel" reads mymodel
     args.plotvars = resolve_positional_modelpath(args, "plotvars") or ["rho"]
 
-    # a bare axis name, e.g. "z", gives the positive side
-    args.positive_axis = args.axis[0] != "-"
-    args.sliceaxis = args.axis.lstrip("+-")
+    resolve_slice_axis(args)
 
     if args.plot3d:
         make_3d_plot(Path(args.modelpath), args)

@@ -62,6 +62,7 @@ from artistools.nltepops.core import add_lte_pops
 from artistools.nltepops.core import read_nltepops
 from artistools.nltepops.core import texifyconfiguration
 from artistools.nltepops.core import texifyterm
+from artistools.plottools import addarg_cellvelocity
 from artistools.plottools import get_next_color
 from artistools.plottools import iter_axes
 from artistools.plottools import make_frame_figure
@@ -1112,7 +1113,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Plotted model grid cell, a range e.g. 3-7, or a list e.g. 3,5",
     )
 
-    cellgroup.add_argument("-velocity", "-v", default=[], type=float, nargs="*", help="Specify cell by velocity")
+    addarg_cellvelocity(cellgroup, multiple=True)
 
     parser.add_argument("-exc-temperature", type=float, default=6000.0, help="Default if no estimator data")
 
@@ -1211,7 +1212,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     mgilist: list[int] = list(args.modelgridindex or [])
-    mgilist.extend(mgi for mgi in [get_mgi_of_velocity_kms(modelpath, vel) for vel in args.velocity] if mgi is not None)
+    mgilist.extend(get_mgi_of_velocity_kms(modelpath, velocity_kmps) for velocity_kmps in args.velocity_kmps or [])
     # the branches below read args.modelgridindex, thus give them the cells of -velocity too
     args.modelgridindex = mgilist
 

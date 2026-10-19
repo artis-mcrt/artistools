@@ -11,6 +11,7 @@ import polars as pl
 
 from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.inputmodel import get_modeldata
+from artistools.linecontributions import addarg_lineselection
 from artistools.linecontributions import addarg_taumin
 from artistools.linecontributions import get_cell_line_inputs
 from artistools.linecontributions import get_line_velocity_profiles
@@ -22,11 +23,8 @@ from artistools.linecontributions import TROUGHSAMPLESPERCELL
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
-from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
-from artistools.misc import addarg_timedays
-from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
 from artistools.misc import get_artis_option
 from artistools.misc import get_model_logname
@@ -40,7 +38,6 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.dirbins import check_costheta_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
@@ -380,16 +377,7 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of ARTIS model")
-    addarg_timestep(parser, helptext="Timestep number to select")
-    addarg_timedays(parser, kind="str", helptext="Time in days to select")
-    parser.add_argument("-xmin", "-lambdamin", type=float, help="Minimum wavelength of the lines in Angstroms")
-    parser.add_argument("-xmax", "-lambdamax", type=float, help="Maximum wavelength of the lines in Angstroms")
-    parser.add_argument(
-        "-ions",
-        action=CommaJoinAction,
-        help='Ions of the lines, e.g. "Fe II,Co II". Default: each ion with a population in the model',
-    )
+    addarg_lineselection(parser)
     parser.add_argument("-maxlines", type=positive_int_arg, default=8, help="Number of lines to plot")
     parser.add_argument(
         "-rankby",

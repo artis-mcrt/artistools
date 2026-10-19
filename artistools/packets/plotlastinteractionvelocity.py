@@ -19,6 +19,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timeminmax
+from artistools.misc import addarg_wavelengthrange
 from artistools.misc import exit_with_error
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_name
@@ -341,18 +342,7 @@ def plot_velocity_against_time(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of ARTIS models")
-    parser.add_argument(
-        "-xmin",
-        "-lambdamin",
-        type=float,
-        help="Minimum rest-frame wavelength of the packets at the escape in Angstroms",
-    )
-    parser.add_argument(
-        "-xmax",
-        "-lambdamax",
-        type=float,
-        help="Maximum rest-frame wavelength of the packets at the escape in Angstroms",
-    )
+    addarg_wavelengthrange(parser, "the packets at the escape, in the rest frame,")
     parser.add_argument(
         "-dirbin",
         type=int,

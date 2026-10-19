@@ -704,6 +704,32 @@ def addarg_plotinvalidpart(parser: argparse.ArgumentParser, plotted: str) -> Non
     )
 
 
+def addarg_wavelengthrange(parser: argparse.ArgumentParser, selected: str) -> None:
+    """Add -lambdamin and -lambdamax (also -xmin and -xmax), which select a range of wavelength in Angstroms.
+
+    selected names what the range selects, e.g. "the lines". A plot command with a wavelength axis takes
+    addarg_axislimits, because there -xmin and -xmax are the limits of the axis.
+    """
+    parser.add_argument("-xmin", "-lambdamin", type=float, help=f"Minimum wavelength of {selected} in Angstroms")
+    parser.add_argument("-xmax", "-lambdamax", type=float, help=f"Maximum wavelength of {selected} in Angstroms")
+
+
+def addarg_sliceaxis(parser: argparse.ArgumentParser, *, default: str, helptext: str) -> None:
+    """Add -axis, which names a half-axis of a 3D model, e.g. +z or -x. A bare axis name, e.g. z, gives the + side."""
+    parser.add_argument(
+        "-axis",
+        default=default,
+        choices=["x", "y", "z", "+x", "-x", "+y", "-y", "+z", "-z"],
+        help=f"{helptext}. Hint: for a negative half-axis use e.g. -axis=-z",
+    )
+
+
+def resolve_slice_axis(args: argparse.Namespace) -> None:
+    """Set args.sliceaxis to the axis name of -axis, and args.positive_axis to whether it names the + side."""
+    args.positive_axis = args.axis[0] != "-"
+    args.sliceaxis = args.axis.lstrip("+-")
+
+
 def addarg_timedays(
     parser: argparse.ArgumentParser,
     *,
@@ -1471,7 +1497,7 @@ def check_time_selection(
     arguments, thus a second call for a second model path would read its own output as a second range.
 
     The test reads the arguments that the user wrote, because a value can be the same as the default of
-    the parser: plottransitions gives -timestep a default of "last", and a user can also type that value.
+    the parser: a command can give -timestep a default of "last", and a user can also type that value.
 
     set_args_from_dict makes a keyword argument of the API into a default of the parser, thus a value
     that differs from the default counts, and so does a name that kwargs holds. A name that carries

@@ -221,7 +221,7 @@ Question: at which velocities do the packets of a spectral feature last interact
   plots the luminosity of each line of the last emission against the radial velocity of the last interaction.
   `-groupby ion` and `-groupby element` give larger groups. `--absorption` selects the packets by the wavelength of
   their last absorption. It also groups them by the element, the ion, or the line of that absorption.
-  `-velocity lineofsight` takes the line-of-sight velocity, positive towards the observer. Use it for a P Cygni
+  `-velocitykind lineofsight` takes the line-of-sight velocity, positive towards the observer. Use it for a P Cygni
   profile, because only that velocity separates the gas that moves towards the observer from the gas that moves
   away. The blue absorption comes from the gas that moves towards the observer.
   `--print_data` gives the values and the number of packets in each bin. Its `_summary` table gives one row for each

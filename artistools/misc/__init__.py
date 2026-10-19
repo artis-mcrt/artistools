@@ -22,12 +22,14 @@ from artistools.misc.cliutils import addarg_quiet as addarg_quiet
 from artistools.misc.cliutils import addarg_residuals as addarg_residuals
 from artistools.misc.cliutils import addarg_seriesstyle as addarg_seriesstyle
 from artistools.misc.cliutils import addarg_show as addarg_show
+from artistools.misc.cliutils import addarg_sliceaxis as addarg_sliceaxis
 from artistools.misc.cliutils import addarg_timedays as addarg_timedays
 from artistools.misc.cliutils import addarg_timeminmax as addarg_timeminmax
 from artistools.misc.cliutils import addarg_timestep as addarg_timestep
 from artistools.misc.cliutils import addarg_unsupported as addarg_unsupported
 from artistools.misc.cliutils import addarg_verbose as addarg_verbose
 from artistools.misc.cliutils import addarg_viewingangle as addarg_viewingangle
+from artistools.misc.cliutils import addarg_wavelengthrange as addarg_wavelengthrange
 from artistools.misc.cliutils import addarg_yscale as addarg_yscale
 from artistools.misc.cliutils import artis_subfolders as artis_subfolders
 from artistools.misc.cliutils import check_time_selection as check_time_selection
@@ -61,6 +63,7 @@ from artistools.misc.cliutils import resolve_output_argument as resolve_output_a
 from artistools.misc.cliutils import resolve_outputfile as resolve_outputfile
 from artistools.misc.cliutils import resolve_positional_modelpath as resolve_positional_modelpath
 from artistools.misc.cliutils import resolve_series_styles as resolve_series_styles
+from artistools.misc.cliutils import resolve_slice_axis as resolve_slice_axis
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
 from artistools.misc.cliutils import separate_trailing_folders as separate_trailing_folders
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
