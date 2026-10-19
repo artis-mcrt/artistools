@@ -254,7 +254,7 @@ def plot_velocity_against_time(
         _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
         histogrambinwidth_kmps = get_grid_corner_velocity_kmps(modelmeta) / VELOCITYHISTOGRAMBINS
         print_method(position, args.velocitykind, args.xmin, args.xmax, histogrambinwidth_kmps)
-        dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=args.average_over_phi_angle, usedegrees=True)
+        dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=args.average_over_phi_angle)
         timerange_days = (
             -math.inf if args.timemin is None else args.timemin,
             math.inf if args.timemax is None else args.timemax,

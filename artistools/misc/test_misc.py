@@ -1687,7 +1687,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (6, "3cdf3461de012ffa"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (7, "3cdf3461de012ffa"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -3854,12 +3854,20 @@ def test_one_timestep_grid_from_timesteps_out_and_from_input_txt_gives_one_range
 
 
 def test_the_last_costheta_bin_holds_cos_theta_of_one() -> None:
-    """ARTIS puts a packet with cos θ = 1 in the last bin, thus the label of that bin includes its upper edge."""
+    """ARTIS puts a packet with cos θ = 1 in the last bin, thus the label of that bin includes its upper edge.
+
+    The labels in degrees give the same edges. θ decreases as cos θ increases, thus a bin is closed at its upper θ.
+    """
     from artistools.misc.dirbins import get_costheta_bins
 
     _, _, labels = get_costheta_bins(usedegrees=False)
     assert labels[-1] == "0.8 ≤ cos θ ≤ 1.0"
     assert labels[-2] == "0.6 ≤ cos θ < 0.8"
+
+    _, _, degreelabels = get_costheta_bins(usedegrees=True)
+    assert degreelabels[-1] == "0° ≤ θ ≤ 37°"
+    assert degreelabels[5] == "78° < θ ≤ 90°"
+    assert degreelabels[0] == "143° < θ ≤ 180°"
 
 
 def test_a_direction_bin_outside_the_bins_gives_a_message() -> None:

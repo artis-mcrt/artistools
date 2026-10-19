@@ -559,8 +559,8 @@ subcommandtree: CommandTree = {
         note=(
             "The plot shows the expansion opacity, the line-binned opacity, and the line-binned opacity with"
             " each Sobolev optical depth limited to 1. Without -cell, it shows the mean over all cells, weighted"
-            " by mass. -vmin, -vmax, -costhetamin, and -costhetamax select the cells, e.g. the cells in front of the"
-            " photosphere of one direction."
+            " by mass. -vmin, -vmax, -dirbin, -costhetamin, and -costhetamax select the cells, e.g. the cells in front"
+            " of the photosphere of one direction."
         ),
         examples=(
             ("-modelpath . -ts 40 -xmin 3000 -xmax 4000", "the opacities at timestep 40, from 3000 to 4000 Angstroms"),

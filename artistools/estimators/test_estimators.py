@@ -6158,3 +6158,71 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
     assert f"Te: {maxtempcount} points are at MAXTEMP" in output
     # a density has no temperature limit of ARTIS
     assert dfsummary.filter(pl.col("series") == "rho")["mintemp_point_count"].is_null().all()
+
+
+def test_element_group_mass_fractions_take_only_the_elements_of_the_group() -> None:
+    """init_X_lanthanides is the sum of La to Lu. It does not include Ba and Hf, or the column of one nuclide.
+
+    The model has no actinide, thus it gets no column of the actinides.
+    """
+    from artistools.estimators.core import add_element_group_mass_fractions
+
+    dfmodel = pl.LazyFrame({
+        "init_X_Ba": [0.5],
+        "init_X_La": [0.01],
+        "init_X_Nd": [0.02],
+        "init_X_Nd142": [0.015],
+        "init_X_Lu": [0.004],
+        "init_X_Hf": [0.3],
+    })
+    dfgroups = add_element_group_mass_fractions(dfmodel).collect()
+    assert np.isclose(dfgroups["init_X_lanthanides"].item(), 0.034, rtol=1e-12)
+    assert "init_X_actinides" not in dfgroups.columns
+
+
+def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(tmp_path: Path) -> None:
+    """-dirbin 50 keeps the cells with 0 ≤ cos θ ≤ 0.2 at the centre, and init_X_Fe uses the cell masses as weights.
+
+    Te uses the volume as the weight. A mean of a mass fraction with that weight gave too much weight to the cells of
+    low density.
+    """
+    timestep = 25
+    plotestimators.main(
+        argsraw=["-timestep", str(timestep)],
+        modelpath=modelpath_classic_3d,
+        outputfile=tmp_path,
+        dirbin=50,
+        plotlist=[["init_X_Fe", "Te"]],
+        write_data=True,
+    )
+    (summaryfile,) = tmp_path.glob("*_summary.txt")
+    dfsummary = pl.read_csv(summaryfile, separator=" ", null_values="nan", comment_prefix="#")
+
+    _, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    dfcells = (
+        at.estimators
+        .scan_estimators(modelpath_classic_3d, timestep=(timestep,), join_modeldata=True)
+        .select(
+            "init_X_Fe",
+            "Te",
+            "volume",
+            mass=pl.col("rho") * pl.col("volume"),
+            costheta=pl.col("vel_z_mid") / pl.col("vel_r_mid"),
+            isinsidevmax=pl.col("vel_r_mid") <= modelmeta["vmax_cmps"],
+        )
+        .filter(pl.col("costheta").is_between(0.0, 0.2), pl.col("isinsidevmax"))
+        .collect()
+    )
+    assert dfcells.height > 0
+    rowfe = dfsummary.filter(pl.col("series") == "init_X_Fe").row(0, named=True)
+    rowte = dfsummary.filter(pl.col("series") == "Te").row(0, named=True)
+    assert rowfe["value_count"] == rowte["value_count"] == dfcells.height
+    assert rowfe["method"] == "cell mass times time step duration"
+    massmean, volumemean, temean = dfcells.select(
+        massmean=pl.col("init_X_Fe").dot("mass") / pl.col("mass").sum(),
+        volumemean=pl.col("init_X_Fe").dot("volume") / pl.col("volume").sum(),
+        temean=pl.col("Te").dot("volume") / pl.col("volume").sum(),
+    ).row(0)
+    assert not np.isclose(massmean, volumemean, rtol=1e-2)
+    assert np.isclose(rowfe["value_mean"], massmean, rtol=1e-6)
+    assert np.isclose(rowte["value_mean"], temean, rtol=1e-6)

@@ -3237,15 +3237,16 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
         " with vmin = 0.1c and vmax = 0.2c" in (capsys.readouterr().out)
     )
 
-    # -costhetamin selects the cells near the pole at +z, as for -dirbin 90 of the spectra
-    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-costhetamin", "0.8"])
-    costhetarange = at.plottools.get_costheta_range(args.costhetamin, args.costhetamax)
-    dfpolarcells = at.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, costhetarange)
+    # -costhetamin selects the cells near the pole at +z, and -dirbin 90 selects the same cells
     expectedpolar = set(
         dfvelocities.filter((pl.col("vel_r_mid_on_c") >= 0.1) & (pl.col("costheta") >= 0.8))["modelgridindex"]
     )
     assert 0 < len(expectedpolar) < len(set(dfestimators["modelgridindex"]))
-    assert set(dfpolarcells["modelgridindex"]) == expectedpolar & set(dfestimators["modelgridindex"])
+    for selectionargs in (["-costhetamin", "0.8"], ["-dirbin", "90"]):
+        args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", *selectionargs])
+        costhetarange = at.misc.get_costheta_range(args)
+        dfpolarcells = at.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, costhetarange)
+        assert set(dfpolarcells["modelgridindex"]) == expectedpolar & set(dfestimators["modelgridindex"])
 
     args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
     assert at.plotopacity.get_cells_text(None, args.vmin, args.vmax) == (

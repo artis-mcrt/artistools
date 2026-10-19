@@ -580,9 +580,7 @@ def plot_velocity_profiles_by_group(
         titleparts.append(f"{lambdarange[0]:.0f}-{lambdarange[1]:.0f} Å")
     if dirbin != -1:
         titleparts.append(
-            get_dirbin_labels(
-                [dirbin], average_over_phi=getattr(args, "average_over_phi_angle", False), usedegrees=True
-            )[dirbin]
+            get_dirbin_labels([dirbin], average_over_phi=getattr(args, "average_over_phi_angle", False))[dirbin]
         )
     ax.set_title(", ".join(titleparts))
     set_legend(ax, args)

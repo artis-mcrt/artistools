@@ -68,6 +68,10 @@ The physics options change the meaning of many outputs. More commands help befor
 - `artistools report <modelpath>` makes an HTML page with the check, the summary, the logs, and standard figures.
 - `artistools values Te nne -t 300 -modelgridindex 12 <modelpath>` prints the raw estimators of cells and timesteps,
   with no average and the unit in each column name. Use it for the value of one cell, in place of Python.
+- `-dirbin 90` selects the cells whose centre is in the cos θ range of a direction bin, e.g. near the pole. `values`,
+  `plotestimators`, `plotopacity`, and `plotlinecontributions` take it. Use it to compare two directions, e.g.
+  `artistools plotestimators init_X_lanthanides Ye -t 10 -dirbin 50 <modelpath> --print_data --quiet`. The summary
+  table gives the mean with the mass of each cell as the weight for a mass fraction and for Ye.
 
 Each plot command prints the plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te
 -t 300 <modelpath> --print_data --quiet`. Use it to check a result, or for a quick answer with no Python. A value or a
