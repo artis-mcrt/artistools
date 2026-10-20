@@ -34,8 +34,8 @@ from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import require_action
 from artistools.misc import resolve_table_outputfile
-from artistools.packets.core import get_first_packets_file
-from artistools.packets.core import get_packets_batch_parquet_paths
+from artistools.misc.remote import check_local_path
+from artistools.packets import get_packets_batch_parquet_paths
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -127,12 +127,29 @@ def make_estimator_caches(modelfolder: Path) -> str | None:
     return "one cache for each batch of ranks in each run folder"
 
 
+def has_packet_files(modelfolder: Path, virtual: bool) -> bool:
+    """Return whether the model folder or one of its subfolders holds a packet text file or a batch cache.
+
+    The readers search the same folders. A model with only some of the files is not a model with no data, thus the
+    conversion then gives an error that names the missing file.
+    """
+    # the text files are vpackets_<rank>.out and packets00_<rank>.out, plain or compressed
+    textpattern, strpacket = ("vpackets_*.out*", "vpackets") if virtual else ("packets00_*.out*", "packets")
+    return any(
+        any(folder.glob(pattern))
+        for folder in (modelfolder, *(subfolder for subfolder in modelfolder.iterdir() if subfolder.is_dir()))
+        for pattern in (textpattern, f"{strpacket}batch*.parquet*")
+    )
+
+
 def make_packet_caches(modelfolder: Path, virtual: bool) -> str | None:
     """Convert the packet files of each batch of ranks. Return None for a model with no such packet files.
 
     ARTIS writes the virtual packet files only with VPKT_WRITE_CONTRIBS. A model with vpkt.txt can thus have none.
     """
-    if get_first_packets_file(modelfolder, virtual=virtual) is None:
+    # the conversion runs on this host, thus a remote model gives an error and not "no data"
+    check_local_path(modelfolder)
+    if not has_packet_files(modelfolder, virtual=virtual):
         return None
     nprocs_read, parquetfiles = get_packets_batch_parquet_paths(modelfolder, virtual=virtual)
     return f"{len(parquetfiles)} caches of the packets of {nprocs_read} ranks"

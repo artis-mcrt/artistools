@@ -8553,6 +8553,24 @@ def test_cache_make_gives_no_data_for_virtual_packets_without_their_files(tmp_pa
     )
 
 
+def test_cache_make_gives_an_error_for_incomplete_or_remote_packet_files(tmp_path: Path) -> None:
+    """Give an error, and not "no data", when the file of the first rank is missing or the model is remote.
+
+    The other files of the model show that it has data. A remote model needs a run of the command on its host.
+    """
+    from artistools.cache import make_caches
+    from artistools.cache import make_packet_caches
+
+    vpktmodel = tmp_path / "vpktcontrib"
+    shutil.copytree(at.get_path("testdata") / "vpktcontrib", vpktmodel, ignore=shutil.ignore_patterns("vpackets"))
+    (vpktmodel / "vpackets_0000.out.zst").unlink()
+    dfresults = make_caches(vpktmodel)
+    assert dfresults.filter(pl.col("data") == "virtual packets")["status"].item() == "error"
+
+    with pytest.raises(ValueError, match="on a different host"):
+        make_packet_caches(Path("modelhost:/models/kilonova"), virtual=True)
+
+
 def test_check_names_the_missing_input_files_and_the_leftover_files(tmp_path: Path) -> None:
     """Give a warning for each missing input file and for the files that a stopped conversion left."""
     from artistools.check import check_caches
