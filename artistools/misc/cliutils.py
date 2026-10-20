@@ -41,6 +41,10 @@ if t.TYPE_CHECKING:
 # a path argument arrives as a scalar, as a sequence, or as a nested sequence from repeated -modelpath
 type PathArg = Path | str | Sequence[PathArg] | None
 
+# a typing error in a flag name, e.g. --listvaraibles, gives a ratio of 0.76 or more. The name of a different flag
+# gives less, e.g. 0.71 for -figscale against -lgoscaley, 0.56 for --listnuclides, and 0.50 for --verbose
+FLAG_SUGGESTION_CUTOFF = 0.75
+
 # an error message names the model folders that are near. A folder of models can hold many,
 # thus this constant gives the maximum number of names
 MAXNEARBYFOLDERS = 6
@@ -1183,15 +1187,38 @@ def suggest_names(name: str, candidates: "Collection[str]") -> str:
     return f"Did you mean {', '.join(matches)}?" if matches else ""
 
 
+def is_abbreviation(short: str, name: str) -> bool:
+    """Return whether name starts with the first letter of short and holds each letter of short in the same order."""
+    remaining = iter(name)
+    return short[:1] == name[:1] and len(short) < len(name) and all(letter in remaining for letter in short)
+
+
 def suggest_flags(given: str, visibleflags: "Collection[str]") -> str:
     """Return a sentence that names the flags that the user possibly meant, or an empty string.
 
     The user can give the start of a longer name, e.g. -dim for -dimensionreduce, thus a flag that starts
     with the given text comes before the closest name of difflib, which gave "-d". The shortest names
     come first, and three of them, as suggest_names gives: "-ti" on plotspectra starts 13 flags.
+
+    An abbreviation comes next: a flag with the same first letter that holds the letters of the given name in their
+    order, e.g. -timemin for -tmin. difflib then compares the names without their dashes, because two dashes match
+    in every pair of long flags. "--bogus" got the suggestion "--verbose" with the ratio 0.62, and the ratio of the
+    names alone is 0.50.
     """
+    import difflib
+
     starts = sorted(sorted(flag for flag in visibleflags if flag.startswith(given)), key=len)
-    return f"Did you mean {', '.join(starts[:3])}?" if starts else suggest_names(given, visibleflags)
+    if starts:
+        return f"Did you mean {', '.join(starts[:3])}?"
+
+    givenname = given.lstrip("-")
+    abbreviated = sorted(sorted(flag for flag in visibleflags if is_abbreviation(givenname, flag.lstrip("-"))), key=len)
+    if abbreviated:
+        return f"Did you mean {', '.join(abbreviated[:3])}?"
+
+    flagofname = {flag.lstrip("-"): flag for flag in visibleflags}
+    matches = difflib.get_close_matches(givenname, list(flagofname), n=3, cutoff=FLAG_SUGGESTION_CUTOFF)
+    return f"Did you mean {', '.join(flagofname[name] for name in matches)}?" if matches else ""
 
 
 def print_error(message: str, helptext: str = "") -> None:

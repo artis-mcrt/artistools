@@ -11,6 +11,9 @@ The checks read these files:
 --frompackets also reads the escaped packets to find the Monte Carlo noise of the light curve. Each check runs alone,
 thus a check that fails gives a row with the status "error", and the other checks still run. A status is "ok",
 "warning", "error", or "not checked".
+
+The exit status is 1 when a check gives "warning" or "error", as for "ruff check". A job script can then test the
+result. --exit-zero gives the status 0.
 """
 
 import argparse
@@ -573,6 +576,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Also read the escaped packets to find the Monte Carlo noise of the light curve. This read is slow",
     )
+    parser.add_argument(
+        "--exit-zero", action="store_true", help="Give the exit status 0 also when a check gives a warning or an error"
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -584,5 +590,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     outputfile = resolve_table_outputfile(args, "check.txt")
     dfresults = get_check_results(modelfolder, frompackets=args.frompackets)
     print_or_write_table(args, dfresults, outputfile)
-    for checkname, status, detail in dfresults.filter(pl.col("status").is_in(["warning", "error"])).iter_rows():
+    dfproblems = dfresults.filter(pl.col("status").is_in(["warning", "error"]))
+    for checkname, status, detail in dfproblems.iter_rows():
         print_warning(f"{checkname} ({status}): {detail}")
+    if dfproblems.height > 0 and not args.exit_zero:
+        raise SystemExit(1)

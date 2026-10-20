@@ -101,6 +101,8 @@ def get_epilog() -> str:
         + "\nis in days or in Angstroms. --explain prints what the arguments select. Then it stops before it"
         + "\nreads the data."
         + "\nSet ARTISTOOLS_TRACEBACK=1 to get the full traceback of an error."
+        + "\nThe exit status is 0 for success, 2 for an argument that the parser refuses, and 1 for a different"
+        + "\nerror. `artistools check` also gives 1 for a check with a warning or an error."
     )
 
 
@@ -193,6 +195,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "corehours",
         "describe",
         "getpath",
+        "help",
         "installskill",
         "logsummary",
         "python",
@@ -240,7 +243,8 @@ subcommandtree: CommandTree = {
         aliases=("doctor",),
         note=(
             "The checks also examine the input files, the caches, and the range of the arrival times. --frompackets"
-            " also reads the escaped packets to find the Monte Carlo noise of the light curve."
+            " also reads the escaped packets to find the Monte Carlo noise of the light curve. The exit status is 1"
+            " when a check gives a warning or an error, and --exit-zero gives 0."
         ),
         examples=((".", "the checks of the results of the model"),),
     ),
@@ -324,6 +328,12 @@ subcommandtree: CommandTree = {
         examples=(("-trajectoryroot trajectories", "the beta-decay energy of the trajectories in a folder"),),
         # the command writes a cache of each trajectory into the trajectory folder, thus a run changes the test data
         exampletestfolder=None,
+    ),
+    "help": CommandSpec(
+        "help",
+        helptext="Print the help of artistools or of one command.",
+        note="The command prints the same text as --help, e.g. of plotspectra or of inputmodel describe.",
+        examples=(("plotspectra", "the help of plotspectra, as plotspectra --help gives it"),),
     ),
     "hesma": CommandSpec(
         "hesma_scripts",
@@ -839,7 +849,9 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         The headings of the commands replace the line of the subcommand metavar, which has no help.
         """
         if isinstance(action, CommandGroupHeading):
-            return f"\n{action.dest}\n"
+            # Python 3.14 colours the headings of argparse with this theme. Python 3.13 has no theme
+            theme = getattr(self, "_theme", None)
+            return f"\n{theme.heading}{action.dest}{theme.reset}\n" if theme is not None else f"\n{action.dest}\n"
 
         if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
             return "".join(self._format_action(subaction) for subaction in self._iter_indented_subactions(action))
@@ -1014,10 +1026,13 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             parsermap = action._name_parser_map  # ruff:ignore[private-member-access]
             listedparsers = {id(parsermap[command]) for command in listed}
             choices = [command for command, subparser in parsermap.items() if id(subparser) in listedparsers]
-        # a close match answers the question, thus the long list of every choice serves the other case
-        helptext = suggest_names(str(value), choices) or f"The choices are {', '.join(listed)}"
+        # a close match answers the question. The list of the 44 commands filled the help line, and --help gives
+        # each command with its description, thus the help line names --help
+        suggestion = suggest_names(str(value), choices)
         if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
+            helptext = suggestion or f"Run `{self.prog} --help` to see the commands"
             self.exit_with_help(f"'{value}' is not a command of {self.prog}", helptext)
+        helptext = suggestion or f"The choices are {', '.join(listed)}"
         self.exit_with_help(f"Invalid choice '{value}' for {action.metavar or action.dest}", helptext)
 
     def get_visible_flags(self) -> list[str]:
@@ -1214,7 +1229,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         parsednamespace, leftover = self.parse_known_args(args, namespace)
         assert parsednamespace is not None
         if leftover:
-            from artistools.misc import suggest_names
+            from artistools.misc import suggest_flags
 
             # separate_trailing_folders puts "--" in front of the folders at the end, thus the user did not write it
             words = [word for word in leftover if word != "--"]
@@ -1223,7 +1238,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             helptext = ""
             if isinstance(subparser, SuggestingArgumentParser):
                 helptext = (
-                    suggest_names(flag, subparser.get_visible_flags())
+                    suggest_flags(flag, subparser.get_visible_flags())
                     if flag is not None
                     else subparser.get_folder_help(words)
                 )

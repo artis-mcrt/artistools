@@ -4067,6 +4067,30 @@ def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> 
     assert "help: Did you mean plotspectra" in message
     assert message.index("error: ") < message.index("help: ")
 
+    # with no close name, the help line names --help. The list of every command filled the line
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["xyzzy"])
+    message = capsys.readouterr().err
+    assert "help: Run `" in message
+    assert "plotspectra" not in message
+
+
+def test_help_command_gives_the_help_of_one_command(capsys: pytest.CaptureFixture[str]) -> None:
+    """The help command gives the text of --help of a command, as `uv help run` gives `uv run --help`."""
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["inputmodel", "describe", "--help"])
+    flaghelp = capsys.readouterr().out
+
+    artistools.__main__.main(argsraw=["help", "inputmodel", "describe"])
+    assert capsys.readouterr().out == flaghelp
+
+    # a word after a command that has no subcommands is a mistake, and not a word that the command ignores
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["help", "timesteps", "extra"])
+    assert "error: The command timesteps has no subcommand extra" in capsys.readouterr().err
+
 
 def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> None:
     """A list of file names alone does not tell a user what the file holds or which command reads it."""
@@ -4546,8 +4570,13 @@ def test_an_error_names_the_remedy_on_a_help_line(capsys: pytest.CaptureFixture[
     lines = [line for line in capsys.readouterr().err.splitlines() if line.startswith(("error: ", "help: "))]
     assert lines == [
         "error: Unrecognised arguments: --listvaraibles",
-        "help: Did you mean --listvariables, --listvars, --listnuclides?",
+        "help: Did you mean --listvariables, --listvars?",
     ]
+
+    # difflib compares the names without their dashes, thus a flag that shares only the dashes is no suggestion
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", "--bogus"])
+    assert "help: Run `" in capsys.readouterr().err
 
 
 def test_every_command_takes_quiet() -> None:
@@ -8293,7 +8322,10 @@ def test_check_from_packets_gives_the_largest_noise(capsys: pytest.CaptureFixtur
 
     dflightcurve = at.lightcurve.get_from_packets(modelpath)[-1].collect().filter(pl.col("relnoise").is_not_null())
     worst = dflightcurve.sort("relnoise", descending=True).row(0, named=True)
-    main(argsraw=[str(modelpath), "--frompackets"])
+    # a check with a warning gives the exit status 1, as ruff check does for a finding
+    with pytest.raises(SystemExit) as exitinfo:
+        main(argsraw=[str(modelpath), "--frompackets"])
+    assert exitinfo.value.code == 1
     captured = capsys.readouterr()
     assert "\ncheck status detail\n" in captured.out
     noiseline = next(line for line in captured.out.splitlines() if line.startswith('"packet noise"'))
@@ -8302,6 +8334,10 @@ def test_check_from_packets_gives_the_largest_noise(capsys: pytest.CaptureFixtur
     assert re.search(r"warning: packet noise \(warning\): the largest relative noise", captured.err)
     # a check that is not checked gives no warning line
     assert "complete time steps (" not in captured.err
+
+    # --exit-zero gives the table and the warnings, and the status 0
+    main(argsraw=[str(modelpath), "--frompackets", "--exit-zero"])
+    assert "warning: packet noise (warning)" in capsys.readouterr().err
 
 
 def test_check_packet_noise_names_a_timestep_with_no_escaped_packet() -> None:
