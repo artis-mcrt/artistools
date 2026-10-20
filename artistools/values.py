@@ -60,7 +60,7 @@ MAXLISTEDTIMESTEPS = 10
 # a list of the cells that is longer than this gives only the first and the last cell
 MAXCELLSTEXTLENGTH = 60
 
-LISTVARIABLESHINT = "Run 'artistools plotestimators --listvariables <folder>' to see the variables of the model"
+LISTVARIABLESHINT = "Run `artistools plotestimators --listvariables <folder>` to see the variables of the model"
 
 
 def get_value_column_name(variable: str) -> str:
@@ -122,13 +122,13 @@ def resolve_timesteps(args: argparse.Namespace, modelpath: Path) -> list[int]:
     """Return the timesteps of the time arguments, or every timestep when the user gave no time."""
     if all(value is None for value in (args.timedays, args.timemin, args.timemax, args.timestep)):
         args.timestep = f"0-{len(get_timestep_times(modelpath)) - 1}"
-        print_detail("no time was given, thus the table holds every timestep")
+        print_detail("No time was given, thus the table holds every timestep")
 
     timestepmin, timestepmax, args.timemin, args.timemax = get_time_range(
         modelpath, args.timestep, args.timemin, args.timemax, args.timedays
     )
     if timestepmin == timestepmax == -1:
-        exit_with_error("the time range is outside the timesteps of the model", "Give a time inside that range")
+        exit_with_error("The time range is outside the timesteps of the model", "Give a time inside that range")
 
     return list(range(timestepmin, timestepmax + 1))
 
@@ -219,7 +219,7 @@ def warn_missing_rows(dfvalues: pl.DataFrame, timesteps: Sequence[int], modelgri
                 " ARTIS writes no estimators for a cell with no matter"
             )
         elif len(missingcells) == len(cells):
-            print_warning(f"timestep {format_range_list(missingtimesteps)} has no estimators for the selected cells")
+            print_warning(f"Timestep {format_range_list(missingtimesteps)} has no estimators for the selected cells")
         else:
             print_warning(
                 f"modelgridindex {format_range_list(missingcells)} has no estimators at timestep"
@@ -256,7 +256,7 @@ def require_model_folder(modelpath: Path) -> None:
     helptext = (
         f"Name one of these subfolders after the variables: {', '.join(nearby)}"
         if nearby
-        else 'A model folder holds input.txt. Name one after the variables, e.g. "artistools values Te -t 300 mymodel"'
+        else "A model folder holds input.txt. Name one after the variables, e.g. `artistools values Te -t 300 mymodel`"
     )
     exit_with_error(f"'{modelpath.resolve()}' is not an ARTIS model folder", helptext)
 
@@ -268,8 +268,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         dest="variables",
         metavar="variable",
         helptext=(
-            "The estimator variables, e.g. 'artistools values Te TR nne -t 300'. The model folder comes after them,"
-            " e.g. 'artistools values Te mymodel'. The working folder is the default"
+            "The estimator variables, e.g. `artistools values Te TR nne -t 300`. The model folder comes after them,"
+            " e.g. `artistools values Te mymodel`. The working folder is the default"
         ),
     )
 
@@ -302,7 +302,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ]
     if not variables:
         exit_with_error(
-            "no variable was given", f"Name the variables before the folder, e.g. Te TR -t 300. {LISTVARIABLESHINT}"
+            "No variable was given", f"Name the variables before the folder, e.g. Te TR -t 300. {LISTVARIABLESHINT}"
         )
 
     # the refusal must come before the work starts, e.g. before a remote model starts its server
@@ -321,7 +321,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         modelpath, variables, timesteps, args.modelgridindex, costhetarange=costhetarange, verbose=args.verbose
     )
     if dfvalues.is_empty():
-        exit_with_error("the selected cells hold no estimators at the selected timesteps", "Select different cells")
+        exit_with_error("The selected cells hold no estimators at the selected timesteps", "Select different cells")
     expectedcells = (
         get_cells_in_costheta_range(modelpath, args.modelgridindex, costhetarange)
         if args.modelgridindex is not None and costhetarange is not None

@@ -101,7 +101,7 @@ line when you need a number. Examples of the lines are:
   for each drawn series with its flux at 1 Mpc and its share, e.g. `Co II      emission 3.48e-08 (68.3%)  absorption
   1.50e-08 (96.7%)`, and one line for the series in "Other".
 
-A line that starts with `WARNING:` gives a problem of the plot. Examples are:
+A line that starts with `warning:` gives a problem of the plot. Examples are:
 
 - cells at `MINTEMP` or `MAXTEMP`;
 - a peak at an edge of the time range;

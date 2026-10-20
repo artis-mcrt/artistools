@@ -506,7 +506,7 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     # subch_shen2018_electronlossboost{4,8,12}x), but only W7 is overplotted
     dfmodel = dffloers.filter(pl.col("modelname") == "w7").sort("epoch")
     if dfmodel.is_empty():
-        print_warning(f"no rows for Flörs model w7 in {floersmodelratiopath}")
+        print_warning(f"No rows for Flörs model w7 in {floersmodelratiopath}")
         # an empty frame of the comparison schema concatenates with the other comparison series
         return get_comparison_table("Flörs W7", [], [])
 
@@ -539,13 +539,13 @@ def add_ratio_noise(dflcdata: pl.DataFrame, featurecolnames: Sequence[str]) -> p
         fratio_relnoise=sum((pl.col(column) ** 2 for column in noisecolumns), start=pl.lit(0.0)).sqrt()
     )
     print(
-        "  noise: the relative Monte Carlo noise of a feature is sqrt(Σ e²) / Σ e over its packet energies e. The noise"
+        "  Noise: the relative Monte Carlo noise of a feature is sqrt(Σ e²) / Σ e over its packet energies e. The noise"
         " of the ratio is the root of the sum of the squares of the two noises"
     )
     noisytimes = dflcdata.filter(pl.col("fratio_relnoise") > NOISY_RELATIVE_ERROR)["time"].to_list()
     if noisytimes:
         print_warning(
-            f"the ratio has a relative noise above {NOISY_RELATIVE_ERROR:.0%} at {len(noisytimes)} of"
+            f"The ratio has a relative noise above {NOISY_RELATIVE_ERROR:.0%} at {len(noisytimes)} of"
             f" {dflcdata.height} times, e.g. {noisytimes[0]:.1f} d. Read more packet files, or give wider time bins"
         )
     return dflcdata
@@ -560,7 +560,7 @@ def check_ratio_features_share_no_line(feature0: FeatureTuple, feature1: Feature
     sharedlines = set(feature0.linelistindices) & set(feature1.linelistindices)
     if sharedlines:
         exit_with_error(
-            f"the features {feature0.featurelabel} and {feature1.featurelabel} of the ratio share {len(sharedlines)}"
+            f"The features {feature0.featurelabel} and {feature1.featurelabel} of the ratio share {len(sharedlines)}"
             " lines, thus a packet of such a line counts in both luminosities",
             "Give the first two -emfeaturesearch values wavelength ranges with no common line",
         )
@@ -660,7 +660,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         if tablemodelname in tablemodelnames:
             # two models can have the same name, and the join of their columns stopped with a repeated column
             tablemodelname = f"{tablemodelname}_{modelindex}"
-            print_warning(f"the data table gives the column of {modelpath} the model name {tablemodelname}")
+            print_warning(f"The data table gives the column of {modelpath} the model name {tablemodelname}")
         tablemodelnames.add(tablemodelname)
         plotteddata.append(
             dflcdata.select(
@@ -775,7 +775,7 @@ def read_te_nne_refdata(
     refdatapath = find_reference_data_file(refdatafilename, "data")
     if refdatapath is None:
         exit_with_error(
-            f"could not find the reference data file {refdatafilename}",
+            f"Could not find the reference data file {refdatafilename}",
             f"Put {refdatafilename} in the working folder, or give --norefdata to plot the model data alone",
         )
 

@@ -243,7 +243,7 @@ def calculate_peak_time_mag_deltam15(
         index = int(np.abs(arr_xfit - (tmax_polyfit + days)).argmin())
         if arr_xfit[-1] < tmax_polyfit + days:
             print_warning(
-                f"the fitted range ends at {arr_xfit[-1]:.1f} d, which is before {days:.0f} d after the"
+                f"The fitted range ends at {arr_xfit[-1]:.1f} d, which is before {days:.0f} d after the"
                 f" peak at {tmax_polyfit:.1f} d. deltam{days:.0f} is really the decline to"
                 f" {arr_xfit[-1] - tmax_polyfit:.1f} d after peak. Widen -timemax to cover the full range."
             )
@@ -375,7 +375,7 @@ def make_plot_test_viewing_angle_fit(
     axis.axhline(y=mag_after15days_polyfit, color="black", linestyle="--")
     axis.axvline(x=tmax_polyfit, color="black", linestyle="--")
     axis.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
-    print("time after 15 days polyfit = ", time_after15days_polyfit)
+    print("Time after 15 days polyfit = ", time_after15days_polyfit)
     plotname = (
         get_viewing_angle_data_folder(args)
         / f"{get_filename_part(key)}_band_{get_filename_part(modelname)}_viewing_angle{angle!s}.png"

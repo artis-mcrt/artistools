@@ -233,7 +233,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
         missing_cols = required_cols - set(lzpackets.collect_schema().names())
         if missing_cols:
             exit_with_error(
-                f"the 2D image of --use_thermalemissiontype needs the packet columns {', '.join(sorted(missing_cols))}",
+                f"The 2D image of --use_thermalemissiontype needs the packet columns {', '.join(sorted(missing_cols))}",
                 "Give -groupby, which can take the column true_emission_velocity of an old packets file",
             )
         position = "trueem"
@@ -255,7 +255,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if velocitymax_kmps is None:
         fastest_kmps = dfpackets.select(pl.max_horizontal("v_cyl_kmps", pl.col("v_z_kmps").abs()).fill_nan(None).max())
         if fastest_kmps.item() is None:
-            exit_with_error("no selected packet has a record of the position", "Give a different selection")
+            exit_with_error("No selected packet has a record of the position", "Give a different selection")
         # the factor keeps the fastest packet inside the last pixel
         velocitymax_kmps = float(fastest_kmps.item()) * (1.0 + 1e-9)
         print_detail(
@@ -540,7 +540,7 @@ def plot_velocity_profiles_by_group(
     )
     if dfpackets.is_empty():
         exit_with_error(
-            f"no escaped r-packet of the selection arrives from {t_min:.2f} to {t_max:.2f} d",
+            f"No escaped r-packet of the selection arrives from {t_min:.2f} to {t_max:.2f} d",
             "Give a different time, a wider wavelength range, or -dirbin -1",
         )
     print_group_selection(lambdarange, groupby, absorption=absorption)
@@ -917,10 +917,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         exit_with_error("-wavelen and -binwidth give a range together", "Give -lambdamin and -lambdamax")
     if args.wavelen is not None:
         if args.xmin is not None or args.xmax is not None:
-            exit_with_error("give the wavelength range one time", "Remove -wavelen and -binwidth")
+            exit_with_error("Give the wavelength range one time", "Remove -wavelen and -binwidth")
         args.xmin, args.xmax = args.wavelen - args.binwidth / 2, args.wavelen + args.binwidth / 2
     if (args.xmin is None) != (args.xmax is None):
-        exit_with_error("the wavelength range needs two ends", "Give -lambdamin and -lambdamax together")
+        exit_with_error("The wavelength range needs two ends", "Give -lambdamin and -lambdamax together")
     if args.absorption and args.use_thermalemissiontype:
         exit_with_error(
             "--absorption takes the last absorption, and --use_thermalemissiontype takes the last thermal emission",
@@ -1000,7 +1000,7 @@ def get_selected_ions(args: argparse.Namespace) -> list[tuple[int | None, int | 
             ions.append(iontuple if isinstance(iontuple, tuple) else (iontuple, None))
         return ions
     if args.ions:
-        exit_with_error("give the ions one time", "Remove -element and -ionstage")
+        exit_with_error("Give the ions one time", "Remove -element and -ionstage")
     Z = get_atomic_number(args.element) if args.element else None
     if Z is not None and Z < 1:
         exit_with_error(f"-element {args.element} is no element symbol", "Give the element as e.g. Sr")

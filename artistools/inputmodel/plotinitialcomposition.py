@@ -73,7 +73,7 @@ def plot_slice_modelcolumn(
     args: argparse.Namespace,
 ) -> AxesImage:
     """Draw one model column as a colour image on the axes, and return the image."""
-    print(f"plotting {colname}")
+    print(f"Plotting {colname}")
     colorscale = (
         (dfmodelslice[colname] * dfmodelslice["rho"]) if colname.startswith("X_") else dfmodelslice[colname]
     ).to_numpy()

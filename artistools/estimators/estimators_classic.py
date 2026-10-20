@@ -113,7 +113,7 @@ def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.A
         if str(estfilepath.parent) in first_timesteps_in_dir:
             timestep = first_timesteps_in_dir[str(estfilepath.parent)]
         else:
-            print_warning(f"no first timestep found for {estfilepath.parent}, assuming the run starts at timestep 0")
+            print_warning(f"No first timestep found for {estfilepath.parent}, assuming the run starts at timestep 0")
             timestep = 0
         with zopen(estfilepath) as estfile:
             modelgridindex = -1

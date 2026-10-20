@@ -242,12 +242,12 @@ def get_selected_timestep(
     """
     if timedays is not None:
         if timestep is not None:
-            exit_with_error("specify only one of -timestep and -timedays")
+            exit_with_error("Specify only one of -timestep and -timedays")
         return get_timestep_of_timedays(modelpath, timedays)
 
     selectedtimestep = get_single_timestep(timestep if timestep is not None else defaulttimestep, modelpath)
     if selectedtimestep is None:
-        exit_with_error("the command has no time", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
+        exit_with_error("The command has no time", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
 
     return selectedtimestep
 
@@ -350,7 +350,7 @@ def apply_time_range_args(
                     math.isclose(othermin, rangemin, rel_tol=1e-5) and math.isclose(othermax, rangemax, rel_tol=1e-5)
                 ):
                     exit_with_error(
-                        f"timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
+                        f"Timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
                         f"{get_model_logname(artispaths[0])} and {othermin:.2f} to {othermax:.2f} days in "
                         f"{get_model_logname(otherpath)}, because their timestep grids differ. Give the "
                         "range in days with -timedays, which means the same for every model"

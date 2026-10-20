@@ -747,7 +747,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
         argv = get_server_argv(host, failedcommand)
         if isinstance(exc, ConnectionError):
             # the readers differ for a different server protocol, thus the host must run the code of the client
-            message = f"the artistools server on {host} {exc}"
+            message = f"The artistools server on {host} {exc}"
             helptext = (
                 f"Set {SERVER_COMMAND_ENVVAR} to a command that starts a server with the server protocol"
                 f" {SERVER_PROTOCOL}"
@@ -756,7 +756,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
             )
         else:
             # text of a shell can give any error of the unpickle
-            message = f"the artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}"
+            message = f"The artistools server on {host} did not start. The ssh command line was: {shlex.join(argv)}"
             if failedcommand == givencommand:
                 helptext = f"Correct the command in {SERVER_COMMAND_ENVVAR}, or remove the variable to use the default"
             elif gitsource is not None and failedcommand == get_git_command(gitsource):
@@ -776,7 +776,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     ):
         # the host cannot get the commit, and a start of the release ends in a ConnectionError after approximately 10 s
         exit_with_error(
-            f"the release {localversion} has the server protocol {gitsource.releaseprotocol}, and this artistools has"
+            f"The release {localversion} has the server protocol {gitsource.releaseprotocol}, and this artistools has"
             f" the server protocol {SERVER_PROTOCOL}",
             get_git_server_suggestion(host, givencommand, gitsource),
         )
@@ -825,7 +825,7 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     if serverpolarsversion != pl.__version__:
         process.kill()
         exit_with_error(
-            f"the artistools server on {host} has polars {serverpolarsversion}, and this artistools has polars"
+            f"The artistools server on {host} has polars {serverpolarsversion}, and this artistools has polars"
             f" {pl.__version__}. The server reads the polars expressions of the client, and these expressions need the"
             " same version of polars",
             f"Add {get_polars_pin()} to the uvx command of {SERVER_COMMAND_ENVVAR}",

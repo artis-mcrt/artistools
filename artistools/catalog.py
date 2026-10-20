@@ -211,7 +211,7 @@ def get_catalog_row(modelfolder: Path, folder: Path) -> dict[str, t.Any]:
         except Exception as exc:  # ruff:ignore[blind-except]
             failures.append(f"{partname} ({type(exc).__name__}: {exc})")
     if failures:
-        print_warning(f"model {modelname} in {relativefolder}: the table gives nan for {'; '.join(failures)}")
+        print_warning(f"Model {modelname} in {relativefolder}: the table gives nan for {'; '.join(failures)}")
     return row
 
 

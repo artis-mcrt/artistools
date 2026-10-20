@@ -485,7 +485,7 @@ def plot_reference_spectrum(
 
     print_heading(f"Reference spectrum '{label}'")
     specdata = get_reference_spectrum(filepath, metadata)
-    print_detail(f"file: {filepath}")
+    print_detail(f"File: {filepath}")
 
     # scale to 1 Mpc, and get_dfspectrum_x_y_with_units then scales to scale_to_dist_mpc
     print(f"Scaling to distance {scale_to_dist_mpc} Mpc")
@@ -496,23 +496,23 @@ def plot_reference_spectrum(
             raise ValueError(msg)
     else:
         # a plain file gives no distance, thus its flux is at the distance of the plot
-        print_warning(f"no dist_mpc in the metadata of {filepath}, thus the flux is at {scale_to_dist_mpc} Mpc")
+        print_warning(f"No dist_mpc in the metadata of {filepath}, thus the flux is at {scale_to_dist_mpc} Mpc")
         filedistance_mpc = scale_to_dist_mpc
     specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * filedistance_mpc**2)
 
     if scaletoreftime is not None:
         timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
-        print_detail(f"scaled from time {metadata['t']} to {scaletoreftime}, factor {timefactor} by the Co56 decay law")
+        print_detail(f"Scaled from time {metadata['t']} to {scaletoreftime}, factor {timefactor} by the Co56 decay law")
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
         label += f" * {timefactor:.2f}"
 
     if "scale_factor" in metadata:
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * metadata["scale_factor"])
 
-    print_detail(f"points: {len(specdata)}")
+    print_detail(f"Points: {len(specdata)}")
 
     print_detail(
-        "metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()])
+        "Metadata: " + ", ".join([f"{k}='{v}'" if hasattr(v, "lower") else f"{k}={v}" for k, v in metadata.items()])
     )
 
     lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, xunit)
@@ -526,7 +526,7 @@ def plot_reference_spectrum(
     specdata = df_filter_minmax_bracketed(specdata, "lambda_angstroms", lambda_min, lambda_max).collect()
 
     if fluxfilterfunc:
-        print_detail("applying the filter to the reference spectrum")
+        print_detail("Applying the filter to the reference spectrum")
         specdata = specdata.with_columns(
             cs.starts_with("f_lambda").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
         )
@@ -636,7 +636,7 @@ def parse_deltalogx_argument(value: str) -> float | str:
     try:
         return float(value)
     except ValueError:
-        msg = f"give a number or one of {', '.join(DELTALOGX_SCALES)}, not {value}"
+        msg = f"Give a number or one of {', '.join(DELTALOGX_SCALES)}, not {value}"
         raise argparse.ArgumentTypeError(msg) from None
 
 
@@ -825,11 +825,11 @@ def plot_noise_band(
     axis.fill_between(x, y - ynoise, y + ynoise, color=color, alpha=0.25, linewidth=0)
 
     if not hasnoise.any():
-        print_warning("each drawn bin has y = 0, thus the plot shows no noise band")
+        print_warning("Each drawn bin has y = 0, thus the plot shows no noise band")
         return
     percentnoise = 100.0 * relnoisevalues[hasnoise]
     print_detail(
-        f"noise band: the relative noise r of the drawn bins is {percentnoise.min():.3g}% to"
+        f"Noise band: the relative noise r of the drawn bins is {percentnoise.min():.3g}% to"
         f" {percentnoise.max():.3g}%, and the median is {np.median(percentnoise):.3g}%. {(~hasnoise).sum()} of"
         f" {len(hasnoise)} bins have y = 0. These bins have no estimate of r, thus their band has zero width"
     )
@@ -887,7 +887,7 @@ def plot_artis_spectrum(
     """
     modelpath = Path(modelpath)
     if path_is_file(modelpath):  # handle e.g. modelpath = 'modelpath/spec.out'
-        print_warning(f"ignoring filename of {modelpath.name}")
+        print_warning(f"Ignoring filename of {modelpath.name}")
         modelpath = modelpath.parent
 
     if not path_is_dir(modelpath):
@@ -1226,7 +1226,7 @@ def add_to_grid_tables(gridtables: list[pl.DataFrame], dfseries: pl.DataFrame, g
             dfseriesvalues = dfseries.drop(gridcolumns, strict=False)
             if repeatedcolumns := set(dfseriesvalues.columns) & set(table.columns):
                 # with_columns replaces a column of the same name, thus a repeated name loses a series
-                msg = f"two series of the spectrum table have the same columns: {sorted(repeatedcolumns)}"
+                msg = f"Two series of the spectrum table have the same columns: {sorted(repeatedcolumns)}"
                 raise ValueError(msg)
             gridtables[index] = table.with_columns(dfseriesvalues)
             return
@@ -1241,7 +1241,7 @@ def check_codecomparison_args(args: argparse.Namespace) -> None:
     """
     if args.timemin is None or args.timemax is None:
         exit_with_error(
-            "a code comparison spectrum needs a time, and the command gives no time range",
+            "A code comparison spectrum needs a time, and the command gives no time range",
             "Give -timedays (e.g. -t 300 or -t 290-320), or -timemin and -timemax",
         )
     unsupported = [
@@ -1256,7 +1256,7 @@ def check_codecomparison_args(args: argparse.Namespace) -> None:
     ]
     if unsupported:
         exit_with_error(
-            "a code comparison spectrum is F_lambda per angstrom at 1 Mpc, and the command gives"
+            "A code comparison spectrum is F_lambda per angstrom at 1 Mpc, and the command gives"
             f" {' and '.join(unsupported)}",
             f"Remove {' and '.join(unsupported)}, or remove the code comparison path",
         )
@@ -1376,7 +1376,7 @@ def make_spectrum_plot(
                 if seriesname in tableseriesnames:
                     # two models can have the same name, and the columns of the second replaced those of the first
                     seriesname = f"{seriesname}_{seriesindex}"
-                    print_warning(f"the data table gives the columns of {specpath} the model name {seriesname}")
+                    print_warning(f"The data table gives the columns of {specpath} the model name {seriesname}")
                 tableseriesnames.add(seriesname)
                 nseriesplotted += 1
 
@@ -1402,7 +1402,7 @@ def make_spectrum_plot(
 
     if nseriesplotted == 0:
         exit_with_error(
-            "no spectra were plotted. Check that each given path holds an ARTIS model or a reference spectrum"
+            "No spectra were plotted. Check that each given path holds an ARTIS model or a reference spectrum"
         )
 
     # each panel of --multispecplot gets the same filter curves, thus the table takes the curves of the first panel
@@ -1410,7 +1410,7 @@ def make_spectrum_plot(
     for axis in axes:
         if args.showfilterfunctions:
             if not args.normalised:
-                print_warning("the filter functions plot normalised values, thus give --normalised as well")
+                print_warning("The filter functions plot normalised values, thus give --normalised as well")
             filterlines = plot_filter_functions(axis, args.xunit, residualseries=residualseries)
             if tableneedsfilters:
                 # a filter curve gives the dimensionless transmission, and not a flux
@@ -1915,7 +1915,7 @@ def make_emissionabsorption_plot(
         # every sum and every maximum below reads the bins of the x range. The limits use the unit of the x axis,
         # thus the test reads the bins that get_emission_contributions kept, which are in Angstroms
         exit_with_error(
-            f"the x range {xmin:g} to {xmax:g} holds no bin of the spectrum", "Give a wider range with -xmin and -xmax"
+            f"The x range {xmin:g} to {xmax:g} holds no bin of the spectrum", "Give a wider range with -xmin and -xmax"
         )
 
     print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -2035,7 +2035,7 @@ def check_residual_args(args: argparse.Namespace) -> None:
     if args.normalised:
         print_warning("--normalised scales each series to its own peak, thus the residual compares the shapes alone")
     if args.filtersavgol:
-        print_warning("the residual and its statistics take the smoothed series of -filtersavgol")
+        print_warning("The residual and its statistics take the smoothed series of -filtersavgol")
 
 
 def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_], dict[str, pl.DataFrame]]:
@@ -2674,13 +2674,13 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
     # --use_thermalemissiontype and --use_sampledemissiontype
     if args.plotvspecpol is not None:
         exit_with_error(
-            f"a virtual packet holds no emission position, thus -plotvspecpol does not accept {option}",
+            f"A virtual packet holds no emission position, thus -plotvspecpol does not accept {option}",
             "Give -plotviewingangle for a direction bin of the real packets",
         )
 
     if args.gamma and args.use_thermalemissiontype:
         exit_with_error(
-            f"a gamma packet has no thermal emission, thus {option} cannot use --use_thermalemissiontype",
+            f"A gamma packet has no thermal emission, thus {option} cannot use --use_thermalemissiontype",
             "Remove --use_thermalemissiontype. The gamma packets then use the position of the last interaction",
         )
 
@@ -2692,7 +2692,7 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
             else ""
         )
         exit_with_error(
-            f"the packets hold no position of the sampled emission, thus {option} cannot use --use_sampledemissiontype",
+            f"The packets hold no position of the sampled emission, thus {option} cannot use --use_sampledemissiontype",
             f"Remove --use_sampledemissiontype{thermalhint}",
         )
 
@@ -2720,7 +2720,7 @@ def resolve_velocity_ranges(args: argparse.Namespace) -> None:
 
     if not (args.showemission or args.showabsorption):
         exit_with_error(
-            "a velocity range selects the packets of the contributions, and the plot shows no contribution",
+            "A velocity range selects the packets of the contributions, and the plot shows no contribution",
             "Give --showemission, --showabsorption, or --emissionabsorption",
         )
 
@@ -2841,33 +2841,33 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
 
     if not args.modelspecpaths:
         exit_with_error(
-            "an emission plot draws the contributions of one ARTIS model, and no path names such a model",
+            "An emission plot draws the contributions of one ARTIS model, and no path names such a model",
             "Give a model folder",
         )
 
     if len(args.modelspecpaths) > 1:
         exit_with_error(
-            f"an emission plot draws one ARTIS model, and the command gives {len(args.modelspecpaths)} of them",
+            f"An emission plot draws one ARTIS model, and the command gives {len(args.modelspecpaths)} of them",
             "Give one model folder, and run the command again for each other model",
         )
 
     dirbins = args.plotviewingangle or args.plotvspecpol
     if dirbins and len(dirbins) > 1:
         exit_with_error(
-            f"an emission plot draws one direction bin, and the command gives {len(dirbins)} of them",
+            f"An emission plot draws one direction bin, and the command gives {len(dirbins)} of them",
             "Give one bin, e.g. -plotviewingangle 0",
         )
 
     if args.timedayslist and len(args.timedayslist) > 1:
         exit_with_error(
-            "an emission plot draws one time, and -timedayslist gives several. The plot drew only the first one",
+            "An emission plot draws one time, and -timedayslist gives several. The plot drew only the first one",
             "Give one time with -timedays. Run the command again for each other time",
         )
 
     # a gamma packet comes from the decay of a nuclide, and ARTIS records no ion or line for it
     if args.gamma and args.groupby in {"ion", "line"}:
         exit_with_error(
-            f"a gamma packet has no emission by an ion or a line, thus a gamma-ray spectrum does not accept -groupby"
+            f"A gamma packet has no emission by an ion or a line, thus a gamma-ray spectrum does not accept -groupby"
             f" {args.groupby}",
             "Give -groupby nuc or -groupby nucmass",
         )
@@ -2875,21 +2875,21 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
     # ARTIS gives each escaped gamma packet the absorption type 0, which is the first line of the line list
     if args.gamma and args.showabsorption:
         exit_with_error(
-            "a gamma packet holds no absorption record, thus a gamma-ray spectrum does not accept --showabsorption",
+            "A gamma packet holds no absorption record, thus a gamma-ray spectrum does not accept --showabsorption",
             "Remove --showabsorption",
         )
 
     # ARTIS samples only the emissions of the real r-packets
     if args.use_sampledemissiontype and args.gamma:
         exit_with_error(
-            "a gamma packet has no sampled emission, thus a gamma-ray spectrum does not accept"
+            "A gamma packet has no sampled emission, thus a gamma-ray spectrum does not accept"
             " --use_sampledemissiontype",
             "Remove --use_sampledemissiontype",
         )
 
     if args.use_sampledemissiontype and args.plotvspecpol is not None:
         exit_with_error(
-            "a virtual packet holds no sampled emission, thus -plotvspecpol does not accept --use_sampledemissiontype",
+            "A virtual packet holds no sampled emission, thus -plotvspecpol does not accept --use_sampledemissiontype",
             "Give -plotviewingangle for a direction bin of the real packets, or remove --use_sampledemissiontype",
         )
 
@@ -2909,14 +2909,14 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
     # get_flux_contributions_from_packets makes the same test, but only after it reads the packets
     if args.showabsorption and args.groupby == "nuc":
         exit_with_error(
-            "a nuclide emits a packet, but a nuclide does not absorb a packet. Thus -groupby nuc cannot group the"
+            "A nuclide emits a packet, but a nuclide does not absorb a packet. Thus -groupby nuc cannot group the"
             " absorption contributions",
             "Give -groupby ion or line, or remove --showabsorption",
         )
 
     if args.yvariable == "packetcount":
         exit_with_error(
-            "an emission plot draws a flux for each contribution, and it has no count of packets",
+            "An emission plot draws a flux for each contribution, and it has no count of packets",
             "Remove -yvariable packetcount, or remove --showemission and --showabsorption",
         )
 
@@ -2938,7 +2938,7 @@ def check_yvariable_args(args: argparse.Namespace) -> None:
 
     if args.yvariable == "packetcount" and len(args.modelspecpaths) < len(args.specpath):
         exit_with_error(
-            "a reference spectrum holds no count of packets, thus -yvariable packetcount needs ARTIS models alone",
+            "A reference spectrum holds no count of packets, thus -yvariable packetcount needs ARTIS models alone",
             "Remove the reference spectra, or give another -yvariable",
         )
 

@@ -34,7 +34,13 @@ def build_parser() -> argparse.ArgumentParser:
     }
     # the subclass suggests a subcommand and a flag, on Python 3.13 and 3.14 alike
     parser = SuggestingArgumentParser(**parserkwargs)
-    parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {version('artistools')}")
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"%(prog)s {version('artistools')}",
+        help="Show the version of artistools and exit",
+    )
 
     addsubparsers(parser, subcommandtree)
 
@@ -160,7 +166,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print_error("\n".join([detail, *get_context_notes(exc)]), get_error_help(exc))
         else:
             print_error(
-                f"an internal check of artistools failed ({type(exc).__name__}). This is a fault in "
+                f"An internal check of artistools failed ({type(exc).__name__}). This is a fault in "
                 "artistools and not in your arguments. Set ARTISTOOLS_TRACEBACK=1 to get the full traceback"
             )
         raise SystemExit(1) from exc

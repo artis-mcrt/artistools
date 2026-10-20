@@ -705,7 +705,7 @@ def plot_thermalisation(
     dfcurves: list[pl.DataFrame] = []
     if "betaplus" in args.thermalisation:
         print_detail(
-            "the thermalisation ratio of the positrons divides by the analytical emission rate, because"
+            "The thermalisation ratio of the positrons divides by the analytical emission rate, because"
             " deposition.out holds no Monte Carlo emission rate of the positrons"
         )
     for particle in args.thermalisation:
@@ -736,8 +736,8 @@ def plot_thermalisation(
         return dfcurves
 
     model_mass_grams, ejecta_ke_erg = get_model_mass_and_kinetic_energy(Path(modelpath))
-    print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
-    print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
+    print(f"  Model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
+    print(f"  Ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
 
     # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
     ejecta_v = np.sqrt(2 * ejecta_ke_erg / model_mass_grams)
@@ -860,7 +860,7 @@ def plot_artis_lightcurve(
         )
     else:
         if pellet_nucname is not None or use_pellet_decay_time:
-            msg = "only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
+            msg = "Only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
             raise ValueError(msg)
         if args.plotvspecpol is not None:
             exit_with_error(
@@ -931,12 +931,12 @@ def plot_artis_lightcurve(
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
 
-    print_detail(f"range of the light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
+    print_detail(f"Range of the light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
         nts_last, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
     except FileNotFoundError:
         print(
-            " range of validity: could not determine due to missing files "
+            " Range of validity: could not determine due to missing files "
             "(requires deposition.out, input.txt, model.txt)"
         )
         nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
@@ -945,7 +945,7 @@ def plot_artis_lightcurve(
             str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
         else:
             str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-        print_detail(f"range of validity (last timestep {nts_last}): {str_valid_range}")
+        print_detail(f"Range of validity (last timestep {nts_last}): {str_valid_range}")
 
     if any(dirbin != -1 for dirbin in dirbins):
         print_theta_phi_definitions()
@@ -1038,7 +1038,7 @@ def plot_artis_lightcurve(
         lcdata_valid_tmin, lcdata_valid_tmax = get_time_range_days(lcdata_valid)
         if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
             print_detail(
-                f"integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days):"
+                f"Integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days):"
                 f" {energy_released:.3e} [erg]"
             )
 
@@ -1085,7 +1085,7 @@ def plot_artis_lightcurve(
             )
         if args.plotcmf and cmfcolumn not in lcdata.columns:
             print_warning(
-                f"the light curve of {linelabel} has no comoving frame luminosity, thus --plotcmf draws no curve"
+                f"The light curve of {linelabel} has no comoving frame luminosity, thus --plotcmf draws no curve"
             )
         elif args.plotcmf:
             # a copy, because the next direction bin keeps the rest-frame style and the -linewidth value
@@ -1207,7 +1207,7 @@ def draw_plot(
                         print(f"Top nuclides by energy release: {top_nuclides['nucname'].to_list()}")
                         pellet_nucnames.extend(top_nuclides["nucname"])
                     except FileNotFoundError:
-                        print_warning("no nuclides.out file found, skipping top nuclides")
+                        print_warning("No nuclides.out file found, skipping top nuclides")
 
                 for pellet_nucname in pellet_nucnames:
                     lcdataframes = plot_artis_lightcurve(
@@ -1289,7 +1289,7 @@ def draw_plot(
 
     if not plottedsomething:
         exit_with_error(
-            "the plot holds no light curve, because the command skipped each path",
+            "The plot holds no light curve, because the command skipped each path",
             "The warnings above give the reason for each path",
         )
 
@@ -1806,7 +1806,7 @@ def get_dereddened_band_data(
         print("Correcting for reddening")
         return deredden_band_magnitudes(dfband, lambda0, metadata["a_v"], metadata["r_v"])
 
-    print_warning("did not correct for reddening")
+    print_warning("Did not correct for reddening")
     return dfband
 
 
@@ -2309,7 +2309,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.brightnessattime:
         if args.timedays is None:
-            misc.exit_with_error("specify a single time with -timedays")
+            misc.exit_with_error("Specify a single time with -timedays")
         # this plot takes one time rather than a range
         try:
             args.timedays = float(args.timedays)

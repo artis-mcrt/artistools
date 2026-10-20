@@ -66,8 +66,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if modelmeta["dimensions"] != 1:
         # a TARDIS model holds one radial velocity for each shell, which only a 1D model gives
         exit_with_error(
-            f"the model is {modelmeta['dimensions']}D, and TARDIS takes a 1D model",
-            "Reduce the model to 1D first, e.g. artistools inputmodel makeartismodel -dimensionreduce 1",
+            f"The model is {modelmeta['dimensions']}D, and TARDIS takes a 1D model",
+            "Reduce the model to 1D first, e.g. `artistools inputmodel makeartismodel -dimensionreduce 1`",
         )
 
     t_model_init_days = modelmeta["t_model_init_days"]

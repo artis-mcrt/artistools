@@ -328,7 +328,7 @@ def plot_velocity_against_time(
 
     if not seriestables:
         exit_with_error(
-            "no model has a packet in the range of wavelength and time",
+            "No model has a packet in the range of wavelength and time",
             "Give a different time range or a wider wavelength range",
         )
     ax.set_xlabel("Time [d]")
@@ -385,7 +385,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
         exit_with_error(
-            "the command needs the wavelength range of the packets",
+            "The command needs the wavelength range of the packets",
             "Give -lambdamin and -lambdamax, e.g. -lambdamin 7200 -lambdamax 7800",
         )
     for dirbin in args.dirbin:

@@ -308,7 +308,7 @@ def get_grid(
     # by solving Eq. 10 of P2007 where rho is replaced by the
     # 2D density rho_2D = rho_3D/(2 \pi R) = \sum_i m_i W_2D
     # with particle masses m_i and 2D interpolation kernel W_2D
-    print("computing particle densities...")
+    print("Computing particle densities...")
     rho2dtraj = np.zeros(ntraj)  # this is the 2D density!!!
     hsmooth = np.zeros(ntraj)
     for i in range(ntraj):
@@ -346,12 +346,12 @@ def get_grid(
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
         neinum[i] = np.sum(np.where(dist / hsmooth < 2.0, 1.0, 0.0))
     neinumavg = np.sum(neinum * mtraj) / np.sum(mtraj)
-    print("average number of neighbours:", neinumavg)
+    print("Average number of neighbours:", neinumavg)
 
     # Step 5) Final mapping by interpolating all quantities onto the grid
 
     interpol_axis = model_dim
-    print("interpolating...")
+    print("Interpolating...")
     if model_dim == 2:
         distall = np.sqrt(oa(rgridc2d, -rcyltraj) ** 2 + oa(zgridc2d, -zcyltraj) ** 2)
         hall = np.multiply.outer(np.ones((nvr, nvz)), hsmooth)
@@ -385,7 +385,7 @@ def get_grid(
 
     # renormalise so that the interpolated mass equals the sum of the particle masses
     dmgrid = rhoint * volgrid  # either 2D or 3D
-    print("total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * gridsymfac)
+    print("Total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * gridsymfac)
     rescfac = np.sum(mtraj) / np.sum(dmgrid)
     if model_dim == 2:
         rhoint *= rescfac
@@ -418,19 +418,19 @@ def get_grid(
     # test outputs
     testelements = [("He", 2), ("Zr", 40), ("Sn", 50), ("Te", 52), ("Xe", 54), ("W", 74), ("Pt", 78)]
     print("===> mapped data")
-    print("total mass                :", mtot / msol * gridsymfac)
+    print("Total mass                :", mtot / msol * gridsymfac)
     for elsymbol, atomic_number in testelements:
         print(
-            f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
+            f"Total element mass {elsymbol:<2} Z={atomic_number:<2}:",
             np.sum(np.sum(xint[iso[:, 1] == atomic_number, :, :], axis=0) * dmgrid) * gridsymfac / msol,
         )
 
     # mass_arr leaves out the tracers that --nodyn, --nohmns and --notorus exclude, as the mapped data does
     print("===> tracer data")
-    print("total mass                :", np.sum(mass_arr) * eqsymfac)
+    print("Total mass                :", np.sum(mass_arr) * eqsymfac)
     for elsymbol, atomic_number in testelements:
         print(
-            f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
+            f"Total element mass {elsymbol:<2} Z={atomic_number:<2}:",
             np.sum(np.sum(xiso0[:, iso[:, 1] == atomic_number], axis=1) * mass_arr) * eqsymfac,
         )
 

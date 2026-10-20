@@ -66,7 +66,7 @@ def quad_adaptive(func: Callable[[float], float], a: float, b: float) -> float:
             # Richardson extrapolation of the two half-interval estimates
             return left + right + (left + right - whole) / 15.0
         if depth <= 0:
-            msg = f"adaptive quadrature did not reach rtol={rtol:g} on [{x0:g}, {x2:g}] within {maxdepth} levels"
+            msg = f"Adaptive quadrature did not reach rtol={rtol:g} on [{x0:g}, {x2:g}] within {maxdepth} levels"
             raise RuntimeError(msg)
         return recurse(x0, x1, f0, fleft, f1, depth - 1) + recurse(x1, x2, f1, fright, f2, depth - 1)
 
@@ -100,13 +100,13 @@ def make_energydistribution_of_mass(cellmass_grams: npt.NDArray[np.floating], E_
     A share in proportion to the density gives the right energy per gram only when all cells have one
     volume. A 1D shell model then got 0.063 to 16.4 times the intended energy per gram.
     """
-    print(f"energy distribution in proportion to the cell mass (E_tot per gram {E_tot_per_gram})")
+    print(f"Energy distribution in proportion to the cell mass (E_tot per gram {E_tot_per_gram})")
     cellenergy = E_tot_per_gram * cellmass_grams
     print("Etot", cellenergy.sum())
 
     energydistdata = {"cellid": np.arange(1, len(cellmass_grams) + 1), "cell_energy": cellenergy}
 
-    print(f"sum energy cells {sum(energydistdata['cell_energy'])} should equal Etot")
+    print(f"Sum energy cells {sum(energydistdata['cell_energy'])} should equal Etot")
     return pl.DataFrame(data=energydistdata)
 
 
@@ -271,7 +271,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         tmin, tmax = float(times.min()), float(times.max())
         ratemin, ratemax = float(rates.min()), float(rates.max())
         print(f"energyrate.txt: {len(dfrate)} times from {tmin:g} to {tmax:g} days")
-        print(f"  cumulative energy fraction runs {ratemin:.4g} to {ratemax:.4g}")
+        print(f"  Cumulative energy fraction runs {ratemin:.4g} to {ratemax:.4g}")
 
     else:
         if args.trajthermofile is None:

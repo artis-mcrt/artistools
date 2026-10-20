@@ -1116,7 +1116,7 @@ def plot_residual_panel(
         inrange, residual, yreference = get_residuals(reference, model, xmin, xmax)
         hasvalue = np.isfinite(residual)
         if not hasvalue.any():
-            print_warning(f"the residual panel has no point for '{plain_label(model.label)}'")
+            print_warning(f"The residual panel has no point for '{plain_label(model.label)}'")
             continue
 
         npoints = int(hasvalue.sum())
@@ -1156,7 +1156,7 @@ def plot_residual_panel(
 
         strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
         print_detail(
-            f"residual of '{plain_label(model.label)}' against '{plain_label(reference.label)}': "
+            f"Residual of '{plain_label(model.label)}' against '{plain_label(reference.label)}': "
             f"{npoints} points, RMS {rms:.3g}{strrelative}"
         )
 
@@ -1499,7 +1499,7 @@ def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) 
 
 def print_dirbin_summary(dirbin: int, definition: str, dfseries: "pl.DataFrame") -> None:
     """Print the direction bin, its definition, and the packet count when dfseries has a packetcount column."""
-    print(f"  direction {dirbin:4d}  {definition}", end="")
+    print(f"  Direction {dirbin:4d}  {definition}", end="")
     if "packetcount" in dfseries.columns:
         npkts_selected = dfseries.select(pl.col("packetcount").sum()).item()
         print(f"\t({npkts_selected:.2e} packets)")
@@ -1634,7 +1634,7 @@ def warn_direction_bin_noise(source: str, *, average_over_phi: bool, average_ove
     elif average_over_theta:
         bincount = get_viewingdirection_phibincount()
     print_warning(
-        f"each direction bin of {source} holds about 1/{bincount} of the escaped packets, if they escape in all"
+        f"Each direction bin of {source} holds about 1/{bincount} of the escaped packets, if they escape in all"
         f" directions alike. Thus its Monte Carlo noise is about {math.sqrt(bincount):.3g} times the noise of the"
         f" angle average. {source} gives no packet count, and --frompackets gives the noise of each bin"
     )
@@ -1704,7 +1704,7 @@ def warn_hidden_values(axis: mplax.Axes) -> None:
             if count > 0
         ]
         if hidden:
-            print_warning(f"the figure does not show these values of '{plain_label(label)}': {'; '.join(hidden)}")
+            print_warning(f"The figure does not show these values of '{plain_label(label)}': {'; '.join(hidden)}")
 
 
 def plain_label(label: str) -> str:
@@ -1776,7 +1776,7 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
     argument that asked for it.
     """
     if limit is not None and logscale and limit <= 0.0:
-        print_warning(f"ignoring {argname} {limit}, which a log axis cannot show")
+        print_warning(f"Ignoring {argname} {limit}, which a log axis cannot show")
         return None
 
     return limit
@@ -1899,7 +1899,7 @@ def get_viewinganglecolor_for_colorbar(
     elif args.colorbarcostheta:
         colorindex = costheta_index
     else:
-        msg = "give --colorbarcostheta or --colorbarphi to colour the series by the viewing angle"
+        msg = "Give --colorbarcostheta or --colorbarphi to colour the series by the viewing angle"
         raise ValueError(msg)
 
     plotkwargs["color"] = scaledmap.to_rgba(colorindex)
@@ -1921,7 +1921,7 @@ def make_colorbar_viewingangles(
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
         label = "cos θ"
     else:
-        msg = "give --colorbarcostheta or --colorbarphi to add a viewing angle colorbar"
+        msg = "Give --colorbarcostheta or --colorbarphi to add a viewing angle colorbar"
         raise ValueError(msg)
 
     # one tick at each bin boundary, on the scale of the colour map that has one colour per bin

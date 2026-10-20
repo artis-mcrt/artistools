@@ -105,7 +105,7 @@ def maptogrid(
     )
 
     logprint(dfsnapshot)
-    logprint(f"ncoordgrid: {ncoordgrid}")
+    logprint(f"Ncoordgrid: {ncoordgrid}")
 
     assert len(dfsnapshot.columns) == len(snapshot_columns_used)
 
@@ -166,11 +166,11 @@ def maptogrid(
             ).iter_rows()
         )
 
-    logprint(f"saved {outputfolderpath / 'ejectapartanalysis.dat'}")
+    logprint(f"Saved {outputfolderpath / 'ejectapartanalysis.dat'}")
 
-    logprint(f"total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
-    logprint(f"smoothing length min {hmin} mean {hmean}")
-    logprint("ratio between vrad and vperp mean", dfsnapshot.select(pl.col("vperp") - pl.col("vrad")).mean().item(0, 0))
+    logprint(f"Total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
+    logprint(f"Smoothing length min {hmin} mean {hmean}")
+    logprint("Ratio between vrad and vperp mean", dfsnapshot.select(pl.col("vperp") - pl.col("vrad")).mean().item(0, 0))
 
     # check maybe cm and correct by shifting
 
@@ -202,11 +202,11 @@ def maptogrid(
     contrib_cellk: list[npt.NDArray[np.int64]] = [np.empty(0, dtype=np.int64)]
     contrib_rho: list[npt.NDArray[np.float64]] = [np.empty(0)]
 
-    logprint(f"grid properties {x0=}, {dx=}, {x0 + dx * (ncoordgrid - 1)=}")
+    logprint(f"Grid properties {x0=}, {dx=}, {x0 + dx * (ncoordgrid - 1)=}")
 
     # grid.dat gives the lower edge x0 + i * dx of each cell, thus the kernel samples each cell at its centre.
     # A sample at the lower corner moves the mapped ejecta by half a cell towards +x, +y, and +z
-    logprint(f"kernel sample point of each cell: {'lower corner' if samplelowercorner else 'centre'}")
+    logprint(f"Kernel sample point of each cell: {'lower corner' if samplelowercorner else 'centre'}")
     arrgx = x0 + dx * (np.arange(ncoordgrid) + (0.0 if samplelowercorner else 0.5))
     arrgy = arrgx
     arrgz = arrgx
@@ -214,7 +214,7 @@ def maptogrid(
     particlesused = set()
     particlesinsidegrid = set()
 
-    logprint(f"modifysmoothinglength: {modifysmoothinglength}")
+    logprint(f"Modifysmoothinglength: {modifysmoothinglength}")
 
     for n in range(npart):
         # the smoothing length changes first, because the search box below and the kernel must use
@@ -310,7 +310,7 @@ def maptogrid(
         contrib_rho.append(grho_contrib)
 
     logprint(
-        f"particles with any cell contribution: {len(particlesused)} of {len(particlesinsidegrid)} inside grid out of"
+        f"Particles with any cell contribution: {len(particlesused)} of {len(particlesinsidegrid)} inside grid out of"
         f" {npart} total"
     )
     unusedparticles = [n for n in range(npart) if n not in particlesused]
@@ -321,7 +321,7 @@ def maptogrid(
         # ignore particles outside grid boundary
         if min(loc_i, loc_j, loc_k) < 0 or max(loc_i, loc_j, loc_k) > ncoordgrid - 1:
             continue
-        logprint(f"particle {n} is totally unused but located in cell {loc_i} {loc_j} {loc_k}")
+        logprint(f"Particle {n} is totally unused but located in cell {loc_i} {loc_j} {loc_k}")
 
     with np.errstate(divide="ignore", invalid="ignore"):
         gye = np.divide(gye, grho)
@@ -341,7 +341,7 @@ def maptogrid(
             Path(outputfolderpath, "gridcontributions.txt"),
             float_precision=None,
         )
-        logprint(f"saved {gridcontribpath}")
+        logprint(f"Saved {gridcontribpath}")
 
     # check some stuff on the grid
 
@@ -359,23 +359,23 @@ def maptogrid(
     nzero = int(np.count_nonzero(isempty))
     nzerocentral = int(np.count_nonzero(isempty & (dis2 < rmean**2)))
 
-    logprint(f"fraction of total mass on grid {gmass / totmass}")
+    logprint(f"Fraction of total mass on grid {gmass / totmass}")
 
     logprint(
         f"{'WARNING!' if gmass / totmass < 0.9 else ''} mass on grid from rho*V: {gmass} mass of particles: {totmass} "
     )
 
     logprint(
-        f"number of cells with rho=0 {nzero}, total num of cells {ncoordgrid**3}, fraction of cells with rho=0:"
+        f"Number of cells with rho=0 {nzero}, total num of cells {ncoordgrid**3}, fraction of cells with rho=0:"
         f" {(nzero) / (ncoordgrid**3)}"
     )
 
     logprint(
-        f"number of central cells (dis<rmean) with rho=0 {nzerocentral}, ratio"
+        f"Number of central cells (dis<rmean) with rho=0 {nzerocentral}, ratio"
         f" {(nzerocentral) / (4.0 * math.pi / 3.0 * rmean**3 / (dx * dy * dz))}"
     )
 
-    logprint("probably we want to choose grid size, i.e. x0, as compromise between mapped mass and rho=0 cells")
+    logprint("Probably we want to choose grid size, i.e. x0, as compromise between mapped mass and rho=0 cells")
 
     # output grid - adapt as you need output
 
@@ -400,7 +400,7 @@ def maptogrid(
             )
         )
 
-    logprint(f"saved {outputfolderpath / 'grid.dat'}")
+    logprint(f"Saved {outputfolderpath / 'grid.dat'}")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

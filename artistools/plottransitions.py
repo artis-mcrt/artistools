@@ -428,7 +428,7 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
     modelgridindex = get_single_modelgridindex(args.modelgridindex)
     estimators_all = read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if not estimators_all:
-        exit_with_error("no estimators")
+        exit_with_error("No estimators")
 
     assert modelgridindex is not None, "-modelgridindex holds a default, thus it names a cell"
 
@@ -451,7 +451,7 @@ def get_model_conditions(
     dfnltepops = read_nltepops(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
 
     if dfnltepops.is_empty():
-        exit_with_error(f"no NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")
+        exit_with_error(f"No NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")
 
     T_e = float(cell.estimators["Te"])
     T_R = float(cell.estimators["TR"])
@@ -581,7 +581,7 @@ def get_ion_spectra(
             else:
                 # only the ARTIS line list marks a forbidden line
                 print_warning(
-                    f"the {args.atomicdatabase} line list has no forbidden flag, thus every line stays in the plot"
+                    f"The {args.atomicdatabase} line list has no forbidden flag, thus every line stays in the plot"
                 )
 
         if pldftransitions.is_empty():

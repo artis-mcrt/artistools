@@ -40,7 +40,7 @@ def make_cone(args: argparse.Namespace, dfmodel: pl.LazyFrame, logprint: Callabl
 
     theta = np.radians([angle_of_cone / 2])  # angle between line of sight and edge is half angle of cone
 
-    print(f"using {'positive' if args.positive_axis else 'negative'} axis")
+    print(f"Using {'positive' if args.positive_axis else 'negative'} axis")
     radial = (
         1.0
         / (np.tan(theta))
@@ -123,7 +123,7 @@ def get_cone_shells(
             # Cells exist but all have density=0. The warning goes to the standard error, because
             # --quiet hides the standard output alone, and this warning names shells that go away.
             logprint(
-                f"WARNING: Shell {i + 1} is empty (all 3D grid cells averaged in the shell must have density=0)."
+                f"warning: Shell {i + 1} is empty (all 3D grid cells averaged in the shell must have density=0)."
                 "This shell and all shells further out in the model will be removed from the model.\n"
                 "This is safe provided this empty shell is far enough out in the model: check model file to \n"
                 "confirm this is the case. If not there may be an issue with the model being read in.\n"
@@ -182,7 +182,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
     pldfmodel, modelmeta = get_modeldata(modelpath=modelpath, get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
-        logprint("from a cone")
+        logprint("From a cone")
         # the cone selection reads the mid-point positions and the mass of each cell
         cone = make_cone(args, add_derived_cols_to_modeldata(pldfmodel, modelmeta=modelmeta), logprint)
         N_shells = args.nshells
@@ -214,7 +214,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
         })
 
     else:  # make from along chosen axis
-        logprint("from along the axis")
+        logprint("From along the axis")
         slice1d = get_profile_along_axis(pldfmodel.collect(), args)
         # pos_min is the inner edge of a cell. On the positive axis, the outer edge is pos_min plus the
         # cell width of the slice axis. On the negative axis, pos_min is already the outer edge, and
@@ -232,7 +232,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
             # Remove columns we don't need
             .drop("inputcellid", f"pos_{args.other_axis1}_min", f"pos_{args.other_axis2}_min")
         )
-    logprint("using axis:", args.axis)
+    logprint("Using axis:", args.axis)
 
     if args.rhoscale:
         logprint("Scaling density by a factor of:", args.rhoscale)
@@ -330,7 +330,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     resolve_slice_axis(args)
 
-    print(f"making model from slice around {args.axis} axis")
+    print(f"Making model from slice around {args.axis} axis")
 
     axes = ["x", "y", "z"]
     args.other_axis1 = next(ax for ax in axes if ax != args.sliceaxis)

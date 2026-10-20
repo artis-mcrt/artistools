@@ -401,8 +401,8 @@ def remove_colour_codes(text: str) -> str:
 def get_last_warning(errors: str) -> str:
     """Return the last warning of the standard error of a step, without its prefix, or an empty text."""
     plainerrors = remove_colour_codes(errors)
-    warnings = [line.strip() for line in plainerrors.splitlines() if line.strip().startswith("WARNING: ")]
-    return warnings[-1].removeprefix("WARNING: ") if warnings else ""
+    warnings = [line.strip() for line in plainerrors.splitlines() if line.strip().startswith("warning: ")]
+    return warnings[-1].removeprefix("warning: ") if warnings else ""
 
 
 def find_option_action(parser: argparse.ArgumentParser, argstring: str) -> tuple[argparse.Action | None, bool]:

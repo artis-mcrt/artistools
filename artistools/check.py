@@ -129,7 +129,7 @@ def check_temperature_limits(modelpath: Path) -> tuple[str, str]:
         return "not checked", "the model has no estimator files"
 
     print_detail(
-        "temperature limits: a cell is at a limit if its Te from the estimators is equal to "
+        "Temperature limits: a cell is at a limit if its Te from the estimators is equal to "
         + " or ".join(f"{name} = {value:g} K" for name, value in limits.items())
         + " of artisoptions.h"
     )
@@ -376,11 +376,11 @@ def check_energy(modelpath: Path) -> tuple[str, str]:
         return "not checked", "deposition.out has fewer than two complete time steps"
 
     print_detail(
-        f"energy: Q is {DEPOSITIONCOLUMN} of deposition.out, the energy that the gamma rays and the particles deposit"
+        f"Energy: Q is {DEPOSITIONCOLUMN} of deposition.out, the energy that the gamma rays and the particles deposit"
         " in the ejecta. The eps_ columns give the decay energy before the thermalisation, thus Q does not use them"
     )
     print_detail(
-        "energy: L is the angle average of light_curve.out, which holds the escaped r-packets of all wavelengths."
+        "Energy: L is the angle average of light_curve.out, which holds the escaped r-packets of all wavelengths."
         " The Katz test (Katz B., Kushnir D., Dong S., 2013, arXiv:1301.6766) compares ∫ t L dt with ∫ t Q dt"
     )
     tmindays, tmaxdays = (
@@ -451,7 +451,7 @@ def check_packet_noise(modelpath: Path, frompackets: bool) -> tuple[str, str]:
         return "not checked", "give --frompackets to read the packets"
 
     print_detail(
-        "packet noise: the relative noise of a time step is sqrt(Σ e²) / Σ e over the energies e of its escaped"
+        "Packet noise: the relative noise of a time step is sqrt(Σ e²) / Σ e over the energies e of its escaped"
         " r-packets, for the angle average"
     )
     dfalltimesteps = (

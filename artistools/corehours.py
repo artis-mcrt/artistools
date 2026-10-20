@@ -136,7 +136,7 @@ def get_run_core_hours(loglines: Sequence[str]) -> RunCoreHours:
             isestimate = True
             if log_timestep_range is not None:
                 estimate_text = (
-                    f"WARNING: sn3d did not finish. Estimated: "
+                    f"warning: sn3d did not finish. Estimated: "
                     f"(job: pktprop ts {log_timestep_range[0]} to ts {log_timestep_range[1]} grid-preprop, "
                     f"{elapsed_hours:.3f} wallclock hours * {nprocs} processes * {nthreads} threads "
                     f"= {core_hours:.3f} core hours)"
@@ -207,14 +207,14 @@ def format_run_lines(logfile: Path, col1width: int, iscopy: bool, run: RunCoreHo
     if iscopy:
         return [f"{logfilecolumn}\n  ignored duplicate log", ""]
     if run is None:
-        return [f"{logfilecolumn}  WARNING: the log is missing, empty, or unreadable.", ""]
+        return [f"{logfilecolumn}  warning: The log is missing, empty, or unreadable.", ""]
     lines: list[str] = []
     if run.core_hours is not None:
         lines.append(f"{logfilecolumn}{run.core_hours:8.1f} core-h")
         if run.isestimate and run.estimate_text is None:
-            lines.append("  WARNING: sn3d did not finish cleanly. The value is an estimate from the log timestamps.")
+            lines.append("  warning: sn3d did not finish cleanly. The value is an estimate from the log timestamps.")
     else:
-        lines.append(f"{logfilecolumn}  WARNING: sn3d did not finish cleanly. Check the log to get the CPU time.")
+        lines.append(f"{logfilecolumn}  warning: sn3d did not finish cleanly. Check the log to get the CPU time.")
     lines.extend((f"  {run.first_line}", f"  {run.last_line}"))
     if run.estimate_text is not None:
         lines.append(f"  {run.estimate_text}")
@@ -249,9 +249,9 @@ def get_summary_lines(
     """Return the lines of the summary after the table."""
     lines: list[str] = []
     if has_runs_without_core_hours:
-        lines.append("WARNING: some logs give no core hours. The CPU time omits their runs.")
+        lines.append("warning: Some logs give no core hours. The CPU time omits their runs.")
     if len(ntasks_seen) > 1:
-        lines.append("WARNING: the jobs use different task counts. The summary omits the task count.")
+        lines.append("warning: The jobs use different task counts. The summary omits the task count.")
     if ntasks is not None:
         lines.append(f"{'Tasks:':15s} {ntasks:8d}")
     if wallclock_hours is not None:

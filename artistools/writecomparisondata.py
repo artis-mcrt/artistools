@@ -291,7 +291,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
     )
 
     if missing := sorted(set(selected_timesteps) - set(dflightcurve["timestep"])):
-        print_warning(f"no light curve or deposition data for timesteps {missing}. They are left out of the file")
+        print_warning(f"No light curve or deposition data for timesteps {missing}. They are left out of the file")
 
     with outputpath.open("w", encoding="utf-8") as f:
         # the row count, not len(selected_timesteps): a selected timestep missing from either input is dropped by

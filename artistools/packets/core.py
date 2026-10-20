@@ -108,10 +108,10 @@ columns_full = [
 def get_column_names_artiscode(modelpath: Path) -> list[str] | None:
     """Return the packet column names parsed from the ARTIS source in the model folder, or None if it is absent."""
     if Path(modelpath, "artis").is_dir():
-        print("detected artis code directory")
+        print("Detected artis code directory")
         packet_properties: list[str] = []
         inputfilename = firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
-        print(f"found {inputfilename}: getting packet column names from artis code:")
+        print(f"Found {inputfilename}: getting packet column names from artis code:")
         with inputfilename.open(encoding="utf-8") as inputfile:
             packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
             for line in packet_print_lines:
@@ -797,7 +797,7 @@ def get_packets_rankbatch_parquetfile(
 
     if conversion_needed:
         time_start_load = time.perf_counter()
-        print(f"  generating {parquetfilepath.relative_to(modelpath)}...")
+        print(f"  Generating {parquetfilepath.relative_to(modelpath)}...")
 
         # the check of the cache scanned each folder one time, thus the scan gives the files. A search of each file
         # ran a glob of every subfolder for each rank. A file that the scan did not find gives the error of
@@ -858,7 +858,7 @@ def get_packets_rankbatch_parquetfile(
             pldf_batch = bin_packet_directions_polars(pldf_batch)
 
         print(
-            f"   took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
+            f"   Took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
         )
         time_start_write = time.perf_counter()
         write_parquet_atomic(
@@ -871,7 +871,7 @@ def get_packets_rankbatch_parquetfile(
             },
             replaces=outdatedparquet,
         )
-        print(f"took {time.perf_counter() - time_start_write:.1f} seconds")
+        print(f"Took {time.perf_counter() - time_start_write:.1f} seconds")
 
     return parquetfilepath
 
@@ -1012,7 +1012,7 @@ def check_packets_batch_parquet_paths(
 def print_parquet_size(parquetfiles: Sequence[Path]) -> None:
     """Print the total size and the count of the packet batch caches that a scan reads."""
     packetsdatasize_gb = sum(f.stat().st_size for f in parquetfiles) / 1024 / 1024 / 1024
-    print(f"  total parquet size is {packetsdatasize_gb:.1f} GB (from {len(parquetfiles)} batches)")
+    print(f"  Total parquet size is {packetsdatasize_gb:.1f} GB (from {len(parquetfiles)} batches)")
 
 
 def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
@@ -1029,7 +1029,7 @@ def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None
     )
 
     npkts_total = dfpackets.select(pl.len()).collect().item()
-    print(f"  files contain {npkts_total:.2e} virtual packet events (shared among directions and opacity choices)")
+    print(f"  Files contain {npkts_total:.2e} virtual packet events (shared among directions and opacity choices)")
 
     return nprocs_read, dfpackets
 
@@ -1069,7 +1069,7 @@ def get_packets(
         )
 
     npkts_total = pldfpackets.select(pl.len()).collect().item()
-    print(f"  files contain {npkts_total:.2e} packets from {nprocs_read} ranks")
+    print(f"  Files contain {npkts_total:.2e} packets from {nprocs_read} ranks")
 
     if escape_type is not None:
         if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:

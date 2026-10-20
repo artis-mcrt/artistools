@@ -945,7 +945,7 @@ class EstimatorViewer:
             first, last, _, _ = get_time_range(self.modelpath, args.timestep, args.timemin, args.timemax, args.timedays)
             if first < 0:
                 exit_with_error(
-                    "the time of the command lies outside the time range of the model, which goes from"
+                    "The time of the command lies outside the time range of the model, which goes from"
                     f" {self.tstarts[0]:.1f} to {self.tends[-1]:.1f} days",
                     "Give a time inside that range",
                 )

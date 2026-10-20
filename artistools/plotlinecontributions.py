@@ -351,14 +351,14 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
     if modelmeta["dimensions"] != 3:
         # a cell of a 2D model is a ring, and a cell of a 1D model is a shell
         exit_with_error(
-            f"the trough estimate needs the velocity vector of each cell, and a {modelmeta['dimensions']}D model has no"
+            f"The trough estimate needs the velocity vector of each cell, and a {modelmeta['dimensions']}D model has no"
             " such vector",
             "Remove -troughdirbin",
         )
     photospherevelocity_kmps = args.photospherevelocity_kmps
     if photospherevelocity_kmps is None:
         exit_with_error(
-            "the trough estimate needs the velocity of the photosphere",
+            "The trough estimate needs the velocity of the photosphere",
             "Give -photospherevelocity, e.g. the median of plotlastinteractionvelocity for a range with no strong line",
         )
     if photospherevelocity_kmps >= KMPS_PER_VELOCITYUNIT["c"]:
@@ -383,7 +383,7 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
         )
     if args.dirbin is not None or args.costhetamin is not None or args.costhetamax is not None:
         exit_with_error(
-            "the trough estimate needs all the cells in front of the photosphere",
+            "The trough estimate needs all the cells in front of the photosphere",
             "Remove -dirbin, -costhetamin, and -costhetamax, or remove -troughdirbin",
         )
     return args.troughdirbin, photospherevelocity_kmps
@@ -493,7 +493,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot the Sobolev emission and the Sobolev optical depth of the strongest lines against velocity."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
-        exit_with_error("give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
+        exit_with_error("Give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
     if args.maxlines < 1:
         exit_with_error(f"-maxlines {args.maxlines} gives no lines", "Give a number of 1 or more")
 

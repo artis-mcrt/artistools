@@ -711,7 +711,7 @@ def plot_average_ionisation(
     plans = []
     maxioncharge = 0
     for paramvalue in params:
-        print(f"  plotting averageionisation {paramvalue}")
+        print(f"  Plotting averageionisation {paramvalue}")
         atomic_number = get_atomic_number(paramvalue)
 
         color = get_elemcolor(atomic_number=atomic_number)
@@ -770,7 +770,7 @@ def plot_average_excitation(
 
     plans = []
     for paramvalue in params:
-        print(f"  plotting averageexcitation {paramvalue}")
+        print(f"  Plotting averageexcitation {paramvalue}")
         iontuple = get_ion_tuple(paramvalue)
         if isinstance(iontuple, int):
             exit_with_error(
@@ -864,7 +864,7 @@ def plot_levelpop(
     )
     if dfxofmgi.height != dfxofmgi["modelgridindex"].n_unique():
         exit_with_error(
-            "a level population plot draws one point for each cell, thus the horizontal axis must"
+            "A level population plot draws one point for each cell, thus the horizontal axis must"
             " give one value for each cell",
             "Give -x velocity or -x modelgridindex. A time axis gives one value for each timestep.",
         )
@@ -1103,7 +1103,7 @@ def read_series_style(item: str) -> tuple[str, dict[str, str]]:
             raise ValueError(msg)
     for key, value in style.items():
         if key != "label" and (problem := get_series_style_problem(key, value)) is not None:
-            msg = f"the {key} '{value}' of the plot item '{item}' {problem}"
+            msg = f"The {key} '{value}' of the plot item '{item}' {problem}"
             raise ValueError(msg)
     return name, style
 
@@ -1553,7 +1553,7 @@ def plot_multi_ion_series(
     for (atomic_number, ion_stage), _ in ionentries:
         colname, ionstr = get_column_name(seriestype, atomic_number, ion_stage)
         expr_yvals = pl.col(colname)
-        print(f"  plotting {seriestype} {ionstr.replace('_', ' ')}")
+        print(f"  Plotting {seriestype} {ionstr.replace('_', ' ')}")
 
         assert poptype in POPTYPE_YLABELS
         # a radial density and a cumulative count take the number density, and the code below converts it
@@ -1696,7 +1696,7 @@ def plot_series(
         plotkwargs.setdefault("color", dictcolors[variablename])
     plotkwargs.setdefault("linewidth", 1.5)
 
-    print(f"  plotting {variablename}")
+    print(f"  Plotting {variablename}")
     return [
         SeriesPlan(
             label=linelabel,
@@ -1822,7 +1822,7 @@ def get_xlist(
                 f" and largest x interval of {xdeltamax}"
             )
             if args.xbins <= 3:
-                print(f"  would have only {args.xbins} bins. Replacing with 25")
+                print(f"  Would have only {args.xbins} bins. Replacing with 25")
                 args.xbins = 25
 
     if args.xbins:
@@ -2089,13 +2089,13 @@ def finish_subplot(ax: mplax.Axes, args: argparse.Namespace, settings: SubplotSe
             if datarange is None or ymin < datarange[1]:
                 ax.set_ylim(bottom=ymin)
             else:
-                print_warning(f"every {quantity} value is below the requested minimum of {ymin}. Using the data range")
+                print_warning(f"Every {quantity} value is below the requested minimum of {ymin}. Using the data range")
 
         if ymax is not None:
             if datarange is None or ymax > datarange[0]:
                 ax.set_ylim(top=ymax)
             else:
-                print_warning(f"every {quantity} value is above the requested maximum of {ymax}. Using the data range")
+                print_warning(f"Every {quantity} value is above the requested maximum of {ymax}. Using the data range")
 
     if settings.get("showlegend"):
         set_legend(
@@ -2310,7 +2310,7 @@ def get_line_figure_data(
     if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
         figure_title += f", {format_costheta_range(costhetarange)}"
     if "cell" not in framefields:
-        print("  plotting " + figure_title.replace("\n", " "))
+        print("  Plotting " + figure_title.replace("\n", " "))
 
     return LineFigureData(
         subplots=subplots,
@@ -2528,7 +2528,7 @@ def get_ion_panel_columns(
     """
     if seriestype == "populations" and poptype not in IMAGEPOPTYPES:
         exit_with_error(
-            f"a colour image cannot show the ion population type '{poptype}'",
+            f"A colour image cannot show the ion population type '{poptype}'",
             f"The types for an image are {', '.join(IMAGEPOPTYPES)}",
         )
 
@@ -2602,11 +2602,11 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
                     # the line of a subplot takes the same weight, thus the image gives the charge of each nucleus
                     weights[colname] = pl.col(f"nnelement_{elsymb}")
             else:
-                print_warning(f"a colour image cannot show '{plotitem[0]}', thus the figure leaves it out")
+                print_warning(f"A colour image cannot show '{plotitem[0]}', thus the figure leaves it out")
 
         yscale = directives.get("yscale")
         if yscale not in {None, "log", "lin", "linear"}:
-            exit_with_error(f"the colour scale of an image cannot be '{yscale}'", "Give yscale=log or yscale=linear")
+            exit_with_error(f"The colour scale of an image cannot be '{yscale}'", "Give yscale=log or yscale=linear")
         colourscale = "linear" if yscale == "lin" else yscale
         vmin = float(directives["ymin"]) if "ymin" in directives else None
         vmax = float(directives["ymax"]) if "ymax" in directives else None
@@ -2617,7 +2617,7 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
 
     if not panels:
         exit_with_error(
-            "the plot list holds nothing that a colour image can show",
+            "The plot list holds nothing that a colour image can show",
             "Give a variable, e.g. Te, or an ion, e.g. 'Fe II'",
         )
     return panels
@@ -2803,7 +2803,7 @@ def get_image_figure_data(
     figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
     if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
         figure_title += f", {format_costheta_range(costhetarange)}"
-    print("  plotting " + figure_title.replace("\n", " "))
+    print("  Plotting " + figure_title.replace("\n", " "))
 
     return ImageFigureData(
         grids=grids,
@@ -3050,7 +3050,7 @@ def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> 
     listedcolumns = filter_listed_columns(estimatorcolumns, searchterms)
     if searchterms and not listedcolumns:
         exit_with_error(
-            f"no estimator variable of this model holds {' or '.join(searchterms)}",
+            f"No estimator variable of this model holds {' or '.join(searchterms)}",
             suggest_names(searchterms[0], estimatorcolumns) or "Give no name to list every variable",
         )
     if args.print_data:
@@ -3065,7 +3065,7 @@ def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> 
     print_modelpath(args.modelpath)
 
     print_product(args, summarise_columns(listedcolumns, fullnuclides=args.listnuclides))
-    print_product(args, 'Plot a variable with e.g. "artistools plotestimators Te rho -t 300"')
+    print_product(args, "Plot a variable with e.g. `artistools plotestimators Te rho -t 300`")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -3075,8 +3075,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         dest="plotitems",
         metavar="variable",
         helptext=(
-            "The estimator variables of one subplot, e.g. 'artistools plotestimators Te TR'. The ARTIS "
-            "folder comes after them, e.g. 'artistools plotestimators Te mymodel'. The working folder "
+            "The estimator variables of one subplot, e.g. `artistools plotestimators Te TR`. The ARTIS "
+            "folder comes after them, e.g. `artistools plotestimators Te mymodel`. The working folder "
             "is the default. Each -plot adds a different subplot. With --listvariables these names "
             "search the listing"
         ),
@@ -3162,7 +3162,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help=(
             "List the estimator variables of this model, then stop. A name before the folder searches "
-            "the listing, e.g. artistools plotestimators heating --listvariables"
+            "the listing, e.g. `artistools plotestimators heating --listvariables`"
         ),
     )
 
@@ -3181,7 +3181,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="append",
         help=(
             "List of plots to generate, one -plot for each subplot. The variables of one subplot need no "
-            "-plot, e.g. 'artistools plotestimators Te TR'. Give estimator variables, ions, a type "
+            "-plot, e.g. `artistools plotestimators Te TR`. Give estimator variables, ions, a type "
             "of series with the names that it covers, or a directive of the form key=value. Examples: "
             "-plot Te TR -plot nne -plot SrI 'Sr II'. A type of series comes first and groups the names "
             f"after it, e.g. -plot averageionisation Fe Ni. The types are {', '.join(SERIESTYPES)}, and "
@@ -3474,7 +3474,7 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
     if isimage:
         if args.x is not None:
             exit_with_error(
-                f"the two axes of a colour image are velocities, thus -x {args.x} does not apply",
+                f"The two axes of a colour image are velocities, thus -x {args.x} does not apply",
                 f"Remove -x, or remove {selection}",
             )
         ignored = [
@@ -3771,12 +3771,12 @@ def require_artis_folder(modelpath: Path) -> None:
         f"Name one of these subfolders after the variables: {', '.join(nearby)}"
         if nearby
         else (
-            'An ARTIS folder holds input.txt. Name one after the variables, e.g. "artistools plotestimators Te mymodel"'
+            "An ARTIS folder holds input.txt. Name one after the variables, e.g. `artistools plotestimators Te mymodel`"
         )
     )
 
     if modelpath == Path():
-        exit_with_error("no ARTIS folder was given, and the working folder is not an ARTIS folder", helptext)
+        exit_with_error("No ARTIS folder was given, and the working folder is not an ARTIS folder", helptext)
 
     exit_with_error(f"'{modelpath}' is not an ARTIS folder", helptext)
 
@@ -3834,7 +3834,7 @@ def add_plot_columns(
         if modelmeta["dimensions"] == 3:
             # the corners of the cube hold matter, thus a mean of the plot differs from a mean of all the cells
             print_detail(
-                f"the plot leaves out each cell with vel_r_mid above vmax = {modelmeta['vmax_cmps'] / km_to_cm:.5g}"
+                f"The plot leaves out each cell with vel_r_mid above vmax = {modelmeta['vmax_cmps'] / km_to_cm:.5g}"
                 " km/s. These cells are the corners of the 3D grid, and the velocity of the model ends at vmax"
             )
 

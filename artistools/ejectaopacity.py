@@ -516,7 +516,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         elapsed = time.perf_counter() - time_start
         timepercell = elapsed / cells_processed
         print(
-            f" average seconds per cell: {timepercell:.3f}. cells remaining: {cellcount - cells_processed}."
+            f" Average seconds per cell: {timepercell:.3f}. cells remaining: {cellcount - cells_processed}."
             f" time remaining: {timepercell * (cellcount - cells_processed):.1f}s"
         )
 

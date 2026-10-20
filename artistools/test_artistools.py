@@ -187,7 +187,7 @@ def test_console_script_runs_its_own_subcommand(
 
     helptext = capsys.readouterr().out
     # a command of many flags names them "[options]", thus the usage takes one line
-    assert helptext.startswith("usage: plotartisestimators [options]")
+    assert helptext.startswith("Usage: plotartisestimators [options]")
     # the parser holds this one command, thus it neither lists nor imports the other commands
     assert "-modelpath" in helptext
     assert "plotspectra" not in helptext
@@ -581,7 +581,7 @@ def test_residual_path_rewrite_keeps_an_ambiguous_prefix(capsys: pytest.CaptureF
     assert parser.split_joined_flags(["-resi", "model1", "model2"]) == ["-resi", "model1", "model2"]
     with pytest.raises(SystemExit):
         parser.parse_args(["-resi", "model1", "model2"])
-    assert "ambiguous option: -resi" in capsys.readouterr().err
+    assert "Ambiguous option: -resi" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
@@ -658,7 +658,7 @@ def test_residual_log_axis_ignores_a_non_positive_maximum(capsys: pytest.Capture
     mainaxis.set_xlim(1.0, 2.0)
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
     assert min(residualaxis.get_ylim()) > 0.0
-    assert "ignoring -residualymax 0.0" in capsys.readouterr().err
+    assert "Ignoring -residualymax 0.0" in capsys.readouterr().err
     plt.close(fig)
 
 
@@ -1111,7 +1111,7 @@ def test_radfield_takes_the_last_timestep_with_data(tmp_path: Path, capsys: pyte
 
         with pytest.raises(SystemExit):
             at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=5, outputfile=tmp_path)
-    assert "no radiation field data" in capsys.readouterr().err
+    assert "No radiation field data" in capsys.readouterr().err
 
 
 def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
@@ -1418,7 +1418,7 @@ def test_plotspherical_element_arguments_give_messages(capsys: pytest.CaptureFix
     """
     with pytest.raises(SystemExit):
         at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Fe", atomic_number=26)
-    assert "give one of -elem and -atomic_number" in capsys.readouterr().err
+    assert "Give one of -elem and -atomic_number" in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
         at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Xx")
@@ -3588,7 +3588,7 @@ def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: 
             outputfile=tmp_path / "linefluxes.pdf",
             write_data=True,
         )
-    assert "the data table gives the column of" in capsys.readouterr().err
+    assert "The data table gives the column of" in capsys.readouterr().err
     dftable = read_data_file(tmp_path / "linefluxes.txt")
     assert len([column for column in dftable.columns if column.startswith("fratio_")]) == 3
     assert dftable["time"].is_between(4.5, 6.5).all()
@@ -4062,7 +4062,7 @@ def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> 
         artistools.__main__.main(argsraw=["plotspetcra"])
 
     message = capsys.readouterr().err
-    assert "invalid choice 'plotspetcra'" in message
+    assert "'plotspetcra' is not a command of" in message
     # the error names the fault, and the help line that follows names the closest subcommand
     assert "help: Did you mean plotspectra" in message
     assert message.index("error: ") < message.index("help: ")
@@ -4221,7 +4221,7 @@ def test_help_shows_the_examples() -> None:
         assert command in helptext, command
         assert description in helptext, description
 
-    assert 'Run "artistools <command> --help"' in helptext
+    assert "Run `artistools <command> --help`" in helptext
 
     # the help of a command with examples shows them in its own epilog as well
     subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
@@ -4265,7 +4265,7 @@ def test_command_group_help_points_at_one_command() -> None:
     helptext = groupparser.format_help()
 
     assert "The inputmodel commands of artistools." in helptext
-    assert 'Run "artistools inputmodel <command> --help"' in helptext
+    assert "Run `artistools inputmodel <command> --help`" in helptext
 
 
 def test_command_note_reaches_the_help_and_not_the_listing() -> None:
@@ -4436,8 +4436,13 @@ def test_help_groups_the_shared_arguments() -> None:
     subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     for command in ("plotspectra", "plotlightcurves", "plotestimators"):
         helptext = subactions[0].choices[command].format_help()
-        for title in ("time selection:", "appearance:", "output:"):
+        for title in ("Time selection:", "Appearance:", "Output:"):
             assert f"\n{title}\n" in helptext, (command, title)
+
+        # each command gives the groups in one order, thus a reader finds a group at the same place
+        headings = [line for line in helptext.splitlines() if line.endswith(":") and not line.startswith(" ")]
+        assert headings[:2] == ["Positional arguments:", "Options:"], command
+        assert headings[-4:-1] == ["Time selection:", "Appearance:", "Output:"], command
 
 
 def test_open_flag_runs_the_platform_opener(tmp_path: Path) -> None:
@@ -4493,7 +4498,7 @@ def test_quiet_short_flag_and_slow_command_timing(
 def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) -> None:
     """A flag that no command takes must name the closest flags of the command that was run.
 
-    The message was "unrecognized arguments: --listvaraibles" with no suggestion, and an ambiguous
+    The message was "Unrecognised arguments: --listvaraibles" with no suggestion, and an ambiguous
     short flag listed -t because argparse reads -timeday as -t with a joined value.
     """
     import artistools.__main__
@@ -4501,7 +4506,7 @@ def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) 
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotestimators", "--listvaraibles"])
     message = capsys.readouterr().err
-    assert "unrecognized arguments: --listvaraibles" in message
+    assert "Unrecognised arguments: --listvaraibles" in message
     assert "Did you mean --listvariables" in message
 
     # the suggestion comes from the arguments of the subcommand, not from the top-level parser
@@ -4540,7 +4545,7 @@ def test_an_error_names_the_remedy_on_a_help_line(capsys: pytest.CaptureFixture[
     assert exitinfo.value.code == 2
     lines = [line for line in capsys.readouterr().err.splitlines() if line.startswith(("error: ", "help: "))]
     assert lines == [
-        "error: unrecognized arguments: --listvaraibles",
+        "error: Unrecognised arguments: --listvaraibles",
         "help: Did you mean --listvariables, --listvars, --listnuclides?",
     ]
 
@@ -5096,11 +5101,13 @@ def test_the_command_listing_gives_one_line_to_each_command() -> None:
     import artistools.__main__
 
     helptext = artistools.__main__.build_parser().format_help()
-    listing = helptext.partition("positional arguments:")[2].partition("\noptions:")[0]
+    listing = helptext.partition("Plot commands:")[2].partition("\nOptions:")[0]
+    assert "Positional arguments:" not in helptext, "the headings of the groups replace the heading of argparse"
+    assert "\nOther commands:\n  catalog " in listing
 
     # a line of the listing holds a command, or it is the heading of a group, or it is empty
     for line in listing.splitlines():
-        if not line.strip() or not line.startswith("    "):
+        if not line.strip() or not line.startswith("  "):
             continue
         assert line.split()[0][0].isalpha(), f"a description wrapped onto its own line: {line!r}"
 
@@ -5838,7 +5845,7 @@ def test_hidden_value_warning_names_a_horizontal_line_above_the_axes(capsys: pyt
     axis.set_xlim(1000.0, 2000.0)
     axis.set_ylim(0.0, 1.0)
     at.plottools.warn_hidden_values(axis)
-    assert "the figure does not show these values of 'Planck mean'" in capsys.readouterr().err
+    assert "The figure does not show these values of 'Planck mean'" in capsys.readouterr().err
 
 
 def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission() -> None:
@@ -6326,8 +6333,8 @@ def test_viewer_status_line_reads_text_in_colour() -> None:
 
     A colour code in front of "error: " hid the error, thus the status line showed the usage line of argparse.
     """
-    warning = "\x1b[1;33mWARNING: every Te value is below the requested minimum\x1b[0m\n"
-    assert viewercore.get_last_warning(warning) == "every Te value is below the requested minimum"
+    warning = "\x1b[1;33mwarning: Every Te value is below the requested minimum\x1b[0m\n"
+    assert viewercore.get_last_warning(warning) == "Every Te value is below the requested minimum"
     error = "\x1b[1;34musage: \x1b[0martistools [options]\n\x1b[1;31merror: \x1b[0m'q=1' is not a plane or a line\n"
     assert viewercore.get_first_line(error) == "'q=1' is not a plane or a line"
 
@@ -7139,7 +7146,7 @@ def test_packet_summaries_give_the_monte_carlo_noise(capsys: pytest.CaptureFixtu
         timedays="5",
         outputfile=tmp_path / "s.pdf",
     )
-    assert "each direction bin of spec_res.out holds about 1/10 of the escaped packets" in capsys.readouterr().err
+    assert "Each direction bin of spec_res.out holds about 1/10 of the escaped packets" in capsys.readouterr().err
 
     # spec.out has no packet count, thus the line gives no noise
     at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "s.pdf")
@@ -7156,7 +7163,7 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
     assert re.search(r"  Te: subplot 0, 540 points, .*min 3500 K at x = .*max 1\.4e\+05 K", captured.out)
     assert "Te: 258 points are at MAXTEMP" in captured.err
     # 155 cells of the 695 with matter are in the corners of the cube, and the mean of the summary leaves them out
-    assert "the plot leaves out each cell with vel_r_mid above vmax = 28920 km/s" in captured.out
+    assert "The plot leaves out each cell with vel_r_mid above vmax = 28920 km/s" in captured.out
     assert "Te: 44 points are at MINTEMP" in captured.err
 
     at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)
@@ -7286,7 +7293,7 @@ def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pyt
     artistools.__main__.main(argsraw=["corehours", str(modelfolder)])
     table = capsys.readouterr().out
     assert "ignored duplicate log" in table
-    assert "WARNING: sn3d did not finish. Estimated: (job: pktprop ts 10 to ts 10 grid-preprop" in table
+    assert "warning: sn3d did not finish. Estimated: (job: pktprop ts 10 to ts 10 grid-preprop" in table
     assert "CPU time:             12.000  core-h" in table
 
     # a damaged log gives no core hours and no task count, thus the sum is not complete and the tasks are not known.
@@ -7313,8 +7320,8 @@ def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pyt
 
     artistools.__main__.main(argsraw=["corehours", str(modelfolder)])
     table = capsys.readouterr().out
-    assert "WARNING: the log is missing, empty, or unreadable." in table
-    assert "WARNING: some logs give no core hours. The CPU time omits their runs." in table
+    assert "warning: The log is missing, empty, or unreadable." in table
+    assert "warning: Some logs give no core hours. The CPU time omits their runs." in table
     assert "Tasks:" not in table
 
 
@@ -7802,8 +7809,8 @@ def test_catalog_gives_one_row_for_each_model_and_warns_about_a_broken_model(
     rowbroken, rowclassic, rowtestmodel = dfcatalog.iter_rows(named=True)
     assert rowbroken["cells"] is None
     assert rowbroken["timesteps"] is None
-    assert captured.err.count("WARNING") == 1
-    assert "model broken in broken: the table gives nan for the cells of model.txt" in captured.err
+    assert captured.err.count("warning: ") == 1
+    assert "Model broken in broken: the table gives nan for the cells of model.txt" in captured.err
 
     assert rowclassic["dimensions"] == 3
     assert rowclassic["cells"] == 1000
@@ -7900,7 +7907,7 @@ def test_report_holds_each_part_and_its_figures(tmp_path: Path) -> None:
     ]
     assert all((reportfolder / imagename).is_file() for imagename in imagenames)
     assert "<pre>test-classicmode_3d: 19 points from 3.591 to 6.468 d, peak 1.206e+43 erg/s at 5.864 d" in page
-    assert "WARNING: Te: 260 points are at MAXTEMP" in page
+    assert "warning: Te: 260 points are at MAXTEMP" in page
     assert "<script" not in page
     assert "http" not in page
 
@@ -8292,7 +8299,7 @@ def test_check_from_packets_gives_the_largest_noise(capsys: pytest.CaptureFixtur
     noiseline = next(line for line in captured.out.splitlines() if line.startswith('"packet noise"'))
     assert noiseline.startswith('"packet noise" warning ')
     assert f"the largest relative noise is {100 * worst['relnoise']:.1f}% at {worst['time_days']:.2f} d" in noiseline
-    assert re.search(r"WARNING: packet noise \(warning\): the largest relative noise", captured.err)
+    assert re.search(r"warning: packet noise \(warning\): the largest relative noise", captured.err)
     # a check that is not checked gives no warning line
     assert "complete time steps (" not in captured.err
 

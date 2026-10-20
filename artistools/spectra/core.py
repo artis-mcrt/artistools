@@ -1398,7 +1398,7 @@ def get_flux_contributions_cached(
         if maxion is None:
             maxion = int(maxion_float)
             print(
-                f" inferred MAXION = {maxion} from the {source} file with nelements = {nelements}"
+                f" Inferred MAXION = {maxion} from the {source} file with nelements = {nelements}"
                 " from compositiondata.txt"
             )
         else:
@@ -2491,7 +2491,7 @@ def sort_and_reduce_flux_contribution_list(
     # each plot gives its contributions to this function, thus this is the one warning for a missing item. The plot
     # shows only the first maxseriescount items, and the packet reader puts each item after them in "Other"
     if fixedionlist and (unrecognised_items := [x for x in fixedionlist[:maxseriescount] if x not in rowofname]):
-        print_warning(f"did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
+        print_warning(f"Did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
 
     keptnames, othernames = rank_flux_series_names(
         {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
@@ -2577,7 +2577,7 @@ def print_contribution_table(
     othernames = [row.linelabel for row in other if row.linelabel != "Other"]
     labelwidth = max((len(label) for label in [*drawn, "Other"]), default=5)
     print(
-        f"  flux at 1 Mpc [erg/s/cm^2] of each series = ∫ f_λ dλ from {arraylambda_angstroms.min():.5g} to"
+        f"  Flux at 1 Mpc [erg/s/cm^2] of each series = ∫ f_λ dλ from {arraylambda_angstroms.min():.5g} to"
         f" {arraylambda_angstroms.max():.5g} Å (trapezoidal rule), and its share of the sum of all the series:"
     )
     for label in drawn:
@@ -2606,7 +2606,7 @@ def print_integrated_flux(
     assert isinstance(x_max, int | float)
 
     # x is the name of the axis in the code, and the line below it names the unit of that axis
-    print_detail(f"integrated flux ({x_min:.1f} to {x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
+    print_detail(f"Integrated flux ({x_min:.1f} to {x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
     assert isinstance(integrated_flux, float)
     return integrated_flux
 

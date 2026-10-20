@@ -3458,7 +3458,7 @@ def test_band_outside_a_virtual_packet_spectrum_gives_a_warning(capsys: pytest.C
     bandmags = generate_band_lightcurve_data(vspecpolmodel, dirbin=0, plotvspecpol=[0], filter=["bol", "uvw1"])
     assert bandmags["bol"]
     stderr = capsys.readouterr().err
-    assert "the bol band of a virtual packet observer integrates only the range of its spectrum" in stderr
+    assert "The bol band of a virtual packet observer integrates only the range of its spectrum" in stderr
     assert "the uvw1 filter" in stderr
 
 
@@ -3508,7 +3508,7 @@ def test_plot_with_no_light_curve_stops_with_a_message(tmp_path: Path, capsys: p
             plotviewingangle=[0],
             outputfile=tmp_path / "x.pdf",
         )
-    assert "the plot holds no light curve" in capsys.readouterr().err
+    assert "The plot holds no light curve" in capsys.readouterr().err
     assert not (tmp_path / "x.pdf").exists()
 
 

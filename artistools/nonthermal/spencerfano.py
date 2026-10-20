@@ -304,10 +304,10 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
 
     deposition_erg = get_ntlepton_deposition_rate_density(estim)
     if deposition_erg is None:
-        exit_with_error(f"the estimators of cell {args.modelgridindex} at timestep {args.timestep} hold no deposition")
+        exit_with_error(f"The estimators of cell {args.modelgridindex} at timestep {args.timestep} hold no deposition")
     if not 0.0 < deposition_erg < math.inf:
         exit_with_error(
-            f"cell {args.modelgridindex} has a deposition rate of {deposition_erg} erg/s/cm3 at timestep"
+            f"Cell {args.modelgridindex} has a deposition rate of {deposition_erg} erg/s/cm3 at timestep"
             f" {args.timestep}",
             "ARTIS solves the Spencer-Fano equation only for a positive rate. Give a later time or a different cell",
         )
@@ -317,7 +317,7 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
 
     velocity_kmps = modeldata["vel_r_mid"][args.modelgridindex] / km_to_cm
     args.timedays = get_timestep_time(modelpath, args.timestep)
-    print(f"timestep {args.timestep} cell {args.modelgridindex} (v={velocity_kmps:.1f} km/s at {args.timedays:.1f}d)")
+    print(f"Timestep {args.timestep} cell {args.modelgridindex} (v={velocity_kmps:.1f} km/s at {args.timedays:.1f}d)")
 
     return PlasmaConditions(
         nntot=nntot,
@@ -412,7 +412,7 @@ def solve_step(
         for Z, ion_stage in ions:
             nnion = ionpopdict[Z, ion_stage]
             if nnion == 0.0:
-                print(f"   skipping Z={Z} ion_stage {ion_stage} due to nnion={nnion:.1e}")
+                print(f"   Skipping Z={Z} ion_stage {ion_stage} due to nnion={nnion:.1e}")
                 continue
 
             sf.add_ionisation(Z, ion_stage, nnion)

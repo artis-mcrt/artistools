@@ -136,7 +136,7 @@ def read_modelfile_text(
             modelmeta["ncoordgridz"] = ncoordgridz
             npts_model = ncoordgridr * ncoordgridz
             if not printwarningsonly:
-                print(f"  detected 2D model file with n_r * n_z = {ncoordgridr} x {ncoordgridz} = {npts_model} cells")
+                print(f"  Detected 2D model file with n_r * n_z = {ncoordgridr} x {ncoordgridz} = {npts_model} cells")
         else:
             npts_model = cellcounts[0]
 
@@ -158,7 +158,7 @@ def read_modelfile_text(
             assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
             if "dimensions" not in modelmeta:
                 if not printwarningsonly:
-                    print(f"  detected 1D model file with {npts_model} radial zones")
+                    print(f"  Detected 1D model file with {npts_model} radial zones")
                 modelmeta["dimensions"] = 1
         else:
             xmax_tmodel = modelmeta["vmax_cmps"] * t_model_init_seconds  # xmax = ymax = zmax
@@ -175,7 +175,7 @@ def read_modelfile_text(
 
                 if not printwarningsonly:
                     print(
-                        f"  detected 3D model file with {ncoordgridx} x {ncoordgridy} x {ncoordgridz}"
+                        f"  Detected 3D model file with {ncoordgridx} x {ncoordgridy} x {ncoordgridz}"
                         f" = {npts_model} cells"
                     )
 
@@ -210,19 +210,19 @@ def read_modelfile_text(
     assert columns is not None
     if ncols_line_even == len(columns):
         if not printwarningsonly:
-            print("  model file is one line per cell")
+            print("  Model file is one line per cell")
         ncols_line_odd = 0
         onelinepercellformat = True
     else:
         if not printwarningsonly:
-            print("  model file format is two lines per cell")
+            print("  Model file format is two lines per cell")
         # columns split over two lines
         assert (ncols_line_even + ncols_line_odd) == len(columns)
         onelinepercellformat = False
 
     if onelinepercellformat and all(has_single_space_separators(line) for line in (data_line_even, data_line_odd)):
         if not printwarningsonly:
-            print("  using fast method polars.read_csv (requires one line per cell and single space delimiters)")
+            print("  Using fast method polars.read_csv (requires one line per cell and single space delimiters)")
 
         dfmodel = pl.read_csv(
             polars_source(filename),
@@ -342,7 +342,7 @@ def read_modelfile_text(
         modelmeta["wid_init"] = wid_init_x
         if "pos_x_min" in dfmodel.collect_schema().names():
             if not printwarningsonly:
-                print("  model cell positions are defined in the header")
+                print("  Model cell positions are defined in the header")
             firstrow = dfmodel.select(cs.starts_with("pos_")).first().collect().row(index=0, named=True)
             expected_positions = (
                 ("pos_x_min", -xmax_tmodel),
@@ -821,7 +821,7 @@ def read_modeldata(
     modelmeta: dict[str, t.Any] = json.loads(metadata["modelmeta_json"])
 
     if not printwarningsonly:
-        print(f"  model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
+        print(f"  Model is {modelmeta['dimensions']}D with {modelmeta['npts_model']} cells")
 
     # the reader checks that the ids start at 0 or 1 and increase by one, and it sorts the cells by id. sn3d
     # takes the id of the first cell as the start of the cell index
@@ -1300,7 +1300,7 @@ def save_modeldata(
 
     remove_parquet_cache(modelfilepath)
     print_saved(modelfilepath)
-    print_detail(f"took {time.perf_counter() - timestart:.1f} seconds")
+    print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
 
 
 def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int:
@@ -1433,7 +1433,7 @@ def save_initelemabundances(
 
     remove_parquet_cache(abundancefilename)
     print_saved(abundancefilename)
-    print_detail(f"took {time.perf_counter() - timestart:.1f} seconds")
+    print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
 
 
 def save_empty_abundance_file(npts_model: int, outputfilepath: str | Path = ".") -> None:
@@ -1702,7 +1702,7 @@ def dimension_reduce_model(
     if dfelabundances is not None:
         assert modelmeta_out["npts_model"] == dfelabundances_out.select(pl.len()).item()
 
-    print(f"  took {time.perf_counter() - timestart:.1f} seconds")
+    print(f"  Took {time.perf_counter() - timestart:.1f} seconds")
 
     return (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out)
 
@@ -1806,7 +1806,7 @@ def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence
     """
     if "vel_z_mid_on_c" not in columns:
         exit_with_error(
-            "a 1D model has no direction of a cell, thus -dirbin, -costhetamin, and -costhetamax cannot select cells",
+            "A 1D model has no direction of a cell, thus -dirbin, -costhetamin, and -costhetamax cannot select cells",
             "Remove -dirbin, -costhetamin, and -costhetamax",
         )
     return get_cell_selection(

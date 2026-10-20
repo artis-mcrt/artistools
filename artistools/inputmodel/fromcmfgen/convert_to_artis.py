@@ -132,7 +132,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     rin = np.insert(rmid, 0, 0)  # for artis we use 0 as inner radius for the innermost shell, cmfgen uses
     # the innermost radius r[0], this gives a slight discrepancy (<1%) in the total mass
     mass_msun = (4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"]).sum() / Msun_to_g
-    print(f"total mass {mass_msun:.4f} Msun ({mass_msun / (a['dmass'].sum() / Msun_to_g):.4f} of the snapshot's)")
+    print(f"Total mass {mass_msun:.4f} Msun ({mass_msun / (a['dmass'].sum() / Msun_to_g):.4f} of the snapshot's)")
 
     inputcellid = np.arange(1, a["nd"] + 1)
 

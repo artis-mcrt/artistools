@@ -197,7 +197,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
         with csvpath.open("w", encoding="utf-8") as f:
             f.writelines(("# Data from ENSDF database\n", "#\n# "))
             pl.DataFrame(rows).write_csv(f, separator=" ", include_header=True)
-        print("done!")
+        print("Done!")
 
     ensdf_betaminus = pl.read_csv(
         csvpath,
@@ -276,7 +276,7 @@ def get_nearest_network_timesteps(
         # the user must see a change of the data source, because the substitute can be far from the timestep
         substitutiontext = ", ".join(f"{nstep} come from timestep {sub}" for nstep, sub in substitutions[:5])
         print_warning(
-            f"trajectory {traj_ID}: the abundances of timestep {substitutiontext}"
+            f"Trajectory {traj_ID}: the abundances of timestep {substitutiontext}"
             f"{', ...' if len(substitutions) > 5 else ''}, because the timestep has no abundance file"
         )
 
@@ -303,7 +303,7 @@ def process_trajectory(
             traj_root, traj_ID, arr_t_day
         )
     except FileNotFoundError as exc:
-        print_warning(f"trajectory {traj_ID} has no network data, thus the sums leave it out ({exc})")
+        print_warning(f"Trajectory {traj_ID} has no network data, thus the sums leave it out ({exc})")
         return None
 
     decay_powers: dict[str, npt.NDArray[np.floating]]
@@ -502,7 +502,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if trajdata is not None
     }
     if not decay_powers_of_traj:
-        exit_with_error(f"no trajectory of {summarypath} has network data")
+        exit_with_error(f"No trajectory of {summarypath} has network data")
     decay_power_keys = [key for key in next(iter(decay_powers_of_traj.values())) if key != "timedays"]
 
     ej_states = ["any", -1, 0, 1]

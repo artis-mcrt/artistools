@@ -511,7 +511,7 @@ def get_cell_line_inputs(
         dfnltepops = read_nltepops(modelpath, timestep=timestep)
         if dfnltepops.is_empty():
             exit_with_error(
-                f"the model has NLTE populations, but the NLTE files hold no row for timestep {timestep}",
+                f"The model has NLTE populations, but the NLTE files hold no row for timestep {timestep}",
                 "ARTIS writes the NLTE populations only for some timesteps. Give a different time",
             )
         dfnltepops = (
@@ -543,7 +543,7 @@ def get_cell_line_inputs(
     levelsofion, dflines = get_ion_levels_and_lines(modelpath, lambdamin, lambdamax, usableions)
     if dflines.is_empty():
         exit_with_error(
-            f"the atomic data of the ions holds no line with an A value from {lambdamin:g} to {lambdamax:g} Å",
+            f"The atomic data of the ions holds no line with an A value from {lambdamin:g} to {lambdamax:g} Å",
             "Give a different wavelength range, or different ions with -ions",
         )
 
@@ -576,10 +576,10 @@ def get_cell_line_inputs(
     if dfcells.is_empty():
         if costhetarange is not None:
             exit_with_error(
-                "no cell with matter has its centre in the range of cos θ",
+                "No cell with matter has its centre in the range of cos θ",
                 "Give a wider range of cos θ, or a different -dirbin",
             )
-        exit_with_error(f"the estimators hold no cell for timestep {timestep}", "Give a different time")
+        exit_with_error(f"The estimators hold no cell for timestep {timestep}", "Give a different time")
 
     print_detail(
         f"{dflines.height} lines of {dflines.select('Z', 'ion_stage').n_unique()} ions from {lambdamin:g} to"
@@ -589,7 +589,7 @@ def get_cell_line_inputs(
         dflines = get_lines_that_can_reach_tau(dflines, dfcells, levelsofion, nlteions, taumin, time_days)
         if dflines.is_empty():
             exit_with_error(
-                f"no line can reach a tau_sobolev of {taumin:g} in a cell, thus -taumin leaves out each line",
+                f"No line can reach a tau_sobolev of {taumin:g} in a cell, thus -taumin leaves out each line",
                 "Give a smaller -taumin, or a different wavelength range",
             )
     timestepstart_days = get_timestep_times(modelpath, loc="start")[timestep]
@@ -1131,7 +1131,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Give the Sobolev optical depth and the emission of each line in a wavelength range."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
-        exit_with_error("give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
+        exit_with_error("Give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
 
     outputfile = resolve_table_outputfile(args, DEFAULTOUTPUTNAME)
 

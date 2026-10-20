@@ -89,7 +89,7 @@ def average_direction_bins(
             .agg([(pl.col(col).sum() / len(contribbins)).alias(col) for col in colnames[1:]])
         )
 
-        print(f"bin number {start_bin:2d} = the average of bins {contribbins}")
+        print(f"Bin number {start_bin:2d} = the average of bins {contribbins}")
 
     return dirbindataframesout
 

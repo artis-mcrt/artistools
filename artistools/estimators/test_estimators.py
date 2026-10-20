@@ -4076,7 +4076,7 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", "-t", "1"])
 
-    assert "no ARTIS folder was given" in capsys.readouterr().err
+    assert "No ARTIS folder was given" in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", str(tmp_path / "notamodel"), "-t", "1"])

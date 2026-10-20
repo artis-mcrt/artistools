@@ -207,7 +207,7 @@ def get_floers_data(
     if atomic_number == 26 and ion_stage in {2, 3}:
         floersfilename = "andreas_level_populations_fe2.txt" if ion_stage == 2 else "andreas_level_populations_fe3.txt"
         if Path(modelpath / floersfilename).is_file():
-            print(f"reading {floersfilename}")
+            print(f"Reading {floersfilename}")
             dffloers_levelpops = read_wsv(modelpath / floersfilename, comment_prefix="#").sort("energypercm")
             floers_levelnums = list(range(dffloers_levelpops.height))
             floers_levelpop_values = dffloers_levelpops["frac_ionpop"].to_numpy() * ionpopulation
@@ -450,7 +450,7 @@ def make_ionsubplot(
     if dfpopthision.is_empty():
         # a cell holds no row for an ion that it has no population of, thus the subplot of that ion stays empty
         print_warning(
-            f"cell {modelgridindex} at timestep {timestep} holds no population of"
+            f"Cell {modelgridindex} at timestep {timestep} holds no population of"
             f" {get_ionstring(atomic_number, ion_stage, style='spectral')}"
         )
         return None
@@ -622,7 +622,7 @@ def get_levelnames_of_ion(modelpath: Path | str, ions: Sequence[tuple[int, int]]
     }
     if missing := [ion for ion in ions if ion not in levelnames_of_ion]:
         exit_with_error(
-            f"the atomic data holds no {', '.join(itertools.starmap(get_ionstring, missing))}",
+            f"The atomic data holds no {', '.join(itertools.starmap(get_ionstring, missing))}",
             "Give an ion stage of the model with -ion_stages",
         )
 
@@ -825,7 +825,7 @@ def get_level_populations(
             # leaves out that cell in place of stopping the command
             if ionlevel not in pop_of_level:
                 print_warning(
-                    f"cell {mgi} at timestep {timestep} holds no level {ionlevel} of"
+                    f"Cell {mgi} at timestep {timestep} holds no level {ionlevel} of"
                     f" {get_ionstring(atomic_number, ion_stage, style='spectral')}."
                     f" The cell holds the levels {min(pop_of_level)} to {max(pop_of_level)}"
                 )
@@ -932,7 +932,7 @@ def make_singletimestep_plot(
     if not ion_stage_list:
         availablestages = sorted(i for i in dfpop_element["ion_stage"].unique() if i <= max_ion_stage)
         exit_with_error(
-            f"no ion stage of {get_elsymbol(atomic_number)} to plot at timestep {timestep}",
+            f"No ion stage of {get_elsymbol(atomic_number)} to plot at timestep {timestep}",
             f"The NLTE file holds the ion stages {', '.join(str(i) for i in availablestages)} of more than one level."
             " Give one of them with -ion_stages",
         )
@@ -1078,7 +1078,7 @@ def get_atomic_numbers(elements: Sequence[str | int]) -> list[int]:
     for element in elements:
         atomic_number = int(element) if str(element).isdigit() else get_atomic_number(str(element))
         if not 1 <= atomic_number < len(get_elsymbolslist()):
-            print_warning(f"could not find the element '{element}'")
+            print_warning(f"Could not find the element '{element}'")
             continue
         atomic_numbers.append(atomic_number)
 
@@ -1178,10 +1178,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.modelpath = normalize_path_list(args.modelpath)
 
         if not args.ion_stages:
-            misc.exit_with_error("no ion stage was given", "Give an ion stage with -ion_stages, e.g. -ion_stages 2")
+            misc.exit_with_error("No ion stage was given", "Give an ion stage with -ion_stages, e.g. -ion_stages 2")
 
         if not args.levels:
-            misc.exit_with_error("no levels were given", "Give the levels to plot with -levels, e.g. -levels 0 1 2")
+            misc.exit_with_error("No levels were given", "Give the levels to plot with -levels, e.g. -levels 0 1 2")
 
     timesteps_selected: list[int] | None = None
     if args.timedayslist:
@@ -1206,7 +1206,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.timestepmin, args.timestepmax, _, _ = get_time_range(modelpath, timemin=0, timemax=math.inf)
     else:
         exit_with_error(
-            "no time given. Use -timedays or -timestep. A model of more than one cell also needs -modelgridindex"
+            "No time given. Use -timedays or -timestep. A model of more than one cell also needs -modelgridindex"
         )
 
     args.outputfile = resolve_outputfile(
@@ -1224,13 +1224,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if not mgilist and args.x != "velocity":
         if npts_model > 1:
             exit_with_error(
-                f"no model grid cell given, and this model has {npts_model} cells. "
+                f"No model grid cell given, and this model has {npts_model} cells. "
                 "Use -modelgridindex (or -velocity) to select one"
             )
         mgilist.append(0)
 
     if outofrange := [mgi for mgi in mgilist if not 0 <= mgi < npts_model]:
-        exit_with_error(f"model grid cell {outofrange[0]} is outside the range 0 to {npts_model - 1}")
+        exit_with_error(f"Model grid cell {outofrange[0]} is outside the range 0 to {npts_model - 1}")
 
     if args.x in {"time", "velocity"}:
         # each element takes a figure of its own, as in a plot against the level index

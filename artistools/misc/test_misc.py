@@ -2829,7 +2829,7 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
     at.misc.print_warning("the model is on fire")
     captured = capsys.readouterr()
     assert not captured.out
-    assert captured.err == "WARNING: the model is on fire\n"
+    assert captured.err == "warning: the model is on fire\n"
 
     # the dispatcher redirects the standard output alone, thus the warning of a --quiet run appears
     import artistools.__main__
@@ -2863,7 +2863,7 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
         ]
     )
     captured = capsys.readouterr()
-    assert "WARNING: No deposition.out file found" in captured.err
+    assert "warning: No deposition.out file found" in captured.err
 
 
 def test_progress_class_takes_a_spawn_lock_and_keeps_the_start_method() -> None:
@@ -3406,7 +3406,7 @@ def test_a_list_option_that_takes_a_file_or_a_folder_gives_a_warning(
 
     # every value names a path, thus the option can read paths, e.g. -reflightcurves
     parse_cli_args(plotspectra.addargs, None, None, ["-label", "model1", "sn2011fe.txt"])
-    assert "WARNING" not in capsys.readouterr().err
+    assert "warning" not in capsys.readouterr().err
 
 
 def test_the_option_form_keeps_its_path_when_a_list_option_ends_with_a_folder() -> None:
@@ -4170,8 +4170,8 @@ def test_explain_reads_no_packets_and_gives_the_timesteps(capsys: pytest.Capture
         main(argsraw=["plotlastpacketinteraction", str(modelfolder), "-t", "6.5d", "-lambdamin", "300nm", "--explain"])
     stdout = capsys.readouterr().out
     assert "-xmin = 3000.0" in stdout
-    assert f"model: {modelfolder}" in stdout
-    assert "time: timesteps" in stdout
+    assert f"Model: {modelfolder}" in stdout
+    assert "Time: timesteps" in stdout
 
 
 def test_reversed_wavelength_selection_stops_before_the_read(capsys: pytest.CaptureFixture[str]) -> None:

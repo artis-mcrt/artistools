@@ -296,6 +296,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         rankstext = "each rank that has a log in each run folder"
     else:
         rankstext = f"the ranks {', '.join(str(rank) for rank in ranks)}"
-    print_detail(f"reading {len(logfiles)} logs of {rankstext}")
+    print_detail(f"Reading {len(logfiles)} logs of {rankstext}")
 
     print_product(args, get_log_summary(logfiles))

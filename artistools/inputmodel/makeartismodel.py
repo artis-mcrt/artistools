@@ -143,7 +143,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     if not any(actions):
         exit_with_error(
-            "no action was given",
+            "The command needs an action",
             "Give --downscale3dgrid, -dimensionreduce, --makemodelfromgriddata, or --makeenergyinputfiles",
         )
 
@@ -212,6 +212,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             .to_series()
             .to_numpy()
         )
-        print(f"total mass {cellmass_grams.sum() / Msun_to_g} Msun")
+        print(f"Total mass {cellmass_grams.sum() / Msun_to_g} Msun")
 
         make_energy_files(cellmass_grams, outputpath=args.outputfile or Path())

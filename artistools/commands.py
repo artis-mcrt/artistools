@@ -58,7 +58,7 @@ MAXEXAMPLEWIDTH = 40
 def format_examples(examples: "Sequence[tuple[str, str]]") -> str:
     """Return the block of examples for a help text, with the descriptions in one column."""
     width = min(max(len(command) for command, _ in examples), MAXEXAMPLEWIDTH)
-    lines = ["examples (a path of . reads the model in the working folder):"]
+    lines = ["Examples (a path of . reads the model in the working folder):"]
     for command, description in examples:
         if len(command) <= width:
             lines.append(f"  artistools {command:{width}}  # {description}")
@@ -84,7 +84,7 @@ def get_command_epilog(words: "Sequence[str]", spec: "CommandSpec") -> str | Non
 
 def get_group_epilog(words: "Sequence[str]", tree: "CommandTree") -> str:
     """Return the examples of the commands of one group and the pointer to the help of one command."""
-    pointer = f'Run "artistools {" ".join(words)} <command> --help" for the arguments of one command.'
+    pointer = f"Run `artistools {' '.join(words)} <command> --help` for the arguments of one command."
     examples = get_examples(tree, f"{' '.join(words)} ")
 
     return f"{format_examples(examples)}\n\n{pointer}" if examples else pointer
@@ -94,7 +94,7 @@ def get_epilog() -> str:
     """Return the examples and the pointer to the help of one command."""
     return (
         format_examples(get_examples())
-        + '\n\nRun "artistools <command> --help" for the arguments of one command.'
+        + "\n\nRun `artistools <command> --help` for the arguments of one command."
         + "\nA command that reads a model takes its folder with -modelpath. Most of these commands also take the"
         + "\nfolder as the last positional argument."
         + "\nA time or a wavelength can have a unit, e.g. -t 12h or -lambdamin 600nm. A value with no unit"
@@ -152,7 +152,7 @@ type CommandTree = dict[str, CommandSpec | CommandTree]
 # The --help listing shows the top-level commands under these headings, in this order. A command that no
 # tuple names appears under the last heading, thus a new command is still listed.
 COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
-    "plot commands": (
+    "Plot commands": (
         "comparetogsinetwork",
         "plotdensity",
         "plotestimators",
@@ -171,8 +171,8 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "plottransitions",
         "plotviewingangles",
     ),
-    "model commands": ("inputmodel", "makevpktinput"),
-    "data commands": (
+    "Model commands": ("inputmodel", "makevpktinput"),
+    "Data commands": (
         "cache",
         "deposition",
         "ejectaopacity",
@@ -186,7 +186,7 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": (
+    "Other commands": (
         "catalog",
         "check",
         "completions",
@@ -703,11 +703,11 @@ def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[arg
     """Return the top-level subcommands keyed by the heading of COMMANDGROUPS.
 
     A command that no tuple of COMMANDGROUPS names goes under the last heading, thus a new command still
-    appears and the headings stay. Return None when no command at all has a heading, which is how a
-    command group such as "artistools inputmodel" keeps one flat listing.
+    appears and the headings stay. Return None for the commands of a group such as "artistools inputmodel",
+    which keeps one flat listing. Such a group holds a command that is not a top-level command, e.g. energyfiles.
     """
     groupofcommand = {name: heading for heading, names in COMMANDGROUPS.items() for name in names}
-    if all(sub.dest not in groupofcommand for sub in subactions):
+    if any(sub.dest not in subcommandtree for sub in subactions):
         return None
 
     lastheading = list(COMMANDGROUPS)[-1]
@@ -721,8 +721,15 @@ def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[arg
 # what a group of subcommands does, for the listing of the commands above it
 GROUPHELPTEXT = {"inputmodel": "Make and inspect an ARTIS input model."}
 
+# the heading of the commands of a group that COMMANDGROUPS does not divide, e.g. inputmodel
+FLATGROUPHEADING = "Commands"
+
 # a usage line that names more flags than this takes more room than a reader gives it
 MAXUSAGEFLAGS = 8
+
+# the help of each command gives its argument groups in this order. A group that only one command has comes
+# after the options of argparse and before the shared groups
+ARGUMENTGROUPORDER = ("positional arguments", "options", "Cell selection", "Time selection", "Appearance", "Output")
 
 
 def shorten_aliases(metavar: str) -> str:
@@ -772,6 +779,8 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         The usage of plotspectra listed 77 flags over 61 lines, which no reader takes in. The help text
         below it names each one.
         """
+        if prefix is None:
+            prefix = "Usage: "
         actions = list(actions)
         # the usage names the flags that the help shows, thus the hidden ones do not count
         optionals = [action for action in actions if action.option_strings and action.help != argparse.SUPPRESS]
@@ -789,6 +798,17 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
             usage = " ".join(["%(prog)s", "[options]", *names])
 
         return super()._format_usage(usage, actions, groups, prefix)
+
+    @t.override
+    def start_section(self, heading: str | None) -> None:
+        """Start a section of the help. The heading starts with a capital letter, e.g. "Options".
+
+        argparse gives its own headings in lower case, e.g. "options" and "positional arguments". argparse compares
+        a heading with SUPPRESS by identity, thus this method does not change the SUPPRESS heading.
+        """
+        if heading and heading is not argparse.SUPPRESS:
+            heading = heading[:1].upper() + heading[1:]
+        super().start_section(heading)
 
     @t.override
     def _fill_text(self, text: str, width: int, indent: str) -> str:
@@ -814,9 +834,15 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
     @t.override
     def _format_action(self, action: argparse.Action) -> str:
-        """Render a group heading as its own line, and every other action as usual."""
+        """Render a group heading as its own line, and every other action as usual.
+
+        The headings of the commands replace the line of the subcommand metavar, which has no help.
+        """
         if isinstance(action, CommandGroupHeading):
             return f"\n{action.dest}\n"
+
+        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
+            return "".join(self._format_action(subaction) for subaction in self._iter_indented_subactions(action))
 
         return super()._format_action(action)
 
@@ -824,24 +850,19 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def _iter_indented_subactions(self, action: argparse.Action) -> "Generator[argparse.Action]":
         """Yield the subcommands under a heading for each group.
 
-        This hook also feeds the column width, thus the headings do not disturb the alignment.
+        This hook also feeds the column width, thus the headings do not disturb the alignment. A heading
+        replaces the line of the metavar, thus the commands have the indent of the options.
         """
         if not isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
             yield from super()._iter_indented_subactions(action)
             return
 
-        grouped = group_subactions(list(action._get_subactions()))  # ruff:ignore[private-member-access]
-        if grouped is None:
-            yield from super()._iter_indented_subactions(action)
-            return
-
-        self._indent()
-        for heading, members in grouped.items():
+        subactions = list(action._get_subactions())  # ruff:ignore[private-member-access]
+        for heading, members in (group_subactions(subactions) or {FLATGROUPHEADING: subactions}).items():
             yield CommandGroupHeading(option_strings=[], dest=f"{heading}:", help=None)
             for member in members:
                 member.metavar = shorten_aliases(str(member.metavar or member.dest))
                 yield member
-        self._dedent()
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -945,6 +966,33 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     # Commands that accept positional arguments between options set this flag.
     wantsintermixed: bool = False
 
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        """Make the parser. The help of -h starts with a capital letter, as the help of every other argument does.
+
+        Each parser formats its help and its usage in the same way, thus a parser of a test also gives "Usage:".
+        """
+        kwargs.setdefault("formatter_class", CustomArgHelpFormatter)
+        super().__init__(*args, **kwargs)
+        if (helpaction := self._option_string_actions.get("-h")) is not None:
+            helpaction.help = "Show this help message and exit"
+
+    @t.override
+    def format_help(self) -> str:
+        """Return the help with the argument groups in the order of ARGUMENTGROUPORDER.
+
+        A command makes a shared group when it adds the first argument of that group. Without this sort, the order
+        of the groups is different in each command.
+        """
+
+        def get_rank(group: "argparse._ArgumentGroup") -> float:  # pyright: ignore[reportPrivateUsage]
+            # the group of the subcommands has no heading, and it comes first as the positional arguments do
+            title = "positional arguments" if group.title is argparse.SUPPRESS else group.title or ""
+            # 1.5 puts a group that only one command has between "options" and the shared groups
+            return ARGUMENTGROUPORDER.index(title) if title in ARGUMENTGROUPORDER else 1.5
+
+        self._action_groups.sort(key=get_rank)
+        return super().format_help()
+
     @t.override
     def _check_value(self, action: argparse.Action, value: t.Any) -> None:
         """Refuse a value outside the choices with a message that names the closest choice.
@@ -966,10 +1014,11 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             parsermap = action._name_parser_map  # ruff:ignore[private-member-access]
             listedparsers = {id(parsermap[command]) for command in listed}
             choices = [command for command, subparser in parsermap.items() if id(subparser) in listedparsers]
-        name = action.metavar or action.dest
         # a close match answers the question, thus the long list of every choice serves the other case
         helptext = suggest_names(str(value), choices) or f"The choices are {', '.join(listed)}"
-        self.exit_with_help(f"invalid choice '{value}' for {name}", helptext)
+        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
+            self.exit_with_help(f"'{value}' is not a command of {self.prog}", helptext)
+        self.exit_with_help(f"Invalid choice '{value}' for {action.metavar or action.dest}", helptext)
 
     def get_visible_flags(self) -> list[str]:
         """Return the option strings that the help shows, thus a suggestion names no hidden alias."""
@@ -1179,7 +1228,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
                     else subparser.get_folder_help(words)
                 )
             # the usage of the command that the user ran, thus it holds the arguments of that command
-            subparser.exit_with_help(f"unrecognized arguments: {' '.join(words)}", helptext)
+            subparser.exit_with_help(f"Unrecognised arguments: {' '.join(words)}", helptext)
 
         return parsednamespace
 
@@ -1200,7 +1249,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
     @t.override
     def error(self, message: str) -> t.NoReturn:
-        """Report an error of argparse in the same two-part shape, with a suggestion where one fits."""
+        """Report an error of argparse in the same two-part shape, with a suggestion where one fits.
+
+        argparse starts its messages with a lower-case letter, e.g. "argument -t: ...", thus the first letter changes.
+        """
         import re
 
         from artistools.misc import suggest_flags
@@ -1216,7 +1268,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             # get_visible_flags leaves out a hidden alias, thus the suggestion names a flag that the help shows
             helptext = suggest_flags(given, self.get_visible_flags())
 
-        self.exit_with_help(message, helptext)
+        self.exit_with_help(message[:1].upper() + message[1:], helptext)
 
 
 def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree, path: tuple[str, ...] = ()) -> None:
@@ -1227,14 +1279,16 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree, 
 
     parser.set_defaults(func=func)
     subparsers = parser.add_subparsers(
-        dest="subcommand", required=False, metavar="command", parser_class=SuggestingArgumentParser
+        dest="subcommand", required=False, metavar="<command>", parser_class=SuggestingArgumentParser
     )
+    # the subcommands are the only positional argument, and the headings of their groups replace this heading
+    parser._positionals.title = argparse.SUPPRESS  # ruff:ignore[private-member-access]
 
     for subcommand, spec in subcommandtree.items():
         if isinstance(spec, dict):
             subparser = subparsers.add_parser(
                 subcommand,
-                help=GROUPHELPTEXT.get(subcommand, "command group"),
+                help=GROUPHELPTEXT.get(subcommand, "Command group."),
                 description=f"The {subcommand} commands of artistools.",
                 epilog=get_group_epilog((*path, subcommand), spec),
                 formatter_class=CustomArgHelpFormatter,

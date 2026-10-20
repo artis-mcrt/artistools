@@ -255,7 +255,7 @@ def warn_ignored_paths(ignored: "str | Sequence[t.Any] | None", kept: "str | Seq
         return ", ".join(f"'{path}'" for path in (paths if isinstance(paths, list) else [paths]))
 
     print_warning(
-        f"the command ignores the path {as_text(ignored)}, because the option form gives the path {as_text(kept)}."
+        f"The command ignores the path {as_text(ignored)}, because the option form gives the path {as_text(kept)}."
         " Give the paths in one form only"
     )
 
@@ -499,7 +499,7 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
         given_modelpath = getattr(args, "modelpath", None)
         if isinstance(given_modelpath, str | Path) and Path(given_modelpath) != givenpath:
             exit_with_error(
-                f"the folder '{givenpath}' and -modelpath '{given_modelpath}' name two different models",
+                f"The folder '{givenpath}' and -modelpath '{given_modelpath}' name two different models",
                 "Give the folder one time",
             )
         args.modelpath = givenpath
@@ -586,7 +586,7 @@ def addarg_output(
         "help": f"{helptext or defaulthelptext}. {rule}",
     }
 
-    arggroup(parser, "output").add_argument("-outputfile", "-outputpath", "-o", **kwargs)
+    arggroup(parser, "Output").add_argument("-outputfile", "-outputpath", "-o", **kwargs)
     parser.set_defaults(outputkind=kind, outputdefaultname=defaultname)
 
 
@@ -619,7 +619,7 @@ def addarg_modelgridindex(
     CellListAction stores the sorted list of the cells, and get_single_modelgridindex gives the one
     cell that a command which reads one cell needs.
     """
-    arggroup(parser, "cell selection").add_argument(
+    arggroup(parser, "Cell selection").add_argument(
         "-modelgridindex",
         "-cell",
         "-mgi",
@@ -685,7 +685,7 @@ def addarg_timestep(parser: argparse.ArgumentParser, *, default: t.Any = None, h
     refuses a list such as 4,9, because a plot reads one range of timesteps. get_single_timestep
     gives the one timestep that a command which plots one timestep needs.
     """
-    arggroup(parser, "time selection").add_argument(
+    arggroup(parser, "Time selection").add_argument(
         "-timestep",
         "-ts",
         action=CommaJoinAction,
@@ -774,7 +774,7 @@ def addarg_timedays(
     command takes. A command that takes no -timestep calls addarg_unsupported for that name, because
     argparse joins a value to a single-dash flag and would read "-timestep 30" as "-t imestep".
     """
-    group = arggroup(parser, "time selection")
+    group = arggroup(parser, "Time selection")
     flags = ("-timedays", "-time", "-t")
     if kind == "rangestr":
         group.add_argument(
@@ -794,7 +794,7 @@ def addarg_timeminmax(
     parser: argparse.ArgumentParser, *, helptext_min: str = "Lower time", helptext_max: str = "Upper time"
 ) -> None:
     """Add the -timemin and -timemax arguments bounding a time range in days."""
-    group = arggroup(parser, "time selection")
+    group = arggroup(parser, "Time selection")
     group.add_argument("-timemin", type=time_days_arg, help=f"{helptext_min}. {TIME_UNIT_HELP}")
     group.add_argument("-timemax", type=time_days_arg, help=f"{helptext_max}. {TIME_UNIT_HELP}")
 
@@ -817,7 +817,7 @@ def addarg_axislimits(
     spellings of the same arguments. Its x axis is in Angstroms, thus a value can also give a different unit, e.g.
     600nm. plotspectra has its own type, because the unit of its axis comes from -xunit.
     """
-    group = arggroup(parser, "appearance")
+    group = arggroup(parser, "Appearance")
     if include_x:
         xminflags = ("-xmin", "-lambdamin") if wavelength_aliases else ("-xmin",)
         xmaxflags = ("-xmax", "-lambdamax") if wavelength_aliases else ("-xmax",)
@@ -1029,7 +1029,7 @@ def color_arg(value: str) -> str:
     argument that caused it instead of surfacing from inside a plotting helper.
     """
     if not mplcolors.is_color_like(value):
-        msg = f"not a matplotlib color: {value}"
+        msg = f"Not a matplotlib colour: {value}"
         raise argparse.ArgumentTypeError(msg)
 
     return value
@@ -1072,7 +1072,7 @@ def addarg_seriesstyle(
     include_dashes: bool = True,
 ) -> None:
     """Add the per-series style list arguments shared by the multi-series plotting commands."""
-    group = arggroup(parser, "appearance")
+    group = arggroup(parser, "Appearance")
     group.add_argument(
         "-label",
         type=series_value_arg(str),
@@ -1130,7 +1130,7 @@ def addarg_figscale(
     parser: argparse.ArgumentParser, *, include_figwidthscale: bool = False, helptext: str | None = None
 ) -> None:
     """Add the figure size scale factor arguments."""
-    group = arggroup(parser, "appearance")
+    group = arggroup(parser, "Appearance")
     group.add_argument(
         "-figscale",
         type=float,
@@ -1143,7 +1143,7 @@ def addarg_figscale(
 
 def addarg_filter(parser: argparse.ArgumentParser) -> None:
     """Add the spectrum smoothing filter arguments (get_filterfunc reads exactly these dests)."""
-    group = arggroup(parser, "appearance")
+    group = arggroup(parser, "Appearance")
     group.add_argument("-filtermovingavg", type=int, default=0, help="Smoothing length (1 is same as none)")
     group.add_argument(
         "-filtersavgol",
@@ -1212,13 +1212,14 @@ def print_error(message: str, helptext: str = "") -> None:
 def print_warning(*values: object) -> None:
     """Print a warning to the standard error, thus --quiet keeps it and a script reads a clean product.
 
-    rich colours the prefix in a terminal, and it writes plain text into a pipe or under NO_COLOR.
+    rich colours the prefix in a terminal, and it writes plain text into a pipe or under NO_COLOR. The prefix is in
+    lower case, as "error: " and "help: " are. The message after the prefix starts with a capital letter.
     """
     from rich.console import Console
     from rich.text import Text
 
     message = " ".join(str(value) for value in values)
-    Console(stderr=True, highlight=False, soft_wrap=True).print(Text("WARNING: ", style="bold yellow") + Text(message))
+    Console(stderr=True, highlight=False, soft_wrap=True).print(Text("warning: ", style="bold yellow") + Text(message))
 
 
 def exit_with_error(message: str, helptext: str = "") -> t.NoReturn:
@@ -1232,16 +1233,28 @@ def exit_with_error(message: str, helptext: str = "") -> t.NoReturn:
 
 
 def require_action(args: argparse.Namespace) -> None:
-    """Stop with an error message when the caller gave no action."""
-    if args.action is None:
-        exit_with_error("no action was given", "Run with --help to see the available actions")
+    """Stop with an error message when the caller gave no action.
+
+    The help line names each action and the command that shows the help. The dispatcher puts the parser of the
+    command into args.argparser. A direct call of main has no such parser.
+    """
+    if args.action is not None:
+        return
+
+    parser = getattr(args, "argparser", None)
+    choices = next(
+        (action.choices for action in getattr(parser, "_actions", []) if action.dest == "action" and action.choices), ()
+    )
+    givetext = f"Give one of the actions {', '.join(map(str, choices))}. " if choices else ""
+    helptext = f"Run `{parser.prog} --help`" if parser is not None else "Run the command with --help"
+    exit_with_error("The command needs an action", f"{givetext}{helptext} to see what each action does")
 
 
 def addarg_residuals(parser: argparse.ArgumentParser) -> None:
     """Add the options for the residual panel and its baseline series."""
     if isinstance(parser, SuggestingArgumentParser):
         parser.wantsintermixed = True
-    group = arggroup(parser, "appearance")
+    group = arggroup(parser, "Appearance")
     baselinehelp = (
         "Select the baseline series for the residual panel in plot order, with the first series at index 0."
         " Without INDEX, use series 0. The plot must have one frame"
@@ -1306,7 +1319,7 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
 
 def addarg_show(parser: argparse.ArgumentParser) -> None:
     """Add --show, which opens the figure in a window before the save, and --open, which opens the file after it."""
-    group = arggroup(parser, "output")
+    group = arggroup(parser, "Output")
     group.add_argument("--show", action="store_true", help="Show the plot in a window before saving it")
     group.add_argument("--open", action="store_true", help="Open the saved file with its default application")
 
@@ -1316,7 +1329,7 @@ def addarg_darkmode(parser: argparse.ArgumentParser) -> None:
 
     Each command that writes a plot adds it, and save_figure applies it.
     """
-    arggroup(parser, "output").add_argument(
+    arggroup(parser, "Output").add_argument(
         "--darkmode",
         action="store_true",
         help=(
@@ -1332,14 +1345,14 @@ def addarg_quiet(parser: argparse.ArgumentParser) -> None:
     A command writes its product with print_product, thus --quiet keeps that product and hides only the
     progress messages around it.
     """
-    arggroup(parser, "output").add_argument(
+    arggroup(parser, "Output").add_argument(
         "--quiet", "-q", action="store_true", help="Hide the progress messages. Warnings and errors still appear"
     )
 
 
 def addarg_force(parser: argparse.ArgumentParser) -> None:
     """Add the -f and --force arguments, which permit a destructive action with no prompt, as rm -f does."""
-    arggroup(parser, "output").add_argument(
+    arggroup(parser, "Output").add_argument(
         "-f",
         "--force",
         action="store_true",
@@ -1422,7 +1435,7 @@ def addarg_verbose(parser: argparse.ArgumentParser) -> None:
     --verbose is the only form. Declare the argument of the command first, then call this function.
     """
     flags = ["--verbose"] if "-v" in parser._option_string_actions else ["--verbose", "-v"]  # ruff:ignore[private-member-access]
-    arggroup(parser, "output").add_argument(
+    arggroup(parser, "Output").add_argument(
         *flags, action="store_true", help="Show the detail of each step, e.g. each file that is read"
     )
 
@@ -1565,7 +1578,7 @@ def get_provenance_lines(args: argparse.Namespace) -> list[str]:
 
 def addarg_data_output(parser: argparse.ArgumentParser) -> None:
     """Add the --print_data and --write_data arguments, which give the plotted data as text."""
-    group = arggroup(parser, "output")
+    group = arggroup(parser, "Output")
     group.add_argument(
         "--print_data",
         action="store_true",
@@ -1609,12 +1622,12 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
 
 def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:
     """Add the -dpi argument setting the resolution of a raster output file."""
-    arggroup(parser, "output").add_argument("-dpi", type=int, default=default, help="Dots per inch for the output file")
+    arggroup(parser, "Output").add_argument("-dpi", type=int, default=default, help="Dots per inch for the output file")
 
 
 def addarg_labelfontsize(parser: argparse.ArgumentParser) -> None:
     """Add the -labelfontsize argument that sets the font size of the tick labels and the axis labels."""
-    arggroup(parser, "plot style").add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "-labelfontsize",
         type=float,
         default=None,
@@ -1632,7 +1645,7 @@ def addarg_yscale(parser: argparse.ArgumentParser, *, default: str = "auto") -> 
     The argument has no default, thus resolve_yscale can find an explicit -yscale that gives a different
     scale from --logscaley. args.defaultyscale holds the default of the command.
     """
-    arggroup(parser, "appearance").add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "-yscale",
         choices=["log", "linear", "lin", "auto"],
         default=None,
@@ -1659,7 +1672,7 @@ def resolve_yscale(args: argparse.Namespace) -> None:
     logscaley = getattr(args, "logscaley", False)
     yscale = args.yscale
     if logscaley and yscale in {"linear", "lin"}:
-        exit_with_error(f"specify only one of --logscaley and -yscale {yscale}")
+        exit_with_error(f"Specify only one of --logscaley and -yscale {yscale}")
     # "auto" chooses a scale, thus --logscaley gives that choice
     if yscale is None or (logscaley and yscale == "auto"):
         yscale = "log" if logscaley else getattr(args, "defaultyscale", "auto")
@@ -1671,17 +1684,17 @@ def resolve_yscale(args: argparse.Namespace) -> None:
 
 def addarg_notitle(parser: argparse.ArgumentParser) -> None:
     """Add the --notitle argument that suppresses the plot title (set_plot_title reads this dest)."""
-    arggroup(parser, "appearance").add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "--notitle", action="store_true", help="Suppress the top title from the plot"
     )
 
 
 def addarg_legend(parser: argparse.ArgumentParser) -> None:
     """Add the arguments of the legend: --nolegend, --legendframe, and -legendcols."""
-    arggroup(parser, "appearance").add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "--nolegend", action="store_true", help="Suppress the legend from the plot"
     )
-    arggroup(parser, "appearance").add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "-legendcols",
         type=positive_int_arg,
         default=None,
@@ -1690,7 +1703,7 @@ def addarg_legend(parser: argparse.ArgumentParser) -> None:
             " half of the frame height at most"
         ),
     )
-    arggroup(parser, "appearance").add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "--legendframe",
         action="store_true",
         help="Draw the legend on a white background. The legend text then stays readable over the data",
@@ -1853,7 +1866,7 @@ def addarg_common(parser: argparse.ArgumentParser) -> None:
     """
     addarg_quiet(parser)
     if any(action.dest in MODELPATH_DESTS for action in parser._actions):  # ruff:ignore[private-member-access]
-        arggroup(parser, "output").add_argument(
+        arggroup(parser, "Output").add_argument(
             "--explain",
             action="store_true",
             help=(
@@ -1895,7 +1908,7 @@ def print_explanation(
         existstext = (
             " (the file exists, thus the command asks before it overwrites it)" if Path(outputfile).exists() else ""
         )
-        print_detail(f"output: {outputfile}{existstext}")
+        print_detail(f"Output: {outputfile}{existstext}")
 
 
 def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:
@@ -1907,17 +1920,17 @@ def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:
     from artistools.misc.timesteps import get_time_range
 
     if is_remote_path(modelpath):
-        print_detail(f"model: {modelpath} (a remote model. --explain reads no file of it)")
+        print_detail(f"Model: {modelpath} (a remote model. --explain reads no file of it)")
         return
     modelfolder = get_model_folder(modelpath)
     if not modelfolder.is_dir():
-        print_detail(f"model: {modelfolder} does not exist")
+        print_detail(f"Model: {modelfolder} does not exist")
         return
     if not folder_is_artis_model(modelfolder):
         # plotspectra also reads a reference spectrum, which is a file outside a model folder
-        print_detail(f"path: {modelpath} (no model folder, because {modelfolder} holds no input.txt)")
+        print_detail(f"Path: {modelpath} (no model folder, because {modelfolder} holds no input.txt)")
         return
-    print_detail(f"model: {modelfolder}")
+    print_detail(f"Model: {modelfolder}")
 
     timeselection = {name: getattr(args, name, None) for name in ("timestep", "timemin", "timemax", "timedays")}
     if any(value is not None for value in timeselection.values()):
@@ -1930,10 +1943,10 @@ def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:
                 timedays_range_str=timeselection["timedays"],
             )
         except (OSError, ValueError) as exc:
-            print_detail(f"time: the selection gives an error: {exc}")
+            print_detail(f"Time: the selection gives an error: {exc}")
         else:
             print_detail(
-                f"time: timesteps {timestepmin} to {timestepmax}, which cover {timemin:.3f} to {timemax:.3f} d"
+                f"Time: timesteps {timestepmin} to {timestepmax}, which cover {timemin:.3f} to {timemax:.3f} d"
             )
 
     if dirbins := [dirbin for dirbin in getattr(args, "plotviewingangle", None) or [] if dirbin != -2]:
@@ -1944,10 +1957,10 @@ def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:
                 average_over_theta=getattr(args, "average_over_theta_angle", False),
             )
         except ValueError as exc:
-            print_detail(f"direction: the selection gives an error: {exc}")
+            print_detail(f"Direction: the selection gives an error: {exc}")
         else:
             for dirbin, label in labels.items():
-                print_detail(f"direction bin {dirbin}: {label}")
+                print_detail(f"Direction bin {dirbin}: {label}")
 
 
 def parse_cli_args(
@@ -2020,11 +2033,11 @@ def format_frame_path(frametemplate: Path | str, **fields: t.Any) -> str:
         return str(frametemplate).format(**fieldsandoldnames)
     except KeyError as exc:
         given = ", ".join(f"{{{name}}}" for name in fields)
-        msg = f"the name of the output holds the field {exc}, and this command gives {given}"
+        msg = f"The name of the output holds the field {exc}, and this command gives {given}"
         raise ValueError(msg) from exc
     except IndexError as exc:
         given = ", ".join(f"{{{name}}}" for name in fields)
-        msg = f"the name of the output holds a field with no name, and each field needs one of: {given}"
+        msg = f"The name of the output holds a field with no name, and each field needs one of: {given}"
         raise ValueError(msg) from exc
 
 

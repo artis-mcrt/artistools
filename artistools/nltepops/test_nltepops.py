@@ -115,7 +115,7 @@ def test_nltepops_no_estimator_data(
     )
 
     # a warning goes to the standard error, thus --quiet keeps it
-    assert "WARNING: No estimator data" in capsys.readouterr().err
+    assert "warning: No estimator data" in capsys.readouterr().err
     titles = [callargs[0][1] for callargs in mocktitle.call_args_list]
     assert any("Te=5000 K" in ti and "nne=nan" in ti and "T$_R$=5000 K" in ti and "W=nan" in ti for ti in titles)
 
@@ -547,7 +547,7 @@ def test_nltepops_ion_stage_of_no_plot_gives_a_message(tmp_path: Path, capsys: p
         with pytest.raises(SystemExit):
             at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, timestep=40, ion_stages=ion_stages)
 
-        assert "no ion stage of Fe to plot at timestep 40" in capsys.readouterr().err
+        assert "No ion stage of Fe to plot at timestep 40" in capsys.readouterr().err
 
 
 def test_radiative_decays_take_no_population_from_the_superlevel() -> None:

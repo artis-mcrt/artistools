@@ -231,7 +231,7 @@ def get_from_packets(
     if directionbins is None:
         directionbins = [-1]
     if directionbins_are_vpkt_observers and (pellet_nucname is not None or use_pellet_decay_time):
-        msg = "the virtual packets hold no pellet, thus an observer has no light curve of a nuclide or of a decay time"
+        msg = "The virtual packets hold no pellet, thus an observer has no light curve of a nuclide or of a decay time"
         raise ValueError(msg)
 
     dftimesteps_selected = df_filter_minmax_bracketed(
@@ -426,7 +426,7 @@ def generate_band_lightcurve_data(
         )
         if specfilename is None:
             if args.plotviewingangle:
-                print_warning("no direction-resolved spectra available. Using angle-averaged spectra.")
+                print_warning("No direction-resolved spectra available. Using angle-averaged spectra.")
             specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
 
         with zopen(specfilename) as fspec:
@@ -479,7 +479,7 @@ def generate_band_lightcurve_data(
         if filter_name == "bol":
             if isvpktobserver and spectrumrange is not None:
                 print_warning(
-                    f"the bol band of a virtual packet observer integrates only the range of its spectrum,"
+                    f"The bol band of a virtual packet observer integrates only the range of its spectrum,"
                     f" {spectrumrange[0]:.0f} to {spectrumrange[1]:.0f} Å"
                 )
             bol_magnitudes = (
@@ -501,7 +501,7 @@ def generate_band_lightcurve_data(
             transmittedwavelengths.min() < spectrumrange[0] or transmittedwavelengths.max() > spectrumrange[1]
         ):
             print_warning(
-                f"the spectrum covers {spectrumrange[0]:.0f} to {spectrumrange[1]:.0f} Å, and the {filter_name} filter"
+                f"The spectrum covers {spectrumrange[0]:.0f} to {spectrumrange[1]:.0f} Å, and the {filter_name} filter"
                 f" transmits from {transmittedwavelengths.min():.0f} to {transmittedwavelengths.max():.0f} Å. The"
                 " magnitude has no flux from the part of the filter outside the spectrum"
             )
@@ -528,7 +528,7 @@ def generate_band_lightcurve_data(
             weighted_flux_obs = float(abs(np.trapezoid(integrand, integration_grid)))
             if weighted_flux_obs <= 0.0:
                 # no flux in the band gives no magnitude. A zero magnitude would show an extremely bright source
-                print(f"  no {filter_name} band flux at {time:.2f} d. The band has no magnitude at this time.")
+                print(f"  No {filter_name} band flux at {time:.2f} d. The band has no magnitude at this time.")
                 bandpoints.append((time, math.nan))
                 continue
 
@@ -645,7 +645,7 @@ def get_band_lightcurve(
     ]
     if not selected:
         msg = (
-            f"the {band_name} band has no light curve points between timemin {args.timemin} and timemax {args.timemax}"
+            f"The {band_name} band has no light curve points between timemin {args.timemin} and timemax {args.timemax}"
         )
         raise ValueError(msg)
 
@@ -737,7 +737,7 @@ def luminosity_distance(H0: float, Om0: float, z: float) -> float:
     # number from the interior nodes, and further out a NaN, which would reach the magnitudes as one.
     if Om0 * (1.0 + z) ** 3 + (1.0 - Om0) <= 0.0:
         zturnaround = ((Om0 - 1.0) / Om0) ** (1.0 / 3.0) - 1.0
-        msg = f"a flat cosmology with Om0={Om0} stops expanding at z={zturnaround}, so z={z} has no distance"
+        msg = f"A flat cosmology with Om0={Om0} stops expanding at z={zturnaround}, so z={z} has no distance"
         raise ValueError(msg)
 
     dist_hubble_mpc = (C_cm_per_s / km_to_cm) / H0  # c in km/s over H0 in km/s/Mpc
@@ -831,7 +831,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
     # gives no such value
     if "timecorrection" not in metadata:
         exit_with_error(
-            f"the reference light curve {data_path} has no timecorrection value",
+            f"The reference light curve {data_path} has no timecorrection value",
             f"Write {get_metadata_path(data_path).name} in the folder of the data, with a timecorrection value and a"
             " label",
         )
@@ -866,7 +866,7 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
         else:
             metadata["dist_mpc"] = luminosity_distance(H0=H0_km_per_s_per_mpc, Om0=omega_matter, z=z)
             print(
-                f"luminosity distance from redshift z = {z}: {metadata['dist_mpc']:.4g} Mpc for {metadata['label']},"
+                f"Luminosity distance from redshift z = {z}: {metadata['dist_mpc']:.4g} Mpc for {metadata['label']},"
                 f" with a flat cosmology of H0 = {H0_km_per_s_per_mpc} km/s/Mpc and Om0 = {omega_matter} (round"
                 " values that many papers use, from no single measurement)"
             )

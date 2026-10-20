@@ -3811,7 +3811,7 @@ def test_interactive_status_line_gives_the_error() -> None:
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
     assert rejection is not None
-    assert rejection.startswith("argument -deltalambda")
+    assert rejection.startswith("Argument -deltalambda")
 
 
 def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit() -> None:
@@ -3870,7 +3870,7 @@ def test_fixedionlist_warning_names_only_the_items_that_the_plot_shows(capsys: p
         atspectra.sort_and_reduce_flux_contribution_list(
             contributions, maxseriescount, arraylambda, fixedionlist=["Fe II", "Co II", "Ni II"]
         )
-        assert ("did not find" in capsys.readouterr().err) is haswarning
+        assert ("Did not find" in capsys.readouterr().err) is haswarning
 
 
 def test_interactive_valid_times_of_each_model() -> None:

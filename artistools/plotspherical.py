@@ -93,7 +93,7 @@ def resolve_time_range(
         return float(timemindays), float(timemaxdays)
 
     if timemindays is None:
-        print(f"setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
+        print(f"Setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
         timemindays = tmin_d_valid
     elif timemindays < tmin_d_valid:
         print_warning(
@@ -101,7 +101,7 @@ def resolve_time_range(
         )
 
     if timemaxdays is None:
-        print(f"setting timemaxdays to end of valid observable range {tmax_d_valid:.2f} d")
+        print(f"Setting timemaxdays to end of valid observable range {tmax_d_valid:.2f} d")
         timemaxdays = tmax_d_valid
     elif timemaxdays > tmax_d_valid:
         print_warning(
@@ -330,7 +330,7 @@ def plot_spherical(
 
     dirbins holds the rows of one time range of the frame that bin_packets_by_direction returns.
     """
-    print(f"packets plotted: {dirbins.select('count').sum().item(0, 0):.1e}")
+    print(f"Packets plotted: {dirbins.select('count').sum().item(0, 0):.1e}")
 
     phigrid, column_phibins = get_map_columns(nphibins)
     if phireverse:
@@ -578,7 +578,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
     if args.elem is not None:
         if args.atomic_number is not None:
-            exit_with_error("give one of -elem and -atomic_number", "Both select the element of the packets")
+            exit_with_error("Give one of -elem and -atomic_number", "Both select the element of the packets")
         args.atomic_number = get_atomic_number(args.elem)
         if args.atomic_number < 1:
             exit_with_error(f"-elem {args.elem} is not an element symbol", "Give a symbol, e.g. -elem Fe")
