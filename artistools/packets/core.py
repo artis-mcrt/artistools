@@ -688,24 +688,26 @@ def count_packets_textfiles(modelpath: Path) -> tuple[int, int]:
     return readcount, len(otherrankfiles)
 
 
-def get_first_packets_file(modelpath: Path) -> Path | None:
+def get_first_packets_file(modelpath: Path, virtual: bool) -> Path | None:
     """Return the packets text file of the first rank, or the parquet cache of the first batch, or None.
 
-    The name of a cache holds the ranks of its batch. A cache of an earlier run with a different number of ranks is
-    not the cache that get_packets reads. If only such a cache exists, the function returns None.
+    virtual selects the virtual packets. The name of a cache holds the ranks of its batch. A cache of an earlier run
+    with a different number of ranks is not the cache that get_packets reads. If only such a cache exists, the
+    function returns None.
     """
-    textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=modelpath)
+    textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=virtual), folder=modelpath)
     if textfile is not None:
         return textfile
     # the name of the cache needs the number of ranks in input.txt, thus the function reads that file only if a
     # cache exists
+    strpacket = "vpackets" if virtual else "packets"
     if not any(
-        any((modelpath / "packets").glob(pattern))
-        for pattern in ("packetsbatch00_*.parquet", "packetsbatch00_*.parquet.tmp")
+        any((modelpath / strpacket).glob(pattern))
+        for pattern in (f"{strpacket}batch00_*.parquet", f"{strpacket}batch00_*.parquet.tmp")
     ):
         return None
     (batchindex, batch_mpiranks), *_ = get_packets_mpirank_groups(modelpath, maxpacketfiles=None)
-    parquetfile = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual=False)
+    parquetfile = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual=virtual)
     return parquetfile if parquetfile.is_file() else None
 
 
@@ -715,7 +717,7 @@ def has_packets_files(modelpath: Path) -> bool:
 
     A model can keep only the parquet cache of its packets. The host of a remote path gives the answer.
     """
-    return get_first_packets_file(modelpath) is not None
+    return get_first_packets_file(modelpath, virtual=False) is not None
 
 
 @on_model_host
@@ -725,7 +727,7 @@ def get_packets_column_names(modelpath: Path) -> list[str] | None:
     The text file of the first rank gives the names, or else the parquet cache of the first batch. The host of a
     remote path gives the answer.
     """
-    packetsfile = get_first_packets_file(modelpath)
+    packetsfile = get_first_packets_file(modelpath, virtual=False)
     if packetsfile is None:
         return None
     if packetsfile.name.endswith((".parquet", ".parquet.tmp")):

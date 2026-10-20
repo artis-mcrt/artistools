@@ -8523,6 +8523,36 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
     assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted(kept)
 
 
+def test_cache_make_gives_no_data_for_virtual_packets_without_their_files(tmp_path: Path) -> None:
+    """Give no data, and not an error, for a model that has vpkt.txt but no virtual packet files.
+
+    sn3d writes the virtual packet files only with VPKT_WRITE_CONTRIBS, thus vspecpolmodel has vpkt.txt and none of
+    these files. vpktcontrib has the files, thus it gets its cache.
+    """
+    from artistools.cache import make_caches
+
+    vspecpolmodel = tmp_path / "vspecpolmodel"
+    shutil.copytree(at.get_path("testdata") / "vspecpolmodel", vspecpolmodel)
+    assert (vspecpolmodel / "vpkt.txt").is_file()
+    dfresults = make_caches(vspecpolmodel)
+    assert dfresults.filter(pl.col("data") == "virtual packets").row(0) == (
+        "virtual packets",
+        "no data",
+        "the model holds no virtual packet files",
+    )
+    assert "error" not in dfresults["status"].to_list()
+
+    # the copy leaves out the caches of earlier runs of the tests
+    vpktmodel = tmp_path / "vpktcontrib"
+    shutil.copytree(at.get_path("testdata") / "vpktcontrib", vpktmodel, ignore=shutil.ignore_patterns("vpackets"))
+    dfresults = make_caches(vpktmodel)
+    assert dfresults.filter(pl.col("data") == "virtual packets").row(0) == (
+        "virtual packets",
+        "ok",
+        "1 caches of the packets of 2 ranks",
+    )
+
+
 def test_check_names_the_missing_input_files_and_the_leftover_files(tmp_path: Path) -> None:
     """Give a warning for each missing input file and for the files that a stopped conversion left."""
     from artistools.check import check_caches

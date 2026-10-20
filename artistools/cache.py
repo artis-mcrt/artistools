@@ -34,7 +34,7 @@ from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import require_action
 from artistools.misc import resolve_table_outputfile
-from artistools.packets import has_packets_files
+from artistools.packets.core import get_first_packets_file
 from artistools.packets.core import get_packets_batch_parquet_paths
 
 if t.TYPE_CHECKING:
@@ -128,12 +128,11 @@ def make_estimator_caches(modelfolder: Path) -> str | None:
 
 
 def make_packet_caches(modelfolder: Path, virtual: bool) -> str | None:
-    """Convert the packet files of each batch of ranks. Return None for a model with no such packet files."""
-    if virtual:
-        # ARTIS writes virtual packets only when vpkt.txt exists
-        if not (modelfolder / "vpkt.txt").is_file():
-            return None
-    elif not has_packets_files(modelfolder):
+    """Convert the packet files of each batch of ranks. Return None for a model with no such packet files.
+
+    ARTIS writes the virtual packet files only with VPKT_WRITE_CONTRIBS. A model with vpkt.txt can thus have none.
+    """
+    if get_first_packets_file(modelfolder, virtual=virtual) is None:
         return None
     nprocs_read, parquetfiles = get_packets_batch_parquet_paths(modelfolder, virtual=virtual)
     return f"{len(parquetfiles)} caches of the packets of {nprocs_read} ranks"
@@ -154,7 +153,7 @@ def make_caches(modelfolder: Path) -> pl.DataFrame:
         (
             "virtual packets",
             lambda: make_packet_caches(modelfolder, virtual=True),
-            "the model folder holds no vpkt.txt",
+            "the model holds no virtual packet files",
         ),
     ]
     rows: list[tuple[str, str, str]] = []
