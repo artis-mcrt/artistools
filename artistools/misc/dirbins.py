@@ -392,8 +392,11 @@ def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall
     With averageoverphi, as with --average-over-phi-angle of plotspectra, dirbin must be the first bin of its costheta
     bin.
     """
+    from artistools.commands import get_standard_flag
     from artistools.misc.cliutils import exit_with_error
 
+    # the caller can give the declared spelling, and the message gives the spelling of the help
+    optionname = get_standard_flag(optionname)
     if averageoverphi:
         check_costheta_dirbin(dirbin, optionname, allowall=allowall)
         return
@@ -406,8 +409,10 @@ def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall
 
 def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> None:
     """Exit with an error if dirbin is not the first direction bin of a costheta bin, or -1 when allowall is true."""
+    from artistools.commands import get_standard_flag
     from artistools.misc.cliutils import exit_with_error
 
+    optionname = get_standard_flag(optionname)
     nphibins = get_viewingdirection_phibincount()
     ndirbins = get_viewingdirectionbincount()
     if (allowall and dirbin == -1) or (0 <= dirbin < ndirbins and dirbin % nphibins == 0):

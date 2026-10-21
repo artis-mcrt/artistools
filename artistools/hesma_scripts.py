@@ -9,6 +9,7 @@ import matplotlib.axes as mplax
 import polars as pl
 import polars.selectors as cs
 
+from artistools.commands import get_standard_flag
 from artistools.constants import c_ang_per_s
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
@@ -260,7 +261,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def require(value: t.Any, argname: str, action: str) -> t.Any:
     """Return value, or exit with a message naming the argument the action needs."""
     if value is None:
-        exit_with_error(f"{action} requires {argname}")
+        exit_with_error(f"{action} requires {get_standard_flag(argname)}")
 
     return value
 

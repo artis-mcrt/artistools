@@ -22,6 +22,7 @@ import matplotlib.colors as mplcolors
 
 from artistools.commands import CustomArgHelpFormatter
 from artistools.commands import get_shown_flags
+from artistools.commands import get_standard_flag
 from artistools.commands import SuggestingArgumentParser
 from artistools.constants import day_to_s
 from artistools.constants import hour_to_s
@@ -720,6 +721,7 @@ def addarg_averageoverphi(parser: argparse.ArgumentParser, optionname: str = "-d
     The option has the meaning of --average-over-phi-angle of plotspectra. With the option, --dirbin 90 takes the
     costheta bin 0.8 to 1. Without it, --dirbin 90 takes the one direction bin 90.
     """
+    optionname = get_standard_flag(optionname)
     parser.add_argument(
         "--average_over_phi_angle",
         action="store_true",
@@ -1504,6 +1506,13 @@ def print_product(args: argparse.Namespace, *values: object) -> None:
     print(*values, file=productstream)
 
 
+def get_json_rows(dfdata: "pl.DataFrame") -> list[dict[str, t.Any]]:
+    """Return the rows of a table for JSON, with null for a missing value. JSON has no NaN."""
+    import polars.selectors as cs
+
+    return dfdata.with_columns(cs.float().fill_nan(None)).to_dicts()
+
+
 # the formats of --output-format. "text" has a space between the values, and "csv" has a comma
 OUTPUT_FORMATS: t.Final = ("text", "json", "csv")
 
@@ -1550,10 +1559,7 @@ def write_data_table(
         if tableformat == "json":
             import json
 
-            import polars.selectors as cs
-
-            rows = dfdata.with_columns(cs.float().fill_nan(None)).to_dicts()
-            json.dump({"comments": list(commentlines), "rows": rows}, stream, default=str, indent=1)
+            json.dump({"comments": list(commentlines), "rows": get_json_rows(dfdata)}, stream, default=str, indent=1)
             stream.write("\n")
             return
         stream.writelines(f"# {line}\n" for line in commentlines)
@@ -1659,19 +1665,29 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
 
     Each key of tables is the end of a file name, e.g. "_residuals" gives myplot_residuals.txt for myplot.pdf, and an
     empty key gives myplot.txt. The standard output gives the tables in the same order, with an empty line between two
-    tables. With --output-format json, each printed table is one JSON document, and no empty line separates two
-    documents. The function skips an empty table. A file starts with comment lines that tell how the command made
-    the data and what each column holds. A pipe reads the standard output, thus it gets no comment lines. An empty
-    table replaces the file of an earlier run, thus that file cannot seem to hold the data of this run.
+    tables. --output-format json prints one JSON object, with the rows of each table under its key without the "_",
+    e.g. "residuals", and "data" for the empty key. A parser of JSON reads one document alone. --output-format also
+    gives the format and the suffix of each file, e.g. myplot.json. The function skips an empty table. A file starts
+    with comment lines that tell how the command made the data and what each column holds. A pipe reads the standard
+    output, thus it gets no comment lines. An empty table replaces the file of an earlier run, thus that file cannot
+    seem to hold the data of this run.
     """
-    if getattr(args, "print_data", False):
-        for tableindex, dfdata in enumerate(dfdata for dfdata in tables.values() if not dfdata.is_empty()):
-            if tableindex > 0 and getattr(args, "output_format", None) != "json":
+    outputformat = getattr(args, "output_format", None)
+    printedtables = {suffix: dfdata for suffix, dfdata in tables.items() if not dfdata.is_empty()}
+    if getattr(args, "print_data", False) and outputformat == "json":
+        import json
+
+        document = {suffix.lstrip("_") or "data": get_json_rows(dfdata) for suffix, dfdata in printedtables.items()}
+        print_product(args, json.dumps(document, default=str, indent=1))
+    elif getattr(args, "print_data", False):
+        for tableindex, dfdata in enumerate(printedtables.values()):
+            if tableindex > 0:
                 print_product(args, "")
             print_product(args, dfdata)
     if getattr(args, "write_data", False):
+        filesuffix = {"json": ".json", "csv": ".csv"}.get(outputformat or "text", ".txt")
         for suffix, dfdata in tables.items():
-            datafile = Path(outputfile).with_name(f"{Path(outputfile).stem}{suffix}.txt")
+            datafile = Path(outputfile).with_name(f"{Path(outputfile).stem}{suffix}{filesuffix}")
             if dfdata.is_empty() and not os.path.lexists(datafile):
                 continue
             emptylines = (
@@ -1680,7 +1696,7 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
                 else []
             )
             commentlines = [*get_provenance_lines(args), *emptylines, *get_column_description_lines(dfdata.columns)]
-            write_data_table(dfdata, datafile, commentlines=commentlines)
+            write_data_table(dfdata, datafile, commentlines=commentlines, outputformat=outputformat)
             print_saved(datafile)
 
 
@@ -1853,8 +1869,8 @@ def check_time_selection(
     given = [name for name in ("timestep", "timedays", "timemin", "timemax") if wasgiven(name)]
     # -timemin and -timemax bound one range, thus the pair counts as one way to give it. get_time_range
     # reads the range of -timedays alone, thus a bound beside it has no effect and must not pass
-    ways = [f"-{name}" for name in ("timestep", "timedays") if name in given]
-    if bounds := [f"-{name}" for name in ("timemin", "timemax") if name in given]:
+    ways = [f"--{name}" for name in ("timestep", "timedays") if name in given]
+    if bounds := [f"--{name}" for name in ("timemin", "timemax") if name in given]:
         ways.append(" and ".join(bounds))
 
     if len(ways) > 1:
@@ -1868,9 +1884,9 @@ def check_range_order(args: argparse.Namespace) -> None:
     select one time, e.g. for decayproducts. The limits of a plot axis can have the opposite order, e.g. for a
     magnitude, thus this function checks only a range of the selection.
     """
-    bounds = [("timemin", "timemax", "-timemin", "-timemax")]
+    bounds = [("timemin", "timemax", "--timemin", "--timemax")]
     if getattr(args, "xrangeisselection", False):
-        bounds.append(("xmin", "xmax", "-lambdamin", "-lambdamax"))
+        bounds.append(("xmin", "xmax", "--lambdamin", "--lambdamax"))
     for lowerdest, upperdest, lowerflag, upperflag in bounds:
         lower, upper = getattr(args, lowerdest, None), getattr(args, upperdest, None)
         if isinstance(lower, float | int) and isinstance(upper, float | int) and lower > upper:

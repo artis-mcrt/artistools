@@ -15,6 +15,7 @@ import polars.selectors as cs
 
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
+from artistools.commands import get_standard_flag
 from artistools.constants import angstroms_per_cm
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -449,6 +450,7 @@ def get_line_summary_of_batches(dfsummaries: Sequence[pl.DataFrame]) -> pl.DataF
 
 def parse_ions(iontexts: Sequence[str], optionname: str) -> list[tuple[int, int]]:
     """Return the (Z, ion_stage) of each ion name, e.g. "Fe II", or exit with an error for an element."""
+    optionname = get_standard_flag(optionname)
     ions: list[tuple[int, int]] = []
     for iontext in iontexts:
         iontuple = get_ion_tuple(iontext.strip())

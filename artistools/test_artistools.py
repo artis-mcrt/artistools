@@ -660,7 +660,7 @@ def test_residual_log_axis_ignores_a_non_positive_maximum(capsys: pytest.Capture
     mainaxis.set_xlim(1.0, 2.0)
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
     assert min(residualaxis.get_ylim()) > 0.0
-    assert "Ignoring -residualymax 0.0" in capsys.readouterr().err
+    assert "Ignoring --residualymax 0.0" in capsys.readouterr().err
     plt.close(fig)
 
 
@@ -1915,7 +1915,7 @@ def test_hesma_reports_missing_arguments(capsys: pytest.CaptureFixture[str]) -> 
     """An action must name the argument it needs rather than failing on a None."""
     with pytest.raises(SystemExit):
         at.hesma_scripts.main(argsraw=["vspecfiles"])
-    assert "requires -modelpath" in capsys.readouterr().err
+    assert "requires --modelpath" in capsys.readouterr().err
 
 
 def test_opacity_condition_labels_match_artis() -> None:
@@ -4381,6 +4381,44 @@ def test_output_format_gives_json_and_csv(capsys: pytest.CaptureFixture[str]) ->
     artistools.__main__.main(argsraw=["check", str(modelpath), "--output-format", "json"])
     checks = json.loads(capsys.readouterr().out)["rows"]
     assert {"check", "status", "detail"} <= set(checks[0])
+
+
+def test_output_format_of_plotted_data_gives_one_json_document_and_the_file_format(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A plot with a main table and a summary table prints one JSON document, which json.loads reads.
+
+    Before this change, the command printed one JSON document for each table, and a parser of JSON refused the output.
+    --write-data with --output-format csv wrote a text file with spaces and the suffix .txt.
+    """
+    import artistools.__main__
+
+    outputfile = tmp_path / "lightcurve.pdf"
+    artistools.__main__.main(
+        argsraw=["plotlightcurves", str(modelpath), "--print-data", "--output-format", "json", "-o", str(outputfile)]
+    )
+    document = json.loads(capsys.readouterr().out)
+    assert "data" in document
+    assert "model" in document["data"][0]
+
+    artistools.__main__.main(
+        argsraw=["plotlightcurves", str(modelpath), "--write-data", "--output-format", "csv", "-o", str(outputfile)]
+    )
+    datalines = [line for line in (tmp_path / "lightcurve.csv").read_text().splitlines() if not line.startswith("#")]
+    assert datalines[0].startswith("model,modelpath,")
+
+
+def test_validation_errors_give_the_standard_flag_spelling(capsys: pytest.CaptureFixture[str]) -> None:
+    """A check of artistools names the flags as the help gives them, also for a flag that the user gave as -timestep."""
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", str(modelpath), "-timestep", "3", "-timedays", "300"])
+    assert "error: --timestep, --timedays name the time range in more than one way" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotlightcurves", str(modelpath), "-timemin", "300", "-timemax", "250"])
+    assert "error: --timemin 300 is above --timemax 250" in capsys.readouterr().err
 
 
 def test_help_gives_the_standard_flag_spellings(capsys: pytest.CaptureFixture[str]) -> None:

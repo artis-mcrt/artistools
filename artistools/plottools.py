@@ -32,6 +32,7 @@ from matplotlib.patches import Patch
 from matplotlib.text import Text
 
 from artistools.commands import get_path
+from artistools.commands import get_standard_flag
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
@@ -1776,7 +1777,7 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
     argument that asked for it.
     """
     if limit is not None and logscale and limit <= 0.0:
-        print_warning(f"Ignoring {argname} {limit}, which a log axis cannot show")
+        print_warning(f"Ignoring {get_standard_flag(argname)} {limit}, which a log axis cannot show")
         return None
 
     return limit

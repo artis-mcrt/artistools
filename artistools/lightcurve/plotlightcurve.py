@@ -20,6 +20,7 @@ from polars import selectors as cs
 
 from artistools import misc
 from artistools.commands import get_path
+from artistools.commands import get_standard_flag
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
@@ -2415,7 +2416,8 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
     pelletremedy = "Remove --plotvspecpol, or remove --topnucs and --use-pellet-decay-time"
     for flag, isgiven in (("-topnucs", args.topnucs), ("--use_pellet_decay_time", args.use_pellet_decay_time)):
         if isgiven and isobserver:
-            reason = f"the virtual packets hold no pellet, thus {flag} gives no light curve of an observer"
+            shownflag = get_standard_flag(flag)
+            reason = f"the virtual packets hold no pellet, thus {shownflag} gives no light curve of an observer"
             refused.append(RefusedOption(flag, reason, pelletremedy))
     if args.gamma and isobserver:
         refused.append(
@@ -2427,7 +2429,12 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
         )
     if otherplotflag is not None:
         refused.extend(
-            RefusedOption(flag, f"{otherplotflag} reads no packets files, thus {flag} has no effect", None)
+            RefusedOption(
+                flag,
+                f"{get_standard_flag(otherplotflag)} reads no packets files, thus {get_standard_flag(flag)} has no"
+                " effect",
+                None,
+            )
             for flag, isgiven in (
                 ("--frompackets", args.frompackets),
                 ("-topnucs", args.topnucs),
@@ -2500,7 +2507,7 @@ def drop_refused_options(
     warning from the fields flag and reason.
     """
     for option in refused:
-        print_warning(warningformat.format(flag=option.flag, reason=option.reason))
+        print_warning(warningformat.format(flag=get_standard_flag(option.flag), reason=option.reason))
         setattr(args, option.flag.lstrip("-"), 0 if option.flag == "-topnucs" else False)
 
 

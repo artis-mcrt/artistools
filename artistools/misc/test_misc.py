@@ -4186,7 +4186,7 @@ def test_reversed_wavelength_selection_stops_before_the_read(capsys: pytest.Capt
     ):
         main(argsraw=["plotlastpacketinteraction", str(modelfolder), "-lambdamin", "8000", "-lambdamax", "3000"])
     assert excinfo.value.code == 1
-    assert "-lambdamin 8000 is above -lambdamax 3000" in capsys.readouterr().err
+    assert "--lambdamin 8000 is above --lambdamax 3000" in capsys.readouterr().err
 
 
 def test_write_data_table_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
