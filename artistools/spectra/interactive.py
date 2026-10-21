@@ -16,6 +16,7 @@ import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
 
+from artistools.commands import get_standard_flag
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_model_folders
@@ -259,7 +260,7 @@ class ControlValues:
 
 
 def get_default_xunit(*, gamma: bool) -> str:
-    """Return the x unit that plotspectra takes when the command gives no -xunit."""
+    """Return the x unit that plotspectra takes when the command gives no --xunit."""
     return "kev" if gamma else "angstrom"
 
 
@@ -303,7 +304,7 @@ def get_thermal_emission_reason(values: "ControlValues") -> str | None:
     if values.gamma:
         return "A gamma packet has no thermal emission"
     if (groupby := values.groupby or get_default_groupby(gamma=values.gamma)) in {"nuc", "nucmass"}:
-        return f"-groupby {groupby} takes the nuclide of the pellet, and not an emission"
+        return f"--groupby {groupby} takes the nuclide of the pellet, and not an emission"
     if not values.showemission:
         return "An absorption always takes the last interaction, thus only an emission plot reads this choice"
     return None
@@ -322,7 +323,7 @@ def drop_hidden_emission_event(values: "ControlValues") -> "ControlValues":
 
 
 def get_default_groupby(*, gamma: bool) -> str:
-    """Return the -groupby that plotspectra takes for an emission plot when the command gives none."""
+    """Return the --groupby that plotspectra takes for an emission plot when the command gives none."""
     return "nuc" if gamma else "ion"
 
 
@@ -331,8 +332,8 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
 
     The two spectra have different units, x ranges, and series, thus the x unit, the x range, the y range, the
     grouping, and the locked series return to the defaults of the new spectrum. The data source stays. For a model
-    folder with no gamma_spec.out, plotspectra reads the packets of a gamma-ray spectrum. A -deltax of a different
-    unit does not apply, as for convert_xunit, and -deltalogx has no unit.
+    folder with no gamma_spec.out, plotspectra reads the packets of a gamma-ray spectrum. A --deltax of a different
+    unit does not apply, as for convert_xunit, and --deltalogx has no unit.
     """
     xunit = get_default_xunit(gamma=gamma)
     xmin, xmax = get_default_xlimits(xunit, gamma=gamma)
@@ -432,7 +433,7 @@ def get_model_times(modelfolder: Path, *, plotinvalidpart: bool) -> ModelTimes:
 
 
 def fits_each_model(modelfoldertimes: "Sequence[tuple[Path, ModelTimes]]", timedays: str) -> bool:
-    """Return True if each model clamps the -timedays value to timesteps inside the valid times of the model.
+    """Return True if each model clamps the --timedays value to timesteps inside the valid times of the model.
 
     plotspectra clamps the time to the timesteps of each model, and then it rejects days outside the valid times.
     """
@@ -457,7 +458,7 @@ def get_model_times_text(modeltimes: ModelTimes) -> str:
 
 
 def format_days(value: float) -> str:
-    """Return a time in days in fixed-point notation. The option -timedays reads the "-" of 1e-05 as a range."""
+    """Return a time in days in fixed-point notation. The option --timedays reads the "-" of 1e-05 as a range."""
     return np.format_float_positional(value, precision=DAYS_DECIMALS, trim="-")
 
 
@@ -477,7 +478,7 @@ def format_days_inside(value: float, bounds: tuple[float, float]) -> str:
 
 
 def get_timedays_argument(centre: float, width: float, bounds: tuple[float, float]) -> str:
-    """Return the -timedays value of a continuous time range of this width around the middle time.
+    """Return the --timedays value of a continuous time range of this width around the middle time.
 
     A width of zero gives the middle time alone, and plotspectra then reads the timestep that holds it. The range
     stays inside the bounds, which are the valid times of the first model.
@@ -521,7 +522,7 @@ def read_finite_number(text: str) -> float:
 def get_snapped_timedays_argument(
     tmids: "Sequence[float]", tstarts: "Sequence[float]", tends: "Sequence[float]", first: int, last: int
 ) -> str:
-    """Return the shortest -timedays value that selects the timesteps from first to last, as plotspectra clamps it.
+    """Return the shortest --timedays value that selects the timesteps from first to last, as plotspectra clamps it.
 
     A clamped range selects each timestep with its middle inside the range, thus each bound can be any value
     between two middles. One timestep takes a single time, which selects the timestep that holds it.
@@ -557,7 +558,7 @@ def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlV
     """Return the values with the x limits in a new unit of the x axis.
 
     A frequency or an energy increases where the wavelength decreases, thus the function sorts the limits again. A bin
-    width has no linear conversion between a wavelength and a frequency, thus the new unit takes no -deltax.
+    width has no linear conversion between a wavelength and a frequency, thus the new unit takes no --deltax.
 
     A minimum of 0 has no conversion between a wavelength and a frequency, because the range then has no end on that
     side. The new range thus goes past the other limit to the default limit of the new unit, or further. A change
@@ -610,9 +611,9 @@ def get_plot_python_code(viewer: "SpectrumViewer") -> str:
 
 
 def remove_series_lock(values: ControlValues) -> ControlValues:
-    """Return the values with no -fixedionlist.
+    """Return the values with no --fixedionlist.
 
-    plotspectra gives a missing -maxseriescount the length of -fixedionlist. A count equal to that length thus came
+    plotspectra gives a missing --maxseriescount the length of --fixedionlist. A count equal to that length thus came
     from the list, and without the list the count is the default count.
     """
     fromlist = bool(values.fixedionlist) and values.maxseriescount == len(values.fixedionlist)
@@ -626,11 +627,11 @@ def check_viewer_args(args: argparse.Namespace) -> None:
     exit_for_other_actions(
         "spectra",
         {
-            "-timedayslist": args.multispecplot,
+            "--timedayslist": args.multispecplot,
             "--makevspecpol": args.makevspecpol,
             "--averagevspecpolfiles": args.averagevspecpolfiles,
-            "--output_spectra": args.output_spectra,
-            f"-stokesparam {args.stokesparam}": "/" in args.stokesparam,
+            "--output-spectra": args.output_spectra,
+            f"--stokesparam {args.stokesparam}": "/" in args.stokesparam,
         },
     )
 
@@ -742,8 +743,8 @@ class SpectrumViewer:
             centre, width = float(f"{grid.tmids[grid.validtimesteps[len(grid.validtimesteps) // 2]]:.4g}"), 0.0
 
         actions = get_actions_by_flag(parser)
-        self.groupbychoices = [str(choice) for choice in actions["-groupby"].choices or ()]
-        self.yvariablechoices = [str(choice) for choice in actions["-yvariable"].choices or ()]
+        self.groupbychoices = [str(choice) for choice in actions["--groupby"].choices or ()]
+        self.yvariablechoices = [str(choice) for choice in actions["--yvariable"].choices or ()]
         self.defaultyscale: str = parser.get_default("defaultyscale")
         self.defaultyvariable: str = parser.get_default("yvariable")
         # the time of the command stays exact, because a rounded time can select a different timestep
@@ -847,67 +848,67 @@ class SpectrumViewer:
             timedays = get_snapped_timedays_argument(
                 grid.tmids, grid.tstarts, grid.tends, *get_grid_selection(grid, values)
             )
-        options = ["-t", timedays, *get_option_tokens("-xmin", values.xmin), *get_option_tokens("-xmax", values.xmax)]
+        options = ["-t", timedays, *get_option_tokens("--xmin", values.xmin), *get_option_tokens("--xmax", values.xmax)]
         if values.notimeclamp:
             options.append("--notimeclamp")
         if values.gamma:
             options.append("--gamma")
         if values.xunit != get_default_xunit(gamma=values.gamma):
-            options += ["-xunit", values.xunit]
+            options += ["--xunit", values.xunit]
         if values.logscalex:
             options.append("--logscalex")
         if values.yscale != self.defaultyscale:
-            options += ["-yscale", values.yscale]
+            options += ["--yscale", values.yscale]
         if values.ymin:
-            options += get_option_tokens("-ymin", values.ymin)
+            options += get_option_tokens("--ymin", values.ymin)
         if values.ymax:
-            options += get_option_tokens("-ymax", values.ymax)
+            options += get_option_tokens("--ymax", values.ymax)
         if values.showemission:
             options.append("--showemission")
         if values.showabsorption:
             options.append("--showabsorption")
         if values.groupby is not None:
-            options += ["-groupby", values.groupby]
+            options += ["--groupby", values.groupby]
         # the count applies only to an emission or absorption plot, thus the command of a different plot leaves it
         # out. plotspectra gives a missing count the length of -fixedionlist, or DEFAULT_MAXSERIESCOUNT without a list
         defaultcount = len(values.fixedionlist) if values.fixedionlist else DEFAULT_MAXSERIESCOUNT
         if (values.showemission or values.showabsorption) and values.maxseriescount != defaultcount:
-            options += ["-maxseriescount", str(values.maxseriescount)]
+            options += ["--maxseriescount", str(values.maxseriescount)]
         if (values.showemission or values.showabsorption) and values.nostack:
             options.append("--nostack")
         if values.deltax:
-            options += ["-deltax", values.deltax]
+            options += ["--deltax", values.deltax]
         if values.deltalogx:
-            options += ["-deltalogx", values.deltalogx]
+            options += ["--deltalogx", values.deltalogx]
         if values.datasource == "packets":
             options.append("--frompackets")
         if values.yvariable != self.defaultyvariable:
-            options += ["-yvariable", values.yvariable]
+            options += ["--yvariable", values.yvariable]
         for isgiven, flag in (
             (values.normalised, "--normalised"),
             (values.shownoise, "--shownoise"),
             (values.histogram, "--histogram"),
             (values.hidenetspectrum, "--hidenetspectrum"),
             (values.hideother, "--hideother"),
-            (values.emissionevent == "thermal", "--use_thermalemissiontype"),
-            (values.emissionevent == "sampled", "--use_sampledemissiontype"),
-            (values.directionkind == "phi", "--average_over_phi_angle"),
-            (values.directionkind == "theta", "--average_over_theta_angle"),
+            (values.emissionevent == "thermal", "--use-thermalemissiontype"),
+            (values.emissionevent == "sampled", "--use-sampledemissiontype"),
+            (values.directionkind == "phi", "--average-over-phi-angle"),
+            (values.directionkind == "theta", "--average-over-theta-angle"),
             # the angles of a direction go in the labels, thus the flag has no effect without a direction
             (values.usedegrees and bool(values.directionkind), "--usedegrees"),
         ):
             if isgiven:
                 options.append(flag)
         if values.directionkind:
-            directionflag = "-plotvspecpol" if values.directionkind == "vpkt" else "-plotviewingangle"
+            directionflag = "--plotvspecpol" if values.directionkind == "vpkt" else "--plotviewingangle"
             options += [directionflag, *(str(dirbin) for dirbin in values.directionbins)]
         if values.figwidthscale != 1.0:
-            options += ["-figwidthscale", format(values.figwidthscale, "g")]
+            options += ["--figwidthscale", format(values.figwidthscale, "g")]
         if values.dpi is not None:
-            options += ["-dpi", str(values.dpi)]
+            options += ["--dpi", str(values.dpi)]
         # a list option takes each word that follows it, thus it comes after every other option
         if values.fixedionlist and (values.showemission or values.showabsorption):
-            options += ["-fixedionlist", *values.fixedionlist]
+            options += ["--fixedionlist", *values.fixedionlist]
         # a command with no path reads the model in the working folder, thus that model needs no path
         paths = [] if values.spectra == DEFAULT_SPECTRA else list(values.spectra)
         return make_command_tokens([*paths, *get_option_row_tokens(values.otheroptions)], options)
@@ -1038,7 +1039,7 @@ class SpectrumViewer:
         return render_command(self, values, draw, keep, quiet=quiet)
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the -figwidthscale that gives the figure the shape of the plot area."""
+        """Return the --figwidthscale that gives the figure the shape of the plot area."""
         marginwidth = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
         return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
 
@@ -1132,7 +1133,7 @@ def get_choice_rejections(
     """Return why plotspectra rejects each choice of the emission controls.
 
     The tuple holds the reasons for:
-    - each -groupby choice;
+    - each --groupby choice;
     - each emission event;
     - --showemission;
     - --showabsorption.
@@ -1218,7 +1219,7 @@ def get_animation_frames(viewer: "SpectrumViewer") -> "tuple[int, Callable[[int]
 
 
 def get_binmode(values: ControlValues) -> str:
-    """Return the item of the bins box for the values: "", "deltax", "deltalogx", or a keyword of -deltalogx."""
+    """Return the item of the bins box for the values: "", "deltax", "deltalogx", or a keyword of --deltalogx."""
     if values.deltax:
         return "deltax"
     if values.deltalogx in DELTALOGX_SCALES:
@@ -1227,7 +1228,7 @@ def get_binmode(values: ControlValues) -> str:
 
 
 def get_series_name(path: str) -> str:
-    """Return the legend name of a spectrum that has no -label, with no time in the name."""
+    """Return the legend name of a spectrum that has no --label, with no time in the name."""
     if path_is_reference_spectrum(path):
         filepath = find_reference_spectrum_file_or_none(path)
         metadata = get_file_metadata(filepath) if filepath is not None else {}
@@ -1243,20 +1244,20 @@ def get_series_colours(spectra: "Sequence[str]", rows: OptionRows) -> dict[str, 
 def set_series_values(values: ControlValues, path: str, changes: "Mapping[str, str | None]") -> ControlValues:
     """Return the values with the value of each series style option in changes for one spectrum.
 
-    changes gives each option by its flag, e.g. -label. A value of None gives the spectrum the default of plotspectra,
+    changes gives each option by its flag, e.g. --label. A value of None gives the spectrum the default of plotspectra,
     and the other spectra keep their values.
     """
     return dc.replace(values, otheroptions=set_series_rows(values.otheroptions, values.spectra, path, changes))
 
 
 def get_timedays_token(viewer: SpectrumViewer, values: ControlValues) -> str:
-    """Return the -timedays value of the command of the values."""
+    """Return the --timedays value of the command of the values."""
     tokens = viewer.get_plot_tokens(values)
     return tokens[tokens.index("-t") + 1]
 
 
 def find_time_grid(viewer: SpectrumViewer, values: ControlValues, giventimedays: str) -> ControlValues:
-    """Return the values on the time grid of the first model whose timesteps give the -timedays of the command.
+    """Return the values on the time grid of the first model whose timesteps give the --timedays of the command.
 
     The command holds no choice of "Timesteps of", and plotspectra clamps the time to the timesteps of each model.
     Thus a command from the grid of a later model gave a different time on the grid of the first model.
@@ -1290,7 +1291,7 @@ def set_models(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) 
 
     timegrid names the model that gives the timesteps of the time controls, or "" for the first model. A new time
     grid, e.g. after a change of the order, keeps the middle and the count of timesteps of a snapped range. A
-    continuous range keeps its days. Each series style option, e.g. -label, stays on its spectrum.
+    continuous range keeps its days. Each series style option, e.g. --label, stays on its spectrum.
     """
     first, last = get_grid_selection(viewer.grid, viewer.values)
     if timegrid not in spectra:
@@ -1342,7 +1343,7 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Double-click</b> a spectrum", "Set the label and the line style of the spectrum"),
     ("<b>Right-click</b> a spectrum", "Move it, use its timesteps, copy its path, or open its folder"),
     ("<b>Drag</b> across the plot", "Select the x range"),
-    ("<b>Shift-drag</b> up or down the plot", "Select the y range (-ymin and -ymax)"),
+    ("<b>Shift-drag</b> up or down the plot", "Select the y range (--ymin and --ymax)"),
     ("<b>Double-click</b> the plot", "Get the default x range"),
     ("<b>Right-click</b> the plot", "Change the y scale, get the automatic y range, or copy or save the figure"),
 )
@@ -1473,7 +1474,7 @@ def open_window(
     xunitbox.addItems(list(XUNITS))
     xunitbox.setToolTip(helptexts.get("xunit", ""))
     xscalebox = make_xscale_box(helptexts)
-    add_row(xgrid, 0, [QtWidgets.QLabel("-xunit"), xunitbox, QtWidgets.QLabel("x scale:"), xscalebox])
+    add_row(xgrid, 0, [QtWidgets.QLabel("--xunit"), xunitbox, QtWidgets.QLabel("x scale:"), xscalebox])
     xrangeslider, set_xrange_positions, connect_xrange, _ = make_range_slider(SLIDER_STEPS)
     xminedit, xmaxedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
     # the label gives the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]". A new unit changes
@@ -1497,9 +1498,9 @@ def open_window(
     binmodebox = QtWidgets.QComboBox()
     for binmode, binmodetext, binmodetooltip in (
         ("", "Default bins", ""),
-        ("deltax", "-deltax", helptexts.get("deltax", "")),
-        ("deltalogx", "-deltalogx", helptexts.get("deltalogx", "")),
-        *((keyword, f"-deltalogx {keyword}", helptexts.get("deltalogx", "")) for keyword in DELTALOGX_SCALES),
+        ("deltax", "--deltax", helptexts.get("deltax", "")),
+        ("deltalogx", "--deltalogx", helptexts.get("deltalogx", "")),
+        *((keyword, f"--deltalogx {keyword}", helptexts.get("deltalogx", "")) for keyword in DELTALOGX_SCALES),
     ):
         binmodebox.addItem(binmodetext, binmode)
         binmodebox.setItemData(binmodebox.count() - 1, binmodetooltip, QtCore.Qt.ItemDataRole.ToolTipRole)
@@ -1553,7 +1554,7 @@ def open_window(
     assert isinstance(packetmodel, QtGui.QStandardItemModel)
     gammaitem = packetmodel.item(1)
     # the packets and the scale also describe the y axis, thus the three boxes share one label
-    add_row(axesgrid, 0, [QtWidgets.QLabel("-yvariable"), yvariablebox, packetbox, yscalebox, normalisedcheck])
+    add_row(axesgrid, 0, [QtWidgets.QLabel("--yvariable"), yvariablebox, packetbox, yscalebox, normalisedcheck])
     # the histogram draws the y value of each bin, and the band gives the uncertainty of each y value
     histogramcheck = QtWidgets.QCheckBox("--histogram")
     histogramcheck.setToolTip(helptexts.get("histogram", ""))
@@ -1566,7 +1567,7 @@ def open_window(
     absorptioncheck = QtWidgets.QCheckBox("--showabsorption")
     groupbybox = QtWidgets.QComboBox()
     groupbybox.addItems(viewer.groupbychoices)
-    countlabel = QtWidgets.QLabel("-maxseriescount")
+    countlabel = QtWidgets.QLabel("--maxseriescount")
     countbox = QtWidgets.QSpinBox()
     countbox.setRange(1, 200)
     for widget, dest in (
@@ -1582,7 +1583,7 @@ def open_window(
     lockbutton.setCheckable(True)
     lockbutton.setToolTip(
         "Keep the series of the plot and their colours when the time or the x range changes. The command gives the"
-        " series with -fixedionlist."
+        " series with --fixedionlist."
     )
     add_row(emissiongrid, 0, [emissioncheck, absorptioncheck, nostackcheck])
     hidenetcheck = QtWidgets.QCheckBox("--hidenetspectrum")
@@ -1595,8 +1596,8 @@ def open_window(
         emissioneventbox.addItem(text, emissionevent)
     # the box writes one of two flags, thus its label names no flag
     emissioneventbox.setToolTip(
-        "For each packet, the selected emission sets the emission series of the packet (--use_thermalemissiontype or"
-        " --use_sampledemissiontype). A shell grouping needs the position of this emission, and the packets hold no"
+        "For each packet, the selected emission sets the emission series of the packet (--use-thermalemissiontype or"
+        " --use-sampledemissiontype). A shell grouping needs the position of this emission, and the packets hold no"
         " position of the sampled emission"
     )
     emissioneventmodel = emissioneventbox.model()
@@ -1607,7 +1608,7 @@ def open_window(
     emissionoptionslayout.setContentsMargins(0, 0, 0, 0)
     emissionoptionslayout.setSpacing(ROW_SPACING)
     emissionoptionslayout.addLayout(
-        make_row_layout([QtWidgets.QLabel("-groupby"), groupbybox, countlabel, countbox, lockbutton])
+        make_row_layout([QtWidgets.QLabel("--groupby"), groupbybox, countlabel, countbox, lockbutton])
     )
     emissionoptionslayout.addLayout(
         make_row_layout([hidenetcheck, hideothercheck, QtWidgets.QLabel("Event:"), emissioneventbox])
@@ -1670,7 +1671,7 @@ def open_window(
     )
     # the figure scale is a property of the figure, thus it goes in the Figure section with the format and the
     # resolution
-    add_row(figuresection.grid, 1, [QtWidgets.QLabel("-figscale"), figscalebox])
+    add_row(figuresection.grid, 1, [QtWidgets.QLabel("--figscale"), figscalebox])
 
     signalwidgets: list[QtWidgets.QWidget] = [
         figscalebox,
@@ -1727,7 +1728,7 @@ def open_window(
         xunit = get_xunit(values.xunit)
         xrangelabel.setText(f"{get_x_quantity_label(xunit)}:")
         xheader.setText(f"Horizontal axis: {get_x_quantity_label(xunit)}")
-        binmodebox.setItemText(binmodebox.findData("deltax"), f"-deltax [{xunit.label}]")
+        binmodebox.setItemText(binmodebox.findData("deltax"), f"--deltax [{xunit.label}]")
         rangesunit = (values.xunit, values.gamma)
 
     # each bin mode keeps its decimals, its range, and its default width. The box keeps the last width of each mode
@@ -1739,7 +1740,7 @@ def open_window(
         if binmode in DELTALOGX_SCALES:
             # the disabled box shows the value of the keyword in the drawn plot
             decimals, low, high, default = binwidthranges["deltalogx"]
-            binwidthbox.setToolTip(f"The value of -deltalogx {binmode} in the plot")
+            binwidthbox.setToolTip(f"The value of --deltalogx {binmode} in the plot")
             binwidthbox.setDecimals(decimals)
             binwidthbox.setRange(low, high)
             binwidthbox.setValue(viewer.drawndeltalogx or default)
@@ -1830,7 +1831,7 @@ def open_window(
                 item.setToolTip(
                     reason
                     or (
-                        f"--{dest}: {helptexts.get(dest, '')}"
+                        f"{get_standard_flag(f'--{dest}')}: {helptexts.get(dest, '')}"
                         if dest
                         else "The last emission or scattering of each packet"
                     )
@@ -1860,8 +1861,8 @@ def open_window(
             rows.append(
                 SeriesRow(
                     path=path,
-                    name=style["-label"] or get_series_name(path),
-                    labelled=style["-label"] is not None,
+                    name=style["--label"] or get_series_name(path),
+                    labelled=style["--label"] is not None,
                     itemtext=itemtext,
                     tooltip=(
                         f"{itemtext}\n{get_model_times_text(modeltimes[path])}" if path in modeltimes else itemtext
@@ -1979,7 +1980,7 @@ def open_window(
             set_option_rows(values.otheroptions)
             set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
             set_spin_value(
-                figscalebox, float((get_row_values(values.otheroptions, "-figscale") or (str(defaultfigscale),))[0])
+                figscalebox, float((get_row_values(values.otheroptions, "--figscale") or (str(defaultfigscale),))[0])
             )
             set_command_text(commandtext, viewer.get_command())
             set_command_text(pythontext, get_plot_python_code(viewer))
@@ -2196,7 +2197,7 @@ def open_window(
     def on_emission_options() -> None:
         """Apply the check boxes and the boxes of choices of the emission plot and of the data source.
 
-        The boxes of -maxseriescount and of the bin width round and clamp a value, e.g. -deltax 12.34567 to 12.346.
+        The boxes of --maxseriescount and of the bin width round and clamp a value, e.g. --deltax 12.34567 to 12.346.
         Thus only their own handlers read them, and a different control keeps the values of the command.
         """
         groupby = groupbybox.currentText()
@@ -2237,7 +2238,7 @@ def open_window(
         apply(dc.replace(viewer.values, maxseriescount=count))
 
     def apply_bins(binmode: str, width: str) -> None:
-        """Apply a bin mode of the bins box, and the width of the bin mode -deltax or -deltalogx."""
+        """Apply a bin mode of the bins box, and the width of the bin mode --deltax or --deltalogx."""
         apply(
             dc.replace(
                 viewer.values,
@@ -2307,10 +2308,10 @@ def open_window(
             return
         # the colour of the popup for "Default" is the colour that the spectrum has with no -color of its own
         defaultcolours = get_series_colours(
-            values.spectra, set_series_values(values, path, {"-color": None}).otheroptions
+            values.spectra, set_series_values(values, path, {"--color": None}).otheroptions
         )
         style = get_series_style(values.otheroptions, values.spectra, path)
-        name = style["-label"] or get_series_name(path)
+        name = style["--label"] or get_series_name(path)
 
         def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
             # a change applies to the current values, because Play can move the time while the popup is open. A value
@@ -2344,7 +2345,7 @@ def open_window(
         window,
         partial(show_status_note, statusbar),
         "The ARTIS models and the observed spectra of the plot, in the order of the command. The order sets the"
-        " -label and the style of each series. The time controls read the timesteps of the ARTIS model with ⏱."
+        " --label and the style of each series. The time controls read the timesteps of the ARTIS model with ⏱."
         " Click the up or the down arrow, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the"
         " order. The command gives a file from the reference data of artistools by its name alone.",
         ReferenceData(

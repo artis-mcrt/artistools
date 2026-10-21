@@ -201,20 +201,20 @@ MODELFORMAT_DESTS: t.Final = frozenset({"classicartis"})
 # the ways to select the cells of the plot, by the key of the selector of the window
 GEOMETRY_MODES: t.Final = MappingProxyType({
     "all": "The cells inside the sphere of radius v_max",
-    "cells": "Selected cells (-cell)",
-    "alongaxis": "A half line of cells from the centre along an axis (-readonlymgi alongaxis)",
-    "cone": "The cells in a cone around a half-axis (-readonlymgi cone)",
-    "plane": "A 2D plane slice of cells as an image (-slice)",
-    "line": "A full line of cells through the grid along an axis (-slice)",
-    "average": "The mean over rings around the z axis as an image (-dimensionreduce 2)",
-    "projection": "The mean along an axis of each line of cells as an image (-projection)",
+    "cells": "Selected cells (--cell)",
+    "alongaxis": "A half line of cells from the centre along an axis (--readonlymgi alongaxis)",
+    "cone": "The cells in a cone around a half-axis (--readonlymgi cone)",
+    "plane": "A 2D plane slice of cells as an image (--slice)",
+    "line": "A full line of cells through the grid along an axis (--slice)",
+    "average": "The mean over rings around the z axis as an image (--dimensionreduce 2)",
+    "projection": "The mean along an axis of each line of cells as an image (--projection)",
 })
 
 # the modes whose plot is a colour image of a snapshot
 IMAGE_MODES: t.Final = frozenset({"plane", "average", "projection"})
 
 # the rows of the option table that a mode of the geometry sets
-GEOMETRY_FLAGS: t.Final = ("-slice", "-dimensionreduce", "-projection", "-readonlymgi", "-axis", "-coneangle")
+GEOMETRY_FLAGS: t.Final = ("--slice", "--dimensionreduce", "--projection", "--readonlymgi", "--axis", "--coneangle")
 
 # the planes of -slice through the origin, by the axis that is normal to the plane
 PLANE_OF_NORMAL: t.Final = MappingProxyType({"z": "xy", "y": "xz", "x": "yz"})
@@ -222,8 +222,8 @@ PLANE_OF_NORMAL: t.Final = MappingProxyType({"z": "xy", "y": "xz", "x": "yz"})
 # the ways to smooth each line, by the key of the selector of the window
 SMOOTHING_MODES: t.Final = MappingProxyType({
     "none": "No smoothing",
-    "movingavg": "Moving average (-filtermovingavg)",
-    "savgol": "Savitzky-Golay filter (-filtersavgol)",
+    "movingavg": "Moving average (--filtermovingavg)",
+    "savgol": "Savitzky-Golay filter (--filtersavgol)",
 })
 
 # the number of levels of each ion that the choices of a level population give, from the lowest NLTE level up
@@ -364,7 +364,7 @@ def get_data_key(args: argparse.Namespace) -> str:
     """Return a key of the arguments that select the data of a plot, without the series styles and DRAW_DESTS.
 
     The data has no style, thus two commands with the same key read the same data. The window then draws the new style
-    with the data of the last plot. A new width of the figure, e.g. -figwidthscale, also reads no data.
+    with the data of the last plot. A new width of the figure, e.g. --figwidthscale, also reads no data.
     """
 
     # the positional items also hold the folder, which can contain the mark, e.g. user@host:path. The window has one
@@ -393,7 +393,7 @@ def check_viewer_args(args: argparse.Namespace) -> None:
 
 
 def get_plotitem_tokens(plotitems: "Sequence[t.Any]") -> tuple[str, ...]:
-    """Return the -plot tokens of the items of one subplot of the default plot list.
+    """Return the --plot tokens of the items of one subplot of the default plot list.
 
     A directive has the form ["_yscale", "log"], and it becomes "yscale=log". A type of series has the form
     ["populations", ["Fe II", "Fe III"]], and its names follow it.
@@ -426,7 +426,7 @@ def get_estimator_timesteps(modelpath: Path, estimators: pl.LazyFrame) -> list[i
 def get_default_xvariable(tokens: "Sequence[str]") -> str:
     """Return the x variable that plotestimators takes for command tokens with no -x.
 
-    -slice and -dimensionreduce set the x variable of a snapshot. Otherwise a command with no time plots against
+    --slice and --dimensionreduce set the x variable of a snapshot. Otherwise a command with no time plots against
     time, and a command with a time plots a snapshot against the velocity. The plot of tokens that plotestimators
     rejects gives the message, thus this function then returns the velocity.
     """
@@ -452,7 +452,7 @@ def get_time_text(tmids: "Sequence[float]", values: ControlValues) -> str:
 
 
 def get_single_cell(cells: str) -> int | None:
-    """Return the cell of a -cell text that names one cell, or None for a list, a range, or no cell.
+    """Return the cell of a --cell text that names one cell, or None for a list, a range, or no cell.
 
     str.isdigit accepts a superscript digit such as "²", which int rejects, thus the test reads ASCII digits alone.
     """
@@ -554,19 +554,19 @@ def get_geometry_choices(dimensions: int) -> list[str]:
 def get_geometry_mode(values: "ControlValues") -> str:
     """Return the key in GEOMETRY_MODES of the selection of the cells of the values."""
     rows = values.otheroptions
-    if slicevalues := get_row_values(rows, "-slice"):
+    if slicevalues := get_row_values(rows, "--slice"):
         return "line" if "," in slicevalues[0] else "plane"
-    if get_row_values(rows, "-projection"):
+    if get_row_values(rows, "--projection"):
         return "projection"
-    if get_row_values(rows, "-dimensionreduce") == ("2",):
+    if get_row_values(rows, "--dimensionreduce") == ("2",):
         return "average"
-    if readonlymgi := get_row_values(rows, "-readonlymgi"):
+    if readonlymgi := get_row_values(rows, "--readonlymgi"):
         return readonlymgi[0]
     return "cells" if values.cells else "all"
 
 
 def get_slice_parts(slicetext: str) -> tuple[str, str]:
-    """Return the plane and the offset along its normal of a -slice plane, e.g. ("xy", "-0.2c") for "z=-0.2c".
+    """Return the plane and the offset along its normal of a --slice plane, e.g. ("xy", "-0.2c") for "z=-0.2c".
 
     parse_slice_argument of plotestimators reads the same forms, e.g. "zx" for the plane xz and "z = -0.2c".
     """
@@ -580,19 +580,19 @@ def get_slice_parts(slicetext: str) -> tuple[str, str]:
 
 
 def get_slice_text(plane: str, offset: str) -> str:
-    """Return the -slice text of a plane with an offset along its normal. An empty offset gives the plane."""
+    """Return the --slice text of a plane with an offset along its normal. An empty offset gives the plane."""
     normal = next(axis for axis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
     return f"{normal}={offset.strip()}" if offset.strip() else plane
 
 
 def get_line_axis(slicetext: str) -> str:
-    """Return the axis along a -slice line, which is the axis that the line gives no condition for."""
+    """Return the axis along a --slice line, which is the axis that the line gives no condition for."""
     conditionaxes = {condition.partition("=")[0].strip() for condition in slicetext.lower().split(",")}
     return next((axis for axis in "xyz" if axis not in conditionaxes), "x")
 
 
 def get_slice_conditions(slicetext: str) -> dict[str, str]:
-    """Return the position on each axis of a -slice condition, e.g. {"z": "0.1c", "y": "0"} for "z=0.1c,y=0"."""
+    """Return the position on each axis of a --slice condition, e.g. {"z": "0.1c", "y": "0"} for "z=0.1c,y=0"."""
     conditions: dict[str, str] = {}
     for condition in slicetext.lower().split(","):
         name, equals, position = (part.strip() for part in condition.partition("="))
@@ -623,7 +623,7 @@ def format_velocity(velocity_cmps: float, unit: str) -> str:
 
 
 def get_cell_edges(axisname: str, modelmeta: "Mapping[str, t.Any]") -> "npt.NDArray[np.float64]":
-    """Return the edges of the cells of a 3D model on one axis [cm/s], from -vmax to vmax."""
+    """Return the edges of the cells of a 3D model on one axis [cm/s], from --vmax to vmax."""
     vmax_cmps = float(modelmeta["vmax_cmps"])
     edges = np.linspace(-vmax_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]) + 1)
     # the middle edge of an even number of cells lies at zero, and the arithmetic leaves a rounding error there
@@ -633,7 +633,7 @@ def get_cell_edges(axisname: str, modelmeta: "Mapping[str, t.Any]") -> "npt.NDAr
 def get_layer_bounds(axisname: str, positiontext: str, modelmeta: "Mapping[str, t.Any]") -> str:
     """Return the edges of the plane slice of cells that holds a position on an axis, e.g. "-0.01c ≤ z < 0.01c".
 
-    plotestimators reads this plane slice for -slice. A number with no unit is in km/s, as plotestimators reads it.
+    plotestimators reads this plane slice for --slice. A number with no unit is in km/s, as plotestimators reads it.
     The edges take km/s for a position in km/s, and c for each other position. plotestimators rejects a position
     outside the grid, thus the text then gives the range of the grid.
     """
@@ -665,12 +665,12 @@ def get_geometry_description(
 
     x, y, and z are the velocity coordinates of the grid, and (x_c, y_c, z_c) is the centre of a cell. The edges of
     the cells come from the grid of the model, thus the text gives the range of each coordinate that the selected
-    cells cover. plotestimators selects the same cells. axis and coneangle are the values of -axis and -coneangle.
+    cells cover. plotestimators selects the same cells. axis and coneangle are the values of --axis and --coneangle.
     """
     mode = get_geometry_mode(values)
     dimensions = int(modelmeta["dimensions"])
     vmaxtext = format_velocity(float(modelmeta["vmax_cmps"]), "c")
-    slicetext = (get_row_values(values.otheroptions, "-slice") or ("",))[0]
+    slicetext = (get_row_values(values.otheroptions, "--slice") or ("",))[0]
     if mode == "all":
         if dimensions == 1:
             return ""
@@ -723,7 +723,7 @@ def get_geometry_description(
         xtext = f"v_{lineaxis}" if values.x == f"vel_{lineaxis}_mid_on_c" else f"-x {values.x}"
         return f"The full line of cells through the grid along the {lineaxis} axis with {bounds}, against {xtext}."
     if mode == "projection":
-        projectionaxis = (get_row_values(values.otheroptions, "-projection") or ("z",))[0]
+        projectionaxis = (get_row_values(values.otheroptions, "--projection") or ("z",))[0]
         first, second = (other for other in "xyz" if other != projectionaxis)
         width = format_velocity(float(np.diff(get_cell_edges(first, modelmeta))[0]), "c")
         return (
@@ -752,22 +752,22 @@ def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: 
     of a snapshot, and a plot against time becomes a snapshot.
     """
     rows = values.otheroptions
-    keptaxis = get_row_values(rows, "-axis") if mode in {"alongaxis", "cone"} else None
-    keptcone = get_row_values(rows, "-coneangle") if mode == "cone" else None
-    oldslice = (get_row_values(rows, "-slice") or ("",))[0]
-    oldprojection = get_row_values(rows, "-projection") or ("z",)
+    keptaxis = get_row_values(rows, "--axis") if mode in {"alongaxis", "cone"} else None
+    keptcone = get_row_values(rows, "--coneangle") if mode == "cone" else None
+    oldslice = (get_row_values(rows, "--slice") or ("",))[0]
+    oldprojection = get_row_values(rows, "--projection") or ("z",)
     changes: dict[str, tuple[str, ...] | None] = dict.fromkeys(GEOMETRY_FLAGS)
-    changes |= {"-axis": keptaxis, "-coneangle": keptcone}
+    changes |= {"--axis": keptaxis, "--coneangle": keptcone}
     if mode in {"alongaxis", "cone"}:
-        changes["-readonlymgi"] = (mode,)
+        changes["--readonlymgi"] = (mode,)
     elif mode == "plane":
-        changes["-slice"] = (oldslice if oldslice and "," not in oldslice else "xy",)
+        changes["--slice"] = (oldslice if oldslice and "," not in oldslice else "xy",)
     elif mode == "line":
-        changes["-slice"] = (oldslice if "," in oldslice else "z=0,y=0",)
+        changes["--slice"] = (oldslice if "," in oldslice else "z=0,y=0",)
     elif mode == "average":
-        changes["-dimensionreduce"] = ("2",)
+        changes["--dimensionreduce"] = ("2",)
     elif mode == "projection":
-        changes["-projection"] = oldprojection
+        changes["--projection"] = oldprojection
     cells = (
         (values.cells or (str(viewer.modeldata.cells[0]) if viewer.modeldata.cells else "")) if mode == "cells" else ""
     )
@@ -779,16 +779,16 @@ def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: 
 
 
 def get_subplots_per_row(rows: OptionRows) -> int:
-    """Return the number of subplots or image panels in each row, which -subplotsperrow gives, or 1."""
-    values = get_row_values(rows, "-subplotsperrow")
+    """Return the number of subplots or image panels in each row, which --subplotsperrow gives, or 1."""
+    values = get_row_values(rows, "--subplotsperrow")
     return max(int(values[0]), 1) if values and values[0].isdecimal() else 1
 
 
 def get_smoothing(rows: OptionRows) -> tuple[str, tuple[int, ...]]:
     """Return the key in SMOOTHING_MODES of the smoothing of the rows, and its numbers."""
-    if (savgol := get_row_values(rows, "-filtersavgol")) and all(value.lstrip("-").isdecimal() for value in savgol):
+    if (savgol := get_row_values(rows, "--filtersavgol")) and all(value.lstrip("-").isdecimal() for value in savgol):
         return "savgol", tuple(int(value) for value in savgol)
-    movingavg = get_row_values(rows, "-filtermovingavg")
+    movingavg = get_row_values(rows, "--filtermovingavg")
     if movingavg and movingavg[0].isdecimal() and int(movingavg[0]) > 1:
         return "movingavg", (int(movingavg[0]),)
     return "none", ()
@@ -799,8 +799,8 @@ def set_smoothing(rows: OptionRows, mode: str, numbers: "Sequence[int]") -> Opti
     return set_row_values(
         rows,
         {
-            "-filtermovingavg": (str(numbers[0]),) if mode == "movingavg" else None,
-            "-filtersavgol": tuple(str(number) for number in numbers[:2]) if mode == "savgol" else None,
+            "--filtermovingavg": (str(numbers[0]),) if mode == "movingavg" else None,
+            "--filtersavgol": tuple(str(number) for number in numbers[:2]) if mode == "savgol" else None,
         },
     )
 
@@ -833,10 +833,10 @@ def get_level_names(modelpath: Path, timestep: int, cell: int) -> list[str]:
 
 
 def cells_apply(values: ControlValues) -> bool:
-    """Return True if -cell selects the cells of the plot of the values.
+    """Return True if --cell selects the cells of the plot of the values.
 
-    -slice and -dimensionreduce 2 select the cells, thus plotestimators rejects -cell with them. -readonlymgi replaces
-    -cell with the cells along an axis or in a cone.
+    --slice and --dimensionreduce 2 select the cells, thus plotestimators rejects --cell with them. --readonlymgi
+    replaces --cell with the cells along an axis or in a cone.
     """
     return get_geometry_mode(values) in {"all", "cells"}
 
@@ -1000,24 +1000,24 @@ class EstimatorViewer:
         """Return the x variable that plotestimators takes for a command with no -x, the time, and the options."""
         key = (timegiven, otheroptions)
         if key not in self.defaultxvariables:
-            timetokens = ["-timestep", str(self.modeldata.validtimesteps[0])] if timegiven else []
+            timetokens = ["--timestep", str(self.modeldata.validtimesteps[0])] if timegiven else []
             self.defaultxvariables[key] = get_default_xvariable([*timetokens, *get_option_row_tokens(otheroptions)])
         return self.defaultxvariables[key]
 
     def get_time_tokens(self, values: ControlValues) -> list[str]:
-        """Return the -timestep option of the values, or no option for a plot against time over all the timesteps."""
+        """Return the --timestep option of the values, or no option for a plot against time over all the timesteps."""
         if is_evolution(values) and (values.first, values.last) == (
             self.modeldata.validtimesteps[0],
             self.modeldata.validtimesteps[-1],
         ):
             return []
-        return ["-timestep", str(values.first) if values.first == values.last else f"{values.first}-{values.last}"]
+        return ["--timestep", str(values.first) if values.first == values.last else f"{values.first}-{values.last}"]
 
     def get_plot_tokens(self, values: ControlValues | None = None, modeltoken: str | None = None) -> list[str]:
         """Return the plotestimators arguments of the values, or of the current values if the caller gives none.
 
-        The first subplot comes before the folder, e.g. "Te TR mymodel", and each other subplot follows -plot at the
-        end. A -plot takes each word up to the next flag, thus nothing can follow the last -plot. The command gives
+        The first subplot comes before the folder, e.g. "Te TR mymodel", and each other subplot follows --plot at the
+        end. A --plot takes each word up to the next flag, thus nothing can follow the last --plot. The command gives
         each subplot also when the subplots are the default of plotestimators. The command then states the plot in
         full, and a later change of the default does not change it. modeltoken replaces the folder of the command,
         e.g. the full path of the working folder for the next start.
@@ -1035,13 +1035,13 @@ class EstimatorViewer:
         if values.x != self.get_default_xvariable(values.otheroptions, timegiven=bool(timetokens)):
             tokens += ["-x", values.x]
         if values.cells:
-            tokens += get_option_tokens("-cell", values.cells)
+            tokens += get_option_tokens("--cell", values.cells)
         if values.xmin:
-            tokens += get_option_tokens("-xmin", values.xmin)
+            tokens += get_option_tokens("--xmin", values.xmin)
         if values.xmax:
-            tokens += get_option_tokens("-xmax", values.xmax)
+            tokens += get_option_tokens("--xmax", values.xmax)
         if values.xbins:
-            tokens += get_option_tokens("-xbins", values.xbins)
+            tokens += get_option_tokens("--xbins", values.xbins)
         if values.markers:
             tokens.append("--markers")
         if values.histogram:
@@ -1049,12 +1049,12 @@ class EstimatorViewer:
         if values.colorbyion:
             tokens.append("--colorbyion")
         if values.figwidthscale != 1.0:
-            tokens += ["-figwidthscale", format(values.figwidthscale, "g")]
+            tokens += ["--figwidthscale", format(values.figwidthscale, "g")]
         if values.dpi is not None:
-            tokens += ["-dpi", str(values.dpi)]
+            tokens += ["--dpi", str(values.dpi)]
         tokens += get_option_row_tokens(values.otheroptions)
         for subplot in subplots[1:] if firstpositional else subplots:
-            tokens += ["-plot", *subplot]
+            tokens += ["--plot", *subplot]
         return tokens
 
     def get_command(self) -> str:
@@ -1125,7 +1125,7 @@ class EstimatorViewer:
     def step_cell(self, step: int) -> ControlValues | None:
         """Return the values with the next or the previous cell of the model, or None after the last cell.
 
-        A plot of all the cells, or of a list of cells, moves to the first or the last cell. If -cell does not select
+        A plot of all the cells, or of a list of cells, moves to the first or the last cell. If --cell does not select
         the cells of the plot, e.g. for a plane, the result is None.
         """
         if not self.modeldata.cells or not cells_apply(self.values):
@@ -1222,10 +1222,10 @@ class EstimatorViewer:
         return message
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the -figwidthscale that gives the figure the shape of the plot area.
+        """Return the --figwidthscale that gives the figure the shape of the plot area.
 
         A colour image keeps its aspect, thus a wider figure only adds space at the sides of the images. The figure of
-        the images has the shape of its content at -figwidthscale 1, and the window scales all the figure to the area.
+        the images has the shape of its content at --figwidthscale 1, and the window scales all the figure to the area.
         """
         if self.isimage:
             return 1.0
@@ -1235,7 +1235,7 @@ class EstimatorViewer:
         return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
 
     def get_xlimit_texts(self, low: float, high: float) -> tuple[str, str] | None:
-        """Return the -xmin and -xmax texts of two positions on the x axis for a short command, or None for no width."""
+        """Return the --xmin and --xmax texts of two positions on the x axis, or None if the positions have no width."""
         return get_short_limits(low * self.xlimitscale, high * self.xlimitscale)
 
 
@@ -1710,17 +1710,17 @@ DEFAULT_POPTYPE: t.Final = "absolute"
 def move_poptype_to_subplots(
     subplots: "Sequence[tuple[str, ...]]", otheroptions: OptionRows, estimatorcolumns: "Collection[str]"
 ) -> tuple[tuple[tuple[str, ...], ...], OptionRows]:
-    """Return the subplots and the rows of the option table with -ionpoptype in each populations subplot.
+    """Return the subplots and the rows of the option table with --ionpoptype in each populations subplot.
 
-    The window sets the quantity of the ions for each populations subplot (ionpoptype=). Thus -ionpoptype of the
+    The window sets the quantity of the ions for each populations subplot (ionpoptype=). Thus --ionpoptype of the
     command goes to each populations subplot that has no ionpoptype= of its own. With no populations subplot, the row
     stays, and a populations subplot that the user adds later takes it.
     """
-    poptype = next((values[0] for flag, values in otheroptions if flag == "-ionpoptype" and values), None)
+    poptype = next((values[0] for flag, values in otheroptions if flag == "--ionpoptype" and values), None)
     ispopulations = [get_subplot_seriestype(subplot, estimatorcolumns) == "populations" for subplot in subplots]
     if poptype is None or not any(ispopulations):
         return tuple(subplots), otheroptions
-    rows = tuple((flag, values) for flag, values in otheroptions if flag != "-ionpoptype")
+    rows = tuple((flag, values) for flag, values in otheroptions if flag != "--ionpoptype")
     return tuple(
         (*subplot, f"ionpoptype={poptype}")
         if populations and poptype != DEFAULT_POPTYPE and get_directive_value(subplot, "ionpoptype") is None
@@ -1834,7 +1834,7 @@ def get_snapshot_values(viewer: EstimatorViewer, xdata: float) -> ControlValues 
 
 
 def get_xunit_text(xlimitscale: float, xvariable: str) -> str:
-    """Return the unit of -xmin and -xmax, e.g. " [km/s]", or an empty text for a variable with no unit.
+    """Return the unit of --xmin and --xmax, e.g. " [km/s]", or an empty text for a variable with no unit.
 
     A scale of the x limits shows that the axis gives v/c and the options take km/s.
     """
@@ -1844,7 +1844,7 @@ def get_xunit_text(xlimitscale: float, xvariable: str) -> str:
 def replace_option_rows(viewer: EstimatorViewer, values: ControlValues, otheroptions: OptionRows) -> ControlValues:
     """Return the values with new rows of the option table.
 
-    An option such as -slice changes the default x of a snapshot. An x that equals the old default follows the new
+    An option such as --slice changes the default x of a snapshot. An x that equals the old default follows the new
     default, because the command then gives no -x, as plotestimators does.
     """
     newvalues = dc.replace(values, otheroptions=otheroptions)
@@ -2130,7 +2130,7 @@ def open_window(
     celledit.setPlaceholderText("e.g. 3 or 3-7")
     celledit.setToolTip(helptexts.get("modelgridindex", ""))
     celllabel = QtWidgets.QLabel()
-    cellnamelabel = QtWidgets.QLabel("-cell")
+    cellnamelabel = QtWidgets.QLabel("--cell")
     axisbox = QtWidgets.QComboBox()
     axisbox.addItems(["+x", "-x", "+y", "-y", "+z", "-z"])
     axisbox.setToolTip(helptexts.get("axis", ""))
@@ -2162,7 +2162,7 @@ def open_window(
         row.setLayout(rowlayout)
         return row
 
-    axisparameters = make_parameter_row([QtWidgets.QLabel("-axis"), axisbox, coneanglelabel, coneanglebox])
+    axisparameters = make_parameter_row([QtWidgets.QLabel("--axis"), axisbox, coneanglelabel, coneanglebox])
     # show_blocked_values names the axis that is normal to the plane, e.g. "at z ="
     planeatlabel = QtWidgets.QLabel()
     planeparameters = make_parameter_row([QtWidgets.QLabel("Plane:"), planebox, planeatlabel, offsetedit])
@@ -2191,10 +2191,10 @@ def open_window(
         set_search_completion(completer)
     xbox.setToolTip(helptexts.get("x", ""))
     xminedit, xmaxedit, xbinsedit = QtWidgets.QLineEdit(), QtWidgets.QLineEdit(), QtWidgets.QLineEdit()
-    xminlabel, xmaxlabel = QtWidgets.QLabel("-xmin"), QtWidgets.QLabel("-xmax")
+    xminlabel, xmaxlabel = QtWidgets.QLabel("--xmin"), QtWidgets.QLabel("--xmax")
     # show_values adds the unit to the text, thus the tooltip gives the flag here
-    xminlabel.setToolTip("-xmin")
-    xmaxlabel.setToolTip("-xmax")
+    xminlabel.setToolTip("--xmin")
+    xmaxlabel.setToolTip("--xmax")
     zoomtip = " Drag across a plot to select a range. Double-click a plot to show the range of the data."
     for edit in (xminedit, xmaxedit):
         edit.setFixedWidth(100)
@@ -2214,7 +2214,7 @@ def open_window(
     colorbyioncheck.setToolTip(f"{helptexts.get('colorbyion', '')} (--colorbyion)")
     histogramcheck = QtWidgets.QCheckBox("--histogram")
     histogramcheck.setToolTip(helptexts.get("histogram", ""))
-    add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("-xbins"), xbinsedit])
+    add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("--xbins"), xbinsedit])
     add_row(xgrid, 1, [xminlabel, xminedit, xmaxlabel, xmaxedit])
     add_row(xgrid, 2, [markerscheck, colorbyioncheck, histogramcheck])
     smoothingbox = QtWidgets.QComboBox()
@@ -2311,15 +2311,17 @@ def open_window(
         box.setKeyboardTracking(False)
     add_row(appearancegrid, 0, list(appearancechecks.values()))
     add_row(
-        appearancegrid, 1, [QtWidgets.QLabel("-labelfontsize"), fontsizebox, QtWidgets.QLabel("-figscale"), figscalebox]
+        appearancegrid,
+        1,
+        [QtWidgets.QLabel("--labelfontsize"), fontsizebox, QtWidgets.QLabel("--figscale"), figscalebox],
     )
     add_row(
         appearancegrid,
         2,
         [
-            QtWidgets.QLabel("-subplotsperrow"),
+            QtWidgets.QLabel("--subplotsperrow"),
             subplotsperrowbox,
-            QtWidgets.QLabel("-linewidthscale"),
+            QtWidgets.QLabel("--linewidthscale"),
             linewidthscalebox,
         ],
     )
@@ -2886,13 +2888,13 @@ def open_window(
                 )
 
     def get_linewidthscale(rows: OptionRows) -> float:
-        """Return the -linewidthscale of the option rows, or the default for no row or a value that is not a number.
+        """Return the --linewidthscale of the option rows, or the default for no row or a value that is not a number.
 
         The rows keep a value that the worker rejects until the plot ends.
         """
         default = float(viewer.parser.get_default("linewidthscale"))
         try:
-            return float((get_row_values(rows, "-linewidthscale") or (default,))[0])
+            return float((get_row_values(rows, "--linewidthscale") or (default,))[0])
         except ValueError:
             return default
 
@@ -2918,14 +2920,14 @@ def open_window(
                 # the item from before the popup, with its text, thus the step of Undo reverts to the same command
                 subplots[row] = (*current[row][:position], item, *current[row][position + 1 :])
             else:
-                newstyle = {flag.removeprefix("-"): value for flag, value in changes.items()}
+                newstyle = {flag.removeprefix("--"): value for flag, value in changes.items()}
                 subplots[row] = set_item_style(current[row], position, newstyle)
             apply(dc.replace(viewer.values, subplots=tuple(subplots)), undoable=undoable)
 
         edit_series_properties(
             window,
             name,
-            {f"-{key}": value for key, value in style.items()},
+            {f"--{key}": value for key, value in style.items()},
             swatch.defaultcolour if swatch is not None else "black",
             swatch.defaultlinewidth if swatch is not None else float(mpl.rcParams["lines.linewidth"]),
             show_changes,
@@ -2970,19 +2972,19 @@ def open_window(
         axisparameters.setVisible(geometrymode in {"alongaxis", "cone"})
         for widget in (coneanglelabel, coneanglebox):
             widget.setVisible(geometrymode == "cone")
-        axisbox.setCurrentText((get_row_values(rows, "-axis") or (viewer.parser.get_default("axis"),))[0])
+        axisbox.setCurrentText((get_row_values(rows, "--axis") or (viewer.parser.get_default("axis"),))[0])
         with contextlib.suppress(ValueError):
-            coneangle = get_row_values(rows, "-coneangle") or (str(viewer.parser.get_default("coneangle")),)
+            coneangle = get_row_values(rows, "--coneangle") or (str(viewer.parser.get_default("coneangle")),)
             set_spin_value(coneanglebox, float(coneangle[0]))
-        slicetext = (get_row_values(rows, "-slice") or ("",))[0]
+        slicetext = (get_row_values(rows, "--slice") or ("",))[0]
         planeparameters.setVisible(geometrymode == "plane")
         lineparameters.setVisible(geometrymode == "line")
         projectionparameters.setVisible(geometrymode == "projection")
-        projectionaxisbox.setCurrentText((get_row_values(rows, "-projection") or ("z",))[0])
+        projectionaxisbox.setCurrentText((get_row_values(rows, "--projection") or ("z",))[0])
         plane, offset = get_slice_parts(slicetext)
         planebox.setCurrentText(plane)
-        coneangletext = (get_row_values(rows, "-coneangle") or (str(viewer.parser.get_default("coneangle")),))[0]
-        axistext = (get_row_values(rows, "-axis") or (viewer.parser.get_default("axis"),))[0]
+        coneangletext = (get_row_values(rows, "--coneangle") or (str(viewer.parser.get_default("coneangle")),))[0]
+        axistext = (get_row_values(rows, "--axis") or (viewer.parser.get_default("axis"),))[0]
         description = ""
         with contextlib.suppress(ValueError):
             description = get_geometry_description(values, viewer.modelmeta, axistext, float(coneangletext))
@@ -3011,9 +3013,9 @@ def open_window(
         for flag, check in appearancechecks.items():
             check.setChecked(get_row_values(rows, flag) is not None)
         with contextlib.suppress(ValueError):
-            set_spin_value(fontsizebox, float((get_row_values(rows, "-labelfontsize") or ("0",))[0]))
+            set_spin_value(fontsizebox, float((get_row_values(rows, "--labelfontsize") or ("0",))[0]))
         with contextlib.suppress(ValueError):
-            figscale = get_row_values(rows, "-figscale") or (str(viewer.parser.get_default("figscale")),)
+            figscale = get_row_values(rows, "--figscale") or (str(viewer.parser.get_default("figscale")),)
             set_spin_value(figscalebox, float(figscale[0]))
         set_spin_value(subplotsperrowbox, get_subplots_per_row(rows))
         set_spin_value(linewidthscalebox, get_linewidthscale(rows))
@@ -3028,8 +3030,8 @@ def open_window(
         celllabel.setText(viewer.get_cell_text())
         xbox.setCurrentText(values.x)
         xunit = get_xunit_text(viewer.xlimitscale, values.x)
-        xminlabel.setText(f"{FLAG_LABELS['-xmin']}{xunit}:")
-        xmaxlabel.setText(f"{FLAG_LABELS['-xmax']}{xunit}:")
+        xminlabel.setText(f"{FLAG_LABELS['--xmin']}{xunit}:")
+        xmaxlabel.setText(f"{FLAG_LABELS['--xmax']}{xunit}:")
         axisisbeta = viewer.xlimitscale != 1.0
         unittip = " The axis shows v/c, and the option takes km/s." if axisisbeta else ""
         for edit, dest in ((xminedit, "xmin"), (xmaxedit, "xmax")):
@@ -3044,7 +3046,7 @@ def open_window(
         else:
             xbinsedit.setPlaceholderText("auto: no bins" if viewer.plotxbins is None else f"auto: {viewer.plotxbins}")
         markerscheck.setChecked(values.markers)
-        markersnote = " (on for -xbins 0)" if viewer.plotmarkers and not values.markers else ""
+        markersnote = " (on for --xbins 0)" if viewer.plotmarkers and not values.markers else ""
         markerscheck.setText(FLAG_LABELS["--markers"] + markersnote)
         colorbyioncheck.setChecked(values.colorbyion)
         histogramcheck.setChecked(values.histogram)
@@ -3191,24 +3193,24 @@ def open_window(
         apply(set_geometry_mode(viewer, viewer.values, str(geometrybox.itemData(index))))
 
     def on_axis(axis: str) -> None:
-        apply_rows({"-axis": None if axis == viewer.parser.get_default("axis") else (axis,)})
+        apply_rows({"--axis": None if axis == viewer.parser.get_default("axis") else (axis,)})
 
     def on_coneangle(angle: float) -> None:
         isdefault = math.isclose(angle, viewer.parser.get_default("coneangle"))
-        apply_rows({"-coneangle": None if isdefault else (format(angle, "g"),)})
+        apply_rows({"--coneangle": None if isdefault else (format(angle, "g"),)})
 
     def on_plane() -> None:
         offsetedit.setModified(False)
-        apply_rows({"-slice": (get_slice_text(planebox.currentText(), offsetedit.text()),)})
+        apply_rows({"--slice": (get_slice_text(planebox.currentText(), offsetedit.text()),)})
 
     def on_projectionaxis(axis: str) -> None:
-        apply_rows({"-projection": (axis,)})
+        apply_rows({"--projection": (axis,)})
 
     def on_lineaxis(index: int) -> None:
         axis = str(lineaxisbox.itemData(index))
         # a pick of the current axis keeps the positions of the line
-        if axis != get_line_axis((get_row_values(viewer.values.otheroptions, "-slice") or ("",))[0]):
-            apply_rows({"-slice": (",".join(f"{other}=0" for other in "zyx" if other != axis),)})
+        if axis != get_line_axis((get_row_values(viewer.values.otheroptions, "--slice") or ("",))[0]):
+            apply_rows({"--slice": (",".join(f"{other}=0" for other in "zyx" if other != axis),)})
 
     def get_smoothing_numbers() -> tuple[int, int]:
         """Return the length and the order of the smoothing of the values, or the first numbers of the boxes."""
@@ -3241,26 +3243,26 @@ def open_window(
         apply_rows({flag: () if checked else None})
 
     def on_fontsize(fontsize: float) -> None:
-        apply_rows({"-labelfontsize": (format(fontsize, "g"),) if fontsize > 0.0 else None})
+        apply_rows({"--labelfontsize": (format(fontsize, "g"),) if fontsize > 0.0 else None})
 
     def on_figscale(figscale: float) -> None:
         isdefault = math.isclose(figscale, viewer.parser.get_default("figscale"))
-        apply_rows({"-figscale": None if isdefault else (format(figscale, "g"),)})
+        apply_rows({"--figscale": None if isdefault else (format(figscale, "g"),)})
 
     def on_linewidthscale(scale: float) -> None:
         isdefault = math.isclose(scale, viewer.parser.get_default("linewidthscale"))
-        apply_rows({"-linewidthscale": None if isdefault else (format(scale, "g"),)})
+        apply_rows({"--linewidthscale": None if isdefault else (format(scale, "g"),)})
 
     def on_subplotsperrow(count: int) -> None:
         isdefault = count == viewer.parser.get_default("subplotsperrow")
-        apply_rows({"-subplotsperrow": None if isdefault else (str(count),)})
+        apply_rows({"--subplotsperrow": None if isdefault else (str(count),)})
 
     def on_xvariable() -> None:
         if xvariable := xbox.currentText().strip():
             apply(viewer.set_xvariable(viewer.values, xvariable))
 
     def on_xedit() -> None:
-        if (texts := read_limit_fields([(xminedit, "-xmin"), (xmaxedit, "-xmax")], show_error)) is not None:
+        if (texts := read_limit_fields([(xminedit, "--xmin"), (xmaxedit, "--xmax")], show_error)) is not None:
             apply(dc.replace(viewer.values, xmin=texts[0], xmax=texts[1]))
 
     def on_style() -> None:
@@ -3278,7 +3280,7 @@ def open_window(
     def apply_subplots(subplots: "Sequence[tuple[str, ...]]") -> None:
         """Apply the subplots.
 
-        A subplot with no item stays, and it draws an empty frame. -ionpoptype of the command waits for a populations
+        A subplot with no item stays, and it draws an empty frame. --ionpoptype of the command waits for a populations
         subplot, and then it goes to each one.
         """
         newsubplots, otheroptions = move_poptype_to_subplots(

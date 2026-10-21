@@ -6360,9 +6360,9 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
 
 
 def test_viewer_default_options_fill_only_the_options_that_the_command_lacks(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The Settings window gives a new window -figscale and -labelfontsize, and an option of the command has priority.
+    """The Settings window gives a new window --figscale and --labelfontsize, and an option of the command has priority.
 
-    plotspectra has no -labelfontsize, thus its window gets no such option.
+    plotspectra has no --labelfontsize, thus its window gets no such option.
     """
     settings = {"default-figscale": 1.5, "default-labelfontsize": 12.0}
 
@@ -6371,15 +6371,15 @@ def test_viewer_default_options_fill_only_the_options_that_the_command_lacks(mon
 
     monkeypatch.setattr(viewermenus, "get_float_setting", get_float_setting)
     estimatorparser = viewercore.make_parser(at.estimators.addargs)
-    assert viewermenus.add_default_options(estimatorparser, ["Te", "-figscale", "2"]) == [
-        "-labelfontsize",
+    assert viewermenus.add_default_options(estimatorparser, ["Te", "--figscale", "2"]) == [
+        "--labelfontsize",
         "12",
         "Te",
-        "-figscale",
+        "--figscale",
         "2",
     ]
     spectraparser = viewercore.make_parser(at.spectra.plotspectra.addargs)
-    assert viewermenus.add_default_options(spectraparser, ["mymodel"]) == ["-figscale", "1.5", "mymodel"]
+    assert viewermenus.add_default_options(spectraparser, ["mymodel"]) == ["--figscale", "1.5", "mymodel"]
 
 
 def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6598,7 +6598,7 @@ def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
 def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None:
     """Each format of file takes the resolution of the Figure section.
 
-    The estimator viewer dropped -dpi, thus a PDF file lost the resolution of its colour image.
+    The estimator viewer dropped --dpi, thus a PDF file lost the resolution of its colour image.
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     dpi = 300
@@ -6611,8 +6611,8 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
     from artistools.commands import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
-    parser.add_argument("-dpi", type=int, default=250)
-    parser.add_argument("-figscale", type=float, default=1.0)
+    parser.add_argument("--dpi", type=int, default=250)
+    parser.add_argument("--figscale", type=float, default=1.0)
     statusbar = mock.Mock()
     for suffix in ("png", "pdf"):
         filename = str(tmp_path / "plot")
@@ -6622,10 +6622,10 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
             mock.patch.object(viewermenus, "show_wait_cursor", contextlib.nullcontext),
         ):
             viewermenus.save_figure_of_command(
-                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], parser, (suffix, dpi)
+                mock.Mock(), statusbar, commandmain, "plotspectra", ["--xmin", "5"], parser, (suffix, dpi)
             )
         # a name with no suffix takes the suffix of the selected format
-        assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", f"{filename}.{suffix}"]
+        assert savedtokens[-1] == ["--xmin", "5", "--dpi", "300", "-o", f"{filename}.{suffix}"]
         statusbar.message.setText.assert_called_with(f"Saved {filename}.{suffix}")
 
 
@@ -6638,8 +6638,8 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
     from artistools.commands import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
-    parser.add_argument("-dpi", type=int, default=250)
-    parser.add_argument("-figscale", type=float, default=1.0)
+    parser.add_argument("--dpi", type=int, default=250)
+    parser.add_argument("--figscale", type=float, default=1.0)
     commands: list[list[str]] = []
 
     def commandmain(argsraw: Sequence[str]) -> None:
@@ -6654,9 +6654,9 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
     statusbar = mock.Mock()
     with mock.patch.object(viewermenus, "put_file_on_clipboard", return_value=None) as mockclipboard:
         viewermenus.copy_figure_of_command(
-            queue, statusbar, commandmain, parser, ["-xmin", "5", "-dpi", "300"], ("svg", 150)
+            queue, statusbar, commandmain, parser, ["--xmin", "5", "--dpi", "300"], ("svg", 150)
         )
-    assert commands[0][:4] == ["-xmin", "5", "-dpi", "150"]
+    assert commands[0][:4] == ["--xmin", "5", "--dpi", "150"]
     assert commands[0][-1].endswith("figure.svg")
     mockclipboard.assert_called_once_with(b"<svg/>", "svg")
     statusbar.message.setText.assert_called_with("Copied the figure as SVG")
@@ -6732,8 +6732,8 @@ def test_viewer_option_rows_split_a_group_of_switches() -> None:
     The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument.
     """
     parser = viewercore.make_parser(at.estimators.addargs)
-    rows, othertokens = viewercore.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "-xmin", "5"])
-    assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("-timedays", ("300",)), ("-xmin", ("5",)))
+    rows, othertokens = viewercore.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "--xmin", "5"])
+    assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("--timedays", ("300",)), ("--xmin", ("5",)))
     assert othertokens == ["Te", "mymodel"]
 
 
@@ -6743,10 +6743,10 @@ def test_viewer_removes_an_option_of_two_values_with_its_values_alone() -> None:
     remove_options took each token up to the next flag, as for nargs "*", thus the command lost a path after the values.
     """
     parser = viewercore.make_parser(at.spectra.plotspectra.addargs)
-    tokens = ["-emissionradialvelocityrange", "1000", "2000", "mymodel", "-xmin", "5"]
-    assert viewercore.remove_options(parser, tokens, {"emissionradialvelocityrange"}) == ["mymodel", "-xmin", "5"]
+    tokens = ["--emissionradialvelocityrange", "1000", "2000", "mymodel", "--xmin", "5"]
+    assert viewercore.remove_options(parser, tokens, {"emissionradialvelocityrange"}) == ["mymodel", "--xmin", "5"]
     rows, othertokens = viewercore.split_option_rows(parser, tokens)
-    assert rows == (("-emissionradialvelocityrange", ("1000", "2000")), ("-xmin", ("5",)))
+    assert rows == (("--emissionradialvelocityrange", ("1000", "2000")), ("--xmin", ("5",)))
     assert othertokens == ["mymodel"]
 
 
@@ -6902,13 +6902,15 @@ def test_direction_data_follows_the_files_and_the_data_source() -> None:
 
 
 def test_series_styles_keep_the_values_after_the_paths() -> None:
-    """A style value of a series that the command adds after the paths, e.g. -obsspec, must stay on that series."""
-    rows = (("-label", ("A", "B", "R")),)
+    """A style value of a series that the command adds after the paths, e.g. --obsspec, must stay on that series."""
+    rows = (("--label", ("A", "B", "R")),)
     # a new order of the two models keeps R on the third series
-    assert viewercore.move_series_styles(rows, ("a", "b"), ("b", "a")) == (("-label", ("B", "A", "R")),)
+    assert viewercore.move_series_styles(rows, ("a", "b"), ("b", "a")) == (("--label", ("B", "A", "R")),)
     # a new model goes before the series of the command
-    assert viewercore.move_series_styles(rows, ("a", "b"), ("a", "b", "c")) == (("-label", ("A", "B", "default", "R")),)
-    assert viewercore.set_series_rows(rows, ("a", "b"), "a", {"-label": "N"}) == (("-label", ("N", "B", "R")),)
+    assert viewercore.move_series_styles(rows, ("a", "b"), ("a", "b", "c")) == (
+        ("--label", ("A", "B", "default", "R")),
+    )
+    assert viewercore.set_series_rows(rows, ("a", "b"), "a", {"--label": "N"}) == (("--label", ("N", "B", "R")),)
 
 
 def test_viewer_queue_polls_a_task_that_after_draw_starts() -> None:
@@ -7058,14 +7060,14 @@ def test_viewer_command_tokens_read_the_words_of_the_dispatcher() -> None:
 
 
 def test_viewer_finds_each_path_option() -> None:
-    """Each option form of the paths of the positional argument gives a series of the viewer, e.g. -specpath."""
+    """Each option form of the paths of the positional argument gives a series of the viewer, e.g. --specpath."""
     for module, flags in (
-        (at.spectra.plotspectra, {"-specpath", "-modelpath"}),
-        (at.lightcurve.plotlightcurve, {"-modelpath"}),
+        (at.spectra.plotspectra, {"--specpath", "--modelpath"}),
+        (at.lightcurve.plotlightcurve, {"--modelpath"}),
     ):
         assert viewercore.get_path_option_flags(viewercore.make_parser(module.addargs)) == flags
     viewertokens = viewercore.parse_viewer_tokens(
-        at.spectra.plotspectra.addargs, ["-specpath", str(modelpath), "-t", "300"], set()
+        at.spectra.plotspectra.addargs, ["--specpath", str(modelpath), "-t", "300"], set()
     )
     assert viewertokens.paths == [str(modelpath)]
 

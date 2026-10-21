@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from artistools.commands import get_standard_flag
 from artistools.misc import exit_with_error
 from artistools.misc import import_optional
 from artistools.misc import print_error
@@ -299,7 +300,7 @@ def start_application(
         - a button, which uses only the space key;
         - a text field or a text box with selected text, which uses the Copy key.
 
-        For example, the Up key in -maxseriescount or in the field of -xmin made the time range wider, and the Copy
+        For example, the Up key in --maxseriescount or in the field of --xmin made the time range wider, and the Copy
         key in the Command box copied the figure.
         """
         focuswidget = QtWidgets.QApplication.focusWidget()
@@ -568,13 +569,13 @@ def add_session_window(tokens: "Sequence[str]") -> None:
 
 # the options that give a text or a style of the plot. Such a value is not a path, also when a folder of the working
 # folder has the same name, e.g. the label run1 of the folder run1
-TEXT_FLAGS: t.Final = frozenset({*SERIES_STYLE_FLAGS, "-title"})
+TEXT_FLAGS: t.Final = frozenset({*SERIES_STYLE_FLAGS, "--title"})
 
 
 def get_absolute_tokens(tokens: "Sequence[str]") -> list[str]:
     """Return the tokens of a command with an absolute path for each path that exists in the working folder.
 
-    An empty token, e.g. the value of -label "", stays empty. Path("") is the working folder, and it exists. A value of
+    An empty token, e.g. the value of --label "", stays empty. Path("") is the working folder, and it exists. A value of
     an option of TEXT_FLAGS stays the same.
     """
     absolutetokens: list[str] = []
@@ -582,7 +583,8 @@ def get_absolute_tokens(tokens: "Sequence[str]") -> list[str]:
     flag = ""
     for word in tokens:
         if is_flag(word):
-            flag = "" if "=" in word else word
+            # a session that an older version saved holds the older spellings, e.g. -label
+            flag = "" if "=" in word else get_standard_flag(word)
             absolutetokens.append(word)
         elif word and flag not in TEXT_FLAGS and Path(word).exists():
             absolutetokens.append(str(Path(word).absolute()))
@@ -606,7 +608,7 @@ def take_session_windows() -> list[list[str]]:
 class OpenWindow(t.Protocol):
     """The function of a viewer that opens a window for the arguments of a command, or returns the reason for none.
 
-    A new window takes the options of the Settings window that the command does not give, e.g. -figscale. A window of
+    A new window takes the options of the Settings window that the command does not give, e.g. --figscale. A window of
     the last session keeps its command, thus newwindow is then False.
     """
 
@@ -619,11 +621,11 @@ class OpenWindow(t.Protocol):
 def reopen_session_windows(open_window: OpenWindow, windows: "list[QtWidgets.QMainWindow]") -> None:
     """Open the windows of the last session, as the apps of macOS do, and keep the first window in front.
 
-    A window with the same command as an open window does not open again. The comparison leaves out -figwidthscale,
+    A window with the same command as an open window does not open again. The comparison leaves out --figwidthscale,
     because each window fits it to its own size. An error of a window goes to the terminal. Each window opens after
     the event loop runs again, thus the first window can draw and take input while the others read their models. A
     window gets the command of the last session, and no option of the Settings window, because the user can have
-    removed such an option, e.g. -figscale.
+    removed such an option, e.g. --figscale.
     """
     from PySide6 import QtCore
 
@@ -677,11 +679,15 @@ def run_viewer_application(
 
 
 def remove_figwidthscale(tokens: "Sequence[str]") -> list[str]:
-    """Return the tokens of a command without -figwidthscale and its value, which a window sets."""
+    """Return the tokens of a command without --figwidthscale and its value, which a window sets.
+
+    A session that an older version saved holds the older spelling -figwidthscale.
+    """
     return [
         word
         for index, word in enumerate(tokens)
-        if word != "-figwidthscale" and (index == 0 or tokens[index - 1] != "-figwidthscale")
+        if get_standard_flag(word) != "--figwidthscale"
+        and (index == 0 or get_standard_flag(tokens[index - 1]) != "--figwidthscale")
     ]
 
 

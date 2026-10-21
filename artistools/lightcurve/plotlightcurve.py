@@ -2368,11 +2368,11 @@ def get_other_plot_flag(args: argparse.Namespace) -> str | None:
     Such a plot reads the spectra or the light curve files of ARTIS, and no packets files.
     """
     otherplotflags = (
-        ("-filter", args.filter),
-        ("-colour_evolution", args.colour_evolution),
+        ("--filter", args.filter),
+        ("--colour-evolution", args.colour_evolution),
         ("--colouratpeak", args.colouratpeak),
         ("--brightnessattime", args.brightnessattime),
-        *((f"--{dest}", getattr(args, dest)) for dest in PEAKMAGDESTS),
+        *((get_standard_flag(f"--{dest}"), getattr(args, dest)) for dest in PEAKMAGDESTS),
     )
     return next((flag for flag, isgiven in otherplotflags if isgiven), None)
 
@@ -2414,10 +2414,9 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
             )
         )
     pelletremedy = "Remove --plotvspecpol, or remove --topnucs and --use-pellet-decay-time"
-    for flag, isgiven in (("-topnucs", args.topnucs), ("--use_pellet_decay_time", args.use_pellet_decay_time)):
+    for flag, isgiven in (("--topnucs", args.topnucs), ("--use-pellet-decay-time", args.use_pellet_decay_time)):
         if isgiven and isobserver:
-            shownflag = get_standard_flag(flag)
-            reason = f"the virtual packets hold no pellet, thus {shownflag} gives no light curve of an observer"
+            reason = f"the virtual packets hold no pellet, thus {flag} gives no light curve of an observer"
             refused.append(RefusedOption(flag, reason, pelletremedy))
     if args.gamma and isobserver:
         refused.append(
@@ -2429,23 +2428,18 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
         )
     if otherplotflag is not None:
         refused.extend(
-            RefusedOption(
-                flag,
-                f"{get_standard_flag(otherplotflag)} reads no packets files, thus {get_standard_flag(flag)} has no"
-                " effect",
-                None,
-            )
+            RefusedOption(flag, f"{otherplotflag} reads no packets files, thus {flag} has no effect", None)
             for flag, isgiven in (
                 ("--frompackets", args.frompackets),
-                ("-topnucs", args.topnucs),
-                ("--use_pellet_decay_time", args.use_pellet_decay_time),
+                ("--topnucs", args.topnucs),
+                ("--use-pellet-decay-time", args.use_pellet_decay_time),
             )
             if isgiven
         )
     elif args.use_pellet_decay_time and not isobserver and not (args.frompackets or args.topnucs):
         refused.append(
             RefusedOption(
-                "--use_pellet_decay_time",
+                "--use-pellet-decay-time",
                 "only the packets give the decay time of a pellet, and the command reads no packets files",
                 "Give --frompackets, or remove --use-pellet-decay-time",
             )
@@ -2454,7 +2448,7 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
     if args.test_viewing_angle_fit and not any(getattr(args, dest) for dest in PEAKMAGDESTS):
         refused.append(
             RefusedOption(
-                "--test_viewing_angle_fit",
+                "--test-viewing-angle-fit",
                 "--test-viewing-angle-fit plots the fits of the peak magnitudes, and only a save flag or a scatter"
                 " flag makes these fits",
                 None,
@@ -2466,8 +2460,8 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
 def get_refused_average_options(args: argparse.Namespace) -> list[RefusedOption]:
     """Return each average over an angle that plotlightcurves refuses for the direction bins of args."""
     averageflags = (
-        ("--average_over_phi_angle", args.average_over_phi_angle, {"average_over_phi": True}),
-        ("--average_over_theta_angle", args.average_over_theta_angle, {"average_over_theta": True}),
+        ("--average-over-phi-angle", args.average_over_phi_angle, {"average_over_phi": True}),
+        ("--average-over-theta-angle", args.average_over_theta_angle, {"average_over_theta": True}),
     )
     if not args.plotviewingangle:
         return [
@@ -2507,8 +2501,9 @@ def drop_refused_options(
     warning from the fields flag and reason.
     """
     for option in refused:
-        print_warning(warningformat.format(flag=get_standard_flag(option.flag), reason=option.reason))
-        setattr(args, option.flag.lstrip("-"), 0 if option.flag == "-topnucs" else False)
+        print_warning(warningformat.format(flag=option.flag, reason=option.reason))
+        # the flag has hyphens, e.g. --use-pellet-decay-time, and the dest has underscores
+        setattr(args, option.flag.lstrip("-").replace("-", "_"), 0 if option.flag == "--topnucs" else False)
 
 
 def check_refused_options(args: argparse.Namespace) -> None:

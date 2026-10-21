@@ -51,7 +51,7 @@ SWATCH_HEIGHT: t.Final = 14
 def get_dash_pattern(linestyle: str | None, dashes: str | None) -> list[float] | None:
     """Return the dash pattern of a line in units of its width, as matplotlib draws it, or None for a solid line.
 
-    -dashes gives the pattern and replaces the line style. matplotlib scales a pattern by the width of the line, and a
+    --dashes gives the pattern and replaces the line style. matplotlib scales a pattern by the width of the line, and a
     pattern of Qt has the same unit.
     """
     import matplotlib as mpl
@@ -124,9 +124,9 @@ def make_series_swatch(colour: str, style: "Mapping[str, str | None]") -> "QtGui
 
     return make_line_swatch(
         colour,
-        float(style.get("-linealpha") or 1.0),
-        float(style.get("-linewidth") or mpl.rcParams["lines.linewidth"]),
-        get_dash_pattern(style.get("-linestyle"), style.get("-dashes")),
+        float(style.get("--linealpha") or 1.0),
+        float(style.get("--linewidth") or mpl.rcParams["lines.linewidth"]),
+        get_dash_pattern(style.get("--linestyle"), style.get("--dashes")),
     )
 
 
@@ -276,8 +276,8 @@ def edit_series_properties(
       gives None, thus the command then gives the series no value. An empty label gives the automatic label;
     - the popup shows only the fields of flags, e.g. a series of markers has no line style;
     - anchor is the position of the top left corner of the popup on the screen. The default is the pointer;
-    - linewidthscale multiplies the width of the preview line, as -linewidthscale of plotestimators does;
-    - labelinlist is True for a label of a list option such as -label, which refuses some labels.
+    - linewidthscale multiplies the width of the preview line, as --linewidthscale of plotestimators does;
+    - labelinlist is True for a label of a list option such as --label, which refuses some labels.
 
     show_changes receives the value of each option of flags, and whether the change is a new step of Undo. The first
     change is one step, thus Undo reverts all of the popup. A click outside the popup or the Return key keeps the
@@ -294,14 +294,14 @@ def edit_series_properties(
     form = QtWidgets.QFormLayout(dialog)
     # the round corners of the popup need a wider margin than a box
     form.setContentsMargins(16, 14, 16, 14)
-    chosencolour: list[str | None] = [style.get("-color")]
+    chosencolour: list[str | None] = [style.get("--color")]
 
     title = QtWidgets.QLabel(f"<b>{name}</b>")
     form.addRow(title)
 
-    labeledit = QtWidgets.QLineEdit(style.get("-label") or "")
+    labeledit = QtWidgets.QLineEdit(style.get("--label") or "")
     labeledit.setPlaceholderText("automatic")
-    labeledit.setToolTip("The label of the series in the legend (-label). Clear the field for the automatic label")
+    labeledit.setToolTip("The label of the series in the legend (--label). Clear the field for the automatic label")
     labeledit.setMinimumWidth(240)
     form.addRow("Label:", labeledit)
 
@@ -326,7 +326,7 @@ def edit_series_properties(
     defaultcolourbutton.setToolTip("Give the line the colour of the command")
     colouredit = QtWidgets.QLineEdit()
     colouredit.setPlaceholderText("other, e.g. tab:red")
-    colouredit.setToolTip("Any colour of matplotlib, e.g. tab:red, C3, or #1f77b4 (-color). Press Return to use it")
+    colouredit.setToolTip("Any colour of matplotlib, e.g. tab:red, C3, or #1f77b4 (--color). Press Return to use it")
     colourrow = QtWidgets.QHBoxLayout()
     colourrow.addWidget(defaultcolourbutton)
     colourrow.addWidget(colouredit, 1)
@@ -339,14 +339,14 @@ def edit_series_properties(
     linestylegroup = QtWidgets.QButtonGroup(dialog)
     linestylerow = QtWidgets.QHBoxLayout()
     linestylerow.setSpacing(2)
-    linestyle = style.get("-linestyle")
+    linestyle = style.get("--linestyle")
     currentlinestyle = LINESTYLE_ALIASES.get(linestyle or "", linestyle)
     linestylebuttons: dict[str | None, QtWidgets.QToolButton] = {}
     for value, text in ((None, "Default"), *LINESTYLE_CHOICES):
         button = QtWidgets.QToolButton()
         button.setCheckable(True)
         button.setAutoRaise(True)
-        button.setToolTip(f"{text} line (-linestyle). A dash pattern replaces it")
+        button.setToolTip(f"{text} line (--linestyle). A dash pattern replaces it")
         button.setAccessibleName(f"{text} Line")
         if value is None:
             button.setText(text)
@@ -362,10 +362,10 @@ def edit_series_properties(
     linestylerow.addStretch(1)
     form.addRow("Line style:", linestylerow)
 
-    dashesedit = QtWidgets.QLineEdit(style.get("-dashes") or "")
+    dashesedit = QtWidgets.QLineEdit(style.get("--dashes") or "")
     dashesedit.setPlaceholderText("none, e.g. 5,2")
     dashesedit.setToolTip(
-        "The lengths of each dash and each gap in units of the line width (-dashes), e.g. 5,2. The pattern replaces"
+        "The lengths of each dash and each gap in units of the line width (--dashes), e.g. 5,2. The pattern replaces"
         " the line style"
     )
     form.addRow("Dash pattern:", dashesedit)
@@ -386,11 +386,15 @@ def edit_series_properties(
         return box
 
     widthbox = make_default_spinbox(
-        0.0, 10.0, 0.25, style.get("-linewidth"), "The width of the line in points (-linewidth)"
+        0.0, 10.0, 0.25, style.get("--linewidth"), "The width of the line in points (--linewidth)"
     )
     # an opacity of 0 hides the line, thus the value of "Default" is below 0
     alphabox = make_default_spinbox(
-        -0.05, 1.0, 0.05, style.get("-linealpha"), "The opacity of the line, from 0 (clear) to 1 (opaque) (-linealpha)"
+        -0.05,
+        1.0,
+        0.05,
+        style.get("--linealpha"),
+        "The opacity of the line, from 0 (clear) to 1 (opaque) (--linealpha)",
     )
     widthrow = QtWidgets.QHBoxLayout()
     widthrow.addWidget(widthbox)
@@ -433,7 +437,7 @@ def edit_series_properties(
         The label of the command stays valid, e.g. "-1 day" of the only series of the command, which joins its flag.
         """
         label = labeledit.text().strip()
-        if labelinlist and label != (style.get("-label") or "") and (error := get_label_error(label)) is not None:
+        if labelinlist and label != (style.get("--label") or "") and (error := get_label_error(label)) is not None:
             raise ValueError(error)
         return label or None
 
@@ -465,7 +469,7 @@ def edit_series_properties(
                 colour,
                 float(get_box_text(alphabox) or 1.0),
                 float(get_box_text(widthbox) or defaultlinewidth) * linewidthscale,
-                get_dash_pattern(get_linestyle(), dashes) if "-linestyle" in flags else None,
+                get_dash_pattern(get_linestyle(), dashes) if "--linestyle" in flags else None,
             )
         )
 
@@ -507,20 +511,20 @@ def edit_series_properties(
         except ValueError:
             if not lenient:
                 return None
-            label = style.get("-label")
+            label = style.get("--label")
         try:
             dashes = get_dashes()
         except ValueError:
             if not lenient:
                 return None
-            dashes = style.get("-dashes")
+            dashes = style.get("--dashes")
         values = {
-            "-label": label,
-            "-color": chosencolour[0],
-            "-linestyle": get_linestyle(),
-            "-dashes": dashes,
-            "-linewidth": get_box_text(widthbox),
-            "-linealpha": get_box_text(alphabox),
+            "--label": label,
+            "--color": chosencolour[0],
+            "--linestyle": get_linestyle(),
+            "--dashes": dashes,
+            "--linewidth": get_box_text(widthbox),
+            "--linealpha": get_box_text(alphabox),
         }
         return {flag: value for flag, value in values.items() if flag in flags}
 
@@ -596,11 +600,11 @@ def edit_series_properties(
     dialog.setProperty("on_return", on_return)
     dialog.finished.connect(on_finished)
     for flag, field in (
-        ("-label", labeledit),
-        ("-color", colourcolumn),
-        ("-linestyle", linestylerow),
-        ("-dashes", dashesedit),
-        ("-linewidth", widthrow),
+        ("--label", labeledit),
+        ("--color", colourcolumn),
+        ("--linestyle", linestylerow),
+        ("--dashes", dashesedit),
+        ("--linewidth", widthrow),
     ):
         form.setRowVisible(field, flag in flags)
     show_preview()
@@ -1014,9 +1018,9 @@ def add_series_list(
         rowlayout.addWidget(swatch)
         namelabel = QtWidgets.QLabel(name)
         namelabel.setToolTip(
-            f"The -label of the series: {name}. Double-click the row to change it in the line properties"
+            f"The --label of the series: {name}. Double-click the row to change it in the line properties"
             if seriesrow.labelled
-            else f"The name of the series in the legend: {name}. Double-click the row to give it a -label"
+            else f"The name of the series in the legend: {name}. Double-click the row to give it a --label"
         )
         rowlayout.addWidget(namelabel)
         rowlayout.addSpacing(6)

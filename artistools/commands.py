@@ -1124,6 +1124,9 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
                 if standard not in self._option_string_actions:
                     action.option_strings = [*action.option_strings, standard]
                     self._option_string_actions[standard] = action
+            # the first flag names the option in each command that the code makes, e.g. the command of a viewer
+            shown = get_shown_flags(action)
+            action.option_strings = [*shown, *(flag for flag in action.option_strings if flag not in shown)]
 
     def show_standard_flags(self, message: str) -> str:
         """Return a message of argparse with the shown spelling of each flag.

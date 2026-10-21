@@ -139,7 +139,7 @@ class ViewerTokens(t.NamedTuple):
 
 
 def get_path_option_flags(parser: "SuggestingArgumentParser") -> set[str]:
-    """Return the first flag of each option that gives the paths of the positional argument, e.g. -modelpath."""
+    """Return the first flag of each option that gives the paths of the positional argument, e.g. --modelpath."""
     from artistools.misc.cliutils import KeepGivenPaths
 
     actions = parser._actions  # ruff:ignore[private-member-access]
@@ -160,7 +160,7 @@ def parse_viewer_tokens(
     from artistools.misc import parse_cli_args
 
     parser = make_parser(addargs)
-    usertokens = remove_options(parser, tokens, {"interactive"})
+    usertokens = remove_options(parser, standardise_flags(parser, tokens), {"interactive"})
     basetokens = remove_options(parser, separate_trailing_folders(usertokens), {*controlleddests, *WINDOW_DESTS})
     pathcount = next((index for index, token in enumerate(basetokens) if token.startswith("-")), len(basetokens))
     otheroptions, positionaltokens = split_option_rows(parser, basetokens[pathcount:])
@@ -183,7 +183,7 @@ def take_back_folders(
     """Return the paths that the command took back from a list option, and the rows without those paths.
 
     The command gives the ARTIS folders at the end of a list option back to the paths, e.g. the folder of
-    "-label 'My model' mymodel -t 300". The list of the series must then hold the folders, and the row of the option
+    "--label 'My model' mymodel -t 300". The list of the series must then hold the folders, and the row of the option
     must not hold them. A command with no such folders gives no paths and the same rows.
     """
     from artistools.misc.cliutils import KeepGivenPaths
@@ -492,6 +492,24 @@ def count_option_values(action: argparse.Action, argstrings: "Sequence[str]", in
     return count
 
 
+def standardise_flags(parser: "SuggestingArgumentParser", tokens: "Sequence[str]") -> list[str]:
+    """Return the tokens with the first flag of each option in place of its other spellings, e.g. --timedays for -time.
+
+    A user can give an older spelling, e.g. -timedays, and the code of a viewer compares each flag with the standard
+    spelling. A value stays as the user gave it, and a flag of one letter with its value joined, e.g. -t300, too.
+    """
+    optionactions = parser._option_string_actions  # ruff:ignore[private-member-access]
+    standardised: list[str] = []
+    for index, argstring in enumerate(tokens):
+        if argstring == "--":
+            standardised.extend(tokens[index:])
+            break
+        name, equals, value = argstring.partition("=")
+        action = optionactions.get(name) if argstring.startswith("-") else None
+        standardised.append(f"{action.option_strings[0]}{equals}{value}" if action is not None else argstring)
+    return standardised
+
+
 def remove_options(parser: "SuggestingArgumentParser", tokens: "Sequence[str]", dests: "Collection[str]") -> list[str]:
     """Return the tokens without the options of these dests and without the values of those options."""
     argstrings = split_argstrings(parser, tokens)
@@ -572,7 +590,7 @@ def get_default_tokens(action: argparse.Action) -> tuple[str, ...] | None:
 def split_option_rows(parser: "SuggestingArgumentParser", tokens: "Sequence[str]") -> tuple[OptionRows, list[str]]:
     """Return each option of the tokens with its values, and the tokens that are not part of an option.
 
-    Each row gives the first flag of the option, thus an alias, e.g. -dx, becomes the full flag, e.g. -deltax.
+    Each row gives the first flag of the option, thus an alias, e.g. --dx, becomes the full flag, e.g. --deltax.
     """
     rows: list[tuple[str, tuple[str, ...]]] = []
     othertokens: list[str] = []
@@ -629,9 +647,9 @@ def set_row_values(rows: OptionRows, changes: "Mapping[str, tuple[str, ...] | No
 
 
 def set_figscale_row(rows: OptionRows, figscale: float, defaultfigscale: float) -> OptionRows:
-    """Return the option rows with the -figscale of the box of the Figure section. The default gives no row."""
+    """Return the option rows with the --figscale of the box of the Figure section. The default gives no row."""
     change = None if math.isclose(figscale, defaultfigscale) else (format(figscale, "g"),)
-    return set_row_values(rows, {"-figscale": change})
+    return set_row_values(rows, {"--figscale": change})
 
 
 def get_option_row_tokens(rows: OptionRows) -> list[str]:
@@ -644,7 +662,7 @@ def get_option_row_tokens(rows: OptionRows) -> list[str]:
 
 
 # the options that give one value for each series, e.g. each spectrum, in the order of the paths of the command
-SERIES_STYLE_FLAGS: t.Final = tuple(f"-{key}" for key in SERIES_STYLE_KEYS)
+SERIES_STYLE_FLAGS: t.Final = tuple(f"--{key}" for key in SERIES_STYLE_KEYS)
 
 
 def get_series_value(values: "Sequence[str]", index: int) -> str | None:
@@ -667,8 +685,8 @@ def get_series_tokens(values: "Sequence[str | None]") -> tuple[str, ...] | None:
 def move_series_styles(rows: OptionRows, oldpaths: "Sequence[str]", newpaths: "Sequence[str]") -> OptionRows:
     """Return the option rows with the value of each series style option on the same path in the new list.
 
-    Thus a -label stays on its series when the order changes. The values of a removed series go out of the rows. The
-    values after the paths stay after the new paths, because a command can add series after them, e.g. -obsspec.
+    Thus a --label stays on its series when the order changes. The values of a removed series go out of the rows. The
+    values after the paths stay after the new paths, because a command can add series after them, e.g. --obsspec.
     """
     changes: dict[str, tuple[str, ...] | None] = {}
     for flag in SERIES_STYLE_FLAGS:
@@ -689,8 +707,8 @@ def set_series_rows(
 ) -> OptionRows:
     """Return the option rows with the value of each series style option in changes for the series of one path.
 
-    changes gives each option by its flag, e.g. -label. A value of None gives the series the default of the command,
-    and the other series keep their values, also the series that the command adds after the paths, e.g. -obsspec.
+    changes gives each option by its flag, e.g. --label. A value of None gives the series the default of the command,
+    and the other series keep their values, also the series that the command adds after the paths, e.g. --obsspec.
     """
     rowchanges: dict[str, tuple[str, ...] | None] = {}
     for flag, value in changes.items():
@@ -704,7 +722,7 @@ def set_series_rows(
 
 
 def get_values_after_paths(values: "Sequence[str]", pathcount: int) -> list[str | None]:
-    """Return the values of a series style option after the series of the paths, e.g. of -obsspec or -reflightcurves."""
+    """Return the values of a series style option after the series of the paths, e.g. of --reflightcurves."""
     return [get_series_value(values, index) for index in range(pathcount, len(values))]
 
 
@@ -715,11 +733,11 @@ def get_series_style(rows: OptionRows, paths: "Sequence[str]", path: str) -> dic
 
 
 def get_path_colours(paths: "Sequence[str]", isreference: "Sequence[bool]", rows: OptionRows) -> dict[str, str]:
-    """Return the colour of the series of each path, as the command gives it with the -color of the rows.
+    """Return the colour of the series of each path, as the command gives it with the --color of the rows.
 
     A reference series takes black and greys, and a model takes the colours of the cycle.
     """
-    usercolours = get_row_values(rows, "-color") or ()
+    usercolours = get_row_values(rows, "--color") or ()
     colours = get_series_colors(isreference, [get_series_value(usercolours, index) for index in range(len(paths))])
     return dict(zip(paths, colours, strict=True))
 
@@ -774,32 +792,32 @@ class PlotValues(t.Protocol):
 
     @property
     def figwidthscale(self) -> float:
-        """The -figwidthscale of the values."""
+        """The --figwidthscale of the values."""
 
     @property
     def dpi(self) -> int | None:
-        """The -dpi of the values, or None for the default of the command."""
+        """The --dpi of the values, or None for the default of the command."""
 
 
 def keep_figwidthscale[ValuesT: PlotValues](restored: ValuesT, current: ValuesT) -> ValuesT:
-    """Return the values that Undo restores, with the current -figwidthscale, which the window sets."""
+    """Return the values that Undo restores, with the current --figwidthscale, which the window sets."""
     return dc.replace(restored, figwidthscale=current.figwidthscale)
 
 
 def get_yscale_choices(parser: argparse.ArgumentParser) -> list[str]:
-    """Return the choices of -yscale for a box of a viewer.
+    """Return the choices of --yscale for a box of a viewer.
 
     The alias "lin" gives the same scale as "linear", thus it has no item.
     """
-    return [str(choice) for choice in get_actions_by_flag(parser)["-yscale"].choices or () if choice != "lin"]
+    return [str(choice) for choice in get_actions_by_flag(parser)["--yscale"].choices or () if choice != "lin"]
 
 
 def get_fitted_figwidthscale(
     figsize: tuple[float, float], figwidthscale: float, marginwidth: float, areawidth: float, areaheight: float
 ) -> float:
-    """Return the -figwidthscale that gives the figure the shape of the plot area.
+    """Return the --figwidthscale that gives the figure the shape of the plot area.
 
-    The frame width is proportional to -figwidthscale, and the margins and the height stay the same.
+    The frame width is proportional to --figwidthscale, and the margins and the height stay the same.
     """
     figwidth, figheight = figsize
     widthperscale = (figwidth - marginwidth) / figwidthscale
