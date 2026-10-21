@@ -53,14 +53,21 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     """
     import time
 
+    from artistools.misc.cliutils import print_collected_data
+
     quiet = getattr(args, "quiet", False)
     starttime = time.monotonic()
     with contextlib.ExitStack() as stack:
         args.productstream = sys.stdout
+        # a JSON or a CSV document of --print-data holds the tables of all the figures, thus output_data collects them
+        collectstables = getattr(args, "print_data", False) and getattr(args, "output_format", None) in {"json", "csv"}
+        args.collectedtables = [] if collectstables else None
         progressstream = stack.enter_context(Path(os.devnull).open("w", encoding="utf-8")) if quiet else sys.stderr
         stack.enter_context(contextlib.redirect_stdout(progressstream))
 
         func(args=args)
+        if args.collectedtables:
+            print_collected_data(args)
 
     # a reader of the output that stops early, e.g. head, makes the flush fail. The flush at the exit gives no
     # message that the dispatcher controls, thus the flush comes here

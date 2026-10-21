@@ -1690,7 +1690,11 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
     """
     outputformat = getattr(args, "output_format", None)
     printedtables = {suffix: dfdata for suffix, dfdata in tables.items() if not dfdata.is_empty()}
-    if getattr(args, "print_data", False) and outputformat == "json":
+    # a command can give one figure for each element or each time, thus run_command prints the tables of all the
+    # figures as one document when the command ends
+    if getattr(args, "print_data", False) and (collected := getattr(args, "collectedtables", None)) is not None:
+        collected.append(printedtables)
+    elif getattr(args, "print_data", False) and outputformat == "json":
         import json
 
         document = {suffix.lstrip("_") or "data": get_json_rows(dfdata) for suffix, dfdata in printedtables.items()}
@@ -1723,6 +1727,23 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
             commentlines = [*get_provenance_lines(args), *emptylines, *get_column_description_lines(dfdata.columns)]
             write_data_table(dfdata, datafile, commentlines=commentlines, outputformat=outputformat)
             print_saved(datafile)
+
+
+def print_collected_data(args: argparse.Namespace) -> None:
+    """Print the tables that output_data collected for each figure as one document of --output-format json or csv.
+
+    A reader of JSON or of CSV takes one document, thus the rows of the tables with one key join one table.
+    """
+    import polars as pl
+
+    collected: list[Mapping[str, pl.DataFrame]] = getattr(args, "collectedtables", None) or []
+    framesofkey: dict[str, list[pl.DataFrame]] = {}
+    for tables in collected:
+        for suffix, dfdata in tables.items():
+            framesofkey.setdefault(suffix, []).append(dfdata)
+    tables = {suffix: pl.concat(frames, how="diagonal_relaxed") for suffix, frames in framesofkey.items()}
+    printargs = argparse.Namespace(**(vars(args) | {"write_data": False, "collectedtables": None}))
+    output_data(printargs, tables, "")
 
 
 def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:

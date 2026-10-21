@@ -4497,6 +4497,24 @@ def test_output_format_of_plotted_data_gives_one_json_document_and_the_file_form
     assert datalines[0].startswith("model,modelpath,")
 
 
+def test_figures_of_one_command_print_one_document(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A command with one figure for each element prints the data of all the figures as one CSV or JSON document.
+
+    plotnltepops printed a header and rows for each figure, thus a reader of CSV took the second header as data.
+    """
+    import artistools.__main__
+
+    argsraw = ["plotnltepops", "Fe", "Co", str(modelpath), "--timestep", "40", "--print-data", "-o", str(tmp_path)]
+    artistools.__main__.main(argsraw=[*argsraw, "--output-format", "csv"])
+    rows = list(csv.reader(capsys.readouterr().out.splitlines()))
+    assert [row for row in rows if row == rows[0]] == [rows[0]]
+    ioncolumn = rows[0].index("ion")
+    assert {row[ioncolumn].split()[0] for row in rows[1:]} == {"Fe", "Co"}
+
+    artistools.__main__.main(argsraw=[*argsraw, "--output-format", "json"])
+    assert {row["ion"].split()[0] for row in json.loads(capsys.readouterr().out)["data"]} == {"Fe", "Co"}
+
+
 def test_json_rows_give_null_for_nan_and_infinity() -> None:
     """A strict parser of JSON refuses NaN and Infinity, thus the JSON output gives null for each of them."""
     from artistools.misc.cliutils import get_json_rows
