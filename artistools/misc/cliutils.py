@@ -1613,8 +1613,16 @@ def resolve_table_outputfile(args: argparse.Namespace, defaultname: str) -> Path
 def print_or_write_table(
     args: argparse.Namespace, dftable: "pl.DataFrame", outputfile: Path | None, commentlines: Sequence[str] = ()
 ) -> None:
-    """Print the table with no -o, or write it to outputfile with the provenance lines and commentlines."""
+    """Print the table with no -o, or write it to outputfile with the provenance lines and commentlines.
+
+    A printed JSON table holds commentlines under its key "comments", as a JSON file does. A parser of JSON then reads
+    the whole output, and a line of text in front of the object would stop it.
+    """
     if outputfile is None:
+        if getattr(args, "output_format", None) == "json":
+            productstream = getattr(args, "productstream", None) or sys.stdout
+            write_data_table(dftable, productstream, commentlines=commentlines, outputformat="json")
+            return
         print_product(args, dftable)
         return
 

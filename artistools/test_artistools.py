@@ -4382,6 +4382,12 @@ def test_output_format_gives_json_and_csv(capsys: pytest.CaptureFixture[str]) ->
     checks = json.loads(capsys.readouterr().out)["rows"]
     assert {"check", "status", "detail"} <= set(checks[0])
 
+    # catalog printed its "#" method lines in front of the JSON object, and json.loads refused the output
+    artistools.__main__.main(argsraw=["catalog", str(at.get_path("testdata")), "--output-format", "json"])
+    catalog = json.loads(capsys.readouterr().out)
+    assert catalog["comments"]
+    assert catalog["rows"]
+
 
 def test_output_format_of_plotted_data_gives_one_json_document_and_the_file_format(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
