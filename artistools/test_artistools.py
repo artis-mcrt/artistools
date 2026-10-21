@@ -4489,6 +4489,10 @@ def test_help_gives_the_standard_flag_spellings(capsys: pytest.CaptureFixture[st
     assert not re.search(r"(?<![\w-])-(timedays|modelpath|xmin)\b", helptext)
     assert "--print_data" not in helptext
 
+    # --colou was a unique abbreviation of --colouratpeak, and the added --colour-evolution must not make it ambiguous
+    lightcurveargs = parser.parse_args(["plotlightcurves", "--colou"])
+    assert lightcurveargs.colouratpeak
+
     # --print is an abbreviation of --print_data and of --print-data, which name one flag
     for argsraw in (
         ["-timedays", "300", "--print_data"],
@@ -5988,8 +5992,11 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
     ]
 
 
-def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> None:
-    """--write_data wrote no file for the emitting regions. The 3D test model has no packets in these features."""
+def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--write_data wrote no file for the emitting regions. The 3D test model has no packets in these features.
+
+    --print-data --output-format json printed one JSON document for each time bin, which a parser of JSON refused.
+    """
     import collections
 
     emdata = collections.defaultdict(lambda: {"em_log10nne": np.array([5.0, 6.0]), "em_Te": np.array([4e3, 5e3])})
@@ -6003,12 +6010,18 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> N
             timebins_tend=[6.0, 7.0],
             outputfile=tmp_path / "emreg.pdf",
             write_data=True,
+            print_data=True,
+            output_format="json",
         )
 
+    # a direct call of main prints the progress messages to the standard output, thus the JSON starts at "{"
+    stdout = capsys.readouterr().out
+    document = json.loads(stdout[stdout.index("\n{") :])
+    assert {row["figure_time_days"] for row in document["data"]} == {5.0, 6.0}
+
+    # --output-format json also gives each data file the JSON format
     for tmid in (5.0, 6.0):
-        dfpoints = pl.read_csv(
-            tmp_path / f"emreg_{tmid:.1f}d.txt", separator=" ", null_values="nan", comment_prefix="#"
-        )
+        dfpoints = pl.DataFrame(json.loads((tmp_path / f"emreg_{tmid:.1f}d.json").read_text(encoding="utf-8"))["rows"])
         assert dfpoints.columns == ["modelpath", "label", "feature", "time_days", "log10nne", "Te"]
         assert dfpoints["time_days"].unique().to_list() == [tmid]
         assert dfpoints["log10nne"].to_list()[:2] == [5.0, 6.0]

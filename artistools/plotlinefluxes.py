@@ -961,6 +961,9 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         ),
         6,
     )
+    # each time bin writes its own data file, and the standard output gets one table of all the bins at the end. A
+    # table for each bin gave a JSON document for each bin, which a parser of JSON refused
+    printedpoints: list[pl.DataFrame] = []
     for tmid in times_days:
         print(f"  Plot at {tmid} days")
 
@@ -1038,8 +1041,17 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         # would replace the one before it
         if len(times_days) > 1 and "{timeavg" not in str(args.outputfile):
             outputfile = outputfile.with_stem(f"{outputfile.stem}_{tmid:.{ndecimals}f}d")
-        output_data(args, {"": pl.concat(dfpoints) if dfpoints else pl.DataFrame()}, outputfile)
+        dfbinpoints = pl.concat(dfpoints) if dfpoints else pl.DataFrame()
+        output_data(argparse.Namespace(**(vars(args) | {"print_data": False})), {"": dfbinpoints}, outputfile)
+        if not dfbinpoints.is_empty():
+            printedpoints.append(dfbinpoints.with_columns(figure_time_days=pl.lit(tmid)))
         save_figure(fig, outputfile, args=args)
+
+    output_data(
+        argparse.Namespace(**(vars(args) | {"write_data": False})),
+        {"": pl.concat(printedpoints) if printedpoints else pl.DataFrame()},
+        args.outputfile,
+    )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
