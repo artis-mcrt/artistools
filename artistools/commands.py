@@ -1057,8 +1057,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         """
         kwargs.setdefault("formatter_class", CustomArgHelpFormatter)
         super().__init__(*args, **kwargs)
-        # the spellings that add_standard_flags adds, which an abbreviation of an older spelling must not meet
-        self.addedflags: set[str] = set()
         if (helpaction := self._option_string_actions.get("-h")) is not None:
             helpaction.help = "Show this help message and exit"
 
@@ -1126,29 +1124,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
                 if standard not in self._option_string_actions:
                     action.option_strings = [*action.option_strings, standard]
                     self._option_string_actions[standard] = action
-                    self.addedflags.add(standard)
-
-    @t.override
-    def _get_option_tuples(self, option_string: str) -> list[tuple[argparse.Action, str, str | None]]:
-        """Return the matches of an abbreviated flag, with one match for each flag and value.
-
-        add_standard_flags gives a flag two spellings, e.g. --print_data and --print-data, thus the abbreviation
-        --print matched both. argparse then refused it as ambiguous, although both name one flag. An added spelling
-        also made an abbreviation ambiguous that was unique before, e.g. --colou of --colouratpeak met
-        --colour-evolution. Thus a match of a declared spelling wins over a match of an added spelling of a
-        different flag.
-        """
-        matches: list[tuple[argparse.Action, str, str | None]] = []
-        seen: set[tuple[object, ...]] = set()
-        for match in super()._get_option_tuples(option_string):
-            # Python 3.13 gives the action, the flag, the separator, and the value, and the stub names three of them
-            if (key := (id(match[0]), *match[2:])) not in seen:
-                seen.add(key)
-                matches.append(match)
-        declaredmatches = [match for match in matches if match[1] not in self.addedflags]
-        if len({id(match[0]) for match in matches}) > 1 and declaredmatches:
-            return declaredmatches
-        return matches
 
     def show_standard_flags(self, message: str) -> str:
         """Return a message of argparse with the shown spelling of each flag.
@@ -1223,12 +1198,9 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             flagname, equals, _ = argstring.partition("=")
             action = self._option_string_actions.get(flagname)
             if action is None and flagname.startswith("-") and self.allow_abbrev:
-                # two spellings of one flag, e.g. --ion_stages and --ion-stages, are one match
-                matches = {
-                    id(value): value for flag, value in self._option_string_actions.items() if flag.startswith(flagname)
-                }
+                matches = [value for flag, value in self._option_string_actions.items() if flag.startswith(flagname)]
                 if len(matches) == 1:
-                    action = next(iter(matches.values()))
+                    action = matches[0]
             if action is not None and action.nargs == "*" and action.type is int:
                 valueend = index + 1
                 while not equals and valueend < len(args):
