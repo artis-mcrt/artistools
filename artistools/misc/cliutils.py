@@ -1507,10 +1507,16 @@ def print_product(args: argparse.Namespace, *values: object) -> None:
 
 
 def get_json_rows(dfdata: "pl.DataFrame") -> list[dict[str, t.Any]]:
-    """Return the rows of a table for JSON, with null for a missing value. JSON has no NaN."""
-    import polars.selectors as cs
+    """Return the rows of a table for JSON, with null for a missing value and for an infinite value.
 
-    return dfdata.with_columns(cs.float().fill_nan(None)).to_dicts()
+    JSON has no NaN and no infinity. json.dumps wrote Infinity, which a strict parser of JSON refuses.
+    """
+    import polars as pl
+
+    floatcolumns = [name for name, dtype in dfdata.schema.items() if dtype.is_float()]
+    return dfdata.with_columns(
+        pl.when(pl.col(name).is_finite()).then(pl.col(name)).alias(name) for name in floatcolumns
+    ).to_dicts()
 
 
 # the formats of --output-format. "text" has a space between the values, and "csv" has a comma

@@ -4408,6 +4408,17 @@ def test_output_format_of_plotted_data_gives_one_json_document_and_the_file_form
     assert datalines[0].startswith("model,modelpath,")
 
 
+def test_json_rows_give_null_for_nan_and_infinity() -> None:
+    """A strict parser of JSON refuses NaN and Infinity, thus the JSON output gives null for each of them."""
+    from artistools.misc.cliutils import get_json_rows
+
+    dfdata = pl.DataFrame({"x": [1.5, float("nan"), float("inf"), float("-inf"), None], "n": [1, 2, 3, 4, 5]})
+    rows = get_json_rows(dfdata)
+    assert [row["x"] for row in rows] == [1.5, None, None, None, None]
+    assert [row["n"] for row in rows] == [1, 2, 3, 4, 5]
+    json.loads(json.dumps(rows, allow_nan=False))
+
+
 def test_validation_errors_give_the_standard_flag_spelling(capsys: pytest.CaptureFixture[str]) -> None:
     """A check of artistools names the flags as the help gives them, also for a flag that the user gave as -timestep."""
     import artistools.__main__
