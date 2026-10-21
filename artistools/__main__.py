@@ -97,6 +97,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     from artistools.commands import build_script_parser
     from artistools.commands import get_hidden_commands
+    from artistools.commands import get_older_flag_spellings
     from artistools.misc import separate_trailing_folders
 
     # a per-command console script such as plotartisestimators runs this same function. The name that
@@ -105,8 +106,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     scriptparser = build_script_parser(Path(sys.argv[0]).stem) if args is argsraw is None else None
     parser = scriptparser or build_parser()
 
-    # the help hides a command such as server, thus tab completion does not offer it
-    argcomplete.autocomplete(parser, exclude=get_hidden_commands())
+    # the help hides a command such as server and each older spelling of a flag, thus tab completion does not offer it.
+    # The walk of all the parsers runs only for a completion
+    excluded = [*get_hidden_commands(), *get_older_flag_spellings(parser)] if "_ARGCOMPLETE" in os.environ else []
+    argcomplete.autocomplete(parser, exclude=excluded)
 
     if args is None:
         args = parser.parse_args(separate_trailing_folders(argsraw))

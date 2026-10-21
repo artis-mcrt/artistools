@@ -134,7 +134,7 @@ def get_timestep_lines(modelpath: Path) -> list[str]:
     tstarts = get_timestep_times(modelpath, loc="start")
     tends = get_timestep_times(modelpath, loc="end")
     return [
-        f"timesteps: {len(tstarts)}, from {tstarts[0]:.3f} to {tends[-1]:.3f} days (artistools timesteps lists them)"
+        f"timesteps: {len(tstarts)}, from {tstarts[0]:.3f} to {tends[-1]:.3f} days (`artistools timesteps` lists them)"
     ]
 
 

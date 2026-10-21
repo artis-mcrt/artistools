@@ -194,10 +194,10 @@ A `main` function can already contain the data code, the physics code, and the p
 
 Use the shared functions to build a parser and to find a path. Import them from `artistools.misc`, e.g. `from artistools.misc import addarg_modelpath`. Do not write this code again:
 
-- `addarg_modelpath(parser)` adds a `-modelpath` argument or a positional model path.
-- `addarg_positional_items(parser, ...)` adds the positional arguments of a command that names its items on the command line, e.g. the estimator variables of `plotestimators`. `resolve_positional_modelpath(args, dest)` then removes the model path from the end. Such a command adds `-modelpath` with the default of `addarg_modelpath`, which is `None`. A value that is not `None` then shows that the user gave `-modelpath`.
+- `addarg_modelpath(parser)` adds a `--modelpath` argument or a positional model path.
+- `addarg_positional_items(parser, ...)` adds the positional arguments of a command that names its items on the command line, e.g. the estimator variables of `plotestimators`. `resolve_positional_modelpath(args, dest)` then removes the model path from the end. Such a command adds `--modelpath` with the default of `addarg_modelpath`, which is `None`. A value that is not `None` then shows that the user gave `--modelpath`.
 - `normalize_path_list(args.modelpath)` applies the default and returns a `list[Path]`. Do not write `if not args.modelpath: args.modelpath = Path()`.
-- `addarg_data_output(parser)` adds `--print_data` and `--write_data` to a plot command. `output_data(args, tables, outputfile)` then prints or writes the plotted data. Give each plot command these two flags. Use `output_data` for each data output of a plot command.
+- `addarg_data_output(parser)` adds `--print-data` and `--write-data` to a plot command. `output_data(args, tables, outputfile)` then prints or writes the plotted data. Give each plot command these two flags. Use `output_data` for each data output of a plot command.
 - `at.get_timestep_times(modelpath, loc="mid")` gives the mid-point times. Do not calculate the mean of the `start` array and the `end` array.
 - `at.plottools.set_axis_properties` and `at.plottools.set_axis_labels` set the usual axis and tick properties. You can use `artistools/plottools.py` only as `at.plottools.*`, because the top level re-exports none of its names. Read that module before you write new plot code.
 

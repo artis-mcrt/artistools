@@ -117,7 +117,7 @@ def check_log_messages(modelpath: Path) -> tuple[str, str]:
         detail += f", and the most frequent {dfworst['level']} is {dfworst['count']} times '{exampletext}'"
     # almost each run of ARTIS logs warnings, e.g. of the solver of Te, thus only an error changes the status. The
     # check of the temperature limits gives the effect of the warnings of the solver of Te
-    return ("error" if errorcount else "ok"), f"{detail} (artistools logsummary gives each kind)"
+    return ("error" if errorcount else "ok"), f"{detail} (`artistools logsummary` gives each kind)"
 
 
 def check_temperature_limits(modelpath: Path) -> tuple[str, str]:
@@ -504,11 +504,11 @@ def check_caches(modelpath: Path) -> tuple[str, str]:
 
     caches, leftovers = find_cache_files(modelpath)
     sizemb = sum(path.stat().st_size for path in caches) / 1e6
-    detail = f"{len(caches)} parquet caches of {sizemb:.1f} MB (artistools cache list gives them)"
+    detail = f"{len(caches)} parquet caches of {sizemb:.1f} MB (`artistools cache list` gives them)"
     if leftovers:
         return "warning", (
             f"{detail}, and {len(leftovers)} leftover files of conversions that stopped, e.g. {leftovers[0].name}."
-            " artistools cache delete deletes them"
+            " `artistools cache delete` deletes them"
         )
     return "ok", detail
 

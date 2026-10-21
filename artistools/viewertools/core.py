@@ -112,12 +112,16 @@ def get_command_tokens(
 
 
 def make_parser(addargs: "Callable[[argparse.ArgumentParser], None]") -> "SuggestingArgumentParser":
-    """Return the parser of a command with the arguments of addargs, and --quiet, which the dispatcher adds."""
+    """Return the parser of a command with the arguments of addargs, and --quiet, which the dispatcher adds.
+
+    The parser also takes the standard spelling of each flag, e.g. --timedays, as the command does.
+    """
     from artistools.commands import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     addargs(parser)
     addarg_quiet(parser)
+    parser.add_standard_flags()
     return parser
 
 

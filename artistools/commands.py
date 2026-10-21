@@ -1214,9 +1214,12 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             flagname, equals, _ = argstring.partition("=")
             action = self._option_string_actions.get(flagname)
             if action is None and flagname.startswith("-") and self.allow_abbrev:
-                matches = [value for flag, value in self._option_string_actions.items() if flag.startswith(flagname)]
+                # two spellings of one flag, e.g. --ion_stages and --ion-stages, are one match
+                matches = {
+                    id(value): value for flag, value in self._option_string_actions.items() if flag.startswith(flagname)
+                }
                 if len(matches) == 1:
-                    action = matches[0]
+                    action = next(iter(matches.values()))
             if action is not None and action.nargs == "*" and action.type is int:
                 valueend = index + 1
                 while not equals and valueend < len(args):
@@ -1546,6 +1549,21 @@ def get_artistools_path(args: argparse.Namespace | None = None, **kwargs: t.Any)
     from artistools.misc import print_product
 
     print_product(args or argparse.Namespace(), get_path("artistools_dir"))
+
+
+def get_older_flag_spellings(parser: argparse.ArgumentParser) -> list[str]:
+    """Return the flags of the parser and of its subcommands that the help hides as an older spelling.
+
+    argcomplete offers each option string of an action, thus --print<Tab> gave --print_data and --print-data.
+    """
+    older: set[str] = set()
+    for action in parser._actions:  # ruff:ignore[private-member-access]
+        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
+            for subparser in action.choices.values():
+                older.update(get_older_flag_spellings(subparser))
+        else:
+            older.update(set(action.option_strings) - set(get_shown_flags(action)))
+    return sorted(older)
 
 
 def get_hidden_commands() -> list[str]:

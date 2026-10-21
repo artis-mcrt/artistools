@@ -993,9 +993,12 @@ def test_cli_missing_model_gives_short_error(tmp_path: Path, capsys: pytest.Capt
     assert "nomodel" in stderr
 
 
-@pytest.mark.parametrize(("comp_line", "expected"), [("at plotsp", "plotspectra"), ("at spec -timed", "-timedays")])
+@pytest.mark.parametrize(
+    ("comp_line", "expected"),
+    [("at plotsp", "plotspectra"), ("at spec --timed", "--timedays"), ("at spec --print", "--print-data")],
+)
 def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> None:
-    """Tab completion must offer subcommand names and the options of a subcommand."""
+    """Tab completion must offer subcommand names and the standard spelling of the options of a subcommand."""
     outputfile = tmp_path / "completions.txt"
     env = os.environ | {
         "_ARGCOMPLETE": "1",
@@ -1009,6 +1012,8 @@ def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> No
     subprocess.run([sys.executable, "-m", "artistools"], env=env, check=False, cwd=REPOPATH, timeout=120)
     completions = outputfile.read_text(encoding="utf-8").split("\v")
     assert expected in completions
+    # the help hides the older spellings, e.g. --print_data, thus tab completion does not offer them
+    assert "--print_data" not in completions
 
 
 def test_timestep_times() -> None:
@@ -4348,6 +4353,27 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
         for spelling in hidden:
             # --xmin holds the text -xmin, thus the spelling must not follow a dash
             assert not re.search(rf"(?<![\w-]){re.escape(spelling)}[ ,]", helptext), spelling
+
+
+def test_viewer_and_completion_know_the_standard_flag_spellings() -> None:
+    """A viewer reads the standard spelling of a flag, and tab completion offers that spelling alone.
+
+    The parser of a viewer had no standard spelling, thus "--timedays 300" became two paths of the series. argcomplete
+    offered --print_data beside --print-data.
+    """
+    import artistools.__main__
+    from artistools.commands import get_older_flag_spellings
+    from artistools.spectra import plotspectra
+    from artistools.viewertools.core import parse_viewer_tokens
+
+    viewertokens = parse_viewer_tokens(
+        plotspectra.addargs, ["--timedays", "300", "--print-data", str(modelpath)], {"timedays"}
+    )
+    assert viewertokens.paths == [str(modelpath)]
+
+    older = set(get_older_flag_spellings(artistools.__main__.build_parser()))
+    assert {"--print_data", "-timedays", "-modelpath"} <= older
+    assert not {"--print-data", "--timedays", "-t", "--modelpath"} & older
 
 
 def test_progress_goes_to_the_standard_error_and_the_product_to_the_standard_output(
