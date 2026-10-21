@@ -4407,6 +4407,16 @@ def test_output_format_of_plotted_data_gives_one_json_document_and_the_file_form
     assert "data" in document
     assert "model" in document["data"][0]
 
+    # a reader of CSV takes one header, thus csv prints the main table alone and names the summary table
+    artistools.__main__.main(
+        argsraw=["plotlightcurves", str(modelpath), "--print-data", "--output-format", "csv", "-o", str(outputfile)]
+    )
+    captured = capsys.readouterr()
+    rows = list(csv.reader(captured.out.splitlines()))
+    assert rows[0][:2] == ["model", "modelpath"]
+    assert len({len(row) for row in rows}) == 1
+    assert "the other tables stay out: summary" in captured.err
+
     artistools.__main__.main(
         argsraw=["plotlightcurves", str(modelpath), "--write-data", "--output-format", "csv", "-o", str(outputfile)]
     )

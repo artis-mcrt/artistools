@@ -117,7 +117,7 @@ MAX_MESSAGE_BYTES = 16 * 1024**3
 
 # increase the server protocol when a reader with the decorator on_model_host changes its arguments or its result.
 # Also increase it for a new format of a message. Then a clone with the protocol of the release needs no build on a host
-SERVER_PROTOCOL = 7
+SERVER_PROTOCOL = 8
 
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
 # standard output first, thus the client ignores each line before this one
@@ -841,14 +841,15 @@ def output_is_hidden() -> bool:
 
     --quiet sends it to the null device, and the worker thread of a viewer sends it to a buffer. The server then
     hides the standard output of the reader, and it sends back the standard error, e.g. an error or a warning.
-    The ThreadOutput of a viewer gives the target of each thread.
+    The ThreadOutput of a viewer gives the target of each thread. Without --quiet, run_command sends the progress
+    messages to the standard error, thus the output is then not hidden.
     """
     import sys
 
     stream: object = sys.stdout
     if (get_target := getattr(stream, "get_target", None)) is not None:
         stream = get_target()
-    return stream is not sys.__stdout__
+    return stream is not sys.__stdout__ and stream is not sys.__stderr__
 
 
 def call_on_host(host: str, modulename: str, qualname: str, args: tuple[t.Any, ...], kwargs: dict[str, t.Any]) -> t.Any:

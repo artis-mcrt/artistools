@@ -1680,11 +1680,13 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
     Each key of tables is the end of a file name, e.g. "_residuals" gives myplot_residuals.txt for myplot.pdf, and an
     empty key gives myplot.txt. The standard output gives the tables in the same order, with an empty line between two
     tables. --output-format json prints one JSON object, with the rows of each table under its key without the "_",
-    e.g. "residuals", and "data" for the empty key. A parser of JSON reads one document alone. --output-format also
-    gives the format and the suffix of each file, e.g. myplot.json. The function skips an empty table. A file starts
-    with comment lines that tell how the command made the data and what each column holds. A pipe reads the standard
-    output, thus it gets no comment lines. An empty table replaces the file of an earlier run, thus that file cannot
-    seem to hold the data of this run.
+    e.g. "residuals", and "data" for the empty key. A parser of JSON reads one document alone. --output-format csv
+    prints the main table alone, with a warning that names the other tables. A reader of CSV takes one header.
+
+    --output-format also gives the format and the suffix of each file, e.g. myplot.json. The function skips an empty
+    table. A file starts with comment lines that tell how the command made the data and what each column holds. A pipe
+    reads the standard output, thus it gets no comment lines. An empty table replaces the file of an earlier run, thus
+    that file cannot seem to hold the data of this run.
     """
     outputformat = getattr(args, "output_format", None)
     printedtables = {suffix: dfdata for suffix, dfdata in tables.items() if not dfdata.is_empty()}
@@ -1693,6 +1695,15 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
 
         document = {suffix.lstrip("_") or "data": get_json_rows(dfdata) for suffix, dfdata in printedtables.items()}
         print_product(args, json.dumps(document, default=str, indent=1))
+    elif getattr(args, "print_data", False) and outputformat == "csv" and len(printedtables) > 1:
+        # a reader of CSV takes one header, thus the output holds the main table alone
+        mainsuffix = "" if "" in printedtables else next(iter(printedtables))
+        othernames = ", ".join(suffix.lstrip("_") for suffix in printedtables if suffix != mainsuffix)
+        print_product(args, printedtables[mainsuffix])
+        print_warning(
+            f"--output-format csv prints the main table alone, and the other tables stay out: {othernames}."
+            " --output-format json prints each table, and --write-data writes one file for each table"
+        )
     elif getattr(args, "print_data", False):
         for tableindex, dfdata in enumerate(printedtables.values()):
             if tableindex > 0:

@@ -5,6 +5,7 @@ tests/data, e.g. testmodel and test-classicmode_3d.
 """
 
 import argparse
+import contextlib
 import gzip
 import importlib.metadata
 import io
@@ -1687,7 +1688,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (7, "0c768aefa4af6926"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (8, "0c768aefa4af6926"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -4206,3 +4207,17 @@ def test_write_data_table_takes_the_format_of_the_suffix(tmp_path: Path) -> None
     write_data_table(dftable, tmp_path / "table.parquet", commentlines=["made by a test"])
     pltest.assert_frame_equal(pl.read_parquet(tmp_path / "table.parquet"), dftable)
     assert pl.read_parquet_metadata(tmp_path / "table.parquet")["comments"] == "made by a test"
+
+
+def test_progress_on_the_standard_error_is_not_hidden_output() -> None:
+    """Without --quiet, run_command sends the progress to the standard error, and a remote reader must keep it.
+
+    output_is_hidden took each stream except the terminal for --quiet. A remote read then sent quiet=True to the server,
+    and the server discarded the progress messages of the reader.
+    """
+    from artistools.misc.remote import output_is_hidden
+
+    with contextlib.redirect_stdout(sys.__stderr__):
+        assert not output_is_hidden()
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert output_is_hidden()
