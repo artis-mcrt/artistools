@@ -40,7 +40,7 @@ jobs:
 
             - name: Setup uv
               id: setup-uv
-              uses: astral-sh/setup-uv@v10.3.0
+              uses: astral-sh/setup-uv@v10.3.1
               with:
                   activate-environment: true
                   cache-suffix: codspeed
@@ -50,7 +50,7 @@ jobs:
               run: rustup update stable
 
             - name: Cache cargo and rust build
-              uses: Swatinem/rust-cache@v2.9.2
+              uses: Swatinem/rust-cache@v2.9.3
               with:
                   workspaces: rust
                   cache-on-failure: true

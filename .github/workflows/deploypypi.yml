@@ -49,12 +49,12 @@ jobs:
               with:
                   persist-credentials: false
 
-            - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+            - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
               with:
                   enable-cache: false
 
             - name: Build wheels
-              uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+              uses: pypa/cibuildwheel@8c2dcd2e96041a619f5ff03c9638d7941e2553a4 # v4.3.3
               with:
                   output-dir: wheelhouse
 
@@ -100,7 +100,7 @@ jobs:
               with:
                   persist-credentials: false
 
-            - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+            - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
               with:
                   enable-cache: false
 
@@ -134,7 +134,7 @@ jobs:
                   merge-multiple: true
 
             - name: Publish package to TestPyPI
-              uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+              uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
               with:
                   skip-existing: true
                   verbose: true
@@ -162,7 +162,7 @@ jobs:
                   merge-multiple: true
 
             - name: Publish package to PyPI
-              uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+              uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
               with:
                   # a second run for one version can happen, e.g. two dispatches of this workflow.
                   # The upload of a file that PyPI already has is then not an error

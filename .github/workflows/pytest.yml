@@ -31,7 +31,7 @@ jobs:
               with:
                   persist-credentials: false
 
-            - uses: astral-sh/setup-uv@v10.3.0
+            - uses: astral-sh/setup-uv@v10.3.1
               id: setup-uv
               with:
                   activate-environment: true
@@ -44,7 +44,7 @@ jobs:
               run: rustup update stable
 
             - name: Cache cargo and rust build
-              uses: Swatinem/rust-cache@v2.9.2
+              uses: Swatinem/rust-cache@v2.9.3
               with:
                   workspaces: rust
                   cache-on-failure: true
@@ -83,7 +83,7 @@ jobs:
             # The hooks correct the errors and show only the files that they change, thus this step skips them
             - name: Run prek pre-commit checks
               if: always()
-              uses: j178/prek-action@v3.0.1
+              uses: j178/prek-action@v3.1.0
               env:
                   SKIP: ruff-check,ruff-format
 
@@ -122,7 +122,7 @@ jobs:
 
             - name: Setup uv
               id: setup-uv
-              uses: astral-sh/setup-uv@v10.3.0
+              uses: astral-sh/setup-uv@v10.3.1
               with:
                   activate-environment: true
                   python-version: ${{ matrix.python-version }}
@@ -132,7 +132,7 @@ jobs:
               run: rustup update stable
 
             - name: Cache cargo and rust build
-              uses: Swatinem/rust-cache@v2.9.2
+              uses: Swatinem/rust-cache@v2.9.3
               with:
                   workspaces: rust
                   cache-on-failure: true
