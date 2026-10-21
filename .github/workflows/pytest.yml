@@ -55,6 +55,16 @@ jobs:
             - name: Check that uv.lock matches pyproject.toml
               run: uv lock --check
 
+            # the step names the locked workflows, because gh-actions-lock v0.2.0 cannot lock deploypypi.yml.
+            # A check of all the workflows fails on it
+            - name: Check that actions.lock matches the workflows
+              if: always()
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh extension install github/gh-actions-lock --pin v0.2.0
+                  gh actions-lock --verify .github/workflows/{benchmark,copilot-setup-steps,depapprove,pytest,release}.yml
+
             - name: Install artistools[extras]
               run: uv sync --all-extras
 
