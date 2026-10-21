@@ -4511,8 +4511,14 @@ def test_figures_of_one_command_print_one_document(tmp_path: Path, capsys: pytes
     ioncolumn = rows[0].index("ion")
     assert {row[ioncolumn].split()[0] for row in rows[1:]} == {"Fe", "Co"}
 
+    # the table of a figure holds no column of the element or the timestep, thus the column figure names its file
+    figurecolumn = rows[0].index("figure")
+    assert {row[figurecolumn].split("_")[1] for row in rows[1:]} == {"Fe", "Co"}
+
     artistools.__main__.main(argsraw=[*argsraw, "--output-format", "json"])
-    assert {row["ion"].split()[0] for row in json.loads(capsys.readouterr().out)["data"]} == {"Fe", "Co"}
+    jsonrows = json.loads(capsys.readouterr().out)["data"]
+    assert {row["ion"].split()[0] for row in jsonrows} == {"Fe", "Co"}
+    assert all(row["figure"].startswith(f"plotnltepops_{row['ion'].split()[0]}_") for row in jsonrows)
 
 
 def test_json_rows_give_null_for_nan_and_infinity() -> None:

@@ -1693,7 +1693,7 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
     # a command can give one figure for each element or each time, thus run_command prints the tables of all the
     # figures as one document when the command ends
     if getattr(args, "print_data", False) and (collected := getattr(args, "collectedtables", None)) is not None:
-        collected.append(printedtables)
+        collected.append((Path(outputfile).name, printedtables))
     elif getattr(args, "print_data", False) and outputformat == "json":
         import json
 
@@ -1732,15 +1732,19 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
 def print_collected_data(args: argparse.Namespace) -> None:
     """Print the tables that output_data collected for each figure as one document of --output-format json or csv.
 
-    A reader of JSON or of CSV takes one document, thus the rows of the tables with one key join one table.
+    A reader of JSON or of CSV takes one document, thus the rows of the tables with one key join one table. With more
+    than one figure, the column "figure" gives the file name of the figure of each row. A table can hold no column of
+    the timestep or of the element, e.g. a table of plotnltepops, and the file name gives them.
     """
     import polars as pl
 
-    collected: list[Mapping[str, pl.DataFrame]] = getattr(args, "collectedtables", None) or []
+    collected: list[tuple[str, Mapping[str, pl.DataFrame]]] = getattr(args, "collectedtables", None) or []
     framesofkey: dict[str, list[pl.DataFrame]] = {}
-    for tables in collected:
+    for figurename, tables in collected:
         for suffix, dfdata in tables.items():
-            framesofkey.setdefault(suffix, []).append(dfdata)
+            framesofkey.setdefault(suffix, []).append(
+                dfdata.with_columns(figure=pl.lit(figurename)) if len(collected) > 1 else dfdata
+            )
     tables = {suffix: pl.concat(frames, how="diagonal_relaxed") for suffix, frames in framesofkey.items()}
     printargs = argparse.Namespace(**(vars(args) | {"write_data": False, "collectedtables": None}))
     output_data(printargs, tables, "")

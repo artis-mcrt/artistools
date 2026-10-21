@@ -4651,3 +4651,20 @@ def test_packet_spectrum_table_gives_the_noise_without_shownoise(capsys: pytest.
     at.spectra.plotspectra.main(argsraw=[str(modelpath), "--frompackets", "-t", "300", "--print_data"])
     header = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("lambda_angstroms "))
     assert "flux_relnoise" in header
+
+
+def test_packet_reason_gives_the_standard_spelling(capsys: pytest.CaptureFixture[str]) -> None:
+    """The message that turns on --frompackets names the option as the help gives it, e.g. --use-sampledemissiontype.
+
+    The message named --use_sampledemissiontype, which the help hides as an older spelling.
+    """
+    from artistools.spectra.plotspectra import resolve_frompackets
+
+    args = at.misc.parse_cli_args(
+        at.spectra.plotspectra.addargs, None, None, [str(modelpath), "--showemission", "--use-sampledemissiontype"]
+    )
+    # resolve_plot_args sets the velocity ranges before it resolves the packets, and the command gives none
+    args.velocityranges_kmps = []
+    resolve_frompackets(args)
+    assert args.frompacketsreason == "--use-sampledemissiontype"
+    assert "since --use-sampledemissiontype was specified" in capsys.readouterr().out

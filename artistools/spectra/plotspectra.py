@@ -2804,7 +2804,7 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
         "--plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
         # the emission files of exspec give only the emission type of the last interaction and of the last thermal
         # emission
-        "--use_sampledemissiontype": showcontributions and args.use_sampledemissiontype,
+        "--use-sampledemissiontype": showcontributions and args.use_sampledemissiontype,
         "--gamma": args.gamma and (showcontributions or bool(args.plotviewingangle)),
         "--gamma with no gamma_spec.out": args.gamma
         and not all(
