@@ -275,7 +275,7 @@ def get_grid(
         # an odd count in x or y puts a cell centre on the symmetry axis, where the mapping divides
         # by the cylindrical radius
         if numb_cells_ARTIS_x % 2 or numb_cells_ARTIS_y % 2:
-            msg = f"-ngridx and -ngridy must be even, got {numb_cells_ARTIS_x} and {numb_cells_ARTIS_y}"
+            msg = f"--ngridx and --ngridy must be even, got {numb_cells_ARTIS_x} and {numb_cells_ARTIS_y}"
             raise ValueError(msg)
 
         vminr, vmaxr = -vmax_on_c, vmax_on_c
@@ -308,7 +308,7 @@ def get_grid(
     # by solving Eq. 10 of P2007 where rho is replaced by the
     # 2D density rho_2D = rho_3D/(2 \pi R) = \sum_i m_i W_2D
     # with particle masses m_i and 2D interpolation kernel W_2D
-    print("computing particle densities...")
+    print("Computing particle densities...")
     rho2dtraj = np.zeros(ntraj)  # this is the 2D density!!!
     hsmooth = np.zeros(ntraj)
     for i in range(ntraj):
@@ -346,12 +346,12 @@ def get_grid(
         dist = np.sqrt((rcyltraj[i] - rcyltraj) ** 2 + (zcyltraj[i] - zcyltraj) ** 2)
         neinum[i] = np.sum(np.where(dist / hsmooth < 2.0, 1.0, 0.0))
     neinumavg = np.sum(neinum * mtraj) / np.sum(mtraj)
-    print("average number of neighbours:", neinumavg)
+    print("Average number of neighbours:", neinumavg)
 
     # Step 5) Final mapping by interpolating all quantities onto the grid
 
     interpol_axis = model_dim
-    print("interpolating...")
+    print("Interpolating...")
     if model_dim == 2:
         distall = np.sqrt(oa(rgridc2d, -rcyltraj) ** 2 + oa(zgridc2d, -zcyltraj) ** 2)
         hall = np.multiply.outer(np.ones((nvr, nvz)), hsmooth)
@@ -385,7 +385,7 @@ def get_grid(
 
     # renormalise so that the interpolated mass equals the sum of the particle masses
     dmgrid = rhoint * volgrid  # either 2D or 3D
-    print("total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * gridsymfac)
+    print("Total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * gridsymfac)
     rescfac = np.sum(mtraj) / np.sum(dmgrid)
     if model_dim == 2:
         rhoint *= rescfac
@@ -418,19 +418,19 @@ def get_grid(
     # test outputs
     testelements = [("He", 2), ("Zr", 40), ("Sn", 50), ("Te", 52), ("Xe", 54), ("W", 74), ("Pt", 78)]
     print("===> mapped data")
-    print("total mass                :", mtot / msol * gridsymfac)
+    print("Total mass                :", mtot / msol * gridsymfac)
     for elsymbol, atomic_number in testelements:
         print(
-            f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
+            f"Total element mass {elsymbol:<2} Z={atomic_number:<2}:",
             np.sum(np.sum(xint[iso[:, 1] == atomic_number, :, :], axis=0) * dmgrid) * gridsymfac / msol,
         )
 
     # mass_arr leaves out the tracers that --nodyn, --nohmns and --notorus exclude, as the mapped data does
     print("===> tracer data")
-    print("total mass                :", np.sum(mass_arr) * eqsymfac)
+    print("Total mass                :", np.sum(mass_arr) * eqsymfac)
     for elsymbol, atomic_number in testelements:
         print(
-            f"total element mass {elsymbol:<2} Z={atomic_number:<2}:",
+            f"Total element mass {elsymbol:<2} Z={atomic_number:<2}:",
             np.sum(np.sum(xiso0[:, iso[:, 1] == atomic_number], axis=1) * mass_arr) * eqsymfac,
         )
 
@@ -1173,18 +1173,16 @@ def float_or_str(x: str) -> float | str:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_output(parser, kind="folder", default=None, helptext="Folder for the output ARTIS model files")
+    addarg_output(parser, kind="folder", default=None, helptext="The folder for the output ARTIS model files")
     addarg_force(parser)
 
-    parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
+    parser.add_argument("-npz", required=True, type=Path, help="The path to the model npz file")
 
     parser.add_argument(
         "-iso",
         default=None,
         type=Path,
-        help=(
-            "Path to the nuclide information npy file. If not provided, will be assumed to be [npz_path]/iso_table.npy"
-        ),
+        help=("The path to the nuclide information npy file. The default is [npz_path]/iso_table.npy"),
     )
 
     parser.add_argument(
@@ -1195,27 +1193,27 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-ngridrcyl", type=int, default=25, help="Number of cells in radial direction the ARTIS model shall have"
+        "-ngridrcyl", type=int, default=25, help="The number of cells in radial direction the ARTIS model shall have"
     )
 
     parser.add_argument(
-        "-ngridz", type=int, default=50, help="Number of cells in z direction the ARTIS model shall have"
+        "-ngridz", type=int, default=50, help="The number of cells in z direction the ARTIS model shall have"
     )
 
-    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires -ngridx and -ngridy")
+    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires --ngridx and --ngridy")
 
     parser.add_argument(
         "-ngridx",
         type=int,
         default=50,
-        help="Number of cells in x direction the ARTIS model shall have (from -vmax to +vmax)",
+        help="The number of cells in x direction the ARTIS model shall have (from --vmax to +vmax)",
     )
 
     parser.add_argument(
         "-ngridy",
         type=int,
         default=50,
-        help="Number of cells in y direction the ARTIS model shall have (from -vmax to +vmax)",
+        help="The number of cells in y direction the ARTIS model shall have (from --vmax to +vmax)",
     )
 
     parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
@@ -1281,7 +1279,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-replacedyn", default=None, type=str, help="Path to dynamical ejecta model which shall be used for replacing"
+        "-replacedyn",
+        default=None,
+        type=str,
+        help="The path to the dynamical ejecta model which shall be used for replacing",
     )
 
     parser.add_argument(
@@ -1294,14 +1295,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " (A is the maximum relative change)"
         ),
     )
-    # deprecated double-dash spelling kept as a hidden alias
-    parser.add_argument("--perturb3Dmodel", dest="perturb3Dmodel", type=float_or_str, nargs="+", help=argparse.SUPPRESS)
 
 
 def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     """Return the names of the files that the command writes to the -o folder.
 
-    With -replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
+    With --replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
     """
     writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
     return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES

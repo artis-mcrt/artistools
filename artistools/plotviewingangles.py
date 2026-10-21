@@ -131,7 +131,7 @@ def viewing_angles_visualisation(
     darkmode : bool
         True gives the plot white text on a black background, or on a transparent background in a PDF or SVG file.
     args : argparse.Namespace
-        The arguments of the command. --print_data and --write_data give the plotted data as text.
+        The arguments of the command. --print-data and --write-data give the plotted data as text.
 
     Returns
     -------
@@ -140,7 +140,7 @@ def viewing_angles_visualisation(
     """
     if args is not None and getattr(args, "write_data", False) and not outfile:
         exit_with_error(
-            "--write_data writes the table beside the figure, and without -o the command writes no figure",
+            "--write-data writes the table beside the figure, and without -o the command writes no figure",
             "Give -o with the name of the figure, e.g. -o viewingangles.html",
         )
 
@@ -245,14 +245,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_darkmode(parser)
     addarg_data_output(parser)
 
-    # deprecated double-dash spellings kept as hidden aliases
+    # the older spellings with two dashes. The parser gives --isomin and the others to the flags above
     parser.add_argument("--outfile", dest="outputfile", type=Path, help=argparse.SUPPRESS)
-    parser.add_argument("--isomin", dest="isomin", type=float, help=argparse.SUPPRESS)
-    parser.add_argument("--isomax", dest="isomax", type=float, help=argparse.SUPPRESS)
-    parser.add_argument("--opacity", dest="opacity", type=float, help=argparse.SUPPRESS)
     parser.add_argument("--surface_count", dest="surface_count", type=int, help=argparse.SUPPRESS)
-    parser.add_argument("--linewidth", dest="linewidth", type=float, help=argparse.SUPPRESS)
-    parser.add_argument("--linelength", dest="linelength", type=float, help=argparse.SUPPRESS)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

@@ -532,7 +532,7 @@ def get_transitiondata_cached(
     transitionsdict = read_transitiondata(transition_filename, ionlist=ionset, firstlevelnumber=firstlevelnumber)
 
     if not quiet:
-        print(f"  took {time.perf_counter() - time_start:.2f} seconds")
+        print(f"  Took {time.perf_counter() - time_start:.2f} seconds")
 
     return transitionsdict
 

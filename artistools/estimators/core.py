@@ -767,13 +767,13 @@ def convert_text_to_parts(state: "EstimatorBatchState", partsfolder: Path) -> Ti
         if state.textfile is not None:
             textsize_mib = state.textfile.stat().st_size / 1024 / 1024
             print(
-                f"    reading {state.textfile.name} ({textsize_mib:.1f} MiB) in {state.runfolder.name}...",
+                f"    Reading {state.textfile.name} ({textsize_mib:.1f} MiB) in {state.runfolder.name}...",
                 end="",
                 flush=True,
             )
             estimparse_allranks_textbatches(state.textfile, MIN_TEXTBATCH_BYTES, submit_text_batch)
         else:
-            print(f"    reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
+            print(f"    Reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
             estimparse_textbatches(
                 state.runfolder, min(state.mpiranks), max(state.mpiranks), MIN_TEXTBATCH_BYTES, submit_text_batch
             )
@@ -892,7 +892,7 @@ def convert_unchanged_text_to_parts(
             and mtime_matches_stamp(str(textsource_mtime), textsource_mtime_after)
         ):
             return timestepparts, state, textfiles, textsize
-        print("the text changed during the read.", flush=True)
+        print("The text changed during the read.", flush=True)
 
     print_warning(
         f"{state.runfolder}: the estimator text changed during each of three reads. The cache can lack the last"
@@ -1016,7 +1016,7 @@ def get_estimators_parquetfile(
                 f" text files, because {stalereason}. File will be regenerated..."
             )
 
-        print(f"  generating {parquetfilepath.relative_to(modelpath.parent)}{conversionlabel}...")
+        print(f"  Generating {parquetfilepath.relative_to(modelpath.parent)}{conversionlabel}...")
 
         time_start = time.perf_counter()
 
@@ -1035,16 +1035,16 @@ def get_estimators_parquetfile(
                 drop_incomplete_last_timestep(timestepparts, state.runfolder, nonempty_cellcounts)
                 sort_timestep_parts(timestepparts, schema)
 
-            print(f"took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
+            print(f"Took {time.perf_counter() - time_start:.1f} s. Writing parquet file...", end="", flush=True)
             time_start = time.perf_counter()
             write_estimator_cache(state, timestepparts, schema, textfiles, textsize)
 
-        print(f"took {time.perf_counter() - time_start:.1f} s.")
+        print(f"Took {time.perf_counter() - time_start:.1f} s.")
 
         # the new cache holds the data of every batch cache of the folder
         for batchcache in state.obsolete_batchcaches:
             batchcache.unlink(missing_ok=True)
-            print(f"  removed the batch cache {batchcache.relative_to(modelpath.parent)}")
+            print(f"  Removed the batch cache {batchcache.relative_to(modelpath.parent)}")
 
     filesize = parquetfilepath.stat().st_size / 1024 / 1024
     try:
@@ -1695,7 +1695,7 @@ def scan_artis_estimators(
                 Path(x).relative_to(modelpath).as_posix() for x in dict.fromkeys(runfolder_of_file)
             )
             print(
-                f"  scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB)"
+                f"  Scanning {len(parquetfiles)} parquet estimator files ({datasize_GB:.1f} GB)"
                 f" from {str_runfolders}..."
             )
         # a window keeps the scans for its many plots. A command reads each file one time

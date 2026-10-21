@@ -5,7 +5,10 @@ import typing as t
 from collections.abc import Sequence
 from pathlib import Path
 
+import polars as pl
+
 from artistools.misc import addarg_modelpath
+from artistools.misc import addarg_output_format
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import get_model_logname
@@ -15,6 +18,19 @@ from artistools.misc import parse_cli_args
 from artistools.misc import parse_range_list
 from artistools.misc import print_product
 from artistools.misc.timesteps import get_bad_timestep_message
+
+
+def get_timesteps_dataframe(modelpath: Path | str) -> pl.DataFrame:
+    """Return the timesteps of a model as a dataframe, for --output-format json or csv."""
+    tstarts = get_timestep_times(modelpath, loc="start")
+    tends = get_timestep_times(modelpath, loc="end")
+    return pl.DataFrame({
+        "timestep": range(len(tstarts)),
+        "start_days": tstarts,
+        "mid_days": get_timestep_times(modelpath, loc="mid"),
+        "end_days": tends,
+        "width_days": [tend - tstart for tstart, tend in zip(tstarts, tends, strict=True)],
+    })
 
 
 def get_timesteps_table(modelpath: Path | str) -> str:
@@ -32,8 +48,8 @@ def get_timesteps_table(modelpath: Path | str) -> str:
         for timestep, (tstart, tmid, tend) in enumerate(zip(tstarts, tmids, tends, strict=True))
     )
     lines.append(
-        f'Select one with e.g. "-timestep {len(tmids) // 2}" or "-timedays {tmids[len(tmids) // 2]:.0f}", '
-        f'a range with "-timestep {len(tmids) // 4}-{len(tmids) // 2}", and "last" names timestep {len(tmids) - 1}'
+        f"Select one with e.g. `--timestep {len(tmids) // 2}` or `--timedays {tmids[len(tmids) // 2]:.0f}`, "
+        f"a range with `--timestep {len(tmids) // 4}-{len(tmids) // 2}`, and `last` names timestep {len(tmids) - 1}"
     )
 
     return "\n".join(lines)
@@ -52,6 +68,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_modelpath(parser, positional=True, default=Path())
     addarg_timedays(parser, kind="float", helptext="Name the timestep that covers this time in days")
     addarg_timestep(parser, helptext="Give the days that this timestep covers, e.g. 40 or last")
+    addarg_output_format(parser)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -71,6 +88,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 msg = get_bad_timestep_message(args.modelpath, timestep)
                 raise ValueError(msg)
 
-            print_product(args, f"timestep {timestep} covers {get_timestep_days(args.modelpath, timestep)}")
+            print_product(args, f"Timestep {timestep} covers {get_timestep_days(args.modelpath, timestep)}")
     else:
-        print_product(args, get_timesteps_table(args.modelpath))
+        # json and csv give the values alone, thus a script reads them with no heading
+        istext = args.output_format in {None, "text"}
+        print_product(args, get_timesteps_table(args.modelpath) if istext else get_timesteps_dataframe(args.modelpath))

@@ -167,7 +167,7 @@ def get_reduced_packet_set(
 
 
 def get_ion_label(ion: tuple[int | None, int | None]) -> str:
-    """Return the name of an ion, an element, or an ion stage of the selection of -ions, e.g. "Sr II" or "Sr"."""
+    """Return the name of an ion, an element, or an ion stage of the selection of --ions, e.g. "Sr II" or "Sr"."""
     Z, ion_stage = ion
     if Z is None:
         assert ion_stage is not None
@@ -233,8 +233,8 @@ def packets_2d_hist_bin_and_ejecta_vel(
         missing_cols = required_cols - set(lzpackets.collect_schema().names())
         if missing_cols:
             exit_with_error(
-                f"the 2D image of --use_thermalemissiontype needs the packet columns {', '.join(sorted(missing_cols))}",
-                "Give -groupby, which can take the column true_emission_velocity of an old packets file",
+                f"The 2D image of --use-thermalemissiontype needs the packet columns {', '.join(sorted(missing_cols))}",
+                "Give --groupby, which can take the column true_emission_velocity of an old packets file",
             )
         position = "trueem"
     # a packet with no record of the emission has a time of NaN, thus it is outside each bin of the image
@@ -255,12 +255,12 @@ def packets_2d_hist_bin_and_ejecta_vel(
     if velocitymax_kmps is None:
         fastest_kmps = dfpackets.select(pl.max_horizontal("v_cyl_kmps", pl.col("v_z_kmps").abs()).fill_nan(None).max())
         if fastest_kmps.item() is None:
-            exit_with_error("no selected packet has a record of the position", "Give a different selection")
+            exit_with_error("No selected packet has a record of the position", "Give a different selection")
         # the factor keeps the fastest packet inside the last pixel
         velocitymax_kmps = float(fastest_kmps.item()) * (1.0 + 1e-9)
         print_detail(
             f"The axes end at {format_velocity(velocitymax_kmps, unit)}, the largest v_cyl or |v_z| of the last"
-            " interactions. -velocitymax gives a different end"
+            " interactions. --velocitymax gives a different end"
         )
     xedges = np.linspace(0.0, velocitymax_kmps, nbins + 1)
     pixelwidth_kmps = float(xedges[1])
@@ -285,7 +285,7 @@ def packets_2d_hist_bin_and_ejecta_vel(
         for column in ("weight", "weightsquared", "one")
     )
     luminosityfactor = inverse_solidangle_fraction / (delta_t_s * nprocs_read)
-    print_arrival_time_method(modelpath, [timestep], "the timestep that holds -timedays")
+    print_arrival_time_method(modelpath, [timestep], "the timestep that holds --timedays")
     print_last_interaction_convention(modelpath)
     print_heatmap_method(
         dfpackets,
@@ -414,7 +414,7 @@ def print_heatmap_method(
         print_warning(
             "The pixels that hold packets have a median relative error of"
             f" {float(np.median(pixelrelativeerrors)):.0%}, thus the colour of a pixel has a large packet noise. Give"
-            " a smaller -nvelocitybins, a wider wavelength range, or -dirbin -1"
+            " a smaller --nvelocitybins, a wider wavelength range, or --dirbin -1"
         )
     totalluminosity = float(dfpackets["e_rf"].sum()) * luminosityfactor
     imageluminosity = float(dfinimage["e_rf"].sum()) * luminosityfactor
@@ -540,8 +540,8 @@ def plot_velocity_profiles_by_group(
     )
     if dfpackets.is_empty():
         exit_with_error(
-            f"no escaped r-packet of the selection arrives from {t_min:.2f} to {t_max:.2f} d",
-            "Give a different time, a wider wavelength range, or -dirbin -1",
+            f"No escaped r-packet of the selection arrives from {t_min:.2f} to {t_max:.2f} d",
+            "Give a different time, a wider wavelength range, or --dirbin -1",
         )
     print_group_selection(lambdarange, groupby, absorption=absorption)
 
@@ -559,7 +559,7 @@ def plot_velocity_profiles_by_group(
     )
     luminosity_factor = inverse_solidangle_fraction / (delta_t_s * nprocs_read)
     dfgroupsummary = get_group_summary(dfpackets, typecolumn, dflabels, drawnnames, luminosity_factor)
-    print_arrival_time_method(modelpath, [timestep], "the timestep that holds -timedays")
+    print_arrival_time_method(modelpath, [timestep], "the timestep that holds --timedays")
     print_last_interaction_convention(modelpath)
     print_group_profile_method(
         dfprofiles, dfpackets.height, position, velocitykind, typecolumn, velocityedges_kmps, dfgroupsummary, unit
@@ -606,7 +606,7 @@ def plot_velocity_profiles_by_group(
 
 
 def print_group_selection(lambdarange: tuple[float, float] | None, groupby: str, *, absorption: bool) -> None:
-    """Print the wavelength selection of the packets of -groupby, the position of an absorption, and the line labels."""
+    """Print the wavelength selection of the packets of --groupby, the position of an absorption, and the labels."""
     from artistools.spectra.core import print_line_label_convention
 
     if lambdarange is not None:
@@ -692,7 +692,7 @@ def print_group_profile_method(
         print_warning(
             f"These groups have a luminosity with a relative error above {NOISY_RELATIVE_ERROR:.0%}:"
             f" {', '.join(noisylabels)}. Thus the packet noise of their fractions and velocity profiles is large. Give"
-            " a wider wavelength range or -dirbin -1. A smaller -maxseriescount puts the weak groups in Other"
+            " a wider wavelength range or --dirbin -1. A smaller --maxseriescount puts the weak groups in Other"
         )
 
 
@@ -855,7 +855,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=-1,
         help=(
-            "The direction bin of the escaped packets, as in plotspectra. --average_over_phi_angle takes all the phi"
+            "The direction bin of the escaped packets, as in plotspectra. --average-over-phi-angle takes all the phi"
             " bins of its costheta bin. The value -1 takes all directions"
         ),
     )
@@ -863,7 +863,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-groupby",
         choices=["element", "ion", "line"],
         help=(
-            "Plot the luminosity per unit velocity against the velocity (-velocitykind) of the last interaction."
+            "Plot the luminosity per unit velocity against the velocity (--velocitykind) of the last interaction."
             " Draw one series for each element, ion, or line of the last emission. Without this option, the plot is"
             " a 2D image"
         ),
@@ -872,7 +872,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--absorption",
         action="store_true",
         help=(
-            "Select the packets by the wavelength of their last absorption. With -groupby, group them by the element,"
+            "Select the packets by the wavelength of their last absorption. With --groupby, group them by the element,"
             " the ion, or the line of that absorption. The last absorption happens at the position of the last"
             " emission"
         ),
@@ -881,7 +881,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-maxseriescount",
         type=positive_int_arg,
         default=8,
-        help='Number of groups that -groupby draws. The other groups join the group "Other"',
+        help='Number of groups that --groupby draws. The other groups join the group "Other"',
     )
     addarg_velocitybins(parser)
     addarg_velocitykind(parser)
@@ -914,16 +914,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if (args.wavelen is None) != (args.binwidth is None):
-        exit_with_error("-wavelen and -binwidth give a range together", "Give -lambdamin and -lambdamax")
+        exit_with_error("--wavelen and --binwidth give a range together", "Give --lambdamin and --lambdamax")
     if args.wavelen is not None:
         if args.xmin is not None or args.xmax is not None:
-            exit_with_error("give the wavelength range one time", "Remove -wavelen and -binwidth")
+            exit_with_error("Give the wavelength range one time", "Remove --wavelen and --binwidth")
         args.xmin, args.xmax = args.wavelen - args.binwidth / 2, args.wavelen + args.binwidth / 2
     if (args.xmin is None) != (args.xmax is None):
-        exit_with_error("the wavelength range needs two ends", "Give -lambdamin and -lambdamax together")
+        exit_with_error("The wavelength range needs two ends", "Give --lambdamin and --lambdamax together")
     if args.absorption and args.use_thermalemissiontype:
         exit_with_error(
-            "--absorption takes the last absorption, and --use_thermalemissiontype takes the last thermal emission",
+            "--absorption takes the last absorption, and --use-thermalemissiontype takes the last thermal emission",
             "Give one of the two options",
         )
 
@@ -946,8 +946,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.groupby is None and args.velocitykind != "radial":
         exit_with_error(
-            "-velocitykind applies only with -groupby. The 2D image always gives v_cyl and v_z",
-            "Remove -velocitykind, or give -groupby",
+            "--velocitykind applies only with --groupby. The 2D image always gives v_cyl and v_z",
+            "Remove --velocitykind, or give --groupby",
         )
     if args.groupby is not None:
         plot_velocity_profiles_from_args(args, ions)
@@ -976,7 +976,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 def get_selected_ions(args: argparse.Namespace) -> list[tuple[int | None, int | None]] | None:
-    """Return the (Z, ion_stage) of each item of -ions, or of -element and -ionstage, or None for no selection.
+    """Return the (Z, ion_stage) of each item of --ions, or of --element and --ionstage, or None for no selection.
 
     A None in an item selects each element or each ion stage.
     """
@@ -989,36 +989,36 @@ def get_selected_ions(args: argparse.Namespace) -> list[tuple[int | None, int | 
                 iontuple = get_ion_tuple(iontext.strip())
             except ValueError:
                 exit_with_error(
-                    f"-ions takes ions or elements, and '{iontext}' is neither", 'Give e.g. -ions "Sr II,Fe"'
+                    f"--ions takes ions or elements, and '{iontext}' is neither", 'Give e.g. --ions "Sr II,Fe"'
                 )
             Z = iontuple[0] if isinstance(iontuple, tuple) else iontuple
             # get_atomic_number gives -1 for a text that is no element symbol, and 0 for the free neutron
             if Z < 1:
                 exit_with_error(
-                    f"-ions takes ions or elements, and '{iontext}' is neither", 'Give e.g. -ions "Sr II,Fe"'
+                    f"--ions takes ions or elements, and '{iontext}' is neither", 'Give e.g. --ions "Sr II,Fe"'
                 )
             ions.append(iontuple if isinstance(iontuple, tuple) else (iontuple, None))
         return ions
     if args.ions:
-        exit_with_error("give the ions one time", "Remove -element and -ionstage")
+        exit_with_error("Give the ions one time", "Remove --element and --ionstage")
     Z = get_atomic_number(args.element) if args.element else None
     if Z is not None and Z < 1:
-        exit_with_error(f"-element {args.element} is no element symbol", "Give the element as e.g. Sr")
+        exit_with_error(f"--element {args.element} is no element symbol", "Give the element as e.g. Sr")
     ion_stage = decode_roman_numeral(args.ionstage) if args.ionstage else None
     if ion_stage == -1:
-        exit_with_error(f"-ionstage {args.ionstage} is no Roman numeral", "Give the ion stage as e.g. II")
+        exit_with_error(f"--ionstage {args.ionstage} is no Roman numeral", "Give the ion stage as e.g. II")
     return [(Z, ion_stage)]
 
 
 def get_lambdarange(args: argparse.Namespace) -> tuple[float, float] | None:
-    """Return the range of rest-frame wavelength [Å] of -lambdamin and -lambdamax, or None for no limit."""
+    """Return the range of rest-frame wavelength [Å] of --lambdamin and --lambdamax, or None for no limit."""
     return None if args.xmin is None else (args.xmin, args.xmax)
 
 
 def plot_velocity_profiles_from_args(
     args: argparse.Namespace, ions: Sequence[tuple[int | None, int | None]] | None
 ) -> None:
-    """Check the options of -groupby, then plot the velocity profile of each group."""
+    """Check the options of --groupby, then plot the velocity profile of each group."""
     for option, isgiven in (
         ("-ions", ions is not None),
         ("--srIItriplet", args.srIItriplet),
@@ -1026,8 +1026,8 @@ def plot_velocity_profiles_from_args(
     ):
         if isgiven:
             exit_with_error(
-                f"{option} applies to the 2D image, and -groupby gives one series for each group",
-                f"Remove {option}, or remove -groupby",
+                f"{option} applies to the 2D image, and --groupby gives one series for each group",
+                f"Remove {option}, or remove --groupby",
             )
     modelpath = Path(args.modelpath)
     unit = get_velocity_unit(modelpath, args.velocityunit)

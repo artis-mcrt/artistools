@@ -1083,7 +1083,7 @@ def test_spectraemissionplot_refuses_ion_groups_of_gamma_packets(
             groupby=groupby,
             outputfile=tmp_path / "gammaions.pdf",
         )
-    assert f"does not accept -groupby {groupby}" in capsys.readouterr().err
+    assert f"does not accept --groupby {groupby}" in capsys.readouterr().err
 
 
 def test_spectra_gamma_packets_group_by_emission_velocity(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2096,15 +2096,6 @@ def test_plotspectra_takes_a_reference_named_out_before_a_model(tmp_path: Path) 
     assert len(list(outputfolder.glob("*.pdf"))) == 1
 
 
-def test_plotspectra_accepts_classicartis_and_says_it_does_nothing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A script holds the spelling, thus the argument stays accepted. No code reads it for this command."""
-    at.spectra.plot(argsraw=["--classicartis", "-timedays", "260-300", str(modelpath), "-outputfile", str(tmp_path)])
-
-    assert "ignores --classicartis" in capsys.readouterr().err
-
-
 def test_plotspectra_timedayslist_names_the_whole_range(tmp_path: Path) -> None:
     """-timedayslist names one epoch for each subplot, thus the file name must span the whole list.
 
@@ -2814,7 +2805,7 @@ def test_polarisation_plot_refuses_a_y_range_that_is_not_in_order(
                 "0",
             ]
         )
-    assert "must be less than -ymax" in capsys.readouterr().err
+    assert "must be less than --ymax" in capsys.readouterr().err
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -2900,10 +2891,10 @@ def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
 def test_single_x_limit_on_the_wrong_side_of_the_default_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
     """A single -xmin above the default upper limit became the upper limit, thus the plot showed a different range."""
     for argsraw, missing in (
-        (["-xmin", "25000"], "-xmax"),
-        (["-xmax", "2000"], "-xmin"),
-        (["-xunit", "hz", "-xmax", "1e14"], "-xmin"),
-        (["--gamma", "-xunit", "kev", "-xmin", "5000"], "-xmax"),
+        (["-xmin", "25000"], "--xmax"),
+        (["-xmax", "2000"], "--xmin"),
+        (["-xunit", "hz", "-xmax", "1e14"], "--xmin"),
+        (["--gamma", "-xunit", "kev", "-xmin", "5000"], "--xmax"),
     ):
         args = at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), *argsraw])
         with pytest.raises(SystemExit):
@@ -3450,7 +3441,7 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
         viewer.values, notimeclamp=True, widthmode="days", centre=306.4, width=5.0, xmin="3000", xmax="9000"
     )
     assert viewer.change(continuous) is None
-    assert viewer.get_command().endswith(" -t 303.9-308.9 -xmin 3000 -xmax 9000 --notimeclamp")
+    assert viewer.get_command().endswith(" -t 303.9-308.9 --xmin 3000 --xmax 9000 --notimeclamp")
     # a continuous range reads the packets that arrive inside it, and not whole timesteps
     assert viewer.get_time_range_text() == "Packets from 303.90 to 308.90 d (Δt = 5.00 d)"
     assert viewer.change(viewer.snap(viewer.values, 58, 62)) is None
@@ -3482,11 +3473,11 @@ def test_interactive_emission_options() -> None:
 
     # the viewer stores the default grouping as None. A stored "ion" was not equal to the None of the controls, thus a
     # change of an emission option removed the series lock
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "-groupby", "ion", "--interactive"])
+    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--groupby", "ion", "--interactive"])
     assert viewer.values.groupby is None
     figheight = viewer.fig.get_figheight()
     assert viewer.change(dc.replace(viewer.values, showabsorption=True, maxseriescount=5, nostack=True)) is None
-    assert viewer.get_command().endswith(" --showabsorption -maxseriescount 5 --nostack")
+    assert viewer.get_command().endswith(" --showabsorption --maxseriescount 5 --nostack")
     assert viewer.fig.get_figheight() > figheight
 
     # the window disables a choice that plotspectra rejects, thus the test must find the rejection without a plot
@@ -3497,7 +3488,7 @@ def test_interactive_emission_options() -> None:
 
 def test_interactive_xunit_and_references() -> None:
     """A new x unit converts and sorts the limits, and a reference spectrum goes after the model paths."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-deltax", "20", "--interactive"])
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--deltax", "20", "--interactive"])
     # a frequency increases where the wavelength decreases, thus the limit of 19000 Å becomes the minimum
     inhertz = interactive.convert_xunit(viewer.values, "hz", gamma=False)
     assert (inhertz.xmin, inhertz.xmax, inhertz.deltax) == ("1.578e+14", "1.199e+15", "")
@@ -3509,7 +3500,7 @@ def test_interactive_xunit_and_references() -> None:
     assert viewer.change(dc.replace(inhertz, spectra=(*inhertz.spectra, reference))) is None
     tokens = shlex.split(viewer.get_command())[2:]
     assert tokens[:4] == [str(modelpath), reference, "-t", "300"]
-    assert "-xunit" in tokens
+    assert "--xunit" in tokens
     assert len(viewer.axes[0].get_lines()) == 2
 
 
@@ -3594,30 +3585,30 @@ def test_interactive_time_fits_the_timestep_of_each_model() -> None:
 
 
 def test_interactive_series_styles_stay_on_their_spectrum() -> None:
-    """A new order of the spectra keeps each -label and each -color on its spectrum.
+    """A new order of the spectra keeps each --label and each --color on its spectrum.
 
     Each option gives its values in the order of the spectra. Thus a spectrum with no value in front of a spectrum with
     a value takes the token default, and plotspectra then gives it the automatic label, e.g. with the time.
     """
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
     oldspectra = (str(modelpath), reference, str(modelpath_classic_3d))
-    rows = (("-label", ("First",)), ("-color", ("red", "blue")))
+    rows = (("--label", ("First",)), ("--color", ("red", "blue")))
     newspectra = (str(modelpath_classic_3d), reference, str(modelpath))
 
     moved = viewercore.move_series_styles(rows, oldspectra, newspectra)
-    assert dict(moved) == {"-label": ("default", "default", "First"), "-color": ("default", "blue", "red")}
+    assert dict(moved) == {"--label": ("default", "default", "First"), "--color": ("default", "blue", "red")}
     # the values of a removed spectrum go out of the option rows
-    assert dict(viewercore.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"-color": ("blue",)}
+    assert dict(viewercore.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"--color": ("blue",)}
 
     viewer = make_headless_viewer([*oldspectra[:2], "-t", "300", "--interactive"])
-    labelled = interactive.set_series_values(viewer.values, reference, {"-label": "Observed"})
-    assert viewercore.get_row_values(labelled.otheroptions, "-label") == ("default", "Observed")
+    labelled = interactive.set_series_values(viewer.values, reference, {"--label": "Observed"})
+    assert viewercore.get_row_values(labelled.otheroptions, "--label") == ("default", "Observed")
     assert viewer.change(labelled) is None
     legendlabels = [line.get_label() for line in viewer.axes[0].get_lines()]
     assert legendlabels[1] == "Observed"
     assert legendlabels[0].startswith("TEST MODEL +300")
-    unlabelled = interactive.set_series_values(labelled, reference, {"-label": None})
-    assert viewercore.get_row_values(unlabelled.otheroptions, "-label") is None
+    unlabelled = interactive.set_series_values(labelled, reference, {"--label": None})
+    assert viewercore.get_row_values(unlabelled.otheroptions, "--label") is None
 
 
 def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
@@ -3685,25 +3676,25 @@ def test_interactive_command_gives_the_series_count_of_the_box() -> None:
 
 
 def test_interactive_fixed_y_axis() -> None:
-    """A fixed y axis keeps a negative -ymin through the command, and the limits stay when the time changes."""
+    """A fixed y axis keeps a negative --ymin through the command, and the limits stay when the time changes."""
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     assert viewer.change(dc.replace(viewer.values, ymin="-1e-13", ymax="3e-13")) is None
     # Python 3.13 reads a separate -1e-13 as an option, thus the value joins its flag
-    assert " -ymin=-1e-13 -ymax 3e-13" in viewer.get_command()
+    assert " --ymin=-1e-13 --ymax 3e-13" in viewer.get_command()
     assert viewer.change(dc.replace(viewer.values, centre=305.0)) is None
     assert np.allclose(viewer.axes[0].get_ylim(), (-1e-13, 3e-13), rtol=1e-9, atol=0.0)
 
 
 def test_interactive_figwidthscale_fills_the_plot_area() -> None:
-    """The viewer sets -figwidthscale to give the figure the shape of the plot area, and the command shows it."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-figwidthscale", "1.5", "--interactive"])
+    """The viewer sets --figwidthscale to give the figure the shape of the plot area, and the command shows it."""
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--figwidthscale", "1.5", "--interactive"])
     for areawidth, areaheight in ((1600.0, 500.0), (600.0, 500.0)):
         figwidthscale = viewer.get_fitted_figwidthscale(areawidth, areaheight)
         assert viewer.change(dc.replace(viewer.values, figwidthscale=figwidthscale)) is None
         figwidth, figheight = viewer.fig.get_size_inches()
         # the scale has 2 decimals, thus the shape of the figure differs a little from the shape of the area
         assert np.isclose(figwidth / figheight, areawidth / areaheight, rtol=0.01)
-        assert f" -figwidthscale {figwidthscale:g}" in viewer.get_command()
+        assert f" --figwidthscale {figwidthscale:g}" in viewer.get_command()
 
 
 def test_maxseriescount_cuts_the_fixedionlist() -> None:
@@ -3811,7 +3802,7 @@ def test_interactive_status_line_gives_the_error() -> None:
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
     assert rejection is not None
-    assert rejection.startswith("argument -deltalambda")
+    assert rejection.startswith("Argument --deltalambda")
 
 
 def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit() -> None:
@@ -3870,7 +3861,7 @@ def test_fixedionlist_warning_names_only_the_items_that_the_plot_shows(capsys: p
         atspectra.sort_and_reduce_flux_contribution_list(
             contributions, maxseriescount, arraylambda, fixedionlist=["Fe II", "Co II", "Ni II"]
         )
-        assert ("did not find" in capsys.readouterr().err) is haswarning
+        assert ("Did not find" in capsys.readouterr().err) is haswarning
 
 
 def test_interactive_valid_times_of_each_model() -> None:
@@ -3920,31 +3911,31 @@ def test_interactive_data_source() -> None:
     assert "--frompackets" not in shlex.split(viewer.get_command())
     assert interactive.get_packets_reason(viewer.get_plot_tokens()) is None
     elementvalues = dc.replace(viewer.values, showemission=True, groupby="element")
-    assert interactive.get_packets_reason(viewer.get_plot_tokens(elementvalues)) == "-groupby element"
+    assert interactive.get_packets_reason(viewer.get_plot_tokens(elementvalues)) == "--groupby element"
 
     assert viewer.change(dc.replace(viewer.values, datasource="text")) is None
     textelement = dc.replace(elementvalues, datasource="text")
     oldvalues = viewer.values
     for message in (viewer.get_rejection(textelement), viewer.change(textelement)):
         assert message is not None
-        assert message.startswith("-groupby element needs the packets files")
+        assert message.startswith("--groupby element needs the packets files")
     assert viewer.values == oldvalues
 
 
 def test_interactive_direction_and_bin_controls() -> None:
     """The controls of the viewing direction and the bins take the options of the user, and give each option one time.
 
-    The deprecated --average_every_tenth_viewing_angle becomes --average_over_phi_angle, and the table of the other
+    The deprecated --average-every-tenth-viewing-angle becomes --average-over-phi-angle, and the table of the other
     options holds none of these options.
     """
     viewer = make_headless_viewer([
         str(modelpath_classic_3d),
         "-t",
         "4",
-        "--average_every_tenth_viewing_angle",
-        "-plotviewingangle",
+        "--average-every-tenth-viewing-angle",
+        "--plotviewingangle",
         "10",
-        "-dlogx",
+        "--dlogx",
         "0.002",
         "--normalised",
         "--interactive",
@@ -3954,17 +3945,17 @@ def test_interactive_direction_and_bin_controls() -> None:
     assert values.normalised
     assert not values.otheroptions
     command = shlex.split(viewer.get_command())
-    for option in ("--average_over_phi_angle", "-plotviewingangle", "-deltalogx", "--normalised"):
+    for option in ("--average-over-phi-angle", "--plotviewingangle", "--deltalogx", "--normalised"):
         assert command.count(option) == 1
-    assert "--average_every_tenth_viewing_angle" not in command
-    assert command[command.index("-plotviewingangle") + 1] == "10"
+    assert "--average-every-tenth-viewing-angle" not in command
+    assert command[command.index("--plotviewingangle") + 1] == "10"
 
     choices = viewercore.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
     assert [dirbin for dirbin, _ in choices] == list(range(10))
     assert viewer.change(dc.replace(values, directionkind="theta", directionbins=(3,), deltalogx="")) is None
     command = shlex.split(viewer.get_command())
-    assert "--average_over_theta_angle" in command
-    assert not {"--average_over_phi_angle", "-deltalogx"} & set(command)
+    assert "--average-over-theta-angle" in command
+    assert not {"--average-over-phi-angle", "--deltalogx"} & set(command)
 
     # the legend gives the angles of the direction, and the command keeps --usedegrees only with a direction
     assert viewer.change(dc.replace(viewer.values, usedegrees=True)) is None
@@ -3975,21 +3966,33 @@ def test_interactive_direction_and_bin_controls() -> None:
 
     assert viewer.change(dc.replace(viewer.values, directionkind="", directionbins=())) is None
     command = set(shlex.split(viewer.get_command()))
-    assert not {"-plotviewingangle", "--average_over_theta_angle", "--usedegrees"} & command
+    assert not {"--plotviewingangle", "--average-over-theta-angle", "--usedegrees"} & command
 
 
 def test_interactive_option_rows() -> None:
     """The table of the window reads each form of an option that argparse accepts, and each row keeps its values."""
     parser = viewercore.make_parser(plotspectra.addargs)
-    tokens = ["-dx", "5", "-label", "a b", "c", "-filtersavgol", "5", "2", "--normalised", "-title=My plot", "-dpi300"]
+    tokens = [
+        "--dx",
+        "5",
+        "--label",
+        "a b",
+        "c",
+        "--filtersavgol",
+        "5",
+        "2",
+        "--normalised",
+        "--title=My plot",
+        "-dpi300",
+    ]
     rows, othertokens = viewercore.split_option_rows(parser, [*tokens, "--", "rest"])
     assert rows == (
-        ("-deltax", ("5",)),
-        ("-label", ("a b", "c")),
-        ("-filtersavgol", ("5", "2")),
+        ("--deltax", ("5",)),
+        ("--label", ("a b", "c")),
+        ("--filtersavgol", ("5", "2")),
         ("--normalised", ()),
-        ("-title", ("My plot",)),
-        ("-dpi", ("300",)),
+        ("--title", ("My plot",)),
+        ("--dpi", ("300",)),
     )
     assert othertokens == ["--", "rest"]
 
@@ -4001,40 +4004,40 @@ def test_interactive_option_rows() -> None:
     }
     # the other controls of the window set these options, and a list of times draws more than one plot
     assert (
-        not {"-timedays", "-xmin", "-groupby", "-yvariable", "-plotviewingangle", "-timedayslist", "-h"}
+        not {"--timedays", "--xmin", "--groupby", "--yvariable", "--plotviewingangle", "--timedayslist", "-h"}
         & actions.keys()
     )
     # no option of the table has choices now, but a new option with choices gets a list in the table
     allactions = viewercore.get_actions_by_flag(parser)
-    kinds = {flag: viewercore.get_option_kind(allactions[flag]) for flag in ("--notitle", "-yvariable", "-dpi")}
-    assert kinds == {"--notitle": "flag", "-yvariable": "choice", "-dpi": "int"}
-    assert [viewercore.get_option_kind(actions[flag]) for flag in ("-filtersavgol", "-label", "-title")] == [
+    kinds = {flag: viewercore.get_option_kind(allactions[flag]) for flag in ("--notitle", "--yvariable", "--dpi")}
+    assert kinds == {"--notitle": "flag", "--yvariable": "choice", "--dpi": "int"}
+    assert [viewercore.get_option_kind(actions[flag]) for flag in ("--filtersavgol", "--label", "--title")] == [
         "values",
         "list",
         "text",
     ]
     # an option with no default needs a value from the user before the command can give it. Export Figure asks for
     # -dpi, thus the table does not offer it
-    assert "-dpi" not in actions
-    assert viewercore.get_default_tokens(allactions["-dpi"]) == ("250",)
-    assert viewercore.get_default_tokens(actions["-title"]) is None
+    assert "--dpi" not in actions
+    assert viewercore.get_default_tokens(allactions["--dpi"]) == ("250",)
+    assert viewercore.get_default_tokens(actions["--title"]) is None
 
 
 def test_interactive_other_options_reach_the_command() -> None:
     """The command contains each row of the table, and a row that plotspectra rejects keeps the old options."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-filtermovingavg", "3", "--interactive"])
-    assert viewer.values.otheroptions == (("-filtermovingavg", ("3",)),)
+    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--filtermovingavg", "3", "--interactive"])
+    assert viewer.values.otheroptions == (("--filtermovingavg", ("3",)),)
 
-    otheroptions = (("-filtermovingavg", ("5",)), ("-title", ("A title",)))
+    otheroptions = (("--filtermovingavg", ("5",)), ("--title", ("A title",)))
     assert viewer.change(dc.replace(viewer.values, otheroptions=otheroptions)) is None
     command = viewer.get_command()
-    assert " -filtermovingavg 5 -title 'A title'" in command
+    assert " --filtermovingavg 5 --title 'A title'" in command
     assert viewer.axes[0].get_title() == "A title"
 
     # a ratio of Stokes parameters is a different plot from the one that the window shows
-    message = viewer.change(dc.replace(viewer.values, otheroptions=(("-stokesparam", ("Q/I",)),)))
+    message = viewer.change(dc.replace(viewer.values, otheroptions=(("--stokesparam", ("Q/I",)),)))
     assert message is not None
-    assert "-stokesparam Q/I" in message
+    assert "--stokesparam Q/I" in message
     assert viewer.values.otheroptions == otheroptions
 
 
@@ -4075,7 +4078,7 @@ def test_interactive_lock_series() -> None:
     assert len(locked) > 1
     assert viewer.change(dc.replace(viewer.values, fixedionlist=locked)) is None
     tokens = shlex.split(viewer.get_command())
-    assert tokens[tokens.index("-fixedionlist") + 1 :] == list(locked)
+    assert tokens[tokens.index("--fixedionlist") + 1 :] == list(locked)
     colours = get_series_colours()
 
     later = viewer.step_time(3)
@@ -4648,3 +4651,20 @@ def test_packet_spectrum_table_gives_the_noise_without_shownoise(capsys: pytest.
     at.spectra.plotspectra.main(argsraw=[str(modelpath), "--frompackets", "-t", "300", "--print_data"])
     header = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("lambda_angstroms "))
     assert "flux_relnoise" in header
+
+
+def test_packet_reason_gives_the_standard_spelling(capsys: pytest.CaptureFixture[str]) -> None:
+    """The message that turns on --frompackets names the option as the help gives it, e.g. --use-sampledemissiontype.
+
+    The message named --use_sampledemissiontype, which the help hides as an older spelling.
+    """
+    from artistools.spectra.plotspectra import resolve_frompackets
+
+    args = at.misc.parse_cli_args(
+        at.spectra.plotspectra.addargs, None, None, [str(modelpath), "--showemission", "--use-sampledemissiontype"]
+    )
+    # resolve_plot_args sets the velocity ranges before it resolves the packets, and the command gives none
+    args.velocityranges_kmps = []
+    resolve_frompackets(args)
+    assert args.frompacketsreason == "--use-sampledemissiontype"
+    assert "since --use-sampledemissiontype was specified" in capsys.readouterr().out

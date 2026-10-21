@@ -85,8 +85,8 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
         ],
     )
 
-    print(f" took {time.perf_counter() - timestart:.1f} seconds")
-    print(f" there are {len(isoabundcolnames)} nuclides from {len(elemisotopes)} elements included")
+    print(f" Took {time.perf_counter() - timestart:.1f} seconds")
+    print(f" There are {len(isoabundcolnames)} nuclides from {len(elemisotopes)} elements included")
 
     return dfelabundances
 
@@ -132,7 +132,7 @@ def parse_network_steps_table(text: str, sourcename: str) -> pl.DataFrame:
     )
     hasbadfieldcount = (dflines["fieldcount"] != len(colnames)).to_list()
     if any(hasbadfieldcount[:-1]):
-        msg = f"a line has a different number of fields than the header, which has {len(colnames)} fields"
+        msg = f"A line has a different number of fields than the header, which has {len(colnames)} fields"
         raise ValueError(msg)
     if hasbadfieldcount and hasbadfieldcount[-1]:
         print_warning(f"The last line of {sourcename} is incomplete. The cache leaves out that line.")
@@ -737,7 +737,7 @@ def filtermissinggridparticlecontributions(dfcontribs: pl.DataFrame, missing_par
     )
     assert all(cellsums_ok), "the particle contributions of a cell do not sum to one"
 
-    print("done")
+    print("Done")
 
     return dfcontribs
 
@@ -861,7 +861,7 @@ def add_abundancecontributions(
     dfnucabundances = get_dfnucabundances(dfcontribs, particleids, list_traj_nuc_abund)
     del list_traj_nuc_abund
     gc.collect()
-    print(f" took {time.perf_counter() - timestart:.1f} seconds")
+    print(f" Took {time.perf_counter() - timestart:.1f} seconds")
 
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
@@ -870,14 +870,14 @@ def add_abundancecontributions(
     # columns names the second one q_right, which no writer and no dimension reduction reads
     replacedcols = [col for col in dfnucabundances.columns if col != "inputcellid" and col in dfmodel.columns]
     if replacedcols:
-        print(f" the trajectory values replace the model columns {replacedcols}...", end="", flush=True)
+        print(f" The trajectory values replace the model columns {replacedcols}...", end="", flush=True)
     dfmodel = (
         dfmodel
         .drop(replacedcols)
         .join(dfnucabundances, how="left", on="inputcellid", maintain_order="left")
         .fill_null(0)
     )
-    print(f" took {time.perf_counter() - timestart:.1f} seconds")
+    print(f" Took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, get_dfelemabund_from_dfmodel(dfmodel), dfcontribs
 
@@ -891,7 +891,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=Path,
         default=Path.home()
         / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy",
-        help="Folder of the nuclear network trajectories",
+        help="The folder of the nuclear network trajectories",
     )
     parser.add_argument("-particleid", type=int, default=133371, help="Particle id of the trajectory")
     addarg_output(parser, kind="folder", default=Path())
@@ -905,7 +905,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     traj_root = Path(args.trajectoryroot)
     particleid = args.particleid
-    print(f"trajectory particle id {particleid}")
+    print(f"Trajectory particle id {particleid}")
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, "tday_nz-plane")
     dfnucabund = dfnucabund.filter(pl.col("Z") >= 1).with_columns(radioactive=pl.lit(value=True))
 

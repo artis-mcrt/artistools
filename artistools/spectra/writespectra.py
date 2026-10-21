@@ -130,7 +130,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, multiplepaths=True, default=[], helptext="Paths of the ARTIS models")
     addarg_output(
-        parser, kind="folder", helptext="Folder for the spectrum files (default: the spectra folder of the model)"
+        parser, kind="folder", helptext="The folder for the spectrum files (default: the spectra folder of the model)"
     )
     addarg_force(parser)
 

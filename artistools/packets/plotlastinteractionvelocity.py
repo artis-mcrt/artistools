@@ -100,15 +100,15 @@ def get_last_interaction_velocity_quartiles(
     timesteps = [timestep for timestep, tmid in enumerate(timemids) if timerange_days[0] <= tmid <= timerange_days[1]]
     if not timesteps:
         print_warning(
-            f"No timestep of {modelpath} has its mid time in the range of -timemin and -timemax. The mid times go from"
-            f" {timemids[0]:.2f} to {timemids[-1]:.2f} d"
+            f"No timestep of {modelpath} has its mid time in the range of --timemin and --timemax. The mid times go"
+            f" from {timemids[0]:.2f} to {timemids[-1]:.2f} d"
         )
         return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
     if not plotinvalidpart:
         timesteps = get_timesteps_in_valid_range(modelpath, timesteps)
         if not timesteps:
             return {dirbin: (pl.DataFrame(), 0) for dirbin in dirbins}
-    print_arrival_time_method(modelpath, timesteps, "each timestep with a mid time from -timemin to -timemax")
+    print_arrival_time_method(modelpath, timesteps, "each timestep with a mid time from --timemin to --timemax")
     print_last_interaction_convention(modelpath)
     timeedges = [*tstarts, tends[-1]]
     try:
@@ -328,7 +328,7 @@ def plot_velocity_against_time(
 
     if not seriestables:
         exit_with_error(
-            "no model has a packet in the range of wavelength and time",
+            "No model has a packet in the range of wavelength and time",
             "Give a different time range or a wider wavelength range",
         )
     ax.set_xlabel("Time [d]")
@@ -358,7 +358,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs="+",
         default=[-1],
         help=(
-            "The direction bins of the escaped packets, as in plotspectra, e.g. 0 55 99. --average_over_phi_angle"
+            "The direction bins of the escaped packets, as in plotspectra, e.g. 0 55 99. --average-over-phi-angle"
             " takes all the phi bins of the costheta bin of each. The value -1 takes all the directions"
         ),
     )
@@ -385,8 +385,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
         exit_with_error(
-            "the command needs the wavelength range of the packets",
-            "Give -lambdamin and -lambdamax, e.g. -lambdamin 7200 -lambdamax 7800",
+            "The command needs the wavelength range of the packets",
+            "Give --lambdamin and --lambdamax, e.g. --lambdamin 7200 --lambdamax 7800",
         )
     for dirbin in args.dirbin:
         check_dirbin(dirbin, "-dirbin", averageoverphi=args.average_over_phi_angle, allowall=True)

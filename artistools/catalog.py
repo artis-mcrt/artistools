@@ -211,7 +211,7 @@ def get_catalog_row(modelfolder: Path, folder: Path) -> dict[str, t.Any]:
         except Exception as exc:  # ruff:ignore[blind-except]
             failures.append(f"{partname} ({type(exc).__name__}: {exc})")
     if failures:
-        print_warning(f"model {modelname} in {relativefolder}: the table gives nan for {'; '.join(failures)}")
+        print_warning(f"Model {modelname} in {relativefolder}: the table gives nan for {'; '.join(failures)}")
     return row
 
 
@@ -246,6 +246,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     dfcatalog = get_catalog(folder)
 
-    if outputfile is None:
+    # the method lines of a JSON or a CSV table are in the table itself or nowhere, thus only text prints them here
+    if outputfile is None and getattr(args, "output_format", None) in {None, "text"}:
         print_product(args, "\n".join(f"# {line}" for line in METHODLINES))
     print_or_write_table(args, dfcatalog, outputfile, METHODLINES)

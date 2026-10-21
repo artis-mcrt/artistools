@@ -4076,7 +4076,7 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", "-t", "1"])
 
-    assert "no ARTIS folder was given" in capsys.readouterr().err
+    assert "No ARTIS folder was given" in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", str(tmp_path / "notamodel"), "-t", "1"])
@@ -4364,7 +4364,7 @@ def get_command_figure(tokens: Sequence[str], outputfile: Path) -> mplfig.Figure
 def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
     """The command that the viewer shows must draw the same data as the viewer.
 
-    The first subplot goes before the folder and each other subplot follows -plot, thus a quoted ion and a directive
+    The first subplot goes before the folder and each other subplot follows --plot, thus a quoted ion and a directive
     must reach plotestimators unchanged.
     """
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
@@ -4372,7 +4372,7 @@ def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
     newvalues = dc.replace(viewer.select_timesteps(viewer.values, 10, 3), subplots=subplots, xbins="8")
     assert viewer.change(newvalues) is None
     command = viewer.get_command()
-    assert command.endswith("-timestep 10-12 -xbins 8 -plot populations 'Fe II' 'Fe III' 'Ni II' -plot nne")
+    assert command.endswith("--timestep 10-12 --xbins 8 --plot populations 'Fe II' 'Fe III' 'Ni II' --plot nne")
 
     assert_same_lines(viewer.fig, get_command_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
 
@@ -4732,7 +4732,7 @@ def test_estimator_window_keeps_the_keyboard_and_the_popup_values(tmp_path: Path
     assert results["sectionsettings"] == []
     assert results["gripcursor"]
     assert results["addseriesfocus"] == "add"
-    assert results["addsubplotcommand"].count("-plot") == 1
+    assert results["addsubplotcommand"].count("--plot") == 1
     assert results["addsubplotfocus"] == "add"
     assert results["yaxisfocus"]
 
@@ -4928,7 +4928,7 @@ def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(tmp_path: Pa
     """A subplot whose last series the user removed stays, and its frame is empty until the user adds a series.
 
     The viewer deleted such a subplot, thus the user lost its place and its type. A first subplot with no item follows
-    -plot, and a series type with no names gives only its directives to the command.
+    --plot, and a series type with no names gives only its directives to the command.
     """
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
     subplots = ((), ("TR", "yscale=linear"), ("populations", "yscale=log"))
@@ -4936,7 +4936,7 @@ def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(tmp_path: Pa
     assert viewer.values.subplots == subplots
     assert len(interactive.get_plot_frames(viewer.fig)) == 3
     tokens = viewer.get_plot_tokens()
-    assert tokens[-6:] == ["-plot", "-plot", "TR", "yscale=linear", "-plot", "yscale=log"]
+    assert tokens[-6:] == ["--plot", "--plot", "TR", "yscale=linear", "--plot", "yscale=log"]
 
     assert_same_lines(viewer.fig, get_command_figure(tokens, tmp_path / "estimators.pdf"))
 
@@ -4955,12 +4955,12 @@ def test_interactive_session_keeps_an_empty_last_subplot() -> None:
 
 
 def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
-    """The command gives each subplot also for the default subplots, and it draws the figure of no -plot.
+    """The command gives each subplot also for the default subplots, and it draws the figure of no --plot.
 
     The command left out the default subplots, thus it depended on the default of the version of plotestimators. The
     viewer writes a default item such as ["_ymin", 1e-16] as the directive "ymin=1e-16".
     """
-    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    viewer = make_headless_viewer([str(modelpath), "--timestep", "50", "--interactive"])
     assert viewer.values.subplots == viewer.modeldata.defaultsubplots
     assert "averageexcitation" in viewer.modeldata.defaultsubplots[-1]
     # the window hides the output of the command, thus the viewer keeps the reason for each left out subplot
@@ -4970,9 +4970,9 @@ def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
     )
     first, *others = viewer.modeldata.defaultsubplots
     assert viewer.get_plot_tokens()[: len(first)] == list(first)
-    assert viewer.get_plot_tokens().count("-plot") == len(others)
+    assert viewer.get_plot_tokens().count("--plot") == len(others)
 
-    assert_same_lines(viewer.fig, get_command_figure([str(modelpath), "-timestep", "50"], tmp_path / "estimators.pdf"))
+    assert_same_lines(viewer.fig, get_command_figure([str(modelpath), "--timestep", "50"], tmp_path / "estimators.pdf"))
 
 
 def test_interactive_default_x_follows_a_slice_line_of_the_table() -> None:
@@ -5010,7 +5010,7 @@ def test_interactive_snapshot_and_time_evolution() -> None:
 
     The Play button of a plot against time moves through the cells, and it stops after the last cell.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-timestep", "20-22", "--interactive"])
+    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "--timestep", "20-22", "--interactive"])
     evolution = viewer.set_xvariable(viewer.values, "time")
     assert (evolution.first, evolution.last) == (
         viewer.modeldata.validtimesteps[0],
@@ -5023,12 +5023,12 @@ def test_interactive_snapshot_and_time_evolution() -> None:
     lastcell = viewer.step_cell(1)
     assert lastcell is not None
     assert viewer.change(lastcell) is None
-    assert viewer.get_plot_tokens() == ["Te", str(modelpath_classic_3d), "-cell", str(viewer.modeldata.cells[-1])]
+    assert viewer.get_plot_tokens() == ["Te", str(modelpath_classic_3d), "--cell", str(viewer.modeldata.cells[-1])]
     assert viewer.step_cell(1) is None
 
     # a part of the time range of the model needs -x time, because plotestimators plots a snapshot for a given time
     shortrange = viewer.select_timesteps(viewer.values, 5, 4)
-    assert viewer.get_plot_tokens(shortrange)[2:6] == ["-timestep", "5-8", "-x", "time"]
+    assert viewer.get_plot_tokens(shortrange)[2:6] == ["--timestep", "5-8", "-x", "time"]
 
     snapshot = viewer.set_xvariable(viewer.values, "velocity")
     # the middle of all the timesteps
@@ -5375,36 +5375,44 @@ def test_interactive_subplot_types_and_suggestions() -> None:
 
 
 def test_interactive_ionpoptype_belongs_to_each_populations_subplot() -> None:
-    """The window sets the quantity of the ions for each populations subplot, thus -ionpoptype goes to them."""
+    """The window sets the quantity of the ions for each populations subplot, thus --ionpoptype goes to them."""
     tokens = [
         "Te",
         str(modelpath),
-        "-timestep",
+        "--timestep",
         "50",
-        "-plot",
+        "--plot",
         "populations",
         "Fe II",
         "Fe III",
-        "-ionpoptype",
+        "--ionpoptype",
         "elpop",
     ]
     viewer = make_headless_viewer([*tokens, "--interactive"])
     assert viewer.values.subplots == (("Te",), ("populations", "Fe II", "Fe III", "ionpoptype=elpop"))
-    assert "-ionpoptype" not in viewer.get_plot_tokens()
+    assert "--ionpoptype" not in viewer.get_plot_tokens()
     # the default quantity needs no directive, and each subplot keeps its own
     assert viewer.parser.get_default("poptype") == interactive.DEFAULT_POPTYPE
     subplots = (("populations", "Fe II"), ("populations", "Fe III", "ionpoptype=totalpop"))
     assert interactive.move_poptype_to_subplots(
-        subplots, (("-ionpoptype", ("elpop",)),), viewer.modeldata.estimatorcolumns
+        subplots, (("--ionpoptype", ("elpop",)),), viewer.modeldata.estimatorcolumns
     ) == ((("populations", "Fe II", "ionpoptype=elpop"), ("populations", "Fe III", "ionpoptype=totalpop")), ())
     # with no populations subplot the option stays, thus a populations subplot that the user adds later takes it
-    rows = (("-ionpoptype", ("elpop",)),)
+    rows = (("--ionpoptype", ("elpop",)),)
     assert interactive.move_poptype_to_subplots((("Te",),), rows, viewer.modeldata.estimatorcolumns) == (
         (("Te",),),
         rows,
     )
-    teviewer = make_headless_viewer(["Te", str(modelpath), "-timestep", "50", "-ionpoptype", "elpop", "--interactive"])
-    assert "-ionpoptype" in teviewer.get_plot_tokens()
+    teviewer = make_headless_viewer([
+        "Te",
+        str(modelpath),
+        "--timestep",
+        "50",
+        "--ionpoptype",
+        "elpop",
+        "--interactive",
+    ])
+    assert "--ionpoptype" in teviewer.get_plot_tokens()
 
 
 def test_interactive_geometry_modes_draw() -> None:
@@ -5440,7 +5448,7 @@ def test_interactive_geometry_modes_draw() -> None:
     def describe(mode: str, slicetext: str | None = None, dimensions: int = 3) -> str:
         values = interactive.set_geometry_mode(viewer, viewer.values, mode)
         if slicetext is not None:
-            values = dc.replace(values, otheroptions=(("-slice", (slicetext,)),))
+            values = dc.replace(values, otheroptions=(("--slice", (slicetext,)),))
         modelmeta = viewer.modelmeta | {"dimensions": dimensions}
         return interactive.get_geometry_description(values, modelmeta, "-y", 30.0)
 
@@ -5468,7 +5476,7 @@ def test_interactive_geometry_modes_draw() -> None:
         " 0.07717c ≤ z < 0.09647c, against v_x."
     )
     # a line keeps a -x of the user, e.g. time, and the text named v_x
-    linevalues = dc.replace(viewer.values, x="time", otheroptions=(("-slice", ("z=0,y=0",)),))
+    linevalues = dc.replace(viewer.values, x="time", otheroptions=(("--slice", ("z=0,y=0",)),))
     assert interactive.get_geometry_description(linevalues, viewer.modelmeta, "+z", 30.0).endswith("against -x time.")
     assert "Δr = 0.01929c" in describe("average")
     assert describe("projection").startswith(
@@ -5485,10 +5493,10 @@ def test_interactive_geometry_modes_draw() -> None:
     oddvalues = interactive.set_geometry_mode(viewer, viewer.values, "alongaxis")
     oddtext = interactive.get_geometry_description(oddvalues, viewer.modelmeta | oddgrid, "+z", 30.0)
     assert "-0.006967c ≤ x < 0.006967c" in oddtext
-    rows = (("-slice", ("xy",)), ("-coneangle", ("20",)))
-    assert viewercore.set_row_values(rows, {"-slice": None, "-axis": ("-x",), "-coneangle": ("40",)}) == (
-        ("-coneangle", ("40",)),
-        ("-axis", ("-x",)),
+    rows = (("--slice", ("xy",)), ("--coneangle", ("20",)))
+    assert viewercore.set_row_values(rows, {"--slice": None, "--axis": ("-x",), "--coneangle": ("40",)}) == (
+        ("--coneangle", ("40",)),
+        ("--axis", ("-x",)),
     )
     # the axes of a colour image are velocities, and plotestimators rejected an image of a snapshot against rho
     rhovalues = viewer.set_xvariable(interactive.set_geometry_mode(viewer, viewer.values, "all"), "rho")
@@ -5498,18 +5506,18 @@ def test_interactive_geometry_modes_draw() -> None:
 
     # a 1D model has the average around the z axis, and the selector of the window did not offer it
     assert interactive.get_geometry_choices(1) == ["all", "cells", "average"]
-    viewer1d = make_headless_viewer(["Te", str(modelpath), "-timestep", "50", "--interactive"])
+    viewer1d = make_headless_viewer(["Te", str(modelpath), "--timestep", "50", "--interactive"])
     assert viewer1d.change(interactive.set_geometry_mode(viewer1d, viewer1d.values, "average")) is None
 
     # a projection averages each line of cells along its axis, thus it needs a 3D model and no -slice
-    projection = dc.replace(viewer.values, otheroptions=(("-projection", ("y",)),))
+    projection = dc.replace(viewer.values, otheroptions=(("--projection", ("y",)),))
     assert viewer.change(projection) is None
     assert interactive.get_geometry_mode(viewer.values) == "projection"
     assert [frame.get_xlabel() for frame in interactive.get_plot_frames(viewer.fig)] == ["v$_x$ [$c$]"]
-    rejected = viewer.change(dc.replace(projection, otheroptions=(("-projection", ("y",)), ("-slice", ("xy",)))))
+    rejected = viewer.change(dc.replace(projection, otheroptions=(("--projection", ("y",)), ("--slice", ("xy",)))))
     assert rejected is not None
-    assert "-slice" in rejected
-    onedprojection = dc.replace(viewer1d.values, otheroptions=(("-projection", ("z",)),))
+    assert "--slice" in rejected
+    onedprojection = dc.replace(viewer1d.values, otheroptions=(("--projection", ("z",)),))
     message = viewer1d.change(onedprojection)
     assert message is not None
     assert "needs a 3D model" in message
@@ -5518,7 +5526,7 @@ def test_interactive_geometry_modes_draw() -> None:
 def test_interactive_smoothing_and_section_rows() -> None:
     """A smoothing draws, and the rows of the sections and of the output stay in the command.
 
-    The window dropped -dpi, thus a PDF file lost the resolution of its raster parts. The table hid --verbose, thus
+    The window dropped --dpi, thus a PDF file lost the resolution of its raster parts. The table hid --verbose, thus
     the user could not remove it.
     """
     viewer = make_headless_viewer([
@@ -5526,12 +5534,12 @@ def test_interactive_smoothing_and_section_rows() -> None:
         str(modelpath_classic_3d),
         "-t",
         "5",
-        "-dpi",
+        "--dpi",
         "300",
         "--verbose",
         "--interactive",
     ])
-    assert {"-dpi", "--verbose"} <= set(viewer.get_plot_tokens())
+    assert {"--dpi", "--verbose"} <= set(viewer.get_plot_tokens())
     assert "--verbose" not in viewer.modelformatflags
     for mode, numbers in (("movingavg", (3,)), ("savgol", (5, 2)), ("none", ())):
         rows = interactive.set_smoothing(viewer.values.otheroptions, mode, (*numbers, 2)[:2] if numbers else (5, 2))

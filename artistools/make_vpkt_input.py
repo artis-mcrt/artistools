@@ -450,7 +450,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Viewing directions as whitespace-separated costheta,phi pairs in one quoted string."
             " The angle phi is in degrees, from 0 to 360."
-            " Use an equals sign when the first value is negative, e.g. -directions='-1,0 0,0 1,0'"
+            " Use an equals sign when the first value is negative, e.g. --directions='-1,0 0,0 1,0'"
         ),
     )
     parser.add_argument(
@@ -477,7 +477,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         help=(
             "Take the thick cell optical depth of virtual packets from optical_depth_is_thick of input.txt, and not"
-            " from -cell-is-optically-thick. A cell above that optical depth still creates no virtual packets"
+            " from --cell-is-optically-thick. A cell above that optical depth still creates no virtual packets"
         ),
     )
     parser.add_argument(

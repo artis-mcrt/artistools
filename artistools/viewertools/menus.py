@@ -27,6 +27,7 @@ from artistools.viewertools.core import MAX_ANIMATION_FRAMES
 from artistools.viewertools.core import remove_options
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import SIDEBAR_WIDTH
+from artistools.viewertools.core import standardise_flags
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import copy_text
@@ -325,7 +326,8 @@ def show_settings_window() -> None:
     reopencheck.toggled.connect(partial(settings.setValue, "reopenwindows"))
     form.addRow(reopencheck)
 
-    for flag, maximum, step in (("-figscale", 10.0, 0.1), ("-labelfontsize", 40.0, 1.0)):
+    for flag, maximum, step in (("--figscale", 10.0, 0.1), ("--labelfontsize", 40.0, 1.0)):
+        settingkey = get_default_setting_key(flag)
         box = QtWidgets.QDoubleSpinBox()
         # the box shows the text "Default", which is wider than a number
         box.setMinimumWidth(100)
@@ -333,23 +335,32 @@ def show_settings_window() -> None:
         box.setSingleStep(step)
         # the minimum of the box shows "Default", which gives no option
         box.setSpecialValueText("Default")
-        box.setValue(get_float_setting(f"default{flag}", 0.0))
+        box.setValue(get_float_setting(settingkey, 0.0))
         box.setToolTip(f"A new window adds {flag} with this value if its command does not give {flag}")
-        box.valueChanged.connect(partial(settings.setValue, f"default{flag}"))
+        box.valueChanged.connect(partial(settings.setValue, settingkey))
         form.addRow(f"{flag} of a new window:", box)
     dialog.show()
 
 
+def get_default_setting_key(flag: str) -> str:
+    """Return the key of the setting that holds the default value of a flag, e.g. default-figscale for --figscale.
+
+    The key keeps the form of the older spelling -figscale, thus a value that a user saved before stays.
+    """
+    return f"default-{flag.lstrip('-')}"
+
+
 def add_default_options(parser: "SuggestingArgumentParser", tokens: "Sequence[str]") -> list[str]:
-    """Return the tokens with the options of the Settings window that the tokens do not give, e.g. -figscale.
+    """Return the tokens with the options of the Settings window that the tokens do not give, e.g. --figscale.
 
     The options go before the other tokens, and an option that the parser of the command does not have gives nothing.
     """
+    tokens = standardise_flags(parser, tokens)
     actions = get_actions_by_flag(parser)
     givendests = {action.dest for token in tokens if (action := find_option_action(parser, token)[0]) is not None}
     added: list[str] = []
-    for flag in ("-figscale", "-labelfontsize"):
-        value = get_float_setting(f"default{flag}", 0.0)
+    for flag in ("--figscale", "--labelfontsize"):
+        value = get_float_setting(get_default_setting_key(flag), 0.0)
         if value > 0.0 and flag in actions and actions[flag].dest not in givendests:
             added += [flag, format(value, "g")]
     return [*added, *tokens]
@@ -427,7 +438,7 @@ def copy_figure_of_command(
     worker thread runs the command, thus the window accepts input.
     """
     suffix, dpi = choice
-    tokens = [*remove_options(parser, plottokens, {"dpi"}), "-dpi", str(dpi)]
+    tokens = [*remove_options(parser, plottokens, {"dpi"}), "--dpi", str(dpi)]
     files: list[bytes] = []
 
     def draw_file() -> str | None:
@@ -594,7 +605,7 @@ def set_figure_format(suffix: str) -> None:
 
 
 class FigureSection(t.NamedTuple):
-    """The buttons of the Figure section, its Resolution box, which gives the -dpi of the command, and its grid."""
+    """The buttons of the Figure section, its Resolution box, which gives the --dpi of the command, and its grid."""
 
     copybutton: "QtWidgets.QPushButton"
     savebutton: "QtWidgets.QPushButton"
@@ -608,7 +619,7 @@ def add_figure_section(
 ) -> FigureSection:
     """Add the Figure section: the format of a copied or saved figure, its resolution for PNG, and two buttons.
 
-    dpi is the resolution of the command, and the window connects the Resolution box to the -dpi of its values. The
+    dpi is the resolution of the command, and the window connects the Resolution box to the --dpi of its values. The
     box shows only for a PNG file. A PDF or an SVG file takes the resolution for its raster parts, e.g. a colour
     image, and its lines and its text have no resolution. The figure has the size of the plot in the window.
     """
@@ -629,7 +640,7 @@ def add_figure_section(
     dpibox.setValue(dpi)
     dpibox.setSuffix(" dpi")
     dpibox.setKeyboardTracking(False)
-    dpibox.setToolTip("The resolution of a PNG file (-dpi)")
+    dpibox.setToolTip("The resolution of a PNG file (--dpi)")
     shortcuts = get_menu_shortcut_texts()
     copybutton = QtWidgets.QPushButton("Copy")
     copybutton.setToolTip(f"Put the figure on the clipboard ({shortcuts['Copy Figure']})")
@@ -724,7 +735,7 @@ def export_animation(
             framepaths: list[Path] = []
             for index in range(framecount):
                 # the default -dpi suits a printed page, e.g. 600 dpi, and it gave frames larger than a screen
-                tokens = [*remove_options(command.parser, get_frametokens(index), {"dpi"}), "-dpi", str(ANIMATION_DPI)]
+                tokens = [*remove_options(command.parser, get_frametokens(index), {"dpi"}), "--dpi", str(ANIMATION_DPI)]
                 framepath = Path(folder) / f"frame{index:04d}.png"
                 command.main(argsraw=[*tokens, "-o", str(framepath)])
                 if not framepath.is_file():
@@ -758,7 +769,7 @@ def save_figure_of_command(
 
     The figure comes from the command, thus the file is the same as the output of the command. The command reads a
     name with no suffix as a folder, thus the name takes the suffix of the format. The status bar shows the result.
-    plottokens holds no -dpi. A PDF or an SVG file takes the resolution for its raster parts, e.g. a colour image.
+    plottokens holds no --dpi. A PDF or an SVG file takes the resolution for its raster parts, e.g. a colour image.
     """
     from PySide6 import QtWidgets
 
@@ -771,7 +782,7 @@ def save_figure_of_command(
         return
     if not Path(filename).suffix:
         filename += f".{suffix}"
-    savetokens = [*plottokens, *([] if dpi == defaultdpi else ["-dpi", str(dpi)]), "-o", filename]
+    savetokens = [*plottokens, *([] if dpi == defaultdpi else ["--dpi", str(dpi)]), "-o", filename]
 
     def save() -> str | None:
         commandmain(argsraw=savetokens)
@@ -822,8 +833,8 @@ def add_window_actions[ValuesT: PlotValues](
 ) -> "Callable[[QtWidgets.QMenu], None]":
     """Give a window the actions that each viewer has: copy, save, open, help, and the menus.
 
-    copybuttons are the Copy buttons of the command and of the Python code. The -dpi box of the Figure section sets
-    the -dpi of the values of the queue. extracallbacks gives the menu items of one viewer, e.g. Reload Data. Return
+    copybuttons are the Copy buttons of the command and of the Python code. The --dpi box of the Figure section sets
+    the --dpi of the values of the queue. extracallbacks gives the menu items of one viewer, e.g. Reload Data. Return
     the function that adds the actions on the figure to a context menu of the plot.
     """
     from PySide6 import QtWidgets

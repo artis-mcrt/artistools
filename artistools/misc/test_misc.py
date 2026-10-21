@@ -5,6 +5,7 @@ tests/data, e.g. testmodel and test-classicmode_3d.
 """
 
 import argparse
+import contextlib
 import gzip
 import importlib.metadata
 import io
@@ -1687,7 +1688,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (7, "0c768aefa4af6926"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (8, "0c768aefa4af6926"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2016,7 +2017,7 @@ def test_get_filterfunc() -> None:
     # which it replaced
     # each filter argument selects one filter, thus a command line that gives both is a user error
     # and not an internal fault
-    with pytest.raises(ValueError, match="only one of -filtermovingavg and -filtersavgol"):
+    with pytest.raises(ValueError, match="only one of --filtermovingavg and --filtersavgol"):
         at.misc.get_filterfunc(argparse.Namespace(filtermovingavg=3, filtersavgol=["5", "3"]))
 
     filterfunc = at.misc.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
@@ -2829,7 +2830,7 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
     at.misc.print_warning("the model is on fire")
     captured = capsys.readouterr()
     assert not captured.out
-    assert captured.err == "WARNING: the model is on fire\n"
+    assert captured.err == "warning: the model is on fire\n"
 
     # the dispatcher redirects the standard output alone, thus the warning of a --quiet run appears
     import artistools.__main__
@@ -2863,7 +2864,7 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
         ]
     )
     captured = capsys.readouterr()
-    assert "WARNING: No deposition.out file found" in captured.err
+    assert "warning: No deposition.out file found" in captured.err
 
 
 def test_progress_class_takes_a_spawn_lock_and_keeps_the_start_method() -> None:
@@ -3406,7 +3407,7 @@ def test_a_list_option_that_takes_a_file_or_a_folder_gives_a_warning(
 
     # every value names a path, thus the option can read paths, e.g. -reflightcurves
     parse_cli_args(plotspectra.addargs, None, None, ["-label", "model1", "sn2011fe.txt"])
-    assert "WARNING" not in capsys.readouterr().err
+    assert "warning" not in capsys.readouterr().err
 
 
 def test_the_option_form_keeps_its_path_when_a_list_option_ends_with_a_folder() -> None:
@@ -3573,7 +3574,8 @@ def test_getpath_and_version_keep_their_product_with_quiet(capsys: pytest.Captur
     assert capsys.readouterr().out.strip() == str(at.get_path("artistools_dir"))
 
     artistools.__main__.main(argsraw=["version", "-q"])
-    assert capsys.readouterr().out.strip() == f"artistools {importlib.metadata.version('artistools')}"
+    # a git checkout also gives the commit and its date, as ruff does
+    assert capsys.readouterr().out.strip().startswith(f"artistools {importlib.metadata.version('artistools')}")
 
 
 def test_a_hidden_command_stays_out_of_the_suggestions(capsys: pytest.CaptureFixture[str]) -> None:
@@ -3969,7 +3971,7 @@ def test_column_description_lines_give_the_meaning_and_the_unit_of_each_known_co
         "nnion_Fe_II",
         "log_lbol",
     ]
-    fluxperx = "flux per unit of x_plotted, at the distance of -distmpc"
+    fluxperx = "flux per unit of x_plotted, at the distance of --distmpc"
     assert get_column_description_lines(columns) == [
         "column lambda_angstroms: the wavelength, in the rest frame of the source for an emergent spectrum [Å]",
         (
@@ -4170,8 +4172,8 @@ def test_explain_reads_no_packets_and_gives_the_timesteps(capsys: pytest.Capture
         main(argsraw=["plotlastpacketinteraction", str(modelfolder), "-t", "6.5d", "-lambdamin", "300nm", "--explain"])
     stdout = capsys.readouterr().out
     assert "-xmin = 3000.0" in stdout
-    assert f"model: {modelfolder}" in stdout
-    assert "time: timesteps" in stdout
+    assert f"Model: {modelfolder}" in stdout
+    assert "Time: timesteps" in stdout
 
 
 def test_reversed_wavelength_selection_stops_before_the_read(capsys: pytest.CaptureFixture[str]) -> None:
@@ -4185,7 +4187,7 @@ def test_reversed_wavelength_selection_stops_before_the_read(capsys: pytest.Capt
     ):
         main(argsraw=["plotlastpacketinteraction", str(modelfolder), "-lambdamin", "8000", "-lambdamax", "3000"])
     assert excinfo.value.code == 1
-    assert "-lambdamin 8000 is above -lambdamax 3000" in capsys.readouterr().err
+    assert "--lambdamin 8000 is above --lambdamax 3000" in capsys.readouterr().err
 
 
 def test_write_data_table_takes_the_format_of_the_suffix(tmp_path: Path) -> None:
@@ -4205,3 +4207,17 @@ def test_write_data_table_takes_the_format_of_the_suffix(tmp_path: Path) -> None
     write_data_table(dftable, tmp_path / "table.parquet", commentlines=["made by a test"])
     pltest.assert_frame_equal(pl.read_parquet(tmp_path / "table.parquet"), dftable)
     assert pl.read_parquet_metadata(tmp_path / "table.parquet")["comments"] == "made by a test"
+
+
+def test_progress_on_the_standard_error_is_not_hidden_output() -> None:
+    """Without --quiet, run_command sends the progress to the standard error, and a remote reader must keep it.
+
+    output_is_hidden took each stream except the terminal for --quiet. A remote read then sent quiet=True to the server,
+    and the server discarded the progress messages of the reader.
+    """
+    from artistools.misc.remote import output_is_hidden
+
+    with contextlib.redirect_stdout(sys.__stderr__):
+        assert not output_is_hidden()
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert output_is_hidden()

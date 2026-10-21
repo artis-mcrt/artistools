@@ -47,7 +47,7 @@ TEMPERATUREFILENAME = "Te_timestep{timestep:03d}.png"
 
 # print_series_summary writes "N points" or "no point" in each summary line of the three plot commands, and
 # print_warning and print_error start their lines with these prefixes
-RE_SUMMARYLINE = re.compile(r"^\s*(?:WARNING|error|help):|\b(?:\d+ points?|no point)\b")
+RE_SUMMARYLINE = re.compile(r"^\s*(?:warning|error|help):|\b(?:\d+ points?|no point)\b")
 
 STYLE = """
 body { font-family: system-ui, sans-serif; max-width: 70rem; margin: 0 auto; padding: 1rem; line-height: 1.4;

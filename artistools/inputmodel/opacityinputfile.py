@@ -96,7 +96,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     addarg_modelpath(parser, positional=True, default=Path())
-    addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write opacity.txt into (uniform)")
+    addarg_output(parser, kind="folder", default=Path(), helptext="The folder to write opacity.txt into (uniform)")
     addarg_force(parser)
     parser.add_argument("-kappa", type=float, default=0.1, help="Grey opacity for every cell [cm2/g] (uniform)")
 

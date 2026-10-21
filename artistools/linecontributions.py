@@ -15,6 +15,7 @@ import polars.selectors as cs
 
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
+from artistools.commands import get_standard_flag
 from artistools.constants import angstroms_per_cm
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -449,6 +450,7 @@ def get_line_summary_of_batches(dfsummaries: Sequence[pl.DataFrame]) -> pl.DataF
 
 def parse_ions(iontexts: Sequence[str], optionname: str) -> list[tuple[int, int]]:
     """Return the (Z, ion_stage) of each ion name, e.g. "Fe II", or exit with an error for an element."""
+    optionname = get_standard_flag(optionname)
     ions: list[tuple[int, int]] = []
     for iontext in iontexts:
         iontuple = get_ion_tuple(iontext.strip())
@@ -511,7 +513,7 @@ def get_cell_line_inputs(
         dfnltepops = read_nltepops(modelpath, timestep=timestep)
         if dfnltepops.is_empty():
             exit_with_error(
-                f"the model has NLTE populations, but the NLTE files hold no row for timestep {timestep}",
+                f"The model has NLTE populations, but the NLTE files hold no row for timestep {timestep}",
                 "ARTIS writes the NLTE populations only for some timesteps. Give a different time",
             )
         dfnltepops = (
@@ -543,8 +545,8 @@ def get_cell_line_inputs(
     levelsofion, dflines = get_ion_levels_and_lines(modelpath, lambdamin, lambdamax, usableions)
     if dflines.is_empty():
         exit_with_error(
-            f"the atomic data of the ions holds no line with an A value from {lambdamin:g} to {lambdamax:g} Å",
-            "Give a different wavelength range, or different ions with -ions",
+            f"The atomic data of the ions holds no line with an A value from {lambdamin:g} to {lambdamax:g} Å",
+            "Give a different wavelength range, or different ions with --ions",
         )
 
     if costhetarange is not None:
@@ -576,10 +578,10 @@ def get_cell_line_inputs(
     if dfcells.is_empty():
         if costhetarange is not None:
             exit_with_error(
-                "no cell with matter has its centre in the range of cos θ",
-                "Give a wider range of cos θ, or a different -dirbin",
+                "No cell with matter has its centre in the range of cos θ",
+                "Give a wider range of cos θ, or a different --dirbin",
             )
-        exit_with_error(f"the estimators hold no cell for timestep {timestep}", "Give a different time")
+        exit_with_error(f"The estimators hold no cell for timestep {timestep}", "Give a different time")
 
     print_detail(
         f"{dflines.height} lines of {dflines.select('Z', 'ion_stage').n_unique()} ions from {lambdamin:g} to"
@@ -589,8 +591,8 @@ def get_cell_line_inputs(
         dflines = get_lines_that_can_reach_tau(dflines, dfcells, levelsofion, nlteions, taumin, time_days)
         if dflines.is_empty():
             exit_with_error(
-                f"no line can reach a tau_sobolev of {taumin:g} in a cell, thus -taumin leaves out each line",
-                "Give a smaller -taumin, or a different wavelength range",
+                f"No line can reach a tau_sobolev of {taumin:g} in a cell, thus --taumin leaves out each line",
+                "Give a smaller --taumin, or a different wavelength range",
             )
     timestepstart_days = get_timestep_times(modelpath, loc="start")[timestep]
     timestepend_days = get_timestep_times(modelpath, loc="end")[timestep]
@@ -623,7 +625,7 @@ def get_cell_line_inputs(
     print_detail(
         "The emission is not the part of the line in the observed luminosity. Other lines, the continuum, and the"
         " electrons can absorb or scatter the photons after they leave the resonance region. plotlastpacketinteraction"
-        " -groupby line gives the part of each line in the observed luminosity, from the packets"
+        " --groupby line gives the part of each line in the observed luminosity, from the packets"
     )
     print_detail(
         "The level populations follow calculate_levelpop() of ARTIS. The columns n_lower_source and n_upper_source"
@@ -721,8 +723,8 @@ def get_lines_that_can_reach_tau(
         lineframes.append(dfionlines.filter(pl.Series(taubound >= taumin)))
     dfkept = pl.concat(lineframes) if lineframes else dflines.clear()
     print_detail(
-        f"-taumin {taumin:g} leaves out {dflines.height - dfkept.height} of {dflines.height} lines. A left-out line has"
-        " an upper bound of tau_sobolev below -taumin in each cell. For an ion with LTE populations, the bound is"
+        f"--taumin {taumin:g} leaves out {dflines.height - dfkept.height} of {dflines.height} lines. A left-out line"
+        " has an upper bound of tau_sobolev below --taumin in each cell. For an ion with LTE populations, the bound is"
         " (A lambda^3 t / 8 pi) (g_u / g_0) times the largest n_ion exp(-(E_l - E_0) / k T_exc) of the cells. For an"
         " ion with NLTE rows, it is (A lambda^3 t / 8 pi) (g_u / g_l) max(1, g_l / g_0) times the largest n_ion. An"
         " optically thin line can emit much, but the sums of the emission and the ranking by emission leave it out"
@@ -946,7 +948,7 @@ def get_sobolev_trough(
     The depth of a line in a bin of u is 1 - the mean transmission over the rays and over points of u in the bin. Thus
     the depth is the fraction of the flux of a uniform disk that the line removes. The bins of u have the width of the
     bins of velocityedges_kmps. They continue past its last edge up to the fastest corner of a cell, thus a low
-    -velocitymax keeps all the absorption.
+    --velocitymax keeps all the absorption.
 
     The blend is 1 - the mean over the rays of prod(exp(-tau)) of the lines at each wavelength. Each ray takes the
     product before the mean, thus two lines that absorb the same part of the disk do not remove its flux two times.
@@ -1083,12 +1085,12 @@ def get_sobolev_trough(
 
 
 def addarg_taumin(parser: argparse.ArgumentParser) -> None:
-    """Add -taumin, which leaves out the lines that cannot reach a given tau_sobolev in any cell."""
+    """Add --taumin, which leaves out the lines that cannot reach a given tau_sobolev in any cell."""
     parser.add_argument(
         "-taumin",
         type=float,
         help=(
-            "Leave out each line whose upper bound of tau_sobolev in the cells is below this value. Use -taumin for a"
+            "Leave out each line whose upper bound of tau_sobolev in the cells is below this value. Use --taumin for a"
             " wavelength range with very many lines. An optically thin line can emit much, but the sums of the"
             " emission and the ranking by emission then leave it out. Default: no limit"
         ),
@@ -1115,7 +1117,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-maxlines",
         type=positive_int_arg,
         default=20,
-        help="Number of lines in the table, with the most emission first",
+        help="The number of lines in the table, with the most emission first",
     )
     addarg_taumin(parser)
     parser.add_argument(
@@ -1131,7 +1133,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Give the Sobolev optical depth and the emission of each line in a wavelength range."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
-        exit_with_error("give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
+        exit_with_error("Give the wavelength range of the lines", "e.g. --lambdamin 8400 --lambdamax 8700")
 
     outputfile = resolve_table_outputfile(args, DEFAULTOUTPUTNAME)
 
@@ -1153,7 +1155,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if not args.percell:
         shown = dftable.head(args.maxlines)
-        lineset = "all the lines" if args.taumin is None else "the lines that -taumin keeps"
+        lineset = "all the lines" if args.taumin is None else "the lines that --taumin keeps"
         print_detail(
             f"The table gives {shown.height} of {dftable.height} lines, which emit"
             f" {shown['emission_fraction'].sum():.1%} of the emission of {lineset}. The means take the emission"

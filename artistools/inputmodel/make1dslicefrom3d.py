@@ -40,7 +40,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-axis", default="x", choices=["x", "y", "z"], help="Slice axis (x, y, or z)")
 
     addarg_output(
-        parser, kind="folder", default=Path("1dslice"), helptext="Folder for the 1D model.txt and abundances.txt"
+        parser, kind="folder", default=Path("1dslice"), helptext="The folder for the 1D model.txt and abundances.txt"
     )
     # the earlier name of -o
     parser.add_argument("-outputfolder", dest="outputfile", type=Path, help=argparse.SUPPRESS)

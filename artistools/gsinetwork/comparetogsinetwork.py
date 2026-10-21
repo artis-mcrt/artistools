@@ -76,13 +76,13 @@ def get_abundance_correction_factors(
         for mgi in mgiplotlist:
             if mgi >= 0 and not assoc_cells.get(mgi, []):
                 exit_with_error(
-                    f"no propagation grid cell belongs to the model cell {mgi}, thus the command cannot plot its"
+                    f"No propagation grid cell belongs to the model cell {mgi}, thus the command cannot plot its"
                     " abundances",
                     "Give a different cell",
                 )
 
         if direct_model_propgrid_map:
-            print("  detected direct mapping of model cells to propagation grid")
+            print("  Detected direct mapping of model cells to propagation grid")
     except FileNotFoundError:
         print("No grid mapping file found, assuming direct mapping of model cells to propagation grid")
         direct_model_propgrid_map = True
@@ -92,7 +92,7 @@ def get_abundance_correction_factors(
     else:
         ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
         propcellcount = ncoordgridx**3
-        print(f" inferring a {ncoordgridx}^3 propagation grid from the grid mapping file")
+        print(f" Inferring a {ncoordgridx}^3 propagation grid from the grid mapping file")
         xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
         wid_init = get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
 
@@ -301,7 +301,7 @@ def get_series_table(
 
 
 def output_drawn_series(args: argparse.Namespace, drawnseries: Sequence[pl.DataFrame], figurepath: Path | str) -> None:
-    """Print or write the drawn series of a figure, with the points up to the time of -timemax.
+    """Print or write the drawn series of a figure, with the points up to the time of --timemax.
 
     The series of ARTIS and of GSINET have different times, thus the table has one row for each drawn point.
     """
@@ -595,7 +595,7 @@ def get_particledata(
         print(f"No network calculation for particle {particleid}")
         if arr_strnuc_z_n:
             exit_with_error(
-                f"particle {particleid} has no network calculation, thus it gives no abundance of"
+                f"Particle {particleid} has no network calculation, thus it gives no abundance of"
                 f" {', '.join(strnuc for strnuc, _, _ in arr_strnuc_z_n)}"
             )
         return pl.DataFrame()
@@ -645,14 +645,14 @@ def get_dfcontribsparticledata(
     print(f"Reading Qdot/thermo and abundance data for {len(list_particleids_getabund)} particles")
 
     list_particledata_withabund = parallel_map(fworkerwithabund, list_particleids_getabund)
-    print("  done")
+    print("  Done")
     particleids_getabund = set(list_particleids_getabund)
     list_particleids_noabund = [pid for pid in allcontribparticleids if pid not in particleids_getabund]
     fworkernoabund = partial(get_particledata, arr_time_gsi_s_incpremerger, [], traj_root)
     print(f"Reading for Qdot/thermo data (no abundances needed) for {len(list_particleids_noabund)} particles")
 
     list_particledata_noabund = parallel_map(fworkernoabund, list_particleids_noabund, chunksize=16)
-    print("  done")
+    print("  Done")
 
     # each particle gives an eager frame of one row. A lazy concat of 1957 such frames took most of 198.5 s on
     # the streaming engine. The time of that engine increases with the square of the number of inputs. A particle
@@ -723,7 +723,7 @@ def plot_qdot_abund_modelcells(
     lzdfmodel = lzdfmodel.with_columns(cellmass_on_mtot=pl.col("mass_g") / pl.col("mass_g").sum())
 
     model_mass_grams = lzdfmodel.select(pl.col("mass_g").sum()).collect().item()
-    print(f"model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
+    print(f"Model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
     dftimesteps = df_filter_minmax_bracketed(
         get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
@@ -803,7 +803,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     # the plots went to the model folder before the command read -o, thus that folder stays the default
-    addarg_output(parser, kind="folder", helptext="Folder for the plots (default: the model folder)")
+    addarg_output(parser, kind="folder", helptext="The folder for the plots (default: the model folder)")
 
     parser.add_argument("-timemax", type=time_days_arg, help=f"Maximum time to plot. {TIME_UNIT_HELP}")
     # the earlier name of -timemax

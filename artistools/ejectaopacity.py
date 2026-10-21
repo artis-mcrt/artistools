@@ -315,12 +315,12 @@ def get_excitation_temperature_column(
     starts the log line, and it names what takes T_exc.
     """
     if selection != "auto":
-        column, reason = selection, f"-exctemperature {selection}"
+        column, reason = selection, f"--exctemperature {selection}"
     elif (usestj := get_artis_excitation_uses_tj(modelpath)) is None:
         column, reason = "Te", "the default"
         print_warning(
             "The artisoptions.h of the model gives no LTEPOP_EXCITATION_USE_TJ, thus the level populations take Te."
-            " Give -exctemperature TJ or -exctemperature Te to select the temperature"
+            " Give --exctemperature TJ or --exctemperature Te to select the temperature"
         )
     else:
         column = "TJ" if usestj else "Te"
@@ -426,7 +426,7 @@ def get_cell_batches(dfestimators: pl.DataFrame, numbins: int) -> list[pl.DataFr
 
 
 def addarg_excitationtemperature(parser: argparse.ArgumentParser) -> None:
-    """Add the -exctemperature argument, which selects the temperature of the LTE level populations."""
+    """Add the --exctemperature argument, which selects the temperature of the LTE level populations."""
     parser.add_argument(
         "-exctemperature",
         choices=("auto", *EXCITATIONTEMPERATURE_NAMES),
@@ -516,7 +516,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         elapsed = time.perf_counter() - time_start
         timepercell = elapsed / cells_processed
         print(
-            f" average seconds per cell: {timepercell:.3f}. cells remaining: {cellcount - cells_processed}."
+            f" Average seconds per cell: {timepercell:.3f}. cells remaining: {cellcount - cells_processed}."
             f" time remaining: {timepercell * (cellcount - cells_processed):.1f}s"
         )
 

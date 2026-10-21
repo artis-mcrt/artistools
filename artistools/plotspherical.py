@@ -93,7 +93,7 @@ def resolve_time_range(
         return float(timemindays), float(timemaxdays)
 
     if timemindays is None:
-        print(f"setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
+        print(f"Setting timemindays to start of valid observable range {tmin_d_valid:.2f} d")
         timemindays = tmin_d_valid
     elif timemindays < tmin_d_valid:
         print_warning(
@@ -101,7 +101,7 @@ def resolve_time_range(
         )
 
     if timemaxdays is None:
-        print(f"setting timemaxdays to end of valid observable range {tmax_d_valid:.2f} d")
+        print(f"Setting timemaxdays to end of valid observable range {tmax_d_valid:.2f} d")
         timemaxdays = tmax_d_valid
     elif timemaxdays > tmax_d_valid:
         print_warning(
@@ -330,7 +330,7 @@ def plot_spherical(
 
     dirbins holds the rows of one time range of the frame that bin_packets_by_direction returns.
     """
-    print(f"packets plotted: {dirbins.select('count').sum().item(0, 0):.1e}")
+    print(f"Packets plotted: {dirbins.select('count').sum().item(0, 0):.1e}")
 
     phigrid, column_phibins = get_map_columns(nphibins)
     if phireverse:
@@ -403,7 +403,7 @@ def plot_spherical(
 def get_map_table(axes: t.Any, plotvars: Sequence[str], nphibins: int, timerange: tuple[float, float]) -> pl.DataFrame:
     """Return one row for each pixel of the maps of one time range, with one column for each plot variable.
 
-    The table reads the mesh of each map from its axes, thus it holds the values after -gaussian_sigma. A bin with no
+    The table reads the mesh of each map from its axes, thus it holds the values after --gaussian-sigma. A bin with no
     value, which the map leaves blank, gives a null value. The longitude is the horizontal coordinate of the map, from
     -pi to +pi with phi = 0 at the centre. --phireverse changes its sign. The cos theta edges give the vertical
     coordinate, because the latitude of the map is arcsin(cos theta).
@@ -457,7 +457,7 @@ def write_frames(
 ) -> tuple[list[str], list[pl.DataFrame]]:
     """Draw and save the figure of each time range, and return the paths of the frames and the tables of the maps.
 
-    The tables are empty unless --print_data or --write_data asks for them.
+    The tables are empty unless --print-data or --write-data asks for them.
     """
     makestables = getattr(args, "print_data", False) or getattr(args, "write_data", False)
     outputfilenames: list[str] = []
@@ -506,8 +506,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # help text to one spelling
     parser.add_argument("-tmin", dest="timemin", type=float, help=argparse.SUPPRESS)
     parser.add_argument("-tmax", dest="timemax", type=float, help=argparse.SUPPRESS)
-    parser.add_argument("-nphibins", action="store", type=int, default=64, help="Number of azimuthal bins")
-    parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="Number of polar angle bins")
+    parser.add_argument("-nphibins", action="store", type=int, default=64, help="The number of azimuthal bins")
+    parser.add_argument("-ncosthetabins", action="store", type=int, default=32, help="The number of polar angle bins")
     addarg_maxpacketfiles(parser)
     parser.add_argument(
         "-gaussian_sigma",
@@ -537,7 +537,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-atomic_number",
         type=int,
         default=None,
-        help=packetfilterhelp.format("the element of this atomic number, e.g. 26. Give -elem or -atomic_number"),
+        help=packetfilterhelp.format("the element of this atomic number, e.g. 26. Give --elem or --atomic-number"),
     )
     parser.add_argument(
         "-ion_stage", type=int, default=None, help=packetfilterhelp.format("this ionisation stage, e.g. 2 for Fe II")
@@ -565,11 +565,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-format",
-        "-f",
         default="pdf",
         choices=["pdf", "png"],
         help="Set format of output plot files that take the default name. A name from -o keeps its own suffix",
     )
+    # the older short form. The help gives -f one meaning, --force, as rm -f does
+    parser.add_argument("-f", dest="format", choices=["pdf", "png"], help=argparse.SUPPRESS)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:
@@ -578,10 +579,10 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
 
     if args.elem is not None:
         if args.atomic_number is not None:
-            exit_with_error("give one of -elem and -atomic_number", "Both select the element of the packets")
+            exit_with_error("Give one of --elem and --atomic-number", "Both select the element of the packets")
         args.atomic_number = get_atomic_number(args.elem)
         if args.atomic_number < 1:
-            exit_with_error(f"-elem {args.elem} is not an element symbol", "Give a symbol, e.g. -elem Fe")
+            exit_with_error(f"--elem {args.elem} is not an element symbol", "Give a symbol, e.g. --elem Fe")
 
     set_mpl_style()
 

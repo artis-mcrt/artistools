@@ -232,8 +232,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         case "list":
             dftable = get_cache_table(modelfolder)
             print_or_write_table(args, dftable, outputfile)
-            print_detail(f"total: {dftable['size_mb'].sum():.1f} MB in {dftable.height} files")
+            print_detail(f"Total: {dftable['size_mb'].sum():.1f} MB in {dftable.height} files")
             if (dftable["kind"] == "leftover").any():
-                print_warning("a conversion stopped and left files. 'artistools cache delete' deletes them")
+                print_warning("A conversion stopped and left files. Run `artistools cache delete` to delete them")
         case "delete":
             delete_caches(modelfolder, args.force)

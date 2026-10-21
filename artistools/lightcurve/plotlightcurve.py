@@ -20,6 +20,7 @@ from polars import selectors as cs
 
 from artistools import misc
 from artistools.commands import get_path
+from artistools.commands import get_standard_flag
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
@@ -97,6 +98,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
+from artistools.misc.cliutils import arggroup
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.remote import on_model_host
 from artistools.plottools import AxesTree
@@ -627,7 +629,7 @@ def plot_energy_rates(
 
 
 def get_table_in_time_range(dftables: Sequence[pl.DataFrame], args: argparse.Namespace) -> pl.DataFrame:
-    """Return the rows of the plotted tables from -timemin to -timemax, for --print_data and --write_data.
+    """Return the rows of the plotted tables from --timemin to --timemax, for --print-data and --write-data.
 
     A light curve keeps the nearest point outside each end for its line, and the table leaves that point out. The
     tables of a figure can have different columns, e.g. the error bars of a reference file.
@@ -697,7 +699,7 @@ def plot_thermalisation(
     particlecolours: dict[str, str],
     linewidth: float | str | None,
 ) -> list[pl.DataFrame]:
-    """Plot the deposition rate over the emission rate of each particle of -thermalisation, and return the curves.
+    """Plot the deposition rate over the emission rate of each particle of --thermalisation, and return the curves.
 
     --showbarnes adds the curves of Barnes et al. (2016, ApJ, 829, 110) for the gamma rays, the electrons, and the alpha
     particles.
@@ -705,7 +707,7 @@ def plot_thermalisation(
     dfcurves: list[pl.DataFrame] = []
     if "betaplus" in args.thermalisation:
         print_detail(
-            "the thermalisation ratio of the positrons divides by the analytical emission rate, because"
+            "The thermalisation ratio of the positrons divides by the analytical emission rate, because"
             " deposition.out holds no Monte Carlo emission rate of the positrons"
         )
     for particle in args.thermalisation:
@@ -736,8 +738,8 @@ def plot_thermalisation(
         return dfcurves
 
     model_mass_grams, ejecta_ke_erg = get_model_mass_and_kinetic_energy(Path(modelpath))
-    print(f"  model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
-    print(f"  ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
+    print(f"  Model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
+    print(f"  Ejecta kinetic energy: {ejecta_ke_erg / 1e7:.2e} [J] = {ejecta_ke_erg:.2e} [erg]")
 
     # velocity derived from ejecta kinetic energy to match Barnes et al. (2016) Section 2.1
     ejecta_v = np.sqrt(2 * ejecta_ke_erg / model_mass_grams)
@@ -860,11 +862,11 @@ def plot_artis_lightcurve(
         )
     else:
         if pellet_nucname is not None or use_pellet_decay_time:
-            msg = "only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
+            msg = "Only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
             raise ValueError(msg)
         if args.plotvspecpol is not None:
             exit_with_error(
-                "-plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
+                "--plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
                 "Give --frompackets to make the light curve of each virtual observer from the packets.",
             )
         try:
@@ -889,7 +891,7 @@ def plot_artis_lightcurve(
         except ValueError as exc:
             exit_with_error(
                 str(exc),
-                "Give -plotviewingangle with light_curve_res.out, give no -plotviewingangle with light_curve.out, and"
+                "Give --plotviewingangle with light_curve_res.out, give no --plotviewingangle with light_curve.out, and"
                 " give a file that ARTIS wrote in full",
             )
         if directionresolved:
@@ -931,12 +933,12 @@ def plot_artis_lightcurve(
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
 
-    print_detail(f"range of the light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
+    print_detail(f"Range of the light curve: {lctimemin:.2f} to {lctimemax:.2f} days")
     try:
         nts_last, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
     except FileNotFoundError:
         print(
-            " range of validity: could not determine due to missing files "
+            " Range of validity: could not determine due to missing files "
             "(requires deposition.out, input.txt, model.txt)"
         )
         nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
@@ -945,7 +947,7 @@ def plot_artis_lightcurve(
             str_valid_range = f"{validrange_start_days:.2f} to {validrange_end_days:.2f} days"
         else:
             str_valid_range = f"{validrange_start_days} to {validrange_end_days} days"
-        print_detail(f"range of validity (last timestep {nts_last}): {str_valid_range}")
+        print_detail(f"Range of validity (last timestep {nts_last}): {str_valid_range}")
 
     if any(dirbin != -1 for dirbin in dirbins):
         print_theta_phi_definitions()
@@ -1038,7 +1040,7 @@ def plot_artis_lightcurve(
         lcdata_valid_tmin, lcdata_valid_tmax = get_time_range_days(lcdata_valid)
         if lcdata_valid_tmin is not None and lcdata_valid_tmax is not None:
             print_detail(
-                f"integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days):"
+                f"Integrated luminosity ({lcdata_valid_tmin:.2f} to {lcdata_valid_tmax:.2f} days):"
                 f" {energy_released:.3e} [erg]"
             )
 
@@ -1085,7 +1087,7 @@ def plot_artis_lightcurve(
             )
         if args.plotcmf and cmfcolumn not in lcdata.columns:
             print_warning(
-                f"the light curve of {linelabel} has no comoving frame luminosity, thus --plotcmf draws no curve"
+                f"The light curve of {linelabel} has no comoving frame luminosity, thus --plotcmf draws no curve"
             )
         elif args.plotcmf:
             # a copy, because the next direction bin keeps the rest-frame style and the -linewidth value
@@ -1116,7 +1118,7 @@ def make_plot_figure(
 ) -> tuple[mplfig.Figure, mplax.Axes, mplax.Axes | None, mplax.Axes | None]:
     """Return the figure, the axis of the light curves, the thermalisation panel, and the residual panel.
 
-    The residual panel comes with -residual, and the thermalisation panel at the bottom comes with -thermalisation.
+    The residual panel comes with --residual, and the thermalisation panel at the bottom comes with --thermalisation.
     If the caller gives an empty figure as fig, the function adds the frames to it, e.g. the figure of the viewer.
     """
     rowheights = [
@@ -1141,8 +1143,8 @@ def draw_plot(
     axes must be empty. This function writes no file, thus the viewer can call it again for each change of a control.
 
     The keys of the tables are the ends of the names of the data files, see output_data. The table of the light curves
-    has one row for each time of each model, escape type, and direction bin. It holds the values after -filtersavgol
-    or -filtermovingavg. The table of the energy rates holds the curves of deposition.out and of the thermalisation
+    has one row for each time of each model, escape type, and direction bin. It holds the values after --filtersavgol
+    or --filtermovingavg. The table of the energy rates holds the curves of deposition.out and of the thermalisation
     panel. The statistics of the residuals are empty without a residual panel. The table _summary gives the fields of
     the summary line of each drawn light curve, see get_peak_summary.
     """
@@ -1207,7 +1209,7 @@ def draw_plot(
                         print(f"Top nuclides by energy release: {top_nuclides['nucname'].to_list()}")
                         pellet_nucnames.extend(top_nuclides["nucname"])
                     except FileNotFoundError:
-                        print_warning("no nuclides.out file found, skipping top nuclides")
+                        print_warning("No nuclides.out file found, skipping top nuclides")
 
                 for pellet_nucname in pellet_nucnames:
                     lcdataframes = plot_artis_lightcurve(
@@ -1289,7 +1291,7 @@ def draw_plot(
 
     if not plottedsomething:
         exit_with_error(
-            "the plot holds no light curve, because the command skipped each path",
+            "The plot holds no light curve, because the command skipped each path",
             "The warnings above give the reason for each path",
         )
 
@@ -1623,9 +1625,9 @@ def plot_hesma_lightcurve(
     plottedpoints: list[pl.DataFrame] | None = None,
     summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> None:
-    """Draw each band of the HESMA model of -plot_hesma_model on the panel of that band.
+    """Draw each band of the HESMA model of --plot-hesma-model on the panel of that band.
 
-    plottedpoints takes the points of each band from -timemin to -timemax in the form of get_magnitude_table.
+    plottedpoints takes the points of each band from --timemin to --timemax in the form of get_magnitude_table.
     summaryrows takes the fields of the summary line of each band.
 
     The first column of the file holds the time, and a column with the name of a band holds its magnitudes. The grid
@@ -1806,7 +1808,7 @@ def get_dereddened_band_data(
         print("Correcting for reddening")
         return deredden_band_magnitudes(dfband, lambda0, metadata["a_v"], metadata["r_v"])
 
-    print_warning("did not correct for reddening")
+    print_warning("Did not correct for reddening")
     return dfband
 
 
@@ -1825,7 +1827,7 @@ def plot_lightcurve_from_refdata(
 ) -> str | None:
     """Plot an observed band light curve, dereddened with CCM89, and return its legend label.
 
-    The points have no line, thus -linewidth sets the size of each marker. plottedpoints takes the points of each band
+    The points have no line, thus --linewidth sets the size of each marker. plottedpoints takes the points of each band
     in the form of get_magnitude_table, and summaryrows takes the fields of the summary line of each band. Only the
     points from timemin to timemax go into the figure and plottedpoints.
     """
@@ -1901,7 +1903,7 @@ def plot_color_evolution_from_data(
 ) -> None:
     """Plot the observed colour evolution between two bands, dereddened with CCM89.
 
-    The points have no line, thus -linewidth sets the size of each marker. plottedpoints takes the points in the form
+    The points have no line, thus --linewidth sets the size of each marker. plottedpoints takes the points in the form
     of get_magnitude_table. Only the points from timemin to timemax go into the figure and plottedpoints.
     """
     lightcurve_from_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
@@ -1957,7 +1959,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_legend(parser)
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "-title",
         dest="title",
         nargs="?",
@@ -1965,18 +1967,18 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Show a plot title: pass the title text, or use the bare flag for the model name",
     )
-    # deprecated spelling kept as a hidden alias
-    parser.add_argument("--title", dest="title", nargs="?", const=True, help=argparse.SUPPRESS)
 
     addarg_figscale(parser, include_figwidthscale=True)
 
-    parser.add_argument("--frompackets", action="store_true", help="Read packets files instead of light_curve.out")
+    arggroup(parser, "Packets").add_argument(
+        "--frompackets", action="store_true", help="Read packets files instead of light_curve.out"
+    )
 
     addarg_maxpacketfiles(parser)
 
-    parser.add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
+    arggroup(parser, "Packets").add_argument("--gamma", action="store_true", help="Make light curve from gamma rays")
 
-    parser.add_argument(
+    arggroup(parser, "Packets").add_argument(
         "--rpkt",
         "--uvoir",
         dest="rpkt",
@@ -1989,7 +1991,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_output(parser, kind="file", helptext="Filename for PDF file")
 
-    parser.add_argument("--plotcmf", action="store_true", help="Plot comoving frame light curve")
+    arggroup(parser, "Packets").add_argument("--plotcmf", action="store_true", help="Plot comoving frame light curve")
     # deprecated spellings kept as hidden aliases
     parser.add_argument(
         "--plot_cmf", "--showcmf", "--show_cmf", dest="plotcmf", action="store_true", help=argparse.SUPPRESS
@@ -1997,7 +1999,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_plotinvalidpart(parser, "the light curve")
 
-    parser.add_argument(
+    arggroup(parser, "Energy rates").add_argument(
         "-deposition",
         nargs="+",
         choices=DEPOSITIONCHOICES,
@@ -2008,7 +2010,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Energy rates").add_argument(
         "-emission",
         nargs="+",
         choices=tuple(EMISSIONCOLUMNS),
@@ -2019,7 +2021,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Energy rates").add_argument(
         "-analyticemission",
         nargs="+",
         choices=tuple(ANALYTICEMISSIONCOLUMNS),
@@ -2030,7 +2032,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Energy rates").add_argument(
         "-thermalisation",
         nargs="+",
         choices=ENERGYPARTICLES,
@@ -2041,11 +2043,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Energy rates").add_argument(
         "--showbarnes",
         action="store_true",
         help=(
-            "With -thermalisation, also plot the thermalisation efficiencies for gamma, betaminus, and alpha of"
+            "With --thermalisation, also plot the thermalisation efficiencies for gamma, betaminus, and alpha of"
             " Barnes, Kasen, Wu & Martínez-Pinedo (2016), ApJ, 829, 110, doi:10.3847/0004-637X/829/2/110"
         ),
     )
@@ -2055,31 +2057,35 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--plotalphadeposition", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--plotthermalisation", action="store_true", help=argparse.SUPPRESS)
 
-    parser.add_argument(
+    arggroup(parser, "Energy rates").add_argument(
         "-topnucs", type=int, default=0, help="Show light curves from top n nuclides energy contributions"
     )
 
-    parser.add_argument(
+    arggroup(parser, "Packets").add_argument(
         "--use_pellet_decay_time", action="store_true", help="Use pellet decay time instead of observer arrival time"
     )
 
-    parser.add_argument("--magnitude", action="store_true", help="Plot light curves in magnitudes")
+    arggroup(parser, "Bands and reference data").add_argument(
+        "--magnitude", action="store_true", help="Plot light curves in magnitudes"
+    )
 
-    parser.add_argument("--Lsun", action="store_true", help="Plot light curves in units of Lsun")
+    arggroup(parser, "Bands and reference data").add_argument(
+        "--Lsun", action="store_true", help="Plot light curves in units of Lsun"
+    )
 
-    parser.add_argument(
+    arggroup(parser, "Bands and reference data").add_argument(
         "-filter",
         "-band",
         dest="filter",
         type=str,
         nargs="+",
         help=(
-            "Plot the light curves of these bands, e.g. U B V R I, or bol for bolometric. With no -filter the "
+            "Plot the light curves of these bands, e.g. U B V R I, or bol for bolometric. With no --filter the "
             "command plots the bolometric light curve. The names are case sensitive, e.g. sloan-r is rs"
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Bands and reference data").add_argument(
         "-colour_evolution", nargs="*", help="Plot the colour evolution of each pair of bands, e.g. B-V U-B"
     )
 
@@ -2087,7 +2093,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_residuals(parser)
 
-    parser.add_argument(
+    arggroup(parser, "Bands and reference data").add_argument(
         "-plot_hesma_model",
         action="store",
         type=Path,
@@ -2108,11 +2114,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-timedaysmin", dest="timemin", type=float, help=argparse.SUPPRESS)
     parser.add_argument("-timedaysmax", dest="timemax", type=float, help=argparse.SUPPRESS)
 
-    parser.add_argument("--logscalex", action="store_true", help="Use log scale for horizontal axis")
+    arggroup(parser, "Appearance").add_argument(
+        "--logscalex", action="store_true", help="Use log scale for horizontal axis"
+    )
 
     addarg_yscale(parser)
 
-    parser.add_argument(
+    arggroup(parser, "Bands and reference data").add_argument(
         "-reflightcurves",
         type=str,
         nargs="+",
@@ -2120,7 +2128,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Also plot reference lightcurves from these files",
     )
 
-    parser.add_argument(
+    arggroup(parser, "Bands and reference data").add_argument(
         "-refspeccolors",
         type=color_arg,
         default=[],
@@ -2128,7 +2136,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Set a list of colors for the reference light curves",
     )
 
-    parser.add_argument(
+    arggroup(parser, "Bands and reference data").add_argument(
         "-refspecmarkers", default=[], nargs="*", help="Set a list of markers for the reference light curves"
     )
 
@@ -2148,13 +2156,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     addarg_verbose(parser)
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--save_angle_averaged_peakmag_risetime_delta_m15_to_file",
         action="store_true",
         help="Save the band risetime, peak mag and delta m15 values for the angle averaged model lightcurves to file",
     )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--save_viewing_angle_peakmag_risetime_delta_m15_to_file",
         action="store_true",
         help=(
@@ -2162,22 +2170,22 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "all viewing angles specified for plotting at a later time "
             "as these values take a long time to calculate for all "
             "viewing angles. Need to run this command first alongside "
-            "-plotviewingangle in order to save the data for the "
+            "--plotviewingangle in order to save the data for the "
             "viewing angles you want to use before making the scatter "
             "plots"
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--test_viewing_angle_fit",
         action="store_true",
         help=(
             "Plot the light curve and its fit for each viewing angle, to check the fit. Use it with"
-            " --save_viewing_angle_peakmag_risetime_delta_m15_to_file or with a scatter plot flag, which make the fits"
+            " --save-viewing-angle-peakmag-risetime-delta-m15-to-file or with a scatter plot flag, which make the fits"
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--make_viewing_angle_peakmag_risetime_scatter_plot",
         action="store_true",
         help=(
@@ -2188,7 +2196,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--make_viewing_angle_peakmag_delta_m15_scatter_plot",
         action="store_true",
         help=(
@@ -2198,31 +2206,33 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--include_delta_m40",
         action="store_true",
         help="When calculating delta_m15, calculate delta_m40 as well. Only affects the saved viewing angle data",
     )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--noerrorbars", action="store_true", help="Don't plot error bars on viewing angle scatter plots"
     )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--noangleaveraged", action="store_true", help="Don't plot angle averaged values on viewing angle scatter plots"
     )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing direction").add_argument(
         "--colorbarcostheta", action="store_true", help="Colour viewing angles by cos theta and show color bar"
     )
 
-    parser.add_argument("--colorbarphi", action="store_true", help="Colour viewing angles by phi and show color bar")
+    arggroup(parser, "Viewing direction").add_argument(
+        "--colorbarphi", action="store_true", help="Colour viewing angles by phi and show color bar"
+    )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--colouratpeak", action="store_true", help="Make scatter plot of colour at peak for viewing angles"
     )
 
-    parser.add_argument(
+    arggroup(parser, "Viewing-angle analysis").add_argument(
         "--brightnessattime",
         action="store_true",
         help="Make scatter plot of light curve brightness at a given time (requires timedays)",
@@ -2234,11 +2244,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timedays(parser, helptext="Time in days, or a range e.g. 2.2-2.8, to plot")
 
-    parser.add_argument("--nomodelname", action="store_true", help="Model name not added to linename in legend")
+    arggroup(parser, "Appearance").add_argument(
+        "--nomodelname", action="store_true", help="Model name not added to linename in legend"
+    )
 
-    parser.add_argument("-legendsubplotnumber", type=int, default=1, help="Subplot number to place legend in")
+    arggroup(parser, "Appearance").add_argument(
+        "-legendsubplotnumber", type=int, default=1, help="Subplot number to place legend in"
+    )
 
-    parser.add_argument("-legendposition", type=str, default="best", help="Position of legend in plot")
+    arggroup(parser, "Appearance").add_argument(
+        "-legendposition", type=str, default="best", help="Position of legend in plot"
+    )
 
     # the old spelling of -legendcols, which addarg_legend adds
     parser.add_argument("-ncolslegend", dest="legendcols", type=positive_int_arg, help=argparse.SUPPRESS)
@@ -2250,17 +2266,18 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def check_colour_evolution_args(args: argparse.Namespace) -> None:
-    """Stop the command when a value of -colour_evolution does not name two bands."""
+    """Stop the command when a value of --colour-evolution does not name two bands."""
     for colour in args.colour_evolution or ():
         if len(colour.split("-")) != 2:
             exit_with_error(
-                f"-colour_evolution takes two bands for each colour, and {colour} names {len(colour.split('-'))} bands",
-                "Give each colour as two bands with a minus sign between them, e.g. -colour_evolution B-V",
+                f"--colour-evolution takes two bands for each colour, and {colour} names"
+                f" {len(colour.split('-'))} bands",
+                "Give each colour as two bands with a minus sign between them, e.g. --colour-evolution B-V",
             )
 
 
 def check_residual_args(args: argparse.Namespace) -> None:
-    """Stop the command when -residual cannot apply to the plot that args selects."""
+    """Stop the command when --residual cannot apply to the plot that args selects."""
     otherplotoptions = (
         args.colour_evolution,
         args.colouratpeak,
@@ -2272,13 +2289,13 @@ def check_residual_args(args: argparse.Namespace) -> None:
     )
     if any(otherplotoptions):
         exit_with_error(
-            "-residual applies only to a bolometric light curve plot and to a band light curve plot",
-            "Remove -residual, or remove the option that selects a different plot",
+            "--residual applies only to a bolometric light curve plot and to a band light curve plot",
+            "Remove --residual, or remove the option that selects a different plot",
         )
     if args.filter and (len(args.filter) != 1 or args.filter[0] == "bol"):
         exit_with_error(
-            "-residual applies to a plot of one frame, and the band reference data hold no bolometric band",
-            "Give one filter, e.g. -filter B. For a bolometric light curve, give no -filter",
+            "--residual applies to a plot of one frame, and the band reference data hold no bolometric band",
+            "Give one filter, e.g. --filter B. For a bolometric light curve, give no --filter",
         )
 
 
@@ -2309,14 +2326,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.brightnessattime:
         if args.timedays is None:
-            misc.exit_with_error("specify a single time with -timedays")
+            misc.exit_with_error("Specify a single time with --timedays")
         # this plot takes one time rather than a range
         try:
             args.timedays = float(args.timedays)
         except ValueError:
             exit_with_error(
-                f"--brightnessattime takes one time, and -timedays gives {args.timedays}",
-                "Give one time in days, e.g. -timedays 5",
+                f"--brightnessattime takes one time, and --timedays gives {args.timedays}",
+                "Give one time in days, e.g. --timedays 5",
             )
         if not args.plotviewingangle:
             args.plotviewingangle = [-1]
@@ -2351,11 +2368,11 @@ def get_other_plot_flag(args: argparse.Namespace) -> str | None:
     Such a plot reads the spectra or the light curve files of ARTIS, and no packets files.
     """
     otherplotflags = (
-        ("-filter", args.filter),
-        ("-colour_evolution", args.colour_evolution),
+        ("--filter", args.filter),
+        ("--colour-evolution", args.colour_evolution),
         ("--colouratpeak", args.colouratpeak),
         ("--brightnessattime", args.brightnessattime),
-        *((f"--{dest}", getattr(args, dest)) for dest in PEAKMAGDESTS),
+        *((get_standard_flag(f"--{dest}"), getattr(args, dest)) for dest in PEAKMAGDESTS),
     )
     return next((flag for flag, isgiven in otherplotflags if isgiven), None)
 
@@ -2391,13 +2408,13 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
         refused.append(
             RefusedOption(
                 "--plotcmf",
-                "--plotcmf bins the comoving frame light curve by the arrival time, and --use_pellet_decay_time bins by"
+                "--plotcmf bins the comoving frame light curve by the arrival time, and --use-pellet-decay-time bins by"
                 " the decay time. Thus the two curves have different time axes",
                 None,
             )
         )
-    pelletremedy = "Remove -plotvspecpol, or remove -topnucs and --use_pellet_decay_time"
-    for flag, isgiven in (("-topnucs", args.topnucs), ("--use_pellet_decay_time", args.use_pellet_decay_time)):
+    pelletremedy = "Remove --plotvspecpol, or remove --topnucs and --use-pellet-decay-time"
+    for flag, isgiven in (("--topnucs", args.topnucs), ("--use-pellet-decay-time", args.use_pellet_decay_time)):
         if isgiven and isobserver:
             reason = f"the virtual packets hold no pellet, thus {flag} gives no light curve of an observer"
             refused.append(RefusedOption(flag, reason, pelletremedy))
@@ -2406,7 +2423,7 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
             RefusedOption(
                 "--gamma",
                 "ARTIS makes the virtual packets from the r-packets, thus an observer has no gamma-ray light curve",
-                "Remove -plotvspecpol or --gamma",
+                "Remove --plotvspecpol or --gamma",
             )
         )
     if otherplotflag is not None:
@@ -2414,25 +2431,25 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
             RefusedOption(flag, f"{otherplotflag} reads no packets files, thus {flag} has no effect", None)
             for flag, isgiven in (
                 ("--frompackets", args.frompackets),
-                ("-topnucs", args.topnucs),
-                ("--use_pellet_decay_time", args.use_pellet_decay_time),
+                ("--topnucs", args.topnucs),
+                ("--use-pellet-decay-time", args.use_pellet_decay_time),
             )
             if isgiven
         )
     elif args.use_pellet_decay_time and not isobserver and not (args.frompackets or args.topnucs):
         refused.append(
             RefusedOption(
-                "--use_pellet_decay_time",
+                "--use-pellet-decay-time",
                 "only the packets give the decay time of a pellet, and the command reads no packets files",
-                "Give --frompackets, or remove --use_pellet_decay_time",
+                "Give --frompackets, or remove --use-pellet-decay-time",
             )
         )
     refused.extend(get_refused_average_options(args))
     if args.test_viewing_angle_fit and not any(getattr(args, dest) for dest in PEAKMAGDESTS):
         refused.append(
             RefusedOption(
-                "--test_viewing_angle_fit",
-                "--test_viewing_angle_fit plots the fits of the peak magnitudes, and only a save flag or a scatter"
+                "--test-viewing-angle-fit",
+                "--test-viewing-angle-fit plots the fits of the peak magnitudes, and only a save flag or a scatter"
                 " flag makes these fits",
                 None,
             )
@@ -2443,13 +2460,13 @@ def get_refused_options(args: argparse.Namespace) -> list[RefusedOption]:
 def get_refused_average_options(args: argparse.Namespace) -> list[RefusedOption]:
     """Return each average over an angle that plotlightcurves refuses for the direction bins of args."""
     averageflags = (
-        ("--average_over_phi_angle", args.average_over_phi_angle, {"average_over_phi": True}),
-        ("--average_over_theta_angle", args.average_over_theta_angle, {"average_over_theta": True}),
+        ("--average-over-phi-angle", args.average_over_phi_angle, {"average_over_phi": True}),
+        ("--average-over-theta-angle", args.average_over_theta_angle, {"average_over_theta": True}),
     )
     if not args.plotviewingangle:
         return [
             RefusedOption(
-                flag, f"{flag} groups the direction bins of -plotviewingangle, and the command gives none", None
+                flag, f"{flag} groups the direction bins of --plotviewingangle, and the command gives none", None
             )
             for flag, isgiven, _ in averageflags
             if isgiven
@@ -2468,8 +2485,8 @@ def get_refused_average_options(args: argparse.Namespace) -> list[RefusedOption]
                         flag,
                         f"{flag} gives one curve for each group of direction bins, and the bins"
                         f" {' '.join(str(dirbin) for dirbin in badbins)} start no group",
-                        "Give the first bin of each group, e.g. -plotviewingangle"
-                        f" {' '.join(map(str, groupstarts[:3]))}, or give -plotviewingangle -2",
+                        "Give the first bin of each group, e.g. --plotviewingangle"
+                        f" {' '.join(map(str, groupstarts[:3]))}, or give --plotviewingangle -2",
                     )
                 )
     return refused
@@ -2480,12 +2497,13 @@ def drop_refused_options(
 ) -> None:
     """Give each refused option the value of no selection, and print a warning.
 
-    The value of no selection is 0 for -topnucs and False for a different flag. warningformat makes the text of the
+    The value of no selection is 0 for --topnucs and False for a different flag. warningformat makes the text of the
     warning from the fields flag and reason.
     """
     for option in refused:
         print_warning(warningformat.format(flag=option.flag, reason=option.reason))
-        setattr(args, option.flag.lstrip("-"), 0 if option.flag == "-topnucs" else False)
+        # the flag has hyphens, e.g. --use-pellet-decay-time, and the dest has underscores
+        setattr(args, option.flag.lstrip("-").replace("-", "_"), 0 if option.flag == "--topnucs" else False)
 
 
 def check_refused_options(args: argparse.Namespace) -> None:
