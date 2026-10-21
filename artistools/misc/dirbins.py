@@ -389,7 +389,7 @@ def get_dirbin_labels(
 def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall: bool) -> None:
     """Exit with an error if dirbin is not a direction bin. With allowall, -1 for all the directions is also valid.
 
-    With averageoverphi, as with --average_over_phi_angle of plotspectra, dirbin must be the first bin of its costheta
+    With averageoverphi, as with --average-over-phi-angle of plotspectra, dirbin must be the first bin of its costheta
     bin.
     """
     from artistools.misc.cliutils import exit_with_error
@@ -420,7 +420,7 @@ def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> No
 
 
 def addarg_costhetarange(parser: argparse.ArgumentParser) -> None:
-    """Add -dirbin, -costhetamin, and -costhetamax, which select the cells by the direction of their centre."""
+    """Add --dirbin, --costhetamin, and --costhetamax, which select the cells by the direction of their centre."""
     parser.add_argument(
         "-dirbin",
         type=int,
@@ -434,7 +434,7 @@ def addarg_costhetarange(parser: argparse.ArgumentParser) -> None:
         "-costhetamin",
         type=float,
         help=(
-            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole of -dirbin 90."
+            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole of --dirbin 90."
             " Default: -1"
         ),
     )
@@ -442,17 +442,17 @@ def addarg_costhetarange(parser: argparse.ArgumentParser) -> None:
         "-costhetamax",
         type=float,
         help=(
-            "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 with -costhetamin 0 for the cells of -dirbin"
+            "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 with --costhetamin 0 for the cells of --dirbin"
             " 50. Default: 1"
         ),
     )
 
 
 def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[float, float] | None:
-    """Return the range of cos θ of -dirbin or of -costhetamin and -costhetamax, or None to keep each cell.
+    """Return the range of cos θ of --dirbin or of --costhetamin and --costhetamax, or None to keep each cell.
 
-    The range of -dirbin includes both edges, as the range of -costhetamin and -costhetamax does. Thus a cell with
-    its centre on an edge is in two adjacent bins. With quiet, the function does not log the range of -dirbin.
+    The range of --dirbin includes both edges, as the range of --costhetamin and --costhetamax does. Thus a cell with
+    its centre on an edge is in two adjacent bins. With quiet, the function does not log the range of --dirbin.
     """
     from artistools.misc.cliutils import exit_with_error
     from artistools.misc.cliutils import print_detail
@@ -460,8 +460,8 @@ def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[f
     if args.dirbin is not None:
         if args.costhetamin is not None or args.costhetamax is not None:
             exit_with_error(
-                "-dirbin gives a range of cos θ, thus -costhetamin and -costhetamax do not apply",
-                "Remove -dirbin, or remove -costhetamin and -costhetamax",
+                "--dirbin gives a range of cos θ, thus --costhetamin and --costhetamax do not apply",
+                "Remove --dirbin, or remove --costhetamin and --costhetamax",
             )
         check_costheta_dirbin(args.dirbin, "-dirbin", allowall=False)
         costhetalowers, costhetauppers, _ = get_costheta_bins(usedegrees=False)
@@ -469,7 +469,7 @@ def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[f
         costhetarange = (costhetalowers[costhetabin], costhetauppers[costhetabin])
         if not quiet:
             print_detail(
-                f"-dirbin {args.dirbin} selects the cells whose centre has {format_costheta_range(costhetarange)},"
+                f"--dirbin {args.dirbin} selects the cells whose centre has {format_costheta_range(costhetarange)},"
                 " at all phi. The z axis is the polar axis of the direction bins"
             )
         return costhetarange
@@ -482,8 +482,8 @@ def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[f
     )
     if not -1.0 <= costhetarange[0] < costhetarange[1] <= 1.0:
         exit_with_error(
-            f"-costhetamin {costhetarange[0]:g} and -costhetamax {costhetarange[1]:g} give no range of cos θ",
-            "Give -1 ≤ -costhetamin < -costhetamax ≤ 1",
+            f"--costhetamin {costhetarange[0]:g} and --costhetamax {costhetarange[1]:g} give no range of cos θ",
+            "Give -1 ≤ --costhetamin < --costhetamax ≤ 1",
         )
     return costhetarange
 

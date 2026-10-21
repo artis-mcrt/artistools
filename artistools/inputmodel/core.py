@@ -668,7 +668,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
             smallest, largest = min(rcylwidth, zwidth), math.hypot(rcylwidth, zwidth)
             gridtext = (
                 f"The 2D model has a grid of n_rcyl x n_z = {ncoordgridrcyl} x {ncoordgridz} cells, with {vmaxtext}."
-                " The cylindrical radius rcyl is from 0 to vmax, and z is from -vmax to vmax. The cell widths are"
+                " The cylindrical radius rcyl is from 0 to vmax, and z is from --vmax to vmax. The cell widths are"
                 f" width_rcyl = vmax / n_rcyl = {rcylwidth / km_to_cm:.0f} km/s and"
                 f" width_z = 2 vmax / n_z = {zwidth / km_to_cm:.0f} km/s"
             )
@@ -682,7 +682,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
             smallest, largest = min(cellwidths), math.hypot(*cellwidths)
             gridshape = " x ".join(str(modelmeta[f"ncoordgrid{axis}"]) for axis in "xyz")
             gridtext = (
-                f"The 3D model has a grid of {gridshape} cells from -vmax to vmax, with {vmaxtext}. The cell widths"
+                f"The 3D model has a grid of {gridshape} cells from --vmax to vmax, with {vmaxtext}. The cell widths"
                 " width_x, width_y, and width_z are 2 vmax / n for n cells on that axis"
             )
             scaletext = (
@@ -1307,19 +1307,19 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int:
     """Return the modelgridindex of the first cell of a 1D model with an outer velocity [km/s] of velocity or above."""
     # a negative value was the default that gave no velocity, and searchsorted takes it as the first cell
     if velocity < 0.0:
-        exit_with_error(f"-velocity {velocity:g} km/s is below zero", "Give a radial velocity of 0 or more")
+        exit_with_error(f"--velocity {velocity:g} km/s is below zero", "Give a radial velocity of 0 or more")
     dfmodel, modelmeta = get_modeldata(modelpath)
     if modelmeta["dimensions"] != 1:
         exit_with_error(
-            f"-velocity selects a shell of a 1D model, and this model has {modelmeta['dimensions']} dimensions",
-            "Give -modelgridindex",
+            f"--velocity selects a shell of a 1D model, and this model has {modelmeta['dimensions']} dimensions",
+            "Give --modelgridindex",
         )
     arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy()
 
     mgi_upper = int(np.searchsorted(arr_vouter, velocity))
     if mgi_upper >= len(arr_vouter):
         exit_with_error(
-            f"-velocity {velocity:g} km/s is above the outer velocity {arr_vouter[-1]:g} km/s of the last cell",
+            f"--velocity {velocity:g} km/s is above the outer velocity {arr_vouter[-1]:g} km/s of the last cell",
             "Give a lower velocity",
         )
     return mgi_upper
@@ -1806,8 +1806,9 @@ def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence
     """
     if "vel_z_mid_on_c" not in columns:
         exit_with_error(
-            "A 1D model has no direction of a cell, thus -dirbin, -costhetamin, and -costhetamax cannot select cells",
-            "Remove -dirbin, -costhetamin, and -costhetamax",
+            "A 1D model has no direction of a cell, thus --dirbin, --costhetamin, and --costhetamax cannot select"
+            " cells",
+            "Remove --dirbin, --costhetamin, and --costhetamax",
         )
     return get_cell_selection(
         thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))

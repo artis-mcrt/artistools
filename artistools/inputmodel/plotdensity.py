@@ -58,7 +58,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-nbins",
         type=int,
         default=None,
-        help="Use this number of fixed velocity bins from zero to the larger of the model vmax and -xmax",
+        help="Use this number of fixed velocity bins from zero to the larger of the model vmax and --xmax",
     )
 
     parser.add_argument("--plotye", action="store_true", help="Plot electron fraction versus velocity")
@@ -122,7 +122,7 @@ def get_binned_profile(
 def get_coarse_velocity_bins(dfmodel: pl.DataFrame, nbins: int | None, vmax_cmps: float) -> list[float]:
     """Return the upper velocities [cm/s] of the bins for the dM/dv profile.
 
-    vmax_cmps is the largest velocity of the plot. The fixed bins of -nbins fill that range. Bins that
+    vmax_cmps is the largest velocity of the plot. The fixed bins of --nbins fill that range. Bins that
     reach the speed of light would put the model into the first few bins.
     """
     if nbins:
@@ -241,7 +241,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ]
 
     if args.xmax is not None and args.xmax <= 0.0:
-        exit_with_error(f"-xmax {args.xmax} gives no range", "Give an -xmax above 0, in units of c")
+        exit_with_error(f"--xmax {args.xmax} gives no range", "Give an --xmax above 0, in units of c")
 
     max_vmax_on_c, tables = plot_density_profiles(args, axes)
 

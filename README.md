@@ -51,14 +51,14 @@ Run "artistools" (or the short alias "at") at the command-line to get a full lis
 - artistools describe (a summary of a model: its cells, timesteps, output files, and ions)
 - artistools inputmodel describe
 
-Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Run a command in a model folder, or give the path of the model folder. A command that reads a model takes the model path with `-modelpath`, e.g. `artistools timesteps -modelpath mymodel`. Most of these commands also take the model path as the last positional argument, e.g. `artistools plotspectra -t 300 mymodel`.
+Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Run a command in a model folder, or give the path of the model folder. A command that reads a model takes the model path with `--modelpath`, e.g. `artistools timesteps --modelpath mymodel`. Most of these commands also take the model path as the last positional argument, e.g. `artistools plotspectra -t 300 mymodel`.
 
 ### The plotted data as text
 
-Each plot command gives the plotted data as a table with a header row and a space between the values. `--print_data` prints the table to the standard output, and `--quiet` then hides the progress messages. `--write_data` writes the same table to a .txt file beside the figure. A value that is not available is `nan`, and a value or a column name that contains a space has quotes. A written file starts with comment lines that give the artistools version, the time, the working folder, and the command. Thus the file tells how the command made each value. Read it with `pl.read_csv(path, separator=" ", comment_prefix="#", null_values="nan")`, or with `comment="#"` in pandas. For example, this command writes the electron temperature against the velocity at 300 days to a file:
+Each plot command gives the plotted data as a table with a header row and a space between the values. `--print-data` prints the table to the standard output. The progress messages go to the standard error, thus a pipe or a redirect gets the table alone. `--output-format json` or `--output-format csv` gives the table in that format. `--write-data` writes the same table to a .txt file beside the figure. A value that is not available is `nan`, and a value or a column name that contains a space has quotes. A written file starts with comment lines that give the artistools version, the time, the working folder, and the command. Thus the file tells how the command made each value. Read it with `pl.read_csv(path, separator=" ", comment_prefix="#", null_values="nan")`, or with `comment="#"` in pandas. For example, this command writes the electron temperature against the velocity at 300 days to a file:
 
 ```sh
-artistools plotestimators Te -t 300 mymodel --print_data --quiet > te.txt
+artistools plotestimators Te -t 300 mymodel --print-data > te.txt
 ```
 
 A plot can give more than one table, because a series with its own grid needs its own table. Examples are a reference spectrum in `<figure>_references.txt`, a model with a different wavelength grid in `<figure>_grid2.txt`, and the statistics and the curves of a residual panel in `<figure>_residuals.txt` and `<figure>_residualcurves.txt`. On the standard output, an empty line separates two tables.
@@ -170,7 +170,7 @@ artistools installskill
 
 The command makes a link in `~/.claude/skills` to the skill in the installed package. Thus an update of artistools also updates the skill. If the environment variable `CLAUDE_CONFIG_DIR` has a value, the command uses `$CLAUDE_CONFIG_DIR/skills`. If artistools runs from the uv cache, e.g. with `uvx`, the command stops and makes no link, because uv can delete its cache. In that case, install artistools with `uv tool install artistools`, or give `--copy`.
 
-For Codex, Cursor, or OpenCode, give `-layout agents`. The command then makes the link in `~/.agents/skills`. For a different agent, give its skills folder with `-skillsdir`.
+For Codex, Cursor, or OpenCode, give `--layout agents`. The command then makes the link in `~/.agents/skills`. For a different agent, give its skills folder with `--skillsdir`.
 
 Start a new session of the agent after the installation. Then ask a question about a model. In Claude Code, you can also type `/artis-data`. In Codex, you can also type `$artis-data`.
 

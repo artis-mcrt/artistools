@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import csv
 import dataclasses as dc
 import functools
 import hashlib
@@ -8,6 +9,7 @@ import importlib.util
 import inspect
 import io
 import itertools
+import json
 import math
 import os
 import re
@@ -847,7 +849,7 @@ def test_shared_cli_args_consistent() -> None:
                 # also declare -timestep, as its own argument or through addarg_unsupported
                 assert any("-timestep" in f for f in flagsbycommand[command].values()), label
             elif dest == "maxpacketfiles":
-                assert flags == {"-maxpacketfiles", "-maxpacketsfiles"}, label
+                assert flags == {"-maxpacketfiles", "-maxpacketsfiles", "--maxpacketfiles", "--maxpacketsfiles"}, label
                 assert action.type is int, label
             elif dest == "figscale":
                 assert action.type is float, label
@@ -862,8 +864,11 @@ def test_shared_cli_args_consistent() -> None:
 
 def test_deprecated_flag_spellings_still_work() -> None:
     """Flags renamed to the single-dash-takes-a-value convention keep their old spellings as hidden aliases."""
-    parser = argparse.ArgumentParser()
+    from artistools.commands import SuggestingArgumentParser
+
+    parser = SuggestingArgumentParser()
     at.plottransitions.addargs(parser)
+    parser.add_standard_flags()
     assert parser.parse_args(["--atomicdatabase", "kurucz"]).atomicdatabase == "kurucz"
     assert parser.parse_args(["-atomicdatabase", "nist"]).atomicdatabase == "nist"
     assert parser.parse_args([]).atomicdatabase == "artis"
@@ -874,8 +879,9 @@ def test_deprecated_flag_spellings_still_work() -> None:
     assert parser.parse_args(["-figwidthscale", "2.5"]).figwidthscale == 2.5
     assert parser.parse_args([]).figwidthscale == 1.0
 
-    parser = argparse.ArgumentParser()
+    parser = SuggestingArgumentParser()
     at.plotviewingangles.addargs(parser)
+    parser.add_standard_flags()
     for rawargs in (
         ["model.txt", "--outfile", "vis.html", "--opacity", "0.5", "-s", "10"],
         ["model.txt", "-outputfile", "vis.html", "-opacity", "0.5", "-surface_count", "10"],
@@ -1418,7 +1424,7 @@ def test_plotspherical_element_arguments_give_messages(capsys: pytest.CaptureFix
     """
     with pytest.raises(SystemExit):
         at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Fe", atomic_number=26)
-    assert "Give one of -elem and -atomic_number" in capsys.readouterr().err
+    assert "Give one of --elem and --atomic-number" in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
         at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Xx")
@@ -4324,21 +4330,83 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
         artistools.lightcurve.plotlightcurve.addargs: (
             ["--plot_cmf", "-timedaysmin", "260", "--title", "x"],
             ("plotcmf", "timemin", "title"),
-            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "--title", "-xmin", "-xmax"),
+            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "-title", "-xmin", "-xmax"),
         ),
         artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("timemin",), ()),
     }
+    from artistools.commands import SuggestingArgumentParser
+
     for addargs, (argsraw, dests, hidden) in cases.items():
-        parser = argparse.ArgumentParser()
+        parser = SuggestingArgumentParser()
         addargs(parser)
+        parser.add_standard_flags()
         namespace = parser.parse_args(argsraw)
         for dest in dests:
             assert getattr(namespace, dest) not in {None, False}, (addargs.__module__, dest)
 
         helptext = parser.format_help()
         for spelling in hidden:
-            assert f"{spelling} " not in helptext, spelling
-            assert f"{spelling},\n" not in helptext, spelling
+            # --xmin holds the text -xmin, thus the spelling must not follow a dash
+            assert not re.search(rf"(?<![\w-]){re.escape(spelling)}[ ,]", helptext), spelling
+
+
+def test_progress_goes_to_the_standard_error_and_the_product_to_the_standard_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pipe gets the table of --print-data alone, as for ruff and uv. The progress messages go to the standard error.
+
+    Before this change, "Reading .../light_curve.out" and the model name came in front of the table, unless the user
+    gave --quiet.
+    """
+    import artistools.__main__
+
+    artistools.__main__.main(
+        argsraw=["plotlightcurves", str(modelpath), "--print-data", "-o", str(tmp_path / "lightcurve.pdf")]
+    )
+    captured = capsys.readouterr()
+    assert captured.out.splitlines()[0].split()[:2] == ["model", "modelpath"]
+    assert "Reading" in captured.err
+    assert "Reading" not in captured.out
+
+
+def test_output_format_gives_json_and_csv(capsys: pytest.CaptureFixture[str]) -> None:
+    """--output-format gives a table as JSON or CSV on the standard output, as --output-format of ruff does."""
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["timesteps", str(modelpath), "--output-format", "csv"])
+    rows = list(csv.reader(capsys.readouterr().out.splitlines()))
+    assert rows[0] == ["timestep", "start_days", "mid_days", "end_days", "width_days"]
+    assert np.isclose(float(rows[1][1]), 250.0)
+
+    artistools.__main__.main(argsraw=["check", str(modelpath), "--output-format", "json"])
+    checks = json.loads(capsys.readouterr().out)["rows"]
+    assert {"check", "status", "detail"} <= set(checks[0])
+
+
+def test_help_gives_the_standard_flag_spellings(capsys: pytest.CaptureFixture[str]) -> None:
+    """The help gives each long flag two dashes and hyphens, as ruff does. The parser still accepts the older spellings.
+
+    The parser keeps -timedays and --print_data as hidden aliases, thus a script that holds them still runs.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    helptext = subactions[0].choices["plotspectra"].format_help()
+    assert "--timedays, --time, -t" in helptext
+    assert "--print-data" in helptext
+    assert not re.search(r"(?<![\w-])-(timedays|modelpath|xmin)\b", helptext)
+    assert "--print_data" not in helptext
+
+    for argsraw in (["-timedays", "300", "--print_data"], ["--timedays", "300", "--print-data"]):
+        args = parser.parse_args(["plotspectra", *argsraw])
+        assert str(args.timedays) == "300"
+        assert args.print_data
+
+    # an error of argparse names the spellings that the help gives
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", "-xmin", "abc"])
+    assert "error: Argument --xmin/--lambdamin: invalid float value" in capsys.readouterr().err
 
 
 def test_plotspectra_x_still_gives_the_unit() -> None:
@@ -4378,7 +4446,7 @@ def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.Captur
     # the hint names the ways to select a time, and the keyword that names the final timestep
     assert "-timestep" in lines[-1]
     assert "-timedays" in lines[-1]
-    assert '"last" names timestep 99' in lines[-1]
+    assert "`last` names timestep 99" in lines[-1]
 
 
 def test_help_strings_follow_one_style() -> None:
@@ -4466,7 +4534,16 @@ def test_help_groups_the_shared_arguments() -> None:
         # each command gives the groups in one order, thus a reader finds a group at the same place
         headings = [line for line in helptext.splitlines() if line.endswith(":") and not line.startswith(" ")]
         assert headings[:2] == ["Positional arguments:", "Options:"], command
-        assert headings[-4:-1] == ["Time selection:", "Appearance:", "Output:"], command
+        sharedorder = ["Time selection:", "Viewing direction:", "Appearance:", "Output:"]
+        assert [heading for heading in headings if heading in sharedorder] == [
+            heading for heading in sharedorder if heading in headings
+        ], command
+        assert headings[-2] == "Output:", command
+
+    # the 57 general options of plotspectra were one list. A topic group, e.g. "Packets", divides them
+    helptext = subactions[0].choices["plotspectra"].format_help()
+    assert "\nPackets:\n" in helptext
+    assert "\nEmission and absorption:\n" in helptext
 
 
 def test_open_flag_runs_the_platform_opener(tmp_path: Path) -> None:
@@ -4489,7 +4566,7 @@ def test_timesteps_command_answers_a_reverse_lookup(capsys: pytest.CaptureFixtur
     assert capsys.readouterr().out.strip() == "300 days falls in timestep 54, which covers 299.812 to 300.823 days"
 
     at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-ts", "last"])
-    assert capsys.readouterr().out.strip() == "timestep 99 covers 348.824 to 350.000 days"
+    assert capsys.readouterr().out.strip() == "Timestep 99 covers 348.824 to 350.000 days"
 
 
 def test_quiet_short_flag_and_slow_command_timing(
@@ -4537,7 +4614,7 @@ def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) 
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotspectra", ".", "-timeday", "300"])
     message = capsys.readouterr().err
-    assert "Did you mean -timedays" in message
+    assert "Did you mean --timedays" in message
 
     # a per-command console script gives the same help
     scriptparser = at.commands.build_script_parser("plotartisspectrum")
@@ -5074,7 +5151,7 @@ def test_a_name_that_starts_with_a_flag_of_one_letter_writes_nothing(
         artistools.__main__.main(argsraw=["inputmodel", "makeartismodel", "-dim", "3"])
 
     # a further -dim flag of that command joins the line, thus the test reads the name alone
-    assert "Did you mean -dimensionreduce" in capsys.readouterr().err
+    assert "Did you mean --dimensionreduce" in capsys.readouterr().err
 
 
 def test_every_output_argument_records_what_the_command_writes() -> None:
@@ -5240,7 +5317,7 @@ def test_a_missing_optional_package_gives_no_traceback(capsys: pytest.CaptureFix
 
 def test_writecomparisondata_rejects_an_empty_timestep_list(tmp_path: Path) -> None:
     """An empty timestep list wrote files that hold a header and no data."""
-    with pytest.raises(ValueError, match="selected_timesteps"):
+    with pytest.raises(ValueError, match="selected-timesteps"):
         at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[])
 
 

@@ -58,15 +58,15 @@ SINGLEOUTPUTFILES = (
 # direction bin, and <cell> is a cell
 READERCOMMANDS: Mapping[str, str] = MappingProxyType({
     "estimators": "plotestimators <variable> -t <days>; deposition; check",
-    "nlte": "plotnltepops -t <days> -modelgridindex <cell>",
+    "nlte": "plotnltepops -t <days> --modelgridindex <cell>",
     "packets": "plotspectra --frompackets; plotlightcurves --frompackets; plotlastpacketinteraction; plotspherical",
     "light_curve.out": "plotlightcurves",
-    "light_curve_res.out": "plotlightcurves -plotviewingangle N",
+    "light_curve_res.out": "plotlightcurves --plotviewingangle N",
     "gamma_light_curve.out": "plotlightcurves --gamma",
     "spec.out": "plotspectra -t <days>",
-    "spec_res.out": "plotspectra -t <days> -plotviewingangle N",
+    "spec_res.out": "plotspectra -t <days> --plotviewingangle N",
     "gamma_spec.out": "plotspectra --gamma -t <days>",
-    "deposition.out": "plotlightcurves -deposition gamma positron",
+    "deposition.out": "plotlightcurves --deposition gamma positron",
 })
 
 
@@ -193,12 +193,12 @@ def get_selection_lines(modelpath: Path) -> list[str]:
         )
         lines.append(
             f"  direction bins: {bincount} tables in {lcresfile.relative_to(modelpath)}{geometrytext}."
-            f" -plotviewingangle N selects bin N of 0 to {bincount - 1}, and -1 is all the directions"
+            f" --plotviewingangle N selects bin N of 0 to {bincount - 1}, and -1 is all the directions"
         )
     elif firstexisting_or_none("spec_res.out", folder=modelpath) is not None:
         lines.append(
             f"  direction bins: spec_res.out, with {get_viewingdirectionbincount()} bins if ARTIS has the default"
-            " MABINS. -plotviewingangle N selects bin N, and -1 is all the directions"
+            " MABINS. --plotviewingangle N selects bin N, and -1 is all the directions"
         )
     if Path(modelpath, "vpkt.txt").is_file():
         vpktconfig = get_vpkt_config(modelpath)
@@ -210,7 +210,7 @@ def get_selection_lines(modelpath: Path) -> list[str]:
         spectrumcount = vpktconfig["nobsdirections"] * vpktconfig["nspectraperobs"]
         lines.append(
             f"  virtual packet spectra: {spectrumcount} = {vpktconfig['nobsdirections']} directions times"
-            f" {vpktconfig['nspectraperobs']} opacity choices{timetext}. -plotvspecpol N selects spectrum N of 0 to"
+            f" {vpktconfig['nspectraperobs']} opacity choices{timetext}. --plotvspecpol N selects spectrum N of 0 to"
             f" {spectrumcount - 1}"
         )
     if get_runfolders(modelpath):

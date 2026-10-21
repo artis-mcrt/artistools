@@ -325,7 +325,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     selected_timesteps = args.selected_timesteps
     if not selected_timesteps:
         # for an empty list, the loop below writes a valid file with no rows. Raise an error before the loop
-        msg = "Give at least one timestep with -selected_timesteps"
+        msg = "Give at least one timestep with --selected-timesteps"
         raise ValueError(msg)
 
     args.outputfile.mkdir(parents=True, exist_ok=True)
@@ -362,7 +362,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             exit_with_error(
                 f"{modelpath} holds no estimators for the timesteps"
                 f" {', '.join(str(timestep) for timestep in missingtimesteps)}",
-                "Give -selected_timesteps that the estimator files hold",
+                "Give --selected-timesteps that the estimator files hold",
             )
 
         try:

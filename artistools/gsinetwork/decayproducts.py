@@ -52,18 +52,25 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_darkmode(parser)
     addarg_show(parser)
     parser.add_argument(
-        "-trajectoryroot", "-trajroot", required=True, type=Path, help="Path to nuclear network trajectory folder"
+        "-trajectoryroot",
+        "-trajroot",
+        required=True,
+        type=Path,
+        help="The path to the nuclear network trajectory folder",
     )
 
     parser.add_argument(
-        "-npz", default=None, type=Path, help="Path to npz file which specifies the ejecta type of each trajectory"
+        "-npz",
+        default=None,
+        type=Path,
+        help="The path to the npz file which specifies the ejecta type of each trajectory",
     )
 
     parser.add_argument("-timemin", "-tmin", type=time_days_arg, default=0.1, help=f"Minimum time. {TIME_UNIT_HELP}")
 
     parser.add_argument("-timemax", "-tmax", type=time_days_arg, default=80.0, help=f"Maximum time. {TIME_UNIT_HELP}")
 
-    parser.add_argument("-nsteps", type=int, default=64, help="Number of timesteps")
+    parser.add_argument("-nsteps", type=int, default=64, help="The number of timesteps")
 
     parser.add_argument(
         "-nucdata",

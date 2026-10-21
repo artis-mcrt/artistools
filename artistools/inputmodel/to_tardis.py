@@ -45,7 +45,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(
         parser,
         kind="folder",
-        helptext="Folder for the TARDIS model file, which has the name of the model",
+        helptext="The folder for the TARDIS model file, which has the name of the model",
         default=Path(),
     )
     addarg_force(parser)
@@ -67,7 +67,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # a TARDIS model holds one radial velocity for each shell, which only a 1D model gives
         exit_with_error(
             f"The model is {modelmeta['dimensions']}D, and TARDIS takes a 1D model",
-            "Reduce the model to 1D first, e.g. `artistools inputmodel makeartismodel -dimensionreduce 1`",
+            "Reduce the model to 1D first, e.g. `artistools inputmodel makeartismodel --dimensionreduce 1`",
         )
 
     t_model_init_days = modelmeta["t_model_init_days"]

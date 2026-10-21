@@ -379,7 +379,7 @@ def sum_line_luminosities(
         msg = (
             f"The NLTE populations hold no value of the upper level {level} at timestep {timestep} in any cell."
             " ARTIS writes the populations of the NLTE levels alone, at the timesteps of its NLTE output. Give"
-            " -timebins_tstart and -timebins_tend that hold such timesteps, and features of lines with an NLTE"
+            " --timebins-tstart and --timebins-tend that hold such timesteps, and features of lines with an NLTE"
             " upper level"
         )
         raise ValueError(msg)
@@ -562,7 +562,7 @@ def check_ratio_features_share_no_line(feature0: FeatureTuple, feature1: Feature
         exit_with_error(
             f"The features {feature0.featurelabel} and {feature1.featurelabel} of the ratio share {len(sharedlines)}"
             " lines, thus a packet of such a line counts in both luminosities",
-            "Give the first two -emfeaturesearch values wavelength ranges with no common line",
+            "Give the first two --emfeaturesearch values wavelength ranges with no common line",
         )
 
 
@@ -878,8 +878,8 @@ def set_emitting_regions_limits(
 ) -> None:
     """Set the limits of the emitting regions plot, which grow to show all the points of the time bin.
 
-    The default limits are the range of the reference data of Flörs et al. (2020). -ymin and -ymax set the
-    temperature range. The x axis gives the log of the electron density, thus -xmin and -xmax, which give a time
+    The default limits are the range of the reference data of Flörs et al. (2020). --ymin and --ymax set the
+    temperature range. The x axis gives the log of the electron density, thus --xmin and --xmax, which give a time
     in days, do not apply.
     """
     allpoints = [
@@ -930,7 +930,7 @@ def get_emitting_region_table(
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     """Plot the electron density and the temperature of the cells that emit each feature, and save the figure.
 
-    --print_data and --write_data give one row for each packet in each figure. Each row holds the log10nne and the Te of
+    --print-data and --write-data give one row for each packet in each figure. Each row holds the log10nne and the Te of
     the cell that emitted the packet. The points of each reference curve have the feature "reference".
     """
     refdatafilenames: list[str] = [] if args.norefdata else ["floers_te_nne.json"]
@@ -1059,7 +1059,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_darkmode(parser)
     addarg_verbose(parser)
 
-    parser.add_argument("-modeltag", default=[], nargs="*", help="List of model tags for file names")
+    parser.add_argument("-modeltag", default=[], nargs="*", help="A list of model tags for file names")
 
     addarg_maxpacketfiles(parser)
 
@@ -1084,7 +1084,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=Path,
         default=None,
         help=(
-            "Path to a CSV of Flörs model NIR/VIS ratios (columns: file, epoch, NIR_VIS_ratio) to overplot on the"
+            "The path to a CSV of Flörs model NIR/VIS ratios (columns: file, epoch, NIR_VIS_ratio) to overplot on the"
             " Fe II 7155/12570 ratio plot"
         ),
     )
@@ -1178,7 +1178,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ncolors = sum(color is not None for color in args.color)
         msg = (
             f"--plotemittingregions needs a colour for each of the {len(args.modelpath)} models,"
-            f" but only {ncolors} are set. Pass -color with one value per model"
+            f" but only {ncolors} are set. Pass --color with one value per model"
         )
         raise ValueError(msg)
 

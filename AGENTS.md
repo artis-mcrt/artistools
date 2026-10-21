@@ -16,6 +16,11 @@ new spelling that takes the old one away stops that work. Keep the old spelling 
 as an alias, and give it `help=argparse.SUPPRESS`. The help text then gives one spelling, and a script
 that holds the old one still runs.
 
+Give a new flag the standard spelling. A short flag has one dash and one letter, e.g. `-t`. A long flag has
+two dashes and a name with hyphens, e.g. `--print-data`. `SuggestingArgumentParser.add_standard_flags` also gives this spelling to each older
+flag, e.g. `-timedays` and `--print_data`. The help, the usage line, and the errors then show the standard
+spelling alone.
+
 ## Writing style
 
 Write all English in ASD-STE100 (Simplified Technical English). This applies to comments, docstrings, documentation, commit messages, pull request text, and new log, warning, and error strings.

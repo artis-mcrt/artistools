@@ -87,6 +87,7 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
+from artistools.misc.cliutils import arggroup
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
@@ -317,7 +318,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     if args.ymin is None:
         args.ymin = -0.5
     if args.ymin >= args.ymax:
-        exit_with_error(f"-ymin {args.ymin} must be less than -ymax {args.ymax}")
+        exit_with_error(f"--ymin {args.ymin} must be less than --ymax {args.ymax}")
 
     axis.set_ylim(args.ymin, args.ymax)
     axis.set_xlim(args.xmin, args.xmax)
@@ -354,7 +355,7 @@ def print_spectrum_summary(
     The frame of a spectrum keeps the nearest row outside each end of the x range, and the axis does not show it. Thus
     the largest point comes from the rows inside the x range, and the integral uses f_lambda and lambda interpolated
     linearly in x at each axis limit. The luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc, thus it
-    does not depend on -distmpc or --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g.
+    does not depend on --distmpc or --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g.
     all the packets, thus the summary does not give it. summaryrows takes the fields of the line.
     """
     xlow, xhigh = sorted(xlimits)
@@ -630,7 +631,7 @@ DELTALOGX_SCALES: t.Final = ("smallestscale", "largestscale")
 
 
 def parse_deltalogx_argument(value: str) -> float | str:
-    """Return the bin width factor of -deltalogx, or a keyword of DELTALOGX_SCALES."""
+    """Return the bin width factor of --deltalogx, or a keyword of DELTALOGX_SCALES."""
     if value.lower() in DELTALOGX_SCALES:
         return value.lower()
     try:
@@ -643,7 +644,7 @@ def parse_deltalogx_argument(value: str) -> float | str:
 def get_spatial_scale_deltalogx(
     modelfolders: Sequence[Path], scale: t.Literal["smallest", "largest"]
 ) -> tuple[float, str, list[str]]:
-    """Return the value of -deltalogx for the smallest or the largest spatial scale, a short note, and the method lines.
+    """Return the value of --deltalogx for the smallest or the largest spatial scale, a note, and the method lines.
 
     In a homologous flow, each spatial scale of the model grid is a constant width Δv in velocity. A feature narrower
     than the Doppler shift across the smallest spatial scale comes from the grid. One bin width applies to all the
@@ -667,9 +668,9 @@ def get_spatial_scale_deltalogx(
     velocity, scalemodelfolder, _ = choices[scale]
     otherscale = "largest" if scale == "smallest" else "smallest"
     note = (
-        f"-deltalogx {scale}scale = Δv/c = {velocity / C_cm_per_s:.3g}, where Δv = {velocity / km_to_cm:.0f} km/s is"
+        f"--deltalogx {scale}scale = Δv/c = {velocity / C_cm_per_s:.3g}, where Δv = {velocity / km_to_cm:.0f} km/s is"
         f" the {scale} spatial scale in {get_model_name(scalemodelfolder)}. The resolving power is λ/Δλ = c/Δv ="
-        f" {C_cm_per_s / velocity:.0f}. -deltalogx {otherscale}scale gives {choices[otherscale][0] / C_cm_per_s:.3g}"
+        f" {C_cm_per_s / velocity:.0f}. --deltalogx {otherscale}scale gives {choices[otherscale][0] / C_cm_per_s:.3g}"
     )
     method = [
         (
@@ -682,7 +683,7 @@ def get_spatial_scale_deltalogx(
             f" {C_cm_per_s / width:.0f}. Bins of this width {effect}."
             for name, (width, widthmodel, effect) in choices.items()
         ),
-        f"-deltalogx {scale}scale selects the {scale} spatial scale.",
+        f"--deltalogx {scale}scale selects the {scale} spatial scale.",
         *(
             f"{resolve_modelpath(modelfolder)}: {description}."
             for modelfolder, (_, _, description) in spatialscales.items()
@@ -696,7 +697,7 @@ def get_spatial_scale_deltalogx(
 
 
 def resolve_deltalogx_scale(args: argparse.Namespace) -> None:
-    """Replace a keyword of -deltalogx with the bin width factor of the spatial scale of the models, and log it.
+    """Replace a keyword of --deltalogx with the bin width factor of the spatial scale of the models, and log it.
 
     args.deltalogxnote then holds a short note of the value for the spectrum viewer, or "" for a number.
     """
@@ -706,8 +707,8 @@ def resolve_deltalogx_scale(args: argparse.Namespace) -> None:
     modelfolders = get_artis_model_folders(args.modelspecpaths)
     if not modelfolders:
         exit_with_error(
-            f"-deltalogx {args.deltalogx} reads the grid of each ARTIS model, and the command names no model",
-            "Give an ARTIS model, or give -deltalogx a number",
+            f"--deltalogx {args.deltalogx} reads the grid of each ARTIS model, and the command names no model",
+            "Give an ARTIS model, or give --deltalogx a number",
         )
     scale: t.Literal["smallest", "largest"] = "smallest" if args.deltalogx == "smallestscale" else "largest"
     args.deltalogx, args.deltalogxnote, method = get_spatial_scale_deltalogx(modelfolders, scale)
@@ -838,8 +839,8 @@ def plot_noise_band(
 def model_covers_timedays(modelpath: Path | str, timedays: str | float | None, *, quiet: bool = False) -> bool:
     """Return False if timedays names one time outside the timesteps of the model, and print a warning unless quiet.
 
-    A -timemin and -timemax range outside a model skips that model with a warning, thus one time does the same. A
-    range of -timedays and a text that is no number give True, because get_time_range gives their messages.
+    A --timemin and --timemax range outside a model skips that model with a warning, thus one time does the same. A
+    range of --timedays and a text that is no number give True, because get_time_range gives their messages.
     """
     if timedays is None or parse_timedays_range(timedays) is not None:
         return True
@@ -1120,7 +1121,7 @@ def plot_artis_spectrum(
             if args.binflux:
                 if args.xunit.lower() != "angstrom":
                     exit_with_error(
-                        f"--binflux averages over wavelength, and -xunit gives {args.xunit}", "Give -xunit angstrom"
+                        f"--binflux averages over wavelength, and --xunit gives {args.xunit}", "Give --xunit angstrom"
                     )
                 # bin f_lambda as well, because the data output gives that column. The earlier
                 # code gave it the value of y, which holds the selected y variable
@@ -1242,14 +1243,14 @@ def check_codecomparison_args(args: argparse.Namespace) -> None:
     if args.timemin is None or args.timemax is None:
         exit_with_error(
             "A code comparison spectrum needs a time, and the command gives no time range",
-            "Give -timedays (e.g. -t 300 or -t 290-320), or -timemin and -timemax",
+            "Give --timedays (e.g. -t 300 or -t 290-320), or --timemin and --timemax",
         )
     unsupported = [
         option
         for option, given in (
-            (f"-xunit {args.xunit}", args.xunit != "angstrom"),
-            (f"-yvariable {args.yvariable}", args.yvariable != "flux"),
-            (f"-distmpc {args.distmpc}", args.distmpc != 1.0),
+            (f"--xunit {args.xunit}", args.xunit != "angstrom"),
+            (f"--yvariable {args.yvariable}", args.yvariable != "flux"),
+            (f"--distmpc {args.distmpc}", args.distmpc != 1.0),
             ("--normalised", args.normalised),
         )
         if given
@@ -1537,7 +1538,7 @@ def order_and_color_shells(
     """Return the shells from the lowest edge to the highest one, with the colours of a sequential map.
 
     The order of the ions is the order of the flux. A reader expects the shells in the order of their
-    edges, and a colour that goes from dark to light with the edge. -maxseriescount still applies: the
+    edges, and a colour that goes from dark to light with the edge. --maxseriescount still applies: the
     shells with the least flux join the "Other" series, as the ions do.
     """
     fixedionlist = args.fixedionlist
@@ -1615,7 +1616,7 @@ def add_drawn_emission_columns(
     args: argparse.Namespace,
     scalefactor: float,
 ) -> pl.DataFrame:
-    """Add the drawn values of the emission plot to its table, in the units of -xunit and -yvariable.
+    """Add the drawn values of the emission plot to its table, in the units of --xunit and --yvariable.
 
     The figure scales each value for --normalised, and it draws each absorption below zero. A stack draws the sum of
     the contributions, and the table gives the height of each contribution in the stack.
@@ -1749,7 +1750,7 @@ def plot_reference_spectra(
     scale_to_peak: float | None,
     summaryrows: list[dict[str, t.Any]] | None = None,
 ) -> tuple[list[Artist], list[str], float, pl.DataFrame]:
-    """Draw each reference spectrum of -specpath, and return the artists, the labels, the maximum, and the points.
+    """Draw each reference spectrum of --specpath, and return the artists, the labels, the maximum, and the points.
 
     The points have the form of get_drawn_lines_table. summaryrows takes the fields of the summary line of each
     reference spectrum.
@@ -1806,7 +1807,7 @@ def get_drawn_lines_table(
 
     A reference spectrum or a code comparison spectrum has its own wavelength grid, thus its points do not go in the
     table of the ARTIS spectra. ycolumn names the column of the y values, e.g. "transmission" for a filter curve. The
-    default is the plotted -yvariable. Two files can have one label, thus specpath gives the file of the lines.
+    default is the plotted --yvariable. Two files can have one label, thus specpath gives the file of the lines.
     """
     return pl.concat(
         [
@@ -1823,7 +1824,7 @@ def get_drawn_lines_table(
 
 
 def get_tables_in_x_range(tables: dict[str, pl.DataFrame], args: argparse.Namespace) -> dict[str, pl.DataFrame]:
-    """Return the tables with the rows from -xmin to -xmax, for --print_data and --write_data.
+    """Return the tables with the rows from --xmin to --xmax, for --print-data and --write-data.
 
     A spectrum or a reference file can hold points outside the range, which the plot does not show.
     """
@@ -1915,7 +1916,8 @@ def make_emissionabsorption_plot(
         # every sum and every maximum below reads the bins of the x range. The limits use the unit of the x axis,
         # thus the test reads the bins that get_emission_contributions kept, which are in Angstroms
         exit_with_error(
-            f"The x range {xmin:g} to {xmax:g} holds no bin of the spectrum", "Give a wider range with -xmin and -xmax"
+            f"The x range {xmin:g} to {xmax:g} holds no bin of the spectrum",
+            "Give a wider range with --xmin and --xmax",
         )
 
     print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
@@ -2021,21 +2023,21 @@ def make_emissionabsorption_plot(
 
 
 def check_residual_args(args: argparse.Namespace) -> None:
-    """Stop the command when -residual cannot apply to the plot that args selects."""
+    """Stop the command when --residual cannot apply to the plot that args selects."""
     if args.multispecplot or args.showemission or args.showabsorption or args.emissionabsorption or args.groupby:
         exit_with_error(
-            "-residual applies to a plot of one frame, thus not to -timedayslist, --showemission, or -groupby",
+            "--residual applies to a plot of one frame, thus not to --timedayslist, --showemission, or --groupby",
             "Give one time with -t, and no emission or absorption option",
         )
     if args.makevspecpol or args.averagevspecpolfiles or args.output_spectra or "/" in args.stokesparam:
         exit_with_error(
-            "-residual applies only to a plot of spectra, and the other options select a different action",
-            "Remove -residual, or remove --makevspecpol, --averagevspecpolfiles, --output_spectra, or the ratio",
+            "--residual applies only to a plot of spectra, and the other options select a different action",
+            "Remove --residual, or remove --makevspecpol, --averagevspecpolfiles, --output-spectra, or the ratio",
         )
     if args.normalised:
         print_warning("--normalised scales each series to its own peak, thus the residual compares the shapes alone")
     if args.filtersavgol:
-        print_warning("The residual and its statistics take the smoothed series of -filtersavgol")
+        print_warning("The residual and its statistics take the smoothed series of --filtersavgol")
 
 
 def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_], dict[str, pl.DataFrame]]:
@@ -2236,7 +2238,7 @@ GROUPBY_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({
 
 
 def get_groupby_choice(text: str) -> str:
-    """Return the -groupby choice of a command line value, with the current name of an earlier name."""
+    """Return the --groupby choice of a command line value, with the current name of an earlier name."""
     return GROUPBY_ALIASES.get(text, text)
 
 
@@ -2263,7 +2265,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--gamma", action="store_true", help="Plot the gamma-ray spectrum instead of the UVOIR spectrum"
     )
 
-    parser.add_argument(
+    arggroup(parser, "Packets").add_argument(
         "--frompackets", action="store_true", help="Read packets files directly instead of exspec results"
     )
 
@@ -2271,11 +2273,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_plotinvalidpart(parser, "the spectra")
 
-    parser.add_argument("--emissionabsorption", action="store_true", help="Implies --showemission and --showabsorption")
+    arggroup(parser, "Emission and absorption").add_argument(
+        "--emissionabsorption", action="store_true", help="Implies --showemission and --showabsorption"
+    )
 
-    parser.add_argument("--showemission", action="store_true", help="Plot the emission spectra by ion/process")
+    arggroup(parser, "Emission and absorption").add_argument(
+        "--showemission", action="store_true", help="Plot the emission spectra by ion/process"
+    )
 
-    parser.add_argument("--showabsorption", action="store_true", help="Plot the absorption spectra by ion/process")
+    arggroup(parser, "Emission and absorption").add_argument(
+        "--showabsorption", action="store_true", help="Plot the absorption spectra by ion/process"
+    )
 
     yvariablechoices = ["flux", "packetcount", "photoncount", "photonflux", "eflux", "luminosity"]
     parser.add_argument(
@@ -2289,25 +2297,25 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     # deprecated spelling kept as a hidden alias
     parser.add_argument("-yvar", dest="yvariable", type=str, choices=yvariablechoices, help=argparse.SUPPRESS)
 
-    parser.add_argument(
+    arggroup(parser, "Emission and absorption").add_argument(
         "--nostack",
         action="store_true",
         help="Plot each emission/absorption contribution separately instead of a stackplot",
     )
 
-    parser.add_argument(
+    arggroup(parser, "Emission and absorption").add_argument(
         "-fixedionlist",
         nargs="+",
         help="Specify a list of ions instead of using the auto-generated list in order of importance",
     )
 
-    parser.add_argument(
+    arggroup(parser, "Emission and absorption").add_argument(
         "-maxseriescount",
         type=int,
         default=None,
         help=(
             "The maximum number of series (ions or processes) in an emission or absorption plot. The plot shows only"
-            " this number of -fixedionlist entries. The default is the length of -fixedionlist, or"
+            " this number of --fixedionlist entries. The default is the length of --fixedionlist, or"
             f" {DEFAULT_MAXSERIESCOUNT} without that list"
         ),
     )
@@ -2324,7 +2332,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext_max="Upper time in days to integrate spectrum",
     )
 
-    parser.add_argument(
+    arggroup(parser, "Packets").add_argument(
         "--notimeclamp",
         action="store_true",
         help="Do not extend the time range to the start and the end of its timesteps. This option reads the packets",
@@ -2354,7 +2362,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         xmaxhelp="Plot range: maximum x range",
     )
 
-    xbinsizegroup = parser.add_mutually_exclusive_group()
+    xbinsizegroup = arggroup(parser, "Packets").add_mutually_exclusive_group()
 
     xbinsizegroup.add_argument(
         "-deltalambda", type=float, default=None, help="Lambda bin size in Angstroms (applies to from_packets only)"
@@ -2377,17 +2385,19 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "--hidemodeltimerange", action="store_true", help='Hide the "at (+/- x.xd)" from the line labels'
     )
 
-    parser.add_argument("--hidemodeltime", action="store_true", help="Hide the time from the line labels")
+    arggroup(parser, "Appearance").add_argument(
+        "--hidemodeltime", action="store_true", help="Hide the time from the line labels"
+    )
 
     parser.add_argument("--normalised", action="store_true", help="Normalise all spectra to their peak values")
 
     addarg_residuals(parser)
 
-    timegroup = parser.add_mutually_exclusive_group()
+    timegroup = arggroup(parser, "Packets").add_mutually_exclusive_group()
 
     timegroup.add_argument(
         "--use_escapetime",
@@ -2401,7 +2411,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     timegroup.add_argument("--use_emissiontime", action="store_true", help="Use the time of packet last emission")
 
-    emissioneventgroup = parser.add_mutually_exclusive_group()
+    emissioneventgroup = arggroup(parser, "Emission and absorption").add_mutually_exclusive_group()
     emissioneventgroup.add_argument(
         "--use_thermalemissiontype",
         action="store_true",
@@ -2416,12 +2426,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " probability from the emissions that set the emission type. The absorption is the last absorption"
             " before that emission. On average, each emission of a packet thus gets an equal part of the energy."
             " ARTIS writes the necessary columns only with SAMPLE_RPKT_EMISSION (artis-mcrt/artis#661), and only"
-            " -groupby element, ion, or line can use them. With --showemission or --showabsorption, this option"
+            " --groupby element, ion, or line can use them. With --showemission or --showabsorption, this option"
             " also sets --frompackets"
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Emission and absorption").add_argument(
         "-groupby",
         default=None,
         type=get_groupby_choice,
@@ -2435,21 +2445,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Emission and absorption").add_argument(
         "-velocityshells",
         type=parse_velocity_argument,
         nargs="+",
         default=None,
         metavar="velocity",
         help=(
-            "Edges of the shells of -groupby radialvelocity or lineofsightvelocity, in km/s, e.g. 0 5000 10000 20000,"
+            "Edges of the shells of --groupby radialvelocity or lineofsightvelocity, in km/s, e.g. 0 5000 10000 20000,"
             " or as a fraction of c, e.g. 0c 0.1c 0.2c 0.3c. A value with a c suffix also puts the labels in units of"
             " c. The default is ten shells of equal width up to vmax, and one more shell to the corner of a 2D or 3D"
             " grid. The labels are in units of c when vmax is 0.2 c or more"
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Emission and absorption").add_argument(
         "-emissionradialvelocityrange",
         type=parse_velocity_argument,
         nargs=2,
@@ -2458,13 +2468,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Keep only the emission and the absorption from a range of the radial velocity. Give vmin and vmax in"
             " km/s, e.g. 5000 10000, or as a fraction of c, e.g. 0.1c 0.2c. An emission takes the velocity of the last"
-            " interaction, or of the last thermal emission with --use_thermalemissiontype. An absorption always takes"
+            " interaction, or of the last thermal emission with --use-thermalemissiontype. An absorption always takes"
             " the velocity of the last interaction. vmin is inside the range, and vmax is outside the range."
             " Implies --frompackets"
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Emission and absorption").add_argument(
         "-emissionlineofsightvelocityrange",
         type=parse_velocity_argument,
         nargs=2,
@@ -2473,7 +2483,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Keep only the emission and the absorption from a range of the velocity along the line of sight. A"
             " positive velocity is motion toward the observer, and a value can be negative, e.g. -0.05c 0.05c. The"
-            " other rules of -emissionradialvelocityrange apply. The two ranges together keep a packet that is inside"
+            " other rules of --emissionradialvelocityrange apply. The two ranges together keep a packet that is inside"
             " both ranges"
         ),
     )
@@ -2485,14 +2495,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     ):
         parser.add_argument(oldname, dest=newname, type=parse_velocity_argument, nargs=2, help=argparse.SUPPRESS)
 
-    parser.add_argument(
+    arggroup(parser, "Emission and absorption").add_argument(
         "-yeshells",
         type=float,
         nargs="+",
         default=None,
         metavar="Ye",
         help=(
-            "Edges of the shells of -groupby ye, e.g. 0 0.1 0.2 0.3 0.5. The default is shells of 0.05 up to 0.5,"
+            "Edges of the shells of --groupby ye, e.g. 0 0.1 0.2 0.3 0.5. The default is shells of 0.05 up to 0.5,"
             " and one more shell to 1"
         ),
     )
@@ -2515,27 +2525,39 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_figscale(parser, include_figwidthscale=True)
 
-    parser.add_argument("--logscalex", action="store_true", help="Use log scale for x values")
+    arggroup(parser, "Appearance").add_argument("--logscalex", action="store_true", help="Use log scale for x values")
 
     addarg_yscale(parser)
 
-    parser.add_argument("--hidenetspectrum", action="store_true", help="Hide net spectrum")
+    arggroup(parser, "Emission and absorption").add_argument(
+        "--hidenetspectrum", action="store_true", help="Hide net spectrum"
+    )
 
-    parser.add_argument("--hideother", action="store_true", help="Hide other contributions")
+    arggroup(parser, "Emission and absorption").add_argument(
+        "--hideother", action="store_true", help="Hide other contributions"
+    )
 
     addarg_notitle(parser)
 
-    parser.add_argument("-title", type=str, default=None, help="Custom plot title text")
+    arggroup(parser, "Appearance").add_argument("-title", type=str, default=None, help="Custom plot title text")
 
-    parser.add_argument("--inset_title", action="store_true", help="Place title inside the plot")
+    arggroup(parser, "Appearance").add_argument(
+        "--inset_title", action="store_true", help="Place title inside the plot"
+    )
 
     addarg_legend(parser)
 
-    parser.add_argument("--reverselegendorder", action="store_true", help="Reverse the order of legend items")
+    arggroup(parser, "Appearance").add_argument(
+        "--reverselegendorder", action="store_true", help="Reverse the order of legend items"
+    )
 
-    parser.add_argument("--hidexticklabels", action="store_true", help="Don't show numbers or a label on the x axis")
+    arggroup(parser, "Appearance").add_argument(
+        "--hidexticklabels", action="store_true", help="Don't show numbers or a label on the x axis"
+    )
 
-    parser.add_argument("--hideyticklabels", action="store_true", help="Don't show numbers or a label on the y axis")
+    arggroup(parser, "Appearance").add_argument(
+        "--hideyticklabels", action="store_true", help="Don't show numbers or a label on the y axis"
+    )
 
     addarg_data_output(parser)
 
@@ -2557,25 +2579,25 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     # Combines all vspecpol files into one file which can then be read by artistools
-    parser.add_argument(
+    arggroup(parser, "Viewing direction").add_argument(
         "--makevspecpol", action="store_true", help="Make file summing the virtual packet spectra from all ranks"
     )
 
     # To get better statistics for polarisation use multiple runs of the same simulation. This will then average the
     # files produced by makevspecpol for all simulations.
-    parser.add_argument(
+    arggroup(parser, "Viewing direction").add_argument(
         "--averagevspecpolfiles", action="store_true", help="Average the vspecpol-total files for multiple simulations"
     )
 
     addarg_viewingangle(parser)
 
-    parser.add_argument(
+    arggroup(parser, "Viewing direction").add_argument(
         "-stokesparam",
         type=str,
         default="I",
         choices=["I", "Q", "U", "Q/I", "U/I"],
         help=(
-            "The Stokes parameter to plot. Q and U read the virtual packet spectra of -plotvspecpol. The ratio Q/I"
+            "The Stokes parameter to plot. Q and U read the virtual packet spectra of --plotvspecpol. The ratio Q/I"
             " or U/I draws the polarisation plot from specpol.out, specpol_res.out, or the virtual packet spectra"
         ),
     )
@@ -2599,7 +2621,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Draw the Monte Carlo noise band around each ARTIS spectrum. The band goes from y * (1 - r) to"
             " y * (1 + r). r is the estimate of one standard deviation of y divided by y. r = sqrt(sum(e^2)) / sum(e)"
-            " for the energies e of the packets in the bin. For -yvariable packetcount, r = 1 / sqrt(N). Implies"
+            " for the energies e of the packets in the bin. For --yvariable packetcount, r = 1 / sqrt(N). Implies"
             " --frompackets"
         ),
     )
@@ -2614,11 +2636,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--multispecplot", action="store_true", help="Plot multiple spectra in subplots - expects timedayslist"
     )
 
-    parser.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
+    parser.add_argument("-timedayslist", nargs="+", help="A list of times in days for time sequence subplots")
 
-    parser.add_argument("--showtime", action="store_true", help="Write time on plot")
+    arggroup(parser, "Appearance").add_argument("--showtime", action="store_true", help="Write time on plot")
 
-    parser.add_argument(
+    arggroup(parser, "Emission and absorption").add_argument(
         "--vpkt_match_emission_exclusion_to_opac",
         action="store_true",
         help="Exclude packets with emission type no-bb/no-bf/no-(element) matching the vpkt opacity exclusion",
@@ -2664,7 +2686,7 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
     the sampled emission.
     """
     if args.groupby in SHELLCOLUMNS:
-        option = f"-groupby {args.groupby}"
+        option = f"--groupby {args.groupby}"
     elif args.velocityranges_kmps:
         option = " and ".join(f"-{VELOCITYRANGEARGS[rangegrouping][0]}" for rangegrouping in args.velocityranges_kmps)
     else:
@@ -2674,26 +2696,26 @@ def exit_if_no_emission_position(args: argparse.Namespace) -> None:
     # --use_thermalemissiontype and --use_sampledemissiontype
     if args.plotvspecpol is not None:
         exit_with_error(
-            f"A virtual packet holds no emission position, thus -plotvspecpol does not accept {option}",
-            "Give -plotviewingangle for a direction bin of the real packets",
+            f"A virtual packet holds no emission position, thus --plotvspecpol does not accept {option}",
+            "Give --plotviewingangle for a direction bin of the real packets",
         )
 
     if args.gamma and args.use_thermalemissiontype:
         exit_with_error(
-            f"A gamma packet has no thermal emission, thus {option} cannot use --use_thermalemissiontype",
-            "Remove --use_thermalemissiontype. The gamma packets then use the position of the last interaction",
+            f"A gamma packet has no thermal emission, thus {option} cannot use --use-thermalemissiontype",
+            "Remove --use-thermalemissiontype. The gamma packets then use the position of the last interaction",
         )
 
     if args.use_sampledemissiontype:
         # a gamma packet has no thermal emission, and an absorption always takes the last interaction
         thermalhint = (
-            ", or give --use_thermalemissiontype for the last thermal emission"
+            ", or give --use-thermalemissiontype for the last thermal emission"
             if args.showemission and not args.gamma
             else ""
         )
         exit_with_error(
-            f"The packets hold no position of the sampled emission, thus {option} cannot use --use_sampledemissiontype",
-            f"Remove --use_sampledemissiontype{thermalhint}",
+            f"The packets hold no position of the sampled emission, thus {option} cannot use --use-sampledemissiontype",
+            f"Remove --use-sampledemissiontype{thermalhint}",
         )
 
 
@@ -2770,9 +2792,9 @@ def get_no_sampled_emission_reason(modelfolder: Path) -> str | None:
 
 
 def resolve_frompackets(args: argparse.Namespace) -> None:
-    """Set args.frompackets and the default of -groupby, from the options that the exspec files cannot serve.
+    """Set args.frompackets and the default of --groupby, from the options that the exspec files cannot serve.
 
-    Call this after main sets args.showemission and args.showabsorption. The default of -groupby
+    Call this after main sets args.showemission and args.showabsorption. The default of --groupby
     applies to an emission plot alone, and that default selects the reader of the contributions.
     args.frompacketsreason names the first option that needs the packets, or it is None. The spectrum viewer
     shows it, also when the command gives --frompackets.
@@ -2783,7 +2805,7 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
 
     # each entry names an option in the message, and gives the condition under which it needs the packets
     packetreasons = {
-        "-plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
+        "--plotvspecpol and --showemission": showcontributions and bool(args.plotvspecpol),
         # the emission files of exspec give only the emission type of the last interaction and of the last thermal
         # emission
         "--use_sampledemissiontype": showcontributions and args.use_sampledemissiontype,
@@ -2795,15 +2817,15 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
                 Path(path) for path in args.specpath if not path_is_reference_spectrum(path)
             ])
         ),
-        f"-groupby {args.groupby}": args.groupby in {"element", "line", "nuc", "nucmass", *SHELLCOLUMNS},
+        f"--groupby {args.groupby}": args.groupby in {"element", "line", "nuc", "nucmass", *SHELLCOLUMNS},
         "a velocity range": bool(args.velocityranges_kmps),
-        "--use_emissiontime or --use_escapetime": args.use_emissiontime or args.use_escapetime,
+        "--use-emissiontime or --use-escapetime": args.use_emissiontime or args.use_escapetime,
         "a custom bin width": any(value is not None for value in (args.deltax, args.deltalogx, args.deltalambda)),
         # spec.out and the emission files hold whole timesteps, thus only the packets give a time range inside one
         # timestep
         "--notimeclamp": args.notimeclamp,
         # spec.out holds a flux and no count of packets
-        "-yvariable packetcount": args.yvariable == "packetcount",
+        "--yvariable packetcount": args.yvariable == "packetcount",
         # spec.out holds no energies of the packets in each bin, thus it gives no noise
         "--shownoise": args.shownoise,
     }
@@ -2831,9 +2853,9 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
         ]
         if missing:
             exit_with_error(
-                "--vpkt_match_emission_exclusion_to_opac reads the emission type of the virtual packets, and the"
+                "--vpkt-match-emission-exclusion-to-opac reads the emission type of the virtual packets, and the"
                 f" command gives no {' and no '.join(missing)}",
-                "Give --showemission (or --emissionabsorption) and -plotvspecpol",
+                "Give --showemission (or --emissionabsorption) and --plotvspecpol",
             )
 
     if not (args.showemission or args.showabsorption):
@@ -2855,21 +2877,21 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
     if dirbins and len(dirbins) > 1:
         exit_with_error(
             f"An emission plot draws one direction bin, and the command gives {len(dirbins)} of them",
-            "Give one bin, e.g. -plotviewingangle 0",
+            "Give one bin, e.g. --plotviewingangle 0",
         )
 
     if args.timedayslist and len(args.timedayslist) > 1:
         exit_with_error(
-            "An emission plot draws one time, and -timedayslist gives several. The plot drew only the first one",
-            "Give one time with -timedays. Run the command again for each other time",
+            "An emission plot draws one time, and --timedayslist gives several. The plot drew only the first one",
+            "Give one time with --timedays. Run the command again for each other time",
         )
 
     # a gamma packet comes from the decay of a nuclide, and ARTIS records no ion or line for it
     if args.gamma and args.groupby in {"ion", "line"}:
         exit_with_error(
-            f"A gamma packet has no emission by an ion or a line, thus a gamma-ray spectrum does not accept -groupby"
+            f"A gamma packet has no emission by an ion or a line, thus a gamma-ray spectrum does not accept --groupby"
             f" {args.groupby}",
-            "Give -groupby nuc or -groupby nucmass",
+            "Give --groupby nuc or --groupby nucmass",
         )
 
     # ARTIS gives each escaped gamma packet the absorption type 0, which is the first line of the line list
@@ -2883,21 +2905,21 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
     if args.use_sampledemissiontype and args.gamma:
         exit_with_error(
             "A gamma packet has no sampled emission, thus a gamma-ray spectrum does not accept"
-            " --use_sampledemissiontype",
-            "Remove --use_sampledemissiontype",
+            " --use-sampledemissiontype",
+            "Remove --use-sampledemissiontype",
         )
 
     if args.use_sampledemissiontype and args.plotvspecpol is not None:
         exit_with_error(
-            "A virtual packet holds no sampled emission, thus -plotvspecpol does not accept --use_sampledemissiontype",
-            "Give -plotviewingangle for a direction bin of the real packets, or remove --use_sampledemissiontype",
+            "A virtual packet holds no sampled emission, thus --plotvspecpol does not accept --use-sampledemissiontype",
+            "Give --plotviewingangle for a direction bin of the real packets, or remove --use-sampledemissiontype",
         )
 
     if args.use_sampledemissiontype and args.groupby in {"nuc", "nucmass"}:
         exit_with_error(
-            f"-groupby {args.groupby} takes the nuclide of the pellet and not an emission, thus it does not accept"
-            " --use_sampledemissiontype",
-            "Give -groupby element, ion, or line, or remove --use_sampledemissiontype",
+            f"--groupby {args.groupby} takes the nuclide of the pellet and not an emission, thus it does not accept"
+            " --use-sampledemissiontype",
+            "Give --groupby element, ion, or line, or remove --use-sampledemissiontype",
         )
 
     # most models have no sampled emission, thus the command stops before it reads the packets
@@ -2909,20 +2931,20 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
     # get_flux_contributions_from_packets makes the same test, but only after it reads the packets
     if args.showabsorption and args.groupby == "nuc":
         exit_with_error(
-            "A nuclide emits a packet, but a nuclide does not absorb a packet. Thus -groupby nuc cannot group the"
+            "A nuclide emits a packet, but a nuclide does not absorb a packet. Thus --groupby nuc cannot group the"
             " absorption contributions",
-            "Give -groupby ion or line, or remove --showabsorption",
+            "Give --groupby ion or line, or remove --showabsorption",
         )
 
     if args.yvariable == "packetcount":
         exit_with_error(
             "An emission plot draws a flux for each contribution, and it has no count of packets",
-            "Remove -yvariable packetcount, or remove --showemission and --showabsorption",
+            "Remove --yvariable packetcount, or remove --showemission and --showabsorption",
         )
 
 
 def check_yvariable_args(args: argparse.Namespace) -> None:
-    """Stop the command when a series cannot give the quantity that -stokesparam or -yvariable names.
+    """Stop the command when a series cannot give the quantity that --stokesparam or --yvariable names.
 
     Only the virtual packet spectra hold the Stokes parameters Q and U, and a reference spectrum holds
     no count of packets. Such a plot drew Stokes I, or it stopped with a missing column.
@@ -2931,15 +2953,15 @@ def check_yvariable_args(args: argparse.Namespace) -> None:
     # alone, and resolve_frompackets can select them, e.g. for --showemission
     if args.stokesparam != "I" and "/" not in args.stokesparam and (args.plotvspecpol is None or args.frompackets):
         exit_with_error(
-            f"-stokesparam {args.stokesparam} reads the virtual packet spectra files, and the command gives no"
-            " -plotvspecpol or it reads the packets",
-            "Give -plotvspecpol, e.g. -plotvspecpol 0, and remove the options that need the packets",
+            f"--stokesparam {args.stokesparam} reads the virtual packet spectra files, and the command gives no"
+            " --plotvspecpol or it reads the packets",
+            "Give --plotvspecpol, e.g. --plotvspecpol 0, and remove the options that need the packets",
         )
 
     if args.yvariable == "packetcount" and len(args.modelspecpaths) < len(args.specpath):
         exit_with_error(
-            "A reference spectrum holds no count of packets, thus -yvariable packetcount needs ARTIS models alone",
-            "Remove the reference spectra, or give another -yvariable",
+            "A reference spectrum holds no count of packets, thus --yvariable packetcount needs ARTIS models alone",
+            "Remove the reference spectra, or give another --yvariable",
         )
 
 
@@ -2947,13 +2969,13 @@ def check_bin_drawing_args(args: argparse.Namespace) -> None:
     """Stop the command if an option makes the histogram or the noise band incorrect.
 
     --binflux combines 5 bins, and a filter calculates each value from adjacent bins. Thus the noise of one bin does
-    not apply. An emission plot and a Stokes ratio, e.g. -stokesparam Q/I, draw no band and no histogram.
+    not apply. An emission plot and a Stokes ratio, e.g. --stokesparam Q/I, draw no band and no histogram.
     """
     if args.histogram:
         for option, given in (
             ("--showemission", args.showemission),
             ("--showabsorption", args.showabsorption),
-            (f"-stokesparam {args.stokesparam}", "/" in args.stokesparam),
+            (f"--stokesparam {args.stokesparam}", "/" in args.stokesparam),
         ):
             if given:
                 exit_with_error(
@@ -2972,7 +2994,7 @@ def check_bin_drawing_args(args: argparse.Namespace) -> None:
             ("-filtersavgol", args.filtersavgol, filterreason),
             ("-filtermovingavg", args.filtermovingavg, filterreason),
             (
-                f"-stokesparam {args.stokesparam}",
+                f"--stokesparam {args.stokesparam}",
                 "/" in args.stokesparam,
                 "draws a ratio from specpol_res.out, which holds no packets",
             ),
@@ -3017,7 +3039,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # -o names the folder of the files, and no -o keeps them in the spectra folder of the model
         outputfile = Path(args.outputfile) if args.outputfile else None
         if outputfile is not None and outputfile.suffixes and not outputfile.is_dir():
-            msg = f"--output_spectra writes a folder of files, thus -o must name a folder and not {outputfile}"
+            msg = f"--output-spectra writes a folder of files, thus -o must name a folder and not {outputfile}"
             raise ValueError(msg)
         outdirectory = make_output_folder(outputfile, "writes") if outputfile is not None else None
         # --output_spectra keeps its overwrite with no prompt. The command writespectra asks first
@@ -3047,7 +3069,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
 
 def get_default_xlimits(xunit: str, *, gamma: bool) -> tuple[float, float]:
-    """Return the x limits in increasing order for a command that gives no -xmin and no -xmax."""
+    """Return the x limits in increasing order for a command that gives no --xmin and no --xmax."""
     lambdalimits = (0.2, 0.004) if gamma else (2500.0, 19000.0)
     xmin, xmax = sorted(convert_angstroms_to_unit(value, xunit) for value in lambdalimits)
     return xmin, xmax
@@ -3064,13 +3086,13 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     # different range. A pair that the user gave keeps the sort
     if args.xmin is not None and args.xmax is None and args.xmin >= defaultxmax:
         exit_with_error(
-            f"-xmin {args.xmin:g} is not below the default upper limit {defaultxmax:g} {args.xunit}",
-            "Give -xmax as well",
+            f"--xmin {args.xmin:g} is not below the default upper limit {defaultxmax:g} {args.xunit}",
+            "Give --xmax as well",
         )
     if args.xmax is not None and args.xmin is None and args.xmax <= defaultxmin:
         exit_with_error(
-            f"-xmax {args.xmax:g} is not above the default lower limit {defaultxmin:g} {args.xunit}",
-            "Give -xmin as well",
+            f"--xmax {args.xmax:g} is not above the default lower limit {defaultxmin:g} {args.xunit}",
+            "Give --xmin as well",
         )
     if args.xmin is None:
         args.xmin = defaultxmin
@@ -3113,7 +3135,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     if args.timestep is not None and args.timedays is None and not artispaths and not codecomparisonpaths:
         # a reference spectrum has no timesteps. The command plotted it before the range resolution moved to main
         print_warning(
-            "-timestep names a timestep of a model, and no path is an ARTIS model or a code comparison model,"
+            "--timestep names a timestep of a model, and no path is an ARTIS model or a code comparison model,"
             " thus it has no effect"
         )
     else:
@@ -3162,8 +3184,8 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         # every later step reads one epoch of the list for each subplot, thus an absent list gave a
         # TypeError on len(None). -timedayslist sets --multispecplot, thus the flag alone reaches here
         exit_with_error(
-            "--multispecplot draws one subplot for each epoch of -timedayslist, and no such list was given",
-            "Give the epochs with -timedayslist, e.g. -timedayslist 260 280 300",
+            "--multispecplot draws one subplot for each epoch of --timedayslist, and no such list was given",
+            "Give the epochs with --timedayslist, e.g. --timedayslist 260 280 300",
         )
 
     if args.showtime and not args.multispecplot and (args.timemin is None or args.timemax is None):
@@ -3171,7 +3193,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         # A reference spectrum has no timesteps, thus no path can resolve a range for it
         exit_with_error(
             "--showtime writes the middle of the plotted time range, and no time range was given",
-            "Give -timedays (e.g. -t 300 or -t 290-320), -timestep (e.g. -ts 40), or -timemin and -timemax",
+            "Give --timedays (e.g. -t 300 or -t 290-320), --timestep (e.g. --ts 40), or --timemin and --timemax",
         )
 
     # the reference spectra get black and greys, and the ARTIS models get the colours of the cycle
@@ -3198,7 +3220,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
             args.distmpc = 1.0  # no reference spectra with distances, so default to 1 Mpc
     assert args.distmpc is not None
     if args.distmpc <= 0.0:
-        msg = f"-distmpc gives the distance of the observer in Mpc, thus it must be above zero, not {args.distmpc}"
+        msg = f"--distmpc gives the distance of the observer in Mpc, thus it must be above zero, not {args.distmpc}"
         raise ValueError(msg)
 
     if args.emissionabsorption:
@@ -3212,7 +3234,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     # argparse does not check
     if args.use_thermalemissiontype and args.use_sampledemissiontype:
         exit_with_error(
-            "--use_thermalemissiontype and --use_sampledemissiontype select two different emissions of a packet, and a"
+            "--use-thermalemissiontype and --use-sampledemissiontype select two different emissions of a packet, and a"
             " plot uses only one",
             "Remove one of the two options",
         )

@@ -333,7 +333,7 @@ def get_remote_model_logname(path: Path, label: str | None) -> str:
 def get_model_logname(path: Path | str, label: str | None = None) -> str:
     """Return the label of an ARTIS model and the name of its folder, for a log message.
 
-    The label comes from the caller (e.g. the -label argument) or from get_model_name.
+    The label comes from the caller (e.g. the --label argument) or from get_model_name.
     """
     path = Path(path)
     if is_remote_path(path):

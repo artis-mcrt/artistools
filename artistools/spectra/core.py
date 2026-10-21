@@ -1764,7 +1764,7 @@ def get_default_radialvelocity_shells(
 
 
 def get_default_lineofsightvelocity_shells(modelpath: Path | str) -> tuple[list[float], t.Literal["kmps", "c"]]:
-    """Return the edges [km/s] of 10 equal shells from -vmax to vmax, plus one shell to each corner, and the unit.
+    """Return the edges [km/s] of 10 equal shells from --vmax to vmax, plus one shell to each corner, and the unit.
 
     A positive velocity along the line of sight is motion toward the observer.
     """
@@ -1847,7 +1847,7 @@ SAMPLEDCOLUMNS: t.Final[Mapping[str, str]] = MappingProxyType({
 NO_SAMPLED_EMISSION_HELP: t.Final = (
     "ARTIS writes the sampled emission only if artisoptions.h of the model sets SAMPLE_RPKT_EMISSION to true"
     " (artis-mcrt/artis#661), and each preset sets it to false. Run the simulation again with that option, or"
-    " remove --use_sampledemissiontype"
+    " remove --use-sampledemissiontype"
 )
 
 
@@ -1958,7 +1958,7 @@ def add_shell_columns(lzdfpackets: pl.LazyFrame, modelpath: Path | str, groupby:
     if usethermal and thermalcolumn not in packetcolumns:
         if "trueem_posx" not in packetcolumns and not (thermalfromvelocity and groupby == "ye"):
             msg = (
-                "The packets hold no thermal emission position. Thus --use_thermalemissiontype cannot select the"
+                "The packets hold no thermal emission position. Thus --use-thermalemissiontype cannot select the"
                 " packets by that position"
             )
             raise ValueError(msg)
@@ -2051,7 +2051,7 @@ def get_flux_contributions_from_packets(
         groupby not in {"element", "ion", "line"} or gamma or velocityranges or directionbins_are_vpkt_observers
     ):
         msg = (
-            "The sampled emission gives an element, an ion, or a line of an r-packet emission. Use -groupby element,"
+            "The sampled emission gives an element, an ion, or a line of an r-packet emission. Use --groupby element,"
             " ion, or line. Do not use gamma packets, a velocity range, or virtual packets"
         )
         raise ValueError(msg)
@@ -2080,7 +2080,7 @@ def get_flux_contributions_from_packets(
         # A nuclide emits a packet, but a nuclide does not absorb a packet.
         # Thus a nuclide name cannot be a label for an absorption contribution.
         msg = (
-            "Absorption contributions cannot be grouped by nuclide. Use -groupby ion or line, or drop --showabsorption"
+            "Absorption contributions cannot be grouped by nuclide. Use --groupby ion or line, or drop --showabsorption"
         )
         raise ValueError(msg)
 
@@ -2230,7 +2230,7 @@ def get_flux_contributions_from_packets(
         if nnotset > 0:
             print_warning(
                 f"{nnotset} packets have no thermal emission record, thus the series NOT SET holds them."
-                " Drop --use_thermalemissiontype to group these packets by the position of the last interaction"
+                " Drop --use-thermalemissiontype to group these packets by the position of the last interaction"
             )
         if noutside > 0:
             print_warning(f"{noutside} packets lie outside every shell, thus no series holds them")
@@ -2298,7 +2298,7 @@ def get_flux_contributions_from_packets(
     def get_series_spectra(dflabels: pl.DataFrame, drawnnames: list[str]) -> dict[str, npt.NDArray[np.float64]]:
         """Return the f_lambda of each drawn label, and one "Other" series for all the other labels.
 
-        A -groupby line plot of a 3D kilonova model has 1e5 labels. An array for each label took 0.6 s, and the
+        A --groupby line plot of a 3D kilonova model has 1e5 labels. An array for each label took 0.6 s, and the
         plot draws only the labels of the ranking.
         """
         dfseries = (
@@ -2459,7 +2459,7 @@ def rank_flux_series_names(
 ) -> tuple[list[str], list[str]]:
     """Return the names that the plot draws, in the order of the series, and the names of the "Other" series.
 
-    A -fixedionlist gives the names in the order of the list. Without that list, the names come in the
+    A --fixedionlist gives the names in the order of the list. Without that list, the names come in the
     order of the flux. Each name after maxseriescount joins "Other", and a name that is already "Other"
     joins it as well.
     """
@@ -2521,7 +2521,7 @@ def sort_and_reduce_flux_contribution_list(
     if not fixedionlist:
         plotted_ion_list = [row.linelabel for row in kept]
         cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
-        print(f"  -fixedionlist {cmdarg} gives this list of series again")
+        print(f"  --fixedionlist {cmdarg} gives this list of series again")
 
     remainder_fluxcontrib = sum(row.fluxcontrib for row in other)
     remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)

@@ -891,7 +891,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=Path,
         default=Path.home()
         / "Google Drive/Shared Drives/GSI NSM/Mergers/SFHo_long/Trajectory_SFHo_long-radius-entropy",
-        help="Folder of the nuclear network trajectories",
+        help="The folder of the nuclear network trajectories",
     )
     parser.add_argument("-particleid", type=int, default=133371, help="Particle id of the trajectory")
     addarg_output(parser, kind="folder", default=Path())

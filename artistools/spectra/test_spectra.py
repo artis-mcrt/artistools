@@ -1083,7 +1083,7 @@ def test_spectraemissionplot_refuses_ion_groups_of_gamma_packets(
             groupby=groupby,
             outputfile=tmp_path / "gammaions.pdf",
         )
-    assert f"does not accept -groupby {groupby}" in capsys.readouterr().err
+    assert f"does not accept --groupby {groupby}" in capsys.readouterr().err
 
 
 def test_spectra_gamma_packets_group_by_emission_velocity(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2814,7 +2814,7 @@ def test_polarisation_plot_refuses_a_y_range_that_is_not_in_order(
                 "0",
             ]
         )
-    assert "must be less than -ymax" in capsys.readouterr().err
+    assert "must be less than --ymax" in capsys.readouterr().err
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -2900,10 +2900,10 @@ def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
 def test_single_x_limit_on_the_wrong_side_of_the_default_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
     """A single -xmin above the default upper limit became the upper limit, thus the plot showed a different range."""
     for argsraw, missing in (
-        (["-xmin", "25000"], "-xmax"),
-        (["-xmax", "2000"], "-xmin"),
-        (["-xunit", "hz", "-xmax", "1e14"], "-xmin"),
-        (["--gamma", "-xunit", "kev", "-xmin", "5000"], "-xmax"),
+        (["-xmin", "25000"], "--xmax"),
+        (["-xmax", "2000"], "--xmin"),
+        (["-xunit", "hz", "-xmax", "1e14"], "--xmin"),
+        (["--gamma", "-xunit", "kev", "-xmin", "5000"], "--xmax"),
     ):
         args = at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), *argsraw])
         with pytest.raises(SystemExit):
@@ -3811,7 +3811,7 @@ def test_interactive_status_line_gives_the_error() -> None:
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
     assert rejection is not None
-    assert rejection.startswith("Argument -deltalambda")
+    assert rejection.startswith("Argument --deltalambda")
 
 
 def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit() -> None:
@@ -3920,14 +3920,14 @@ def test_interactive_data_source() -> None:
     assert "--frompackets" not in shlex.split(viewer.get_command())
     assert interactive.get_packets_reason(viewer.get_plot_tokens()) is None
     elementvalues = dc.replace(viewer.values, showemission=True, groupby="element")
-    assert interactive.get_packets_reason(viewer.get_plot_tokens(elementvalues)) == "-groupby element"
+    assert interactive.get_packets_reason(viewer.get_plot_tokens(elementvalues)) == "--groupby element"
 
     assert viewer.change(dc.replace(viewer.values, datasource="text")) is None
     textelement = dc.replace(elementvalues, datasource="text")
     oldvalues = viewer.values
     for message in (viewer.get_rejection(textelement), viewer.change(textelement)):
         assert message is not None
-        assert message.startswith("-groupby element needs the packets files")
+        assert message.startswith("--groupby element needs the packets files")
     assert viewer.values == oldvalues
 
 

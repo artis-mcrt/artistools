@@ -19,13 +19,12 @@ if t.TYPE_CHECKING:
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level artistools argument parser."""
-    from importlib.metadata import version
-
     from artistools.commands import addsubparsers
     from artistools.commands import CustomArgHelpFormatter
     from artistools.commands import get_epilog
     from artistools.commands import subcommandtree
     from artistools.commands import SuggestingArgumentParser
+    from artistools.commands import VersionAction
 
     parserkwargs: dict[str, t.Any] = {
         "formatter_class": CustomArgHelpFormatter,
@@ -34,13 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     }
     # the subclass suggests a subcommand and a flag, on Python 3.13 and 3.14 alike
     parser = SuggestingArgumentParser(**parserkwargs)
-    parser.add_argument(
-        "--version",
-        "-V",
-        action="version",
-        version=f"%(prog)s {version('artistools')}",
-        help="Show the version of artistools and exit",
-    )
+    parser.add_argument("--version", "-V", action=VersionAction, help="Show the version of artistools and exit")
 
     addsubparsers(parser, subcommandtree)
 
@@ -52,21 +45,20 @@ SLOW_COMMAND_SECONDS = 15.0
 
 
 def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
-    """Run the subcommand. With --quiet, send its progress messages to the null device.
+    """Run the subcommand. Send its progress messages to the standard error, or with --quiet to the null device.
 
-    An error message goes to the standard error, thus --quiet keeps it. A command writes its product
-    with print_product, which reaches the standard output even with --quiet, thus a script reads that
-    product with no progress message around it.
+    A command writes its product with print_product, which alone reaches the standard output. A pipe or a
+    redirect then gets the product with no progress message around it, as for ruff and uv. An error message
+    also goes to the standard error, thus --quiet keeps it.
     """
     import time
 
     quiet = getattr(args, "quiet", False)
     starttime = time.monotonic()
     with contextlib.ExitStack() as stack:
-        if quiet:
-            devnull = stack.enter_context(Path(os.devnull).open("w", encoding="utf-8"))
-            args.productstream = sys.stdout
-            stack.enter_context(contextlib.redirect_stdout(devnull))
+        args.productstream = sys.stdout
+        progressstream = stack.enter_context(Path(os.devnull).open("w", encoding="utf-8")) if quiet else sys.stderr
+        stack.enter_context(contextlib.redirect_stdout(progressstream))
 
         func(args=args)
 

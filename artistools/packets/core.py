@@ -188,7 +188,7 @@ def get_emission_velocity_of_columns_expr(position: t.Literal["em", "trueem"], p
     if position == "trueem" and "trueem_posx" not in packetcolumns:
         if "true_emission_velocity" not in packetcolumns:
             msg = (
-                "The packets hold no position and no velocity of the thermal emission. Remove --use_thermalemissiontype"
+                "The packets hold no position and no velocity of the thermal emission. Remove --use-thermalemissiontype"
             )
             raise ValueError(msg)
         return pl.col("true_emission_velocity")
@@ -223,7 +223,7 @@ def print_last_interaction_convention(modelpath: Path | str) -> None:
 def print_arrival_time_method(modelpath: Path | str, timesteps: Sequence[int], selectiontext: str) -> None:
     """Print the definition of the arrival time of a packet, and the timesteps that are the time bins.
 
-    selectiontext says how the command selected the timesteps, e.g. "the timestep that holds -timedays".
+    selectiontext says how the command selected the timesteps, e.g. "the timestep that holds --timedays".
     """
     tstarts = get_timestep_times(modelpath, loc="start")
     tends = get_timestep_times(modelpath, loc="end")
@@ -273,9 +273,9 @@ def get_relative_error_expr(energy: pl.Expr) -> pl.Expr:
 
 
 def addarg_velocitykind(parser: argparse.ArgumentParser) -> None:
-    """Add -velocitykind, which selects the radial or the line-of-sight velocity of the last interaction.
+    """Add --velocitykind, which selects the radial or the line-of-sight velocity of the last interaction.
 
-    The other commands take -velocity for the velocity of a cell, thus this option has a different name. -velocity
+    The other commands take --velocity for the velocity of a cell, thus this option has a different name. --velocity
     stays as a hidden alias of it, because the first release of the option had that name.
     """
     parser.add_argument(
@@ -300,7 +300,9 @@ def get_last_interaction_velocity_expr(
     if velocitykind == "radial":
         return get_emission_velocity_of_columns_expr(position, packetcolumns)
     if f"{position}_posx" not in packetcolumns:
-        msg = f"The packets hold no {position}_pos, thus they give no line-of-sight velocity. Give -velocitykind radial"
+        msg = (
+            f"The packets hold no {position}_pos, thus they give no line-of-sight velocity. Give --velocitykind radial"
+        )
         raise ValueError(msg)
     return get_emission_velocity_lineofsight_expr(position)
 

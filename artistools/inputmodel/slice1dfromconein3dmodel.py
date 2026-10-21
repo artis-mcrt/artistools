@@ -117,7 +117,7 @@ def get_cone_shells(
                 "occur, especially for smaller cone angles and grid spacings where the inner shell radius is\n"
                 "small. Also more likely to occur when ncoordgrid/2 is even, resulting in the slice axis being\n"
                 "along cell minimums not cell midpoints in the 3D model. If this occurs you can either choose a \n"
-                "different grid spacing (using -coneshellspacingexponent or -nshells) or increase -coneangle\n"
+                "different grid spacing (using --coneshellspacingexponent or --nshells) or increase --coneangle\n"
                 "to ensure at least one cell midpoint is contained within the cone limits of the shell\n"
             )
             # Cells exist but all have density=0. The warning goes to the standard error, because
@@ -130,8 +130,8 @@ def get_cone_shells(
                 "The outer regions of some models can have empty regions before there are more non-empty cells\n"
                 "again at higher velocities. This should generally be in the very outer regions of models where\n"
                 "the cells are too optically thin to impact the synthetic observables. However if you want cells\n"
-                "in these outer regions to be included in the 1D cone can experiment with -coneangle,-nshells and\n"
-                "-coneshellspacingexponent to ensure the shells for these outer regions include some non-empty 3D\n"
+                "in these outer regions to be included in the 1D cone can experiment with --coneangle,--nshells and\n"
+                "--coneshellspacingexponent to ensure the shells for these outer regions include some non-empty 3D\n"
                 "grid cell and thus the shells can be included in the 1D model.\n",
                 file=sys.stderr,
             )
@@ -296,7 +296,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=100,
         help=(
-            "Number of shells used when making 1D model from cone. Note the final number of shells may be lower"
+            "The number of shells used when making 1D model from cone. Note the final number of shells may be lower"
             " as empty outer shells are removed from the output 1D model files"
         ),
     )

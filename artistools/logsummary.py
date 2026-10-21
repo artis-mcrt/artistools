@@ -1,7 +1,7 @@
 """Count the warnings and the errors in the logs of an ARTIS model, by kind of message.
 
 Each MPI rank writes its own log, e.g. output_12-0.txt, and it logs the cells that it updates. The command reads the log
-of rank 0 of each run folder. -ranks or -modelgridindex selects the logs of other ranks. A kind of message is its text
+of rank 0 of each run folder. --ranks or --modelgridindex selects the logs of other ranks. A kind of message is its text
 with each number replaced by N, thus the same warning for different cells and timesteps is one kind.
 """
 
@@ -271,7 +271,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-ranks", default="0", help='The MPI ranks of the logs to read, e.g. 0-3,8 or "all". The default is 0'
     )
-    addarg_modelgridindex(parser, helptext="Read the logs of the ranks that update these cells, in place of -ranks")
+    addarg_modelgridindex(parser, helptext="Read the logs of the ranks that update these cells, in place of --ranks")
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -289,7 +289,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     logfiles = get_logfiles(modelpath, ranks, cells)
     if not logfiles:
-        exit_with_error(f"{modelpath} has no log of the ranks {args.ranks}", "Give -ranks with ranks that ran")
+        exit_with_error(f"{modelpath} has no log of the ranks {args.ranks}", "Give --ranks with ranks that ran")
     if cells is not None:
         rankstext = f"the ranks that update the cells {', '.join(str(cell) for cell in cells)} in each run folder"
     elif ranks is None:

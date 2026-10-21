@@ -250,9 +250,9 @@ def plot_trough_estimate(
     arrival_days = inputs.time_days * (1.0 - photospherevelocity_kmps / KMPS_PER_VELOCITYUNIT["c"])
     print_detail(
         "To test the estimate, compare it with the absorption of each line in the packet spectrum of the same"
-        f" direction: artistools plotspectra {modelpath} --frompackets -dirbin {dirbin}"
-        f"{' --average_over_phi_angle' if averageoverphi else ''}"
-        f" --showabsorption -groupby line -timedays {arrival_days:.3g}. The light of the gas in front of the"
+        f" direction: artistools plotspectra {modelpath} --frompackets --dirbin {dirbin}"
+        f"{' --average-over-phi-angle' if averageoverphi else ''}"
+        f" --showabsorption --groupby line --timedays {arrival_days:.3g}. The light of the gas in front of the"
         f" photosphere arrives at about t (1 - v_ph / c) = {arrival_days:.3g} d"
     )
     ax.set_ylabel("Trough depth")
@@ -344,7 +344,7 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
     """
     if args.troughdirbin is None:
         if args.photospherevelocity_kmps is not None:
-            exit_with_error("-photospherevelocity applies only to the trough estimate", "Give -troughdirbin too")
+            exit_with_error("--photospherevelocity applies only to the trough estimate", "Give --troughdirbin too")
         return None
     check_dirbin(args.troughdirbin, "-troughdirbin", averageoverphi=args.average_over_phi_angle, allowall=False)
     _, modelmeta = get_modeldata(args.modelpath, printwarningsonly=True)
@@ -353,38 +353,40 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
         exit_with_error(
             f"The trough estimate needs the velocity vector of each cell, and a {modelmeta['dimensions']}D model has no"
             " such vector",
-            "Remove -troughdirbin",
+            "Remove --troughdirbin",
         )
     photospherevelocity_kmps = args.photospherevelocity_kmps
     if photospherevelocity_kmps is None:
         exit_with_error(
             "The trough estimate needs the velocity of the photosphere",
-            "Give -photospherevelocity, e.g. the median of plotlastinteractionvelocity for a range with no strong line",
+            "Give --photospherevelocity, e.g. the median of plotlastinteractionvelocity for a range with no strong"
+            " line",
         )
     if photospherevelocity_kmps >= KMPS_PER_VELOCITYUNIT["c"]:
         exit_with_error(
-            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is at or above the speed of light",
+            f"--photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is at or above the speed of"
+            " light",
             "Give a velocity below 1c",
         )
     partwidth_kmps = min(get_cell_widths_kmps(modelmeta)) / TROUGHSAMPLESPERCELL
     if photospherevelocity_kmps < partwidth_kmps:
         exit_with_error(
-            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is less than"
+            f"--photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is less than"
             f" {format_velocity(partwidth_kmps, unit)}, a third of the width of a cell, thus the trough estimate has no"
             " resolution",
-            "Give a larger -photospherevelocity",
+            "Give a larger --photospherevelocity",
         )
     cornervelocity_kmps = get_grid_corner_velocity_kmps(modelmeta)
     if photospherevelocity_kmps >= cornervelocity_kmps:
         exit_with_error(
-            f"-photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is at or above the corner of the"
+            f"--photospherevelocity {format_velocity(photospherevelocity_kmps, unit)} is at or above the corner of the"
             f" grid at {format_velocity(cornervelocity_kmps, unit)}, thus no cell is in front of the photosphere",
-            "Give a lower -photospherevelocity",
+            "Give a lower --photospherevelocity",
         )
     if args.dirbin is not None or args.costhetamin is not None or args.costhetamax is not None:
         exit_with_error(
             "The trough estimate needs all the cells in front of the photosphere",
-            "Remove -dirbin, -costhetamin, and -costhetamax, or remove -troughdirbin",
+            "Remove --dirbin, --costhetamin, and --costhetamax, or remove --troughdirbin",
         )
     return args.troughdirbin, photospherevelocity_kmps
 
@@ -392,7 +394,7 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_lineselection(parser)
-    parser.add_argument("-maxlines", type=positive_int_arg, default=8, help="Number of lines to plot")
+    parser.add_argument("-maxlines", type=positive_int_arg, default=8, help="The number of lines to plot")
     parser.add_argument(
         "-rankby",
         choices=["emission", "tau"],
@@ -410,7 +412,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         help=(
             "Add a Sobolev estimate of the absorption trough for an observer at the centre of this direction bin. The"
-            " bins are the same as in plotspectra. With --average_over_phi_angle, give the first bin of a costheta"
+            " bins are the same as in plotspectra. With --average-over-phi-angle, give the first bin of a costheta"
             " bin, e.g. 90 for the pole at +z"
         ),
     )
@@ -420,7 +422,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         dest="photospherevelocity_kmps",
         type=positive_velocity_kmps_arg,
         help=(
-            "Velocity of the photosphere of -troughdirbin, with its unit, e.g. 0.157c or 47000km/s."
+            "Velocity of the photosphere of --troughdirbin, with its unit, e.g. 0.157c or 47000km/s."
             " plotlastinteractionvelocity gives an estimate"
         ),
     )
@@ -493,9 +495,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Plot the Sobolev emission and the Sobolev optical depth of the strongest lines against velocity."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
-        exit_with_error("Give the wavelength range of the lines", "e.g. -lambdamin 8400 -lambdamax 8700")
+        exit_with_error("Give the wavelength range of the lines", "e.g. --lambdamin 8400 --lambdamax 8700")
     if args.maxlines < 1:
-        exit_with_error(f"-maxlines {args.maxlines} gives no lines", "Give a number of 1 or more")
+        exit_with_error(f"--maxlines {args.maxlines} gives no lines", "Give a number of 1 or more")
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     print(f"Line contributions of {get_model_logname(args.modelpath)} at timestep {timestep}")
@@ -512,12 +514,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     profiles = get_line_velocity_profiles(inputs, velocityedges_kmps, args.rankby, args.maxlines)
 
     # -taumin leaves out each line that cannot reach it, thus the sums of the emission take only the other lines
-    lineset = "all the lines" if args.taumin is None else "the lines that -taumin keeps"
+    lineset = "all the lines" if args.taumin is None else "the lines that --taumin keeps"
     if args.taumin is not None and args.rankby == "emission":
         print_warning(
-            "-taumin can leave out an optically thin line, and such a line can emit much. Thus the ranking by"
-            " emission and the fractions of the emission take only the lines that -taumin keeps. Give -rankby tau,"
-            " or -ions in place of -taumin"
+            "--taumin can leave out an optically thin line, and such a line can emit much. Thus the ranking by"
+            " emission and the fractions of the emission take only the lines that --taumin keeps. Give --rankby tau,"
+            " or --ions in place of --taumin"
         )
     print_profile_method(profiles, velocityedges_kmps, unit, lineset)
 
@@ -528,7 +530,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     fig, axesgrid = make_frame_figure(args, rows=3 if troughsettings else 2, aspect=0.45)
     axes = axesgrid[:, 0]
-    alllineslabel = "All lines in the range" if args.taumin is None else f"Lines that -taumin {args.taumin:g} keeps"
+    alllineslabel = "All lines in the range" if args.taumin is None else f"Lines that --taumin {args.taumin:g} keeps"
     dfdrawn, colours = plot_line_profiles(axes, profiles, dfranked, velocityedges_kmps, unit, alllineslabel)
     # the empty tables replace the trough files of the same name from an earlier command
     tables = {
@@ -602,7 +604,7 @@ def print_trough_method(
     print_warning(
         "The estimate takes a sharp photosphere and pure absorption. Many optically thick lines in front of the"
         " photosphere scatter the light many times. Then the real trough can be much less deep. plotopacity with"
-        " -vmin, -costhetamin, -costhetamax, and -cellaverage median gives the expansion opacity of each direction"
+        " --vmin, --costhetamin, --costhetamax, and --cellaverage median gives the expansion opacity of each direction"
     )
     if dopplershift == "true":
         print_detail(

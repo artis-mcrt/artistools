@@ -275,7 +275,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     else:
         if args.trajthermofile is None:
-            exit_with_error("fromtrajectory needs -trajthermofile")
+            exit_with_error("fromtrajectory needs --trajthermofile")
         result = energy_from_rprocess_calculation(read_trajectory_thermo(args.trajthermofile), get_rate=True)
         assert isinstance(result, tuple)
         dftimes_and_rate, e_tot = result

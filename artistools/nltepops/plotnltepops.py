@@ -197,7 +197,7 @@ def get_floers_data(
 ) -> tuple[list[int] | None, npt.NDArray[np.floating] | None]:
     """Return Andreas Floers's Fe II/III level populations for Shingles et al. (2022), or None if unavailable.
 
-    ionpopulation is the population of all the levels of the ion, also of the levels that -maxlevel hides. The
+    ionpopulation is the population of all the levels of the ion, also of the levels that --maxlevel hides. The
     single-zone file gives the fraction of the ion population in each level, thus each fraction takes this
     population.
     """
@@ -436,7 +436,7 @@ def make_ionsubplot(
 ) -> pl.DataFrame | None:
     """Plot the level populations of one ion, in one cell, at one timestep.
 
-    With --print_data or --write_data, return the table of the subplot. Otherwise, return None.
+    With --print-data or --write-data, return the table of the subplot. Otherwise, return None.
     """
     ion_data = adata.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage)).row(0, named=True)
 
@@ -623,7 +623,7 @@ def get_levelnames_of_ion(modelpath: Path | str, ions: Sequence[tuple[int, int]]
     if missing := [ion for ion in ions if ion not in levelnames_of_ion]:
         exit_with_error(
             f"The atomic data holds no {', '.join(itertools.starmap(get_ionstring, missing))}",
-            "Give an ion stage of the model with -ion_stages",
+            "Give an ion stage of the model with --ion-stages",
         )
 
     return levelnames_of_ion
@@ -634,7 +634,7 @@ def make_plot_populations_with_time_or_velocity(
 ) -> None:
     """Plot how the chosen level populations of the ion stages of one element vary with time or velocity.
 
-    Each ion stage of -ion_stages gives one series for each level of -levels, and the figure goes to its own file.
+    Each ion stage of --ion-stages gives one series for each level of --levels, and the figure goes to its own file.
     """
     ions = [(atomic_number, int(ion_stage)) for ion_stage in args.ion_stages]
     levelnames_of_ion = get_levelnames_of_ion(modelpaths[0], ions)
@@ -729,7 +729,7 @@ def plot_populations_with_time_or_velocity(
     """Plot one series for each level of each ion, against time or velocity as selected by args.x.
 
     The label of a series names its ion if the plot shows more than one ion, and its time if showtime is true. With
-    --print_data or --write_data, return one table for each series. Otherwise, return an empty list.
+    --print-data or --write-data, return one table for each series. Otherwise, return an empty list.
     """
     makestable = args.print_data or args.write_data
     seriestables: list[pl.DataFrame] = []
@@ -738,7 +738,7 @@ def plot_populations_with_time_or_velocity(
         timesteps = list(range(args.timestepmin, args.timestepmax + 1))
 
         if not args.modelgridindex:
-            exit_with_error("-x time needs one cell. Give it with -modelgridindex")
+            exit_with_error("-x time needs one cell. Give it with --modelgridindex")
 
         modelgridindex = get_single_modelgridindex(args.modelgridindex)
         assert modelgridindex is not None, "the branch above stops when no cell is given"
@@ -934,7 +934,7 @@ def make_singletimestep_plot(
         exit_with_error(
             f"No ion stage of {get_elsymbol(atomic_number)} to plot at timestep {timestep}",
             f"The NLTE file holds the ion stages {', '.join(str(i) for i in availablestages)} of more than one level."
-            " Give one of them with -ion_stages",
+            " Give one of them with --ion-stages",
         )
 
     # the height of one frame in inches, as a part of the width of a frame
@@ -1100,7 +1100,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     timegroup = parser.add_mutually_exclusive_group()
     timegroup.add_argument("-timedays", "-time", "-t", type=time_days_range_arg, help=f"Time to plot. {TIME_UNIT_HELP}")
 
-    timegroup.add_argument("-timedayslist", nargs="+", help="List of times in days for time sequence subplots")
+    timegroup.add_argument("-timedayslist", nargs="+", help="A list of times in days for time sequence subplots")
 
     # no type, thus this reads the same text as every other command: a number, "last", or a range
     timegroup.add_argument("-timestep", "-ts", help="Timestep number to plot, e.g. 40, last, or 40-45")
@@ -1170,18 +1170,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = args.modelpath
     if args.x == "time" and args.timedayslist:
         exit_with_error(
-            "-x time puts the time on the horizontal axis, thus -timedayslist gives no panel for each time",
-            "Give -x velocity with -timedayslist, or give -x time with a range such as -timedays 270-275",
+            "-x time puts the time on the horizontal axis, thus --timedayslist gives no panel for each time",
+            "Give -x velocity with --timedayslist, or give -x time with a range such as --timedays 270-275",
         )
 
     if args.x in {"time", "velocity"}:
         args.modelpath = normalize_path_list(args.modelpath)
 
         if not args.ion_stages:
-            misc.exit_with_error("No ion stage was given", "Give an ion stage with -ion_stages, e.g. -ion_stages 2")
+            misc.exit_with_error("No ion stage was given", "Give an ion stage with --ion-stages, e.g. --ion-stages 2")
 
         if not args.levels:
-            misc.exit_with_error("No levels were given", "Give the levels to plot with -levels, e.g. -levels 0 1 2")
+            misc.exit_with_error("No levels were given", "Give the levels to plot with --levels, e.g. --levels 0 1 2")
 
     timesteps_selected: list[int] | None = None
     if args.timedayslist:
@@ -1200,13 +1200,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         # each time gives one series for each level, thus every timestep of a model gave a plot that nobody can read
         exit_with_error(
             "-x velocity needs a time",
-            "Give a time with -timedays, e.g. -timedays 300, or a panel for each time with -timedayslist",
+            "Give a time with --timedays, e.g. --timedays 300, or a panel for each time with --timedayslist",
         )
     elif args.x == "time":
         args.timestepmin, args.timestepmax, _, _ = get_time_range(modelpath, timemin=0, timemax=math.inf)
     else:
         exit_with_error(
-            "No time given. Use -timedays or -timestep. A model of more than one cell also needs -modelgridindex"
+            "No time given. Use --timedays or --timestep. A model of more than one cell also needs --modelgridindex"
         )
 
     args.outputfile = resolve_outputfile(
@@ -1225,7 +1225,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         if npts_model > 1:
             exit_with_error(
                 f"No model grid cell given, and this model has {npts_model} cells. "
-                "Use -modelgridindex (or -velocity) to select one"
+                "Use --modelgridindex (or --velocity) to select one"
             )
         mgilist.append(0)
 

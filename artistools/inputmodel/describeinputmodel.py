@@ -112,7 +112,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     if mgi is not None and mgi >= 0:
         npts_model = modelmeta["npts_model"]
         if mgi >= npts_model:
-            msg = f"The model has the cells 0 to {npts_model - 1}, thus -modelgridindex {mgi} names no cell"
+            msg = f"The model has the cells 0 to {npts_model - 1}, thus --modelgridindex {mgi} names no cell"
             raise ValueError(msg)
         print_product(args, f"Selected single cell mgi {mgi}:")
         # the ids of model.txt can start at 0 or 1, and modelgridindex starts at 0 for both

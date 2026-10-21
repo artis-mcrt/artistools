@@ -153,7 +153,7 @@ def make_hesma_peakmag_dm15_dm40(
     """Write a HESMA-format file of peak magnitude and decline rate per direction bin.
 
     plotlightcurves writes one row for each selected direction bin, in the columns dirbin,
-    peak_mag_polyfit, risetime_polyfit, and deltam15_polyfit. --include_delta_m40 adds the column
+    peak_mag_polyfit, risetime_polyfit, and deltam15_polyfit. --include-delta-m40 adds the column
     deltam40_polyfit to that same file.
     """
     viewinganglefilename = f"{band}band_{modelname}_viewing_angle_data.txt"
@@ -163,7 +163,7 @@ def make_hesma_peakmag_dm15_dm40(
     if "peak_mag_polyfit" not in columns:
         exit_with_error(
             f"{viewinganglefilename} holds no peak_mag_polyfit column",
-            "Write the file again with plotlightcurves --save_viewing_angle_peakmag_risetime_delta_m15_to_file",
+            "Write the file again with plotlightcurves --save-viewing-angle-peakmag-risetime-delta-m15-to-file",
         )
 
     # a file of the current version names the bin of each row. An older file holds no dirbin column, and
@@ -171,7 +171,7 @@ def make_hesma_peakmag_dm15_dm40(
     if "dirbin" not in columns and dfviewingangle.height != get_viewingdirectionbincount():
         exit_with_error(
             f"{viewinganglefilename} holds no dirbin column, and its {dfviewingangle.height} rows are not every bin",
-            "Write the file again with plotlightcurves --save_viewing_angle_peakmag_risetime_delta_m15_to_file",
+            "Write the file again with plotlightcurves --save-viewing-angle-peakmag-risetime-delta-m15-to-file",
         )
     outdata = {
         "peakmag": dfviewingangle["peak_mag_polyfit"],
@@ -182,7 +182,7 @@ def make_hesma_peakmag_dm15_dm40(
         if "deltam40_polyfit" not in columns:
             exit_with_error(
                 f"{viewinganglefilename} holds no deltam40 column",
-                "Run plotlightcurves with --include_delta_m40, then run this action again",
+                "Run plotlightcurves with --include-delta-m40, then run this action again",
             )
         outdata["dm40"] = dfviewingangle["deltam40_polyfit"]
 
@@ -230,7 +230,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     addarg_modelpath(parser, positional=True, helptext="Path of the ARTIS model (vspecfiles, bollightcurve)")
-    addarg_output(parser, kind="folder", helptext="Folder for the written HESMA files", default=Path())
+    addarg_output(parser, kind="folder", helptext="The folder for the written HESMA files", default=Path())
     addarg_force(parser)
     # not -outputfile/-o, because addarg_outputpath above already claims -o for the folder
     parser.add_argument(
@@ -252,7 +252,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-band", default="B", help="Filter band of the viewing angle data (widthluminosity)")
     parser.add_argument("-modelname", help="Model name in the viewing angle filenames (widthluminosity)")
     parser.add_argument(
-        "-pathtofiles", type=Path, help="Folder of viewing angle data (widthluminosity, plotwidthluminosity)"
+        "-pathtofiles", type=Path, help="The folder of viewing angle data (widthluminosity, plotwidthluminosity)"
     )
     parser.add_argument("--dm40", action="store_true", help="Also read the deltam40 file (widthluminosity)")
 

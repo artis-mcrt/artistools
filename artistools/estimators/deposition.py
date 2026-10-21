@@ -59,7 +59,7 @@ def select_deposition_channels(colnames: Sequence[str], channels: Sequence[str] 
         msg = (
             "The estimators of this model hold no deposition_ column, thus they give no deposition "
             "rate of a cell. The file deposition.out holds the rate of the whole model, which "
-            "artistools plotlightcurves -deposition total draws"
+            "artistools plotlightcurves --deposition total draws"
         )
         raise ValueError(msg)
 
@@ -179,7 +179,7 @@ def check_channels_of_each_run(
                 f"artisoptions.h gives {scheme} rate for the deposition channel {channel}, but the rows of the"
                 f" timesteps {timesteps[:10]} do not follow that rule. A run of a different ARTIS build can have a"
                 " different PARTICLE_THERMALISATION_SCHEME, and one rule for the rows of all the runs gives an"
-                " incorrect rate. Select the timesteps of one run with -timestep"
+                " incorrect rate. Select the timesteps of one run with --timestep"
             )
             raise ValueError(msg)
 
@@ -444,7 +444,7 @@ def get_deposition_rates(
 
 
 def get_selected_timesteps(modelpath: Path | str, timedays: str | None, timestep: str | None) -> list[int] | None:
-    """Return the timesteps that -timedays or -timestep selects, or None if the caller gives no time.
+    """Return the timesteps that --timedays or --timestep selects, or None if the caller gives no time.
 
     Each argument also takes a list, e.g. 1,5,30. get_time_range reads one item of that list. Thus a
     time, a range of times, a timestep, a range of timesteps, and "last" mean here what they mean on

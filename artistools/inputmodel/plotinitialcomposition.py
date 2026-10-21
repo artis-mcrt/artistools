@@ -87,7 +87,7 @@ def plot_slice_modelcolumn(
         if args.floorval is not None:
             if not args.floorval > 0:
                 # the floor is a linear value that the clamp below applies before the logarithm
-                msg = f"-floorval must be positive with --logcolorscale, got {args.floorval}"
+                msg = f"--floorval must be positive with --logcolorscale, got {args.floorval}"
                 raise ValueError(msg)
             # np.ma.where keeps a masked array masked. np.where and a comprehension both give a
             # plain array, thus they put every cell that --hideemptycells masked back on the plot
@@ -386,7 +386,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
     if not args.surfaces3d:
         surfacepositions = np.linspace(min(mesh[coloursurfaceby]), max(mesh[coloursurfaceby]), num=10)
-        print(f"Using default surfaces {surfacepositions} \n define these with -surfaces3d for better results")
+        print(f"Using default surfaces {surfacepositions} \n define these with --surfaces3d for better results")
     else:
         surfacepositions = args.surfaces3d  # expects an array of surface positions
 

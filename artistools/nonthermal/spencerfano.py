@@ -57,7 +57,7 @@ NTLEPTON_DEPOSITION_CHANNELS = ("gamma", "positron", "electron")
 def write_ntstats_file(ntstatfile: str | Path, rows: Sequence[dict[str, float]]) -> None:
     """Write one row for each solver step, with a column for each ion of any step.
 
-    A -vary x_e sweep changes the list of ions from one step to the next, thus an ion that a step does not hold
+    A --vary x_e sweep changes the list of ions from one step to the next, thus an ion that a step does not hold
     takes zero in that row.
     """
     ioncolumns = list(dict.fromkeys(col for row in rows for col in row if col.startswith("frac_ionization_")))
@@ -84,9 +84,9 @@ def get_ion_column_name(atomic_number: int, ion_stage: int) -> str:
 
 
 def get_sweep_column(dfstats: pl.DataFrame) -> str:
-    """Return the column of the parameter that a -vary sweep changes, or x_e if no parameter changes.
+    """Return the column of the parameter that a --vary sweep changes, or x_e if no parameter changes.
 
-    -vary emax,npts changes two columns, and emax then gives the horizontal axis.
+    --vary emax,npts changes two columns, and emax then gives the horizontal axis.
     """
     return next((col for col in ("x_e", "emax", "emin", "npts") if dfstats[col].n_unique() > 1), "x_e")
 
@@ -160,7 +160,7 @@ def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -
 
 
 def x_e_of_sweep_step(x_e_start: float, atomic_number: int, step: int, stepcount: int) -> float:
-    """Return the electron fraction of one step of a -vary x_e sweep.
+    """Return the electron fraction of one step of a --vary x_e sweep.
 
     The sweep runs in equal steps of log10(x_e) from x_e_start to four decades above it. An x_e above
     atomic_number - 1 gives only the bare nucleus, thus atomic_number - 1 is the upper limit of the sweep.
@@ -189,7 +189,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_cellvelocity(parser)
 
-    parser.add_argument("-npts", type=int, default=4096, help="Number of points in the energy grid")
+    parser.add_argument("-npts", type=int, default=4096, help="The number of points in the energy grid")
 
     parser.add_argument("-emin", type=float, default=0.1, help="Minimum energy in eV of Spencer-Fano solution")
 
@@ -329,7 +329,7 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
 
 
 def get_element_conditions(args: argparse.Namespace, step: int, stepcount: int) -> PlasmaConditions:
-    """Return the conditions of one element with the electron fraction of one step of a -vary x_e sweep."""
+    """Return the conditions of one element with the electron fraction of one step of a --vary x_e sweep."""
     compelement_atomicnumber = get_atomic_number(args.composition)
     nntot = 1.0
     x_e = x_e_of_sweep_step(args.x_e, compelement_atomicnumber, step, stepcount) if args.vary == "x_e" else args.x_e
@@ -341,7 +341,7 @@ def get_element_conditions(args: argparse.Namespace, step: int, stepcount: int) 
 
 
 def get_sweep_parameters(args: argparse.Namespace, step: int) -> tuple[float, float, int]:
-    """Return the emin, the emax, and the npts of the energy grid at one step of a -vary sweep."""
+    """Return the emin, the emax, and the npts of the energy grid at one step of a --vary sweep."""
     emin = args.emin
     emax = args.emax
     npts = args.npts
@@ -381,7 +381,7 @@ def solve_step(
 ) -> dict[str, float] | None:
     """Solve the Spencer-Fano equation at one step of a sweep, and plot the solution.
 
-    Return the statistics of the step for -ostat, or None without -ostat.
+    Return the statistics of the step for --ostat, or None without --ostat.
     """
     pynt = import_optional("pynonthermal")
     emin, emax, npts = get_sweep_parameters(args, step)
@@ -471,10 +471,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.vary == "x_e":
         if args.composition == "artis":
-            exit_with_error("-vary x_e needs an element", "Give an element with -composition, e.g. -composition Fe")
+            exit_with_error("--vary x_e needs an element", "Give an element with --composition, e.g. --composition Fe")
         x_e_limit = get_atomic_number(args.composition) - 1
         if args.x_e <= 0.0 or args.x_e >= x_e_limit:
-            exit_with_error(f"-x_e {args.x_e} gives no sweep", f"Give -x_e above 0 and below {x_e_limit}")
+            exit_with_error(f"--x-e {args.x_e} gives no sweep", f"Give --x-e above 0 and below {x_e_limit}")
 
     # the import stands in front of the work, thus a missing module stops the command at once
     import_optional("pynonthermal")

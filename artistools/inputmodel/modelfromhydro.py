@@ -381,13 +381,16 @@ def makemodelfromgriddata(
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument(
-        "-gridfolderpath", "-i", default=".", help="Path to folder containing grid.dat and gridcontributions.txt"
+        "-gridfolderpath",
+        "-i",
+        default=".",
+        help="The path to the folder containing grid.dat and gridcontributions.txt",
     )
     parser.add_argument(
         "-trajectoryroot",
         "-trajroot",
         default=None,
-        help="Path to nuclear network trajectory folder, if abundances are required",
+        help="The path to the nuclear network trajectory folder, if abundances are required",
     )
     parser.add_argument(
         "-dimensions",
@@ -395,7 +398,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=3,
         type=int,
         help=(
-            "Number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D,"
+            "The number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D,"
             " 2 for 2D cylindrical, 3 for 3D Cartesian"
         ),
     )

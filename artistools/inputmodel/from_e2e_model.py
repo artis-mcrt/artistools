@@ -275,7 +275,7 @@ def get_grid(
         # an odd count in x or y puts a cell centre on the symmetry axis, where the mapping divides
         # by the cylindrical radius
         if numb_cells_ARTIS_x % 2 or numb_cells_ARTIS_y % 2:
-            msg = f"-ngridx and -ngridy must be even, got {numb_cells_ARTIS_x} and {numb_cells_ARTIS_y}"
+            msg = f"--ngridx and --ngridy must be even, got {numb_cells_ARTIS_x} and {numb_cells_ARTIS_y}"
             raise ValueError(msg)
 
         vminr, vmaxr = -vmax_on_c, vmax_on_c
@@ -1173,18 +1173,16 @@ def float_or_str(x: str) -> float | str:
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    addarg_output(parser, kind="folder", default=None, helptext="Folder for the output ARTIS model files")
+    addarg_output(parser, kind="folder", default=None, helptext="The folder for the output ARTIS model files")
     addarg_force(parser)
 
-    parser.add_argument("-npz", required=True, type=Path, help="Path to the model npz file")
+    parser.add_argument("-npz", required=True, type=Path, help="The path to the model npz file")
 
     parser.add_argument(
         "-iso",
         default=None,
         type=Path,
-        help=(
-            "Path to the nuclide information npy file. If not provided, will be assumed to be [npz_path]/iso_table.npy"
-        ),
+        help=("The path to the nuclide information npy file. The default is [npz_path]/iso_table.npy"),
     )
 
     parser.add_argument(
@@ -1195,27 +1193,27 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-ngridrcyl", type=int, default=25, help="Number of cells in radial direction the ARTIS model shall have"
+        "-ngridrcyl", type=int, default=25, help="The number of cells in radial direction the ARTIS model shall have"
     )
 
     parser.add_argument(
-        "-ngridz", type=int, default=50, help="Number of cells in z direction the ARTIS model shall have"
+        "-ngridz", type=int, default=50, help="The number of cells in z direction the ARTIS model shall have"
     )
 
-    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires -ngridx and -ngridy")
+    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires --ngridx and --ngridy")
 
     parser.add_argument(
         "-ngridx",
         type=int,
         default=50,
-        help="Number of cells in x direction the ARTIS model shall have (from -vmax to +vmax)",
+        help="The number of cells in x direction the ARTIS model shall have (from --vmax to +vmax)",
     )
 
     parser.add_argument(
         "-ngridy",
         type=int,
         default=50,
-        help="Number of cells in y direction the ARTIS model shall have (from -vmax to +vmax)",
+        help="The number of cells in y direction the ARTIS model shall have (from --vmax to +vmax)",
     )
 
     parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
@@ -1281,7 +1279,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-replacedyn", default=None, type=str, help="Path to dynamical ejecta model which shall be used for replacing"
+        "-replacedyn",
+        default=None,
+        type=str,
+        help="The path to the dynamical ejecta model which shall be used for replacing",
     )
 
     parser.add_argument(
@@ -1294,14 +1295,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " (A is the maximum relative change)"
         ),
     )
-    # deprecated double-dash spelling kept as a hidden alias
-    parser.add_argument("--perturb3Dmodel", dest="perturb3Dmodel", type=float_or_str, nargs="+", help=argparse.SUPPRESS)
 
 
 def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     """Return the names of the files that the command writes to the -o folder.
 
-    With -replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
+    With --replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
     """
     writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
     return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES

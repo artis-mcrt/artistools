@@ -53,8 +53,8 @@ the model path in the script. Call `help()` on a function to get all its argumen
 Run `artistools describe <modelpath>` first. It gives these items:
 
 - the cells, the time steps, and the output files, with the command that reads each file;
-- the plot selections, e.g. the direction bins for `-plotviewingangle` and the virtual packet spectra for
-  `-plotvspecpol`;
+- the plot selections, e.g. the direction bins for `--plotviewingangle` and the virtual packet spectra for
+  `--plotvspecpol`;
 - the ions and the ARTIS version;
 - the physics options of the run, e.g. NLTE, non-thermal ionisation, and thermalisation, and an `effect:` line that
   says what each option means for the outputs.
@@ -66,25 +66,25 @@ The physics options change the meaning of many outputs. More commands help befor
   noise. Read its warnings before you trust a number of the model;
 - `artistools catalog <folder>` gives one row for each model below a folder, e.g. the physics options and the peak;
 - `artistools report <modelpath>` makes an HTML page with the check, the summary, the logs, and standard figures.
-- `artistools values Te nne -t 300 -modelgridindex 12 <modelpath>` prints the raw estimators of cells and timesteps,
+- `artistools values Te nne -t 300 --modelgridindex 12 <modelpath>` prints the raw estimators of cells and timesteps,
   with no average and the unit in each column name. Use it for the value of one cell, in place of Python.
-- `-dirbin 90` selects the cells whose centre is in the cos θ range of a direction bin, e.g. near the pole. `values`,
+- `--dirbin 90` selects the cells whose centre is in the cos θ range of a direction bin, e.g. near the pole. `values`,
   `plotestimators`, `plotopacity`, and `plotlinecontributions` take it. Use it to compare two directions, e.g.
-  `artistools plotestimators init_X_lanthanides Ye -t 10 -dirbin 50 <modelpath> --print_data --quiet`. The summary
+  `artistools plotestimators init_X_lanthanides Ye -t 10 --dirbin 50 <modelpath> --print-data --quiet`. The summary
   table gives the mean with the mass of each cell as the weight for a mass fraction and for Ye.
 
-Each plot command prints the plotted data as a table with `--print_data --quiet`, e.g. `artistools plotestimators Te
--t 300 <modelpath> --print_data --quiet`. Use it to check a result, or for a quick answer with no Python. A value or a
-column name that contains a space has quotes. `--write_data` writes the table to a file, and the file starts with "# "
+Each plot command prints the plotted data as a table with `--print-data --quiet`, e.g. `artistools plotestimators Te
+-t 300 <modelpath> --print-data --quiet`. Use it to check a result, or for a quick answer with no Python. A value or a
+column name that contains a space has quotes. `--write-data` writes the table to a file, and the file starts with "# "
 lines that give the command. Read such a file with `pl.read_csv(path, separator=" ", comment_prefix="#",
 null_values="nan")`.
 
 `--explain` prints the time steps, the direction bins, and the output file that the arguments select. Then it stops
-before it reads the data. A time or a wavelength can have a unit, e.g. `-t 12h` or `-lambdamin 600nm`. A value with no unit
+before it reads the data. A time or a wavelength can have a unit, e.g. `-t 12h` or `--lambdamin 600nm`. A value with no unit
 is in days or in Angstroms.
 
 Without `--quiet`, plotestimators, plotlightcurves, and plotspectra also log one summary line for each drawn series.
-Read these lines before you calculate a value yourself. `--print_data` and `--write_data` also give the same values
+Read these lines before you calculate a value yourself. `--print-data` and `--write-data` also give the same values
 as a table named _summary, with one row for each series and the unit in each column name. Read that table in place of the
 line when you need a number. Examples of the lines are:
 
@@ -164,7 +164,7 @@ main columns are:
   name, e.g. `heating_heating_dep/total_dep`, is a ratio and not a rate.
 
 To get a table of each column of a model with its units and a description, run
-`artistools plotestimators --listvariables --print_data --quiet <modelpath>`.
+`artistools plotestimators --listvariables --print-data --quiet <modelpath>`.
 `join_modeldata=True` adds these columns:
 
 - `tmid_days` (the mid time of the time step);
@@ -303,7 +303,7 @@ topion = at.get_ionstring(at.get_atomic_number(element), topstage)
 print(f"top ion: {topion}. It holds most of {element} in {attopcount} cells.")
 ```
 
-`artistools plotestimators -plot "Fe IV" "Fe V" ionpoptype=elpop -plot averageionisation Fe -t 10 <modelpath>` plots
+`artistools plotestimators --plot "Fe IV" "Fe V" ionpoptype=elpop --plot averageionisation Fe -t 10 <modelpath>` plots
 the ion fractions and the mean charge against the velocity. Use it to check a result.
 
 ### Ionisation processes
@@ -550,7 +550,7 @@ Possible errors:
 
 - `get_spectra` takes time steps and not days. Change a range of days to time steps with
   `at.misc.get_time_range(modelpath, timemin=..., timemax=...)`. It keeps the time steps whose mid time is in the range,
-  as `artistools plotspectra -timedays` does. For a range after the end of the model, it gives the time step -1.
+  as `artistools plotspectra --timedays` does. For a range after the end of the model, it gives the time step -1.
 - A maximum in a range of wavelengths can be at an edge of that range. Compare it with the maximum of the full spectrum.
 - Multiply the flux by `4 * math.pi * megaparsec_to_cm**2` to get a luminosity density. Integrate it over the
   wavelength or the frequency to get a luminosity. `megaparsec_to_cm` is in `artistools.constants`.

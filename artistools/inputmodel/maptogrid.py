@@ -405,9 +405,9 @@ def maptogrid(
 
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
-    parser.add_argument("-inputpath", "-i", default=".", help="Path to ejectasnapshot")
+    parser.add_argument("-inputpath", "-i", default=".", help="The path to the ejectasnapshot")
     parser.add_argument(
-        "-ncoordgrid", type=int, default=50, help="Number of grid positions per axis (numcells = ncoordgrid^3)"
+        "-ncoordgrid", type=int, default=50, help="The number of grid positions per axis (numcells = ncoordgrid^3)"
     )
     parser.add_argument(
         "-dtextra_seconds",

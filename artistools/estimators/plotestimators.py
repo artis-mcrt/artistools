@@ -234,7 +234,7 @@ def draw_points(
 ) -> None:
     """Draw every point of a series in a lighter shade of the colour of the series.
 
-    The ticks of the axes draw above the points. --markers and -xbins 0 both draw with this function, thus a plot
+    The ticks of the axes draw above the points. --markers and --xbins 0 both draw with this function, thus a plot
     with and without bins agrees.
     """
     pointkwargs: dict[str, t.Any] = plotkwargs | {
@@ -283,7 +283,7 @@ class SeriesPlan(t.NamedTuple):
 class SeriesData(t.NamedTuple):
     """The collected data of one series of a subplot, which the plot draws.
 
-    dflinepoints comes from get_line_points, and it is None for -xbins 0. dfpoints holds the xvalue and the yvalue
+    dflinepoints comes from get_line_points, and it is None for --xbins 0. dfpoints holds the xvalue and the yvalue
     of every point for --markers, and it is None without them.
     """
 
@@ -447,7 +447,7 @@ def draw_series(
     """Draw the average line of a series, with markers at the points or a min-max area.
 
     dflinepoints comes from get_line_points. dfpoints holds the xvalue and the yvalue of every point,
-    and --markers draws them. -xbins 0 draws those points alone, with no average line. xbinwidth is the width of
+    and --markers draws them. --xbins 0 draws those points alone, with no average line. xbinwidth is the width of
     each x bin, or None for a plot with no bins. With --histogram, dflinepoints holds the edges of the bins, and the
     line goes across the full width of each bin.
     """
@@ -775,7 +775,7 @@ def plot_average_excitation(
         if isinstance(iontuple, int):
             exit_with_error(
                 f"averageexcitation needs an ion, and '{paramvalue}' names an element",
-                'Give an ion, e.g. -plot averageexcitation "Fe II"',
+                'Give an ion, e.g. --plot averageexcitation "Fe II"',
             )
         atomic_number, ion_stage = iontuple
 
@@ -978,8 +978,8 @@ def is_ionseriestype(name: t.Any, estimatorcolumns: Collection[str], params: Seq
 
     A type of series can also be a variable of its own. cooling_coll holds the cooling rate of the
     whole cell, and cooling_coll_Fe_II holds the part of one ion. A column of one of the named ions
-    then proves the reading. A subplot of the total alone takes its own -plot, e.g.
-    -plot cooling_coll -plot cooling_coll "Fe II".
+    then proves the reading. A subplot of the total alone takes its own --plot, e.g.
+    --plot cooling_coll --plot cooling_coll "Fe II".
     """
     if not isinstance(name, str) or not params:
         return False
@@ -1041,7 +1041,7 @@ def get_series_style_problem(key: str, value: str) -> str | None:
     """Return the reason that a value of a series style is not valid, or None for a valid value.
 
     The colour, the dash pattern, and the width take the argparse types of the options of the other commands, e.g.
-    color_arg of -color. An opacity of 0 is valid, because matplotlib then draws a clear line.
+    color_arg of --color. An opacity of 0 is valid, because matplotlib then draws a clear line.
     """
     if key == "linestyle":
         return (
@@ -1177,7 +1177,7 @@ def get_default_colours(series: Sequence[SeriesData]) -> list[t.Any]:
 def get_styled_series(
     series: "SeriesData", style: Mapping[str, str], linewidthscale: float
 ) -> tuple[str | None, dict[str, t.Any]]:
-    """Return the label and the plot keywords of a series with the style of its plot item and -linewidthscale.
+    """Return the label and the plot keywords of a series with the style of its plot item and --linewidthscale.
 
     A line style of the item replaces the dash pattern of the plot, e.g. of an ion. A dash pattern of the item replaces
     the line style.
@@ -1377,7 +1377,7 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         if len(plotvars) == 1:
             exit_with_error(
                 f"'{plotvars[0]}' names a type of series and takes at least one name after it",
-                f'e.g. -plot {plotvars[0]} Fe. Quote an ion that holds a space, e.g. -plot {plotvars[0]} "Fe II"',
+                f'e.g. --plot {plotvars[0]} Fe. Quote an ion that holds a space, e.g. --plot {plotvars[0]} "Fe II"',
             )
         if all(isinstance(plotvar, str) for plotvar in plotvars[1:]):
             plotvars = [[plotvars[0], plotvars[1:]]]
@@ -1715,7 +1715,7 @@ def get_xlist(
 ) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame, tuple[float, float]]:
     """Return the x values, model grid indices, and timesteps to plot, the filtered estimators, and the x limits.
 
-    The x limits are -xmin and -xmax, or else the range of the x values. A histogram with the extent of each cell or
+    The x limits are --xmin and --xmax, or else the range of the x values. A histogram with the extent of each cell or
     timestep takes the outer edges of the extents in place of the range.
     """
     if timestepslist is not None:
@@ -1806,7 +1806,7 @@ def get_xlist(
         args.markers = True
 
     if xstats.get("multiple_points_per_xvalue"):
-        print("There are multiple plot points per x value. Using automatic bins (use -xbins N to change this)")
+        print("There are multiple plot points per x value. Using automatic bins (use --xbins N to change this)")
         args.xbins = -1
 
     if args.xbins is not None and args.xbins < 0:
@@ -1860,7 +1860,7 @@ def get_xlist(
         if cellextent is None:
             exit_with_error(
                 f"--histogram needs the extent of each point on the horizontal axis, and -x {xvariable} gives none",
-                "Give -xbins N for a range of more than one x value. The histogram then shows the extent of each bin",
+                "Give --xbins N for a range of more than one x value. The histogram then shows the extent of each bin",
             )
         xlower, xupper, extentsource = cellextent
         print_detail(f"--histogram draws {extentsource}, thus each step gives the value across the full extent")
@@ -1922,7 +1922,7 @@ class NoEstimatorRowsError(ValueError):
 def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Namespace) -> str:
     """Return the message of a plot whose selection of timesteps, cells, and x range gives no estimator row.
 
-    The parser expands a range of cells, and the code before the plot converts -xmin and -xmax. Thus the message
+    The parser expands a range of cells, and the code before the plot converts --xmin and --xmax. Thus the message
     gives the size of the selection and not those values. A status line shows one line of the message.
     """
     parts: list[str] = []
@@ -1936,7 +1936,7 @@ def get_no_rows_message(timestepslist: Collection[int] | None, args: argparse.Na
             else f"{len(cells)} cells from {min(cells)} to {max(cells)}"
         )
     if args.xmin is not None or args.xmax is not None:
-        parts.append("the x range of -xmin and -xmax")
+        parts.append("the x range of --xmin and --xmax")
     return f"The estimators hold no row for {', '.join(parts)}" if parts else "The estimators hold no row"
 
 
@@ -2140,7 +2140,7 @@ def get_snapshot_timestrings(
 def get_subplot_grid(nsubplots: int, subplotsperrow: int) -> tuple[int, int]:
     """Return the number of rows and of columns of a figure of subplots, which fills each row from the left."""
     if subplotsperrow < 1:
-        exit_with_error(f"-subplotsperrow {subplotsperrow} gives no column", "Give a number of 1 or more")
+        exit_with_error(f"--subplotsperrow {subplotsperrow} gives no column", "Give a number of 1 or more")
     ncols = max(min(subplotsperrow, nsubplots), 1)
     return math.ceil(nsubplots / ncols), ncols
 
@@ -2370,7 +2370,7 @@ def make_figure(
 
     A frame of a gif or of a merged pdf is one part of the product and not the product, thus --show
     and --open leave it alone. The caller opens the file that holds every frame. The table is None with no
-    --print_data and no --write_data, because a table of many frames, cells, and markers costs time and memory.
+    --print-data and no --write-data, because a table of many frames, cells, and markers costs time and memory.
     """
     fig = draw_figure_data(figuredata, args)
     dftable = get_figure_table(figuredata, args) if args.print_data or args.write_data else None
@@ -2400,7 +2400,7 @@ def make_figure(
 
 
 def get_figure_table(figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace) -> pl.DataFrame:
-    """Return the table of the plotted data, for --print_data and --write_data."""
+    """Return the table of the plotted data, for --print-data and --write-data."""
     if isinstance(figuredata, LineFigureData):
         return get_line_figure_table(figuredata, args)
     return get_image_figure_table(figuredata, args)
@@ -2409,8 +2409,8 @@ def get_figure_table(figuredata: "LineFigureData | ImageFigureData", args: argpa
 def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) -> pl.DataFrame:
     """Return one table of the plotted points, with one row for each point of each series of each subplot.
 
-    The points are the points of each series in the x range of -xmin and -xmax. A series with x bins gives the
-    weighted mean of each bin and the range of the cells in the bin. A series with -xbins 0 gives each point. The
+    The points are the points of each series in the x range of --xmin and --xmax. A series with x bins gives the
+    weighted mean of each bin and the range of the cells in the bin. A series with --xbins 0 gives each point. The
     fields of the frame, e.g. the timestep, are columns, thus each row names its time. The column "points" is "line"
     for a point of the line and "markers" for a point of --markers, because a series with --markers draws both. The
     drawn line repeats its first and its last value at its ends, and the column bin_centre is false for these points.
@@ -2692,7 +2692,7 @@ def get_image_values(
     """Return the grid of values of each panel, and the two plot axes.
 
     With a sliceaxis, a pixel takes the cells of the estimators with its indices on the two other axes. The estimators
-    of -slice hold the cells of one plane of a 3D model, which is normal to that axis. The estimators of -projection
+    of --slice hold the cells of one plane of a 3D model, which is normal to that axis. The estimators of --projection
     hold each cell, thus a pixel is the mean of one line of cells.
 
     With no sliceaxis, the grid holds the average around the z axis. A pixel then takes the cells of one ring of
@@ -2788,7 +2788,7 @@ def get_image_figure_data(
 ) -> ImageFigureData:
     """Return the data of a colour image of a snapshot, with one grid for each panel.
 
-    The image shows a plane of a 3D model for -slice, and the model at each cylindrical radius and each z without it.
+    The image shows a plane of a 3D model for --slice, and the model at each cylindrical radius and each z without it.
     """
     grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
     isplane = plotaxis1 != "rcyl"
@@ -2832,7 +2832,7 @@ def get_image_edges(
 
 
 def get_image_xlimits_on_c(args: argparse.Namespace) -> tuple[float | None, float | None]:
-    """Return -xmin and -xmax in units of c, which the horizontal axis of an image holds.
+    """Return --xmin and --xmax in units of c, which the horizontal axis of an image holds.
 
     -x velocity takes km/s, and every other x variable takes v/c already.
     """
@@ -2847,7 +2847,7 @@ def get_image_figure_table(figuredata: ImageFigureData, args: argparse.Namespace
     """Return one table of the colour image, with one row for each cell of each panel that the image shows.
 
     The columns give the fields of the frame, the panel, its label, the velocity of the centre of the cell on each
-    axis of the image in units of c, and the value. -xmin and -xmax cut the image, thus a cell outside them is not in
+    axis of the image in units of c, and the value. --xmin and --xmax cut the image, thus a cell outside them is not in
     the table.
     """
     plotaxis1, plotaxis2 = figuredata.plotaxes
@@ -2938,7 +2938,8 @@ def get_image_figsize(nrows: int, ncols: int, *, isplane: bool, args: argparse.N
     """Return the size in inches of a figure of colour images, from the shape of an image and the space of its labels.
 
     An image has an equal aspect, and the image at each cylindrical radius has half the width of a plane. The labels
-    have a font size in points, thus their space stays the same at each -figscale. -figwidthscale scales all the width.
+    have a font size in points, thus their space stays the same at each --figscale. --figwidthscale scales all the
+    width.
     """
     imageheight = IMAGE_HEIGHT_INCHES * args.figscale * SUBPLOT_FRAMESCALE
     imagewidth = imageheight if isplane else imageheight / 2.0
@@ -2949,7 +2950,7 @@ def get_image_figsize(nrows: int, ncols: int, *, isplane: bool, args: argparse.N
 
 
 def get_slice_filetag(args: argparse.Namespace) -> str:
-    """Return the plane or the line of -slice as text for a file name, e.g. "z=-0.2c" or "z=0,y=0"."""
+    """Return the plane or the line of --slice as text for a file name, e.g. "z=-0.2c" or "z=0,y=0"."""
     return str(args.slicelabel).replace(" ", "").replace("km/s", "kmps")
 
 
@@ -3043,7 +3044,7 @@ def get_variables_table(columns: Sequence[str]) -> pl.DataFrame:
 def print_listing(args: argparse.Namespace, estimatorcolumns: Sequence[str]) -> None:
     """Print the estimator variables of the model, or the variables that hold a search term.
 
-    A search shows fewer variables than the full list. Thus the heading names the search terms. With --print_data, the
+    A search shows fewer variables than the full list. Thus the heading names the search terms. With --print-data, the
     listing is a table with one row for each column, thus a script reads the units of each column.
     """
     searchterms = [term for term in args.plotitems if term]
@@ -3077,7 +3078,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         helptext=(
             "The estimator variables of one subplot, e.g. `artistools plotestimators Te TR`. The ARTIS "
             "folder comes after them, e.g. `artistools plotestimators Te mymodel`. The working folder "
-            "is the default. Each -plot adds a different subplot. With --listvariables these names "
+            "is the default. Each --plot adds a different subplot. With --listvariables these names "
             "search the listing"
         ),
     )
@@ -3085,7 +3086,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     itemsarg.completer = complete_plotitem  # ty:ignore[unresolved-attribute]  # pyrefly: ignore[missing-attribute]
 
     # the default is None and not Path(), thus resolve_positional_modelpath sees an explicit value
-    addarg_modelpath(parser, helptext="Path to ARTIS folder (or virtual path e.g. codecomparison/ddc10/cmfgen)")
+    addarg_modelpath(
+        parser, helptext="The path of the model folder (or a virtual path, e.g. codecomparison/ddc10/cmfgen)"
+    )
 
     addarg_modelgridindex(parser, helptext="Model grid cell for the time evolution plot")
 
@@ -3120,7 +3123,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=None,
         help=(
-            "Number of x bins between xmax and xmin"
+            "The number of x bins between xmax and xmin"
             " (-1 for an automatic bin size, 0 for the points alone with no average line)"
         ),
     )
@@ -3180,21 +3183,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=str,
         action="append",
         help=(
-            "List of plots to generate, one -plot for each subplot. The variables of one subplot need no "
-            "-plot, e.g. `artistools plotestimators Te TR`. Give estimator variables, ions, a type "
+            "A list of plots to generate, one --plot for each subplot. The variables of one subplot need no "
+            "--plot, e.g. `artistools plotestimators Te TR`. Give estimator variables, ions, a type "
             "of series with the names that it covers, or a directive of the form key=value. Examples: "
-            "-plot Te TR -plot nne -plot SrI 'Sr II'. A type of series comes first and groups the names "
-            f"after it, e.g. -plot averageionisation Fe Ni. The types are {', '.join(SERIESTYPES)}, and "
-            "an estimator that names an ion, e.g. -plot gamma_NT 'Fe II' or -plot cooling_coll 'Fe II'. "
+            "--plot Te TR --plot nne --plot SrI 'Sr II'. A type of series comes first and groups the names "
+            f"after it, e.g. --plot averageionisation Fe Ni. The types are {', '.join(SERIESTYPES)}, and "
+            "an estimator that names an ion, e.g. --plot gamma_NT 'Fe II' or --plot cooling_coll 'Fe II'. "
             "A name that also gives a total of the cell, e.g. cooling_coll, gives the ions when the "
-            "model holds a column for one of them. Give the total its own subplot, e.g. -plot "
-            "cooling_coll -plot cooling_coll 'Fe II'. Quote an ion that holds "
+            "model holds a column for one of them. Give the total its own subplot, e.g. --plot "
+            "cooling_coll --plot cooling_coll 'Fe II'. Quote an ion that holds "
             f"a space. The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
-            "-plot Te TR yscale=lin -plot rho yscale=log ymin=1e-17 -plot 'Fe II' 'Fe III' ionpoptype=elpop. "
+            "--plot Te TR yscale=lin --plot rho yscale=log ymin=1e-17 --plot 'Fe II' 'Fe III' ionpoptype=elpop. "
             "The directive ionpoptype= sets the normalisation of an ion population series to one of "
             f"{', '.join(POPTYPE_YLABELS)}. Give the style of a series after {SERIES_STYLE_MARK} with the keys "
             f"{', '.join(SERIES_STYLE_KEYS)}, e.g. 'Fe II{SERIES_STYLE_MARK}color=C3,linestyle=dashed'. The label "
-            "comes last, and it can hold a comma. The subplots share one horizontal axis, thus -xmin and -xmax set "
+            "comes last, and it can hold a comma. The subplots share one horizontal axis, thus --xmin and --xmax set "
             "that axis for the whole figure"
         ),
     )
@@ -3254,10 +3257,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-readonlymgi",
         default=False,
         choices=["alongaxis", "cone"],
-        help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with -axis",
+        help="Option to read only selected mgi and choice of which mgi to select. Choose which axis with --axis",
     )
 
-    addarg_sliceaxis(parser, default="+z", helptext="Choose an axis for use with -readonlymgi")
+    addarg_sliceaxis(parser, default="+z", helptext="Choose an axis for use with --readonlymgi")
 
     parser.add_argument(
         "-slice",
@@ -3265,10 +3268,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         metavar="PLANE",
         help=(
             "Plot each variable as a colour image of a plane of a 3D model. Give the two axes of a plane through"
-            " the origin, e.g. -slice xy. As an alternative, give the normal axis and its velocity in km/s or as"
-            " a fraction of c, e.g. -slice z=-0.2c. The plot shows the layer of cells that holds the plane,"
+            " the origin, e.g. --slice xy. As an alternative, give the normal axis and its velocity in km/s or as"
+            " a fraction of c, e.g. --slice z=-0.2c. The plot shows the layer of cells that holds the plane,"
             " which is the layer above it for a plane between two layers. Two axes give a line of cells, e.g."
-            " -slice z=0,y=0 along the x axis, and the plot then shows the variables against that velocity"
+            " --slice z=0,y=0 along the x axis, and the plot then shows the variables against that velocity"
         ),
     )
 
@@ -3281,8 +3284,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=(
             "Show the model in this number of dimensions for the plot of a snapshot. 1 is the default, which"
             " plots the cells against -x. 2 shows each variable as a colour image at each cylindrical radius and"
-            " each z. A 3D model gives the average around the z axis, as -dimensionreduce 2 of makeartismodel"
-            " does. A 1D model gives the value of its shell at each point. With -slice, the image shows a plane"
+            " each z. A 3D model gives the average around the z axis, as --dimensionreduce 2 of makeartismodel"
+            " does. A 1D model gives the value of its shell at each point. With --slice, the image shows a plane"
             " of a 3D model"
         ),
     )
@@ -3291,7 +3294,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-coneangle",
         type=float,
         default=30.0,
-        help="The full angle of the cone in degrees for -readonlymgi cone. The half angle is coneangle/2",
+        help="The full angle of the cone in degrees for --readonlymgi cone. The half angle is coneangle/2",
     )
 
     parser.add_argument(
@@ -3299,7 +3302,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         choices=["x", "y", "z"],
         help=(
-            "Show each variable as a colour image of the mean along this axis of a 3D model, e.g. -projection z gives"
+            "Show each variable as a colour image of the mean along this axis of a 3D model, e.g. --projection z gives"
             " an image in x and y. Each pixel is the mean over one line of cells along the axis, with the volume"
             " times the timestep duration as the weight"
         ),
@@ -3387,14 +3390,14 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
 
 
 def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
-    """Return the axis, its velocity [cm/s], and the label of each condition of -slice.
+    """Return the axis, its velocity [cm/s], and the label of each condition of --slice.
 
     "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
     """
     text = slicetext.strip().lower()
     helptext = (
-        "Give a plane through the origin, e.g. -slice xy. As an alternative, give an axis and its velocity,"
-        " e.g. -slice z=-0.2c. Two axes give a line, e.g. -slice z=0,y=0"
+        "Give a plane through the origin, e.g. --slice xy. As an alternative, give an axis and its velocity,"
+        " e.g. --slice z=-0.2c. Two axes give a line, e.g. --slice z=0,y=0"
     )
     if len(text) == 2 and text[0] != text[1] and set(text) <= set("xyz"):
         normalaxis = next(axisname for axisname in "xyz" if axisname not in text)
@@ -3431,27 +3434,27 @@ def get_layer_index(velocity_cmps: float, vmax_cmps: float, ncells: int) -> int:
 
 
 def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, float, str]]:
-    """Apply -slice and -dimensionreduce to the arguments, and return the conditions of -slice.
+    """Apply --slice and --dimensionreduce to the arguments, and return the conditions of --slice.
 
-    A plane of -slice gives a colour image, and a line of -slice gives a plot against the velocity on
+    A plane of --slice gives a colour image, and a line of --slice gives a plot against the velocity on
     its axis. An argument that disagrees with the selection stops the command.
     """
     conditions: list[tuple[str, float, str]] = parse_slice_argument(args.slice) if args.slice is not None else []
     projection = args.projection
     if projection is not None:
         if conditions:
-            exit_with_error("-projection and -slice select different cells", "Remove -projection or -slice")
+            exit_with_error("--projection and --slice select different cells", "Remove --projection or --slice")
         if args.dimensionreduce == 1:
-            exit_with_error("-projection gives a colour image, thus -dimensionreduce 1 does not apply", "Remove one")
+            exit_with_error("--projection gives a colour image, thus --dimensionreduce 1 does not apply", "Remove one")
         args.dimensionreduce = 2
     if conditions:
         # one condition is a plane, and two conditions are a line along the axis that stays
         slicedimensions = 2 if len(conditions) == 1 else 1
         if args.dimensionreduce not in {None, slicedimensions}:
             exit_with_error(
-                f"-slice {args.slice} gives a plot with -dimensionreduce {slicedimensions}, and not"
+                f"--slice {args.slice} gives a plot with --dimensionreduce {slicedimensions}, and not"
                 f" {args.dimensionreduce}",
-                "Remove -dimensionreduce",
+                "Remove --dimensionreduce",
             )
         args.dimensionreduce = slicedimensions
     elif args.dimensionreduce is None:
@@ -3464,10 +3467,10 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
     if not isimage and not conditions:
         return conditions
 
-    selection = "-projection" if projection else "-slice" if conditions else "-dimensionreduce 2"
+    selection = "-projection" if projection else "-slice" if conditions else "--dimensionreduce 2"
     if args.readonlymgi or args.modelgridindex is not None:
         exit_with_error(
-            f"{selection} selects the cells of the plot, thus -readonlymgi and -cell do not apply",
+            f"{selection} selects the cells of the plot, thus --readonlymgi and --cell do not apply",
             f"Remove {selection}, or remove the other argument",
         )
 
@@ -3502,19 +3505,22 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
 def select_cells_of_slice(
     args: argparse.Namespace, modelpath: Path, conditions: Sequence[tuple[str, float, str]]
 ) -> None:
-    """Select the cells of a 3D model that hold the plane or the line of -slice."""
+    """Select the cells of a 3D model that hold the plane or the line of --slice."""
     args.modelgridindex = get_cells_of_slice(modelpath, list(conditions))
     print(f"Getting the {len(args.modelgridindex)} cells that hold {args.slicelabel}")
 
 
 @on_model_host
 def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, str]]) -> list[int]:
-    """Return the cells of a 3D model that hold the plane or the line of -slice. The host of a remote model reads it."""
+    """Return the cells of a 3D model that hold the plane or the line of --slice.
+
+    The host of a remote model reads it.
+    """
     lzmodel, modelmeta = get_modeldata(modelpath)
     if modelmeta["dimensions"] != 3:
         exit_with_error(
-            f"-slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
-            "Remove -slice to plot the variables against the velocity",
+            f"--slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
+            "Remove --slice to plot the variables against the velocity",
         )
     vmax_cmps = float(modelmeta["vmax_cmps"])
     for axisname, velocity_cmps, label in conditions:
@@ -3531,7 +3537,7 @@ def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, s
 
 
 def select_cells(args: argparse.Namespace, modelpath: Path) -> None:
-    """Select the cells of -slice or of -readonlymgi. The cells of the plot then come back with the data."""
+    """Select the cells of --slice or of --readonlymgi. The cells of the plot then come back with the data."""
     if args.slice is not None:
         select_cells_of_slice(args, modelpath, parse_slice_argument(args.slice))
     elif args.readonlymgi:
@@ -3557,9 +3563,9 @@ def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]
     # the selection reads the positions of the cells on three axes, which only a 3D model gives
     if modelmeta["dimensions"] != 3:
         exit_with_error(
-            f"-readonlymgi {args.readonlymgi} needs a 3D model, and this model has {modelmeta['dimensions']}"
+            f"--readonlymgi {args.readonlymgi} needs a 3D model, and this model has {modelmeta['dimensions']}"
             " dimension(s)",
-            "Remove -readonlymgi to plot every cell against the velocity",
+            "Remove --readonlymgi to plot every cell against the velocity",
         )
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
@@ -3598,9 +3604,9 @@ CELLEVOLUTIONFRAMENAME = "plotestimators_cell{cell:05d}.{format}"
 
 
 def get_default_plotlist() -> list[t.Any]:
-    """Return the plot items that a command with no -plot argument draws.
+    """Return the plot items that a command with no --plot argument draws.
 
-    The commented lines are examples that a user can copy. Each one gives a shape that -plot accepts.
+    The commented lines are examples that a user can copy. Each one gives a shape that --plot accepts.
     """
     return [
         # [["initabundances", ["Fe", "Ni_stable", "Ni_56"]]],
@@ -3651,7 +3657,7 @@ def resolve_plotlist(args: argparse.Namespace, estimatorcolumns: Collection[str]
             print(f"Skipping the default subplot {plotitems}, because {reason}")
 
         if not plotlist:
-            msg = "No default plots apply to this model. Choose what to plot with -plot (e.g. -plot Te TR)"
+            msg = "No default plots apply to this model. Choose what to plot with --plot (e.g. --plot Te TR)"
             raise ValueError(msg)
 
     return [normalise_plotitems(plotitems, estimatorcolumns) for plotitems in plotlist]
@@ -3679,8 +3685,8 @@ def prepare_snapshot(
     panels: list[ImagePanel] = []
     if args.projection is not None and modelmeta["dimensions"] != 3:
         exit_with_error(
-            f"-projection needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
-            "Give -dimensionreduce 2 for the average around the z axis",
+            f"--projection needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
+            "Give --dimensionreduce 2 for the average around the z axis",
         )
     if args.dimensionreduce == 2:
         panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
@@ -3738,7 +3744,7 @@ def resolve_positional_args(args: argparse.Namespace) -> None:
     """Move the positional arguments to the model path and to the plot list.
 
     A user names the variables directly, e.g. "artistools plotestimators Te TR -t 300". The ARTIS folder
-    comes after them. The positional variables share one subplot. The names after one -plot also share
+    comes after them. The positional variables share one subplot. The names after one --plot also share
     one subplot.
     """
     # -plot takes every name that follows it, thus the last -plot group can hold the folder of the user.
@@ -3866,7 +3872,7 @@ def get_figures_data(
     """Return the data of each figure of the arguments, and the arguments that the data code changed.
 
     The host of a remote model runs this function, thus it reads the estimators there and only the data to draw
-    comes back. The data code changes some arguments, e.g. -xbins, and the client draws with the new values. A
+    comes back. The data code changes some arguments, e.g. --xbins, and the client draws with the new values. A
     selection with no row gives NoEstimatorRowsError. batchcaches gives the current parquet caches of the model, e.g.
     for a window that draws many plots.
     """

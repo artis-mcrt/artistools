@@ -681,7 +681,7 @@ def read_hesma_lightcurve_file(hesma_modelpath: Path | str) -> pl.DataFrame:
 
 
 def read_hesma_lightcurve(args: argparse.Namespace) -> pl.DataFrame:
-    """Return the HESMA model light curve of -plot_hesma_model, from its path or from the data/hesma folder."""
+    """Return the HESMA model light curve of --plot-hesma-model, from its path or from the data/hesma folder."""
     return read_hesma_lightcurve_file(
         require_reference_data_file(args.plot_hesma_model, "data/hesma", "HESMA model light curve")
     )

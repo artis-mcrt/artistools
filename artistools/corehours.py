@@ -265,7 +265,7 @@ def get_summary_lines(
 
 def print_core_hours(args: argparse.Namespace, runs: Sequence[RunOfLog]) -> None:
     """Print the core hours of each run and the sums, as a table or as JSON."""
-    if not args.json:
+    if args.output_format != "json":
         col1width = max((len(str(logfile)) for logfile, _, _ in runs), default=0) + 1
         for logfile, iscopy, run in runs:
             print_product(args, "\n".join(format_run_lines(logfile, col1width, iscopy, run)))
@@ -291,7 +291,7 @@ def print_core_hours(args: argparse.Namespace, runs: Sequence[RunOfLog]) -> None
         run.timestep_range for run in countedruns if run is not None and run.timestep_range is not None
     )
 
-    if args.json:
+    if args.output_format == "json":
         print_product(
             args,
             json.dumps(
@@ -323,7 +323,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         multiplepaths=True,
         helptext="The model folders, or files in them. The default is the working folder",
     )
-    parser.add_argument("--json", action="store_true", help="Write the results as JSON in place of a table")
+    parser.add_argument(
+        "--output-format",
+        choices=["text", "json"],
+        default="text",
+        help="The format of the results. json gives the same values as the ARTIS script sumcorehourslogs.py",
+    )
+    # the older spelling of "--output-format json"
+    parser.add_argument("--json", dest="output_format", action="store_const", const="json", help=argparse.SUPPRESS)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

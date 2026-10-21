@@ -56,14 +56,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         type=int,
         choices=[0, 1, 2],
-        help="Number of dimensions: 0 for one-zone, 1 for spherically symmetric 1D, 2 for 2D Cylindrical",
+        help="The number of dimensions: 0 for one-zone, 1 for spherically symmetric 1D, 2 for 2D Cylindrical",
     )
 
     parser.add_argument(
         "--makemodelfromgriddata", action="store_true", help="Make ARTIS model files from SPH grid.dat file"
     )
 
-    parser.add_argument("-pathtogriddata", default=".", help="Folder that holds the SPH grid.dat file")
+    parser.add_argument("-pathtogriddata", default=".", help="The folder that holds the SPH grid.dat file")
 
     parser.add_argument(
         "--fillcentralhole", action="store_true", help="Fill hole in middle of ejecta from SPH kilonova model"
@@ -79,21 +79,21 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--makeenergyinputfiles", action="store_true", help="Write energydistribution.txt and energyrate.txt files"
     )
 
-    addarg_output(parser, kind="folder", helptext="Folder for output")
+    addarg_output(parser, kind="folder", helptext="The folder for output")
     addarg_force(parser)
 
 
 def get_griddata_outputfolder(outputfile: Path | None, modelpaths: Sequence[Path], modelpath_given: bool) -> Path:
     """Return the output folder of --makemodelfromgriddata.
 
-    Before the -o argument existed, -modelpath gave the output folder. The command keeps that behaviour when the
+    Before the -o argument existed, --modelpath gave the output folder. The command keeps that behaviour when the
     command line holds no -o.
     """
     if outputfile is not None:
         return outputfile
 
     if modelpath_given:
-        print_warning(f"-modelpath sets the output folder to {modelpaths[0]}. Use -o for the output folder.")
+        print_warning(f"--modelpath sets the output folder to {modelpaths[0]}. Use -o for the output folder.")
         return Path(modelpaths[0])
 
     return Path()
@@ -144,7 +144,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if not any(actions):
         exit_with_error(
             "The command needs an action",
-            "Give --downscale3dgrid, -dimensionreduce, --makemodelfromgriddata, or --makeenergyinputfiles",
+            "Give --downscale3dgrid, --dimensionreduce, --makemodelfromgriddata, or --makeenergyinputfiles",
         )
 
     outputfolders = get_model_output_folders(args, modelpath_given)

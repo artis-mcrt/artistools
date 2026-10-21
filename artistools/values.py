@@ -1,7 +1,7 @@
 """Print the values of estimator variables for each cell and timestep, with no plot and no average.
 
 Each row gives the value that ARTIS wrote for one cell at one timestep. Use this command to answer a question such
-as "what is Te in cell 12 at 300 days?". The --print_data table of plotestimators gives the plotted line, which is a
+as "what is Te in cell 12 at 300 days?". The --print-data table of plotestimators gives the plotted line, which is a
 weighted mean of the cells of each bin.
 """
 
@@ -196,7 +196,7 @@ def get_method_lines(
 def warn_missing_rows(dfvalues: pl.DataFrame, timesteps: Sequence[int], modelgridindex: Sequence[int] | None) -> None:
     """Warn about each selected pair of cell and timestep that has no row, because a reader can expect one for each.
 
-    With no -modelgridindex, the selected cells are the cells that have estimators at one or more selected timesteps.
+    With no --modelgridindex, the selected cells are the cells that have estimators at one or more selected timesteps.
     """
     cells = dfvalues["modelgridindex"].unique().to_list() if modelgridindex is None else list(modelgridindex)
     pairschema = dfvalues.select("modelgridindex", "timestep").schema

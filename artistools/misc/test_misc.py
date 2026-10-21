@@ -2016,7 +2016,7 @@ def test_get_filterfunc() -> None:
     # which it replaced
     # each filter argument selects one filter, thus a command line that gives both is a user error
     # and not an internal fault
-    with pytest.raises(ValueError, match="only one of -filtermovingavg and -filtersavgol"):
+    with pytest.raises(ValueError, match="only one of --filtermovingavg and --filtersavgol"):
         at.misc.get_filterfunc(argparse.Namespace(filtermovingavg=3, filtersavgol=["5", "3"]))
 
     filterfunc = at.misc.get_filterfunc(argparse.Namespace(filtersavgol=["5", "3"]))
@@ -3573,7 +3573,8 @@ def test_getpath_and_version_keep_their_product_with_quiet(capsys: pytest.Captur
     assert capsys.readouterr().out.strip() == str(at.get_path("artistools_dir"))
 
     artistools.__main__.main(argsraw=["version", "-q"])
-    assert capsys.readouterr().out.strip() == f"artistools {importlib.metadata.version('artistools')}"
+    # a git checkout also gives the commit and its date, as ruff does
+    assert capsys.readouterr().out.strip().startswith(f"artistools {importlib.metadata.version('artistools')}")
 
 
 def test_a_hidden_command_stays_out_of_the_suggestions(capsys: pytest.CaptureFixture[str]) -> None:
@@ -3969,7 +3970,7 @@ def test_column_description_lines_give_the_meaning_and_the_unit_of_each_known_co
         "nnion_Fe_II",
         "log_lbol",
     ]
-    fluxperx = "flux per unit of x_plotted, at the distance of -distmpc"
+    fluxperx = "flux per unit of x_plotted, at the distance of --distmpc"
     assert get_column_description_lines(columns) == [
         "column lambda_angstroms: the wavelength, in the rest frame of the source for an emergent spectrum [Å]",
         (

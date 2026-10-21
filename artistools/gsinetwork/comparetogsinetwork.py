@@ -301,7 +301,7 @@ def get_series_table(
 
 
 def output_drawn_series(args: argparse.Namespace, drawnseries: Sequence[pl.DataFrame], figurepath: Path | str) -> None:
-    """Print or write the drawn series of a figure, with the points up to the time of -timemax.
+    """Print or write the drawn series of a figure, with the points up to the time of --timemax.
 
     The series of ARTIS and of GSINET have different times, thus the table has one row for each drawn point.
     """
@@ -803,7 +803,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     # the plots went to the model folder before the command read -o, thus that folder stays the default
-    addarg_output(parser, kind="folder", helptext="Folder for the plots (default: the model folder)")
+    addarg_output(parser, kind="folder", helptext="The folder for the plots (default: the model folder)")
 
     parser.add_argument("-timemax", type=time_days_arg, help=f"Maximum time to plot. {TIME_UNIT_HELP}")
     # the earlier name of -timemax

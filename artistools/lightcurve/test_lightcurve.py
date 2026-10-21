@@ -3565,7 +3565,7 @@ def test_colour_arguments_must_name_two_bands(
     for colour in ("B", "U-B-V"):
         with pytest.raises(SystemExit):
             at.lightcurve.plot(argsraw=[], modelpath=[modelpath], colour_evolution=[colour], outputfile=tmp_path)
-        assert "-colour_evolution takes two bands for each colour" in capsys.readouterr().err
+        assert "--colour-evolution takes two bands for each colour" in capsys.readouterr().err
 
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit):
