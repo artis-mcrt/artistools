@@ -4098,8 +4098,9 @@ def test_help_command_gives_the_help_of_one_command(capsys: pytest.CaptureFixtur
     assert capsys.readouterr().out == flaghelp
 
     # a word after a command that has no subcommands is a mistake, and not a word that the command ignores
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exitinfo:
         artistools.__main__.main(argsraw=["help", "timesteps", "extra"])
+    assert exitinfo.value.code == 2
     assert "error: The command timesteps has no subcommand extra" in capsys.readouterr().err
 
 
