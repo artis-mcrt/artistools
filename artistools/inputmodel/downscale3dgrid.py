@@ -96,7 +96,7 @@ def make_downscaled_3d_grid(
     abundcols = [x for x in dfmodel.columns if x.startswith("X_")]
     elemcolnames = [col for col in dfelemabund.columns if col.startswith("X_")]
 
-    print("reading model file")
+    print("Reading model file")
     t_model_days = modelmeta["t_model_init_days"]
     vmax = modelmeta["vmax_cmps"]
 
@@ -140,14 +140,14 @@ def make_downscaled_3d_grid(
         "vmax_cmps": vmax,
     }
 
-    print("writing model file")
+    print("Writing model file")
     save_modeldata(dfmodel_small, outpath=smallmodelfile, modelmeta=modelmeta_small)
 
-    print("writing abundance file")
+    print("Writing abundance file")
     save_initelemabundances(dfelemabund_small, outpath=smallabundancefile)
 
     if plot:
-        print("making diagnostic plot")
+        print("Making diagnostic plot")
         # no ModuleNotFoundError fallback here: artistools.plottools imports matplotlib at module scope, so
         # this module cannot be imported at all without it
         import matplotlib.pyplot as plt

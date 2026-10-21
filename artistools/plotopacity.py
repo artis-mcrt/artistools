@@ -453,8 +453,8 @@ def get_opacity_tables(
     """Return the tables of the plotted opacities, with the keys of output_data.
 
     The empty key gives one row for each bin of the plot. A moving average has one more point at each end of the
-    range, thus "_movingaverage" gives the moving averages and the ratios at the middle of each bin from -xmin to
-    -xmax. With no moving average, the ratios go in the table of the bins. ratios holds the drawn ratio of each
+    range, thus "_movingaverage" gives the moving averages and the ratios at the middle of each bin from --xmin to
+    --xmax. With no moving average, the ratios go in the table of the bins. ratios holds the drawn ratio of each
     line-binned opacity.
     """
     opacitycolumns = [column for column, _label, _linestyle in get_opacity_series(args.taucaps)]
@@ -688,7 +688,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         metavar="TAUCAP",
         help=(
             "Caps of tau_sobolev. The plot shows one line-binned opacity for each cap, with each tau_sobolev capped"
-            " at that value, e.g. -taucaps 0.1 1 10"
+            " at that value, e.g. --taucaps 0.1 1 10"
         ),
     )
     parser.add_argument(

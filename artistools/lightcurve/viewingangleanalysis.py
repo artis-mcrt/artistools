@@ -67,7 +67,7 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
         if args.plotviewingangle and args.plotviewingangle != [-1]:
             print_warning(
                 f"{get_model_logname(modelpath)} holds no direction-resolved file (*_res.out), thus the plot shows the"
-                " angle average in place of the direction bins of -plotviewingangle"
+                " angle average in place of the direction bins of --plotviewingangle"
             )
         dirbins = [-1]
 
@@ -217,14 +217,14 @@ def calculate_peak_time_mag_deltam15(
     """Calculate band peak time, peak magnitude and delta m15."""
     if args.timemin is None or args.timemax is None:
         exit_with_error(
-            "The peak time, the rise time and delta m15 need a time range for the fit", "Give -timemin and -timemax"
+            "The peak time, the rise time and delta m15 need a time range for the fit", "Give --timemin and --timemax"
         )
     print_warning(
         "Both methods that can be used to fit model light curves to get "
         "light curve parameters (rise, decline, peak) can be impacted by how much "
         "of the light curve is being fitted. It is safest to experiment with the  "
         "timemin and timemax args which set the region of the light curve fitted. "
-        "The --test_viewing_angle_fit flag will allow you to check the fitting is "
+        "The --test-viewing-angle-fit flag will allow you to check the fitting is "
         "behaving as expected. In general fitting over a smaller region of the    "
         "light curve tends to produce better fits."
     )
@@ -243,9 +243,9 @@ def calculate_peak_time_mag_deltam15(
         index = int(np.abs(arr_xfit - (tmax_polyfit + days)).argmin())
         if arr_xfit[-1] < tmax_polyfit + days:
             print_warning(
-                f"the fitted range ends at {arr_xfit[-1]:.1f} d, which is before {days:.0f} d after the"
+                f"The fitted range ends at {arr_xfit[-1]:.1f} d, which is before {days:.0f} d after the"
                 f" peak at {tmax_polyfit:.1f} d. deltam{days:.0f} is really the decline to"
-                f" {arr_xfit[-1] - tmax_polyfit:.1f} d after peak. Widen -timemax to cover the full range."
+                f" {arr_xfit[-1] - tmax_polyfit:.1f} d after peak. Widen --timemax to cover the full range."
             )
         return index
 
@@ -303,7 +303,7 @@ def lightcurve_polyfit(time: Sequence[float], magnitude: npt.NDArray[np.floating
             "Could not find 'george' module, falling back to polynomial fit."
             " WARNING: polynomial fit method is sensitive to the degrees of freedom used in the polynomial fit. "
             "Therefore, it is important to check which degree of freedom used in the polynomial provides the best fit"
-            " using the --test_viewing_angle_fit flag"
+            " using the --test-viewing-angle-fit flag"
         )
         zfit = np.polyfit(x=time, y=magnitude, deg=10)
         # the fit has no meaning outside the data, thus this range is the range of the data, as in the george branch
@@ -375,7 +375,7 @@ def make_plot_test_viewing_angle_fit(
     axis.axhline(y=mag_after15days_polyfit, color="black", linestyle="--")
     axis.axvline(x=tmax_polyfit, color="black", linestyle="--")
     axis.axvline(x=float(time_after15days_polyfit), color="black", linestyle="--")
-    print("time after 15 days polyfit = ", time_after15days_polyfit)
+    print("Time after 15 days polyfit = ", time_after15days_polyfit)
     plotname = (
         get_viewing_angle_data_folder(args)
         / f"{get_filename_part(key)}_band_{get_filename_part(modelname)}_viewing_angle{angle!s}.png"
@@ -406,7 +406,7 @@ def set_scatterplot_plotkwargs(
 
 
 def get_table_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argparse.Namespace) -> list[int | None]:
-    """Return the direction bin of each row of a viewing angle data file for the table of --print_data.
+    """Return the direction bin of each row of a viewing angle data file for the table of --print-data.
 
     A file of the current version holds a dirbin column. For an older file, get_datafile_dirbins gives the bins of the
     plot from the selection. If the selection does not give a bin for each row, the bins are not known. The row number
@@ -447,7 +447,7 @@ def get_datafile_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argpars
         msg = (
             f"The colour bar needs the direction bin of each row of {datafilename},"
             f" which has {dfdata.height} rows and gives {len(dirbins)} direction bins."
-            " Write the file again with a -plotviewingangle selection, and give the same selection here."
+            " Write the file again with a --plotviewingangle selection, and give the same selection here."
         )
         raise ValueError(msg)
 
@@ -619,8 +619,8 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     """Scatter plot the colour at peak against the peak magnitude, one point per direction bin per model."""
     if not args.filter or len(args.filter) != 2:
         exit_with_error(
-            "--colouratpeak plots the colour of two bands, and -filter must name two bands",
-            "Give two bands, e.g. -filter B V",
+            "--colouratpeak plots the colour of two bands, and --filter must name two bands",
+            "Give two bands, e.g. --filter B V",
         )
     # the package holds no copy of the observed data, thus look for the file before the slow fits
     sn_data, label = get_phillips_relation_data()
@@ -730,7 +730,7 @@ def peakmag_risetime_declinerate_init(
         # values, so the two steps of the workflow cannot run at once. Say so before reading any spectra
         msg = (
             "The angle-averaged peak magnitudes are not measured while"
-            " --save_viewing_angle_peakmag_risetime_delta_m15_to_file writes the per-direction-bin data."
+            " --save-viewing-angle-peakmag-risetime-delta-m15-to-file writes the per-direction-bin data."
             " Write the data in one run, then plot it in another."
         )
         raise ValueError(msg)
@@ -738,8 +738,8 @@ def peakmag_risetime_declinerate_init(
     if not args.filter and args.plotvspecpol is not None:
         # without a filter the fit reads light_curve_res.out, whose direction bins are not virtual packet observers
         exit_with_error(
-            "-plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
-            "Give -filter to make the light curve of each virtual packet observer from its spectra.",
+            "--plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
+            "Give --filter to make the light curve of each virtual packet observer from its spectra.",
         )
 
     args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots

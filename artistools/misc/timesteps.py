@@ -196,8 +196,8 @@ def get_timestep_of_timedays(modelpath: Path | str, timedays: str | float) -> in
 
     msg = (
         f"No timestep of this model covers {timedays_float:g} days. It has {len(arr_tstart)} timesteps, "
-        f"which cover {arr_tstart[0]:.2f} to {arr_tend[-1]:.2f} days. Give -timedays in that range, or "
-        "-timestep to name one directly"
+        f"which cover {arr_tstart[0]:.2f} to {arr_tend[-1]:.2f} days. Give --timedays in that range, or "
+        "--timestep to name one directly"
     )
     raise ValueError(msg)
 
@@ -235,19 +235,19 @@ def get_selected_timestep(
     *,
     defaulttimestep: str | None = None,
 ) -> int:
-    """Return the timestep that -timestep or -timedays gives, or exit with an error.
+    """Return the timestep that --timestep or --timedays gives, or exit with an error.
 
-    defaulttimestep, e.g. "last", applies when the user gives neither. It is not the default of -timestep. If it were,
-    a -timedays value would always count as a second time.
+    defaulttimestep, e.g. "last", applies when the user gives neither. It is not the default of --timestep. If it were,
+    a --timedays value would always count as a second time.
     """
     if timedays is not None:
         if timestep is not None:
-            exit_with_error("specify only one of -timestep and -timedays")
+            exit_with_error("Specify only one of --timestep and --timedays")
         return get_timestep_of_timedays(modelpath, timedays)
 
     selectedtimestep = get_single_timestep(timestep if timestep is not None else defaulttimestep, modelpath)
     if selectedtimestep is None:
-        exit_with_error("the command has no time", "Give a time or a timestep, e.g. -timedays 250 or -timestep 30")
+        exit_with_error("The command has no time", "Give a time or a timestep, e.g. --timedays 250 or --timestep 30")
 
     return selectedtimestep
 
@@ -285,7 +285,7 @@ def check_time_range_is_valid(modelpath: Path, timemin: float, timemax: float, a
 
 
 def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> int | None:
-    """Return the one timestep that -timestep names, or None when it names none.
+    """Return the one timestep that --timestep names, or None when it names none.
 
     Every command reads the same grammar, thus "40" and "last" work on each one. A command that plots
     one timestep cannot take a range, thus a range earns a message that says so.
@@ -297,8 +297,8 @@ def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> in
     timesteps = parse_range_list(str(timestep), dictvars={"last": lasttimestep})
     if len(timesteps) > 1:
         msg = (
-            f"-timestep '{timestep}' names {len(timesteps)} timesteps, and this command plots one. "
-            "Give one timestep, e.g. -ts 40 or -ts last"
+            f"--timestep '{timestep}' names {len(timesteps)} timesteps, and this command plots one. "
+            "Give one timestep, e.g. --ts 40 or --ts last"
         )
         raise ValueError(msg)
 
@@ -311,9 +311,9 @@ def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> in
 def apply_time_range_args(
     args: argparse.Namespace, modelpaths: Sequence[Path | str], clamp_to_timesteps: bool = True
 ) -> None:
-    """Narrow the plotted time range from -timestep or from a -timedays range.
+    """Narrow the plotted time range from --timestep or from a --timedays range.
 
-    -timemin and -timemax give the range directly. A single -timedays value names one time for
+    --timemin and --timemax give the range directly. A single --timedays value names one time for
     --brightnessattime, thus only a value that holds a range takes part here.
     """
     dayrange = parse_timedays_range(args.timedays) if args.timedays is not None else None
@@ -327,7 +327,7 @@ def apply_time_range_args(
     artispaths = get_artis_model_folders(modelpaths)
     if not artispaths:
         if dayrange is None:
-            msg = "-timestep names a timestep of an ARTIS model, and no model path gives one. Give -timedays"
+            msg = "--timestep names a timestep of an ARTIS model, and no model path gives one. Give --timedays"
             raise ValueError(msg)
         rangemin, rangemax = dayrange
     else:
@@ -350,10 +350,10 @@ def apply_time_range_args(
                     math.isclose(othermin, rangemin, rel_tol=1e-5) and math.isclose(othermax, rangemax, rel_tol=1e-5)
                 ):
                     exit_with_error(
-                        f"timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
+                        f"Timestep {args.timestep} covers {rangemin:.2f} to {rangemax:.2f} days in "
                         f"{get_model_logname(artispaths[0])} and {othermin:.2f} to {othermax:.2f} days in "
                         f"{get_model_logname(otherpath)}, because their timestep grids differ. Give the "
-                        "range in days with -timedays, which means the same for every model"
+                        "range in days with --timedays, which means the same for every model"
                     )
 
     if args.timemin is None:
@@ -415,7 +415,7 @@ def get_time_range(
         # combination. Only -timedays takes part. A caller assigns the timemin and timemax that this
         # function returns back onto its own arguments, thus a second call would see its own output.
         if timedays_range_str is not None:
-            msg = "Specify only one of -timestep and -timedays"
+            msg = "Specify only one of --timestep and --timedays"
             raise ValueError(msg)
 
         # parse_range_list defines the grammar of a range of numbers, thus -timestep and
@@ -431,7 +431,7 @@ def get_time_range(
         if selectedtimesteps != list(range(timestepmin, timestepmax + 1)):
             msg = (
                 f"The timestep selection {timestep_range_str} names no single range of timesteps. "
-                f"Give one range, e.g. -ts {timestepmin}-{timestepmax}"
+                f"Give one range, e.g. --ts {timestepmin}-{timestepmax}"
             )
             raise ValueError(msg)
 
@@ -490,8 +490,8 @@ def get_time_range(
             timestepmax = timestepmin
     else:
         msg = (
-            "No time was given. Give one with -timedays (e.g. -t 300 or -t 290-320), with -timestep "
-            "(e.g. -ts 40 or -ts last), or with -timemin and -timemax"
+            "No time was given. Give one with --timedays (e.g. -t 300 or -t 290-320), with --timestep "
+            "(e.g. --ts 40 or --ts last), or with --timemin and --timemax"
         )
         raise ValueError(msg)
 

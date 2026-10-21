@@ -40,17 +40,36 @@ def make_viewer(kind: str, tokens: list[str]) -> t.Any:
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
+def test_viewer_gives_the_standard_spellings_for_older_ones(kind: str) -> None:
+    """A command with the older spellings gives a viewer command with the standard spellings, as the help shows them.
+
+    The viewers made their commands with the older spellings, e.g. -figwidthscale, thus a copied command disagreed
+    with the help. A session that an older version saved holds such spellings too.
+    """
+    timetokens = ["-timedays", "300"] if kind == "spectra" else []
+    viewer = make_viewer(kind, [str(modelpath), *timetokens, "-figwidthscale", "2.25", "-label", "mine"])
+    command = viewer.get_command()
+    assert " --figwidthscale 2.25" in command
+    assert " --label mine" in command
+    assert " -figwidthscale" not in command
+    assert " -label" not in command
+
+    oldsession = ["mymodel", "-figwidthscale", "2", "-t", "300"]
+    assert viewerapplication.remove_figwidthscale(oldsession) == ["mymodel", "-t", "300"]
+
+
+@pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
 def test_viewer_changes_the_residual_baseline(kind: str) -> None:
     """The option table gives the baseline index to the command and keeps the residual panel."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
-    viewer = make_viewer(kind, [str(modelpath), str(modelpath), *timetokens, "-residualbaselineseries"])
-    assert viewer.values.otheroptions == (("-residualbaselineseries", ()),)
+    viewer = make_viewer(kind, [str(modelpath), str(modelpath), *timetokens, "--residualbaselineseries"])
+    assert viewer.values.otheroptions == (("--residualbaselineseries", ()),)
     assert viewer.residualaxis is not None
-    assert viewer.change(dc.replace(viewer.values, otheroptions=(("-residualbaselineseries", ("1",)),))) is None
-    assert viewer.values.otheroptions == (("-residualbaselineseries", ("1",)),)
+    assert viewer.change(dc.replace(viewer.values, otheroptions=(("--residualbaselineseries", ("1",)),))) is None
+    assert viewer.values.otheroptions == (("--residualbaselineseries", ("1",)),)
     assert viewer.residualaxis is not None
     tokens = viewer.get_plot_tokens()
-    assert tokens[tokens.index("-residualbaselineseries") + 1] == "1"
+    assert tokens[tokens.index("--residualbaselineseries") + 1] == "1"
     assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
     assert viewer.residualaxis is None
 
@@ -65,7 +84,9 @@ def test_viewer_keeps_paths_after_a_bare_residual_flag(kind: str, flag: str) -> 
     assert (viewer.values.spectra if kind == "spectra" else viewer.values.lightcurves) == paths
     assert viewer.residualaxis is not None
     values = ("0",) if flag in {"-residualbaselineseries", "-residuals"} else ()
-    assert viewer.values.otheroptions == ((flag, values),)
+    # the row gives the standard spelling, and -residuals keeps its spelling, because --residuals is a different flag
+    shownflag = {"-residualbaselineseries": "--residualbaselineseries", "-residual": "--residual"}.get(flag, flag)
+    assert viewer.values.otheroptions == ((shownflag, values),)
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
@@ -96,14 +117,14 @@ def test_viewer_selects_the_residual_series(kind: str) -> None:
 def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
     """Both viewers use the residual type from the option table."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
-    viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual"])
+    viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["--residual"])
     assert viewer.residualaxis is not None
     assert viewer.residualaxis.get_yscale() == "linear"
     assert viewer.residualaxis.get_ylabel() == "series / baseline"
     initialvalues = np.asarray(viewer.residualaxis.lines[0].get_ydata())
     assert np.isfinite(initialvalues).any()
     assert np.allclose(initialvalues[np.isfinite(initialvalues)], 1.0)
-    options = (("-residual", ()), ("-residualtype", (residualtype,)))
+    options = (("--residual", ()), ("--residualtype", (residualtype,)))
     assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
     assert viewer.residualaxis is not None
     assert viewer.residualaxis.get_yscale() == ("log" if residualtype == "relativelog" else "linear")
@@ -117,7 +138,7 @@ def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
     )
     args = parser.parse_args(viewer.get_plot_tokens())
     assert args.residualtype == residualtype
-    action = viewercore.get_actions_by_flag(parser)["-residualtype"]
+    action = viewercore.get_actions_by_flag(parser)["--residualtype"]
     assert viewercore.get_option_kind(action) == "choice"
     assert viewercore.get_default_tokens(action) == ("relative",)
 
@@ -142,20 +163,20 @@ def test_viewer_sets_the_residual_y_maximum(kind: str, residualtype: str) -> Non
 def test_viewer_takes_back_a_folder_of_a_list_option(
     kind: str, timetokens: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A model folder that -label took must be a series of the window, as the command gives the folder back.
+    """A model folder that --label took must be a series of the window, as the command gives the folder back.
 
     The viewer split the tokens itself, thus the spectra window raised an IndexError and the light curve window kept
     the folder as a second label and read the working folder.
     """
     monkeypatch.chdir(tmp_path)
-    viewer = make_viewer(kind, ["-label", "My model", str(modelpath), *timetokens, "--interactive"])
+    viewer = make_viewer(kind, ["--label", "My model", str(modelpath), *timetokens, "--interactive"])
     seriespaths = viewer.values.spectra if kind == "spectra" else viewer.values.lightcurves
     assert seriespaths == (str(modelpath),)
-    assert viewer.values.otheroptions == (("-label", ("My model",)),)
+    assert viewer.values.otheroptions == (("--label", ("My model",)),)
     # a list option that a control gives, e.g. -fixedionlist, leaves no row, and the parsed folder is the series
     parsed = viewercore.parse_viewer_tokens(
         at.spectra.plotspectra.addargs,
-        ["-fixedionlist", "Fe II", str(modelpath), "-t", "300"],
+        ["--fixedionlist", "Fe II", str(modelpath), "-t", "300"],
         importlib.import_module("artistools.spectra.interactive").CONTROLLED_DESTS,
     )
     assert parsed.paths == [str(modelpath)]
@@ -216,23 +237,23 @@ def test_select_y_handler_gives_a_reason_for_no_change() -> None:
 
 
 def test_session_keeps_a_label_that_names_a_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A -label or a -title with the name of a folder stays a text, and the path of the folder becomes absolute.
+    """A --label or a --title with the name of a folder stays a text, and the path of the folder becomes absolute.
 
     The legend and the title of a restored window then showed the full path of the folder.
     """
     monkeypatch.chdir(tmp_path)
     (tmp_path / "model1").mkdir()
-    tokens = ["model1", "-t", "300", "-label", "model1", "default", "-title", "model1", "-ymin=-1", "model1"]
+    tokens = ["model1", "-t", "300", "--label", "model1", "default", "--title", "model1", "--ymin=-1", "model1"]
     assert viewerapplication.get_absolute_tokens(tokens) == [
         str(tmp_path / "model1"),
         "-t",
         "300",
-        "-label",
+        "--label",
         "model1",
         "default",
-        "-title",
+        "--title",
         "model1",
-        "-ymin=-1",
+        "--ymin=-1",
         str(tmp_path / "model1"),
     ]
 

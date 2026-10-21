@@ -73,8 +73,8 @@ def get_bin_tooltip(kind: str, dirbin: int) -> str:
     if dirbin == ALL_DIRECTIONS_BIN:
         packets = "the real packets in " if kind == "vpkt" else ""
         return f"The average of {packets}all the directions, which gives no direction option"
-    flag = "-plotvspecpol" if kind == "vpkt" else "-plotviewingangle"
-    averageflag = {"phi": " --average_over_phi_angle", "theta": " --average_over_theta_angle"}.get(kind, "")
+    flag = "--plotvspecpol" if kind == "vpkt" else "--plotviewingangle"
+    averageflag = {"phi": " --average-over-phi-angle", "theta": " --average-over-theta-angle"}.get(kind, "")
     return f"{flag} {dirbin}{averageflag}"
 
 
@@ -127,15 +127,15 @@ def add_direction_section(
     _, directiongrid = add_section(panellayout, "Viewing direction")
     kindbox = QtWidgets.QComboBox()
     kindbox.setToolTip(
-        "The kind of viewing direction: the direction bins (-plotviewingangle), or the observers of the virtual"
-        " packets (-plotvspecpol)"
+        "The kind of viewing direction: the direction bins (--plotviewingangle), or the observers of the virtual"
+        " packets (--plotvspecpol)"
     )
     usedegreescheck = QtWidgets.QCheckBox("--usedegrees")
     usedegreescheck.setToolTip(helptexts.get("usedegrees", ""))
     add_row(directiongrid, 0, [kindbox])
     averagechecks = {
-        "phi": QtWidgets.QCheckBox("--average_over_phi_angle"),
-        "theta": QtWidgets.QCheckBox("--average_over_theta_angle"),
+        "phi": QtWidgets.QCheckBox("--average-over-phi-angle"),
+        "theta": QtWidgets.QCheckBox("--average-over-theta-angle"),
     }
     add_row(directiongrid, 1, [*averagechecks.values(), usedegreescheck])
     # the list of a model can hold 100 bins, thus a button opens it as a drop-down list, and the button gives the choice
@@ -371,7 +371,7 @@ def make_select_y_handler(
     """Return the handler of a Shift-drag that gives the first frame its y range, e.g. the frame of the spectra.
 
     The handler receives the index of the frame and the two y values of the drag. A panel below the first frame, e.g.
-    of the residuals, has its own range, thus a drag there changes nothing. set_limits receives -ymin and -ymax.
+    of the residuals, has its own range, thus a drag there changes nothing. set_limits receives --ymin and --ymax.
     """
 
     def on_select_y(frameindex: int, low: float, high: float) -> None:
@@ -391,7 +391,7 @@ def read_limit_fields(
 ) -> list[str] | None:
     """Return the text of two limit fields as numbers, or "" for an empty field, which gives the automatic limit.
 
-    fields gives each field with its flag, e.g. -ymin. A field with text that is not a number, or a minimum that is not
+    fields gives each field with its flag, e.g. --ymin. A field with text that is not a number, or a minimum that is not
     less than the maximum, gives the reason to show_error and None.
     """
     limits: list[str] = []
@@ -417,7 +417,7 @@ def add_y_limits_row(
     get_drawn_limits: "Callable[[], tuple[float, float] | None]",
     show_error: "Callable[[str], None]",
 ) -> "Callable[[str, str], None]":
-    """Add the fields of -ymin and -ymax and the button Set current y range to a row of a grid.
+    """Add the fields of --ymin and --ymax and the button Set current y range to a row of a grid.
 
     set_limits receives the text of each limit, and "" gives the automatic limit. get_drawn_limits gives the y limits of
     the plot on the screen, or None while the plot does not show the values of the controls. Return the function that
@@ -435,10 +435,10 @@ def add_y_limits_row(
         "Set y min and y max to the current range of the y axis. The axis then stays the same when a different option"
         " changes. Clear a field to get the automatic limit at that end again."
     )
-    add_row(grid, row, [QtWidgets.QLabel("-ymin"), yminedit, QtWidgets.QLabel("-ymax"), ymaxedit, setrangebutton])
+    add_row(grid, row, [QtWidgets.QLabel("--ymin"), yminedit, QtWidgets.QLabel("--ymax"), ymaxedit, setrangebutton])
 
     def on_edit() -> None:
-        if (limits := read_limit_fields([(yminedit, "-ymin"), (ymaxedit, "-ymax")], show_error)) is not None:
+        if (limits := read_limit_fields([(yminedit, "--ymin"), (ymaxedit, "--ymax")], show_error)) is not None:
             set_limits(limits[0], limits[1])
 
     def on_set_range() -> None:
@@ -463,7 +463,7 @@ def add_y_limits_row(
 
 
 def make_figscale_box(helptexts: "Mapping[str, str]") -> "QtWidgets.QDoubleSpinBox":
-    """Return the box of -figscale. A typed number applies when the user presses Return or leaves the box."""
+    """Return the box of --figscale. A typed number applies when the user presses Return or leaves the box."""
     from PySide6 import QtWidgets
 
     figscalebox = QtWidgets.QDoubleSpinBox()
@@ -492,7 +492,7 @@ def make_xscale_box(helptexts: "Mapping[str, str]") -> "QtWidgets.QComboBox":
 
 
 def make_yscale_box(parser: "argparse.ArgumentParser", helptexts: "Mapping[str, str]") -> "QtWidgets.QComboBox":
-    """Return a box with an item for each choice of -yscale. The data of each item is its choice.
+    """Return a box with an item for each choice of --yscale. The data of each item is its choice.
 
     The text of the item "auto" gives the scale of the drawn plot, thus show_auto_yscale changes it after each plot.
     """
@@ -508,7 +508,7 @@ def make_yscale_box(parser: "argparse.ArgumentParser", helptexts: "Mapping[str, 
 
 
 def show_auto_yscale(yscalebox: "QtWidgets.QComboBox", yscale: str) -> None:
-    """Show the scale that -yscale auto gave to the drawn plot, e.g. "Auto (log)", in the box of make_yscale_box."""
+    """Show the scale that --yscale auto gave to the drawn plot, e.g. "Auto (log)", in the box of make_yscale_box."""
     yscalebox.setItemText(yscalebox.findData("auto"), f"Auto ({yscale})")
 
 

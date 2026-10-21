@@ -217,20 +217,20 @@ else:
 
 Question: at which velocities do the packets of a spectral feature last interact, and which lines emit them?
 
-- `artistools plotlastpacketinteraction <modelpath> -t <days> -groupby line -lambdamin <Å> -lambdamax <Å>`
+- `artistools plotlastpacketinteraction <modelpath> -t <days> --groupby line --lambdamin <Å> --lambdamax <Å>`
   plots the luminosity of each line of the last emission against the radial velocity of the last interaction.
-  `-groupby ion` and `-groupby element` give larger groups. `--absorption` selects the packets by the wavelength of
+  `--groupby ion` and `--groupby element` give larger groups. `--absorption` selects the packets by the wavelength of
   their last absorption. It also groups them by the element, the ion, or the line of that absorption.
-  `-velocitykind lineofsight` takes the line-of-sight velocity, positive towards the observer. Use it for a P Cygni
+  `--velocitykind lineofsight` takes the line-of-sight velocity, positive towards the observer. Use it for a P Cygni
   profile, because only that velocity separates the gas that moves towards the observer from the gas that moves
   away. The blue absorption comes from the gas that moves towards the observer.
-  `--print_data` gives the values and the number of packets in each bin. Its `_summary` table gives one row for each
+  `--print-data` gives the values and the number of packets in each bin. Its `_summary` table gives one row for each
   group, with the luminosity, the number of packets, the relative error `luminosity_relative_error`, and the
   quartiles of the velocity. The command warns for a group with a relative error above 10 %.
-- `artistools plotlinecontributions -t <days> -lambdamin <Å> -lambdamax <Å> <modelpath>` plots the Sobolev emission
-  and the median tau_sobolev of the strongest lines against velocity, from the level populations. `-rankby tau`
+- `artistools plotlinecontributions -t <days> --lambdamin <Å> --lambdamax <Å> <modelpath>` plots the Sobolev emission
+  and the median tau_sobolev of the strongest lines against velocity, from the level populations. `--rankby tau`
   selects the lines with the largest tau_sobolev, e.g. for an absorption trough. The `_summary` table of
-  `--print_data` gives the velocity range where the median tau_sobolev is above 1, and the quartiles of the velocity
+  `--print-data` gives the velocity range where the median tau_sobolev is above 1, and the quartiles of the velocity
   of the emission.
 - `em_posx`, `em_posy`, `em_posz`, and `em_time` give the place and the time of the last emission or scattering of a
   packet. `at.packets.get_emission_velocity_expr("em")` gives its radial velocity.
@@ -296,26 +296,26 @@ spectrum of a different direction does not have?
 
 Do these steps in this sequence, for each direction bin:
 
-1. Compare the spectra: `artistools plotspectra <modelpath> --frompackets -t <days> -dirbin 50 90
-   --average_over_phi_angle`. Give the wavelength of the trough and the velocity that it gives for each line.
-2. Find the velocity where the continuum forms: `artistools plotlastinteractionvelocity <modelpath> -lambdamin <Å>
-   -lambdamax <Å> -dirbin 50 90 --average_over_phi_angle`. Give the model path first. `-dirbin` takes a list, thus it
+1. Compare the spectra: `artistools plotspectra <modelpath> --frompackets -t <days> --dirbin 50 90
+   --average-over-phi-angle`. Give the wavelength of the trough and the velocity that it gives for each line.
+2. Find the velocity where the continuum forms: `artistools plotlastinteractionvelocity <modelpath> --lambdamin <Å>
+   --lambdamax <Å> --dirbin 50 90 --average-over-phi-angle`. Give the model path first. `--dirbin` takes a list, thus it
    takes a model path after it as a direction bin. Use a wavelength range with no strong line, e.g. a range at a shorter
    wavelength than the trough. The median is an estimate of the velocity of the photosphere in that direction. The
    quartiles show the width of the region.
 3. Compare the optical depth of the lines in the cells of each direction: `artistools plotlinecontributions <modelpath>
-   -t <days> -lambdamin <Å> -lambdamax <Å> -costhetamin 0.8`. These are the cells of the costheta bin of `-dirbin 90`.
-   For the cells of `-dirbin 50`, give `-costhetamin 0 -costhetamax 0.2`. A line makes an absorption trough only with
+   -t <days> --lambdamin <Å> --lambdamax <Å> --costhetamin 0.8`. These are the cells of the costheta bin of `--dirbin 90`.
+   For the cells of `--dirbin 50`, give `--costhetamin 0 --costhetamax 0.2`. A line makes an absorption trough only with
    tau_sobolev above 1 in front of the photosphere, i.e. at a velocity above the median of step 2.
-4. Estimate the trough: `artistools plotlinecontributions ... -troughdirbin 90 --average_over_phi_angle
-   -photospherevelocity <v>`, with the median of step 2 and its unit, e.g. `0.157c` or `47000km/s`. The estimate has no
+4. Estimate the trough: `artistools plotlinecontributions ... --troughdirbin 90 --average-over-phi-angle
+   --photospherevelocity <v>`, with the median of step 2 and its unit, e.g. `0.157c` or `47000km/s`. The estimate has no
    emission of the lines, no limb darkening, and only the ranked lines. If the estimate gives a deep trough and the
    spectrum does not, the emission of the lines can fill the trough. As an alternative, lines of different ions can
    change the feature.
-5. Compare the line blanketing of each direction. Run `artistools plotopacity -modelpath <modelpath> -t <days> -vmin
-   <v> -costhetamin 0.8 -cellaverage median --write_data`, with the median of step 2 as `-vmin`. Then run the same
-   command with `-costhetamin 0 -costhetamax 0.2`. `-vmin` needs a unit, e.g. `0.157c` or `47000km/s`. Use
-   `-cellaverage median`. A few dense cells can make the means of the two directions almost equal. The expansion
+5. Compare the line blanketing of each direction. Run `artistools plotopacity --modelpath <modelpath> -t <days> --vmin
+   <v> --costhetamin 0.8 --cellaverage median --write-data`, with the median of step 2 as `--vmin`. Then run the same
+   command with `--costhetamin 0 --costhetamax 0.2`. `--vmin` needs a unit, e.g. `0.157c` or `47000km/s`. Use
+   `--cellaverage median`. A few dense cells can make the means of the two directions almost equal. The expansion
    opacity sums all the lines of all the ions. A larger opacity at the wavelengths of the trough and of the continuum
    on its blue side can hide the feature. Compare the opacity at these wavelengths with the opacity at the wavelength
    of the line.
@@ -335,15 +335,15 @@ Possible errors:
 - A few dense cells can make the mean tau_sobolev of a bin much larger than its median. Use the median and the volume
   fraction with tau_sobolev above 1, which the bin table of `plotlinecontributions` gives. The `_summary` table gives
   the velocity range where the median is above 1.
-- By default, the velocity of the last interaction is a radial velocity. Give `-velocitykind lineofsight` for the
+- By default, the velocity of the last interaction is a radial velocity. Give `--velocitykind lineofsight` for the
   velocity along the line of sight. An electron scattering also sets it. In a kilonova, a range with no strong line
   still holds many weak lines.
 - The trough estimate takes a sharp photosphere and pure absorption. If many lines are optically thick in front of the
   photosphere (step 5), the light scatters many times, and the estimate gives a trough that is too deep.
 - `plotlinecontributions` and `linecontributions` calculate each pair of a cell and a line. For a wide range with all
-  the ions of a kilonova, give `-ions` or `-taumin 1`. `-taumin` leaves out each line that cannot reach that
-  tau_sobolev in any cell. In `plotlinecontributions`, use `-taumin` with `-rankby tau`. An optically thin line can
-  emit much, and the ranking by emission and the emission fractions take only the lines that `-taumin` keeps.
-- `-dirbin 90 --average_over_phi_angle` holds the directions with 0.8 ≤ cos θ ≤ 1, i.e. 0° to 37°, as a mean over
-  phi. `-dirbin 90` alone is one direction bin of that cone, as in `plotspectra`. `-costhetamin 0.8` selects the
+  the ions of a kilonova, give `--ions` or `--taumin 1`. `--taumin` leaves out each line that cannot reach that
+  tau_sobolev in any cell. In `plotlinecontributions`, use `--taumin` with `--rankby tau`. An optically thin line can
+  emit much, and the ranking by emission and the emission fractions take only the lines that `--taumin` keeps.
+- `--dirbin 90 --average-over-phi-angle` holds the directions with 0.8 ≤ cos θ ≤ 1, i.e. 0° to 37°, as a mean over
+  phi. `--dirbin 90` alone is one direction bin of that cone, as in `plotspectra`. `--costhetamin 0.8` selects the
   cells of the same cone. A 1D model has no direction.

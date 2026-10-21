@@ -1010,8 +1010,8 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
         (["-dirbin", "100"], "-dirbin 100 is no direction bin"),
         (["-dirbin", "35", "--average_over_phi_angle"], "-dirbin 35 is not the first direction bin"),
         (["-dirbin", "-10"], "-dirbin -10 is no direction bin"),
-        ([], "the command has no time"),
-        (["-lambdamin", "3500"], "the wavelength range needs two ends"),
+        ([], "The command has no time"),
+        (["-lambdamin", "3500"], "The wavelength range needs two ends"),
         (["--absorption", "--use_thermalemissiontype"], "--absorption takes the last absorption"),
     ],
 )

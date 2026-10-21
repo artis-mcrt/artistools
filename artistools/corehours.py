@@ -136,7 +136,7 @@ def get_run_core_hours(loglines: Sequence[str]) -> RunCoreHours:
             isestimate = True
             if log_timestep_range is not None:
                 estimate_text = (
-                    f"WARNING: sn3d did not finish. Estimated: "
+                    f"warning: sn3d did not finish. Estimated: "
                     f"(job: pktprop ts {log_timestep_range[0]} to ts {log_timestep_range[1]} grid-preprop, "
                     f"{elapsed_hours:.3f} wallclock hours * {nprocs} processes * {nthreads} threads "
                     f"= {core_hours:.3f} core hours)"
@@ -207,14 +207,14 @@ def format_run_lines(logfile: Path, col1width: int, iscopy: bool, run: RunCoreHo
     if iscopy:
         return [f"{logfilecolumn}\n  ignored duplicate log", ""]
     if run is None:
-        return [f"{logfilecolumn}  WARNING: the log is missing, empty, or unreadable.", ""]
+        return [f"{logfilecolumn}  warning: The log is missing, empty, or unreadable.", ""]
     lines: list[str] = []
     if run.core_hours is not None:
         lines.append(f"{logfilecolumn}{run.core_hours:8.1f} core-h")
         if run.isestimate and run.estimate_text is None:
-            lines.append("  WARNING: sn3d did not finish cleanly. The value is an estimate from the log timestamps.")
+            lines.append("  warning: sn3d did not finish cleanly. The value is an estimate from the log timestamps.")
     else:
-        lines.append(f"{logfilecolumn}  WARNING: sn3d did not finish cleanly. Check the log to get the CPU time.")
+        lines.append(f"{logfilecolumn}  warning: sn3d did not finish cleanly. Check the log to get the CPU time.")
     lines.extend((f"  {run.first_line}", f"  {run.last_line}"))
     if run.estimate_text is not None:
         lines.append(f"  {run.estimate_text}")
@@ -249,9 +249,9 @@ def get_summary_lines(
     """Return the lines of the summary after the table."""
     lines: list[str] = []
     if has_runs_without_core_hours:
-        lines.append("WARNING: some logs give no core hours. The CPU time omits their runs.")
+        lines.append("warning: Some logs give no core hours. The CPU time omits their runs.")
     if len(ntasks_seen) > 1:
-        lines.append("WARNING: the jobs use different task counts. The summary omits the task count.")
+        lines.append("warning: The jobs use different task counts. The summary omits the task count.")
     if ntasks is not None:
         lines.append(f"{'Tasks:':15s} {ntasks:8d}")
     if wallclock_hours is not None:
@@ -265,7 +265,7 @@ def get_summary_lines(
 
 def print_core_hours(args: argparse.Namespace, runs: Sequence[RunOfLog]) -> None:
     """Print the core hours of each run and the sums, as a table or as JSON."""
-    if not args.json:
+    if args.output_format != "json":
         col1width = max((len(str(logfile)) for logfile, _, _ in runs), default=0) + 1
         for logfile, iscopy, run in runs:
             print_product(args, "\n".join(format_run_lines(logfile, col1width, iscopy, run)))
@@ -291,7 +291,7 @@ def print_core_hours(args: argparse.Namespace, runs: Sequence[RunOfLog]) -> None
         run.timestep_range for run in countedruns if run is not None and run.timestep_range is not None
     )
 
-    if args.json:
+    if args.output_format == "json":
         print_product(
             args,
             json.dumps(
@@ -323,7 +323,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         multiplepaths=True,
         helptext="The model folders, or files in them. The default is the working folder",
     )
-    parser.add_argument("--json", action="store_true", help="Write the results as JSON in place of a table")
+    parser.add_argument(
+        "--output-format",
+        choices=["text", "json"],
+        default="text",
+        help="The format of the results. json gives the same values as the ARTIS script sumcorehourslogs.py",
+    )
+    # the older spelling of "--output-format json"
+    parser.add_argument("--json", dest="output_format", action="store_const", const="json", help=argparse.SUPPRESS)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

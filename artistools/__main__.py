@@ -19,13 +19,12 @@ if t.TYPE_CHECKING:
 
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level artistools argument parser."""
-    from importlib.metadata import version
-
     from artistools.commands import addsubparsers
     from artistools.commands import CustomArgHelpFormatter
     from artistools.commands import get_epilog
     from artistools.commands import subcommandtree
     from artistools.commands import SuggestingArgumentParser
+    from artistools.commands import VersionAction
 
     parserkwargs: dict[str, t.Any] = {
         "formatter_class": CustomArgHelpFormatter,
@@ -34,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     }
     # the subclass suggests a subcommand and a flag, on Python 3.13 and 3.14 alike
     parser = SuggestingArgumentParser(**parserkwargs)
-    parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {version('artistools')}")
+    parser.add_argument("--version", "-V", action=VersionAction, help="Show the version of artistools and exit")
 
     addsubparsers(parser, subcommandtree)
 
@@ -46,23 +45,29 @@ SLOW_COMMAND_SECONDS = 15.0
 
 
 def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
-    """Run the subcommand. With --quiet, send its progress messages to the null device.
+    """Run the subcommand. Send its progress messages to the standard error, or with --quiet to the null device.
 
-    An error message goes to the standard error, thus --quiet keeps it. A command writes its product
-    with print_product, which reaches the standard output even with --quiet, thus a script reads that
-    product with no progress message around it.
+    A command writes its product with print_product, which alone reaches the standard output. A pipe or a
+    redirect then gets the product with no progress message around it, as for ruff and uv. An error message
+    also goes to the standard error, thus --quiet keeps it.
     """
     import time
+
+    from artistools.misc.cliutils import print_collected_data
 
     quiet = getattr(args, "quiet", False)
     starttime = time.monotonic()
     with contextlib.ExitStack() as stack:
-        if quiet:
-            devnull = stack.enter_context(Path(os.devnull).open("w", encoding="utf-8"))
-            args.productstream = sys.stdout
-            stack.enter_context(contextlib.redirect_stdout(devnull))
+        args.productstream = sys.stdout
+        # a JSON or a CSV document of --print-data holds the tables of all the figures, thus output_data collects them
+        collectstables = getattr(args, "print_data", False) and getattr(args, "output_format", None) in {"json", "csv"}
+        args.collectedtables = [] if collectstables else None
+        progressstream = stack.enter_context(Path(os.devnull).open("w", encoding="utf-8")) if quiet else sys.stderr
+        stack.enter_context(contextlib.redirect_stdout(progressstream))
 
         func(args=args)
+        if args.collectedtables:
+            print_collected_data(args)
 
     # a reader of the output that stops early, e.g. head, makes the flush fail. The flush at the exit gives no
     # message that the dispatcher controls, thus the flush comes here
@@ -99,6 +104,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     from artistools.commands import build_script_parser
     from artistools.commands import get_hidden_commands
+    from artistools.commands import get_older_flag_spellings
     from artistools.misc import separate_trailing_folders
 
     # a per-command console script such as plotartisestimators runs this same function. The name that
@@ -107,8 +113,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     scriptparser = build_script_parser(Path(sys.argv[0]).stem) if args is argsraw is None else None
     parser = scriptparser or build_parser()
 
-    # the help hides a command such as server, thus tab completion does not offer it
-    argcomplete.autocomplete(parser, exclude=get_hidden_commands())
+    # the help hides a command such as server and each older spelling of a flag, thus tab completion does not offer it.
+    # The walk of all the parsers runs only for a completion
+    excluded = [*get_hidden_commands(), *get_older_flag_spellings(parser)] if "_ARGCOMPLETE" in os.environ else []
+    argcomplete.autocomplete(parser, exclude=excluded)
 
     if args is None:
         args = parser.parse_args(separate_trailing_folders(argsraw))
@@ -160,7 +168,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             print_error("\n".join([detail, *get_context_notes(exc)]), get_error_help(exc))
         else:
             print_error(
-                f"an internal check of artistools failed ({type(exc).__name__}). This is a fault in "
+                f"An internal check of artistools failed ({type(exc).__name__}). This is a fault in "
                 "artistools and not in your arguments. Set ARTISTOOLS_TRACEBACK=1 to get the full traceback"
             )
         raise SystemExit(1) from exc

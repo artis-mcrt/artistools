@@ -1,6 +1,7 @@
 """Define the artistools subcommand tree and dispatch to each subcommand's module."""
 
 import argparse
+import copy
 import dataclasses as dc
 import importlib
 import sys
@@ -58,7 +59,7 @@ MAXEXAMPLEWIDTH = 40
 def format_examples(examples: "Sequence[tuple[str, str]]") -> str:
     """Return the block of examples for a help text, with the descriptions in one column."""
     width = min(max(len(command) for command, _ in examples), MAXEXAMPLEWIDTH)
-    lines = ["examples (a path of . reads the model in the working folder):"]
+    lines = ["Examples (a path of . reads the model in the working folder):"]
     for command, description in examples:
         if len(command) <= width:
             lines.append(f"  artistools {command:{width}}  # {description}")
@@ -84,7 +85,7 @@ def get_command_epilog(words: "Sequence[str]", spec: "CommandSpec") -> str | Non
 
 def get_group_epilog(words: "Sequence[str]", tree: "CommandTree") -> str:
     """Return the examples of the commands of one group and the pointer to the help of one command."""
-    pointer = f'Run "artistools {" ".join(words)} <command> --help" for the arguments of one command.'
+    pointer = f"Run `artistools {' '.join(words)} <command> --help` for the arguments of one command."
     examples = get_examples(tree, f"{' '.join(words)} ")
 
     return f"{format_examples(examples)}\n\n{pointer}" if examples else pointer
@@ -94,13 +95,15 @@ def get_epilog() -> str:
     """Return the examples and the pointer to the help of one command."""
     return (
         format_examples(get_examples())
-        + '\n\nRun "artistools <command> --help" for the arguments of one command.'
-        + "\nA command that reads a model takes its folder with -modelpath. Most of these commands also take the"
+        + "\n\nRun `artistools <command> --help` for the arguments of one command."
+        + "\nA command that reads a model takes its folder with --modelpath. Most of these commands also take the"
         + "\nfolder as the last positional argument."
-        + "\nA time or a wavelength can have a unit, e.g. -t 12h or -lambdamin 600nm. A value with no unit"
+        + "\nA time or a wavelength can have a unit, e.g. -t 12h or --lambdamin 600nm. A value with no unit"
         + "\nis in days or in Angstroms. --explain prints what the arguments select. Then it stops before it"
         + "\nreads the data."
         + "\nSet ARTISTOOLS_TRACEBACK=1 to get the full traceback of an error."
+        + "\nThe exit status is 0 for success, 2 for an argument that the parser refuses, and 1 for a different"
+        + "\nerror. `artistools check` also gives 1 for a check with a warning or an error."
     )
 
 
@@ -152,7 +155,7 @@ type CommandTree = dict[str, CommandSpec | CommandTree]
 # The --help listing shows the top-level commands under these headings, in this order. A command that no
 # tuple names appears under the last heading, thus a new command is still listed.
 COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
-    "plot commands": (
+    "Plot commands": (
         "comparetogsinetwork",
         "plotdensity",
         "plotestimators",
@@ -171,8 +174,8 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "plottransitions",
         "plotviewingangles",
     ),
-    "model commands": ("inputmodel", "makevpktinput"),
-    "data commands": (
+    "Model commands": ("inputmodel", "makevpktinput"),
+    "Data commands": (
         "cache",
         "deposition",
         "ejectaopacity",
@@ -186,13 +189,14 @@ COMMANDGROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType({
         "writecodecomparisondata",
         "writespectra",
     ),
-    "other commands": (
+    "Other commands": (
         "catalog",
         "check",
         "completions",
         "corehours",
         "describe",
         "getpath",
+        "help",
         "installskill",
         "logsummary",
         "python",
@@ -240,7 +244,8 @@ subcommandtree: CommandTree = {
         aliases=("doctor",),
         note=(
             "The checks also examine the input files, the caches, and the range of the arrival times. --frompackets"
-            " also reads the escaped packets to find the Monte Carlo noise of the light curve."
+            " also reads the escaped packets to find the Monte Carlo noise of the light curve. The exit status is 1"
+            " when a check gives a warning or an error, and --exit-zero gives 0."
         ),
         examples=((".", "the checks of the results of the model"),),
     ),
@@ -248,7 +253,7 @@ subcommandtree: CommandTree = {
         "gsinetwork.comparetogsinetwork",
         helptext="Compare ARTIS to a GSI Network calculation.",
         note="The comparison covers the energy release and the abundances.",
-        examples=(("-modelpath .", "the energy release and the abundances of ARTIS and the GSI Network"),),
+        examples=(("--modelpath .", "the energy release and the abundances of ARTIS and the GSI Network"),),
         exampletestfolder="test-classicmode_3d",
     ),
     "completions": CommandSpec(
@@ -264,7 +269,10 @@ subcommandtree: CommandTree = {
             "A run that stopped early gets an estimate from the timestamps of its log. The sum counts a copy of a log"
             " in the model folder one time."
         ),
-        examples=((".", "the core hours of each run and the sums"), (". --json", "the same values as JSON")),
+        examples=(
+            (".", "the core hours of each run and the sums"),
+            (". --output-format json", "the same values as JSON"),
+        ),
         exampletestfolder="test-classicmode_3d",
     ),
     "deposition": CommandSpec(
@@ -293,13 +301,13 @@ subcommandtree: CommandTree = {
         "ejectaopacity",
         helptext="Compute the opacities of the ejecta.",
         note="This gives the binned expansion opacities and the Planck-mean opacities.",
-        examples=(("-modelpath . -t 300", "the opacities of the ejecta at 300 days"),),
+        examples=(("--modelpath . -t 300", "the opacities of the ejecta at 300 days"),),
     ),
     "exportmassfractions": CommandSpec(
         "estimators.exportmassfractions",
         helptext="Write the mass fractions of the elements.",
         note="The values come from the estimators, and the command writes a text file.",
-        examples=(("-modelpath . -ts 40 -modelgridindex 0", "the mass fractions of cell 0 at timestep 40"),),
+        examples=(("--modelpath . --ts 40 --modelgridindex 0", "the mass fractions of cell 0 at timestep 40"),),
     ),
     "filterpackets": CommandSpec(
         "packets.filterpackets",
@@ -321,9 +329,15 @@ subcommandtree: CommandTree = {
         "gsinetwork.decayproducts",
         helptext="Read the beta-decay energy of a trajectory.",
         note="The data comes from the trajectories of a nucleosynthesis calculation.",
-        examples=(("-trajectoryroot trajectories", "the beta-decay energy of the trajectories in a folder"),),
+        examples=(("--trajectoryroot trajectories", "the beta-decay energy of the trajectories in a folder"),),
         # the command writes a cache of each trajectory into the trajectory folder, thus a run changes the test data
         exampletestfolder=None,
+    ),
+    "help": CommandSpec(
+        "help",
+        helptext="Print the help of artistools or of one command.",
+        note="The command prints the same text as --help, e.g. of plotspectra or of inputmodel describe.",
+        examples=(("plotspectra", "the help of plotspectra, as plotspectra --help gives it"),),
     ),
     "hesma": CommandSpec(
         "hesma_scripts",
@@ -331,7 +345,7 @@ subcommandtree: CommandTree = {
         note="The HESMA model archive takes these file formats.",
         examples=(
             (
-                "bollightcurve -modelpath . -timemin 250 -timemax 300",
+                "bollightcurve --modelpath . --timemin 250 --timemax 300",
                 "the bolometric light curve from 250 to 300 days in the HESMA format",
             ),
         ),
@@ -341,12 +355,12 @@ subcommandtree: CommandTree = {
         "energyfiles": CommandSpec(
             "inputmodel.energyinputfiles",
             helptext="Plot and inspect the ARTIS energy input files.",
-            examples=(("plotrate -modelpath .", "the analytic nuclear heating power against time"),),
+            examples=(("plotrate --modelpath .", "the analytic nuclear heating power against time"),),
         ),
         "from_e2e": CommandSpec(
             "inputmodel.from_e2e_model",
             helptext="Prepare data for an ARTIS kilonova calculation from end-to-end hydro models.",
-            examples=(("-npz model.npz -o artismodel", "an ARTIS model from the end-to-end model in model.npz"),),
+            examples=(("--npz model.npz -o artismodel", "an ARTIS model from the end-to-end model in model.npz"),),
             # the test data has no npz file of an end-to-end model
             exampletestfolder=None,
         ),
@@ -354,7 +368,10 @@ subcommandtree: CommandTree = {
             "inputmodel.fromcmfgen.convert_to_artis",
             helptext="Convert a CMFGEN SN_HYDRO_DATA snapshot to an ARTIS model at the snapshot's own time.",
             examples=(
-                ("-snapshot SN_HYDRO_DATA_1.300d -o artismodel", "an ARTIS model from the CMFGEN snapshot at 1.3 days"),
+                (
+                    "--snapshot SN_HYDRO_DATA_1.300d -o artismodel",
+                    "an ARTIS model from the CMFGEN snapshot at 1.3 days",
+                ),
             ),
             # the test data has no CMFGEN snapshot
             exampletestfolder=None,
@@ -362,13 +379,13 @@ subcommandtree: CommandTree = {
         "make1dslicefrom3dmodel": CommandSpec(
             "inputmodel.make1dslicefrom3d",
             helptext="Convert abundances.txt and model.txt from a 3D model to a one-dimensional slice.",
-            examples=((". -axis x -o 1dslice", "a 1D slice of the 3D model along x, in the folder 1dslice"),),
+            examples=((". --axis x -o 1dslice", "a 1D slice of the 3D model along x, in the folder 1dslice"),),
             exampletestfolder="testmodel_3d_10^3",
         ),
         "makeartismodel": CommandSpec(
             "inputmodel.makeartismodel",
             helptext="Tools to create an ARTIS input model.",
-            examples=(("-modelpath . -dimensionreduce 1", "a spherically symmetric 1D model from a 3D model"),),
+            examples=(("--modelpath . --dimensionreduce 1", "a spherically symmetric 1D model from a 3D model"),),
             exampletestfolder="test-classicmode_3d",
         ),
         "makeartismodel1dslicefromcone": CommandSpec(
@@ -376,7 +393,7 @@ subcommandtree: CommandTree = {
             helptext="Make a 1D model from a cone in a 3D model.",
             examples=(
                 (
-                    "-modelpath . -axis +z -coneangle 60 -nshells 4",
+                    "--modelpath . --axis +z --coneangle 60 --nshells 4",
                     "a 1D model of 4 shells from a cone of 60 degrees around the +z axis",
                 ),
             ),
@@ -391,7 +408,7 @@ subcommandtree: CommandTree = {
         "makeartismodelfromshen2018": CommandSpec(
             "inputmodel.shen2018",
             helptext="Convert Shen et al. 2018 models to ARTIS format.",
-            examples=(("-inputpath 1.00_5050.dat", "an ARTIS model from the file 1.00_5050.dat"),),
+            examples=(("--inputpath 1.00_5050.dat", "an ARTIS model from the file 1.00_5050.dat"),),
             # the test data has no model of this format
             exampletestfolder=None,
         ),
@@ -400,7 +417,7 @@ subcommandtree: CommandTree = {
             helptext="Create an ARTIS model from single trajectory abundances.",
             examples=(
                 (
-                    "-trajectoryroot trajectories -particleid 133371",
+                    "--trajectoryroot trajectories --particleid 133371",
                     "a model of one cell from the abundances of the particle 133371",
                 ),
             ),
@@ -410,13 +427,13 @@ subcommandtree: CommandTree = {
         "maptogrid": CommandSpec(
             "inputmodel.maptogrid",
             helptext="Map tracer particle trajectories to a Cartesian grid.",
-            examples=(("-i . -ncoordgrid 50", "a grid of 50 cells on each axis from ejectasnapshot.dat"),),
+            examples=(("-i . --ncoordgrid 50", "a grid of 50 cells on each axis from ejectasnapshot.dat"),),
             exampletestfolder="kilonova",
         ),
         "opacityfile": CommandSpec(
             "inputmodel.opacityinputfile",
             helptext="Write or inspect an ARTIS grey opacity.txt.",
-            examples=(("uniform -modelpath . -kappa 0.1", "an opacity.txt with 0.1 cm^2/g in each cell"),),
+            examples=(("uniform --modelpath . --kappa 0.1", "an opacity.txt with 0.1 cm^2/g in each cell"),),
         ),
         "plotinitialabundances": CommandSpec(
             "inputmodel.plotinitialabundances",
@@ -446,7 +463,7 @@ subcommandtree: CommandTree = {
         ),
         examples=(
             (
-                ". -t 259 -lambdamin 4000 -lambdamax 5500",
+                ". -t 259 --lambdamin 4000 --lambdamax 5500",
                 "the lines with the most emission from 4000 to 5500 Å at 259 days",
             ),
         ),
@@ -454,8 +471,8 @@ subcommandtree: CommandTree = {
     "logsummary": CommandSpec(
         "logsummary",
         helptext="Count the warnings and the errors in the logs of an ARTIS model, by kind of message.",
-        note="Each rank logs the cells that it updates, thus -ranks and -modelgridindex select the logs to read.",
-        examples=((". -ranks all", "the warnings and the errors in the logs of all the ranks"),),
+        note="Each rank logs the cells that it updates, thus --ranks and --modelgridindex select the logs to read.",
+        examples=((". --ranks all", "the warnings and the errors in the logs of all the ranks"),),
         exampletestfolder="test-classicmode_3d",
     ),
     "makevpktinput": CommandSpec(
@@ -475,7 +492,7 @@ subcommandtree: CommandTree = {
         helptext="Plot ARTIS estimators.",
         examples=(
             ("Te TR . -t 300", "two estimator variables against velocity"),
-            ("Te TR . -t 300 -dim 2", "each variable as a colour image at each cylindrical radius and z"),
+            ("Te TR . -t 300 --dim 2", "each variable as a colour image at each cylindrical radius and z"),
             (". --listvariables", "every variable that a model holds"),
         ),
         aliases=("estimators",),
@@ -491,12 +508,12 @@ subcommandtree: CommandTree = {
         helptext="Plot the velocity of the last interaction of the escaped packets in a wavelength range against time.",
         note=(
             "In a range with no strong line, the median is an estimate of the velocity of the photosphere. Give it to"
-            " plotlinecontributions -photospherevelocity."
+            " plotlinecontributions --photospherevelocity."
         ),
         examples=(
-            (". -lambdamin 7000 -lambdamax 8000", "the median and the quartiles for all the directions"),
+            (". --lambdamin 7000 --lambdamax 8000", "the median and the quartiles for all the directions"),
             (
-                ". -lambdamin 7000 -lambdamax 8000 -dirbin 0 50 90 --average_over_phi_angle",
+                ". --lambdamin 7000 --lambdamax 8000 --dirbin 0 50 90 --average-over-phi-angle",
                 "the same for the two poles and the costheta bin above the equator",
             ),
         ),
@@ -506,14 +523,14 @@ subcommandtree: CommandTree = {
         "packets.plotlastpacketinteraction",
         helptext="Plot the last interaction of a packet.",
         note=(
-            "The plot gives the properties of that interaction against the velocity of the ejecta. -groupby gives the"
+            "The plot gives the properties of that interaction against the velocity of the ejecta. --groupby gives the"
             " luminosity of each element, ion, or line against the velocity, and plotlinecontributions gives the same"
             " view from the level populations."
         ),
         examples=(
             (". -t 6.5", "the last interactions of the packets that arrive at 6.5 days"),
             (
-                ". -t 6.5 -groupby ion -lambdamin 3500 -lambdamax 4500",
+                ". -t 6.5 --groupby ion --lambdamin 3500 --lambdamax 4500",
                 "the luminosity of each ion against the velocity, for the packets from 3500 to 4500 Å",
             ),
         ),
@@ -531,21 +548,21 @@ subcommandtree: CommandTree = {
         helptext="Plot the Sobolev emission and the Sobolev optical depth of the strongest lines against velocity.",
         note=(
             "The values come from the estimators and the level populations, as in linecontributions."
-            " plotlastpacketinteraction -groupby gives the same view from the packets."
+            " plotlastpacketinteraction --groupby gives the same view from the packets."
         ),
         examples=(
             (
-                ". -timedays 7 -lambdamin 3000 -lambdamax 10000",
+                ". --timedays 7 --lambdamin 3000 --lambdamax 10000",
                 "where the 8 lines with the most emission from 3000 to 10000 Å form at 7 days",
             ),
             (
-                ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau",
+                ". --timedays 7 --lambdamin 6000 --lambdamax 6400 --rankby tau",
                 "where the lines with the largest tau_sobolev from 6000 to 6400 Å form at 7 days",
             ),
             (
                 (
-                    ". -timedays 7 -lambdamin 6000 -lambdamax 6400 -rankby tau -troughdirbin 90"
-                    " --average_over_phi_angle -photospherevelocity 15000km/s"
+                    ". --timedays 7 --lambdamin 6000 --lambdamax 6400 --rankby tau --troughdirbin 90"
+                    " --average-over-phi-angle --photospherevelocity 15000km/s"
                 ),
                 "the same, with a Sobolev estimate of the trough for the observer at the pole",
             ),
@@ -556,23 +573,23 @@ subcommandtree: CommandTree = {
         "plotlinefluxes",
         helptext="Plot the ratios of the line fluxes.",
         note="The ratios serve a comparison to Floers.",
-        examples=(("-modelpath .", "the fluxes of the default emission features against time"),),
+        examples=(("--modelpath .", "the fluxes of the default emission features against time"),),
         exampletestfolder="test-classicmode_3d",
     ),
     "plotlogfiles": CommandSpec(
         "plotlogfiles",
         helptext="Plot the time that each rank took.",
         note="The times come from the log files of each run of a model.",
-        examples=(("-modelpath .", "the time that each rank took in each timestep"),),
+        examples=(("--modelpath .", "the time that each rank took in each timestep"),),
         exampletestfolder="test-classicmode_3d",
     ),
     "plotnltepops": CommandSpec(
         "nltepops.plotnltepops",
         helptext="Plot ARTIS non-LTE populations.",
-        examples=(("-modelpath . -t 300 -modelgridindex 0", "the level populations of one cell"),),
+        examples=(("--modelpath . -t 300 --modelgridindex 0", "the level populations of one cell"),),
         note=(
-            "Give a time with -timedays or -timestep. A model of more than one cell also needs a cell,"
-            " which -modelgridindex or -velocity gives."
+            "Give a time with --timedays or --timestep. A model of more than one cell also needs a cell,"
+            " which --modelgridindex or --velocity gives."
         ),
     ),
     "plotopacity": CommandSpec(
@@ -580,18 +597,21 @@ subcommandtree: CommandTree = {
         helptext="Plot the binned opacities of the ejecta against wavelength.",
         note=(
             "The plot shows the expansion opacity, the line-binned opacity, and the line-binned opacity with"
-            " each Sobolev optical depth limited to 1. Without -cell, it shows the mean over all cells, weighted"
-            " by mass. -vmin, -vmax, -dirbin, -costhetamin, and -costhetamax select the cells, e.g. the cells in front"
-            " of the photosphere of one direction."
+            " each Sobolev optical depth limited to 1. Without --cell, it shows the mean over all cells, weighted"
+            " by mass. --vmin, --vmax, --dirbin, --costhetamin, and --costhetamax select the cells, e.g. the cells"
+            " in front of the photosphere of one direction."
         ),
         examples=(
-            ("-modelpath . -ts 40 -xmin 3000 -xmax 4000", "the opacities at timestep 40, from 3000 to 4000 Angstroms"),
+            (
+                "--modelpath . --ts 40 --xmin 3000 --xmax 4000",
+                "the opacities at timestep 40, from 3000 to 4000 Angstroms",
+            ),
         ),
     ),
     "plotradfield": CommandSpec(
         "plotradfield",
         helptext="Plot the radiation field estimators.",
-        examples=(("-modelpath . -t 300 -modelgridindex 0", "the radiation field of cell 0 at 300 days"),),
+        examples=(("--modelpath . -t 300 --modelgridindex 0", "the radiation field of cell 0 at 300 days"),),
     ),
     "plotspectra": CommandSpec(
         "spectra.plotspectra",
@@ -603,13 +623,13 @@ subcommandtree: CommandTree = {
     "plotspherical": CommandSpec(
         "plotspherical",
         helptext="Plot direction maps based on escaped packets.",
-        examples=(("-modelpath . -ts 40", "the direction maps of the escaped packets at timestep 40"),),
+        examples=(("--modelpath . --ts 40", "the direction maps of the escaped packets at timestep 40"),),
     ),
     "plottransitions": CommandSpec(
         "plottransitions",
         helptext="Plot the spectrum of the transitions.",
         note="The spectrum comes from the bound-bound transitions.",
-        examples=(("-modelpath . -t 300", "the spectrum of the transitions of cell 0 at 300 days"),),
+        examples=(("--modelpath . -t 300", "the spectrum of the transitions of cell 0 at 300 days"),),
     ),
     "plotviewingangles": CommandSpec(
         "plotviewingangles",
@@ -648,15 +668,15 @@ subcommandtree: CommandTree = {
         "nonthermal.spencerfano",
         helptext="Solve the Spencer-Fano equation for a cell.",
         note="The data comes from one cell of an ARTIS model at one timestep.",
-        examples=(("-modelpath . -t 300 -modelgridindex 0", "the non-thermal solution for cell 0 at 300 days"),),
+        examples=(("--modelpath . -t 300 --modelgridindex 0", "the non-thermal solution for cell 0 at 300 days"),),
     ),
     "timesteps": CommandSpec(
         "timesteps",
         helptext="List the timesteps and their days.",
         note="The table gives the days that each timestep covers.",
         examples=(
-            ("-modelpath .", "the timesteps of the model and their days"),
-            ("-modelpath . -t 300", "the timestep that covers 300 days"),
+            ("--modelpath .", "the timesteps of the model and their days"),
+            ("--modelpath . -t 300", "the timestep that covers 300 days"),
         ),
     ),
     "values": CommandSpec(
@@ -666,7 +686,7 @@ subcommandtree: CommandTree = {
             "The variables come first and the model path last. Each row is one cell at one timestep, and the name of"
             " each column gives its unit."
         ),
-        examples=(("Te nne -t 300 -modelgridindex 0 .", "Te and nne of cell 0 at 300 days"),),
+        examples=(("Te nne -t 300 --modelgridindex 0 .", "Te and nne of cell 0 at 300 days"),),
     ),
     "version": CommandSpec(
         "commands",
@@ -684,15 +704,86 @@ subcommandtree: CommandTree = {
         "writecomparisondata",
         helptext="Write the model in the comparison format.",
         note="The code comparison workshop takes this format.",
-        examples=(("-modelpath . -selected_timesteps 50", "the files of the code comparison at timestep 50"),),
+        examples=(("--modelpath . --selected-timesteps 50", "the files of the code comparison at timestep 50"),),
     ),
     "writespectra": CommandSpec(
         "spectra.writespectra",
         helptext="Write the spectrum of each timestep.",
         note="The command writes one text file for each timestep.",
-        examples=(("-modelpath .", "one spectrum file for each timestep of the model"),),
+        examples=(("--modelpath .", "one spectrum file for each timestep of the model"),),
     ),
 }
+
+
+def get_standard_flag(flag: str) -> str:
+    """Return the spelling of a flag that the help gives: two dashes in front of a name, and hyphens in the name.
+
+    ruff, uv, and the GNU tools give one dash to a flag of one letter alone, e.g. -t. One dash in front of a
+    name, e.g. -timedays, and an underscore in a name, e.g. --print_data, are the older spellings.
+    """
+    if flag.startswith("--"):
+        return "--" + flag[2:].replace("_", "-")
+    if len(flag) > 2 and flag.startswith("-"):
+        return "--" + flag[1:].replace("_", "-")
+    return flag
+
+
+def get_shown_flags(action: argparse.Action) -> list[str]:
+    """Return the spellings of the flags of an action that the help gives, in the order of the declaration.
+
+    The parser gives a flag its standard spelling only if no other flag has it, thus the older spelling then shows.
+    """
+    shown: list[str] = []
+    for flag in action.option_strings:
+        standard = get_standard_flag(flag)
+        spelling = standard if standard in action.option_strings else flag
+        if spelling not in shown:
+            shown.append(spelling)
+    return shown
+
+
+def with_shown_flags(action: argparse.Action) -> argparse.Action:
+    """Return the action if the help shows all of its flags.
+
+    Otherwise, return a copy that holds only the shown spellings.
+    """
+    shown = get_shown_flags(action)
+    if shown == action.option_strings:
+        return action
+    copied = copy.copy(action)
+    copied.option_strings = shown
+    return copied
+
+
+def with_first_sentence(action: argparse.Action) -> argparse.Action:
+    """Return a copy of the action whose help is the first sentence of its help, for the short help of -h."""
+    if not action.help or action.help is argparse.SUPPRESS:
+        return action
+    copied = copy.copy(action)
+    copied.help = get_first_sentence(action.help)
+    return copied
+
+
+class HelpAction(argparse.Action):
+    """Print the short help for -h and the full help for --help, then stop, as uv does."""
+
+    def __init__(self, option_strings: "Sequence[str]", dest: str = argparse.SUPPRESS, **kwargs: t.Any) -> None:
+        """Make an action that takes no value."""
+        super().__init__(option_strings, dest=dest, nargs=0, default=argparse.SUPPRESS, **kwargs)
+
+    @t.override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,
+    ) -> None:
+        if option_string == "-h" and isinstance(parser, SuggestingArgumentParser):
+            parser.print_short_help()
+        else:
+            parser.print_help()
+        parser.exit()
 
 
 class CommandGroupHeading(argparse.Action):
@@ -703,11 +794,11 @@ def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[arg
     """Return the top-level subcommands keyed by the heading of COMMANDGROUPS.
 
     A command that no tuple of COMMANDGROUPS names goes under the last heading, thus a new command still
-    appears and the headings stay. Return None when no command at all has a heading, which is how a
-    command group such as "artistools inputmodel" keeps one flat listing.
+    appears and the headings stay. Return None for the commands of a group such as "artistools inputmodel",
+    which keeps one flat listing. Such a group holds a command that is not a top-level command, e.g. energyfiles.
     """
     groupofcommand = {name: heading for heading, names in COMMANDGROUPS.items() for name in names}
-    if all(sub.dest not in groupofcommand for sub in subactions):
+    if any(sub.dest not in subcommandtree for sub in subactions):
         return None
 
     lastheading = list(COMMANDGROUPS)[-1]
@@ -721,8 +812,23 @@ def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[arg
 # what a group of subcommands does, for the listing of the commands above it
 GROUPHELPTEXT = {"inputmodel": "Make and inspect an ARTIS input model."}
 
+# the heading of the commands of a group that COMMANDGROUPS does not divide, e.g. inputmodel
+FLATGROUPHEADING = "Commands"
+
 # a usage line that names more flags than this takes more room than a reader gives it
 MAXUSAGEFLAGS = 8
+
+# the help of each command gives its argument groups in this order. A group that only one command has comes
+# after the options of argparse and before the shared groups
+ARGUMENTGROUPORDER = (
+    "positional arguments",
+    "options",
+    "Cell selection",
+    "Time selection",
+    "Viewing direction",
+    "Appearance",
+    "Output",
+)
 
 
 def shorten_aliases(metavar: str) -> str:
@@ -739,6 +845,17 @@ def shorten_aliases(metavar: str) -> str:
     return f"{name} ({aliases.rstrip(')').split(', ')[0]})"
 
 
+# the column of the help text in the short help of -h. 24 is the default of argparse
+SHORT_HELP_POSITION = 32
+
+
+def get_first_sentence(text: str) -> str:
+    """Return the first sentence of a help text. An abbreviation such as e.g. does not end a sentence."""
+    import re
+
+    return re.split(r"(?<!\be\.g)(?<!\bi\.e)\.\s+(?=\S)", text, maxsplit=1)[0].removesuffix(".")
+
+
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
@@ -746,6 +863,16 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         """Widen the help column so long option names stay on one line."""
         kwargs["max_help_position"] = 50
         super().__init__(*args, **kwargs)
+        self.short = False
+
+    def make_short(self) -> None:
+        """Give the short help of -h: the first sentence of the help of each option, as uv does.
+
+        The column of the help starts nearer to the left, thus a sentence takes fewer lines. A long flag then goes on
+        its own line. argparse limits the column by the width of the terminal, as __init__ does.
+        """
+        self.short = True
+        self._max_help_position = min(SHORT_HELP_POSITION, max(self._width - 20, 2 * self._indent_increment))
 
     @t.override
     def _get_help_string(self, action: argparse.Action) -> str | None:
@@ -772,7 +899,20 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         The usage of plotspectra listed 77 flags over 61 lines, which no reader takes in. The help text
         below it names each one.
         """
-        actions = list(actions)
+        if prefix is None:
+            prefix = "Usage: "
+        # the usage gives the standard spelling of each flag, thus each mutually exclusive group must name the copies
+        shownofaction = {id(action): with_shown_flags(action) for action in actions}
+        actions = list(shownofaction.values())
+        shown_groups: list[argparse._MutuallyExclusiveGroup] = []
+        for group in groups:
+            shown_group = copy.copy(group)
+            shown_group._group_actions = [  # ruff:ignore[private-member-access]
+                shownofaction.get(id(action), action)
+                for action in group._group_actions  # ruff:ignore[private-member-access]
+            ]
+            shown_groups.append(shown_group)
+        groups = shown_groups
         # the usage names the flags that the help shows, thus the hidden ones do not count
         optionals = [action for action in actions if action.option_strings and action.help != argparse.SUPPRESS]
         if usage is None and len(optionals) > MAXUSAGEFLAGS:
@@ -789,6 +929,17 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
             usage = " ".join(["%(prog)s", "[options]", *names])
 
         return super()._format_usage(usage, actions, groups, prefix)
+
+    @t.override
+    def start_section(self, heading: str | None) -> None:
+        """Start a section of the help. The heading starts with a capital letter, e.g. "Options".
+
+        argparse gives its own headings in lower case, e.g. "options" and "positional arguments". argparse compares
+        a heading with SUPPRESS by identity, thus this method does not change the SUPPRESS heading.
+        """
+        if heading and heading is not argparse.SUPPRESS:
+            heading = heading[:1].upper() + heading[1:]
+        super().start_section(heading)
 
     @t.override
     def _fill_text(self, text: str, width: int, indent: str) -> str:
@@ -809,14 +960,25 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         def my_sort(action: argparse.Action) -> str:
             return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
 
-        actions = sorted(actions, key=my_sort)
+        # the help gives the standard spelling of each flag, and the older spellings still work
+        actions = sorted((with_shown_flags(action) for action in actions), key=my_sort)
+        if self.short:
+            actions = [with_first_sentence(action) for action in actions]
         super().add_arguments(actions)
 
     @t.override
     def _format_action(self, action: argparse.Action) -> str:
-        """Render a group heading as its own line, and every other action as usual."""
+        """Render a group heading as its own line, and every other action as usual.
+
+        The headings of the commands replace the line of the subcommand metavar, which has no help.
+        """
         if isinstance(action, CommandGroupHeading):
-            return f"\n{action.dest}\n"
+            # Python 3.14 colours the headings of argparse with this theme. Python 3.13 has no theme
+            theme = getattr(self, "_theme", None)
+            return f"\n{theme.heading}{action.dest}{theme.reset}\n" if theme is not None else f"\n{action.dest}\n"
+
+        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
+            return "".join(self._format_action(subaction) for subaction in self._iter_indented_subactions(action))
 
         return super()._format_action(action)
 
@@ -824,24 +986,19 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def _iter_indented_subactions(self, action: argparse.Action) -> "Generator[argparse.Action]":
         """Yield the subcommands under a heading for each group.
 
-        This hook also feeds the column width, thus the headings do not disturb the alignment.
+        This hook also feeds the column width, thus the headings do not disturb the alignment. A heading
+        replaces the line of the metavar, thus the commands have the indent of the options.
         """
         if not isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
             yield from super()._iter_indented_subactions(action)
             return
 
-        grouped = group_subactions(list(action._get_subactions()))  # ruff:ignore[private-member-access]
-        if grouped is None:
-            yield from super()._iter_indented_subactions(action)
-            return
-
-        self._indent()
-        for heading, members in grouped.items():
+        subactions = list(action._get_subactions())  # ruff:ignore[private-member-access]
+        for heading, members in (group_subactions(subactions) or {FLATGROUPHEADING: subactions}).items():
             yield CommandGroupHeading(option_strings=[], dest=f"{heading}:", help=None)
             for member in members:
                 member.metavar = shorten_aliases(str(member.metavar or member.dest))
                 yield member
-        self._dedent()
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -885,6 +1042,8 @@ def addcommandargs(parser: argparse.ArgumentParser, spec: CommandSpec) -> None:
     submodule.addargs(parser)
     # run_command alone implements --quiet, and __main__ implements --explain, thus no module declares them
     addarg_common(parser)
+    if isinstance(parser, SuggestingArgumentParser):
+        parser.add_standard_flags()
     # __main__ tests the arguments against the defaults of this parser, thus it needs the parser itself.
     # parse_cli_args cannot make that test, because it returns at once for a parsed namespace, which is
     # what the dispatcher gives it
@@ -945,6 +1104,67 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     # Commands that accept positional arguments between options set this flag.
     wantsintermixed: bool = False
 
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+        """Make the parser. The help of -h starts with a capital letter, as the help of every other argument does.
+
+        Each parser formats its help and its usage in the same way, thus a parser of a test also gives "Usage:".
+        """
+        kwargs.setdefault("formatter_class", CustomArgHelpFormatter)
+        addhelp = kwargs.pop("add_help", True)
+        super().__init__(*args, add_help=False, **kwargs)
+        if addhelp:
+            self.add_argument(
+                "-h",
+                "--help",
+                action=HelpAction,
+                help="Show a summary of the options with -h, or the full help with --help, and exit",
+            )
+
+    @t.override
+    def format_help(self) -> str:
+        """Return the full help, with each sentence of the help of each option, and the examples."""
+        return self.make_help(short=False)
+
+    def make_formatter(self, *, short: bool) -> argparse.HelpFormatter:
+        """Return the formatter of the help, which gives the short help of -h with short."""
+        formatter = self._get_formatter()
+        if short and isinstance(formatter, CustomArgHelpFormatter):
+            formatter.make_short()
+        return formatter
+
+    def print_short_help(self, file: t.TextIO | None = None) -> None:
+        """Print the short help of -h, with the first sentence of the help of each option.
+
+        The help goes to the standard output, as print_help sends it. _print_message alone takes the standard error.
+        """
+        import sys
+
+        self._print_message(self.make_help(short=True), file or sys.stdout)
+
+    def make_help(self, *, short: bool) -> str:
+        """Return the help with the argument groups in the order of ARGUMENTGROUPORDER.
+
+        A command makes a shared group when it adds the first argument of that group. Without this order, the order
+        of the groups is different in each command. The short help gives a pointer to --help in place of the examples.
+        """
+
+        def get_rank(group: "argparse._ArgumentGroup") -> float:  # pyright: ignore[reportPrivateUsage]
+            # the group of the subcommands has no heading, and it comes first as the positional arguments do
+            title = "positional arguments" if group.title is argparse.SUPPRESS else group.title or ""
+            # 1.5 puts a group that only one command has between "options" and the shared groups
+            return ARGUMENTGROUPORDER.index(title) if title in ARGUMENTGROUPORDER else 1.5
+
+        formatter = self.make_formatter(short=short)
+        formatter.add_usage(self.usage, self._actions, self._mutually_exclusive_groups)
+        formatter.add_text(self.description)
+        for group in sorted(self._action_groups, key=get_rank):
+            formatter.start_section(group.title)
+            formatter.add_text(group.description)
+            formatter.add_arguments(group._group_actions)  # ruff:ignore[private-member-access]
+            formatter.end_section()
+        formatter.add_text(f"Run `{self.prog} --help` for the full help and the examples." if short else self.epilog)
+        return formatter.format_help()
+
     @t.override
     def _check_value(self, action: argparse.Action, value: t.Any) -> None:
         """Refuse a value outside the choices with a message that names the closest choice.
@@ -966,14 +1186,54 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             parsermap = action._name_parser_map  # ruff:ignore[private-member-access]
             listedparsers = {id(parsermap[command]) for command in listed}
             choices = [command for command, subparser in parsermap.items() if id(subparser) in listedparsers]
-        name = action.metavar or action.dest
-        # a close match answers the question, thus the long list of every choice serves the other case
-        helptext = suggest_names(str(value), choices) or f"The choices are {', '.join(listed)}"
-        self.exit_with_help(f"invalid choice '{value}' for {name}", helptext)
+        # a close match answers the question. The list of the 44 commands filled the help line, and --help gives
+        # each command with its description, thus the help line names --help
+        suggestion = suggest_names(str(value), choices)
+        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
+            helptext = suggestion or f"Run `{self.prog} --help` to see the commands"
+            self.exit_with_help(f"'{value}' is not a command of {self.prog}", helptext)
+        helptext = suggestion or f"The choices are {', '.join(listed)}"
+        self.exit_with_help(f"Invalid choice '{value}' for {action.metavar or action.dest}", helptext)
 
     def get_visible_flags(self) -> list[str]:
-        """Return the option strings that the help shows, thus a suggestion names no hidden alias."""
-        return [flag for action in self._actions if action.help != argparse.SUPPRESS for flag in action.option_strings]
+        """Return the flags that the help shows. A suggestion then names no hidden alias or older spelling."""
+        visibleactions = [action for action in self._actions if action.help != argparse.SUPPRESS]
+        return [flag for action in visibleactions for flag in get_shown_flags(action)]
+
+    def add_standard_flags(self) -> None:
+        """Give each flag the standard spelling of get_standard_flag, if no other flag has that spelling.
+
+        The older spelling stays, thus a script that holds -timedays or --print_data still runs. The help shows the
+        standard spelling alone.
+        """
+        for action in self._actions:
+            for flag in list(action.option_strings):
+                standard = get_standard_flag(flag)
+                if standard not in self._option_string_actions:
+                    action.option_strings = [*action.option_strings, standard]
+                    self._option_string_actions[standard] = action
+            # the first flag names the option in each command that the code makes, e.g. the command of a viewer
+            shown = get_shown_flags(action)
+            action.option_strings = [*shown, *(flag for flag in action.option_strings if flag not in shown)]
+
+    def show_standard_flags(self, message: str) -> str:
+        """Return a message of argparse with the shown spelling of each flag.
+
+        For example, the message gives --timedays/--time/-t for -timedays/-time/-t.
+        """
+        import re
+
+        def replace(match: re.Match[str]) -> str:
+            flags = match.group(0).split("/")
+            action = self._option_string_actions.get(flags[0])
+            if action is None:
+                return match.group(0)
+            if set(flags) <= set(action.option_strings) and len(flags) > 1:
+                return "/".join(get_shown_flags(action))
+            standard = get_standard_flag(flags[0])
+            return standard if standard in action.option_strings else flags[0]
+
+        return re.sub(r"(?<![\w/-])-{1,2}[A-Za-z][\w-]*(?:/-{1,2}[A-Za-z][\w-]*)*", replace, message)
 
     def exit_with_help(self, message: str, helptext: str = "") -> t.NoReturn:
         """Report a bad argument as an error line and a help line, then stop.
@@ -1165,7 +1425,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         parsednamespace, leftover = self.parse_known_args(args, namespace)
         assert parsednamespace is not None
         if leftover:
-            from artistools.misc import suggest_names
+            from artistools.misc import suggest_flags
 
             # separate_trailing_folders puts "--" in front of the folders at the end, thus the user did not write it
             words = [word for word in leftover if word != "--"]
@@ -1174,12 +1434,12 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             helptext = ""
             if isinstance(subparser, SuggestingArgumentParser):
                 helptext = (
-                    suggest_names(flag, subparser.get_visible_flags())
+                    suggest_flags(flag, subparser.get_visible_flags())
                     if flag is not None
                     else subparser.get_folder_help(words)
                 )
             # the usage of the command that the user ran, thus it holds the arguments of that command
-            subparser.exit_with_help(f"unrecognized arguments: {' '.join(words)}", helptext)
+            subparser.exit_with_help(f"Unrecognised arguments: {' '.join(words)}", helptext)
 
         return parsednamespace
 
@@ -1200,7 +1460,10 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
     @t.override
     def error(self, message: str) -> t.NoReturn:
-        """Report an error of argparse in the same two-part shape, with a suggestion where one fits."""
+        """Report an error of argparse in the same two-part shape, with a suggestion where one fits.
+
+        argparse starts its messages with a lower-case letter, e.g. "argument -t: ...", thus the first letter changes.
+        """
         import re
 
         from artistools.misc import suggest_flags
@@ -1216,25 +1479,29 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             # get_visible_flags leaves out a hidden alias, thus the suggestion names a flag that the help shows
             helptext = suggest_flags(given, self.get_visible_flags())
 
-        self.exit_with_help(message, helptext)
+        message = self.show_standard_flags(message)
+        self.exit_with_help(message[:1].upper() + message[1:], helptext)
 
 
 def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree, path: tuple[str, ...] = ()) -> None:
     """Register the subcommands in the tree on the parser. path holds the names of the groups above the tree."""
 
-    def func(args: argparse.Namespace) -> None:  # ruff:ignore[unused-function-argument]
-        parser.print_help()
+    def func(args: argparse.Namespace) -> None:
+        # the help is the product, thus it goes to the standard output and not to the standard error
+        parser.print_help(getattr(args, "productstream", None))
 
     parser.set_defaults(func=func)
     subparsers = parser.add_subparsers(
-        dest="subcommand", required=False, metavar="command", parser_class=SuggestingArgumentParser
+        dest="subcommand", required=False, metavar="<command>", parser_class=SuggestingArgumentParser
     )
+    # the subcommands are the only positional argument, and the headings of their groups replace this heading
+    parser._positionals.title = argparse.SUPPRESS  # ruff:ignore[private-member-access]
 
     for subcommand, spec in subcommandtree.items():
         if isinstance(spec, dict):
             subparser = subparsers.add_parser(
                 subcommand,
-                help=GROUPHELPTEXT.get(subcommand, "command group"),
+                help=GROUPHELPTEXT.get(subcommand, "Command group."),
                 description=f"The {subcommand} commands of artistools.",
                 epilog=get_group_epilog((*path, subcommand), spec),
                 formatter_class=CustomArgHelpFormatter,
@@ -1256,13 +1523,62 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree, 
             addcommandargs(subparser, spec)
 
 
-def show_version(args: argparse.Namespace | None = None, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
-    """Print the artistools version. The version is the product of the command, thus --quiet keeps it."""
+def get_version_text() -> str:
+    """Return the version of artistools. For a git checkout, also give the commit and its date, as ruff does.
+
+    A bug report then names the code that ran, also between two releases, e.g. "artistools 2026.10.19 (7632bc6
+    2026-10-20)".
+    """
+    import subprocess  # ruff:ignore[suspicious-subprocess-import]
     from importlib.metadata import version
 
+    versiontext = f"artistools {version('artistools')}"
+    repository = get_path("artistools_repository")
+    # an installed wheel has no git folder, and a worktree has a .git file
+    if not (repository / ".git").exists():
+        return versiontext
+    try:
+        commit = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+            ["git", "-C", str(repository), "log", "-1", "--format=%h %cs"],  # ruff:ignore[start-process-with-partial-path]
+            capture_output=True,
+            encoding="utf-8",
+            check=True,
+            timeout=5,
+        ).stdout.strip()
+    # a missing git or a folder that is not a repository gives the version alone
+    except (OSError, subprocess.SubprocessError):
+        return versiontext
+    return f"{versiontext} ({commit})" if commit else versiontext
+
+
+class VersionAction(argparse.Action):
+    """Print the text of get_version_text and stop, as the version action of argparse does.
+
+    The version action of argparse takes its text when the code makes the parser. Thus, with that action, git runs
+    for each command.
+    """
+
+    def __init__(self, option_strings: "Sequence[str]", dest: str = argparse.SUPPRESS, **kwargs: t.Any) -> None:
+        """Make an action that takes no value."""
+        super().__init__(option_strings, dest=dest, nargs=0, default=argparse.SUPPRESS, **kwargs)
+
+    @t.override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,
+    ) -> None:
+        print(get_version_text())
+        parser.exit()
+
+
+def show_version(args: argparse.Namespace | None = None, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
+    """Print the artistools version. The version is the product of the command, thus --quiet keeps it."""
     from artistools.misc import print_product
 
-    print_product(args or argparse.Namespace(), f"artistools {version('artistools')}")
+    print_product(args or argparse.Namespace(), get_version_text())
 
 
 def show_python(args: argparse.Namespace | None = None, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]
@@ -1305,6 +1621,21 @@ def get_artistools_path(args: argparse.Namespace | None = None, **kwargs: t.Any)
     from artistools.misc import print_product
 
     print_product(args or argparse.Namespace(), get_path("artistools_dir"))
+
+
+def get_older_flag_spellings(parser: argparse.ArgumentParser) -> list[str]:
+    """Return the flags of the parser and of its subcommands that the help hides as an older spelling.
+
+    argcomplete offers each option string of an action, thus --print<Tab> gave --print_data and --print-data.
+    """
+    older: set[str] = set()
+    for action in parser._actions:  # ruff:ignore[private-member-access]
+        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
+            for subparser in action.choices.values():
+                older.update(get_older_flag_spellings(subparser))
+        else:
+            older.update(set(action.option_strings) - set(get_shown_flags(action)))
+    return sorted(older)
 
 
 def get_hidden_commands() -> list[str]:

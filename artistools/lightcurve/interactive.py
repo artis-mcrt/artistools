@@ -261,11 +261,11 @@ REFUSABLE_OPTIONS: t.Final[
     MappingProxyType[str, tuple["Callable[[ControlValues], ControlValues]", "Callable[[ControlValues], ControlValues]"]]
 ] = MappingProxyType({
     "--plotcmf": (lambda values: dc.replace(values, plotcmf=True), lambda values: dc.replace(values, plotcmf=False)),
-    "-topnucs": (
+    "--topnucs": (
         lambda values: dc.replace(values, topnucs=values.topnucs or 1),
         lambda values: dc.replace(values, topnucs=0),
     ),
-    "--use_pellet_decay_time": (
+    "--use-pellet-decay-time": (
         lambda values: dc.replace(values, usepelletdecaytime=True),
         lambda values: dc.replace(values, usepelletdecaytime=False),
     ),
@@ -313,18 +313,18 @@ def check_viewer_args(args: argparse.Namespace) -> None:
     exit_for_other_actions(
         "light curves",
         {
-            "-filter": bool(args.filter),
-            "-colour_evolution": args.colour_evolution is not None,
+            "--filter": bool(args.filter),
+            "--colour-evolution": args.colour_evolution is not None,
             "--colouratpeak": args.colouratpeak,
             "--brightnessattime": args.brightnessattime,
-            "--save_angle_averaged_peakmag_risetime_delta_m15_to_file": (
+            "--save-angle-averaged-peakmag-risetime-delta-m15-to-file": (
                 args.save_angle_averaged_peakmag_risetime_delta_m15_to_file
             ),
-            "--save_viewing_angle_peakmag_risetime_delta_m15_to_file": (
+            "--save-viewing-angle-peakmag-risetime-delta-m15-to-file": (
                 args.save_viewing_angle_peakmag_risetime_delta_m15_to_file
             ),
-            "--make_viewing_angle_peakmag_risetime_scatter_plot": args.make_viewing_angle_peakmag_risetime_scatter_plot,
-            "--make_viewing_angle_peakmag_delta_m15_scatter_plot": (
+            "--make-viewing-angle-peakmag-risetime-scatter-plot": args.make_viewing_angle_peakmag_risetime_scatter_plot,
+            "--make-viewing-angle-peakmag-delta-m15-scatter-plot": (
                 args.make_viewing_angle_peakmag_delta_m15_scatter_plot
             ),
         },
@@ -351,7 +351,7 @@ def get_refused_reasons(viewer: "LightCurveViewer", values: ControlValues) -> di
     """Return the reason for each option that plotlightcurves refuses with the other values, if the user selects it.
 
     A control of a refused option then shows the reason, and it takes no selection. Each option takes the other values
-    as they are, because a rule can refuse two options together, e.g. --plotcmf and --use_pellet_decay_time.
+    as they are, because a rule can refuse two options together, e.g. --plotcmf and --use-pellet-decay-time.
     """
     return {
         option.flag: option.reason[0].upper() + option.reason[1:]
@@ -518,49 +518,49 @@ class LightCurveViewer:
             values = self.values
         options: list[str] = []
         for flag, limit in (
-            ("-timemin", values.timemin),
-            ("-timemax", values.timemax),
-            ("-ymin", values.ymin),
-            ("-ymax", values.ymax),
+            ("--timemin", values.timemin),
+            ("--timemax", values.timemax),
+            ("--ymin", values.ymin),
+            ("--ymax", values.ymax),
         ):
             if limit:
                 options += get_option_tokens(flag, limit)
         options += [flag for unit, _, flag in LUMUNITS if unit == values.lumunit and flag]
         if values.yscale != self.defaultyscale:
-            options += ["-yscale", values.yscale]
+            options += ["--yscale", values.yscale]
         # plotlightcurves draws the UVOIR light curve when the command gives no --gamma
         if values.gamma:
             options.append("--gamma")
         # -topnucs reads the packets without --frompackets
         if values.topnucs:
-            options += ["-topnucs", str(values.topnucs)]
+            options += ["--topnucs", str(values.topnucs)]
         for isgiven, flag in (
             (values.logscalex, "--logscalex"),
             (values.frompackets and not values.topnucs, "--frompackets"),
-            (values.usepelletdecaytime, "--use_pellet_decay_time"),
+            (values.usepelletdecaytime, "--use-pellet-decay-time"),
             (values.plotcmf, "--plotcmf"),
             (values.plotinvalidpart, "--plotinvalidpart"),
-            (values.directionkind == "phi", "--average_over_phi_angle"),
-            (values.directionkind == "theta", "--average_over_theta_angle"),
+            (values.directionkind == "phi", "--average-over-phi-angle"),
+            (values.directionkind == "theta", "--average-over-theta-angle"),
             # the angles of a direction go in the labels, thus the flag has no effect without a direction
             (values.usedegrees and bool(values.directionkind), "--usedegrees"),
         ):
             if isgiven:
                 options.append(flag)
         if values.directionkind:
-            directionflag = "-plotvspecpol" if values.directionkind == "vpkt" else "-plotviewingangle"
+            directionflag = "--plotvspecpol" if values.directionkind == "vpkt" else "--plotviewingangle"
             options += [directionflag, *(str(dirbin) for dirbin in values.directionbins)]
         if values.figwidthscale != 1.0:
-            options += ["-figwidthscale", format(values.figwidthscale, "g")]
+            options += ["--figwidthscale", format(values.figwidthscale, "g")]
         if values.dpi is not None:
-            options += ["-dpi", str(values.dpi)]
+            options += ["--dpi", str(values.dpi)]
         # the curves go in the thermalisation panel, thus the flag has no effect without the panel
         if values.showbarnes and values.thermalisation:
             options.append("--showbarnes")
         # a list option takes each word that follows it, thus the lists of particles come after every other option
         for dest in ENERGYRATEDESTS:
             if particles := getattr(values, dest):
-                options += [f"-{dest}", *particles]
+                options += [f"--{dest}", *particles]
         # a command with no path reads the model in the working folder, thus that model needs no path
         paths = [] if values.lightcurves == DEFAULT_LIGHTCURVES else list(values.lightcurves)
         return make_command_tokens([*paths, *get_option_row_tokens(values.otheroptions)], options)
@@ -606,7 +606,7 @@ class LightCurveViewer:
         """Return why no model of the plot gives an energy rate of a particle, or None if a model gives it."""
         columns = get_energy_rate_column_names(dest, particle)
         if not columns:
-            return f"-{dest} takes no {particle}, because ARTIS writes no such rate in deposition.out"
+            return f"--{dest} takes no {particle}, because ARTIS writes no such rate in deposition.out"
         if missing := [column for column in columns if column not in self.models.energyratecolumns]:
             return f"No model of the plot gives {' or '.join(missing)} in deposition.out"
         return None
@@ -644,7 +644,7 @@ class LightCurveViewer:
         return [axis for axis in (self.axis, self.residualaxis, self.thermaxis) if axis is not None]
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the -figwidthscale that gives the figure the shape of the plot area."""
+        """Return the --figwidthscale that gives the figure the shape of the plot area."""
         marginwidth = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
         return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
 
@@ -674,7 +674,7 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Double-click</b> a light curve", "Set the label and the line style of the light curve"),
     ("<b>Right-click</b> a light curve", "Move it, set its style, copy its path, or open its folder"),
     ("<b>Drag</b> across the plot", "Select the time range"),
-    ("<b>Shift-drag</b> up or down the plot", "Select the y range (-ymin and -ymax)"),
+    ("<b>Shift-drag</b> up or down the plot", "Select the y range (--ymin and --ymax)"),
     ("<b>Double-click</b> the plot", "Get the full time range"),
     ("<b>Right-click</b> the plot", "Change the y scale, get the automatic y range, or copy or save the figure"),
 )
@@ -740,9 +740,9 @@ def open_window(
     # the box must hold each -topnucs of a command, thus its maximum is far above a useful number of nuclides
     topnucsbox.setRange(0, 9999)
     topnucsbox.setSpecialValueText("none")
-    topnucsbox.setToolTip(f"-topnucs: {helptexts.get('topnucs', '')}. The option reads the packets files")
+    topnucsbox.setToolTip(f"--topnucs: {helptexts.get('topnucs', '')}. The option reads the packets files")
     topnucsbox.setKeyboardTracking(False)
-    pelletcheck = QtWidgets.QCheckBox("--use_pellet_decay_time")
+    pelletcheck = QtWidgets.QCheckBox("--use-pellet-decay-time")
     cmfcheck = QtWidgets.QCheckBox("--plotcmf")
     invalidcheck = QtWidgets.QCheckBox("--plotinvalidpart")
     for widget, dest in ((cmfcheck, "plotcmf"), (invalidcheck, "plotinvalidpart")):
@@ -750,7 +750,7 @@ def open_window(
     add_row(
         lightcurvegrid, 2, [QtWidgets.QLabel("Packets:"), packetbox, QtWidgets.QLabel("--frompackets"), datasourcebox]
     )
-    add_row(lightcurvegrid, 3, [QtWidgets.QLabel("-topnucs"), topnucsbox, pelletcheck])
+    add_row(lightcurvegrid, 3, [QtWidgets.QLabel("--topnucs"), topnucsbox, pelletcheck])
     add_row(lightcurvegrid, 4, [cmfcheck, invalidcheck])
 
     # the key keeps the open or closed state that the settings saved under the old heading
@@ -784,7 +784,7 @@ def open_window(
             QtCore.Qt.ItemDataRole.ToolTipRole,
         )
     lumunitbox.setToolTip("The unit of the luminosity and of the energy rates")
-    add_row(ygrid, 0, [QtWidgets.QLabel("Unit:"), lumunitbox, QtWidgets.QLabel("-yscale"), yscalebox])
+    add_row(ygrid, 0, [QtWidgets.QLabel("Unit:"), lumunitbox, QtWidgets.QLabel("--yscale"), yscalebox])
     # the handlers come later in this function, thus the lambdas read them at the time of a change
     show_y_limits = add_y_limits_row(
         ygrid,
@@ -836,7 +836,7 @@ def open_window(
     }
     # the two emission rates share one heading above their own headings, thus both columns are clearly emission rates
     emissionheader = QtWidgets.QLabel("Emission rate")
-    emissionheader.setToolTip("The energy that the decays give to each particle (-emission and -analyticemission)")
+    emissionheader.setToolTip("The energy that the decays give to each particle (--emission and --analyticemission)")
     energygrid.addWidget(emissionheader, 0, 2, 1, 2, QtCore.Qt.AlignmentFlag.AlignHCenter)
     for column, dest in enumerate(ENERGYRATEDESTS, start=1):
         text, tooltip = energyheaders[dest]
@@ -853,7 +853,7 @@ def open_window(
             if not get_energy_rate_column_names(dest, particle):
                 continue
             check = QtWidgets.QCheckBox()
-            check.setAccessibleName(f"-{dest} {particle}")
+            check.setAccessibleName(f"--{dest} {particle}")
             # the grid has no text in a cell, thus the check box takes the middle of its column
             energygrid.addWidget(check, row, column, QtCore.Qt.AlignmentFlag.AlignHCenter)
             energychecks[dest, particle] = check
@@ -883,7 +883,7 @@ def open_window(
         )
     )
     # the figure scale is a property of the figure, thus it goes in the Figure section, as in the spectrum viewer
-    add_row(figuresection.grid, 1, [QtWidgets.QLabel("-figscale"), figscalebox])
+    add_row(figuresection.grid, 1, [QtWidgets.QLabel("--figscale"), figscalebox])
 
     signalwidgets: list[QtWidgets.QWidget] = [
         figscalebox,
@@ -927,8 +927,8 @@ def open_window(
         return (values.lightcurves, tuple(get_row_values(values.otheroptions, flag) for flag in SERIES_STYLE_FLAGS))
 
     def get_lightcurve_name(values: ControlValues, path: str) -> str:
-        """Return the -label of a light curve, or the legend name of its model or its reference file."""
-        if label := get_series_style(values.otheroptions, values.lightcurves, path)["-label"]:
+        """Return the --label of a light curve, or the legend name of its model or its reference file."""
+        if label := get_series_style(values.otheroptions, values.lightcurves, path)["--label"]:
             return label
         if path_is_reference_lightcurve(path):
             # plotlightcurves takes the label of the metadata of a reference file, thus the list shows the same name
@@ -952,7 +952,7 @@ def open_window(
                 SeriesRow(
                     path=path,
                     name=get_lightcurve_name(values, path),
-                    labelled=style["-label"] is not None,
+                    labelled=style["--label"] is not None,
                     itemtext=itemtext,
                     tooltip=itemtext,
                     swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
@@ -984,7 +984,7 @@ def open_window(
             datasourcebox.setCurrentIndex(1 if values.frompackets or values.topnucs else 0)
             datasourcebox.setEnabled(not values.topnucs)
             datasourcebox.setToolTip(
-                "-topnucs reads the packets files"
+                "--topnucs reads the packets files"
                 if values.topnucs
                 else "The files of the light curves of the ARTIS models"
             )
@@ -996,13 +996,13 @@ def open_window(
                 refusedreasons.get("--gamma", f"--gamma: {helptexts.get('gamma', '')}"),
                 QtCore.Qt.ItemDataRole.ToolTipRole,
             )
-            topnucsreason = refusedreasons.get("-topnucs")
+            topnucsreason = refusedreasons.get("--topnucs")
             topnucsbox.setEnabled(topnucsreason is None)
             topnucsbox.setToolTip(
-                topnucsreason or f"-topnucs: {helptexts.get('topnucs', '')}. The option reads the packets files"
+                topnucsreason or f"--topnucs: {helptexts.get('topnucs', '')}. The option reads the packets files"
             )
             pelletcheck.setChecked(values.usepelletdecaytime)
-            pelletreason = refusedreasons.get("--use_pellet_decay_time")
+            pelletreason = refusedreasons.get("--use-pellet-decay-time")
             pelletcheck.setEnabled(pelletreason is None or values.usepelletdecaytime)
             pelletcheck.setToolTip(pelletreason or helptexts.get("use_pellet_decay_time", ""))
             cmfcheck.setChecked(values.plotcmf)
@@ -1017,7 +1017,7 @@ def open_window(
                 reason = viewer.get_energy_rate_reason(dest, particle)
                 # a rate that the plot has stays available, thus the user can remove it
                 check.setEnabled(reason is None or ischecked)
-                check.setToolTip(reason or f"-{dest} {particle}: {helptexts.get(dest, '')}")
+                check.setToolTip(reason or f"--{dest} {particle}: {helptexts.get(dest, '')}")
                 if reason is not None:
                     unavailable.append(f"• {PARTICLETEXTS[particle]} {ENERGYRATENAMES[dest]}: {reason}")
             set_note_text(
@@ -1056,7 +1056,7 @@ def open_window(
             set_option_rows(values.otheroptions)
             set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
             set_spin_value(
-                figscalebox, float((get_row_values(values.otheroptions, "-figscale") or (str(defaultfigscale),))[0])
+                figscalebox, float((get_row_values(values.otheroptions, "--figscale") or (str(defaultfigscale),))[0])
             )
             set_command_text(commandtext, viewer.get_command())
             set_command_text(pythontext, get_plot_python_code(viewer))
@@ -1141,7 +1141,7 @@ def open_window(
             apply(dc.replace(values, timemax=format(limit, ".10g")))
 
     def on_timeedit() -> None:
-        timefields = [(timeminedit, "-timemin"), (timemaxedit, "-timemax")]
+        timefields = [(timeminedit, "--timemin"), (timemaxedit, "--timemax")]
         if (limits := read_limit_fields(timefields, show_error)) is not None:
             apply(dc.replace(viewer.values, timemin=limits[0], timemax=limits[1]))
 
@@ -1186,7 +1186,7 @@ def open_window(
             return
         isreference = [path_is_reference_lightcurve(other) for other in values.lightcurves]
         # the colour of the popup for "Default" is the colour that the light curve has with no -color of its own
-        defaultrows = set_series_rows(values.otheroptions, values.lightcurves, path, {"-color": None})
+        defaultrows = set_series_rows(values.otheroptions, values.lightcurves, path, {"--color": None})
         defaultcolour = get_path_colours(values.lightcurves, isreference, defaultrows)[path]
 
         style = get_series_style(values.otheroptions, values.lightcurves, path)
@@ -1207,7 +1207,7 @@ def open_window(
             mplcolors.to_hex(defaultcolour),
             float(mpl.rcParams["lines.linewidth"]),
             show_changes,
-            flags=("-label", "-color", "-linewidth", "-linealpha")
+            flags=("--label", "--color", "--linewidth", "--linealpha")
             if path_is_reference_lightcurve(path)
             else SERIES_STYLE_FLAGS,
         )
@@ -1220,7 +1220,7 @@ def open_window(
         window,
         partial(show_status_note, statusbar),
         "The ARTIS models and the reference light curves of the plot, in the order of the command. The order sets the"
-        " -label and the style of each series. Click the up or the down arrow, drag a row, or press Alt-Up or Alt-Down"
+        " --label and the style of each series. Click the up or the down arrow, drag a row, or press Alt-Up or Alt-Down"
         " (Option on a Mac) to change the order. The command gives a file from the reference data of artistools by its"
         " name alone.",
         ReferenceData(

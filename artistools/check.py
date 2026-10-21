@@ -11,6 +11,9 @@ The checks read these files:
 --frompackets also reads the escaped packets to find the Monte Carlo noise of the light curve. Each check runs alone,
 thus a check that fails gives a row with the status "error", and the other checks still run. A status is "ok",
 "warning", "error", or "not checked".
+
+The exit status is 1 when a check gives "warning" or "error", as for "ruff check". A job script can then test the
+result. --exit-zero gives the status 0.
 """
 
 import argparse
@@ -114,7 +117,7 @@ def check_log_messages(modelpath: Path) -> tuple[str, str]:
         detail += f", and the most frequent {dfworst['level']} is {dfworst['count']} times '{exampletext}'"
     # almost each run of ARTIS logs warnings, e.g. of the solver of Te, thus only an error changes the status. The
     # check of the temperature limits gives the effect of the warnings of the solver of Te
-    return ("error" if errorcount else "ok"), f"{detail} (artistools logsummary gives each kind)"
+    return ("error" if errorcount else "ok"), f"{detail} (`artistools logsummary` gives each kind)"
 
 
 def check_temperature_limits(modelpath: Path) -> tuple[str, str]:
@@ -129,7 +132,7 @@ def check_temperature_limits(modelpath: Path) -> tuple[str, str]:
         return "not checked", "the model has no estimator files"
 
     print_detail(
-        "temperature limits: a cell is at a limit if its Te from the estimators is equal to "
+        "Temperature limits: a cell is at a limit if its Te from the estimators is equal to "
         + " or ".join(f"{name} = {value:g} K" for name, value in limits.items())
         + " of artisoptions.h"
     )
@@ -376,11 +379,11 @@ def check_energy(modelpath: Path) -> tuple[str, str]:
         return "not checked", "deposition.out has fewer than two complete time steps"
 
     print_detail(
-        f"energy: Q is {DEPOSITIONCOLUMN} of deposition.out, the energy that the gamma rays and the particles deposit"
+        f"Energy: Q is {DEPOSITIONCOLUMN} of deposition.out, the energy that the gamma rays and the particles deposit"
         " in the ejecta. The eps_ columns give the decay energy before the thermalisation, thus Q does not use them"
     )
     print_detail(
-        "energy: L is the angle average of light_curve.out, which holds the escaped r-packets of all wavelengths."
+        "Energy: L is the angle average of light_curve.out, which holds the escaped r-packets of all wavelengths."
         " The Katz test (Katz B., Kushnir D., Dong S., 2013, arXiv:1301.6766) compares ∫ t L dt with ∫ t Q dt"
     )
     tmindays, tmaxdays = (
@@ -451,7 +454,7 @@ def check_packet_noise(modelpath: Path, frompackets: bool) -> tuple[str, str]:
         return "not checked", "give --frompackets to read the packets"
 
     print_detail(
-        "packet noise: the relative noise of a time step is sqrt(Σ e²) / Σ e over the energies e of its escaped"
+        "Packet noise: the relative noise of a time step is sqrt(Σ e²) / Σ e over the energies e of its escaped"
         " r-packets, for the angle average"
     )
     dfalltimesteps = (
@@ -501,11 +504,11 @@ def check_caches(modelpath: Path) -> tuple[str, str]:
 
     caches, leftovers = find_cache_files(modelpath)
     sizemb = sum(path.stat().st_size for path in caches) / 1e6
-    detail = f"{len(caches)} parquet caches of {sizemb:.1f} MB (artistools cache list gives them)"
+    detail = f"{len(caches)} parquet caches of {sizemb:.1f} MB (`artistools cache list` gives them)"
     if leftovers:
         return "warning", (
             f"{detail}, and {len(leftovers)} leftover files of conversions that stopped, e.g. {leftovers[0].name}."
-            " artistools cache delete deletes them"
+            " `artistools cache delete` deletes them"
         )
     return "ok", detail
 
@@ -573,6 +576,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Also read the escaped packets to find the Monte Carlo noise of the light curve. This read is slow",
     )
+    parser.add_argument(
+        "--exit-zero", action="store_true", help="Give the exit status 0 also when a check gives a warning or an error"
+    )
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -584,5 +590,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     outputfile = resolve_table_outputfile(args, "check.txt")
     dfresults = get_check_results(modelfolder, frompackets=args.frompackets)
     print_or_write_table(args, dfresults, outputfile)
-    for checkname, status, detail in dfresults.filter(pl.col("status").is_in(["warning", "error"])).iter_rows():
+    dfproblems = dfresults.filter(pl.col("status").is_in(["warning", "error"]))
+    for checkname, status, detail in dfproblems.iter_rows():
         print_warning(f"{checkname} ({status}): {detail}")
+    if dfproblems.height > 0 and not args.exit_zero:
+        raise SystemExit(1)

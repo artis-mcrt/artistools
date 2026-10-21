@@ -563,7 +563,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if not pdf_list:
         exit_with_error(
-            f"no radiation field data for the cells {format_range_list(modelgridindexlist)} at the timesteps"
+            f"No radiation field data for the cells {format_range_list(modelgridindexlist)} at the timesteps"
             f" {format_range_list(timesteplist)}",
             f"Give a cell and a timestep with data. The last timestep with data is {timesteplast}",
         )

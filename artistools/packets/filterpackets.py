@@ -138,7 +138,7 @@ def remove_packets_cache(parquetcache: Path | None) -> None:
     """Remove the parquet cache of a batch of packets files, if it exists."""
     if parquetcache is not None and parquetcache.is_file():
         parquetcache.unlink(missing_ok=True)
-        print_detail(f"removed the cache {parquetcache}")
+        print_detail(f"Removed the cache {parquetcache}")
 
 
 class FilteredFileSizes(t.NamedTuple):
@@ -174,7 +174,7 @@ def filter_and_report_packets_file(
     removed_fraction = 1 - counts.chars_kept / counts.chars_in
     print(f"{packetsfile}: the filter removes {removed} of {counts.packets_in} packets")
     print_detail(
-        f"the removed packets are {removed_fraction * 100:.1f}% of the text, or about"
+        f"The removed packets are {removed_fraction * 100:.1f}% of the text, or about"
         f" {format_size(removed_fraction * size_in)} of {format_size(size_in)}"
     )
     if dry_run:
@@ -184,7 +184,7 @@ def filter_and_report_packets_file(
     outpath = write_filtered_packets_file(packetsfile, modelfolder)
     remove_packets_cache(parquetcache)
     size_out = outpath.stat().st_size
-    print_detail(f"wrote {outpath}: {format_size(size_out)} ({size_out / size_in * 100:.1f}% of the input)")
+    print_detail(f"Wrote {outpath}: {format_size(size_out)} ({size_out / size_in * 100:.1f}% of the input)")
     return FilteredFileSizes(counts.packets_in, removed, size_in, size_out)
 
 

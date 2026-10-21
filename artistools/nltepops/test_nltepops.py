@@ -115,7 +115,7 @@ def test_nltepops_no_estimator_data(
     )
 
     # a warning goes to the standard error, thus --quiet keeps it
-    assert "WARNING: No estimator data" in capsys.readouterr().err
+    assert "warning: No estimator data" in capsys.readouterr().err
     titles = [callargs[0][1] for callargs in mocktitle.call_args_list]
     assert any("Te=5000 K" in ti and "nne=nan" in ti and "T$_R$=5000 K" in ti and "W=nan" in ti for ti in titles)
 
@@ -547,7 +547,7 @@ def test_nltepops_ion_stage_of_no_plot_gives_a_message(tmp_path: Path, capsys: p
         with pytest.raises(SystemExit):
             at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, timestep=40, ion_stages=ion_stages)
 
-        assert "no ion stage of Fe to plot at timestep 40" in capsys.readouterr().err
+        assert "No ion stage of Fe to plot at timestep 40" in capsys.readouterr().err
 
 
 def test_radiative_decays_take_no_population_from_the_superlevel() -> None:
@@ -749,3 +749,19 @@ def test_nltepops_versus_time_write_data_gives_the_points_inside_xmax(tmp_path: 
 
     dftable = pl.read_csv(tmp_path / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dftable["time_days"].to_list() == times[:2]
+
+
+def test_nltepops_timestep_range_with_a_timestep_of_no_rows(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A range of timesteps plots each timestep with data, and names a timestep with no NLTE rows.
+
+    The filter of the timestep kept only the header line for timestep 41, and that table had a String column for each
+    value. The comparison of Z with a number then stopped the command, also on main.
+    """
+    dfempty = at.nltepops.read_nltepops(modelpath, timestep=41, modelgridindex=[0])
+    assert dfempty.is_empty()
+    assert dfempty.schema["Z"] == pl.Int64
+    assert dfempty.schema["n_LTE"] == pl.Float64
+
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, timestep="40-41")
+    assert "No NLTE population data for Z=26 at timestep 41" in capsys.readouterr().out
+    assert [path.name.split("_")[3] for path in tmp_path.glob("*.pdf")] == ["ts040"]

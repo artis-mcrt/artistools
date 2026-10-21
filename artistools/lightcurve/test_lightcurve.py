@@ -2734,8 +2734,8 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
     )
     assert viewer.change(newvalues) is None
     command = viewer.get_command()
-    assert command.endswith(" -timemin 3.5 -timemax 7 --Lsun -deposition gamma total -emission betaminus alpha"
-                            " -analyticemission alpha -thermalisation gamma betaplus")  # fmt: skip
+    assert command.endswith(" --timemin 3.5 --timemax 7 --Lsun --deposition gamma total --emission betaminus alpha"
+                            " --analyticemission alpha --thermalisation gamma betaplus")  # fmt: skip
     # the thermalisation ratios go in a panel below the light curves, and not in a second figure
     frames = viewer.get_frames()
     assert len(frames) == 2
@@ -3028,7 +3028,7 @@ def test_filter_data_gives_the_reference_wavelength() -> None:
 
 
 def test_viewer_drops_the_options_that_the_command_refuses_together() -> None:
-    """The window starts from a command with --magnitude --plotcmf, or with -topnucs and an observer, and draws a plot.
+    """The window starts from a command with --magnitude --plotcmf, or with --topnucs and an observer, and draws a plot.
 
     The command stops for these pairs, and the viewer stopped with it at the start. The controls of the window drop
     the same options, thus the start does the same.
@@ -3043,12 +3043,12 @@ def test_viewer_drops_the_options_that_the_command_refuses_together() -> None:
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
     viewer = interactive.LightCurveViewer(
-        [str(vpktmodelpath), "-plotvspecpol", "0", "-topnucs", "2", "--use_pellet_decay_time", "--interactive"], fig
+        [str(vpktmodelpath), "--plotvspecpol", "0", "--topnucs", "2", "--use-pellet-decay-time", "--interactive"], fig
     )
     assert viewer.values.directionkind == "vpkt"
     assert (viewer.values.frompackets, viewer.values.topnucs, viewer.values.usepelletdecaytime) == (True, 0, False)
     assert viewer.draw() is None
-    assert "--frompackets -plotvspecpol 0" in viewer.get_command()
+    assert "--frompackets --plotvspecpol 0" in viewer.get_command()
 
 
 def test_viewer_controls_read_the_refused_options_of_the_command() -> None:
@@ -3059,14 +3059,14 @@ def test_viewer_controls_read_the_refused_options_of_the_command() -> None:
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
     vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
-    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "--frompackets", "-topnucs", "2", "--interactive"], fig)
+    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "--frompackets", "--topnucs", "2", "--interactive"], fig)
     observervalues = dc.replace(
         viewer.values, directionkind="vpkt", directionbins=(0,), topnucs=2, usepelletdecaytime=True, plotcmf=True
     )
     assert {option.flag for option in viewer.get_refused_options(observervalues)} == {
         "--plotcmf",
-        "-topnucs",
-        "--use_pellet_decay_time",
+        "--topnucs",
+        "--use-pellet-decay-time",
     }
     droppedvalues = viewer.drop_refused_options(observervalues)
     assert (droppedvalues.topnucs, droppedvalues.usepelletdecaytime, droppedvalues.plotcmf) == (0, False, False)
@@ -3115,12 +3115,12 @@ def test_pellet_decay_time_without_packets_stops_with_a_message(
 
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
-    viewer = interactive.LightCurveViewer([str(modelpath), "--use_pellet_decay_time", "--interactive"], fig)
+    viewer = interactive.LightCurveViewer([str(modelpath), "--use-pellet-decay-time", "--interactive"], fig)
     assert not viewer.values.usepelletdecaytime
     assert viewer.draw() is None
     reasons = interactive.get_refused_reasons(viewer, viewer.values)
-    assert "decay time of a pellet" in reasons["--use_pellet_decay_time"]
-    assert "--use_pellet_decay_time" not in interactive.get_refused_reasons(
+    assert "decay time of a pellet" in reasons["--use-pellet-decay-time"]
+    assert "--use-pellet-decay-time" not in interactive.get_refused_reasons(
         viewer, dc.replace(viewer.values, frompackets=True)
     )
 
@@ -3458,7 +3458,7 @@ def test_band_outside_a_virtual_packet_spectrum_gives_a_warning(capsys: pytest.C
     bandmags = generate_band_lightcurve_data(vspecpolmodel, dirbin=0, plotvspecpol=[0], filter=["bol", "uvw1"])
     assert bandmags["bol"]
     stderr = capsys.readouterr().err
-    assert "the bol band of a virtual packet observer integrates only the range of its spectrum" in stderr
+    assert "The bol band of a virtual packet observer integrates only the range of its spectrum" in stderr
     assert "the uvw1 filter" in stderr
 
 
@@ -3508,7 +3508,7 @@ def test_plot_with_no_light_curve_stops_with_a_message(tmp_path: Path, capsys: p
             plotviewingangle=[0],
             outputfile=tmp_path / "x.pdf",
         )
-    assert "the plot holds no light curve" in capsys.readouterr().err
+    assert "The plot holds no light curve" in capsys.readouterr().err
     assert not (tmp_path / "x.pdf").exists()
 
 
@@ -3565,7 +3565,7 @@ def test_colour_arguments_must_name_two_bands(
     for colour in ("B", "U-B-V"):
         with pytest.raises(SystemExit):
             at.lightcurve.plot(argsraw=[], modelpath=[modelpath], colour_evolution=[colour], outputfile=tmp_path)
-        assert "-colour_evolution takes two bands for each colour" in capsys.readouterr().err
+        assert "--colour-evolution takes two bands for each colour" in capsys.readouterr().err
 
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit):

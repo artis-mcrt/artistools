@@ -332,7 +332,7 @@ def get_new_figwidthscale(
     figwidthscale: float,
     get_fitted: "Callable[[float, float], float]",
 ) -> float | None:
-    """Return the -figwidthscale that fills the plot area, or None if the plot can keep its scale.
+    """Return the --figwidthscale that fills the plot area, or None if the plot can keep its scale.
 
     get_fitted gives the fitted scale for the width and the height of the area. A change of less than FIT_TOLERANCE
     keeps the scale.
@@ -365,7 +365,7 @@ class PlotViewer[ValuesT](t.Protocol):
         """Return the command that draws the plot of the current values."""
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the -figwidthscale that gives the figure the shape of a plot area of this width and height."""
+        """Return the --figwidthscale that gives the figure the shape of a plot area of this width and height."""
 
 
 def render_command[PlotT, ValuesT](
@@ -989,8 +989,8 @@ def get_line_readouts(axis: "mplax.Axes", x: float) -> list[str]:
 
 # the readable text of the label or the checkbox of each flag. The tooltip then gives the flag
 FLAG_LABELS: t.Final = MappingProxyType({
-    "--average_over_phi_angle": "Average over φ",
-    "--average_over_theta_angle": "Average over θ",
+    "--average-over-phi-angle": "Average over φ",
+    "--average-over-theta-angle": "Average over θ",
     "--colorbyion": "Colour by ion",
     "--frompackets": "Read ARTIS data from",
     "--hidenetspectrum": "Hide net spectrum",
@@ -1009,30 +1009,30 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--showbarnes": "Barnes et al. (2016)",
     "--showemission": "Show emission",
     "--shownoise": "Show noise",
-    "--use_pellet_decay_time": "Pellet decay time",
+    "--use-pellet-decay-time": "Pellet decay time",
     "--usedegrees": "Degrees",
-    "-axis": "Axis",
-    "-cell": "Cells",
-    "-figscale": "Figure scale",
-    "-groupby": "Group by",
-    "-labelfontsize": "Label size",
-    "-linewidthscale": "Line width scale",
-    "-maxseriescount": "Max series",
-    "-residual": "Residual series",
-    "-residualbaselineseries": "Residual baseline series",
-    "-residualtype": "Residual type",
-    "-residualymax": "Residual y maximum",
-    "-subplotsperrow": "Subplots per row",
-    "-topnucs": "Top nuclides",
+    "--axis": "Axis",
+    "--cell": "Cells",
+    "--figscale": "Figure scale",
+    "--groupby": "Group by",
+    "--labelfontsize": "Label size",
+    "--linewidthscale": "Line width scale",
+    "--maxseriescount": "Max series",
+    "--residual": "Residual series",
+    "--residualbaselineseries": "Residual baseline series",
+    "--residualtype": "Residual type",
+    "--residualymax": "Residual y maximum",
+    "--subplotsperrow": "Subplots per row",
+    "--topnucs": "Top nuclides",
     "-x": "x variable",
-    "-xbins": "x bins",
-    "-xmax": "x max",
-    "-xmin": "x min",
-    "-xunit": "Unit",
-    "-ymax": "y max",
-    "-ymin": "y min",
-    "-yscale": "y scale",
-    "-yvariable": "Quantity",
+    "--xbins": "x bins",
+    "--xmax": "x max",
+    "--xmin": "x min",
+    "--xunit": "Unit",
+    "--ymax": "y max",
+    "--ymin": "y min",
+    "--yscale": "y scale",
+    "--yvariable": "Quantity",
 })
 
 

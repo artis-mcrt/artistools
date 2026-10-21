@@ -86,7 +86,7 @@ def get_nuclide_massfractions(
 
     massfracsum = dfnuclides["massfraction"].sum()
     if not math.isclose(massfracsum, 1.0, abs_tol=1e-5):
-        print_warning(f"mass fractions for model {modelpath} sum to {massfracsum:.3f} instead of 1.0.")
+        print_warning(f"Mass fractions for model {modelpath} sum to {massfracsum:.3f} instead of 1.0.")
 
     return dfnuclides
 

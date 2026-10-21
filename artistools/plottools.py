@@ -32,6 +32,7 @@ from matplotlib.patches import Patch
 from matplotlib.text import Text
 
 from artistools.commands import get_path
+from artistools.commands import get_standard_flag
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
@@ -113,11 +114,11 @@ def wants_log_scale(values: "npt.NDArray[np.float64]", xwidths: "npt.NDArray[np.
 
 
 def set_auto_yscale(ax: "AxesTree", args: argparse.Namespace) -> None:
-    """Set the scale of the vertical axis from the drawn values, when -yscale asks the command to choose.
+    """Set the scale of the vertical axis from the drawn values, when --yscale asks the command to choose.
 
     Call this after the command draws the data. It sets args.logscaley for the code that reads it,
     and it puts the log scale on the axes, because a command can set the scale before it draws.
-    -yscale log and -yscale linear each give an answer already, thus this changes nothing for them.
+    --yscale log and --yscale linear each give an answer already, thus this changes nothing for them.
     """
     if getattr(args, "yscale", "auto") != "auto" or getattr(args, "logscaley", False):
         return
@@ -521,7 +522,7 @@ def make_frame_figure(
     page in place of the whole text block. aspect stays the height of a frame as a part of its width.
     rowheights gives the height of each row as a part of the frame height, e.g. (1.0, 0.35) for a
     residual panel below the main frame. framescale multiplies the size of each frame of the command before
-    -figscale, and the margins of the labels keep their size. If the caller gives an empty figure as fig, the
+    --figscale, and the margins of the labels keep their size. If the caller gives an empty figure as fig, the
     function sets its size and adds the frames to it, e.g. for a window that stays open.
     """
     from mpl_toolkits.axes_grid1 import Divider
@@ -602,9 +603,9 @@ def set_legend(
     Each label takes the colour of its series, unless the caller gives labelcolor.
 
     The legend does not cover the data. At each draw, LegendRoom moves the top or the bottom of the y axis to give
-    the legend room. A limit that the user gave stays: -ymax and -ymin of args, or keeptop and keepbottom.
+    the legend room. A limit that the user gave stays: --ymax and --ymin of args, or keeptop and keepbottom.
 
-    -legendcols of args gives the number of columns. Without it, a caller can give ncol. With neither, or with an ncol
+    --legendcols of args gives the number of columns. Without it, a caller can give ncol. With neither, or with an ncol
     of None, a long legend takes more columns, thus it does not push the data into a small part of the frame.
     """
     if getattr(args, "nolegend", False):
@@ -1088,23 +1089,23 @@ def plot_residual_panel(
     """
     if residualtype not in {"absolute", "relative", "relativelog"}:
         exit_with_error(
-            f"Unknown residual type: {residualtype}", "Give absolute, relative, or relativelog with -residualtype"
+            f"Unknown residual type: {residualtype}", "Give absolute, relative, or relativelog with --residualtype"
         )
     if ismagnitude:
         residualtype = "absolute"
     ratio = residualtype != "absolute"
     if len(series) < 2:
-        exit_with_error("-residual needs at least two series in the plot", "Give at least two series")
+        exit_with_error("--residual needs at least two series in the plot", "Give at least two series")
     if not 0 <= baselineindex < len(series):
         exit_with_error(
-            f"-residualbaselineseries index {baselineindex} is outside the range of {len(series)} series",
+            f"--residualbaselineseries index {baselineindex} is outside the range of {len(series)} series",
             f"Give an index from 0 to {len(series) - 1}",
         )
     if selectedindices is not None:
         for index in selectedindices:
             if not 0 <= index < len(series):
                 exit_with_error(
-                    f"-residual index {index} is outside the range of {len(series)} series",
+                    f"--residual index {index} is outside the range of {len(series)} series",
                     f"Give an index from 0 to {len(series) - 1}",
                 )
     reference = series[baselineindex]
@@ -1116,7 +1117,7 @@ def plot_residual_panel(
         inrange, residual, yreference = get_residuals(reference, model, xmin, xmax)
         hasvalue = np.isfinite(residual)
         if not hasvalue.any():
-            print_warning(f"the residual panel has no point for '{plain_label(model.label)}'")
+            print_warning(f"The residual panel has no point for '{plain_label(model.label)}'")
             continue
 
         npoints = int(hasvalue.sum())
@@ -1156,7 +1157,7 @@ def plot_residual_panel(
 
         strrelative = "" if rms_relative is None else f" ({rms_relative:.1%} of the mean reference value)"
         print_detail(
-            f"residual of '{plain_label(model.label)}' against '{plain_label(reference.label)}': "
+            f"Residual of '{plain_label(model.label)}' against '{plain_label(reference.label)}': "
             f"{npoints} points, RMS {rms:.3g}{strrelative}"
         )
 
@@ -1499,7 +1500,7 @@ def set_plot_title(ax: mplax.Axes, title: str | None, args: argparse.Namespace) 
 
 def print_dirbin_summary(dirbin: int, definition: str, dfseries: "pl.DataFrame") -> None:
     """Print the direction bin, its definition, and the packet count when dfseries has a packetcount column."""
-    print(f"  direction {dirbin:4d}  {definition}", end="")
+    print(f"  Direction {dirbin:4d}  {definition}", end="")
     if "packetcount" in dfseries.columns:
         npkts_selected = dfseries.select(pl.col("packetcount").sum()).item()
         print(f"\t({npkts_selected:.2e} packets)")
@@ -1517,7 +1518,7 @@ def label_dirbin_series(
 ) -> str | None:
     """Return the legend label of one direction bin series.
 
-    The function also clears the -color entry of each bin after the first one. One -color entry serves
+    The function also clears the --color entry of each bin after the first one. One --color entry serves
     the first bin, and the other bins take a colour each from the cycle. A bin
     that is not the spherical average names itself in the label, unless the user gave a label for that
     one bin.
@@ -1634,7 +1635,7 @@ def warn_direction_bin_noise(source: str, *, average_over_phi: bool, average_ove
     elif average_over_theta:
         bincount = get_viewingdirection_phibincount()
     print_warning(
-        f"each direction bin of {source} holds about 1/{bincount} of the escaped packets, if they escape in all"
+        f"Each direction bin of {source} holds about 1/{bincount} of the escaped packets, if they escape in all"
         f" directions alike. Thus its Monte Carlo noise is about {math.sqrt(bincount):.3g} times the noise of the"
         f" angle average. {source} gives no packet count, and --frompackets gives the noise of each bin"
     )
@@ -1652,7 +1653,7 @@ def print_series_summary(
 
     An agent or a script reads the line, thus each plot command gives its summary in this one form. The caller makes
     the parts from fields. If summaryrows is a list, the function adds the series name and fields to it as one row of
-    the table _summary of --print_data and --write_data. Thus the line and the table always agree.
+    the table _summary of --print-data and --write-data. Thus the line and the table always agree.
     """
     print_detail(f"{plain_label(seriesname)}: {', '.join(parts)}")
     for warning in warnings:
@@ -1673,7 +1674,7 @@ def get_summary_table(summaryrows: Sequence[Mapping[str, t.Any]]) -> pl.DataFram
 def warn_hidden_values(axis: mplax.Axes) -> None:
     """Print a warning for each line of the axes that has values outside the y range, which the figure does not show.
 
-    Call the function after the plot sets the limits of the axes, e.g. with -ymin and -ymax. The function reads these
+    Call the function after the plot sets the limits of the axes, e.g. with --ymin and --ymax. The function reads these
     limits. A log axis also hides each value of zero or below. The function reads only the lines that have a gid or a
     label, and the gid is the name of the series. A series with no legend entry, e.g. a direction bin of a colour bar,
     has a gid. A line with neither is a part of a different series, e.g. a repeated end point.
@@ -1704,7 +1705,7 @@ def warn_hidden_values(axis: mplax.Axes) -> None:
             if count > 0
         ]
         if hidden:
-            print_warning(f"the figure does not show these values of '{plain_label(label)}': {'; '.join(hidden)}")
+            print_warning(f"The figure does not show these values of '{plain_label(label)}': {'; '.join(hidden)}")
 
 
 def plain_label(label: str) -> str:
@@ -1776,7 +1777,7 @@ def log_axis_limit(limit: float | None, *, logscale: bool, argname: str) -> floa
     argument that asked for it.
     """
     if limit is not None and logscale and limit <= 0.0:
-        print_warning(f"ignoring {argname} {limit}, which a log axis cannot show")
+        print_warning(f"Ignoring {get_standard_flag(argname)} {limit}, which a log axis cannot show")
         return None
 
     return limit
@@ -1791,8 +1792,8 @@ def set_axis_properties(
 ) -> AxesTree:
     """Apply the standard tick, minor tick, and font size settings to one or more axes.
 
-    A command whose x range has its own argument name, e.g. the -timemin/-timemax of the light curve
-    commands, passes it as xlimits=(min, max, "-timemin") rather than copying the values onto args.xmin:
+    A command whose x range has its own argument name, e.g. the --timemin/--timemax of the light curve
+    commands, passes it as xlimits=(min, max, "--timemin") rather than copying the values onto args.xmin:
     a copied value would also reach every other reader of args.xmin, and a warning about it would name an
     argument that the user did not give.
 
@@ -1899,7 +1900,7 @@ def get_viewinganglecolor_for_colorbar(
     elif args.colorbarcostheta:
         colorindex = costheta_index
     else:
-        msg = "give --colorbarcostheta or --colorbarphi to colour the series by the viewing angle"
+        msg = "Give --colorbarcostheta or --colorbarphi to colour the series by the viewing angle"
         raise ValueError(msg)
 
     plotkwargs["color"] = scaledmap.to_rgba(colorindex)
@@ -1921,7 +1922,7 @@ def make_colorbar_viewingangles(
         ticklabels = [" -1", " -0.8", " -0.6", " -0.4", " -0.2", " 0", " 0.2", " 0.4", " 0.6", " 0.8", " 1"]
         label = "cos θ"
     else:
-        msg = "give --colorbarcostheta or --colorbarphi to add a viewing angle colorbar"
+        msg = "Give --colorbarcostheta or --colorbarphi to add a viewing angle colorbar"
         raise ValueError(msg)
 
     # one tick at each bin boundary, on the scale of the colour map that has one colour per bin
@@ -1965,7 +1966,7 @@ INVERSE_VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "(km/s)$^{-
 
 
 def addarg_velocityunit(parser: argparse.ArgumentParser) -> None:
-    """Add -velocityunit, the unit of the velocity axis and of the logs."""
+    """Add --velocityunit, the unit of the velocity axis and of the logs."""
     parser.add_argument(
         "-velocityunit",
         choices=["auto", "kmps", "c"],
@@ -1978,9 +1979,9 @@ def addarg_velocityunit(parser: argparse.ArgumentParser) -> None:
 
 
 def addarg_velocitybins(parser: argparse.ArgumentParser) -> None:
-    """Add -nvelocitybins, -velocitymax, and -velocityunit."""
+    """Add --nvelocitybins, --velocitymax, and --velocityunit."""
     parser.add_argument(
-        "-nvelocitybins", type=positive_int_arg, default=25, help="Number of velocity bins of equal width"
+        "-nvelocitybins", type=positive_int_arg, default=25, help="The number of velocity bins of equal width"
     )
     parser.add_argument(
         "-velocitymax",
@@ -1992,7 +1993,7 @@ def addarg_velocitybins(parser: argparse.ArgumentParser) -> None:
 
 
 def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps", "c"]:
-    """Return the unit of the velocity axis that -velocityunit selects, and log the reason for the value auto."""
+    """Return the unit of the velocity axis that --velocityunit selects, and log the reason for the value auto."""
     if choice == "kmps":
         return "kmps"
     if choice == "c":
@@ -2003,7 +2004,7 @@ def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps",
     unit = get_auto_velocity_unit(modelmeta["vmax_cmps"])
     print_detail(
         f"The velocity axis takes units of {VELOCITYUNIT_LABELS[unit]}, because the vmax of the model is"
-        f" {modelmeta['vmax_cmps'] / C_cm_per_s:.3f} c (-velocityunit auto takes c for a vmax of"
+        f" {modelmeta['vmax_cmps'] / C_cm_per_s:.3f} c (--velocityunit auto takes c for a vmax of"
         f" {AUTO_VELOCITYUNIT_C_MIN_ON_C:g} c or more)"
     )
     return unit
@@ -2042,11 +2043,11 @@ def get_velocity_bin_edges_kmps(
     much of the emission or the optical depth, e.g. in the fast ejecta of a kilonova.
     """
     if nbins < 1:
-        exit_with_error(f"-nvelocitybins {nbins} gives no bins", "Give a number of 1 or more")
+        exit_with_error(f"--nvelocitybins {nbins} gives no bins", "Give a number of 1 or more")
     if velocitymax_kmps is not None:
         if velocitymax_kmps > KMPS_PER_VELOCITYUNIT["c"]:
             exit_with_error(
-                f"-velocitymax {format_velocity(velocitymax_kmps, unit)} is above the speed of light",
+                f"--velocitymax {format_velocity(velocitymax_kmps, unit)} is above the speed of light",
                 "Give a velocity of 1c or less",
             )
     else:
@@ -2098,7 +2099,7 @@ def positive_velocity_kmps_arg(text: str) -> float:
     """Return the velocity [km/s] of a command line value with its unit, e.g. 0.1c or 30000km/s, when it is above 0.
 
     A bare number gives an error, because its unit is not clear. The unit of the axis can come from the model, with
-    -velocityunit auto.
+    --velocityunit auto.
     """
     velocity_kmps, _ = parse_velocity_argument(text, requireunit=True)
     if velocity_kmps <= 0.0:
@@ -2117,22 +2118,24 @@ def addarg_cellvelocity(
     *,
     multiple: bool = False,
 ) -> None:
-    """Add -velocity (-v), which selects the cell of a 1D model by its radial velocity, into args.velocity_kmps.
+    """Add --velocity, which selects the cell of a 1D model by its radial velocity, into args.velocity_kmps.
 
     A number with no unit is in km/s, and a value can also take a unit, e.g. 0.02c. With multiple, the option takes
     one or more values and gives a list.
     """
+    nargs = "+" if multiple else None
     container.add_argument(
         "-velocity",
-        "-v",
         dest="velocity_kmps",
         type=velocity_kmps_arg,
-        nargs="+" if multiple else None,
+        nargs=nargs,
         help=(
             "Select the cell of a 1D model by its radial velocity, e.g. 5000 (km/s), 5000km/s, or 0.02c"
             + (". Give more than one value for more than one cell" if multiple else "")
         ),
     )
+    # the older short form. The help gives -v one meaning, --verbose, as ruff and uv do
+    container.add_argument("-v", dest="velocity_kmps", type=velocity_kmps_arg, nargs=nargs, help=argparse.SUPPRESS)
 
 
 def get_signed_velocity_bin_edges_kmps(velocityedges_kmps: Sequence[float]) -> list[float]:

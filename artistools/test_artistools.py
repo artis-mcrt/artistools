@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import csv
 import dataclasses as dc
 import functools
 import hashlib
@@ -8,6 +9,7 @@ import importlib.util
 import inspect
 import io
 import itertools
+import json
 import math
 import os
 import re
@@ -187,7 +189,7 @@ def test_console_script_runs_its_own_subcommand(
 
     helptext = capsys.readouterr().out
     # a command of many flags names them "[options]", thus the usage takes one line
-    assert helptext.startswith("usage: plotartisestimators [options]")
+    assert helptext.startswith("Usage: plotartisestimators [options]")
     # the parser holds this one command, thus it neither lists nor imports the other commands
     assert "-modelpath" in helptext
     assert "plotspectra" not in helptext
@@ -581,7 +583,7 @@ def test_residual_path_rewrite_keeps_an_ambiguous_prefix(capsys: pytest.CaptureF
     assert parser.split_joined_flags(["-resi", "model1", "model2"]) == ["-resi", "model1", "model2"]
     with pytest.raises(SystemExit):
         parser.parse_args(["-resi", "model1", "model2"])
-    assert "ambiguous option: -resi" in capsys.readouterr().err
+    assert "Ambiguous option: -resi" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("command", ["plotspectra", "plotlightcurves"])
@@ -658,7 +660,7 @@ def test_residual_log_axis_ignores_a_non_positive_maximum(capsys: pytest.Capture
     mainaxis.set_xlim(1.0, 2.0)
     at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
     assert min(residualaxis.get_ylim()) > 0.0
-    assert "ignoring -residualymax 0.0" in capsys.readouterr().err
+    assert "Ignoring --residualymax 0.0" in capsys.readouterr().err
     plt.close(fig)
 
 
@@ -847,7 +849,7 @@ def test_shared_cli_args_consistent() -> None:
                 # also declare -timestep, as its own argument or through addarg_unsupported
                 assert any("-timestep" in f for f in flagsbycommand[command].values()), label
             elif dest == "maxpacketfiles":
-                assert flags == {"-maxpacketfiles", "-maxpacketsfiles"}, label
+                assert flags == {"-maxpacketfiles", "-maxpacketsfiles", "--maxpacketfiles", "--maxpacketsfiles"}, label
                 assert action.type is int, label
             elif dest == "figscale":
                 assert action.type is float, label
@@ -862,8 +864,11 @@ def test_shared_cli_args_consistent() -> None:
 
 def test_deprecated_flag_spellings_still_work() -> None:
     """Flags renamed to the single-dash-takes-a-value convention keep their old spellings as hidden aliases."""
-    parser = argparse.ArgumentParser()
+    from artistools.commands import SuggestingArgumentParser
+
+    parser = SuggestingArgumentParser()
     at.plottransitions.addargs(parser)
+    parser.add_standard_flags()
     assert parser.parse_args(["--atomicdatabase", "kurucz"]).atomicdatabase == "kurucz"
     assert parser.parse_args(["-atomicdatabase", "nist"]).atomicdatabase == "nist"
     assert parser.parse_args([]).atomicdatabase == "artis"
@@ -874,8 +879,9 @@ def test_deprecated_flag_spellings_still_work() -> None:
     assert parser.parse_args(["-figwidthscale", "2.5"]).figwidthscale == 2.5
     assert parser.parse_args([]).figwidthscale == 1.0
 
-    parser = argparse.ArgumentParser()
+    parser = SuggestingArgumentParser()
     at.plotviewingangles.addargs(parser)
+    parser.add_standard_flags()
     for rawargs in (
         ["model.txt", "--outfile", "vis.html", "--opacity", "0.5", "-s", "10"],
         ["model.txt", "-outputfile", "vis.html", "-opacity", "0.5", "-surface_count", "10"],
@@ -987,9 +993,12 @@ def test_cli_missing_model_gives_short_error(tmp_path: Path, capsys: pytest.Capt
     assert "nomodel" in stderr
 
 
-@pytest.mark.parametrize(("comp_line", "expected"), [("at plotsp", "plotspectra"), ("at spec -timed", "-timedays")])
+@pytest.mark.parametrize(
+    ("comp_line", "expected"),
+    [("at plotsp", "plotspectra"), ("at spec --timed", "--timedays"), ("at spec --print", "--print-data")],
+)
 def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> None:
-    """Tab completion must offer subcommand names and the options of a subcommand."""
+    """Tab completion must offer subcommand names and the standard spelling of the options of a subcommand."""
     outputfile = tmp_path / "completions.txt"
     env = os.environ | {
         "_ARGCOMPLETE": "1",
@@ -1003,6 +1012,8 @@ def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> No
     subprocess.run([sys.executable, "-m", "artistools"], env=env, check=False, cwd=REPOPATH, timeout=120)
     completions = outputfile.read_text(encoding="utf-8").split("\v")
     assert expected in completions
+    # the help hides the older spellings, e.g. --print_data, thus tab completion does not offer them
+    assert "--print_data" not in completions
 
 
 def test_timestep_times() -> None:
@@ -1111,7 +1122,7 @@ def test_radfield_takes_the_last_timestep_with_data(tmp_path: Path, capsys: pyte
 
         with pytest.raises(SystemExit):
             at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=5, outputfile=tmp_path)
-    assert "no radiation field data" in capsys.readouterr().err
+    assert "No radiation field data" in capsys.readouterr().err
 
 
 def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
@@ -1418,7 +1429,7 @@ def test_plotspherical_element_arguments_give_messages(capsys: pytest.CaptureFix
     """
     with pytest.raises(SystemExit):
         at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Fe", atomic_number=26)
-    assert "give one of -elem and -atomic_number" in capsys.readouterr().err
+    assert "Give one of --elem and --atomic-number" in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
         at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Xx")
@@ -1909,7 +1920,7 @@ def test_hesma_reports_missing_arguments(capsys: pytest.CaptureFixture[str]) -> 
     """An action must name the argument it needs rather than failing on a None."""
     with pytest.raises(SystemExit):
         at.hesma_scripts.main(argsraw=["vspecfiles"])
-    assert "requires -modelpath" in capsys.readouterr().err
+    assert "requires --modelpath" in capsys.readouterr().err
 
 
 def test_opacity_condition_labels_match_artis() -> None:
@@ -3588,7 +3599,7 @@ def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: 
             outputfile=tmp_path / "linefluxes.pdf",
             write_data=True,
         )
-    assert "the data table gives the column of" in capsys.readouterr().err
+    assert "The data table gives the column of" in capsys.readouterr().err
     dftable = read_data_file(tmp_path / "linefluxes.txt")
     assert len([column for column in dftable.columns if column.startswith("fratio_")]) == 3
     assert dftable["time"].is_between(4.5, 6.5).all()
@@ -4062,10 +4073,35 @@ def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> 
         artistools.__main__.main(argsraw=["plotspetcra"])
 
     message = capsys.readouterr().err
-    assert "invalid choice 'plotspetcra'" in message
+    assert "'plotspetcra' is not a command of" in message
     # the error names the fault, and the help line that follows names the closest subcommand
     assert "help: Did you mean plotspectra" in message
     assert message.index("error: ") < message.index("help: ")
+
+    # with no close name, the help line names --help. The list of every command filled the line
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["xyzzy"])
+    message = capsys.readouterr().err
+    assert "help: Run `" in message
+    assert "plotspectra" not in message
+
+
+def test_help_command_gives_the_help_of_one_command(capsys: pytest.CaptureFixture[str]) -> None:
+    """The help command gives the text of --help of a command, as `uv help run` gives `uv run --help`."""
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["inputmodel", "describe", "--help"])
+    flaghelp = capsys.readouterr().out
+
+    artistools.__main__.main(argsraw=["help", "inputmodel", "describe"])
+    assert capsys.readouterr().out == flaghelp
+
+    # a word after a command that has no subcommands is a mistake, and not a word that the command ignores
+    with pytest.raises(SystemExit) as exitinfo:
+        artistools.__main__.main(argsraw=["help", "timesteps", "extra"])
+    assert exitinfo.value.code == 2
+    assert "error: The command timesteps has no subcommand extra" in capsys.readouterr().err
 
 
 def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> None:
@@ -4221,7 +4257,7 @@ def test_help_shows_the_examples() -> None:
         assert command in helptext, command
         assert description in helptext, description
 
-    assert 'Run "artistools <command> --help"' in helptext
+    assert "Run `artistools <command> --help`" in helptext
 
     # the help of a command with examples shows them in its own epilog as well
     subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
@@ -4265,7 +4301,7 @@ def test_command_group_help_points_at_one_command() -> None:
     helptext = groupparser.format_help()
 
     assert "The inputmodel commands of artistools." in helptext
-    assert 'Run "artistools inputmodel <command> --help"' in helptext
+    assert "Run `artistools inputmodel <command> --help`" in helptext
 
 
 def test_command_note_reaches_the_help_and_not_the_listing() -> None:
@@ -4300,21 +4336,239 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
         artistools.lightcurve.plotlightcurve.addargs: (
             ["--plot_cmf", "-timedaysmin", "260", "--title", "x"],
             ("plotcmf", "timemin", "title"),
-            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "--title", "-xmin", "-xmax"),
+            ("--plot_cmf", "--showcmf", "-timedaysmin", "-timedaysmax", "-title", "-xmin", "-xmax"),
         ),
         artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("timemin",), ()),
     }
+    from artistools.commands import SuggestingArgumentParser
+
     for addargs, (argsraw, dests, hidden) in cases.items():
-        parser = argparse.ArgumentParser()
+        parser = SuggestingArgumentParser()
         addargs(parser)
+        parser.add_standard_flags()
         namespace = parser.parse_args(argsraw)
         for dest in dests:
             assert getattr(namespace, dest) not in {None, False}, (addargs.__module__, dest)
 
         helptext = parser.format_help()
         for spelling in hidden:
-            assert f"{spelling} " not in helptext, spelling
-            assert f"{spelling},\n" not in helptext, spelling
+            # --xmin holds the text -xmin, thus the spelling must not follow a dash
+            assert not re.search(rf"(?<![\w-]){re.escape(spelling)}[ ,]", helptext), spelling
+
+
+def test_short_help_gives_the_first_sentence_of_each_option(capsys: pytest.CaptureFixture[str]) -> None:
+    """-h gives a summary of the options, and --help gives each detail and the examples, as uv does.
+
+    The help of plotspectra had 464 lines, which no reader takes in to find one option.
+    """
+    import artistools.__main__
+
+    helptexts = {}
+    for flag in ("-h", "--help"):
+        with pytest.raises(SystemExit) as exitinfo:
+            artistools.__main__.main(argsraw=["plotspectra", flag])
+        assert exitinfo.value.code == 0
+        helptexts[flag] = capsys.readouterr().out
+    assert len(helptexts["-h"].splitlines()) < len(helptexts["--help"].splitlines()) / 2
+    assert "plotspectra --help` for the full help and the examples" in helptexts["-h"]
+    assert "Examples" not in helptexts["-h"]
+    assert "Examples" in helptexts["--help"]
+    # the first sentence of a help text stays, and a later sentence goes, also after an abbreviation such as e.g.
+    assert at.commands.get_first_sentence("Give a time, e.g. 300. A unit is optional") == "Give a time, e.g. 300"
+
+
+def test_each_short_flag_has_one_meaning_in_the_help() -> None:
+    """-v is --verbose and -f is --force in each command, as in ruff and uv. An older meaning stays a hidden alias.
+
+    -v also named --velocity and --rhoscale, and -f also named --format, thus a short flag did a different thing in a
+    different command.
+    """
+    import artistools.__main__
+    from artistools.commands import get_shown_flags
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    commands = subactions[0].choices
+    for command in ("plotnltepops", "plotestimators", "plotspherical", "cache", "deposition"):
+        for action in commands[command]._actions:  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            if action.help == argparse.SUPPRESS:
+                continue
+            shown = get_shown_flags(action)
+            assert "-v" not in shown or action.dest == "verbose", (command, action.dest)
+            assert "-f" not in shown or action.dest == "force", (command, action.dest)
+
+    # a script that holds an older meaning still runs
+    assert commands["plotnltepops"].parse_args(["-v", "5000"]).velocity_kmps == [5000.0]
+    assert commands["plotestimators"].parse_args(["-f", "png"]).format == "png"
+
+
+def test_viewer_and_completion_know_the_standard_flag_spellings() -> None:
+    """A viewer reads the standard spelling of a flag, and tab completion offers that spelling alone.
+
+    The parser of a viewer had no standard spelling, thus "--timedays 300" became two paths of the series. argcomplete
+    offered --print_data beside --print-data.
+    """
+    import artistools.__main__
+    from artistools.commands import get_older_flag_spellings
+    from artistools.spectra import plotspectra
+    from artistools.viewertools.core import parse_viewer_tokens
+
+    viewertokens = parse_viewer_tokens(
+        plotspectra.addargs, ["--timedays", "300", "--print-data", str(modelpath)], {"timedays"}
+    )
+    assert viewertokens.paths == [str(modelpath)]
+
+    older = set(get_older_flag_spellings(artistools.__main__.build_parser()))
+    assert {"--print_data", "-timedays", "-modelpath"} <= older
+    assert not {"--print-data", "--timedays", "-t", "--modelpath"} & older
+
+
+def test_progress_goes_to_the_standard_error_and_the_product_to_the_standard_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A pipe gets the table of --print-data alone, as for ruff and uv. The progress messages go to the standard error.
+
+    Before this change, "Reading .../light_curve.out" and the model name came in front of the table, unless the user
+    gave --quiet.
+    """
+    import artistools.__main__
+
+    artistools.__main__.main(
+        argsraw=["plotlightcurves", str(modelpath), "--print-data", "-o", str(tmp_path / "lightcurve.pdf")]
+    )
+    captured = capsys.readouterr()
+    assert captured.out.splitlines()[0].split()[:2] == ["model", "modelpath"]
+    assert "Reading" in captured.err
+    assert "Reading" not in captured.out
+
+
+def test_output_format_gives_json_and_csv(capsys: pytest.CaptureFixture[str]) -> None:
+    """--output-format gives a table as JSON or CSV on the standard output, as --output-format of ruff does."""
+    import artistools.__main__
+
+    artistools.__main__.main(argsraw=["timesteps", str(modelpath), "--output-format", "csv"])
+    rows = list(csv.reader(capsys.readouterr().out.splitlines()))
+    assert rows[0] == ["timestep", "start_days", "mid_days", "end_days", "width_days"]
+    assert np.isclose(float(rows[1][1]), 250.0)
+
+    artistools.__main__.main(argsraw=["check", str(modelpath), "--output-format", "json"])
+    checks = json.loads(capsys.readouterr().out)["rows"]
+    assert {"check", "status", "detail"} <= set(checks[0])
+
+    # catalog printed its "#" method lines in front of the JSON object, and json.loads refused the output
+    artistools.__main__.main(argsraw=["catalog", str(at.get_path("testdata")), "--output-format", "json"])
+    catalog = json.loads(capsys.readouterr().out)
+    assert catalog["comments"]
+    assert catalog["rows"]
+
+
+def test_output_format_of_plotted_data_gives_one_json_document_and_the_file_format(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A plot with a main table and a summary table prints one JSON document, which json.loads reads.
+
+    Before this change, the command printed one JSON document for each table, and a parser of JSON refused the output.
+    --write-data with --output-format csv wrote a text file with spaces and the suffix .txt.
+    """
+    import artistools.__main__
+
+    outputfile = tmp_path / "lightcurve.pdf"
+    artistools.__main__.main(
+        argsraw=["plotlightcurves", str(modelpath), "--print-data", "--output-format", "json", "-o", str(outputfile)]
+    )
+    document = json.loads(capsys.readouterr().out)
+    assert "data" in document
+    assert "model" in document["data"][0]
+
+    # a reader of CSV takes one header, thus csv prints the main table alone and names the summary table
+    artistools.__main__.main(
+        argsraw=["plotlightcurves", str(modelpath), "--print-data", "--output-format", "csv", "-o", str(outputfile)]
+    )
+    captured = capsys.readouterr()
+    rows = list(csv.reader(captured.out.splitlines()))
+    assert rows[0][:2] == ["model", "modelpath"]
+    assert len({len(row) for row in rows}) == 1
+    assert "the other tables stay out: summary" in captured.err
+
+    artistools.__main__.main(
+        argsraw=["plotlightcurves", str(modelpath), "--write-data", "--output-format", "csv", "-o", str(outputfile)]
+    )
+    datalines = [line for line in (tmp_path / "lightcurve.csv").read_text().splitlines() if not line.startswith("#")]
+    assert datalines[0].startswith("model,modelpath,")
+
+
+def test_figures_of_one_command_print_one_document(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A command with one figure for each element prints the data of all the figures as one CSV or JSON document.
+
+    plotnltepops printed a header and rows for each figure, thus a reader of CSV took the second header as data.
+    """
+    import artistools.__main__
+
+    argsraw = ["plotnltepops", "Fe", "Co", str(modelpath), "--timestep", "40", "--print-data", "-o", str(tmp_path)]
+    artistools.__main__.main(argsraw=[*argsraw, "--output-format", "csv"])
+    rows = list(csv.reader(capsys.readouterr().out.splitlines()))
+    assert [row for row in rows if row == rows[0]] == [rows[0]]
+    ioncolumn = rows[0].index("ion")
+    assert {row[ioncolumn].split()[0] for row in rows[1:]} == {"Fe", "Co"}
+
+    # the table of a figure holds no column of the element or the timestep, thus the column figure names its file
+    figurecolumn = rows[0].index("figure")
+    assert {row[figurecolumn].split("_")[1] for row in rows[1:]} == {"Fe", "Co"}
+
+    artistools.__main__.main(argsraw=[*argsraw, "--output-format", "json"])
+    jsonrows = json.loads(capsys.readouterr().out)["data"]
+    assert {row["ion"].split()[0] for row in jsonrows} == {"Fe", "Co"}
+    assert all(row["figure"].startswith(f"plotnltepops_{row['ion'].split()[0]}_") for row in jsonrows)
+
+
+def test_json_rows_give_null_for_nan_and_infinity() -> None:
+    """A strict parser of JSON refuses NaN and Infinity, thus the JSON output gives null for each of them."""
+    from artistools.misc.cliutils import get_json_rows
+
+    dfdata = pl.DataFrame({"x": [1.5, float("nan"), float("inf"), float("-inf"), None], "n": [1, 2, 3, 4, 5]})
+    rows = get_json_rows(dfdata)
+    assert [row["x"] for row in rows] == [1.5, None, None, None, None]
+    assert [row["n"] for row in rows] == [1, 2, 3, 4, 5]
+    json.loads(json.dumps(rows, allow_nan=False))
+
+
+def test_validation_errors_give_the_standard_flag_spelling(capsys: pytest.CaptureFixture[str]) -> None:
+    """A check of artistools names the flags as the help gives them, also for a flag that the user gave as -timestep."""
+    import artistools.__main__
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", str(modelpath), "-timestep", "3", "-timedays", "300"])
+    assert "error: --timestep, --timedays name the time range in more than one way" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotlightcurves", str(modelpath), "-timemin", "300", "-timemax", "250"])
+    assert "error: --timemin 300 is above --timemax 250" in capsys.readouterr().err
+
+
+def test_help_gives_the_standard_flag_spellings(capsys: pytest.CaptureFixture[str]) -> None:
+    """The help gives each long flag two dashes and hyphens, as ruff does. The parser still accepts the older spellings.
+
+    The parser keeps -timedays and --print_data as hidden aliases, thus a script that holds them still runs.
+    """
+    import artistools.__main__
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    helptext = subactions[0].choices["plotspectra"].format_help()
+    assert "--timedays, --time, -t" in helptext
+    assert "--print-data" in helptext
+    assert not re.search(r"(?<![\w-])-(timedays|modelpath|xmin)\b", helptext)
+    assert "--print_data" not in helptext
+
+    for argsraw in (["-timedays", "300", "--print_data"], ["--timedays", "300", "--print-data"]):
+        args = parser.parse_args(["plotspectra", *argsraw])
+        assert str(args.timedays) == "300"
+        assert args.print_data
+
+    # an error of argparse names the spellings that the help gives
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", "-xmin", "abc"])
+    assert "error: Argument --xmin/--lambdamin: invalid float value" in capsys.readouterr().err
 
 
 def test_plotspectra_x_still_gives_the_unit() -> None:
@@ -4354,7 +4608,7 @@ def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.Captur
     # the hint names the ways to select a time, and the keyword that names the final timestep
     assert "-timestep" in lines[-1]
     assert "-timedays" in lines[-1]
-    assert '"last" names timestep 99' in lines[-1]
+    assert "`last` names timestep 99" in lines[-1]
 
 
 def test_help_strings_follow_one_style() -> None:
@@ -4436,8 +4690,22 @@ def test_help_groups_the_shared_arguments() -> None:
     subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     for command in ("plotspectra", "plotlightcurves", "plotestimators"):
         helptext = subactions[0].choices[command].format_help()
-        for title in ("time selection:", "appearance:", "output:"):
+        for title in ("Time selection:", "Appearance:", "Output:"):
             assert f"\n{title}\n" in helptext, (command, title)
+
+        # each command gives the groups in one order, thus a reader finds a group at the same place
+        headings = [line for line in helptext.splitlines() if line.endswith(":") and not line.startswith(" ")]
+        assert headings[:2] == ["Positional arguments:", "Options:"], command
+        sharedorder = ["Time selection:", "Viewing direction:", "Appearance:", "Output:"]
+        assert [heading for heading in headings if heading in sharedorder] == [
+            heading for heading in sharedorder if heading in headings
+        ], command
+        assert headings[-2] == "Output:", command
+
+    # the 57 general options of plotspectra were one list. A topic group, e.g. "Packets", divides them
+    helptext = subactions[0].choices["plotspectra"].format_help()
+    assert "\nPackets:\n" in helptext
+    assert "\nEmission and absorption:\n" in helptext
 
 
 def test_open_flag_runs_the_platform_opener(tmp_path: Path) -> None:
@@ -4460,7 +4728,7 @@ def test_timesteps_command_answers_a_reverse_lookup(capsys: pytest.CaptureFixtur
     assert capsys.readouterr().out.strip() == "300 days falls in timestep 54, which covers 299.812 to 300.823 days"
 
     at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-ts", "last"])
-    assert capsys.readouterr().out.strip() == "timestep 99 covers 348.824 to 350.000 days"
+    assert capsys.readouterr().out.strip() == "Timestep 99 covers 348.824 to 350.000 days"
 
 
 def test_quiet_short_flag_and_slow_command_timing(
@@ -4493,7 +4761,7 @@ def test_quiet_short_flag_and_slow_command_timing(
 def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) -> None:
     """A flag that no command takes must name the closest flags of the command that was run.
 
-    The message was "unrecognized arguments: --listvaraibles" with no suggestion, and an ambiguous
+    The message was "Unrecognised arguments: --listvaraibles" with no suggestion, and an ambiguous
     short flag listed -t because argparse reads -timeday as -t with a joined value.
     """
     import artistools.__main__
@@ -4501,14 +4769,14 @@ def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) 
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotestimators", "--listvaraibles"])
     message = capsys.readouterr().err
-    assert "unrecognized arguments: --listvaraibles" in message
+    assert "Unrecognised arguments: --listvaraibles" in message
     assert "Did you mean --listvariables" in message
 
     # the suggestion comes from the arguments of the subcommand, not from the top-level parser
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotspectra", ".", "-timeday", "300"])
     message = capsys.readouterr().err
-    assert "Did you mean -timedays" in message
+    assert "Did you mean --timedays" in message
 
     # a per-command console script gives the same help
     scriptparser = at.commands.build_script_parser("plotartisspectrum")
@@ -4540,9 +4808,14 @@ def test_an_error_names_the_remedy_on_a_help_line(capsys: pytest.CaptureFixture[
     assert exitinfo.value.code == 2
     lines = [line for line in capsys.readouterr().err.splitlines() if line.startswith(("error: ", "help: "))]
     assert lines == [
-        "error: unrecognized arguments: --listvaraibles",
-        "help: Did you mean --listvariables, --listvars, --listnuclides?",
+        "error: Unrecognised arguments: --listvaraibles",
+        "help: Did you mean --listvariables, --listvars?",
     ]
+
+    # difflib compares the names without their dashes, thus a flag that shares only the dashes is no suggestion
+    with pytest.raises(SystemExit):
+        artistools.__main__.main(argsraw=["plotspectra", "--bogus"])
+    assert "help: Run `" in capsys.readouterr().err
 
 
 def test_every_command_takes_quiet() -> None:
@@ -5040,7 +5313,7 @@ def test_a_name_that_starts_with_a_flag_of_one_letter_writes_nothing(
         artistools.__main__.main(argsraw=["inputmodel", "makeartismodel", "-dim", "3"])
 
     # a further -dim flag of that command joins the line, thus the test reads the name alone
-    assert "Did you mean -dimensionreduce" in capsys.readouterr().err
+    assert "Did you mean --dimensionreduce" in capsys.readouterr().err
 
 
 def test_every_output_argument_records_what_the_command_writes() -> None:
@@ -5096,11 +5369,13 @@ def test_the_command_listing_gives_one_line_to_each_command() -> None:
     import artistools.__main__
 
     helptext = artistools.__main__.build_parser().format_help()
-    listing = helptext.partition("positional arguments:")[2].partition("\noptions:")[0]
+    listing = helptext.partition("Plot commands:")[2].partition("\nOptions:")[0]
+    assert "Positional arguments:" not in helptext, "the headings of the groups replace the heading of argparse"
+    assert "\nOther commands:\n  catalog " in listing
 
     # a line of the listing holds a command, or it is the heading of a group, or it is empty
     for line in listing.splitlines():
-        if not line.strip() or not line.startswith("    "):
+        if not line.strip() or not line.startswith("  "):
             continue
         assert line.split()[0][0].isalpha(), f"a description wrapped onto its own line: {line!r}"
 
@@ -5204,7 +5479,7 @@ def test_a_missing_optional_package_gives_no_traceback(capsys: pytest.CaptureFix
 
 def test_writecomparisondata_rejects_an_empty_timestep_list(tmp_path: Path) -> None:
     """An empty timestep list wrote files that hold a header and no data."""
-    with pytest.raises(ValueError, match="selected_timesteps"):
+    with pytest.raises(ValueError, match="selected-timesteps"):
         at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[])
 
 
@@ -5779,8 +6054,11 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
     ]
 
 
-def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> None:
-    """--write_data wrote no file for the emitting regions. The 3D test model has no packets in these features."""
+def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """--write_data wrote no file for the emitting regions. The 3D test model has no packets in these features.
+
+    --print-data --output-format json printed one JSON document for each time bin, which a parser of JSON refused.
+    """
     import collections
 
     emdata = collections.defaultdict(lambda: {"em_log10nne": np.array([5.0, 6.0]), "em_Te": np.array([4e3, 5e3])})
@@ -5794,12 +6072,18 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path) -> N
             timebins_tend=[6.0, 7.0],
             outputfile=tmp_path / "emreg.pdf",
             write_data=True,
+            print_data=True,
+            output_format="json",
         )
 
+    # a direct call of main prints the progress messages to the standard output, thus the JSON starts at "{"
+    stdout = capsys.readouterr().out
+    document = json.loads(stdout[stdout.index("\n{") :])
+    assert {row["figure_time_days"] for row in document["data"]} == {5.0, 6.0}
+
+    # --output-format json also gives each data file the JSON format
     for tmid in (5.0, 6.0):
-        dfpoints = pl.read_csv(
-            tmp_path / f"emreg_{tmid:.1f}d.txt", separator=" ", null_values="nan", comment_prefix="#"
-        )
+        dfpoints = pl.DataFrame(json.loads((tmp_path / f"emreg_{tmid:.1f}d.json").read_text(encoding="utf-8"))["rows"])
         assert dfpoints.columns == ["modelpath", "label", "feature", "time_days", "log10nne", "Te"]
         assert dfpoints["time_days"].unique().to_list() == [tmid]
         assert dfpoints["log10nne"].to_list()[:2] == [5.0, 6.0]
@@ -5838,7 +6122,7 @@ def test_hidden_value_warning_names_a_horizontal_line_above_the_axes(capsys: pyt
     axis.set_xlim(1000.0, 2000.0)
     axis.set_ylim(0.0, 1.0)
     at.plottools.warn_hidden_values(axis)
-    assert "the figure does not show these values of 'Planck mean'" in capsys.readouterr().err
+    assert "The figure does not show these values of 'Planck mean'" in capsys.readouterr().err
 
 
 def test_linefluxes_emitting_regions_take_the_timestep_of_the_thermal_emission() -> None:
@@ -6146,9 +6430,9 @@ def test_viewer_dark_colours_keep_the_colours_of_the_series() -> None:
 
 
 def test_viewer_default_options_fill_only_the_options_that_the_command_lacks(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The Settings window gives a new window -figscale and -labelfontsize, and an option of the command has priority.
+    """The Settings window gives a new window --figscale and --labelfontsize, and an option of the command has priority.
 
-    plotspectra has no -labelfontsize, thus its window gets no such option.
+    plotspectra has no --labelfontsize, thus its window gets no such option.
     """
     settings = {"default-figscale": 1.5, "default-labelfontsize": 12.0}
 
@@ -6157,15 +6441,15 @@ def test_viewer_default_options_fill_only_the_options_that_the_command_lacks(mon
 
     monkeypatch.setattr(viewermenus, "get_float_setting", get_float_setting)
     estimatorparser = viewercore.make_parser(at.estimators.addargs)
-    assert viewermenus.add_default_options(estimatorparser, ["Te", "-figscale", "2"]) == [
-        "-labelfontsize",
+    assert viewermenus.add_default_options(estimatorparser, ["Te", "--figscale", "2"]) == [
+        "--labelfontsize",
         "12",
         "Te",
-        "-figscale",
+        "--figscale",
         "2",
     ]
     spectraparser = viewercore.make_parser(at.spectra.plotspectra.addargs)
-    assert viewermenus.add_default_options(spectraparser, ["mymodel"]) == ["-figscale", "1.5", "mymodel"]
+    assert viewermenus.add_default_options(spectraparser, ["mymodel"]) == ["--figscale", "1.5", "mymodel"]
 
 
 def test_viewer_thread_output_keeps_the_output_of_each_thread(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6326,8 +6610,8 @@ def test_viewer_status_line_reads_text_in_colour() -> None:
 
     A colour code in front of "error: " hid the error, thus the status line showed the usage line of argparse.
     """
-    warning = "\x1b[1;33mWARNING: every Te value is below the requested minimum\x1b[0m\n"
-    assert viewercore.get_last_warning(warning) == "every Te value is below the requested minimum"
+    warning = "\x1b[1;33mwarning: Every Te value is below the requested minimum\x1b[0m\n"
+    assert viewercore.get_last_warning(warning) == "Every Te value is below the requested minimum"
     error = "\x1b[1;34musage: \x1b[0martistools [options]\n\x1b[1;31merror: \x1b[0m'q=1' is not a plane or a line\n"
     assert viewercore.get_first_line(error) == "'q=1' is not a plane or a line"
 
@@ -6384,7 +6668,7 @@ def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
 def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None:
     """Each format of file takes the resolution of the Figure section.
 
-    The estimator viewer dropped -dpi, thus a PDF file lost the resolution of its colour image.
+    The estimator viewer dropped --dpi, thus a PDF file lost the resolution of its colour image.
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
     dpi = 300
@@ -6397,8 +6681,8 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
     from artistools.commands import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
-    parser.add_argument("-dpi", type=int, default=250)
-    parser.add_argument("-figscale", type=float, default=1.0)
+    parser.add_argument("--dpi", type=int, default=250)
+    parser.add_argument("--figscale", type=float, default=1.0)
     statusbar = mock.Mock()
     for suffix in ("png", "pdf"):
         filename = str(tmp_path / "plot")
@@ -6408,10 +6692,10 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
             mock.patch.object(viewermenus, "show_wait_cursor", contextlib.nullcontext),
         ):
             viewermenus.save_figure_of_command(
-                mock.Mock(), statusbar, commandmain, "plotspectra", ["-xmin", "5"], parser, (suffix, dpi)
+                mock.Mock(), statusbar, commandmain, "plotspectra", ["--xmin", "5"], parser, (suffix, dpi)
             )
         # a name with no suffix takes the suffix of the selected format
-        assert savedtokens[-1] == ["-xmin", "5", "-dpi", "300", "-o", f"{filename}.{suffix}"]
+        assert savedtokens[-1] == ["--xmin", "5", "--dpi", "300", "-o", f"{filename}.{suffix}"]
         statusbar.message.setText.assert_called_with(f"Saved {filename}.{suffix}")
 
 
@@ -6424,8 +6708,8 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
     from artistools.commands import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
-    parser.add_argument("-dpi", type=int, default=250)
-    parser.add_argument("-figscale", type=float, default=1.0)
+    parser.add_argument("--dpi", type=int, default=250)
+    parser.add_argument("--figscale", type=float, default=1.0)
     commands: list[list[str]] = []
 
     def commandmain(argsraw: Sequence[str]) -> None:
@@ -6440,9 +6724,9 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
     statusbar = mock.Mock()
     with mock.patch.object(viewermenus, "put_file_on_clipboard", return_value=None) as mockclipboard:
         viewermenus.copy_figure_of_command(
-            queue, statusbar, commandmain, parser, ["-xmin", "5", "-dpi", "300"], ("svg", 150)
+            queue, statusbar, commandmain, parser, ["--xmin", "5", "--dpi", "300"], ("svg", 150)
         )
-    assert commands[0][:4] == ["-xmin", "5", "-dpi", "150"]
+    assert commands[0][:4] == ["--xmin", "5", "--dpi", "150"]
     assert commands[0][-1].endswith("figure.svg")
     mockclipboard.assert_called_once_with(b"<svg/>", "svg")
     statusbar.message.setText.assert_called_with("Copied the figure as SVG")
@@ -6518,8 +6802,8 @@ def test_viewer_option_rows_split_a_group_of_switches() -> None:
     The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument.
     """
     parser = viewercore.make_parser(at.estimators.addargs)
-    rows, othertokens = viewercore.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "-xmin", "5"])
-    assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("-timedays", ("300",)), ("-xmin", ("5",)))
+    rows, othertokens = viewercore.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "--xmin", "5"])
+    assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("--timedays", ("300",)), ("--xmin", ("5",)))
     assert othertokens == ["Te", "mymodel"]
 
 
@@ -6529,10 +6813,10 @@ def test_viewer_removes_an_option_of_two_values_with_its_values_alone() -> None:
     remove_options took each token up to the next flag, as for nargs "*", thus the command lost a path after the values.
     """
     parser = viewercore.make_parser(at.spectra.plotspectra.addargs)
-    tokens = ["-emissionradialvelocityrange", "1000", "2000", "mymodel", "-xmin", "5"]
-    assert viewercore.remove_options(parser, tokens, {"emissionradialvelocityrange"}) == ["mymodel", "-xmin", "5"]
+    tokens = ["--emissionradialvelocityrange", "1000", "2000", "mymodel", "--xmin", "5"]
+    assert viewercore.remove_options(parser, tokens, {"emissionradialvelocityrange"}) == ["mymodel", "--xmin", "5"]
     rows, othertokens = viewercore.split_option_rows(parser, tokens)
-    assert rows == (("-emissionradialvelocityrange", ("1000", "2000")), ("-xmin", ("5",)))
+    assert rows == (("--emissionradialvelocityrange", ("1000", "2000")), ("--xmin", ("5",)))
     assert othertokens == ["mymodel"]
 
 
@@ -6688,13 +6972,15 @@ def test_direction_data_follows_the_files_and_the_data_source() -> None:
 
 
 def test_series_styles_keep_the_values_after_the_paths() -> None:
-    """A style value of a series that the command adds after the paths, e.g. -obsspec, must stay on that series."""
-    rows = (("-label", ("A", "B", "R")),)
+    """A style value of a series that the command adds after the paths, e.g. --obsspec, must stay on that series."""
+    rows = (("--label", ("A", "B", "R")),)
     # a new order of the two models keeps R on the third series
-    assert viewercore.move_series_styles(rows, ("a", "b"), ("b", "a")) == (("-label", ("B", "A", "R")),)
+    assert viewercore.move_series_styles(rows, ("a", "b"), ("b", "a")) == (("--label", ("B", "A", "R")),)
     # a new model goes before the series of the command
-    assert viewercore.move_series_styles(rows, ("a", "b"), ("a", "b", "c")) == (("-label", ("A", "B", "default", "R")),)
-    assert viewercore.set_series_rows(rows, ("a", "b"), "a", {"-label": "N"}) == (("-label", ("N", "B", "R")),)
+    assert viewercore.move_series_styles(rows, ("a", "b"), ("a", "b", "c")) == (
+        ("--label", ("A", "B", "default", "R")),
+    )
+    assert viewercore.set_series_rows(rows, ("a", "b"), "a", {"--label": "N"}) == (("--label", ("N", "B", "R")),)
 
 
 def test_viewer_queue_polls_a_task_that_after_draw_starts() -> None:
@@ -6844,14 +7130,14 @@ def test_viewer_command_tokens_read_the_words_of_the_dispatcher() -> None:
 
 
 def test_viewer_finds_each_path_option() -> None:
-    """Each option form of the paths of the positional argument gives a series of the viewer, e.g. -specpath."""
+    """Each option form of the paths of the positional argument gives a series of the viewer, e.g. --specpath."""
     for module, flags in (
-        (at.spectra.plotspectra, {"-specpath", "-modelpath"}),
-        (at.lightcurve.plotlightcurve, {"-modelpath"}),
+        (at.spectra.plotspectra, {"--specpath", "--modelpath"}),
+        (at.lightcurve.plotlightcurve, {"--modelpath"}),
     ):
         assert viewercore.get_path_option_flags(viewercore.make_parser(module.addargs)) == flags
     viewertokens = viewercore.parse_viewer_tokens(
-        at.spectra.plotspectra.addargs, ["-specpath", str(modelpath), "-t", "300"], set()
+        at.spectra.plotspectra.addargs, ["--specpath", str(modelpath), "-t", "300"], set()
     )
     assert viewertokens.paths == [str(modelpath)]
 
@@ -7139,7 +7425,7 @@ def test_packet_summaries_give_the_monte_carlo_noise(capsys: pytest.CaptureFixtu
         timedays="5",
         outputfile=tmp_path / "s.pdf",
     )
-    assert "each direction bin of spec_res.out holds about 1/10 of the escaped packets" in capsys.readouterr().err
+    assert "Each direction bin of spec_res.out holds about 1/10 of the escaped packets" in capsys.readouterr().err
 
     # spec.out has no packet count, thus the line gives no noise
     at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile=tmp_path / "s.pdf")
@@ -7156,7 +7442,7 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
     assert re.search(r"  Te: subplot 0, 540 points, .*min 3500 K at x = .*max 1\.4e\+05 K", captured.out)
     assert "Te: 258 points are at MAXTEMP" in captured.err
     # 155 cells of the 695 with matter are in the corners of the cube, and the mean of the summary leaves them out
-    assert "the plot leaves out each cell with vel_r_mid above vmax = 28920 km/s" in captured.out
+    assert "The plot leaves out each cell with vel_r_mid above vmax = 28920 km/s" in captured.out
     assert "Te: 44 points are at MINTEMP" in captured.err
 
     at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)
@@ -7286,7 +7572,7 @@ def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pyt
     artistools.__main__.main(argsraw=["corehours", str(modelfolder)])
     table = capsys.readouterr().out
     assert "ignored duplicate log" in table
-    assert "WARNING: sn3d did not finish. Estimated: (job: pktprop ts 10 to ts 10 grid-preprop" in table
+    assert "warning: sn3d did not finish. Estimated: (job: pktprop ts 10 to ts 10 grid-preprop" in table
     assert "CPU time:             12.000  core-h" in table
 
     # a damaged log gives no core hours and no task count, thus the sum is not complete and the tasks are not known.
@@ -7313,8 +7599,8 @@ def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pyt
 
     artistools.__main__.main(argsraw=["corehours", str(modelfolder)])
     table = capsys.readouterr().out
-    assert "WARNING: the log is missing, empty, or unreadable." in table
-    assert "WARNING: some logs give no core hours. The CPU time omits their runs." in table
+    assert "warning: The log is missing, empty, or unreadable." in table
+    assert "warning: Some logs give no core hours. The CPU time omits their runs." in table
     assert "Tasks:" not in table
 
 
@@ -7802,8 +8088,8 @@ def test_catalog_gives_one_row_for_each_model_and_warns_about_a_broken_model(
     rowbroken, rowclassic, rowtestmodel = dfcatalog.iter_rows(named=True)
     assert rowbroken["cells"] is None
     assert rowbroken["timesteps"] is None
-    assert captured.err.count("WARNING") == 1
-    assert "model broken in broken: the table gives nan for the cells of model.txt" in captured.err
+    assert captured.err.count("warning: ") == 1
+    assert "Model broken in broken: the table gives nan for the cells of model.txt" in captured.err
 
     assert rowclassic["dimensions"] == 3
     assert rowclassic["cells"] == 1000
@@ -7900,7 +8186,7 @@ def test_report_holds_each_part_and_its_figures(tmp_path: Path) -> None:
     ]
     assert all((reportfolder / imagename).is_file() for imagename in imagenames)
     assert "<pre>test-classicmode_3d: 19 points from 3.591 to 6.468 d, peak 1.206e+43 erg/s at 5.864 d" in page
-    assert "WARNING: Te: 260 points are at MAXTEMP" in page
+    assert "warning: Te: 260 points are at MAXTEMP" in page
     assert "<script" not in page
     assert "http" not in page
 
@@ -8286,15 +8572,22 @@ def test_check_from_packets_gives_the_largest_noise(capsys: pytest.CaptureFixtur
 
     dflightcurve = at.lightcurve.get_from_packets(modelpath)[-1].collect().filter(pl.col("relnoise").is_not_null())
     worst = dflightcurve.sort("relnoise", descending=True).row(0, named=True)
-    main(argsraw=[str(modelpath), "--frompackets"])
+    # a check with a warning gives the exit status 1, as ruff check does for a finding
+    with pytest.raises(SystemExit) as exitinfo:
+        main(argsraw=[str(modelpath), "--frompackets"])
+    assert exitinfo.value.code == 1
     captured = capsys.readouterr()
     assert "\ncheck status detail\n" in captured.out
     noiseline = next(line for line in captured.out.splitlines() if line.startswith('"packet noise"'))
     assert noiseline.startswith('"packet noise" warning ')
     assert f"the largest relative noise is {100 * worst['relnoise']:.1f}% at {worst['time_days']:.2f} d" in noiseline
-    assert re.search(r"WARNING: packet noise \(warning\): the largest relative noise", captured.err)
+    assert re.search(r"warning: packet noise \(warning\): the largest relative noise", captured.err)
     # a check that is not checked gives no warning line
     assert "complete time steps (" not in captured.err
+
+    # --exit-zero gives the table and the warnings, and the status 0
+    main(argsraw=[str(modelpath), "--frompackets", "--exit-zero"])
+    assert "warning: packet noise (warning)" in capsys.readouterr().err
 
 
 def test_check_packet_noise_names_a_timestep_with_no_escaped_packet() -> None:

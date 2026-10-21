@@ -379,7 +379,7 @@ def sum_line_luminosities(
         msg = (
             f"The NLTE populations hold no value of the upper level {level} at timestep {timestep} in any cell."
             " ARTIS writes the populations of the NLTE levels alone, at the timesteps of its NLTE output. Give"
-            " -timebins_tstart and -timebins_tend that hold such timesteps, and features of lines with an NLTE"
+            " --timebins-tstart and --timebins-tend that hold such timesteps, and features of lines with an NLTE"
             " upper level"
         )
         raise ValueError(msg)
@@ -506,7 +506,7 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     # subch_shen2018_electronlossboost{4,8,12}x), but only W7 is overplotted
     dfmodel = dffloers.filter(pl.col("modelname") == "w7").sort("epoch")
     if dfmodel.is_empty():
-        print_warning(f"no rows for Flörs model w7 in {floersmodelratiopath}")
+        print_warning(f"No rows for Flörs model w7 in {floersmodelratiopath}")
         # an empty frame of the comparison schema concatenates with the other comparison series
         return get_comparison_table("Flörs W7", [], [])
 
@@ -539,13 +539,13 @@ def add_ratio_noise(dflcdata: pl.DataFrame, featurecolnames: Sequence[str]) -> p
         fratio_relnoise=sum((pl.col(column) ** 2 for column in noisecolumns), start=pl.lit(0.0)).sqrt()
     )
     print(
-        "  noise: the relative Monte Carlo noise of a feature is sqrt(Σ e²) / Σ e over its packet energies e. The noise"
+        "  Noise: the relative Monte Carlo noise of a feature is sqrt(Σ e²) / Σ e over its packet energies e. The noise"
         " of the ratio is the root of the sum of the squares of the two noises"
     )
     noisytimes = dflcdata.filter(pl.col("fratio_relnoise") > NOISY_RELATIVE_ERROR)["time"].to_list()
     if noisytimes:
         print_warning(
-            f"the ratio has a relative noise above {NOISY_RELATIVE_ERROR:.0%} at {len(noisytimes)} of"
+            f"The ratio has a relative noise above {NOISY_RELATIVE_ERROR:.0%} at {len(noisytimes)} of"
             f" {dflcdata.height} times, e.g. {noisytimes[0]:.1f} d. Read more packet files, or give wider time bins"
         )
     return dflcdata
@@ -560,9 +560,9 @@ def check_ratio_features_share_no_line(feature0: FeatureTuple, feature1: Feature
     sharedlines = set(feature0.linelistindices) & set(feature1.linelistindices)
     if sharedlines:
         exit_with_error(
-            f"the features {feature0.featurelabel} and {feature1.featurelabel} of the ratio share {len(sharedlines)}"
+            f"The features {feature0.featurelabel} and {feature1.featurelabel} of the ratio share {len(sharedlines)}"
             " lines, thus a packet of such a line counts in both luminosities",
-            "Give the first two -emfeaturesearch values wavelength ranges with no common line",
+            "Give the first two --emfeaturesearch values wavelength ranges with no common line",
         )
 
 
@@ -660,7 +660,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         if tablemodelname in tablemodelnames:
             # two models can have the same name, and the join of their columns stopped with a repeated column
             tablemodelname = f"{tablemodelname}_{modelindex}"
-            print_warning(f"the data table gives the column of {modelpath} the model name {tablemodelname}")
+            print_warning(f"The data table gives the column of {modelpath} the model name {tablemodelname}")
         tablemodelnames.add(tablemodelname)
         plotteddata.append(
             dflcdata.select(
@@ -775,7 +775,7 @@ def read_te_nne_refdata(
     refdatapath = find_reference_data_file(refdatafilename, "data")
     if refdatapath is None:
         exit_with_error(
-            f"could not find the reference data file {refdatafilename}",
+            f"Could not find the reference data file {refdatafilename}",
             f"Put {refdatafilename} in the working folder, or give --norefdata to plot the model data alone",
         )
 
@@ -878,8 +878,8 @@ def set_emitting_regions_limits(
 ) -> None:
     """Set the limits of the emitting regions plot, which grow to show all the points of the time bin.
 
-    The default limits are the range of the reference data of Flörs et al. (2020). -ymin and -ymax set the
-    temperature range. The x axis gives the log of the electron density, thus -xmin and -xmax, which give a time
+    The default limits are the range of the reference data of Flörs et al. (2020). --ymin and --ymax set the
+    temperature range. The x axis gives the log of the electron density, thus --xmin and --xmax, which give a time
     in days, do not apply.
     """
     allpoints = [
@@ -930,7 +930,7 @@ def get_emitting_region_table(
 def make_emitting_regions_plot(args: argparse.Namespace) -> None:
     """Plot the electron density and the temperature of the cells that emit each feature, and save the figure.
 
-    --print_data and --write_data give one row for each packet in each figure. Each row holds the log10nne and the Te of
+    --print-data and --write-data give one row for each packet in each figure. Each row holds the log10nne and the Te of
     the cell that emitted the packet. The points of each reference curve have the feature "reference".
     """
     refdatafilenames: list[str] = [] if args.norefdata else ["floers_te_nne.json"]
@@ -961,6 +961,9 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         ),
         6,
     )
+    # each time bin writes its own data file, and the standard output gets one table of all the bins at the end. A
+    # table for each bin gave a JSON document for each bin, which a parser of JSON refused
+    printedpoints: list[pl.DataFrame] = []
     for tmid in times_days:
         print(f"  Plot at {tmid} days")
 
@@ -1038,8 +1041,17 @@ def make_emitting_regions_plot(args: argparse.Namespace) -> None:
         # would replace the one before it
         if len(times_days) > 1 and "{timeavg" not in str(args.outputfile):
             outputfile = outputfile.with_stem(f"{outputfile.stem}_{tmid:.{ndecimals}f}d")
-        output_data(args, {"": pl.concat(dfpoints) if dfpoints else pl.DataFrame()}, outputfile)
+        dfbinpoints = pl.concat(dfpoints) if dfpoints else pl.DataFrame()
+        output_data(argparse.Namespace(**(vars(args) | {"print_data": False})), {"": dfbinpoints}, outputfile)
+        if not dfbinpoints.is_empty():
+            printedpoints.append(dfbinpoints.with_columns(figure_time_days=pl.lit(tmid)))
         save_figure(fig, outputfile, args=args)
+
+    output_data(
+        argparse.Namespace(**(vars(args) | {"write_data": False})),
+        {"": pl.concat(printedpoints) if printedpoints else pl.DataFrame()},
+        args.outputfile,
+    )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -1059,7 +1071,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_darkmode(parser)
     addarg_verbose(parser)
 
-    parser.add_argument("-modeltag", default=[], nargs="*", help="List of model tags for file names")
+    parser.add_argument("-modeltag", default=[], nargs="*", help="A list of model tags for file names")
 
     addarg_maxpacketfiles(parser)
 
@@ -1084,7 +1096,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=Path,
         default=None,
         help=(
-            "Path to a CSV of Flörs model NIR/VIS ratios (columns: file, epoch, NIR_VIS_ratio) to overplot on the"
+            "The path to a CSV of Flörs model NIR/VIS ratios (columns: file, epoch, NIR_VIS_ratio) to overplot on the"
             " Fe II 7155/12570 ratio plot"
         ),
     )
@@ -1178,7 +1190,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ncolors = sum(color is not None for color in args.color)
         msg = (
             f"--plotemittingregions needs a colour for each of the {len(args.modelpath)} models,"
-            f" but only {ncolors} are set. Pass -color with one value per model"
+            f" but only {ncolors} are set. Pass --color with one value per model"
         )
         raise ValueError(msg)
 

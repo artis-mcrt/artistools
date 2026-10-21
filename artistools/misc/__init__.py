@@ -16,6 +16,7 @@ from artistools.misc.cliutils import addarg_modelgridindex as addarg_modelgridin
 from artistools.misc.cliutils import addarg_modelpath as addarg_modelpath
 from artistools.misc.cliutils import addarg_notitle as addarg_notitle
 from artistools.misc.cliutils import addarg_output as addarg_output
+from artistools.misc.cliutils import addarg_output_format as addarg_output_format
 from artistools.misc.cliutils import addarg_pathoption as addarg_pathoption
 from artistools.misc.cliutils import addarg_plotinvalidpart as addarg_plotinvalidpart
 from artistools.misc.cliutils import addarg_positional_items as addarg_positional_items

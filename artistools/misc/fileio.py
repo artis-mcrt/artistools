@@ -781,7 +781,7 @@ def require_reference_data_file(filename: Path | str, bundledsubfolder: str, des
     found = find_reference_data_file(filename, bundledsubfolder)
     if found is None:
         exit_with_error(
-            f"could not find the {description} file {filename}",
+            f"Could not find the {description} file {filename}",
             f"Put {filename} in the working folder, or in the data folder of the artistools package",
         )
 

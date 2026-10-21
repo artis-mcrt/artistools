@@ -333,7 +333,7 @@ def get_remote_model_logname(path: Path, label: str | None) -> str:
 def get_model_logname(path: Path | str, label: str | None = None) -> str:
     """Return the label of an ARTIS model and the name of its folder, for a log message.
 
-    The label comes from the caller (e.g. the -label argument) or from get_model_name.
+    The label comes from the caller (e.g. the --label argument) or from get_model_name.
     """
     path = Path(path)
     if is_remote_path(path):
@@ -602,6 +602,10 @@ def get_rank_outputfiles(folderpath: Path, filenameformat: str) -> dict[int, Pat
     return rankfiles
 
 
+# the number of lines of a rank file that give the types of its columns when a filter keeps no row
+FIRST_LINES_FOR_TYPES = 100
+
+
 def read_rank_outputfiles(
     modelpath: Path | str,
     filenameformat: str,
@@ -690,15 +694,21 @@ def read_rank_outputfiles(
         else None
     )
 
-    dfsoffiles = [
-        dffile.rename({"ionstage": "ion_stage"}, strict=False).with_columns(
+    def read_file(filepath: Path, folderindex: int, line_filter: pl.Expr | None) -> pl.DataFrame | None:
+        dffile = read_rank_file(filepath, line_filter=line_filter)
+        if dffile is None:
+            return None
+        return dffile.rename({"ionstage": "ion_stage"}, strict=False).with_columns(
             pl.col("modelgridindex").cast(pl.Int64),
             pl.col("timestep").cast(pl.Int64),
             pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
         )
+
+    dfsoffiles = [
+        dffile
         for folderindex, folderfilepaths in enumerate(filepathsofeachfolder)
         for filepath in folderfilepaths
-        if (dffile := read_rank_file(filepath, line_filter=line_filter)) is not None
+        if (dffile := read_file(filepath, folderindex, line_filter)) is not None
     ]
     if not dfsoffiles:
         msg = f"Each {filefamily} file of {modelpath} is empty"
@@ -706,9 +716,18 @@ def read_rank_outputfiles(
 
     # A file with the header line and no row gives a String column for each value. A relaxed concat with such a
     # frame would make each value column of the result a String
-    dfout = pl.concat(
-        [dffile for dffile in dfsoffiles if not dffile.is_empty()] or dfsoffiles[:1], how="vertical_relaxed"
-    )
+    nonemptyframes = [dffile for dffile in dfsoffiles if not dffile.is_empty()]
+    if not nonemptyframes:
+        # no row holds the timestep or the cells. The first lines of a file give the types, thus the empty result has
+        # the types of a full read, and a filter such as pl.col("Z") == 26 does not compare a String with a number
+        firstlines = pl.int_range(pl.len()) <= FIRST_LINES_FOR_TYPES
+        nonemptyframes = [
+            dfsample.clear()
+            for folderindex, folderfilepaths in enumerate(filepathsofeachfolder)
+            for filepath in folderfilepaths
+            if (dfsample := read_file(filepath, folderindex, firstlines)) is not None and not dfsample.is_empty()
+        ][:1] or dfsoffiles[:1]
+    dfout = pl.concat(nonemptyframes, how="vertical_relaxed")
 
     # the first timestep of a restarted run repeats the last timestep of the folder before it.
     # scan_estimators keeps the first row of each cell and timestep, thus this keeps it as well.

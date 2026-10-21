@@ -353,10 +353,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["artis", "kurucz", "nist"],
         help="Source of atomic data for excitation transitions",
     )
-    # deprecated double-dash spelling kept as a hidden alias
-    parser.add_argument(
-        "--atomicdatabase", dest="atomicdatabase", choices=["artis", "kurucz", "nist"], help=argparse.SUPPRESS
-    )
 
     addarg_output(
         parser,
@@ -428,9 +424,9 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
     modelgridindex = get_single_modelgridindex(args.modelgridindex)
     estimators_all = read_estimators(modelpath, timestep=timestep, modelgridindex=modelgridindex)
     if not estimators_all:
-        exit_with_error("no estimators")
+        exit_with_error("No estimators")
 
-    assert modelgridindex is not None, "-modelgridindex holds a default, thus it names a cell"
+    assert modelgridindex is not None, "--modelgridindex holds a default, thus it names a cell"
 
     return CellConditions(
         modelgridindex=modelgridindex,
@@ -451,7 +447,7 @@ def get_model_conditions(
     dfnltepops = read_nltepops(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
 
     if dfnltepops.is_empty():
-        exit_with_error(f"no NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")
+        exit_with_error(f"No NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")
 
     T_e = float(cell.estimators["Te"])
     T_R = float(cell.estimators["TR"])
@@ -581,7 +577,7 @@ def get_ion_spectra(
             else:
                 # only the ARTIS line list marks a forbidden line
                 print_warning(
-                    f"the {args.atomicdatabase} line list has no forbidden flag, thus every line stays in the plot"
+                    f"The {args.atomicdatabase} line list has no forbidden flag, thus every line stays in the plot"
                 )
 
         if pldftransitions.is_empty():
@@ -729,9 +725,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if from_model and args.atomicdatabase != "artis":
         exit_with_error(
-            f"-atomicdatabase {args.atomicdatabase} does not work with a model path,"
+            f"--atomicdatabase {args.atomicdatabase} does not work with a model path,"
             " because the NLTE populations name a level of the ARTIS atomic data",
-            "Leave out -modelpath, or give -atomicdatabase artis",
+            "Leave out --modelpath, or give --atomicdatabase artis",
         )
 
     cell = get_cell_conditions(modelpath, args) if from_model else None

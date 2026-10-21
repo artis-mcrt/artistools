@@ -1,4 +1,4 @@
-"""Give the meaning and the unit of each column of a table that --write_data writes.
+"""Give the meaning and the unit of each column of a table that --write-data writes.
 
 The name of a column gives its unit in a short form, e.g. f_lambda. A sentence removes the doubt about the frame,
 the distance, or the normalisation of the values.
@@ -10,14 +10,14 @@ from collections.abc import Sequence
 
 # the plotted y variables of plotspectra (-yvariable), with the quantity and the unit of each one
 SPECTRUM_YVARIABLES: t.Final = (
-    ("flux", "flux per unit of x_plotted, at the distance of -distmpc", "erg/s/cm^2/(unit of x_plotted)"),
+    ("flux", "flux per unit of x_plotted, at the distance of --distmpc", "erg/s/cm^2/(unit of x_plotted)"),
     ("luminosity", "luminosity per unit of x_plotted", "erg/s/(unit of x_plotted)"),
-    ("photonflux", "photon flux per unit of x_plotted, at the distance of -distmpc", "1/s/cm^2/(unit of x_plotted)"),
+    ("photonflux", "photon flux per unit of x_plotted, at the distance of --distmpc", "1/s/cm^2/(unit of x_plotted)"),
     ("photoncount", "photon emission rate per unit of x_plotted", "1/s/(unit of x_plotted)"),
     ("packetcount", "number of Monte Carlo packets in the bin", ""),
     (
         "eflux",
-        "energy flux E F_E, or lambda F_lambda on a wavelength axis, at the distance of -distmpc",
+        "energy flux E F_E, or lambda F_lambda on a wavelength axis, at the distance of --distmpc",
         "erg/s/cm^2, or (unit of x_plotted)/s/cm^2 on an axis of energy or frequency",
     ),
 )
@@ -217,7 +217,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "exopac_cm2_per_g",
         (
             "the expansion opacity of the lines in the wavelength bin, as the mass-weighted mean or median of the"
-            " cells (-cellaverage)"
+            " cells (--cellaverage)"
         ),
         "cm^2/g",
     ),
@@ -225,7 +225,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "linebinned_cm2_per_g",
         (
             "the line-binned opacity, from the sum of the Sobolev optical depths, as the mass-weighted mean or median"
-            " of the cells (-cellaverage)"
+            " of the cells (--cellaverage)"
         ),
         "cm^2/g",
     ),
@@ -233,7 +233,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         "linebinned_cap(.+)_cm2_per_g",
         (
             "the line-binned opacity with each Sobolev optical depth capped at {0}, as the mass-weighted mean or median"
-            " of the cells (-cellaverage)"
+            " of the cells (--cellaverage)"
         ),
         "cm^2/g",
     ),
@@ -389,7 +389,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     (
         "velocity_luminosity_q(25|50|75)_kmps",
         (
-            "the velocity (radial or line-of-sight, -velocitykind) of the last interaction or of the last thermal"
+            "the velocity (radial or line-of-sight, --velocitykind) of the last interaction or of the last thermal"
             " emission at the {0}% quantile of the packet energy of the group or the timestep"
         ),
         "km/s",
@@ -397,7 +397,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     (
         "velocity_luminosity_q(25|50|75)_c",
         (
-            "the velocity (radial or line-of-sight, -velocitykind) of the last interaction or of the last thermal"
+            "the velocity (radial or line-of-sight, --velocitykind) of the last interaction or of the last thermal"
             " emission at the {0}% quantile of the packet energy of the group or the timestep"
         ),
         "c",
@@ -474,7 +474,7 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("reference", "the label of the reference series of the residual", ""),
     (
         "residual",
-        "the series minus the reference series. With -residualtype relative or relativelog, the series divided by it",
+        "the series minus the reference series. With --residualtype relative or relativelog, the series divided by it",
         "",
     ),
     ("npoints", "the number of points of the residual", ""),

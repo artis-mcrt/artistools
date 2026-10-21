@@ -190,7 +190,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     outputfile = args.outputfile
     if len(modelpaths) > 1 and "{" not in str(outputfile):
         exit_with_error(
-            f"the output file {outputfile} has no field, thus each model would replace the file of the model before it",
+            f"The output file {outputfile} has no field, thus each model would replace the file of the model before it",
             "Give a name with the field {modelname}, e.g. -o plotlogfiles_{modelname}.pdf",
         )
 

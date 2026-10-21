@@ -30,7 +30,7 @@ for each time step and cell. SKILL.md gives the main columns. The other column f
   holds the analytic rate of radiative and collisional ionisation. ARTIS writes them only with `USE_LUT_PHOTOION`;
 - `Alpha_R_<ion>` (cm^3/s): the recombination coefficient, in an output of an older ARTIS.
 
-`artistools plotestimators --listvariables --print_data --quiet <modelpath>` gives a table of each column of a model,
+`artistools plotestimators --listvariables --print-data --quiet <modelpath>` gives a table of each column of a model,
 with its units and a description.
 
 To find the process that heats or cools the ejecta most, multiply each rate by `volume`, then add the values of all the
@@ -93,26 +93,26 @@ main columns of an escaped packet are:
 - `absorption_freq` (Hz), the frequency of the packet at its last absorption;
 - `em_posx`, `em_posy`, `em_posz` (cm), and `em_time` (s), the place and the time of the last emission or scattering.
 
-`artistools plotspectra --frompackets -groupby ion` and `artistools plotlastpacketinteraction` use these columns.
+`artistools plotspectra --frompackets --groupby ion` and `artistools plotlastpacketinteraction` use these columns.
 `at.packets.get_virtual_packets(modelpath)` reads the virtual packets of `vpackets/`.
 
 ## Spectra by the ion that emits or absorbs
 
-- `artistools plotspectra --showemission --print_data --quiet -t <days> <modelpath>` prints the spectrum of the
+- `artistools plotspectra --showemission --print-data --quiet -t <days> <modelpath>` prints the spectrum of the
   emission of each ion and process, e.g. `emission_flambda.Fe II bound-free`. `--showabsorption` gives the absorption.
 - `at.spectra.get_flux_contributions(modelpath, timestepmin, timestepmax)` reads `emission.out` and `absorption.out`.
   `use_lastemissiontype=False` reads `emissiontrue.out`, the thermal emission.
 - `at.spectra.get_flux_contributions_from_packets(modelpath, ...)` makes the same from the packets, e.g. by line,
   by element, or by velocity.
-- `artistools plotlinefluxes --print_data` gives the ratio of the luminosities of two emission features against time.
-- `artistools linecontributions -t <days> -lambdamin <Å> -lambdamax <Å> <modelpath>` gives each line in the range
+- `artistools plotlinefluxes --print-data` gives the ratio of the luminosities of two emission features against time.
+- `artistools linecontributions -t <days> --lambdamin <Å> --lambdamax <Å> <modelpath>` gives each line in the range
   with its maximum Sobolev optical depth in the cells and its emission n_u A h nu beta, summed over the cells. `--percell` gives
   one row for each cell and line, with the level populations and the method of each one.
   `at.linecontributions.get_line_contributions(modelpath, timestep, lambdamin, lambdamax)` gives the same table.
   `artistools plotlinecontributions` plots the emission and the tau_sobolev of each line against velocity.
-  `-costhetamin` and `-costhetamax` select the cells of one direction, and `-troughdirbin` adds a Sobolev estimate of
+  `--costhetamin` and `--costhetamax` select the cells of one direction, and `--troughdirbin` adds a Sobolev estimate of
   the absorption trough for one viewing direction.
-- `artistools plotlastinteractionvelocity <modelpath> -lambdamin <Å> -lambdamax <Å>` plots the median and the
+- `artistools plotlastinteractionvelocity <modelpath> --lambdamin <Å> --lambdamax <Å>` plots the median and the
   quartiles of the velocity of the last interaction of the escaped packets against time. In a range with no strong
   line, the median is an estimate of the velocity of the photosphere.
 
@@ -148,8 +148,8 @@ These options and commands describe a run:
 - `at.plotlogfiles.read_time_taken(at.plotlogfiles.get_model_logfiles(modelpath))` gives the time of each part of
   each time step, from the logs `output_*.txt`.
 - `artistools logsummary <modelpath>` counts the warnings and the errors of the logs by kind, with their time steps and
-  the number of cells. Each rank logs the cells that it updates, thus `-ranks all` or `-modelgridindex <cell>` reads
+  the number of cells. Each rank logs the cells that it updates, thus `--ranks all` or `--modelgridindex <cell>` reads
   more logs. Use it to explain an odd value, e.g. a cell at `MAXTEMP`.
-- `artistools corehours <modelpath> --json` gives the core hours of each run and their sum, from the rank-0 logs. A run
+- `artistools corehours <modelpath> --output-format json` gives the core hours of each run and their sum, from the rank-0 logs. A run
   that stopped early gets an estimate from the timestamps of its log.
 - The log `output_0-0.txt` holds the messages of ARTIS for each time step. Search it for a message, e.g. a warning.

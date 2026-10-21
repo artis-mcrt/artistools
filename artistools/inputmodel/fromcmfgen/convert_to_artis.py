@@ -57,7 +57,7 @@ CMFGEN_SPECIES_ATOMIC_NUMBER: t.Final[Mapping[str, int]] = MappingProxyType({
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-snapshot", default="SN_HYDRO_DATA_1.300d", help="CMFGEN SN_HYDRO_DATA snapshot file")
-    addarg_output(parser, kind="folder", default=Path(), helptext="Folder to write model.txt/abundances.txt to")
+    addarg_output(parser, kind="folder", default=Path(), helptext="The folder to write model.txt/abundances.txt to")
     addarg_force(parser)
 
 
@@ -132,7 +132,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     rin = np.insert(rmid, 0, 0)  # for artis we use 0 as inner radius for the innermost shell, cmfgen uses
     # the innermost radius r[0], this gives a slight discrepancy (<1%) in the total mass
     mass_msun = (4 / 3 * np.pi * (rout**3 - rin**3) * a["dens"]).sum() / Msun_to_g
-    print(f"total mass {mass_msun:.4f} Msun ({mass_msun / (a['dmass'].sum() / Msun_to_g):.4f} of the snapshot's)")
+    print(f"Total mass {mass_msun:.4f} Msun ({mass_msun / (a['dmass'].sum() / Msun_to_g):.4f} of the snapshot's)")
 
     inputcellid = np.arange(1, a["nd"] + 1)
 

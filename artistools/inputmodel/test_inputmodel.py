@@ -658,10 +658,10 @@ def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: 
     )
 
     captured = capsys.readouterr()
-    assert "WARNING: Shell" in captured.err
-    assert "WARNING: Shell" not in captured.out
+    assert "warning: Shell" in captured.err
+    assert "warning: Shell" not in captured.out
     logtext = "".join(logfile.read_text(encoding="utf-8") for logfile in outputpath_cone.rglob("make1dmodellog.txt"))
-    assert "WARNING: Shell" in logtext, "the log file must keep the warning"
+    assert "warning: Shell" in logtext, "the log file must keep the warning"
 
 
 def test_makefromcone_arg_can_be_disabled() -> None:
@@ -677,7 +677,7 @@ def test_makemodel_without_an_action_stops_with_an_error(tmp_path: Path, capsys:
     with pytest.raises(SystemExit):
         at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path)
 
-    assert "no action was given" in capsys.readouterr().err
+    assert "The command needs an action" in capsys.readouterr().err
     assert not list(tmp_path.iterdir())
 
 
@@ -719,7 +719,7 @@ def test_makemodel_dimensionreduce_takes_only_a_lower_dimension(capsys: pytest.C
     with pytest.raises(SystemExit):
         at.inputmodel.makeartismodel.main(argsraw=["-dimensionreduce", "3"])
 
-    assert "invalid choice" in capsys.readouterr().err
+    assert "Invalid choice" in capsys.readouterr().err
 
 
 def test_maketardismodel(tmp_path: Path) -> None:
@@ -3766,7 +3766,7 @@ def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys
 
     # the mapped data and the tracer data must print one total mass, or a correct mapping looks wrong
     printedmasses = [
-        float(line.split(":")[1]) for line in capsys.readouterr().out.splitlines() if line.startswith("total mass  ")
+        float(line.split(":")[1]) for line in capsys.readouterr().out.splitlines() if line.startswith("Total mass  ")
     ]
     assert printedmasses == pytest.approx([2 * 20 * 1e-3] * 2, rel=1e-6)
 
@@ -3817,7 +3817,7 @@ def test_get_modeldata_1d_with_one_cell_uses_the_fast_reader(
 
     dfmodel, _ = at.inputmodel.get_modeldata(tmp_path)
 
-    assert "using fast method" in capsys.readouterr().out
+    assert "Using fast method" in capsys.readouterr().out
     assert dfmodel.collect()["vel_r_max_kmps"].to_list() == pytest.approx([1000.0])
 
 
