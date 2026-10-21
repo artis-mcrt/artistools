@@ -34,13 +34,13 @@ jobs:
         name: codspeed benchmarks
         steps:
             - name: Checkout Code
-              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              uses: actions/checkout@v7.0.1
               with:
                   persist-credentials: false
 
             - name: Setup uv
               id: setup-uv
-              uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+              uses: astral-sh/setup-uv@v10.3.0
               with:
                   activate-environment: true
                   cache-suffix: codspeed
@@ -50,7 +50,7 @@ jobs:
               run: rustup update stable
 
             - name: Cache cargo and rust build
-              uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+              uses: Swatinem/rust-cache@v2.9.2
               with:
                   workspaces: rust
                   cache-on-failure: true
@@ -69,7 +69,7 @@ jobs:
               run: source ./setuptestdata.sh
 
             - name: Run benchmarks
-              uses: CodSpeedHQ/action@821a40cd6c80e3cfe387caf55668287addd808da # v5.5.0
+              uses: CodSpeedHQ/action@v5.5.0
               with:
                   mode: simulation
                   run: pytest --codspeed

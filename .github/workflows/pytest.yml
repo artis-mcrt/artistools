@@ -27,11 +27,11 @@ jobs:
         runs-on: ubuntu-26.04-arm
         steps:
             - name: Checkout Code
-              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              uses: actions/checkout@v7.0.1
               with:
                   persist-credentials: false
 
-            - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+            - uses: astral-sh/setup-uv@v10.3.0
               id: setup-uv
               with:
                   activate-environment: true
@@ -44,7 +44,7 @@ jobs:
               run: rustup update stable
 
             - name: Cache cargo and rust build
-              uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+              uses: Swatinem/rust-cache@v2.9.2
               with:
                   workspaces: rust
                   cache-on-failure: true
@@ -83,7 +83,7 @@ jobs:
             # The hooks correct the errors and show only the files that they change, thus this step skips them
             - name: Run prek pre-commit checks
               if: always()
-              uses: j178/prek-action@1382ad72dea72f9d53832f2bcb65b3e87a947204 # v3.0.1
+              uses: j178/prek-action@v3.0.1
               env:
                   SKIP: ruff-check,ruff-format
 
@@ -116,13 +116,13 @@ jobs:
         name: pytest python ${{ matrix.python-version }}
         steps:
             - name: Checkout Code
-              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              uses: actions/checkout@v7.0.1
               with:
                   persist-credentials: false
 
             - name: Setup uv
               id: setup-uv
-              uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+              uses: astral-sh/setup-uv@v10.3.0
               with:
                   activate-environment: true
                   python-version: ${{ matrix.python-version }}
@@ -132,7 +132,7 @@ jobs:
               run: rustup update stable
 
             - name: Cache cargo and rust build
-              uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+              uses: Swatinem/rust-cache@v2.9.2
               with:
                   workspaces: rust
                   cache-on-failure: true
@@ -162,7 +162,7 @@ jobs:
 
             - name: Upload coverage artifact
               if: matrix.python-version == '3.14' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-              uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              uses: actions/upload-artifact@v7.0.2
               with:
                   name: coverage-report-python
                   path: coverage.xml
@@ -179,7 +179,7 @@ jobs:
             pull-requests: read
         steps:
             - name: Download coverage artifact
-              uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+              uses: actions/download-artifact@v8.0.2
               with:
                   name: coverage-report-python
             - name: Check for a pull request associated with this commit
@@ -189,7 +189,7 @@ jobs:
                   GH_TOKEN: ${{ github.token }}
               run: echo "found=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" --jq 'length > 0')" >> "$GITHUB_OUTPUT"
 
-            - uses: actions/upload-code-coverage@2b21a77928be8d5168c2b9581a67f2adbebacc52 # v1.4.4
+            - uses: actions/upload-code-coverage@v1.4.4
               if: github.ref == 'refs/heads/main' || steps.haspr.outputs.found == 'true'
               with:
                   file: coverage.xml
