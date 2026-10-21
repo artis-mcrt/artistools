@@ -565,11 +565,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "-format",
-        "-f",
         default="pdf",
         choices=["pdf", "png"],
         help="Set format of output plot files that take the default name. A name from -o keeps its own suffix",
     )
+    # the older short form. The help gives -f one meaning, --force, as rm -f does
+    parser.add_argument("-f", dest="format", choices=["pdf", "png"], help=argparse.SUPPRESS)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = None, **kwargs: t.Any) -> None:

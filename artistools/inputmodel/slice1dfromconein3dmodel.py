@@ -318,7 +318,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="folder", default=Path())
     addarg_force(parser)
 
-    parser.add_argument("-rhoscale", "-v", default=None, type=float, help="Density scale factor")
+    parser.add_argument("-rhoscale", default=None, type=float, help="Density scale factor")
+    # the older short form. The help gives -v one meaning, --verbose, as ruff and uv do
+    parser.add_argument("-v", dest="rhoscale", type=float, help=argparse.SUPPRESS)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

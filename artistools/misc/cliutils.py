@@ -1461,8 +1461,8 @@ def addarg_verbose(parser: argparse.ArgumentParser) -> None:
     A command prints a summary of the work by default. --verbose adds the detail, e.g. the name of
     each file that the command reads.
 
-    -v is the short form, but four commands gave -v to --velocity or to --rhoscale before this
-    argument existed. A script holds such a command, thus -v keeps that meaning there, and
+    -v is the short form, but some commands gave -v to --velocity or to --rhoscale before this
+    argument existed. A script holds such a command, thus -v keeps that meaning there as a hidden alias, and
     --verbose is the only form. Declare the argument of the command first, then call this function.
     """
     flags = ["--verbose"] if "-v" in parser._option_string_actions else ["--verbose", "-v"]  # ruff:ignore[private-member-access]

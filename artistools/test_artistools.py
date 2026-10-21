@@ -4356,6 +4356,52 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
             assert not re.search(rf"(?<![\w-]){re.escape(spelling)}[ ,]", helptext), spelling
 
 
+def test_short_help_gives_the_first_sentence_of_each_option(capsys: pytest.CaptureFixture[str]) -> None:
+    """-h gives a summary of the options, and --help gives each detail and the examples, as uv does.
+
+    The help of plotspectra had 464 lines, which no reader takes in to find one option.
+    """
+    import artistools.__main__
+
+    helptexts = {}
+    for flag in ("-h", "--help"):
+        with pytest.raises(SystemExit) as exitinfo:
+            artistools.__main__.main(argsraw=["plotspectra", flag])
+        assert exitinfo.value.code == 0
+        helptexts[flag] = capsys.readouterr().out
+    assert len(helptexts["-h"].splitlines()) < len(helptexts["--help"].splitlines()) / 2
+    assert "plotspectra --help` for the full help and the examples" in helptexts["-h"]
+    assert "Examples" not in helptexts["-h"]
+    assert "Examples" in helptexts["--help"]
+    # the first sentence of a help text stays, and a later sentence goes, also after an abbreviation such as e.g.
+    assert at.commands.get_first_sentence("Give a time, e.g. 300. A unit is optional") == "Give a time, e.g. 300"
+
+
+def test_each_short_flag_has_one_meaning_in_the_help() -> None:
+    """-v is --verbose and -f is --force in each command, as in ruff and uv. An older meaning stays a hidden alias.
+
+    -v also named --velocity and --rhoscale, and -f also named --format, thus a short flag did a different thing in a
+    different command.
+    """
+    import artistools.__main__
+    from artistools.commands import get_shown_flags
+
+    parser = artistools.__main__.build_parser()
+    subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    commands = subactions[0].choices
+    for command in ("plotnltepops", "plotestimators", "plotspherical", "cache", "deposition"):
+        for action in commands[command]._actions:  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            if action.help == argparse.SUPPRESS:
+                continue
+            shown = get_shown_flags(action)
+            assert "-v" not in shown or action.dest == "verbose", (command, action.dest)
+            assert "-f" not in shown or action.dest == "force", (command, action.dest)
+
+    # a script that holds an older meaning still runs
+    assert commands["plotnltepops"].parse_args(["-v", "5000"]).velocity_kmps == [5000.0]
+    assert commands["plotestimators"].parse_args(["-f", "png"]).format == "png"
+
+
 def test_viewer_and_completion_know_the_standard_flag_spellings() -> None:
     """A viewer reads the standard spelling of a flag, and tab completion offers that spelling alone.
 

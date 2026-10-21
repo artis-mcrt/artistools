@@ -2118,22 +2118,24 @@ def addarg_cellvelocity(
     *,
     multiple: bool = False,
 ) -> None:
-    """Add --velocity (-v), which selects the cell of a 1D model by its radial velocity, into args.velocity_kmps.
+    """Add --velocity, which selects the cell of a 1D model by its radial velocity, into args.velocity_kmps.
 
     A number with no unit is in km/s, and a value can also take a unit, e.g. 0.02c. With multiple, the option takes
     one or more values and gives a list.
     """
+    nargs = "+" if multiple else None
     container.add_argument(
         "-velocity",
-        "-v",
         dest="velocity_kmps",
         type=velocity_kmps_arg,
-        nargs="+" if multiple else None,
+        nargs=nargs,
         help=(
             "Select the cell of a 1D model by its radial velocity, e.g. 5000 (km/s), 5000km/s, or 0.02c"
             + (". Give more than one value for more than one cell" if multiple else "")
         ),
     )
+    # the older short form. The help gives -v one meaning, --verbose, as ruff and uv do
+    container.add_argument("-v", dest="velocity_kmps", type=velocity_kmps_arg, nargs=nargs, help=argparse.SUPPRESS)
 
 
 def get_signed_velocity_bin_edges_kmps(velocityedges_kmps: Sequence[float]) -> list[float]:

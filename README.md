@@ -51,7 +51,7 @@ Run "artistools" (or the short alias "at") at the command-line to get a full lis
 - artistools describe (a summary of a model: its cells, timesteps, output files, and ions)
 - artistools inputmodel describe
 
-Use the -h option to get a list of command-line arguments for each subcommand. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Run a command in a model folder, or give the path of the model folder. A command that reads a model takes the model path with `--modelpath`, e.g. `artistools timesteps --modelpath mymodel`. Most of these commands also take the model path as the last positional argument, e.g. `artistools plotspectra -t 300 mymodel`.
+Give `-h` to a command for a summary of its arguments, or `--help` for the full help and the examples. Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error. Run a command in a model folder, or give the path of the model folder. A command that reads a model takes the model path with `--modelpath`, e.g. `artistools timesteps --modelpath mymodel`. Most of these commands also take the model path as the last positional argument, e.g. `artistools plotspectra -t 300 mymodel`.
 
 ### The plotted data as text
 

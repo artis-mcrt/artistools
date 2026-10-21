@@ -755,6 +755,37 @@ def with_shown_flags(action: argparse.Action) -> argparse.Action:
     return copied
 
 
+def with_first_sentence(action: argparse.Action) -> argparse.Action:
+    """Return a copy of the action whose help is the first sentence of its help, for the short help of -h."""
+    if not action.help or action.help is argparse.SUPPRESS:
+        return action
+    copied = copy.copy(action)
+    copied.help = get_first_sentence(action.help)
+    return copied
+
+
+class HelpAction(argparse.Action):
+    """Print the short help for -h and the full help for --help, then stop, as uv does."""
+
+    def __init__(self, option_strings: "Sequence[str]", dest: str = argparse.SUPPRESS, **kwargs: t.Any) -> None:
+        """Make an action that takes no value."""
+        super().__init__(option_strings, dest=dest, nargs=0, default=argparse.SUPPRESS, **kwargs)
+
+    @t.override
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: "str | Sequence[t.Any] | None",
+        option_string: str | None = None,
+    ) -> None:
+        if option_string == "-h" and isinstance(parser, SuggestingArgumentParser):
+            parser.print_short_help()
+        else:
+            parser.print_help()
+        parser.exit()
+
+
 class CommandGroupHeading(argparse.Action):
     """A pseudo action that carries a heading into the help listing of the top-level commands."""
 
@@ -814,6 +845,17 @@ def shorten_aliases(metavar: str) -> str:
     return f"{name} ({aliases.rstrip(')').split(', ')[0]})"
 
 
+# the column of the help text in the short help of -h. 24 is the default of argparse
+SHORT_HELP_POSITION = 32
+
+
+def get_first_sentence(text: str) -> str:
+    """Return the first sentence of a help text. An abbreviation such as e.g. does not end a sentence."""
+    import re
+
+    return re.split(r"(?<!\be\.g)(?<!\bi\.e)\.\s+(?=\S)", text, maxsplit=1)[0].removesuffix(".")
+
+
 class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
@@ -821,6 +863,16 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         """Widen the help column so long option names stay on one line."""
         kwargs["max_help_position"] = 50
         super().__init__(*args, **kwargs)
+        self.short = False
+
+    def make_short(self) -> None:
+        """Give the short help of -h: the first sentence of the help of each option, as uv does.
+
+        The column of the help starts nearer to the left, thus a sentence takes fewer lines. A long flag then goes on
+        its own line. argparse limits the column by the width of the terminal, as __init__ does.
+        """
+        self.short = True
+        self._max_help_position = min(SHORT_HELP_POSITION, max(self._width - 20, 2 * self._indent_increment))
 
     @t.override
     def _get_help_string(self, action: argparse.Action) -> str | None:
@@ -910,6 +962,8 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
         # the help gives the standard spelling of each flag, and the older spellings still work
         actions = sorted((with_shown_flags(action) for action in actions), key=my_sort)
+        if self.short:
+            actions = [with_first_sentence(action) for action in actions]
         super().add_arguments(actions)
 
     @t.override
@@ -1056,16 +1110,42 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         Each parser formats its help and its usage in the same way, thus a parser of a test also gives "Usage:".
         """
         kwargs.setdefault("formatter_class", CustomArgHelpFormatter)
-        super().__init__(*args, **kwargs)
-        if (helpaction := self._option_string_actions.get("-h")) is not None:
-            helpaction.help = "Show this help message and exit"
+        addhelp = kwargs.pop("add_help", True)
+        super().__init__(*args, add_help=False, **kwargs)
+        if addhelp:
+            self.add_argument(
+                "-h",
+                "--help",
+                action=HelpAction,
+                help="Show a summary of the options with -h, or the full help with --help, and exit",
+            )
 
     @t.override
     def format_help(self) -> str:
+        """Return the full help, with each sentence of the help of each option, and the examples."""
+        return self.make_help(short=False)
+
+    def make_formatter(self, *, short: bool) -> argparse.HelpFormatter:
+        """Return the formatter of the help, which gives the short help of -h with short."""
+        formatter = self._get_formatter()
+        if short and isinstance(formatter, CustomArgHelpFormatter):
+            formatter.make_short()
+        return formatter
+
+    def print_short_help(self, file: t.TextIO | None = None) -> None:
+        """Print the short help of -h, with the first sentence of the help of each option.
+
+        The help goes to the standard output, as print_help sends it. _print_message alone takes the standard error.
+        """
+        import sys
+
+        self._print_message(self.make_help(short=True), file or sys.stdout)
+
+    def make_help(self, *, short: bool) -> str:
         """Return the help with the argument groups in the order of ARGUMENTGROUPORDER.
 
-        A command makes a shared group when it adds the first argument of that group. Without this sort, the order
-        of the groups is different in each command.
+        A command makes a shared group when it adds the first argument of that group. Without this order, the order
+        of the groups is different in each command. The short help gives a pointer to --help in place of the examples.
         """
 
         def get_rank(group: "argparse._ArgumentGroup") -> float:  # pyright: ignore[reportPrivateUsage]
@@ -1074,8 +1154,16 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             # 1.5 puts a group that only one command has between "options" and the shared groups
             return ARGUMENTGROUPORDER.index(title) if title in ARGUMENTGROUPORDER else 1.5
 
-        self._action_groups.sort(key=get_rank)
-        return super().format_help()
+        formatter = self.make_formatter(short=short)
+        formatter.add_usage(self.usage, self._actions, self._mutually_exclusive_groups)
+        formatter.add_text(self.description)
+        for group in sorted(self._action_groups, key=get_rank):
+            formatter.start_section(group.title)
+            formatter.add_text(group.description)
+            formatter.add_arguments(group._group_actions)  # ruff:ignore[private-member-access]
+            formatter.end_section()
+        formatter.add_text(f"Run `{self.prog} --help` for the full help and the examples." if short else self.epilog)
+        return formatter.format_help()
 
     @t.override
     def _check_value(self, action: argparse.Action, value: t.Any) -> None:

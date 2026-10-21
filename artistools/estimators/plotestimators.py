@@ -3151,7 +3151,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_filter(parser)
 
-    parser.add_argument("-format", "-f", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
+    parser.add_argument("-format", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
+    # the older short form. The help gives -f one meaning, --force, as rm -f does
+    parser.add_argument("-f", dest="format", choices=["pdf", "png"], help=argparse.SUPPRESS)
 
     parser.add_argument(
         "--makegif", action="store_true", help="Make a gif of the time evolution, one frame per timestep"
