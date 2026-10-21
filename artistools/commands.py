@@ -1125,6 +1125,22 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
                     action.option_strings = [*action.option_strings, standard]
                     self._option_string_actions[standard] = action
 
+    @t.override
+    def _get_option_tuples(self, option_string: str) -> list[tuple[argparse.Action, str, str | None]]:
+        """Return the matches of an abbreviated flag, with one match for each flag and value.
+
+        add_standard_flags gives a flag two spellings, e.g. --print_data and --print-data, thus the abbreviation
+        --print matched both. argparse then refused it as ambiguous, although both name one flag.
+        """
+        matches: list[tuple[argparse.Action, str, str | None]] = []
+        seen: set[tuple[object, ...]] = set()
+        for match in super()._get_option_tuples(option_string):
+            # Python 3.13 gives the action, the flag, the separator, and the value, and the stub names three of them
+            if (key := (id(match[0]), *match[2:])) not in seen:
+                seen.add(key)
+                matches.append(match)
+        return matches
+
     def show_standard_flags(self, message: str) -> str:
         """Return a message of argparse with the shown spelling of each flag.
 

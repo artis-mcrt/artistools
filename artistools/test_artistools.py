@@ -4453,7 +4453,12 @@ def test_help_gives_the_standard_flag_spellings(capsys: pytest.CaptureFixture[st
     assert not re.search(r"(?<![\w-])-(timedays|modelpath|xmin)\b", helptext)
     assert "--print_data" not in helptext
 
-    for argsraw in (["-timedays", "300", "--print_data"], ["--timedays", "300", "--print-data"]):
+    # --print is an abbreviation of --print_data and of --print-data, which name one flag
+    for argsraw in (
+        ["-timedays", "300", "--print_data"],
+        ["--timedays", "300", "--print-data"],
+        ["-t", "300", "--print"],
+    ):
         args = parser.parse_args(["plotspectra", *argsraw])
         assert str(args.timedays) == "300"
         assert args.print_data
