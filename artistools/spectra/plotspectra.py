@@ -2338,10 +2338,6 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help="Do not extend the time range to the start and the end of its timesteps. This option reads the packets",
     )
 
-    # no code reads this for plotspectra. It stays accepted, because a script holds the spelling,
-    # and SUPPRESS keeps it out of the help text
-    parser.add_argument("--classicartis", action="store_true", help=argparse.SUPPRESS)
-
     parser.add_argument(
         "-xunit",
         dest="xunit",
@@ -3117,12 +3113,6 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     if args.timedayslist:
         args.multispecplot = True
         args.timedays = args.timedayslist[0]
-
-    if args.classicartis:
-        print_warning(
-            "plotspectra ignores --classicartis. A spectrum comes from spec.out or from the packets,"
-            " and not from the estimators"
-        )
 
     # one time axis serves every model, thus the range resolves one time and before any plot runs. A path
     # that is not an ARTIS model gives no timesteps, and the plot loop skips it with a warning

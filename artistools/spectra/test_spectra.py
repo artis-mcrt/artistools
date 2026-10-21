@@ -2096,15 +2096,6 @@ def test_plotspectra_takes_a_reference_named_out_before_a_model(tmp_path: Path) 
     assert len(list(outputfolder.glob("*.pdf"))) == 1
 
 
-def test_plotspectra_accepts_classicartis_and_says_it_does_nothing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A script holds the spelling, thus the argument stays accepted. No code reads it for this command."""
-    at.spectra.plot(argsraw=["--classicartis", "-timedays", "260-300", str(modelpath), "-outputfile", str(tmp_path)])
-
-    assert "ignores --classicartis" in capsys.readouterr().err
-
-
 def test_plotspectra_timedayslist_names_the_whole_range(tmp_path: Path) -> None:
     """-timedayslist names one epoch for each subplot, thus the file name must span the whole list.
 
