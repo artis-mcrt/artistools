@@ -749,3 +749,19 @@ def test_nltepops_versus_time_write_data_gives_the_points_inside_xmax(tmp_path: 
 
     dftable = pl.read_csv(tmp_path / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
     assert dftable["time_days"].to_list() == times[:2]
+
+
+def test_nltepops_timestep_range_with_a_timestep_of_no_rows(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A range of timesteps plots each timestep with data, and names a timestep with no NLTE rows.
+
+    The filter of the timestep kept only the header line for timestep 41, and that table had a String column for each
+    value. The comparison of Z with a number then stopped the command, also on main.
+    """
+    dfempty = at.nltepops.read_nltepops(modelpath, timestep=41, modelgridindex=[0])
+    assert dfempty.is_empty()
+    assert dfempty.schema["Z"] == pl.Int64
+    assert dfempty.schema["n_LTE"] == pl.Float64
+
+    at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, timestep="40-41")
+    assert "No NLTE population data for Z=26 at timestep 41" in capsys.readouterr().out
+    assert [path.name.split("_")[3] for path in tmp_path.glob("*.pdf")] == ["ts040"]
