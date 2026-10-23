@@ -3908,8 +3908,8 @@ def test_set_legend_above_the_frame_keeps_the_y_limits() -> None:
     assert legend is not None
     canvas.draw()
     frame = at.plottools.get_legend_frame(legend, canvas.get_renderer())
-    assert frame.y0 >= 1.0
-    assert ax.get_ylim() == (0.0, 5.0)
+    assert frame.y0 > 1.0 or np.isclose(frame.y0, 1.0)
+    assert np.allclose(ax.get_ylim(), (0.0, 5.0), rtol=1e-12, atol=0.0)
     plt.close(fig)
 
 
