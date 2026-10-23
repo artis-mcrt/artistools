@@ -4175,6 +4175,15 @@ def test_dimension_reduce_keeps_abundances_of_empty_shells(tmp_path: Path, zero_
         rel_tol=1e-6,
     )
 
+    # Cells 3 and 7 supply all the abundance data for the outer shell.
+    with pytest.raises(AssertionError):
+        at.inputmodel.dimension_reduce_model(
+            dfmodel,
+            outputdimensions=1,
+            dfelabundances=dfabundances.filter(~pl.col("inputcellid").is_in([3, 7])),
+            modelmeta=modelmeta,
+        )
+
 
 def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Path) -> None:
     """A header comment with one quotation mark must not hide the cells from the fast reader.

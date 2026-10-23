@@ -1663,6 +1663,9 @@ def dimension_reduce_model(
         out_mass_g=pl.col("mass_g_list").list.sum(),
     ).explode("inputcellid", "mass_g", empty_as_null=False)
 
+    dfoutcells_without_inputcells = dfmodel_out.filter(pl.col("inputcellid_list").list.len().fill_null(0) == 0).select(
+        "inputcellid"
+    )
     dfmodel_out = dfmodel_out.drop(["inputcellid_list", "mass_g_list"], strict=False)
     if other_cols := dfmodel_out.select(cs.by_dtype(pl.List)).collect_schema().names():
         assert not other_cols, f"Not sure how to combine column values: {other_cols}"
@@ -1681,7 +1684,7 @@ def dimension_reduce_model(
             )
             .rename({"out_inputcellid": "inputcellid"})
             .drop_nulls("inputcellid")
-            .join(dfmodel_out.select("inputcellid"), on="inputcellid", how="right")
+            .join(dfoutcells_without_inputcells, on="inputcellid", how="full", coalesce=True)
             .with_columns((cs.starts_with("X_") | cs.by_name("mass_g")).fill_null(0.0))
             .sort("inputcellid")
         )
