@@ -607,6 +607,9 @@ def set_legend(
 
     --legendcols of args gives the number of columns. Without it, a caller can give ncol. With neither, or with an ncol
     of None, a long legend takes more columns, thus it does not push the data into a small part of the frame.
+
+    --legend-above of args puts the legend on the top edge of the frame, outside the data area. The legend then
+    takes no room from the y axis, and a caller that gives loc does not move it.
     """
     if getattr(args, "nolegend", False):
         return None
@@ -626,6 +629,10 @@ def set_legend(
         # a caller such as plotspectra passes frameon=False. --legendframe overrides it
         legendkwargs.update(frameon=True, framealpha=0.85, facecolor="white", edgecolor="none")
 
+    legendabove = getattr(args, "legend_above", False)
+    if legendabove:
+        legendkwargs.update(loc="lower center", bbox_to_anchor=(0.5, 1.0), borderaxespad=0.0)
+
     if "handles" not in legendkwargs:
         legendkwargs["handles"], legendkwargs["labels"] = get_legend_entries_in_draw_order(
             ax, legendkwargs.get("handler_map")
@@ -638,7 +645,8 @@ def set_legend(
     isbest = legendkwargs.get("loc", plt.rcParams["legend.loc"]) in {"best", 0}
     legend = add_fitted_legend(ax, legendkwargs) if fitcolumns else ax.legend(**legendkwargs)
     fig = ax.get_figure(root=True)
-    if fig is not None:
+    # a legend above the frame covers no data, thus it needs no room
+    if fig is not None and not legendabove:
         room = next((artist for artist in fig.artists if isinstance(artist, LegendRoom)), None)
         if room is None:
             room = LegendRoom()

@@ -350,6 +350,7 @@ DRAW_DESTS: t.Final = OUTPUT_DESTS | frozenset({
     "figwidthscale",
     "hidexlabel",
     "labelfontsize",
+    "legend_above",
     "legendcols",
     "legendframe",
     "linewidthscale",
@@ -2287,7 +2288,7 @@ def open_window(
     # a flag that this version of plotestimators does not have gives no control
     appearancechecks = {
         flag: QtWidgets.QCheckBox(flag)
-        for flag in ("--notitle", "--nolegend", "--legendframe", "--hidexlabel")
+        for flag in ("--notitle", "--nolegend", "--legendframe", "--legend-above", "--hidexlabel")
         if flag in actionsbyflag
     }
     for flag, check in appearancechecks.items():
