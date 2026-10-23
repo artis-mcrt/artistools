@@ -997,6 +997,7 @@ FLAG_LABELS: t.Final = MappingProxyType({
     "--hideother": "Hide Other",
     "--hidexlabel": "Hide x label",
     "--histogram": "Histogram",
+    "--legend-above": "Legend above frame",
     "--legendframe": "Legend frame",
     "--markers": "Markers",
     "--nolegend": "Hide legend",

@@ -3891,6 +3891,28 @@ def test_set_legend_takes_columns_for_a_long_legend(labelwidth: int, legendcols:
         assert ncols > 1
 
 
+def test_set_legend_above_the_frame_keeps_the_y_limits() -> None:
+    """--legend-above puts the legend on the top edge of the frame, and the y axis keeps its range.
+
+    A legend inside the frame moves the top of the y axis to clear the data. A legend above the frame covers no data,
+    thus the limits of the data stay.
+    """
+    fig = mplfig.Figure()
+    canvas = FigureCanvasAgg(fig)
+    _, axesgrid = at.plottools.make_frame_figure(fig=fig)
+    ax = axesgrid[0][0]
+    for index in range(6):
+        ax.plot([0.0, 1.0], [index, index], label=f"series {index}")
+    ax.set_ylim(0.0, 5.0)
+    legend = at.plottools.set_legend(ax, argparse.Namespace(legend_above=True, legendcols=2), loc="upper right")
+    assert legend is not None
+    canvas.draw()
+    frame = at.plottools.get_legend_frame(legend, canvas.get_renderer())
+    assert frame.y0 > 1.0 or np.isclose(frame.y0, 1.0)
+    assert np.allclose(ax.get_ylim(), (0.0, 5.0), rtol=1e-12, atol=0.0)
+    plt.close(fig)
+
+
 def test_get_series_colors_greys_then_cycle() -> None:
     """More reference series than greys must fall back to the colour cycle instead of an IndexError."""
     colors = at.plottools.get_series_colors([False, True, True, False, True, True, True, True])

@@ -1820,7 +1820,7 @@ def addarg_notitle(parser: argparse.ArgumentParser) -> None:
 
 
 def addarg_legend(parser: argparse.ArgumentParser) -> None:
-    """Add the arguments of the legend: --nolegend, --legendframe, and --legendcols."""
+    """Add the arguments of the legend: --nolegend, --legendframe, --legend-above, and --legendcols."""
     arggroup(parser, "Appearance").add_argument(
         "--nolegend", action="store_true", help="Suppress the legend from the plot"
     )
@@ -1837,6 +1837,11 @@ def addarg_legend(parser: argparse.ArgumentParser) -> None:
         "--legendframe",
         action="store_true",
         help="Draw the legend on a white background. The legend text then stays readable over the data",
+    )
+    arggroup(parser, "Appearance").add_argument(
+        "--legend-above",
+        action="store_true",
+        help="Put the legend above the frame. The data then fill the frame, and the legend takes no room on the y axis",
     )
 
 
