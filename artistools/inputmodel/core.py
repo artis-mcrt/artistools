@@ -1681,6 +1681,8 @@ def dimension_reduce_model(
             )
             .rename({"out_inputcellid": "inputcellid"})
             .drop_nulls("inputcellid")
+            .join(dfmodel_out.select("inputcellid"), on="inputcellid", how="right")
+            .with_columns((cs.starts_with("X_") | cs.by_name("mass_g")).fill_null(0.0))
             .sort("inputcellid")
         )
         if dfelabundances is not None

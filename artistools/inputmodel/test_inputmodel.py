@@ -4113,6 +4113,69 @@ def test_dimension_reduce_keeps_the_centre_cell_of_an_odd_grid(outputdimensions:
     assert dfmodel_lowerd["mass_g"].sum() == pytest.approx(mass_inside_vmax, rel=1e-10)
 
 
+@pytest.mark.parametrize("zero_density", [False, True])
+def test_dimension_reduce_keeps_abundances_of_empty_shells(tmp_path: Path, zero_density: bool) -> None:
+    """Keep abundance rows for shells with no source cells and shells with zero mass."""
+    xmax = 1e9 * day_to_s
+    cellindices = np.arange(8)
+    dfmodel = pl.DataFrame({
+        "inputcellid": cellindices + 1,
+        "pos_rcyl_mid": (cellindices % 4 + 0.5) * xmax / 4,
+        "pos_z_mid": (cellindices // 4 - 0.5) * xmax,
+        "rho": [0.0] * 8 if zero_density else [1.0, 1.0, 2.0, 1.0, 3.0, 2.0, 1.0, 4.0],
+    })
+    modelmeta = {
+        "dimensions": 2,
+        "npts_model": 8,
+        "ncoordgridrcyl": 4,
+        "ncoordgridz": 2,
+        "wid_init_rcyl": xmax / 4,
+        "wid_init_z": xmax,
+        "t_model_init_days": 1.0,
+        "vmax_cmps": 1e9,
+    }
+    dfabundances = dfmodel.select("inputcellid").with_columns(
+        X_Fe=pl.Series([0.0] * 4 + [1.0] * 4), X_Ni=pl.Series([1.0] * 4 + [0.0] * 4)
+    )
+    dfmodel_out, dfabundances_out, _, modelmeta_out = at.inputmodel.dimension_reduce_model(
+        dfmodel, outputdimensions=1, dfelabundances=dfabundances, modelmeta=modelmeta
+    )
+
+    expected_abundances = pl.DataFrame({
+        "inputcellid": [1, 2, 3, 4],
+        "X_Fe": [0.0] * 4 if zero_density else [0.0, 0.0, 9 / 13, 1 / 3],
+        "X_Ni": [0.0] * 4 if zero_density else [0.0, 0.0, 4 / 13, 2 / 3],
+    })
+    # The cylindrical cell volumes are proportional to 1, 3, 5, and 7 at each height.
+    expected_masses = np.array([0.0] * 4 if zero_density else [0.0, 0.0, 13.0, 15.0]) * math.pi * xmax**3 / 16
+    assert modelmeta_out["npts_model"] == 4
+    pltest.assert_frame_equal(dfmodel_out.select("inputcellid"), expected_abundances.select("inputcellid"))
+    pltest.assert_frame_equal(dfabundances_out.select(expected_abundances.columns), expected_abundances)
+    np.testing.assert_allclose(dfabundances_out["mass_g"], expected_masses)
+    np.testing.assert_allclose(dfmodel_out["mass_g"], expected_masses)
+
+    modelfolder = tmp_path / "model2d"
+    modelfolder.mkdir()
+    at.inputmodel.save_modeldata(dfmodel, outpath=modelfolder, modelmeta=modelmeta)
+    at.inputmodel.save_initelemabundances(dfabundances, outpath=modelfolder)
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[modelfolder], dimensionreduce=1, outputpath=tmp_path / "output"
+    )
+    reducedfolder = tmp_path / "output" / "model2d_dimreduce_1d"
+    dfmodel_read, modelmeta_read = at.inputmodel.get_modeldata(reducedfolder)
+    dfabundances_read = at.inputmodel.get_initelemabundances(reducedfolder)
+    assert modelmeta_read["npts_model"] == 4
+    pltest.assert_frame_equal(
+        dfmodel_read.select("inputcellid").collect(), expected_abundances.select("inputcellid"), check_dtypes=False
+    )
+    pltest.assert_frame_equal(
+        dfabundances_read.select(expected_abundances.columns).collect(),
+        expected_abundances,
+        check_dtypes=False,
+        rel_tol=1e-6,
+    )
+
+
 def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Path) -> None:
     """A header comment with one quotation mark must not hide the cells from the fast reader.
 
