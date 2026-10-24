@@ -1713,7 +1713,10 @@ def dimension_reduce_model(
 
 
 def scale_model_to_time(dfmodel: pl.DataFrame, targetmodeltime_days: float, t_model_days: float) -> pl.DataFrame:
-    """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions."""
+    """Homologously expand model to targetmodeltime_days by reducing densities and adjusting cell positions.
+
+    The velocities, the masses, and the kinetic energies do not change in a homologous expansion.
+    """
     timefactor = targetmodeltime_days / t_model_days
 
     print(
@@ -1725,7 +1728,15 @@ def scale_model_to_time(dfmodel: pl.DataFrame, targetmodeltime_days: float, t_mo
     if "rho" in dfmodel.columns:
         scale_exprs.append(pl.col("rho") * timefactor**-3)
     if "logrho" in dfmodel.columns:
-        scale_exprs.append(pl.col("logrho") + math.log10(timefactor**-3))
+        # an empty cell keeps the marker -99, because a shrink by a factor below 0.46 moves it above -98
+        scale_exprs.append(
+            pl
+            .when(pl.col("logrho") > -98)
+            .then(pl.col("logrho") + math.log10(timefactor**-3))
+            .otherwise(pl.col("logrho"))
+        )
+    if "volume" in dfmodel.columns:
+        scale_exprs.append(pl.col("volume") * timefactor**3)
     return dfmodel.with_columns(scale_exprs)
 
 

@@ -2126,7 +2126,7 @@ def get_snapshot_timestrings(
 
     strtimestep = f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
     timelow_days, timehigh_days = (
-        get_timesteps(modelpath)
+        get_timesteps(Path(modelpath))
         .select(
             pl.col("tstart_days").filter(pl.col("timestep") == timestepmin).first(),
             pl.col("tend_days").filter(pl.col("timestep") == timestepmax).first(),

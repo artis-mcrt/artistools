@@ -550,6 +550,22 @@ def test_nltepops_ion_stage_of_no_plot_gives_a_message(tmp_path: Path, capsys: p
         assert "No ion stage of Fe to plot at timestep 40" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("adatatext", ["# a file with no ion\n", "26 1 1 7.9\n1 0.0 9.0 0 a5D\n"])
+def test_nltepops_ion_not_in_adata_gives_a_message(
+    adatatext: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An ion of the NLTE file that adata.txt does not hold stopped the command with a polars OutOfBoundsError."""
+    for filepath in modelpath.iterdir():
+        if not filepath.name.startswith("adata.txt"):
+            (tmp_path / filepath.name).symlink_to(filepath)
+    (tmp_path / "adata.txt").write_text(adatatext, encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        at.nltepops.plot(argsraw=[], modelpath=tmp_path, outputfile=tmp_path, timestep=40, ion_stages=2)
+
+    assert "adata.txt holds no levels of Fe II" in capsys.readouterr().err
+
+
 def test_radiative_decays_take_no_population_from_the_superlevel() -> None:
     """The superlevel row takes a position above the resolved levels, and it is not the level of that position.
 

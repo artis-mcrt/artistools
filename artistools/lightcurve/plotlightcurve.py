@@ -1714,7 +1714,9 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
             else:
                 dirbincolor = args.color[modelnumber]
 
-            band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, dirbin=dirbin, filternames=bandnames)
+            band_lightcurve_data = generate_band_lightcurve_data(
+                Path(modelpath), args, dirbin=dirbin, filternames=bandnames
+            )
 
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split("-")

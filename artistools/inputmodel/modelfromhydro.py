@@ -232,19 +232,28 @@ def read_griddat_file(
 
 
 def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> pl.DataFrame:
-    """Fill the low-velocity hole at the grid centre with the mass profile of Just et al. (2021) Fig. 16."""
+    """Fill the low-velocity hole at the grid centre with the ejecta mass of a black-hole torus model.
+
+    The mass comes from m(v) of model m001M3A8 in Just, Goriely, Janka, Nagataki & Bauswein 2022, MNRAS, 509,
+    1377-1412, doi:10.1093/mnras/stab2861 (arXiv:2102.08387, Fig. 17 top left panel of version 2).
+    """
     print(griddata)
 
-    # Just (2021) Fig. 16 top left panel
-    vel_hole = [0, 0.02, 0.05, 0.07, 0.09, 0.095, 0.1]
-    mass_hole = [3e-4, 3e-4, 2e-4, 1e-4, 2e-5, 1e-5, 1e-9]
-    mass_integrated = np.trapezoid(y=mass_hole, x=vel_hole)  # Msun
+    # m(v) is the ejecta mass with a velocity above v, thus the mass below 0.1 c is m(0) - m(0.1 c). The integral of
+    # m(v) over v/c is not a mass, and it gave 1.8e-5 Msun in place of 3e-4 Msun
+    mass_above_zero_msun = 3e-4
+    mass_above_0p1c_msun = 1e-9
+    mass_hole_msun = mass_above_zero_msun - mass_above_0p1c_msun
 
     v_outer_hole = 0.1 * CLIGHT  # cm/s
     pos_outer_hole = v_outer_hole * modelmeta["t_model_init_days"] * day_to_s  # cm
     vol_hole = 4 / 3 * np.pi * pos_outer_hole**3  # cm^3
-    density_hole = (mass_integrated * MSUN) / vol_hole  # g / cm^3
-    print(density_hole)
+    density_hole = (mass_hole_msun * MSUN) / vol_hole  # g / cm^3
+    print(
+        f"The cells with v_r_mid < 0.1 c get {mass_hole_msun:.2e} Msun at a uniform density of"
+        f" {density_hole:.3e} g/cm³. This mass is m(0) - m(0.1 c) of model m001M3A8 of Just, Goriely, Janka,"
+        " Nagataki & Bauswein 2022, MNRAS, 509, 1377-1412, doi:10.1093/mnras/stab2861"
+    )
 
     # cells with a mid-point velocity below 0.1 c get the hole density added and a Ye floor of 0.4. The mid-point
     # and not the lower edge sets the velocity, because the lower edge makes the hole asymmetric about the origin

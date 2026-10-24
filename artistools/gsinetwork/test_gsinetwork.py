@@ -484,3 +484,24 @@ def test_comparetogsinetwork_takes_particles_with_no_network_data(tmp_path: Path
 
     assert dfpairs.is_empty()
     assert dfparticledata.is_empty()
+
+
+def test_abundance_correction_factors_need_the_grid_file_of_a_1d_model(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A 1D model with no grid.out took a direct map, thus it lost the factors of a map to a 3D grid with no warning.
+
+    A 3D model grid is also the propagation grid, thus such a model needs no grid.out.
+    """
+    get_abundance_correction_factors = at.gsinetwork.comparetogsinetwork.get_abundance_correction_factors
+    modelpath_1d = at.get_path("testdata") / "test-classicmode_1d"
+    lzdfmodel, modelmeta = at.get_modeldata(modelpath_1d)
+    with pytest.raises(SystemExit):
+        get_abundance_correction_factors(lzdfmodel, [0], ["Fe"], modelpath_1d, modelmeta)
+    assert "grid.out does not exist" in capsys.readouterr().err
+
+    for filepath in modelpath_classic_3d.iterdir():
+        if filepath.name != "grid.out":
+            (tmp_path / filepath.name).symlink_to(filepath)
+    lzdfmodel, modelmeta = at.get_modeldata(tmp_path)
+    assert get_abundance_correction_factors(lzdfmodel, [211], ["Fe"], tmp_path, modelmeta) == {}

@@ -101,6 +101,9 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
         for line in fphys:
             row = line.split()
 
+            if not row:
+                continue
+
             if row[0] == "#TIME:":
                 cur_timestep += 1
                 cur_modelgridindex = -1
@@ -142,6 +145,9 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
             iontuples: list[tuple[int, int]] = []
             for line in fions:
                 row = line.split()
+
+                if not row:
+                    continue
 
                 if row[0] == "#TIME:":
                     cur_timestep += 1

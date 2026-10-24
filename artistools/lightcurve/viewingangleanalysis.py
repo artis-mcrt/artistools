@@ -806,7 +806,7 @@ def peakmag_risetime_declinerate_init(
             print(f"Reading spectra: {get_model_logname(modelpath)}")
         # the spectra of a direction bin hold every band, thus read each direction bin one time before the band loop
         lightcurve_data_filters_of_dirbin = (
-            {dirbin: generate_band_lightcurve_data(modelpath, args, dirbin) for dirbin in dirbins}
+            {dirbin: generate_band_lightcurve_data(Path(modelpath), args, dirbin) for dirbin in dirbins}
             if args.filter
             else {}
         )

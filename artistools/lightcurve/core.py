@@ -108,11 +108,7 @@ def get_katz_integral(time_days: pl.Series, luminosity_erg_per_s: pl.Series) -> 
 
 @on_model_host
 def scan_lightcurve(
-    filepath: str | Path,
-    *,
-    directionresolved: bool = False,
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
+    filepath: Path, *, directionresolved: bool = False, average_over_phi: bool = False, average_over_theta: bool = False
 ) -> dict[int, pl.LazyFrame]:
     """Return a LazyFrame of a light curve file for each direction bin, with an optional average over phi or theta.
 
@@ -235,10 +231,10 @@ def get_from_packets(
         raise ValueError(msg)
 
     dftimesteps_selected = df_filter_minmax_bracketed(
-        get_timesteps(modelpath), "tmid_days", timedaysmin, timedaysmax
+        get_timesteps(Path(modelpath)), "tmid_days", timedaysmin, timedaysmax
     ).collect()
 
-    vpkt_config = get_vpkt_config(modelpath) if directionbins_are_vpkt_observers else None
+    vpkt_config = get_vpkt_config(Path(modelpath)) if directionbins_are_vpkt_observers else None
     if vpkt_config is not None:
         dftimesteps_selected = select_timesteps_inside_vpkt_window(dftimesteps_selected, vpkt_config)
 
@@ -272,7 +268,12 @@ def get_from_packets(
             expr = pl.col("nucname") == pellet_nucname
         dfpackets = dfpackets.filter(
             pl.col("pellet_nucindex").is_in(
-                get_nuclides(modelpath=modelpath).filter(expr).select("pellet_nucindex").collect().to_series().implode()
+                get_nuclides(modelpath=Path(modelpath))
+                .filter(expr)
+                .select("pellet_nucindex")
+                .collect()
+                .to_series()
+                .implode()
             )
         )
 
@@ -390,7 +391,7 @@ def get_top_nuclides(
 
 @on_model_host
 def generate_band_lightcurve_data(
-    modelpath: Path | str,
+    modelpath: Path,
     args: argparse.Namespace | None = None,
     dirbin: int = -1,
     filternames: Sequence[str] | None = None,

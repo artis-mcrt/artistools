@@ -163,7 +163,15 @@ def get_cone_shells(
             f"Shell {i + 1:<3}     3D cells averaged: {shell['cellcount']:<6}"
             f" composition sum before norm: {sum_composition_check}"
         )
-        composition = {species: massfrac / sum_composition_check for species, massfrac in composition.items()}
+        if sum_composition_check > 0.0:
+            composition = {species: massfrac / sum_composition_check for species, massfrac in composition.items()}
+        else:
+            # ARTIS accepts a cell with mass and no elements, e.g. mass from particles without nucleosynthesis data
+            logprint(
+                f"warning: Shell {i + 1} has mass but no element mass fractions. The shell keeps zero mass fractions,"
+                " thus ARTIS makes it empty.",
+                file=sys.stderr,
+            )
 
         shellrows.append(
             {"inputcellid": i + 1, "r_bin_max_boundary": cone1d_bins[i + 1], "rho": total_mass_g / total_volume}

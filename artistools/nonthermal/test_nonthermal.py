@@ -139,10 +139,10 @@ def test_spencerfano_makeplot_with_element_composition(tmp_path: Path) -> None:
 
 
 def test_spencerfano_solves_an_ion_stage_above_xx(tmp_path: Path) -> None:
-    """An electron fraction above 19 gives an ion stage above XX, and the table of roman numerals stops at XX.
+    """An electron fraction above 19 gives an ion stage above XX.
 
-    The statistics row named each ion with a roman numeral, thus the command stopped with an IndexError after
-    the solution. The command built that row also without -ostat.
+    The table of roman numerals stopped at XX, and the statistics row named each ion with a roman numeral. Thus the
+    command stopped with an IndexError after the solution. The command also built that row without -ostat.
     """
     # the default sweep of iron runs from x_e 2 to 25, thus its last step holds Fe XXVI alone
     at.nonthermal.spencerfano.main(argsraw=[], composition="Fe", vary="x_e", npts=50, noexcitation=True)
@@ -151,10 +151,10 @@ def test_spencerfano_solves_an_ion_stage_above_xx(tmp_path: Path) -> None:
     at.nonthermal.spencerfano.main(
         argsraw=[], composition="Fe", x_e=21, npts=50, noexcitation=True, ostat=str(ostatfile)
     )
-    # x_e 21 puts every nucleus of iron in ion stage 22, which has the charge 21+
+    # x_e 21 puts every nucleus of iron in ion stage 22
     dfstats = read_ntstats(ostatfile)
-    assert dfstats["frac_ionization_Fe21+"].item() > 0.0
-    assert at.nonthermal.spencerfano.get_ion_column_name(26, 20) == "FeXX"
+    assert dfstats["frac_ionization_FeXXII"].item() > 0.0
+    assert at.nonthermal.spencerfano.get_ion_column_name(26, 27) == "FeXXVII"
 
 
 def test_ntlepton_deposition_rate_density_follows_artis() -> None:

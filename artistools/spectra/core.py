@@ -194,7 +194,7 @@ def get_dfspectrum_x_y_with_units(
 
 
 @on_model_host
-def get_exspec_lambda_bin_edges(modelpath: str | Path, gamma: bool = False) -> npt.NDArray[np.floating]:
+def get_exspec_lambda_bin_edges(modelpath: Path, gamma: bool = False) -> npt.NDArray[np.floating]:
     """Get the wavelength bins for the emergent spectrum."""
     try:
         dfspec = read_spec(modelpath, gamma=gamma).collect()
@@ -292,7 +292,7 @@ def get_lambda_bin_edges(
         lambda_bin_edges = np.arange(lambda_min, lambda_max + deltalambda, deltalambda)
     else:
         lambda_min_plot, lambda_max_plot = convert_xlimits_to_lambda_range(xmin_plot, xmax_plot, xunit)
-        lambda_bin_edges_fullrange = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
+        lambda_bin_edges_fullrange = get_exspec_lambda_bin_edges(modelpath=Path(modelpath), gamma=gamma)
         lambda_bin_edges = (
             df_filter_minmax_bracketed(
                 pl.LazyFrame({
@@ -616,7 +616,7 @@ def get_from_packets(
         raise ValueError(msg)
 
     if lambda_bin_edges is None:
-        lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=modelpath, gamma=gamma)
+        lambda_bin_edges = get_exspec_lambda_bin_edges(modelpath=Path(modelpath), gamma=gamma)
     lambda_bin_edges = np.sort(lambda_bin_edges)
     delta_time_s = (timehighdays - timelowdays) * day_to_s
 
@@ -634,7 +634,7 @@ def get_from_packets(
         )
 
     if directionbins_are_vpkt_observers:
-        vpkt_config = get_vpkt_config(modelpath)
+        vpkt_config = get_vpkt_config(Path(modelpath))
         check_time_range_inside_vpkt_window(vpkt_config, timelowdays, timehighdays)
         alldirbins = list(range(vpkt_config["nobsdirections"] * vpkt_config["nspectraperobs"]))
         dirbinsums = sum_virtual_packets_by_observer(
@@ -942,7 +942,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     """Sum the per-rank virtual packet spectra into one vspecpol_total file per observer direction."""
     nprocs = get_nprocs(modelpath)
     print("nprocs", nprocs)
-    vpktconfig = get_vpkt_config(modelpath)
+    vpktconfig = get_vpkt_config(Path(modelpath))
     nvirtual_spectra = vpktconfig["nobsdirections"] * vpktconfig["nspectraperobs"]
     print(
         f"nobsdirections {vpktconfig['nobsdirections']} nspectraperobs {vpktconfig['nspectraperobs']} (total observers:"
@@ -1062,7 +1062,7 @@ def read_specpol_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
 
 
 @on_model_host
-def get_specpol_data(dirbin: int = -1, modelpath: Path | str | None = None) -> dict[str, pl.LazyFrame]:
+def get_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U spectra of one direction bin.
 
     specpol.out holds the spherically averaged spectra, which dirbin -1 selects. specpol_res.out holds
@@ -1211,7 +1211,7 @@ def get_vspecpol_spectrum(
         arr_tmid, timerangelow, timerangehigh, f"vspecpol_total-{angle}.out of {modelpath}"
     )
     # the vspecpol files hold only the arrival times inside the time window of vpkt.txt
-    check_time_range_inside_vpkt_window(get_vpkt_config(modelpath), timerangelow, timerangehigh)
+    check_time_range_inside_vpkt_window(get_vpkt_config(Path(modelpath)), timerangelow, timerangehigh)
 
     if timemin is not None and timemax is not None:
         timestepmin = arr_tmid.index(match_closest_time(timemin, arr_tmid))
@@ -1650,16 +1650,16 @@ def get_emission_type_labels(
     emissiontype, trueemissiontype, or pellet_nucindex. A code with no label is not in the frame.
     """
     if groupby == "nuc":
-        emtypelabels = get_nuclides(modelpath=modelpath).rename({"nucname": "emissiontype_str"})
+        emtypelabels = get_nuclides(modelpath=Path(modelpath)).rename({"nucname": "emissiontype_str"})
     elif groupby == "nucmass":
-        emtypelabels = get_nuclides(modelpath=modelpath).with_columns(
+        emtypelabels = get_nuclides(modelpath=Path(modelpath)).with_columns(
             (pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))).alias(
                 "emissiontype_str"
             )
         )
     elif emtypecolumn == "pellet_nucindex":
         # the nuclide table gives "initial energy" as the element of the initial energy
-        emtypelabels = get_nuclides(modelpath=modelpath).rename({"elsymbol": "emissiontype_str"})
+        emtypelabels = get_nuclides(modelpath=Path(modelpath)).rename({"elsymbol": "emissiontype_str"})
     else:
         bflabels = {
             "element": pl.col("elsymbol") + " bound-free",

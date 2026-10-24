@@ -20,7 +20,6 @@ from artistools.viewertools.application import get_recent_models
 from artistools.viewertools.application import get_recent_setting_key
 from artistools.viewertools.application import get_settings
 from artistools.viewertools.application import open_model_folder
-from artistools.viewertools.application import show_wait_cursor
 from artistools.viewertools.core import find_option_action
 from artistools.viewertools.core import get_actions_by_flag
 from artistools.viewertools.core import MAX_ANIMATION_FRAMES
@@ -758,6 +757,7 @@ def export_animation(
 
 def save_figure_of_command(
     window: "QtWidgets.QWidget",
+    queue: "DrawQueue[t.Any]",
     statusbar: StatusBar,
     commandmain: "Callable[..., None]",
     commandname: str,
@@ -770,9 +770,14 @@ def save_figure_of_command(
     The figure comes from the command, thus the file is the same as the output of the command. The command reads a
     name with no suffix as a folder, thus the name takes the suffix of the format. The status bar shows the result.
     plottokens holds no --dpi. A PDF or an SVG file takes the resolution for its raster parts, e.g. a colour image.
+    The worker thread runs the command, as for Copy Figure. The command changes the rcParams of matplotlib, thus it
+    must not run in the window thread while the worker thread draws a plot.
     """
     from PySide6 import QtWidgets
 
+    if queue.task is not None:
+        show_status_message(statusbar, "A different task is in progress. Save the figure after it", "")
+        return
     suffix, dpi = choice
     defaultdpi = parser.get_default("dpi")
     filename, _ = QtWidgets.QFileDialog.getSaveFileName(
@@ -788,15 +793,19 @@ def save_figure_of_command(
         commandmain(argsraw=savetokens)
         return None
 
-    with show_wait_cursor():
-        message = run_command_step(save)
-    if message is not None:
-        show_status_message(statusbar, f"The command did not save the figure: {message}", "")
-    elif not Path(filename).is_file():
-        show_status_message(statusbar, f"The command wrote no file at {filename}. The terminal shows its output", "")
-    else:
-        print(shlex.join(["artistools", commandname, *savetokens]))
-        show_status_note(statusbar, f"Saved {filename}{get_pixel_size_text(Path(filename).read_bytes(), suffix)}")
+    def show_result(message: str | None) -> None:
+        if message is not None:
+            show_status_message(statusbar, f"The command did not save the figure: {message}", "")
+        elif not Path(filename).is_file():
+            show_status_message(
+                statusbar, f"The command wrote no file at {filename}. The terminal shows its output", ""
+            )
+        else:
+            print(shlex.join(["artistools", commandname, *savetokens]))
+            show_status_note(statusbar, f"Saved {filename}{get_pixel_size_text(Path(filename).read_bytes(), suffix)}")
+
+    if not queue.run_task(lambda: run_command_step(save), "Save of the figure in progress...", show_result):
+        show_status_message(statusbar, "A different task is in progress. Save the figure after it", "")
 
 
 def open_model_window(
@@ -857,7 +866,7 @@ def add_window_actions[ValuesT: PlotValues](
     def on_save() -> None:
         tokens = get_figure_tokens()
         save_figure_of_command(
-            window, statusbar, command.main, command.name, tokens, command.parser, get_figure_choice()
+            window, queue, statusbar, command.main, command.name, tokens, command.parser, get_figure_choice()
         )
 
     def on_copy() -> None:

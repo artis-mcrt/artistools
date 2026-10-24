@@ -484,6 +484,12 @@ def make_ionsubplot(
     maxlevel_ion = dfpopthision["level"].max()
     assert isinstance(maxlevel_ion, int)
     levelnames = ion_data["levels"]["levelname"].to_list()
+    if maxresolvedlevel >= len(levelnames):
+        exit_with_error(
+            f"The NLTE file holds level {maxresolvedlevel} of {get_ionstring(atomic_number, ion_stage)},"
+            f" but adata.txt holds {len(levelnames)} levels of it",
+            "Use the adata.txt of the model",
+        )
     maxresolvedlevel_shown = min(maxresolvedlevel, maxlevel_ion)
     configlist = levelnames[: maxresolvedlevel_shown + 1]
     configtexlist = get_config_labels(configlist)
@@ -935,6 +941,14 @@ def make_singletimestep_plot(
             f"No ion stage of {get_elsymbol(atomic_number)} to plot at timestep {timestep}",
             f"The NLTE file holds the ion stages {', '.join(str(i) for i in availablestages)} of more than one level."
             " Give one of them with --ion-stages",
+        )
+
+    adata_ions = set(adata.select("Z", "ion_stage").iter_rows())
+    if missing := [(atomic_number, i) for i in ion_stage_list if (atomic_number, i) not in adata_ions]:
+        exit_with_error(
+            f"{modelpath / 'adata.txt'} holds no levels of {', '.join(itertools.starmap(get_ionstring, missing))}."
+            " The NLTE file holds populations of these ions",
+            "Use the adata.txt of the model",
         )
 
     # the height of one frame in inches, as a part of the width of a frame

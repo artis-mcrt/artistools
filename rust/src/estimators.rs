@@ -27,17 +27,35 @@ const ELSYMBOLS: [&str; 119] = [
     "Uut", "Fl", "Uup", "Lv", "Uus", "Uuo",
 ];
 
-/// The roman numeral of each ion stage. The table must agree with `roman_numerals` in artistools/atomic/core.py
-const ROMAN: [&str; 21] = [
+/// The roman numeral of each ion stage, up to 119 for the bare nucleus of the heaviest element. The table must agree
+/// with `roman_numerals` in artistools/atomic/core.py
+const ROMAN: [&str; 120] = [
     "", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV",
-    "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
+    "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI", "XXII", "XXIII", "XXIV", "XXV", "XXVI",
+    "XXVII", "XXVIII", "XXIX", "XXX", "XXXI", "XXXII", "XXXIII", "XXXIV", "XXXV", "XXXVI",
+    "XXXVII", "XXXVIII", "XXXIX", "XL", "XLI", "XLII", "XLIII", "XLIV", "XLV", "XLVI", "XLVII",
+    "XLVIII", "XLIX", "L", "LI", "LII", "LIII", "LIV", "LV", "LVI", "LVII", "LVIII", "LIX", "LX",
+    "LXI", "LXII", "LXIII", "LXIV", "LXV", "LXVI", "LXVII", "LXVIII", "LXIX", "LXX", "LXXI",
+    "LXXII", "LXXIII", "LXXIV", "LXXV", "LXXVI", "LXXVII", "LXXVIII", "LXXIX", "LXXX", "LXXXI",
+    "LXXXII", "LXXXIII", "LXXXIV", "LXXXV", "LXXXVI", "LXXXVII", "LXXXVIII", "LXXXIX", "XC", "XCI",
+    "XCII", "XCIII", "XCIV", "XCV", "XCVI", "XCVII", "XCVIII", "XCIX", "C", "CI", "CII", "CIII",
+    "CIV", "CV", "CVI", "CVII", "CVIII", "CIX", "CX", "CXI", "CXII", "CXIII", "CXIV", "CXV",
+    "CXVI", "CXVII", "CXVIII", "CXIX",
 ];
 
-/// Split the tokens of a line into (name, value) pairs, and discard a last token that has no pair
+/// Split the tokens of a line into (name, value) pairs. A name at the end of the line with no value is an error,
+/// because the column of that name would get a zero that the line does not give
 fn token_pairs<'a>(
     mut tokens: impl Iterator<Item = &'a str>,
-) -> impl Iterator<Item = (&'a str, &'a str)> {
-    std::iter::from_fn(move || Some((tokens.next()?, tokens.next()?)))
+) -> impl Iterator<Item = PolarsResult<(&'a str, &'a str)>> {
+    std::iter::from_fn(move || {
+        let name = tokens.next()?;
+        Some(
+            tokens.next().map(|value| (name, value)).ok_or_else(|| {
+                malformed(format!("the line ends after {name:?}, which has no value"))
+            }),
+        )
+    })
 }
 
 /// Look up the element symbol for an atomic number given as a decimal string
@@ -231,11 +249,20 @@ impl EstimatorColumns {
         {
             self.parse_ion_line(firsttoken, tokens)?;
         } else if let Some(prefix) = firsttoken.strip_suffix(':') {
-            // deposition, heating, cooling
-            for (name, value) in token_pairs(tokens) {
+            // emission_ana, deposition, heating, cooling
+            for pair in token_pairs(tokens) {
+                let (name, value) = pair?;
                 let value = self.parse_value(value)?;
                 self.push(&[prefix, name], value)?;
             }
+        } else {
+            // each version of ARTIS since 2017 writes only the forms above. A line of a different form would lose
+            // its values
+            return Err(malformed(format!(
+                "the line starts with {firsttoken:?} and does not have the form of an estimator line. A cell header \
+                 starts with \"timestep\". An ion line gives Z= after its name. A line of totals ends its first \
+                 word with a colon. A file of the classic ARTIS code needs --classicartis"
+            )));
         }
 
         Ok(())
@@ -251,7 +278,8 @@ impl EstimatorColumns {
         }
 
         self.rownum += 1;
-        for (colname, value) in token_pairs(line.split_ascii_whitespace()) {
+        for pair in token_pairs(line.split_ascii_whitespace()) {
+            let (colname, value) = pair?;
             if INDEX_COLUMNS.contains(&colname) {
                 self.push_int(colname, parse_field(value, "an integer")?)?;
             } else {
@@ -312,7 +340,8 @@ impl EstimatorColumns {
             .transpose()?;
 
         let mut nnelement = 0.0;
-        for (ionstage, value) in token_pairs(tokens) {
+        for pair in token_pairs(tokens) {
+            let (ionstage, value) = pair?;
             let ionstage = ionstage.strip_suffix(':').ok_or_else(|| {
                 malformed(format!("ion stage {ionstage:?} has no trailing colon"))
             })?;

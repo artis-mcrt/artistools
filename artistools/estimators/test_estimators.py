@@ -1644,7 +1644,7 @@ def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
     ("badline", "errormessage"),
     [
         ("populations    Z=26  1: 6.226e+05  2: NOTANUMBER", 'could not parse "NOTANUMBER" as a number'),
-        ("gamma_R        Z=26  99: 1.0", "no roman numeral for ion stage 99"),
+        ("gamma_R        Z=26  120: 1.0", "no roman numeral for ion stage 120"),
         ("gamma_R        Z=999  1: 1.0", "no element symbol for atomic number 999"),
         ("populations    Z=26  1: 1.0  1: 2.0", "a column was given two values for one cell"),
     ],

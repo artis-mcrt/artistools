@@ -408,7 +408,11 @@ def get_closelines(
     lowerlevelindex: int | None = None,
     upperlevelindex: int | None = None,
 ) -> FeatureTuple:
-    """Return the feature made up of one ion's lines matching the given wavelength range and level indices."""
+    """Return the feature made up of one ion's lines matching the given wavelength range and level indices.
+
+    The wavelength range includes its two bounds. A wavelength bound of zero or less, or a level index below zero,
+    applies no limit.
+    """
     lzdflinelistclosematches = (
         get_linelist_pldf(modelpath)
         .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
@@ -416,9 +420,9 @@ def get_closelines(
     )
 
     if lambdamin is not None and lambdamin > 0:
-        lzdflinelistclosematches = lzdflinelistclosematches.filter(lambdamin < pl.col("lambda_angstroms"))
+        lzdflinelistclosematches = lzdflinelistclosematches.filter(pl.col("lambda_angstroms") >= lambdamin)
     if lambdamax is not None and lambdamax > 0:
-        lzdflinelistclosematches = lzdflinelistclosematches.filter(lambdamax > pl.col("lambda_angstroms"))
+        lzdflinelistclosematches = lzdflinelistclosematches.filter(pl.col("lambda_angstroms") <= lambdamax)
     if lowerlevelindex is not None and lowerlevelindex >= 0:
         lzdflinelistclosematches = lzdflinelistclosematches.filter(pl.col("lowerlevelindex") == lowerlevelindex)
     if upperlevelindex is not None and upperlevelindex >= 0:
@@ -1081,9 +1085,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         nargs="*",
         type=parse_emfeaturesearch,
         help=(
-            "Emission features as (atomic_number, ion_stage, feature_wavelength, lower_wavelength, upper_wavelength)"
-            " tuples, e.g. '(26, 2, 7155, 7150, 7160)' for the Fe II 7155 Å feature. At least two are needed for the"
-            " flux ratio plot"
+            "Emission features as (atomic_number, ion_stage, feature_wavelength, lower_wavelength, upper_wavelength,"
+            " lowerlevelindex, upperlevelindex) tuples, e.g. '(26, 2, 7155, 7150, 7160)' for the Fe II 7155 Å"
+            " feature. The last four values are optional. A feature takes the lines of the ion from lower_wavelength"
+            " to upper_wavelength. This range includes the two bounds. A wavelength of zero or less, or a level index"
+            " below zero, applies no limit. The flux ratio plot needs at least two features"
         ),
     )
 

@@ -2484,6 +2484,19 @@ def test_scale_model_to_time() -> None:
     assert dfscaled["logrho"].to_numpy() == pytest.approx(rho_before + math.log10(2.0**-3))
 
 
+def test_scale_model_to_time_keeps_empty_cells_and_scales_volume() -> None:
+    """A shrink keeps the empty-cell marker logrho = -99, and the volume follows the positions.
+
+    The marker moved to -97.8 for a factor of 0.4, thus the empty cell got a density. The volume did not change.
+    """
+    dfmodel = pl.DataFrame({"logrho": [-99.0, 1.0], "volume": [1.0, 2.0]})
+
+    dfscaled = at.inputmodel.scale_model_to_time(dfmodel=dfmodel, targetmodeltime_days=0.4, t_model_days=1.0)
+
+    assert dfscaled["logrho"].to_list() == pytest.approx([-99.0, 1.0 - 3 * math.log10(0.4)])
+    assert dfscaled["volume"].to_list() == pytest.approx([0.4**3, 2.0 * 0.4**3])
+
+
 def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> None:
     """Read an abundances.txt that has one space between two values with no call of read_wsv.
 
@@ -4766,3 +4779,135 @@ def test_plotinitialcomposition_3d_tables_follow_the_order_of_the_cells() -> Non
     assert dfcells["vel_x_min_on_c"].to_list() == [-0.2, 0.0] * 4
     assert dfcells["vel_z_min_on_c"].to_list() == [-0.2] * 4 + [0.0] * 4
     assert tables["_isosurfaces"]["rho_of_isosurface"].to_list() == [1.0, 5.0]
+
+
+def test_describeinputmodel_reads_the_grid_size_from_artisoptions(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The mapped mass uses the grid size of artisoptions.h, because grid.out holds only the non-empty cells.
+
+    Here only the bottom z layer of a 4^3 grid is non-empty. The size from the top cell index of grid.out was 3.
+    """
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
+    Path(tmp_path, "grid.out").write_text("".join(f"{cellindex} 0\n" for cellindex in range(16)), encoding="utf-8")
+
+    at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[tmp_path])
+    assert "gives CUBOID_NCOORDGRID_X" in capsys.readouterr().err
+
+    Path(tmp_path, "artisoptions.h").write_text("constexpr int CUBOID_NCOORDGRID_X = 4;\n", encoding="utf-8")
+    at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[tmp_path])
+    # 16 cells of width vmax t / 2 hold 16 / 8 / (4 pi / 3) = 0.4775 of the mass of the sphere
+    assert "when mapped to 4^3 cubic grid, error -52.25%" in capsys.readouterr().out
+
+
+def test_cone_shell_with_mass_and_no_elements_keeps_zero_mass_fractions(capsys: pytest.CaptureFixture[str]) -> None:
+    """A shell with mass and only zero element mass fractions gets zero mass fractions and a warning.
+
+    The normalisation divided by the zero sum, thus it raised ZeroDivisionError.
+    """
+    cone = pl.DataFrame({
+        "pos_r_mid": [0.5, 1.5],
+        "mass_g": [1.0, 2.0],
+        "volume": [1.0, 1.0],
+        "X_Fe": [0.5, 0.0],
+        "X_Ni": [0.0, 0.0],
+    })
+
+    shellrows = at.inputmodel.slice1dfromconein3dmodel.get_cone_shells(
+        cone, cone1d_bins=[0.0, 1.0, 2.0], speciescols=["X_Fe", "X_Ni"], logprint=print
+    )
+
+    assert shellrows[0]["X_Fe"] == pytest.approx(1.0)
+    assert (shellrows[1]["X_Fe"], shellrows[1]["X_Ni"]) == (0.0, 0.0)
+    assert shellrows[1]["rho"] == pytest.approx(2.0)
+    assert "Shell 2 has mass but no element mass fractions" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("idx", "state"),
+    [
+        # two non-dynamical tracers with the same id modulo 10000 merged, and the merge lost the mass of one
+        ([1, 10001], [0, 0]),
+        # a non-dynamical id equal to a dynamical id took the mass of the dynamical pieces
+        ([1, 1, 10001], [0, -1, -1]),
+    ],
+)
+def test_from_e2e_model_refuses_tracer_ids_that_merge(tmp_path: Path, idx: list[int], state: list[int]) -> None:
+    """get_grid stops with an error for tracer ids that id % 10000 merges, because the merge loses mass."""
+    from artistools.inputmodel.from_e2e_model import get_grid
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    ntraj = len(idx)
+    ntimes = 8
+    datpath = tmp_path / "e2emodel.npz"
+    isopath = tmp_path / "iso_table.npy"
+    np.savez(
+        datpath,
+        pos=np.column_stack([np.full(ntraj, 0.1), np.full(ntraj, 1.0)]),
+        idx=np.array(idx, dtype=float),
+        state=np.array(state, dtype=float),
+        mass=np.full(ntraj, 1e-3),
+        qdot=np.full((ntraj, ntimes), 1e10),
+        hnuloss=np.zeros((ntraj, ntimes)),
+        time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
+        nz=np.full((ntraj, 2), 0.1),
+        t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+    )
+    np.save(isopath, np.array([[2.0, 2.0], [30.0, 26.0]]))
+
+    with pytest.raises(ValueError, match="unique id below 10000"):
+        get_grid(
+            datpath,
+            isopath,
+            0.4,
+            model_dim=2,
+            grid_dims=np.array([4, 8]),
+            nodynej=False,
+            nohmns=False,
+            notorus=False,
+            no_nu_trapping=False,
+        )
+
+
+def test_describeinputmodel_1d_model_without_grid_out_warns(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A 1D model without grid.out gives a warning and no mapped mass, because ARTIS can map it to a 3D grid.
+
+    describeinputmodel took a direct map when grid.out did not exist, and it gave no reason.
+    """
+    shutil.copy(modelpath / "model.txt", tmp_path)
+    at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
+
+    at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[tmp_path])
+
+    output = capsys.readouterr()
+    assert "grid.out does not exist" in output.err
+    assert "is direct" not in output.out
+    assert "M_tot_rho_map" not in output.out
+    assert "M_tot_rho " in output.out
+
+
+def test_add_mass_to_center_adds_the_mass_below_0p1c() -> None:
+    """The hole gets m(0) - m(0.1 c) = 3e-4 Msun, because m(v) of the source is the mass above v.
+
+    The integral of m(v) over v/c gave 1.8e-5 Msun.
+    """
+    from artistools.constants import C_cm_per_s as CLIGHT
+    from artistools.constants import Msun_to_g
+    from artistools.inputmodel.modelfromhydro import add_mass_to_center
+
+    griddata = pl.DataFrame({
+        "inputcellid": [1],
+        "pos_x_min": [-1.0],
+        "pos_y_min": [-1.0],
+        "pos_z_min": [-1.0],
+        "rho": [0.0],
+        "Ye": [0.0],
+    })
+    t_model_days = 1.0
+    modelmeta = {"dimensions": 3, "t_model_init_days": t_model_days, "wid_init": 2.0}
+
+    dffilled = add_mass_to_center(griddata, modelmeta)
+
+    vol_hole = 4 / 3 * math.pi * (0.1 * CLIGHT * t_model_days * day_to_s) ** 3
+    assert dffilled["rho"].item() * vol_hole / Msun_to_g == pytest.approx(3e-4, rel=1e-4)
