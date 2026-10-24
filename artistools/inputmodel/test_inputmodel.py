@@ -4888,26 +4888,43 @@ def test_describeinputmodel_1d_model_without_grid_out_warns(tmp_path: Path, caps
 
 
 def test_add_mass_to_center_adds_the_mass_below_0p1c() -> None:
-    """The hole gets m(0) - m(0.1 c) = 3e-4 Msun, because m(v) of the source is the mass above v.
+    """The cells of the hole get m(0) - m(0.1 c) = 3e-4 Msun, because m(v) of the source is the mass above v.
 
-    The integral of m(v) over v/c gave 1.8e-5 Msun.
+    The integral of m(v) over v/c gave 1.8e-5 Msun. The density came from the volume of the sphere of 0.1 c, but
+    the 8 inner cubes of this 4^3 grid hold 0.81 of that volume, thus the cells got 0.81 of the mass.
     """
     from artistools.constants import C_cm_per_s as CLIGHT
     from artistools.constants import Msun_to_g
     from artistools.inputmodel.modelfromhydro import add_mass_to_center
 
-    griddata = pl.DataFrame({
-        "inputcellid": [1],
-        "pos_x_min": [-1.0],
-        "pos_y_min": [-1.0],
-        "pos_z_min": [-1.0],
-        "rho": [0.0],
-        "Ye": [0.0],
-    })
     t_model_days = 1.0
-    modelmeta = {"dimensions": 3, "t_model_init_days": t_model_days, "wid_init": 2.0}
+    ncoordgrid = 4
+    xmax = 0.15 * CLIGHT * t_model_days * day_to_s
+    wid_init = 2 * xmax / ncoordgrid
+    axisposmin = [-xmax + index * wid_init for index in range(ncoordgrid)]
+    cellpositions = [(x, y, z) for z in axisposmin for y in axisposmin for x in axisposmin]
+    griddata = pl.DataFrame({
+        "inputcellid": range(1, ncoordgrid**3 + 1),
+        "pos_x_min": [pos[0] for pos in cellpositions],
+        "pos_y_min": [pos[1] for pos in cellpositions],
+        "pos_z_min": [pos[2] for pos in cellpositions],
+        "rho": [0.0] * ncoordgrid**3,
+        "Ye": [0.0] * ncoordgrid**3,
+    })
+    modelmeta = {
+        "dimensions": 3,
+        "t_model_init_days": t_model_days,
+        "vmax_cmps": xmax / (t_model_days * day_to_s),
+        "ncoordgridx": ncoordgrid,
+        "ncoordgridy": ncoordgrid,
+        "ncoordgridz": ncoordgrid,
+        "wid_init_x": wid_init,
+        "wid_init_y": wid_init,
+        "wid_init_z": wid_init,
+    }
 
     dffilled = add_mass_to_center(griddata, modelmeta)
 
-    vol_hole = 4 / 3 * math.pi * (0.1 * CLIGHT * t_model_days * day_to_s) ** 3
-    assert dffilled["rho"].item() * vol_hole / Msun_to_g == pytest.approx(3e-4, rel=1e-4)
+    assert (dffilled["rho"] > 0.0).sum() == 8
+    added_mass_msun = float((dffilled["rho"] * wid_init**3).sum()) / Msun_to_g
+    assert added_mass_msun == pytest.approx(3e-4 - 1e-9, rel=1e-9)
