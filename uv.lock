@@ -66,7 +66,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.11" },
     { name = "numpy", specifier = ">=2.5.2" },
     { name = "plotly", marker = "extra == 'extras'", specifier = ">=6.9.0" },
-    { name = "polars", specifier = ">=2.0.0" },
+    { name = "polars", specifier = ">=2.1.0" },
     { name = "pynonthermal", marker = "extra == 'extras'", specifier = ">=2026.9.30" },
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin' and extra == 'extras'", specifier = ">=12.2.2" },
     { name = "pypdf", marker = "extra == 'extras'", specifier = ">=6.16.2" },

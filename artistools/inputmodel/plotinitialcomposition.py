@@ -216,11 +216,8 @@ def get_slice_table(
     for image, colname in zip(images, colnames, strict=True):
         valuegrid = image.get_array()
         assert valuegrid is not None
-        columns.append(
-            pl.Series(get_table_column_name(colname, logcolorscale), np.ma.getdata(valuegrid).ravel()).set(
-                pl.Series(np.ma.getmaskarray(valuegrid).ravel()), None
-            )
-        )
+        # polars gives null for each masked value
+        columns.append(pl.Series(get_table_column_name(colname, logcolorscale), valuegrid.ravel()))
     return pl.DataFrame(columns)
 
 
