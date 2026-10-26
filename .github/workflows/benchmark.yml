@@ -40,7 +40,7 @@ jobs:
 
             - name: Setup uv
               id: setup-uv
-              uses: astral-sh/setup-uv@v10.3.1
+              uses: astral-sh/setup-uv@v10.3.2
               with:
                   activate-environment: true
                   cache-suffix: codspeed
@@ -69,7 +69,7 @@ jobs:
               run: source ./setuptestdata.sh
 
             - name: Run benchmarks
-              uses: CodSpeedHQ/action@v5.5.0
+              uses: CodSpeedHQ/action@v5.6.0
               with:
                   mode: simulation
                   run: pytest --codspeed

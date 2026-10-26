@@ -31,7 +31,7 @@ jobs:
               with:
                   persist-credentials: false
 
-            - uses: astral-sh/setup-uv@v10.3.1
+            - uses: astral-sh/setup-uv@v10.3.2
               id: setup-uv
               with:
                   activate-environment: true
@@ -133,7 +133,7 @@ jobs:
 
             - name: Setup uv
               id: setup-uv
-              uses: astral-sh/setup-uv@v10.3.1
+              uses: astral-sh/setup-uv@v10.3.2
               with:
                   activate-environment: true
                   python-version: ${{ matrix.python-version }}
