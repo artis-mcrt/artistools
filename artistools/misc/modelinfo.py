@@ -39,7 +39,7 @@ if t.TYPE_CHECKING:
 
 
 @on_model_host
-def get_vpkt_config(modelpath: Path | str) -> dict[str, t.Any]:
+def get_vpkt_config(modelpath: Path) -> dict[str, t.Any]:
     """Return the virtual packet settings from a model's vpkt.txt."""
     from artistools.make_vpkt_input import parse_vpkt_input
 

@@ -16,7 +16,6 @@ from artistools.atomic import get_elsymbolslist
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
-from artistools.atomic import roman_numerals
 from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
@@ -75,12 +74,8 @@ def write_ntstats_file(ntstatfile: str | Path, rows: Sequence[dict[str, float]])
 
 
 def get_ion_column_name(atomic_number: int, ion_stage: int) -> str:
-    """Return the name of an ion in a column of the statistics file, e.g. FeII.
-
-    The table of roman numerals stops at XX, thus a higher ion stage takes the name of its charge, e.g. Fe25+.
-    """
-    style = "spectral" if ion_stage < len(roman_numerals) else "charge"
-    return get_ionstring(atomic_number, ion_stage, style=style, sep="")
+    """Return the name of an ion in a column of the statistics file, e.g. FeII."""
+    return get_ionstring(atomic_number, ion_stage, sep="")
 
 
 def get_sweep_column(dfstats: pl.DataFrame) -> str:

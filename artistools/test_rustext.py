@@ -104,10 +104,11 @@ def test_estimparse_roman_numerals_agree_with_the_python_table(tmp_path: Path) -
     """The ion columns of the Rust reader must have the names that get_ionstring gives.
 
     The Rust table ended at XVI, and the Python table ended at XX. Thus an ion stage from 17 to 20 in an estimator file
-    stopped the parse of the whole file.
+    stopped the parse of the whole file. Both tables then ended at XX, and ARTIS has no such limit.
     """
     stages = range(1, len(at.atomic.roman_numerals))
-    assert stages.stop > 20
+    # the bare nucleus of the heaviest element (Z = 118) has the ion stage 119
+    assert stages.stop == 120
     (tmp_path / "estimators_0000.out").write_text(
         "timestep 0 modelgridindex 0 TR 2000 Te 2000 W 1 TJ 2000 nne 1.0\n"
         "populations    Z=26 " + " ".join(f"{stage}: {stage}.0" for stage in stages) + "\n\n",
@@ -126,6 +127,26 @@ def test_estimparse_roman_numerals_agree_with_the_python_table(tmp_path: Path) -
         at.rustext.estimparse(tmp_path, 0, 0)
     with pytest.raises(IndexError):
         at.get_ionstring(26, stages.stop)
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        ("0 91313.2 91313.2 1 91313.2", 'estimators_0000.out:2: the line starts with "0" and does not have the form'),
+        ("heating: ff 1.0 bf", 'estimators_0000.out:2: the line ends after "bf", which has no value'),
+        ("populations Z=26 1: 1.0 2:", 'estimators_0000.out:2: the line ends after "2:", which has no value'),
+    ],
+)
+def test_estimparse_rejects_a_line_that_it_cannot_read_completely(tmp_path: Path, line: str, message: str) -> None:
+    """The parser ignored a line of an unknown form, and a name with no value at the end of a line.
+
+    The table then held no value of the line, or a zero for that name, and the parser gave no error.
+    """
+    (tmp_path / "estimators_0000.out").write_text(
+        f"timestep 0 modelgridindex 0 TR 2000 Te 3000 W 1 TJ 2000 nne 1.0e5\n{line}\n\n", encoding="utf-8"
+    )
+    with pytest.raises(Exception, match=re.escape(message)):
+        at.rustext.estimparse(tmp_path, 0, 0)
 
 
 def test_sum_binned_line_opacities_gives_no_opacity_for_a_temperature_of_zero_or_below() -> None:

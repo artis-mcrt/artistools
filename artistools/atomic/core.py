@@ -682,29 +682,27 @@ def freeze_photoionisation_arrays(dfallions: pl.DataFrame) -> None:
                     value.setflags(write=False)
 
 
-roman_numerals = (
-    "",
-    "I",
-    "II",
-    "III",
-    "IV",
-    "V",
-    "VI",
-    "VII",
-    "VIII",
-    "IX",
-    "X",
-    "XI",
-    "XII",
-    "XIII",
-    "XIV",
-    "XV",
-    "XVI",
-    "XVII",
-    "XVIII",
-    "XIX",
-    "XX",
-)
+def get_roman_numeral(number: int) -> str:
+    """Return the roman numeral of a positive integer, or an empty string for zero."""
+    numeral = ""
+    for value, symbols in (
+        (100, "C"),
+        (90, "XC"),
+        (50, "L"),
+        (40, "XL"),
+        (10, "X"),
+        (9, "IX"),
+        (5, "V"),
+        (4, "IV"),
+        (1, "I"),
+    ):
+        count, number = divmod(number, value)
+        numeral += symbols * count
+    return numeral
+
+
+# the highest ion stage is the bare nucleus of the heaviest element, which has the ion stage Z + 1 = 119
+roman_numerals = tuple(get_roman_numeral(ion_stage) for ion_stage in range(120))
 
 
 @modelpath_cache(maxsize=8)
@@ -1059,7 +1057,7 @@ def get_ionstring(
 
 
 @on_model_host
-def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+def get_nuclides(modelpath: Path) -> pl.LazyFrame:
     """Return the nuclides of nuclides.out, and a row with the pellet_nucindex -1 for the initial energy.
 
     The LazyFrame has the columns pellet_nucindex, atomic_number, A, elsymbol, and nucname.

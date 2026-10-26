@@ -311,7 +311,7 @@ def get_opacity_condition_label(z_exclude: int) -> str:
 
 def get_vspec_dir_labels(modelpath: str | Path, usedegrees: bool = False) -> dict[int, str]:
     """Return a label for each virtual packet observer direction and opacity choice combination."""
-    vpkt_config = get_vpkt_config(modelpath)
+    vpkt_config = get_vpkt_config(Path(modelpath))
     dirlabels = {}
     for dirindex in range(vpkt_config["nobsdirections"]):
         phi_angle = round(vpkt_config["phi"][dirindex])

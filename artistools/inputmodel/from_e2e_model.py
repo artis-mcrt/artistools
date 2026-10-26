@@ -80,6 +80,26 @@ def f1corr(rcyl: npt.NDArray[np.floating], hsph: npt.NDArray[np.floating]) -> np
     )
 
 
+def check_tracer_ids(idx: npt.NDArray[np.integer], dyncond: npt.NDArray[np.bool_], dat_path: Path) -> None:
+    """Raise ValueError if the tracer ids do not follow the convention of the end-to-end model files.
+
+    Each non-dynamical tracer has a unique id below 10000. The model splits a dynamical tracer into pieces with
+    the ids id + n * 10000, thus id % 10000 merges the pieces again. A different id would merge two tracers.
+    """
+    nondyn_ids = idx[~dyncond]
+    dyn_original_ids = set((idx[dyncond] % 10000).tolist())
+    if (
+        np.any(nondyn_ids >= 10000)
+        or len(set(nondyn_ids.tolist())) < len(nondyn_ids)
+        or not dyn_original_ids.isdisjoint(nondyn_ids.tolist())
+    ):
+        msg = (
+            f"{dat_path}: each non-dynamical tracer must have a unique id below 10000. No dynamical tracer can have"
+            " the same id modulo 10000. The code merges the tracers that have the same id modulo 10000"
+        )
+        raise ValueError(msg)
+
+
 def get_grid(
     dat_path: Path,
     iso_path: Path,
@@ -115,6 +135,7 @@ def get_grid(
     idx = np.array([round(i) for i in dat.f.idx])  # unique particle ID of all trajectories
     state = np.array([round(i) for i in dat.f.state])  # == -1,0,1 for dynamical, NS-torus, BH-torus
     dyncond = state == -1
+    check_tracer_ids(idx, dyncond, dat_path)
     dynidall = np.array([i % 10000 for i in idx])
     firstindex_of_id: dict[int, int] = {}
     for i2, i1 in enumerate(dynidall.tolist()):

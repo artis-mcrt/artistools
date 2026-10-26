@@ -93,7 +93,7 @@ def get_deposition_cached(modelpath: Path) -> pl.LazyFrame:
 
 
 @on_model_host
-def get_timesteps(modelpath: Path | str) -> pl.LazyFrame:
+def get_timesteps(modelpath: Path) -> pl.LazyFrame:
     """Return a LazyFrame containing the timestep indices, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models

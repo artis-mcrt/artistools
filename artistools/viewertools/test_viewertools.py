@@ -286,6 +286,61 @@ def test_series_label_that_the_command_cannot_give() -> None:
         assert viewerseries.get_label_error(label) is not None
 
 
+def test_dock_drop_of_a_launch_path_opens_after_the_launch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The filter ignores a launch event of a path of the command line, but not a drop after the launch.
+
+    macOS gives no launch event for some paths, e.g. the value of a flag. The filter then ignored the first drop of
+    such a path on the Dock icon.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    monkeypatch.setattr(sys, "orig_argv", ["python3", "--modelpath", str(tmp_path)])
+    for haslaunchevent in (True, False):
+        app = mock.Mock()
+        open_folder = mock.Mock()
+        viewerapplication.handle_file_open_events(app, open_folder)
+        open_path = app.setProperty.call_args.args[1]
+        forget_launch_paths = app.applicationStateChanged.connect.call_args.args[0]
+        with mock.patch("PySide6.QtWidgets.QApplication.activeWindow", return_value=None):
+            if haslaunchevent:
+                open_path(str(tmp_path))
+            forget_launch_paths(QtCore.Qt.ApplicationState.ApplicationActive)
+            open_path(str(tmp_path))
+        open_folder.assert_called_once_with(str(tmp_path))
+
+
+def test_viewer_save_waits_for_the_task_in_progress(tmp_path: Path) -> None:
+    """Save Figure gives the command to the worker thread, as Copy Figure does.
+
+    Save ran the command in the window thread while the worker thread drew a plot, and both changed the rcParams.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from artistools.commands import SuggestingArgumentParser
+    from artistools.viewertools import menus as viewermenus
+
+    parser = SuggestingArgumentParser()
+    parser.add_argument("--dpi", type=int, default=250)
+    commandmain = mock.Mock()
+    statusbar = mock.Mock()
+    queue = mock.Mock(task=None, run_task=mock.Mock(return_value=True))
+    filename = str(tmp_path / "plot.png")
+    with mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")) as mockdialog:
+        viewermenus.save_figure_of_command(
+            mock.Mock(), queue, statusbar, commandmain, "plotspectra", [], parser, ("png", 250)
+        )
+        commandmain.assert_not_called()
+        queue.run_task.assert_called_once()
+
+        # a task in progress, e.g. Reload Data, gives a message and no file dialog
+        queue.task = mock.Mock()
+        viewermenus.save_figure_of_command(
+            mock.Mock(), queue, statusbar, commandmain, "plotspectra", [], parser, ("png", 250)
+        )
+    mockdialog.assert_called_once()
+    statusbar.message.setText.assert_called_with("A different task is in progress. Save the figure after it")
+
+
 # the code that opens a window of plotspectra on the offscreen platform of Qt, and prints the results as JSON
 WINDOW_CHECK_CODE: t.Final = """
 import json, sys, time

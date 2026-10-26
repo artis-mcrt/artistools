@@ -82,9 +82,16 @@ def get_abundance_correction_factors(
                 )
 
         if direct_model_propgrid_map:
-            print("  Detected direct mapping of model cells to propagation grid")
+            print("  The map of the model cells to the propagation grid is direct")
     except FileNotFoundError:
-        print("No grid mapping file found, assuming direct mapping of model cells to propagation grid")
+        # ARTIS maps a 1D or 2D model to a spherical, cylindrical, or Cartesian grid, and grid.out alone tells which
+        if modelmeta["dimensions"] != 3:
+            exit_with_error(
+                f"{Path(modelpath, 'grid.out')} does not exist. Thus artistools cannot get the map of the"
+                f" {modelmeta['dimensions']}D model cells to the propagation grid or the abundance correction factors",
+                "Copy grid.out of the run into the model folder",
+            )
+        print("  No grid.out. A 3D model grid is also the propagation grid, thus the map is direct")
         direct_model_propgrid_map = True
 
     if direct_model_propgrid_map:

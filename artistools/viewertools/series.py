@@ -579,13 +579,15 @@ def edit_series_properties(
 
     def on_finished() -> None:
         previewtimer.stop()
-        if not getattr(dialog, "cancelled", False):
-            show_plot_changes(lenient=True)
-        elif madestep[0]:
-            # the old values revert the step of the first change, thus show_changes makes no new step of Undo
-            newstep = False
-            show_changes(None, newstep)
-        dialog.deleteLater()
+        try:
+            if not getattr(dialog, "cancelled", False):
+                show_plot_changes(lenient=True)
+            elif madestep[0]:
+                # the old values revert the step of the first change, thus show_changes makes no new step of Undo
+                newstep = False
+                show_changes(None, newstep)
+        finally:
+            dialog.deleteLater()
 
     for colour, button in colourbuttons.items():
         button.clicked.connect(partial(choose_colour, colour))

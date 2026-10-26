@@ -1,6 +1,5 @@
 """Start the Qt application, and open, remember, and reopen the windows of the viewers."""
 
-import contextlib
 import json
 import sys
 import threading
@@ -24,7 +23,6 @@ from artistools.viewertools.core import ThreadOutput
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
-    from collections.abc import Generator
     from collections.abc import Mapping
     from collections.abc import Sequence
 
@@ -502,11 +500,19 @@ def handle_file_open_events(app: "QtWidgets.QApplication", open_folder: "Callabl
 
     macOS gives such an item to the application as a QFileOpenEvent, and not to a window. At the start, macOS also
     gives each path of the command line as such an event, and the first window already shows those paths. Thus the
-    filter ignores the first event of each of those paths. A later drop of the same path opens it as usual.
+    filter ignores the first event of each of those paths until the application becomes active. macOS gives no event
+    for some paths, e.g. the value of a flag. The filter forgets all the paths of the command line when the
+    application becomes active, thus a later drop of such a path opens it.
     """
+    from PySide6 import QtCore
     from PySide6 import QtWidgets
 
     launchpaths = {str(Path(argument).absolute()) for argument in sys.orig_argv}
+
+    def forget_launch_paths(state: QtCore.Qt.ApplicationState) -> None:
+        # AppKit sends the events of the command line before applicationDidFinishLaunching, and Qt keeps their order
+        if state == QtCore.Qt.ApplicationState.ApplicationActive:
+            launchpaths.clear()
 
     def open_path(path: str) -> None:
         if (absolutepath := str(Path(path).absolute())) in launchpaths:
@@ -521,6 +527,7 @@ def handle_file_open_events(app: "QtWidgets.QApplication", open_folder: "Callabl
 
     # the filter of start_application receives the event and gives the path to this function
     app.setProperty("fileopenhandler", open_path)
+    app.applicationStateChanged.connect(forget_launch_paths)
 
 
 # File > Open Recent shows this number of models
@@ -715,20 +722,6 @@ def make_central_splitter(
     splitter.setCollapsible(0, False)  # ruff:ignore[boolean-positional-value-in-call]
     window.setCentralWidget(splitter)
     return splitter
-
-
-@contextlib.contextmanager
-def show_wait_cursor() -> "Generator[None]":
-    """Show the wait cursor until the block ends, e.g. while a step that can take seconds runs in the window thread."""
-    from PySide6 import QtCore
-    from PySide6 import QtGui
-    from PySide6 import QtWidgets
-
-    QtWidgets.QApplication.setOverrideCursor(QtGui.QCursor(QtCore.Qt.CursorShape.WaitCursor))
-    try:
-        yield
-    finally:
-        QtWidgets.QApplication.restoreOverrideCursor()
 
 
 # the choices of the appearance in the Settings window, as the Settings of macOS and Xcode name them

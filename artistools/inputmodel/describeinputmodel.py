@@ -22,12 +22,14 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_modeldata
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
+from artistools.misc import get_artis_option
 from artistools.misc import get_grid_mapping
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_product
+from artistools.misc import print_warning
 
 
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
@@ -125,11 +127,17 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         print_product(args, dfmodel.collect())
 
     try:
-        assoc_cells, mgi_of_propcells, direct_model_propgrid_map = get_grid_mapping(modelpath)
+        assoc_cells, _, direct_model_propgrid_map = get_grid_mapping(modelpath)
         print_product(args, f"  {len(assoc_cells)} model cells have associated prop cells")
     except FileNotFoundError:
-        print_product(args, "  no cell mapping file found")
-        assoc_cells, mgi_of_propcells, direct_model_propgrid_map = None, None, True
+        # ARTIS maps a 3D model directly to the propagation grid. ARTIS can map a 1D or 2D model to a 3D grid,
+        # and only grid.out gives the type of the grid
+        assoc_cells, direct_model_propgrid_map = None, modelmeta["dimensions"] == 3
+        if not direct_model_propgrid_map:
+            print_warning(
+                f"{Path(modelpath, 'grid.out')} does not exist. Thus artistools cannot get the map of the model cells"
+                " to the propagation grid or the mapped mass. Copy grid.out of the run into the model folder"
+            )
 
     if "Ye" in dfmodel.collect_schema().names():
         electronfrac = dfmodel.select(pl.col("Ye").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).collect().item()
@@ -160,13 +168,10 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
     mass_msun_rho = mass_g_rho / Msun_to_g
 
-    if assoc_cells is not None and mgi_of_propcells is not None:
-        if direct_model_propgrid_map:
-            print_product(args, "  detected direct mapping of model cells to propagation grid")
-        else:
-            print_mapped_masses(
-                args, dfmodel, assoc_cells, mgi_of_propcells, modelmeta, vmax, initial_energy, mass_msun_rho
-            )
+    if direct_model_propgrid_map:
+        print_product(args, "  The map of the model cells to the propagation grid is direct")
+    elif assoc_cells is not None:
+        print_mapped_masses(args, modelpath, dfmodel, assoc_cells, modelmeta, vmax, initial_energy, mass_msun_rho)
 
     print_product(args, f"  {'M_tot_rho':19s} {mass_msun_rho:7.5f} MSun (density * volume)")
 
@@ -191,16 +196,26 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
 def print_mapped_masses(
     args: argparse.Namespace,
+    modelpath: Path | str,
     dfmodel: pl.LazyFrame,
     assoc_cells: dict[int, list[int]],
-    mgi_of_propcells: dict[int, int],
     modelmeta: dict[str, t.Any],
     vmax: float,
     initial_energy: float,
     mass_msun_rho: float,
 ) -> None:
-    """Print the mass and the initial energy of the model after ARTIS maps it to the cubic propagation grid."""
-    ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys())))
+    """Print the mass and the initial energy of the model after ARTIS maps it to the cubic propagation grid.
+
+    ARTIS writes only the non-empty cells to grid.out, thus the size of the grid comes from artisoptions.h.
+    """
+    ncoordgridx_text = get_artis_option(modelpath, "CUBOID_NCOORDGRID_X")
+    if ncoordgridx_text is None:
+        print_warning(
+            f"No artisoptions.h in {modelpath} gives CUBOID_NCOORDGRID_X. Thus artistools cannot get the size of the"
+            " propagation grid or the mapped mass"
+        )
+        return
+    ncoordgridx = int(ncoordgridx_text)
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
     wid_init = 2 * vmax * t_model_init_seconds / ncoordgridx
 

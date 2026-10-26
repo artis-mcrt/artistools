@@ -286,7 +286,8 @@ def get_nlte_ion_populations_below_level(
             source = "Boltzmann from the ground level"
         framesoflevels.append(
             cellcolumn.join(upperneeded.select("level"), how="cross", maintain_order="left_right").with_columns(
-                population=pl.Series(pops.reshape(-1), dtype=pl.Float64), population_source=pl.lit(source)
+                population=pl.Series(pops.reshape(-1), dtype=pl.Float64).fill_nan(None),
+                population_source=pl.lit(source),
             )
         )
 

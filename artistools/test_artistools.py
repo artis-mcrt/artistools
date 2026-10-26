@@ -1,5 +1,4 @@
 import argparse
-import contextlib
 import csv
 import dataclasses as dc
 import functools
@@ -2150,6 +2149,41 @@ def test_line_populations_take_the_boltzmann_factor_of_the_ground_level_with_no_
     assert dfpops.filter(pl.col("level") == 1).sort("modelgridindex")["population"].to_list() == [3.0, 4.0]
 
 
+def test_line_summary_gives_the_velocity_of_the_largest_tau_with_a_cell_that_has_no_superlevel_row() -> None:
+    """A cell with no superlevel row gave a NaN population, and the summary took the velocity of that NaN tau."""
+    from artistools.linecontributions import get_line_summary
+
+    dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 5000.0]})
+    levels = pl.DataFrame({"level": [0, 1, 2], "g": [2.0, 4.0, 6.0], "energy_ev": [0.0, 1.0, 2.0]})
+    dfnltepops = pl.DataFrame({
+        "modelgridindex": [0, 1, 0, 1, 0],
+        "level": [0, 0, 1, 1, -1],
+        "n_NLTE": [10.0, 20.0, 3.0, 4.0, 1.0],
+    })
+    dfpops = at.linecontributions.get_ion_populations(dfcells, levels, [2], dfnltepops, "nnion_X_II")
+    assert dfpops.filter(pl.col("modelgridindex") == 1)["population"].to_list() == [None]
+
+    dfsummary = get_line_summary(
+        pl.DataFrame({
+            "modelgridindex": [0, 1],
+            "velocity_kmps": [1000.0, 2000.0],
+            "Te": [5000.0, 5000.0],
+            "ion": ["X II", "X II"],
+            "lambda_angstroms": [5000.0, 5000.0],
+            "lower": [1, 1],
+            "upper": [2, 2],
+            "A_per_s": [0.1, 0.1],
+            "n_lower_source": ["NLTE", "NLTE"],
+            "n_upper_source": ["superlevel", "superlevel"],
+            "tau_sobolev": [5.0, None],
+            "emission_erg_per_s": [1.0, None],
+        })
+    )
+    assert dfsummary["tau_sobolev_max"].item() == 5.0
+    assert dfsummary["velocity_kmps_at_tau_sobolev_max"].item() == 1000.0
+    assert dfsummary["cellcount_tau_sobolev_above_1"].item() == 1
+
+
 def test_line_populations_of_a_cell_with_no_nlte_row_take_the_lte_populations() -> None:
     """ARTIS writes no NLTE row of an element that fell back to LTE in a cell, and that cell got no populations."""
     dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 8000.0], "nnion_X_II": [100.0, 200.0]})
@@ -3473,6 +3507,22 @@ def test_linefluxes_from_pops_names_a_level_or_a_time_with_no_populations() -> N
 
     with pytest.raises(ValueError, match="holds no Fe II line for the feature 7155"):
         get_closelines(modelpath_classic_3d, 26, 2, 7155, 7155.0, 7155.01)
+
+
+def test_linefluxes_feature_includes_a_line_at_a_wavelength_bound() -> None:
+    """A line at lower_wavelength or upper_wavelength of a feature is part of the feature."""
+    from artistools.plotlinefluxes import get_closelines
+
+    linelambda = (
+        at.atomic
+        .get_linelist_pldf(modelpath_classic_3d)
+        .filter(pl.col("atomic_number") == 26, pl.col("ion_stage") == 2)
+        .select(pl.col("lambda_angstroms").first())
+        .collect()
+        .item()
+    )
+    feature = get_closelines(modelpath_classic_3d, 26, 2, "bound", linelambda, linelambda)
+    assert feature.lowestlambda == feature.highestlambda == linelambda
 
 
 def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
@@ -6705,16 +6755,19 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
     parser = SuggestingArgumentParser()
     parser.add_argument("--dpi", type=int, default=250)
     parser.add_argument("--figscale", type=float, default=1.0)
+
+    def run_task(task: Callable[[], str | None], _statustext: str, on_done: Callable[[str | None], None]) -> bool:
+        on_done(task())
+        return True
+
+    queue = mock.Mock(task=None, run_task=run_task)
     statusbar = mock.Mock()
     for suffix in ("png", "pdf"):
         filename = str(tmp_path / "plot")
 
-        with (
-            mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")),
-            mock.patch.object(viewermenus, "show_wait_cursor", contextlib.nullcontext),
-        ):
+        with mock.patch("PySide6.QtWidgets.QFileDialog.getSaveFileName", return_value=(filename, "")):
             viewermenus.save_figure_of_command(
-                mock.Mock(), statusbar, commandmain, "plotspectra", ["--xmin", "5"], parser, (suffix, dpi)
+                mock.Mock(), queue, statusbar, commandmain, "plotspectra", ["--xmin", "5"], parser, (suffix, dpi)
             )
         # a name with no suffix takes the suffix of the selected format
         assert savedtokens[-1] == ["--xmin", "5", "--dpi", "300", "-o", f"{filename}.{suffix}"]
