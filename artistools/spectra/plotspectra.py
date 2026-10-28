@@ -81,6 +81,7 @@ from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import parse_timedays_range
+from artistools.misc import parse_velocity_argument
 from artistools.misc import parse_xunit_argument
 from artistools.misc import path_is_artis_model
 from artistools.misc import path_is_codecomparison
@@ -106,7 +107,6 @@ from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
 from artistools.plottools import make_frame_figure_with_residuals
-from artistools.plottools import parse_velocity_argument
 from artistools.plottools import plain_label
 from artistools.plottools import print_dirbin_summary
 from artistools.plottools import print_series_summary

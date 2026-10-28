@@ -1,6 +1,7 @@
 """Read a value with a unit from the command line, e.g. a time of 300d or a wavelength of 600nm."""
 
 import argparse
+import math
 import re
 import typing as t
 from collections.abc import Mapping
@@ -10,6 +11,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.constants import hour_to_s
+from artistools.constants import km_to_cm
 
 # a number, then an optional unit, e.g. 600nm, 2.5 d, or 1e5. The unit starts with a character that no number holds
 VALUE_WITH_UNIT_PATTERN: t.Final = re.compile(r"\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*([^\d\s.+-].*?)?\s*")
@@ -184,3 +186,54 @@ AUTO_VELOCITYUNIT_C_MIN_ON_C: t.Final = 0.2
 def get_auto_velocity_unit(vmax_cmps: float) -> t.Literal["kmps", "c"]:
     """Return c for a model with a vmax of AUTO_VELOCITYUNIT_C_MIN_ON_C c or more, e.g. a kilonova, else km/s."""
     return "c" if vmax_cmps / C_cm_per_s >= AUTO_VELOCITYUNIT_C_MIN_ON_C else "kmps"
+
+
+def parse_velocity_argument(value: str, *, requireunit: bool = False) -> tuple[float, t.Literal["kmps", "c"]]:
+    """Return the velocity [km/s] and the unit of a command line value, e.g. 5000km/s or 0.1c.
+
+    A number with no unit is in km/s. With requireunit, a number with no unit gives an error.
+    """
+    text = value.strip()
+    unit: t.Literal["kmps", "c"]
+    if text.lower().endswith("km/s"):
+        numbertext, unit = text[: -len("km/s")], "kmps"
+    elif text.lower().endswith("c"):
+        numbertext, unit = text[:-1], "c"
+    else:
+        numbertext, unit = text, "kmps"
+    helptext = "Give a number that ends in km/s, e.g. 5000km/s, or a fraction of c, e.g. 0.1c"
+    if requireunit and numbertext == text:
+        msg = f"'{value}' has no unit. {helptext}"
+        raise argparse.ArgumentTypeError(msg)
+    try:
+        number = float(numbertext)
+    except ValueError:
+        number = math.nan
+    if not math.isfinite(number):
+        msg = f"'{value}' is not a finite velocity. {helptext}"
+        raise argparse.ArgumentTypeError(msg)
+
+    return (number * C_cm_per_s / km_to_cm if unit == "c" else number), unit
+
+
+def get_velocity_label(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
+    """Return a velocity in the unit that the user gave, e.g. 0.1c or 5000 km/s."""
+    return f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
+
+
+def positive_velocity_kmps_arg(text: str) -> float:
+    """Return the velocity [km/s] of a command line value with its unit, e.g. 0.1c or 30000km/s, when it is above 0.
+
+    A bare number gives an error, because its unit is not clear. The unit of the axis can come from the model, with
+    --velocityunit auto.
+    """
+    velocity_kmps, _ = parse_velocity_argument(text, requireunit=True)
+    if velocity_kmps <= 0.0:
+        msg = f"'{text}' is not a velocity above 0"
+        raise argparse.ArgumentTypeError(msg)
+    return velocity_kmps
+
+
+def velocity_kmps_arg(text: str) -> float:
+    """Return the velocity [km/s] of a command line value, e.g. 5000, 5000km/s, or 0.02c. A bare number is in km/s."""
+    return parse_velocity_argument(text)[0]

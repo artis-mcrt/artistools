@@ -692,18 +692,18 @@ def test_spectra_takes_the_earlier_names_of_the_velocity_groupings() -> None:
 
 def test_spectra_velocity_argument_takes_kmps_or_c() -> None:
     """A shell edge is a number in km/s, or a fraction of c with a c suffix, and the labels keep that unit."""
-    assert at.plottools.parse_velocity_argument("5000") == (5000.0, "kmps")
-    assert at.plottools.parse_velocity_argument("5000 km/s") == (5000.0, "kmps")
-    assert at.plottools.parse_velocity_argument("5000km/s", requireunit=True) == (5000.0, "kmps")
+    assert at.misc.parse_velocity_argument("5000") == (5000.0, "kmps")
+    assert at.misc.parse_velocity_argument("5000 km/s") == (5000.0, "kmps")
+    assert at.misc.parse_velocity_argument("5000km/s", requireunit=True) == (5000.0, "kmps")
     with pytest.raises(argparse.ArgumentTypeError, match="has no unit"):
-        at.plottools.parse_velocity_argument("5000", requireunit=True)
-    velocity_kmps, unit = at.plottools.parse_velocity_argument("0.1C")
+        at.misc.parse_velocity_argument("5000", requireunit=True)
+    velocity_kmps, unit = at.misc.parse_velocity_argument("0.1C")
     assert unit == "c"
     assert np.isclose(velocity_kmps, 29979.2458)
 
     for badvalue in ("fast", "inf", "infc", "nan"):
         with pytest.raises(argparse.ArgumentTypeError, match="not a finite velocity"):
-            at.plottools.parse_velocity_argument(badvalue)
+            at.misc.parse_velocity_argument(badvalue)
 
     shells = [0.0, 29979.2458, 59958.4916]
     assert atspectra.get_shell_labels(shells, "c") == ["[0, 0.1) c", "[0.1, 0.2) c"]

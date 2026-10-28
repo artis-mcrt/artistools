@@ -54,11 +54,13 @@ from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_rank_outputfiles
 from artistools.misc import get_runfolder_timesteps
 from artistools.misc import get_runfolders
+from artistools.misc import get_velocity_label
 from artistools.misc import is_remote_path
 from artistools.misc import mtime_matches_stamp
 from artistools.misc import MTIME_TOLERANCE_S
 from artistools.misc import on_model_host
 from artistools.misc import parquet_is_readable
+from artistools.misc import parse_velocity_argument
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import rankbatch_parquet_staleness
@@ -74,6 +76,7 @@ if t.TYPE_CHECKING:
     from concurrent.futures import Future
 
     import numpy.typing as npt
+
 
 # Suffixes that give the units of a derived name, e.g. vel_r_min_kmps and init_kinetic_en_erg. A name
 # carries its quantity at its end more often than at its start, thus get_units tries these first.
@@ -2074,3 +2077,37 @@ def get_estimator_timesteps(modelpath: Path, estimators: pl.LazyFrame | None = N
             estimators = scan_estimators(modelpath=modelpath)
         timesteps = set(estimators.select(pl.col("timestep").unique()).collect().to_series().to_list())
     return sorted(timesteps)
+
+
+def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
+    """Return the axis, its velocity [cm/s], and the label of each condition of --slice.
+
+    "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
+    """
+    text = slicetext.strip().lower()
+    helptext = (
+        "Give a plane through the origin, e.g. --slice xy. As an alternative, give an axis and its velocity,"
+        " e.g. --slice z=-0.2c. Two axes give a line, e.g. --slice z=0,y=0"
+    )
+    if len(text) == 2 and text[0] != text[1] and set(text) <= set("xyz"):
+        normalaxis = next(axisname for axisname in "xyz" if axisname not in text)
+        return [(normalaxis, 0.0, f"{normalaxis} = 0")]
+
+    conditions: list[tuple[str, float, str]] = []
+    for conditiontext in text.split(","):
+        axisname, separator, velocitytext = (part.strip() for part in conditiontext.partition("="))
+        if axisname not in {"x", "y", "z"} or not separator:
+            exit_with_error(f"'{slicetext}' is not a plane or a line of the model", helptext)
+        try:
+            velocity_kmps, unit = parse_velocity_argument(velocitytext)
+        except argparse.ArgumentTypeError as err:
+            exit_with_error(str(err), helptext)
+
+        label = get_velocity_label(velocity_kmps, unit)
+        if velocity_kmps == 0.0:
+            label = "0"
+        conditions.append((axisname, velocity_kmps * km_to_cm, f"{axisname} = {label}"))
+
+    if len(conditions) > 2 or len({axisname for axisname, _, _ in conditions}) < len(conditions):
+        exit_with_error(f"'{slicetext}' must give one axis for a plane, or two different axes for a line", helptext)
+    return conditions

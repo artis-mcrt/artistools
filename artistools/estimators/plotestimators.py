@@ -48,6 +48,7 @@ from artistools.estimators.core import get_variable
 from artistools.estimators.core import get_variablelongunits
 from artistools.estimators.core import get_varname_formatted
 from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import parse_slice_argument
 from artistools.estimators.core import PREFIX_GROUPS
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import summarise_columns
@@ -127,11 +128,9 @@ from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
 from artistools.plottools import get_summary_table
 from artistools.plottools import get_unused_colors
-from artistools.plottools import get_velocity_label
 from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
-from artistools.plottools import parse_velocity_argument
 from artistools.plottools import plain_label
 from artistools.plottools import print_series_summary
 from artistools.plottools import prune_log_ticks
@@ -3018,40 +3017,6 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
         )
 
     return timestepmin, timestepmax
-
-
-def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
-    """Return the axis, its velocity [cm/s], and the label of each condition of --slice.
-
-    "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
-    """
-    text = slicetext.strip().lower()
-    helptext = (
-        "Give a plane through the origin, e.g. --slice xy. As an alternative, give an axis and its velocity,"
-        " e.g. --slice z=-0.2c. Two axes give a line, e.g. --slice z=0,y=0"
-    )
-    if len(text) == 2 and text[0] != text[1] and set(text) <= set("xyz"):
-        normalaxis = next(axisname for axisname in "xyz" if axisname not in text)
-        return [(normalaxis, 0.0, f"{normalaxis} = 0")]
-
-    conditions: list[tuple[str, float, str]] = []
-    for conditiontext in text.split(","):
-        axisname, separator, velocitytext = (part.strip() for part in conditiontext.partition("="))
-        if axisname not in {"x", "y", "z"} or not separator:
-            exit_with_error(f"'{slicetext}' is not a plane or a line of the model", helptext)
-        try:
-            velocity_kmps, unit = parse_velocity_argument(velocitytext)
-        except argparse.ArgumentTypeError as err:
-            exit_with_error(str(err), helptext)
-
-        label = get_velocity_label(velocity_kmps, unit)
-        if velocity_kmps == 0.0:
-            label = "0"
-        conditions.append((axisname, velocity_kmps * km_to_cm, f"{axisname} = {label}"))
-
-    if len(conditions) > 2 or len({axisname for axisname, _, _ in conditions}) < len(conditions):
-        exit_with_error(f"'{slicetext}' must give one axis for a plane, or two different axes for a line", helptext)
-    return conditions
 
 
 def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, float, str]]:

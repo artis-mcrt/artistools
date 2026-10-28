@@ -42,6 +42,7 @@ from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import positive_int_arg
+from artistools.misc import positive_velocity_kmps_arg
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
@@ -55,7 +56,6 @@ from artistools.plottools import get_velocity_unit
 from artistools.plottools import INVERSE_VELOCITYUNIT_AXISLABELS
 from artistools.plottools import KMPS_PER_VELOCITYUNIT
 from artistools.plottools import make_frame_figure
-from artistools.plottools import positive_velocity_kmps_arg
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend

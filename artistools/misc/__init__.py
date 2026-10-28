@@ -232,11 +232,15 @@ from artistools.misc.timesteps import scan_timesteps as scan_timesteps
 from artistools.misc.units import AUTO_VELOCITYUNIT_C_MIN_ON_C as AUTO_VELOCITYUNIT_C_MIN_ON_C
 from artistools.misc.units import convert_xunit_aliases_to_canonical as convert_xunit_aliases_to_canonical
 from artistools.misc.units import get_auto_velocity_unit as get_auto_velocity_unit
+from artistools.misc.units import get_velocity_label as get_velocity_label
 from artistools.misc.units import get_xunit as get_xunit
+from artistools.misc.units import parse_velocity_argument as parse_velocity_argument
 from artistools.misc.units import parse_xunit_argument as parse_xunit_argument
+from artistools.misc.units import positive_velocity_kmps_arg as positive_velocity_kmps_arg
 from artistools.misc.units import time_days_arg as time_days_arg
 from artistools.misc.units import time_days_range_arg as time_days_range_arg
 from artistools.misc.units import TIME_UNIT_HELP as TIME_UNIT_HELP
+from artistools.misc.units import velocity_kmps_arg as velocity_kmps_arg
 from artistools.misc.units import wavelength_angstroms_arg as wavelength_angstroms_arg
 from artistools.misc.units import WAVELENGTH_UNIT_HELP as WAVELENGTH_UNIT_HELP
 from artistools.misc.units import XUnit as XUnit
