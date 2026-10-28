@@ -98,6 +98,7 @@ def get_timesteps(modelpath: Path) -> pl.LazyFrame:
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
     if path_is_codecomparison(modelpath):
+        # artistools.codecomparison imports artistools.misc, thus this import runs at call time
         from artistools.codecomparison import get_timestep_times as cc_get_times
 
         return (
@@ -532,6 +533,7 @@ def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | 
 @on_model_host
 def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int | None, float | int | None]:
     """Return the arrival time range of the model at an absolute path."""
+    # artistools.inputmodel imports artistools.misc, thus this import runs at call time
     from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)

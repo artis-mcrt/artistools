@@ -127,8 +127,10 @@ from artistools.misc.modelinfo import get_run_subfolders as get_run_subfolders
 from artistools.misc.modelinfo import get_runfolders as get_runfolders
 from artistools.misc.modelinfo import get_vpkt_config as get_vpkt_config
 from artistools.misc.modelinfo import get_wid_init_at_tmodel as get_wid_init_at_tmodel
+from artistools.misc.modelinfo import parse_vpkt_input as parse_vpkt_input
 from artistools.misc.modelinfo import print_modelpath as print_modelpath
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
+from artistools.misc.modelinfo import VpktConfig as VpktConfig
 from artistools.misc.modelpaths import find_reference_data_file as find_reference_data_file
 from artistools.misc.modelpaths import folder_is_artis_model as folder_is_artis_model
 from artistools.misc.modelpaths import get_artis_model_folders as get_artis_model_folders
