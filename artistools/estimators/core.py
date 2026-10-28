@@ -26,12 +26,12 @@ from polars.io.plugins import register_io_source
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_boltzmann_factor_expr
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbolset
 from artistools.atomic import get_ion_levels
 from artistools.atomic import roman_numerals
 from artistools.codecomparison import read_reference_estimators
-from artistools.constants import K_B_ev_per_K
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.misc import COMPRESSED_EXTENSIONS
@@ -1841,7 +1841,7 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
             dfsuperlevel_thislevel
             .slice(batchstart, batchheight)
             .join(dflevels_above, how="cross", maintain_order="left")
-            .with_columns(boltzfac=pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("T_exc")).exp())
+            .with_columns(boltzfac=get_boltzmann_factor_expr(pl.col("g"), pl.col("energy_ev"), pl.col("T_exc")))
             .group_by(groupcols)
             .agg(
                 energypopsum_sl=pl.col("n_NLTE_sl").first()

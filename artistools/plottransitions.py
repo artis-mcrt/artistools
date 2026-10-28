@@ -13,13 +13,13 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.atomic import add_transition_columns
+from artistools.atomic import get_boltzmann_factor_expr
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.atomic import get_lte_partfunc
 from artistools.constants import C_cm_per_s
 from artistools.constants import hc_in_ev_cm
-from artistools.constants import K_B_ev_per_K
 from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
@@ -292,7 +292,7 @@ def add_upper_lte_pop(
     scalefactor = ionpop / ltepartfunc
 
     return dftransitions.with_columns(
-        (scalefactor * pl.col("upper_statweight") * (-pl.col("upper_energy_ev") / K_B_ev_per_K / T_exc).exp()).alias(
+        (scalefactor * get_boltzmann_factor_expr(pl.col("upper_statweight"), pl.col("upper_energy_ev"), T_exc)).alias(
             columnname
         )
     )

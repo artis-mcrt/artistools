@@ -537,9 +537,14 @@ def get_transitiondata_cached(
     return transitionsdict
 
 
+def get_boltzmann_factor_expr(statweight: pl.Expr, energy_ev: pl.Expr, T_exc: pl.Expr | float) -> pl.Expr:
+    """Return the Boltzmann factor g exp(-E / kT) of a level, with the energy E in eV and the temperature T in K."""
+    return statweight * (-energy_ev / K_B_ev_per_K / T_exc).exp()
+
+
 def get_lte_partfunc(pldflevels: pl.DataFrame, T_exc: float) -> float:
     """Return the LTE partition function of the ion at the excitation temperature."""
-    return float(pldflevels.select(pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / T_exc).exp()).sum().item())
+    return float(pldflevels.select(get_boltzmann_factor_expr(pl.col("g"), pl.col("energy_ev"), T_exc)).sum().item())
 
 
 @on_model_host

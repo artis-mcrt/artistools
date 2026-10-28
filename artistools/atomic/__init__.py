@@ -6,6 +6,7 @@ from artistools.atomic.core import decode_roman_numeral as decode_roman_numeral
 from artistools.atomic.core import get_atomic_masses as get_atomic_masses
 from artistools.atomic.core import get_atomic_number as get_atomic_number
 from artistools.atomic.core import get_bflist as get_bflist
+from artistools.atomic.core import get_boltzmann_factor_expr as get_boltzmann_factor_expr
 from artistools.atomic.core import get_composition_data as get_composition_data
 from artistools.atomic.core import get_composition_data_from_outputfile as get_composition_data_from_outputfile
 from artistools.atomic.core import get_elsymbol as get_elsymbol

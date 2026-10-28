@@ -10,9 +10,9 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from artistools.atomic import get_boltzmann_factor_expr
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_kept_levels
-from artistools.constants import K_B_ev_per_K
 from artistools.misc import folder_holds_match
 from artistools.misc import is_remote_path
 from artistools.misc import on_model_host
@@ -94,7 +94,7 @@ def add_lte_pops(
         gs_g = float(ionlevels["g"].item(0))
         gs_energy = float(ionlevels["energy_ev"].item(0))
         return [
-            (pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / K_B_ev_per_K / T_exc).exp()).alias(columnname)
+            get_boltzmann_factor_expr(pl.col("g") / gs_g, pl.col("energy_ev") - gs_energy, T_exc).alias(columnname)
             for columnname, T_exc in columntemperature_tuples
         ]
 
