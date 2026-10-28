@@ -1637,24 +1637,6 @@ class PrunedLogLocator(mplticker.LogLocator):
         return keep if self.minticks <= len(keep) < len(inview) else ticks
 
 
-def warn_direction_bin_noise(source: str, *, average_over_phi: bool, average_over_theta: bool) -> None:
-    """Print a warning that a direction bin holds a small part of the packets, and thus has a larger noise.
-
-    A file of the direction bins, e.g. spec_res.out, gives no packet count. If the packets escape in all directions
-    alike, a bin of the n bins holds 1/n of the packets, and its relative noise is sqrt(n) times that of the average.
-    """
-    bincount = get_viewingdirection_costhetabincount() * get_viewingdirection_phibincount()
-    if average_over_phi:
-        bincount = get_viewingdirection_costhetabincount()
-    elif average_over_theta:
-        bincount = get_viewingdirection_phibincount()
-    print_warning(
-        f"Each direction bin of {source} holds about 1/{bincount} of the escaped packets, if they escape in all"
-        f" directions alike. Thus its Monte Carlo noise is about {math.sqrt(bincount):.3g} times the noise of the"
-        f" angle average. {source} gives no packet count, and --frompackets gives the noise of each bin"
-    )
-
-
 def print_series_summary(
     seriesname: str,
     parts: Sequence[str],

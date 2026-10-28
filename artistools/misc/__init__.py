@@ -106,6 +106,7 @@ from artistools.misc.dirbins import get_viewingdirection_phibincount as get_view
 from artistools.misc.dirbins import get_viewingdirectionbincount as get_viewingdirectionbincount
 from artistools.misc.dirbins import print_theta_phi_definitions as print_theta_phi_definitions
 from artistools.misc.dirbins import split_multitable_dataframe as split_multitable_dataframe
+from artistools.misc.dirbins import warn_direction_bin_noise as warn_direction_bin_noise
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS as COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_null_column
 from artistools.misc.fileio import firstexisting as firstexisting

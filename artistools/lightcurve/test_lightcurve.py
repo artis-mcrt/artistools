@@ -2969,6 +2969,7 @@ def test_nuclide_light_curve_label_keeps_the_model_name(mockplot: mock.MagicMock
 
     The label held the nuclide alone, thus a second model or --gamma gave the legend the same label again.
     """
+    from artistools.lightcurve import core as lightcurvecore
     from artistools.lightcurve import plotlightcurve
 
     args = at.misc.parse_cli_args(plotlightcurve.addargs, None, None, [str(modelpath), "--frompackets", "--gamma"])
@@ -2976,7 +2977,7 @@ def test_nuclide_light_curve_label_keeps_the_model_name(mockplot: mock.MagicMock
     fig = mplfig.Figure()
     axis = fig.add_subplot()
     lcdataframes = at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")
-    with mock.patch.object(plotlightcurve, "scan_lightcurve_from_packets", return_value=lcdataframes):
+    with mock.patch.object(lightcurvecore, "scan_lightcurve_from_packets", return_value=lcdataframes):
         plotlightcurve.plot_artis_lightcurve(
             modelpath, axis, escape_type="TYPE_GAMMA", frompackets=True, args=args, pellet_nucname="Ni56"
         )

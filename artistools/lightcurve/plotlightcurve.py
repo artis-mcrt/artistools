@@ -4,6 +4,7 @@ import argparse
 import math
 import typing as t
 from collections.abc import Iterable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
 from types import MappingProxyType
@@ -26,7 +27,6 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
 from artistools.lightcurve.core import FILTERNAME_ALIASES
-from artistools.lightcurve.core import find_lightcurve_file
 from artistools.lightcurve.core import generate_band_lightcurve_data
 from artistools.lightcurve.core import get_band_gap_times
 from artistools.lightcurve.core import get_band_lightcurve
@@ -38,11 +38,11 @@ from artistools.lightcurve.core import get_reference_label
 from artistools.lightcurve.core import get_top_nuclides
 from artistools.lightcurve.core import lum_lsun_to_mag
 from artistools.lightcurve.core import path_is_reference_lightcurve
+from artistools.lightcurve.core import read_artis_lightcurve
 from artistools.lightcurve.core import read_bol_reflightcurve_data
 from artistools.lightcurve.core import read_hesma_lightcurve
 from artistools.lightcurve.core import read_reflightcurve_band_data
-from artistools.lightcurve.core import scan_lightcurve
-from artistools.lightcurve.core import scan_lightcurve_from_packets
+from artistools.lightcurve.core import split_at_valid_range
 from artistools.lightcurve.viewingangleanalysis import get_band_lightcurve_options
 from artistools.lightcurve.viewingangleanalysis import make_peak_colour_viewing_angle_plot
 from artistools.lightcurve.viewingangleanalysis import parse_directionbin_args
@@ -75,7 +75,6 @@ from artistools.misc import arggroup
 from artistools.misc import color_arg
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
-from artistools.misc import firstexisting
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_filterfunc
@@ -128,7 +127,6 @@ from artistools.plottools import set_exponent_label
 from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 from artistools.plottools import set_prop_cycle_unusedcolors
-from artistools.plottools import warn_direction_bin_noise
 
 if t.TYPE_CHECKING:
     import matplotlib.typing as mplt
@@ -809,7 +807,8 @@ def plot_artis_lightcurve(
 ) -> dict[int, pl.DataFrame] | None:
     """Plot one model's bolometric light curve, and return the plotted data per direction bin.
 
-    summaryrows takes the fields of the summary line of each direction bin.
+    summaryrows takes the fields of the summary line of each direction bin. read_artis_lightcurve reads the light
+    curves, and draw_artis_lightcurve draws them.
     """
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
@@ -845,67 +844,61 @@ def plot_artis_lightcurve(
     # resolve the direction bins first, because "-plotviewingangle -2" expands to every bin. The
     # packet-derived data must hold the same bin keys that the plot loop reads.
     dirbins, angle_definition = parse_directionbin_args(modelpath, args)
-    # bin -1 is the angle average, which only light_curve.out holds
-    directionresolved = list(dirbins) != [-1]
 
-    if frompackets:
-        lcdataframes = scan_lightcurve_from_packets(
-            modelpath,
-            escape_type=escape_type,
-            maxpacketfiles=maxpacketfiles,
-            directionbins=dirbins,
-            average_over_phi=average_over_phi,
-            average_over_theta=average_over_theta,
-            directionbins_are_vpkt_observers=args.plotvspecpol is not None,
-            pellet_nucname=pellet_nucname,
-            use_pellet_decay_time=use_pellet_decay_time,
-            timedaysmin=args.timemin,
-            timedaysmax=args.timemax,
-        )
-    else:
-        if pellet_nucname is not None or use_pellet_decay_time:
-            msg = "Only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
-            raise ValueError(msg)
-        if args.plotvspecpol is not None:
-            exit_with_error(
-                "--plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
-                "Give --frompackets to make the light curve of each virtual observer from the packets.",
-            )
-        try:
-            lcpath = (
-                firstexisting(lcfilename, folder=modelpath, tryzipped=True)
-                if lcfilename is not None
-                else find_lightcurve_file(
-                    modelpath, directionresolved=directionresolved, gamma=escape_type == "TYPE_GAMMA"
-                )
-            )
-        except FileNotFoundError as exc:
-            print_warning(f"Skipping {modelpath}: {exc}")
-            return None
+    lcdataframes = read_artis_lightcurve(
+        modelpath,
+        dirbins,
+        lcfilename=lcfilename,
+        escape_type=escape_type,
+        frompackets=frompackets,
+        maxpacketfiles=maxpacketfiles,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        vpkt_observers=args.plotvspecpol is not None,
+        pellet_nucname=pellet_nucname,
+        use_pellet_decay_time=use_pellet_decay_time,
+        timemin=args.timemin,
+        timemax=args.timemax,
+    )
+    if lcdataframes is None:
+        return None
 
-        try:
-            lcdataframes = scan_lightcurve(
-                lcpath,
-                directionresolved=directionresolved,
-                average_over_phi=average_over_phi,
-                average_over_theta=average_over_theta,
-            )
-        except ValueError as exc:
-            exit_with_error(
-                str(exc),
-                "Give --plotviewingangle with light_curve_res.out, give no --plotviewingangle with light_curve.out, and"
-                " give a file that ARTIS wrote in full",
-            )
-        if directionresolved:
-            warn_direction_bin_noise(
-                lcpath.name, average_over_phi=average_over_phi, average_over_theta=average_over_theta
-            )
-        # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
-        if -1 in dirbins and -1 not in lcdataframes:
-            lcdataframes[-1] = scan_lightcurve(
-                find_lightcurve_file(modelpath, directionresolved=False, gamma=escape_type == "TYPE_GAMMA")
-            )[-1]
+    return draw_artis_lightcurve(
+        axis,
+        modelpath,
+        lcdataframes,
+        angle_definition,
+        args,
+        lcindex=lcindex,
+        linelabel=linelabel,
+        linelabel_is_custom=linelabel_is_custom,
+        pellet_nucname=pellet_nucname,
+        residualseries=residualseries,
+        summaryrows=summaryrows,
+        plotkwargs=plotkwargs,
+    )
 
+
+def draw_artis_lightcurve(
+    axis: mplax.Axes,
+    modelpath: Path,
+    lcdataframes: Mapping[int, pl.DataFrame],
+    angle_definition: Mapping[int, str],
+    args: argparse.Namespace,
+    *,
+    lcindex: int,
+    linelabel: str,
+    linelabel_is_custom: bool,
+    pellet_nucname: str | None,
+    residualseries: list[ResidualSeries] | None,
+    summaryrows: list[dict[str, t.Any]] | None,
+    plotkwargs: dict[str, t.Any],
+) -> dict[int, pl.DataFrame]:
+    """Draw the light curve of each direction bin of one model, and return the plotted data of each bin.
+
+    A line shows the valid range of the arrival times. -plotinvalidpart also draws the rest with transparency.
+    """
+    dirbins = list(lcdataframes)
     lumunit = get_plot_lum_unit(args)
     ycolumn = get_plot_lum_column(lumunit)
 
@@ -919,18 +912,6 @@ def plot_artis_lightcurve(
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = make_colorbar_viewingangles_colormap()
 
-    lcdataframes = dict(
-        zip(
-            dirbins,
-            pl.collect_all(
-                df_filter_minmax_bracketed(
-                    lcdataframes[dirbin], colname="time_days", minval=args.timemin, maxval=args.timemax
-                )
-                for dirbin in dirbins
-            ),
-            strict=True,
-        )
-    )
     lctimemin, lctimemax = get_time_range_days(lcdataframes[dirbins[0]])
     assert isinstance(lctimemin, float)
     assert isinstance(lctimemax, float)
@@ -996,20 +977,9 @@ def plot_artis_lightcurve(
             f" {katz_integral:.3e} [erg s]"
         )
         # show the parts of the light curve that are outside the valid arrival range as partially transparent
-        if validrange_start_days is None or validrange_end_days is None:
-            # entire range is invalid
-            lcdata_before_valid = lcdata
-            lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
-            lcdata_valid = pl.DataFrame(schema=lcdata.schema)
-        else:
-            lcdata_valid = lcdata.filter(pl.col("time_days").is_between(validrange_start_days, validrange_end_days))
-            if lcdata_valid.is_empty():
-                # valid range doesn't contain any data points
-                lcdata_before_valid = lcdata
-                lcdata_after_valid = pl.DataFrame(schema=lcdata.schema)
-            else:
-                lcdata_before_valid = lcdata.filter(pl.col("time_days") <= lcdata_valid["time_days"].min())
-                lcdata_after_valid = lcdata.filter(pl.col("time_days") >= lcdata_valid["time_days"].max())
+        lcdata_before_valid, lcdata_valid, lcdata_after_valid = split_at_valid_range(
+            lcdata, validrange_start_days, validrange_end_days
+        )
 
         # the line of the luminosity shows only the valid range, and -plotinvalidpart and --plotcmf show each row.
         # Thus the table keeps each row only with these options, and a column names the rows of the line

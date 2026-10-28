@@ -46,6 +46,7 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_auto_velocity_unit
 from artistools.misc import get_bin_index_expr
+from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_file_metadata
 from artistools.misc import get_file_state
@@ -68,12 +69,14 @@ from artistools.misc import polars_error_note
 from artistools.misc import polars_source
 from artistools.misc import print_detail
 from artistools.misc import print_saved
+from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import raise_if_cut_line
 from artistools.misc import read_complete_lines
 from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import split_multitable_dataframe
+from artistools.misc import warn_direction_bin_noise
 from artistools.misc import XUnit
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
@@ -2816,3 +2819,175 @@ def get_no_sampled_emission_reason(modelfolder: Path) -> str | None:
     """
     columnnames = get_packets_column_names(modelfolder)
     return None if columnnames is None else get_no_sampled_emission_message(modelfolder, columnnames)
+
+
+def read_packets_in_time_range(
+    modelpath: Path, timelow: float, timehigh: float, *, maxpacketfiles: int | None, gamma: bool
+) -> tuple[int, pl.DataFrame]:
+    """Return the count of the packets files that the function read, and the escaped packets between two times.
+
+    Each panel of --multispecplot shows one epoch, thus one read of the union of their time ranges serves them all.
+    Each panel then selects its own arrival times from the frame in memory.
+    """
+    nprocs_read, dfpackets = scan_packets(
+        modelpath,
+        maxpacketfiles=maxpacketfiles,
+        packet_type="TYPE_ESCAPE",
+        escape_type="TYPE_GAMMA" if gamma else "TYPE_RPKT",
+    )
+    # scan_spectra_from_packets reads only the time, the frequency, the energy, and the direction bin of each
+    # packet. The packets files hold about 40 columns, thus a frame of every column needs about ten times the memory
+    return (
+        nprocs_read,
+        dfpackets
+        .filter(pl.col("t_arrive_d").is_between(timelow, timehigh))
+        .select(cs.by_name("t_arrive_d", "nu_rf", "e_rf", "dirbin", "costhetabin", "phibin", require_all=False))
+        .collect(),
+    )
+
+
+def read_dirbin_spectra(
+    modelpath: Path,
+    directionbins: Sequence[int],
+    *,
+    timestepmin: int,
+    timestepmax: int,
+    timemin: float,
+    timemax: float,
+    xmin: float,
+    xmax: float,
+    xunit: str,
+    yvariable: str,
+    fluxdistance_mpc: float,
+    frompackets: bool,
+    vpkt_observers: bool,
+    average_over_phi: bool,
+    average_over_theta: bool,
+    usedegrees: bool,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    use_time: t.Literal["arrival", "emission", "escape"],
+    maxpacketfiles: int | None,
+    gamma: bool,
+    deltax: float | None,
+    deltalogx: float | None,
+    deltalambda: float | None,
+    stokesparam: str,
+    nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None,
+) -> tuple[dict[int, pl.DataFrame], dict[int, str]] | None:
+    """Return the spectrum of each direction bin in the x range, and the definition of each bin.
+
+    The source is the packets files with frompackets, the virtual packet spectra with vpkt_observers, and the spectrum
+    files of exspec otherwise. Each frame keeps the nearest bin beyond each end of the x range. A requested bin with
+    no data drops out. If no requested bin has data, the angle average of bin -1 replaces them. The function returns
+    None if the model also has no angle average.
+    """
+    if frompackets:
+        viewinganglespectra = scan_spectra_from_packets(
+            modelpath,
+            timelowdays=timemin,
+            timehighdays=timemax,
+            lambda_bin_edges=get_lambda_bin_edges(
+                xmin,
+                xmax,
+                deltax=deltax,
+                deltalogx=deltalogx,
+                deltalambda=deltalambda,
+                xunit=xunit,
+                modelpath=modelpath,
+                gamma=gamma,
+            ),
+            use_time=use_time,
+            maxpacketfiles=maxpacketfiles,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            fluxfilterfunc=filterfunc,
+            nprocs_read_dfpackets=nprocs_read_dfpackets,
+            directionbins_are_vpkt_observers=vpkt_observers,
+            gamma=gamma,
+            # the packets of each requested bin take a pass of the Rust kernel, thus the plot asks only for its bins
+            directionbins=directionbins,
+            # the squared energies of the packets give the noise of --shownoise and of the summary line. On a model
+            # with 4e8 packets, the sums of the squares did not change the time of the command
+            relnoise=True,
+        )
+
+    elif vpkt_observers:
+        # read virtual packet files (after running plotartisspectrum --makevspecpol)
+        timeavg = (timemin + timemax) / 2.0
+        viewinganglespectra = {
+            dirbin: scan_vspecpol_spectrum(
+                modelpath,
+                timeavg,
+                dirbin,
+                stokesparam=stokesparam,
+                fluxfilterfunc=filterfunc,
+                timemin=timemin,
+                timemax=timemax,
+            )
+            for dirbin in directionbins
+            if dirbin >= 0
+        }
+    else:
+        viewinganglespectra = scan_spectra(
+            modelpath=modelpath,
+            timestepmin=timestepmin,
+            timestepmax=timestepmax,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            fluxfilterfunc=filterfunc,
+            gamma=gamma,
+            # bin -1 stays, because the plot shows it in place of a bin that the model does not have
+            directionbins=[-1, *directionbins],
+        )
+        if any(dirbin >= 0 for dirbin in directionbins):
+            warn_direction_bin_noise(
+                "gamma_spec_res.out" if gamma else "spec_res.out",
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )
+
+    if not vpkt_observers and (average_over_phi or average_over_theta):
+        # an averaged bin is the first bin of its group, thus a different bin has no label and no packets
+        validbins = get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)
+        if invalidbins := [dirbin for dirbin in directionbins if dirbin >= 0 and dirbin not in validbins]:
+            msg = f"Direction bin {invalidbins} is not the first bin of an average group. Valid bins: {validbins}"
+            raise ValueError(msg)
+
+    dirbin_definitions = get_dirbin_definitions(
+        modelpath,
+        directionbins,
+        vpkt_observers=vpkt_observers,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        usedegrees=usedegrees,
+    )
+
+    missingdirectionbins = [dirbin for dirbin in directionbins if dirbin not in viewinganglespectra]
+    founddirectionbins = [dirbin for dirbin in directionbins if dirbin in viewinganglespectra]
+    if missingdirectionbins:
+        print(f"No data for direction bin(s): {missingdirectionbins}")
+        if founddirectionbins:
+            directionbins = founddirectionbins
+        elif -1 in viewinganglespectra:
+            directionbins = [-1]
+            dirbin_definitions = get_dirbin_definitions(modelpath, directionbins, usedegrees=usedegrees)
+            print("Showing spherically-averaged spectrum instead")
+        else:
+            print("No data to plot")
+            return None
+
+    if any(dirbin != -1 for dirbin in directionbins):
+        print_theta_phi_definitions()
+
+    spectra = pl.collect_all([
+        df_filter_minmax_bracketed(
+            get_dfspectrum_x_y_with_units(
+                viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=fluxdistance_mpc
+            ),
+            colname="x",
+            minval=xmin,
+            maxval=xmax,
+        )
+        for dirbin in directionbins
+    ])
+    return dict(zip(directionbins, spectra, strict=True)), dirbin_definitions

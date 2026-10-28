@@ -48,6 +48,7 @@ from artistools.misc import read_wsv
 from artistools.misc import require_reference_data_file
 from artistools.misc import scan_timesteps
 from artistools.misc import split_multitable_dataframe
+from artistools.misc import warn_direction_bin_noise
 from artistools.misc import zopen
 from artistools.packets import scan_packets
 from artistools.packets import scan_virtual_packets
@@ -933,3 +934,121 @@ def get_phillips_relation_data() -> tuple[pl.DataFrame, str]:
     print(sn_data)
 
     return sn_data, "Observed (Hicken et al. 2009)"
+
+
+def read_artis_lightcurve(
+    modelpath: Path,
+    dirbins: Sequence[int],
+    *,
+    lcfilename: str | None,
+    escape_type: str,
+    frompackets: bool,
+    maxpacketfiles: int | None,
+    average_over_phi: bool,
+    average_over_theta: bool,
+    vpkt_observers: bool,
+    pellet_nucname: str | None,
+    use_pellet_decay_time: bool,
+    timemin: float | None,
+    timemax: float | None,
+) -> dict[int, pl.DataFrame] | None:
+    """Return the light curve of each direction bin between timemin and timemax, or None if the file does not exist.
+
+    Each frame keeps the nearest timestep beyond each end of the time range. With frompackets, the function reads the
+    packets files. Otherwise it reads lcfilename, or light_curve.out for bin -1 and light_curve_res.out for the other
+    bins. Only the packets give the nuclide and the decay time of a pellet.
+    """
+    # bin -1 is the angle average, which only light_curve.out holds
+    directionresolved = list(dirbins) != [-1]
+
+    if frompackets:
+        lcdataframes = scan_lightcurve_from_packets(
+            modelpath,
+            escape_type=escape_type,
+            maxpacketfiles=maxpacketfiles,
+            directionbins=dirbins,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            directionbins_are_vpkt_observers=vpkt_observers,
+            pellet_nucname=pellet_nucname,
+            use_pellet_decay_time=use_pellet_decay_time,
+            timedaysmin=timemin,
+            timedaysmax=timemax,
+        )
+    else:
+        if pellet_nucname is not None or use_pellet_decay_time:
+            msg = "Only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
+            raise ValueError(msg)
+        if vpkt_observers:
+            exit_with_error(
+                "--plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
+                "Give --frompackets to make the light curve of each virtual observer from the packets.",
+            )
+        try:
+            lcpath = (
+                firstexisting(lcfilename, folder=modelpath, tryzipped=True)
+                if lcfilename is not None
+                else find_lightcurve_file(
+                    modelpath, directionresolved=directionresolved, gamma=escape_type == "TYPE_GAMMA"
+                )
+            )
+        except FileNotFoundError as exc:
+            print_warning(f"Skipping {modelpath}: {exc}")
+            return None
+
+        try:
+            lcdataframes = scan_lightcurve(
+                lcpath,
+                directionresolved=directionresolved,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )
+        except ValueError as exc:
+            exit_with_error(
+                str(exc),
+                "Give --plotviewingangle with light_curve_res.out, give no --plotviewingangle with light_curve.out, and"
+                " give a file that ARTIS wrote in full",
+            )
+        if directionresolved:
+            warn_direction_bin_noise(
+                lcpath.name, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+            )
+        # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
+        if -1 in dirbins and -1 not in lcdataframes:
+            lcdataframes[-1] = scan_lightcurve(
+                find_lightcurve_file(modelpath, directionresolved=False, gamma=escape_type == "TYPE_GAMMA")
+            )[-1]
+
+    return dict(
+        zip(
+            dirbins,
+            pl.collect_all(
+                df_filter_minmax_bracketed(lcdataframes[dirbin], colname="time_days", minval=timemin, maxval=timemax)
+                for dirbin in dirbins
+            ),
+            strict=True,
+        )
+    )
+
+
+def split_at_valid_range(
+    lcdata: pl.DataFrame, validrange_start_days: float | None, validrange_end_days: float | None
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """Return the rows of a light curve before, inside, and after the valid range of the arrival times.
+
+    The part before and the part after each also hold the nearest row of the valid range, thus their lines join the
+    line of the valid range. A range of None, or a range that holds no row, gives all the rows to the part before.
+    """
+    emptylcdata = pl.DataFrame(schema=lcdata.schema)
+    if validrange_start_days is None or validrange_end_days is None:
+        return lcdata, emptylcdata, emptylcdata
+
+    lcdata_valid = lcdata.filter(pl.col("time_days").is_between(validrange_start_days, validrange_end_days))
+    if lcdata_valid.is_empty():
+        return lcdata, lcdata_valid, emptylcdata
+
+    return (
+        lcdata.filter(pl.col("time_days") <= lcdata_valid["time_days"].min()),
+        lcdata_valid,
+        lcdata.filter(pl.col("time_days") >= lcdata_valid["time_days"].max()),
+    )
