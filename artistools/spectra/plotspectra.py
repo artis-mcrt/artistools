@@ -1340,8 +1340,6 @@ def make_spectrum_plot(
             check_codecomparison_args(args)
             # resolve_plot_args gives both bounds. -timedays can hold a range such as 290-320, which is no number
             timeavg = (args.timemin + args.timemax) / 2.0
-            from artistools.spectra.plotspectra import plot_spectrum
-
             otherlines = [
                 plot_spectrum(specpath, timedays=timeavg, axis=axes[0], residualseries=residualseries, **plotkwargs)
             ]
