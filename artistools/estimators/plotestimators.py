@@ -151,7 +151,7 @@ if t.TYPE_CHECKING:
     from artistools.misc import FrameSet
 
 
-colors_tab10 = [
+colors_tab10: t.Final = (
     (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
     (1.0, 0.4980392156862745, 0.054901960784313725, 1.0),
     (0.17254901960784313, 0.6274509803921569, 0.17254901960784313, 1.0),
@@ -162,7 +162,7 @@ colors_tab10 = [
     (0.4980392156862745, 0.4980392156862745, 0.4980392156862745, 1.0),
     (0.7372549019607844, 0.7411764705882353, 0.13333333333333333, 1.0),
     (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0),
-]
+)
 
 # reserve colours for these elements. Immutable, because get_unreserved_elemcolors() derives the rest of the
 # palette from it once and caches the result, so a later mutation would silently hand a reserved colour out twice

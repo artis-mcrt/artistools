@@ -43,7 +43,7 @@ from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
-ARTIS_colors = ["r", "g", "b", "m", "c", "orange"]  # reddish colors
+ARTIS_colors: t.Final = ("r", "g", "b", "m", "c", "orange")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

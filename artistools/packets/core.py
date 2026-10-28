@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from functools import lru_cache
 from itertools import batched
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import numpy.typing as npt
@@ -55,12 +56,17 @@ from artistools.misc import rankbatch_parquet_staleness
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 
-type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
+type_ids: t.Final[Mapping[str, int]] = MappingProxyType({
+    "TYPE_GAMMA": 10,
+    "TYPE_RPKT": 11,
+    "TYPE_NTLEPTON": 20,
+    "TYPE_ESCAPE": 32,
+})
 
 # new artis added extra columns to the end of this list, but they may be absent in older versions
 # the packets file may have a truncated set of columns, but we assume that they
 # are only truncated, i.e. the columns with the same index have the same meaning
-columns_full = [
+columns_full: t.Final = (
     "number",
     "where",
     "type_id",
@@ -104,7 +110,7 @@ columns_full = [
     "true_emission_velocity",
     "trueem_time",
     "pellet_nucindex",
-]
+)
 
 
 @modelpath_cache(maxsize=16)
@@ -442,7 +448,7 @@ def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".
                 assert len(column_names) == inputcolumncount
             else:  # infer from column positions
                 assert len(columns_full) >= inputcolumncount
-                column_names = columns_full[:inputcolumncount]
+                column_names = list(columns_full[:inputcolumncount])
 
     return column_names
 

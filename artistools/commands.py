@@ -743,7 +743,7 @@ def group_subactions(subactions: "list[argparse.Action]") -> "dict[str, list[arg
 
 
 # what a group of subcommands does, for the listing of the commands above it
-GROUPHELPTEXT = {"inputmodel": "Make and inspect an ARTIS input model."}
+GROUPHELPTEXT: t.Final[Mapping[str, str]] = MappingProxyType({"inputmodel": "Make and inspect an ARTIS input model."})
 
 # the heading of the commands of a group that COMMANDGROUPS does not divide, e.g. inputmodel
 FLATGROUPHEADING = "Commands"

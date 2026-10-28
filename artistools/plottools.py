@@ -149,7 +149,7 @@ if t.TYPE_CHECKING:
     from matplotlib.backend_bases import RendererBase
 
 # colorcet.glasbey_category20
-glasbey_category20 = [
+glasbey_category20: t.Final = (
     (0.121569, 0.466667, 0.705882),
     (1.0, 0.498039, 0.054902),
     (0.172549, 0.627451, 0.172549),
@@ -406,7 +406,7 @@ glasbey_category20 = [
     (0.862745, 0.32549, 0.788235),
     (0.466667, 0.470588, 0.203922),
     (0.345098, 0.745098, 0.556863),
-]
+)
 
 
 def remove_greys(palette: Sequence["mplt.ColorType"]) -> list["mplt.ColorType"]:
@@ -414,10 +414,10 @@ def remove_greys(palette: Sequence["mplt.ColorType"]) -> list["mplt.ColorType"]:
     return [color for color in palette if len(set(mplcolors.to_rgb(color))) > 1]
 
 
-glasbey_category20_nogreys = remove_greys(glasbey_category20)
+glasbey_category20_nogreys: t.Final = tuple(remove_greys(glasbey_category20))
 
 # the plot colours of the reference data series, in the order that the code uses them
-refseries_colors = ("0.0", "0.4", "0.6", "0.7")
+refseries_colors: t.Final = ("0.0", "0.4", "0.6", "0.7")
 
 
 def get_assigned_colors(seriescolors: Sequence[str | None]) -> set[str]:

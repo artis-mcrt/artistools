@@ -3,9 +3,12 @@
 import filecmp
 import itertools
 import re
+import typing as t
 from collections.abc import Iterable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import polars as pl
@@ -42,13 +45,13 @@ RE_LOGFILENAME = re.compile(r"output_(\d+)-0\.txt(?:\.gz|\.xz|\.zst)?")
 RE_NUMBER = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 
 
-MESSAGESCHEMA = {
+MESSAGESCHEMA: t.Final[Mapping[str, pl.DataType | type[pl.DataType]]] = MappingProxyType({
     "level": pl.String,
     "kind": pl.String,
     "timestep": pl.Int32,
     "modelgridindex": pl.Int32,
     "message": pl.String,
-}
+})
 
 
 def read_log_messages(logpath: Path) -> pl.DataFrame:

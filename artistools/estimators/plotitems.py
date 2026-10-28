@@ -29,7 +29,7 @@ from artistools.misc import positive_float_arg
 from artistools.misc import SERIES_STYLE_KEYS
 from artistools.misc import suggest_names
 
-VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
+VARIABLE_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"})
 
 
 # a series type groups the names that follow it, e.g. -plot averageionisation Fe Ni. Each one has its
