@@ -613,7 +613,7 @@ subcommandtree: CommandTree = {
         ),
     ),
     "plotradfield": CommandSpec(
-        "plotradfield",
+        "radfield.plotradfield",
         helptext="Plot the radiation field estimators.",
         examples=(("--modelpath . -t 300 --modelgridindex 0", "the radiation field of cell 0 at 300 days"),),
     ),

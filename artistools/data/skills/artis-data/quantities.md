@@ -38,7 +38,7 @@ cells. Do this for each process at the same time step.
 
 ## Radiation field: `radfield_*.out` (rank files)
 
-`at.plotradfield.read_radfield(modelpath, modelgridindex=...)` gives a DataFrame with these columns:
+`at.radfield.read_radfield(modelpath, modelgridindex=...)` gives a DataFrame with these columns:
 
 - `timestep`, `modelgridindex`, and `bin_num`;
 - `nu_lower` and `nu_upper` (Hz), the limits of the frequency bin;

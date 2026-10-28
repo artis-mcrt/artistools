@@ -154,7 +154,7 @@ A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame 
 
 ### The command of a package
 
-A package that has a plot command gives it as `plot`, e.g. `at.spectra.plot`, `at.lightcurve.plot`, `at.estimators.plot`, `at.nltepops.plot`, `at.packets.plot`, `at.nonthermal.plot`, and `at.gsinetwork.plot`. This function is the command itself. Each keyword is one command-line argument, and `argsraw` gives more arguments as text, e.g. `argsraw=["-t", "300"]`:
+A package that has a plot command gives it as `plot`, e.g. `at.spectra.plot`, `at.lightcurve.plot`, `at.estimators.plot`, `at.nltepops.plot`, `at.packets.plot`, `at.nonthermal.plot`, `at.gsinetwork.plot`, `at.radfield.plot`, and `at.logs.plot`. This function is the command itself. Each keyword is one command-line argument, and `argsraw` gives more arguments as text, e.g. `argsraw=["-t", "300"]`:
 
 ```python
 at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile="spectrum.pdf")

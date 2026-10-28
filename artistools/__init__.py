@@ -61,10 +61,10 @@ from artistools import nltepops as nltepops
 from artistools import nonthermal as nonthermal
 from artistools import packets as packets
 from artistools import plotlinefluxes as plotlinefluxes
-from artistools import plotradfield as plotradfield
 from artistools import plottools as plottools
 from artistools import plottransitions as plottransitions
 from artistools import plotviewingangles as plotviewingangles
+from artistools import radfield as radfield
 from artistools import rustext as rustext
 from artistools import spectra as spectra
 from artistools import timesteps as timesteps

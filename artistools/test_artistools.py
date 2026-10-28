@@ -253,7 +253,17 @@ def test_top_level_api_is_the_documented_list() -> None:
 
 def test_each_package_command_is_named_plot() -> None:
     """A package that has a plot command gives it as plot, thus a user finds it under one name."""
-    for package in (at.estimators, at.gsinetwork, at.lightcurve, at.nltepops, at.nonthermal, at.packets, at.spectra):
+    for package in (
+        at.estimators,
+        at.gsinetwork,
+        at.lightcurve,
+        at.logs,
+        at.nltepops,
+        at.nonthermal,
+        at.packets,
+        at.radfield,
+        at.spectra,
+    ):
         # the main function of a module of the package, and not a different callable with that name
         assert package.plot.__name__ == "main", package.__name__
         assert package.plot.__module__.startswith(f"{package.__name__}."), package.__name__
@@ -1043,7 +1053,9 @@ def test_get_inputparams() -> None:
 def test_radfield(mockstep: mock.MagicMock, mockplot: mock.MagicMock) -> None:
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
-    at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath, showbinedges=True)
+    at.radfield.plotradfield.main(
+        argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath, showbinedges=True
+    )
 
     plot_calls = {
         label.strip(): call for call in mockplot.call_args_list if isinstance((label := call.kwargs.get("label")), str)
@@ -1074,9 +1086,9 @@ def test_radfield_bin_with_no_fit_takes_the_full_spectrum_fit() -> None:
 
     The plot drew zero for such a bin, and the band average drew zero although the bin holds its J.
     """
-    from artistools.plotradfield import get_binaverage_field
-    from artistools.plotradfield import get_fitted_field
-    from artistools.plotradfield import j_nu_dbb
+    from artistools.radfield.core import get_binaverage_field
+    from artistools.radfield.core import get_fitted_field
+    from artistools.radfield.core import j_nu_dbb
 
     radfielddata = pl.DataFrame({
         "timestep": [5, 5, 5],
@@ -1112,15 +1124,17 @@ def test_radfield_takes_the_last_timestep_with_data(tmp_path: Path, capsys: pyte
     The command took the last timestep of the time grid. For a run that stopped early, it wrote no file and ended
     with no error.
     """
-    radfielddata = at.plotradfield.read_radfield(modelpath, modelgridindex=[0])
+    radfielddata = at.radfield.read_radfield(modelpath, modelgridindex=[0])
     with mock.patch.object(
-        at.plotradfield, "read_radfield", return_value=radfielddata.filter(pl.col("timestep") <= 59)
+        at.radfield.plotradfield, "read_radfield", return_value=radfielddata.filter(pl.col("timestep") <= 59)
     ):
-        at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=tmp_path)
+        at.radfield.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=tmp_path)
         assert [path.name for path in tmp_path.glob("*.pdf")] == ["plotradfield_cell00000_ts059.pdf"]
 
         with pytest.raises(SystemExit):
-            at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=5, outputfile=tmp_path)
+            at.radfield.plotradfield.main(
+                argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=5, outputfile=tmp_path
+            )
     assert "No radiation field data" in capsys.readouterr().err
 
 
@@ -1130,7 +1144,9 @@ def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
     The commands gave format="pdf" to savefig, thus a file named rf.png held a PDF document.
     """
     pngmagic = b"\x89PNG"
-    at.plotradfield.main(argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=40, outputfile=tmp_path / "rf.png")
+    at.radfield.plotradfield.main(
+        argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=40, outputfile=tmp_path / "rf.png"
+    )
     assert (tmp_path / "rf.png").read_bytes().startswith(pngmagic)
 
     at.plottransitions.main(argsraw=[], modelpath=modelpath, timedays=300, outputfile=tmp_path / "trans.png")
@@ -2038,7 +2054,7 @@ def test_radfield_line_estimators_filter_cell_zero(mockscatter: mock.MagicMock) 
     })
 
     fig, ax = plt.subplots()
-    at.plotradfield.plot_line_estimators(ax, radfielddata, modelgridindex=0, timestep=0)
+    at.radfield.plotradfield.plot_line_estimators(ax, radfielddata, modelgridindex=0, timestep=0)
     plt.close(fig)
 
     assert mockscatter.call_count == 1
@@ -4133,7 +4149,7 @@ def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
 @mock.patch.object(mplax.Axes, "set_ylim", side_effect=mplax.Axes.set_ylim, autospec=True)
 def test_radfield_honours_the_ymin_that_it_accepts(mocksetylim: mock.MagicMock) -> None:
     """Plotradfield adds -ymin, thus the axis must start there and not at the hard-coded zero."""
-    at.plotradfield.main(
+    at.radfield.plotradfield.main(
         argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40, modelgridindex=0, ymin=1e-14
     )
 
@@ -5288,7 +5304,7 @@ def test_radfield_opens_the_merged_pdf_alone(tmp_path: Path) -> None:
     """
     template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
     with mock.patch("subprocess.run") as mockrun:
-        at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", open=True, outputfile=template)
+        at.radfield.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", open=True, outputfile=template)
 
     opened = [call.args[0][1] for call in mockrun.call_args_list]
     assert len(opened) == 1, f"one file must open, not {len(opened)}"
@@ -5304,7 +5320,7 @@ def test_radfield_opens_the_one_plot_that_holds_data(tmp_path: Path) -> None:
     # the test model holds no radiation field data before timestep 10
     template = str(tmp_path / "rf_cell{cell:05d}_ts{timestep:03d}.pdf")
     with mock.patch("subprocess.run") as mockrun:
-        at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", open=True, outputfile=template)
+        at.radfield.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", open=True, outputfile=template)
 
     opened = [call.args[0][1] for call in mockrun.call_args_list]
     assert len(opened) == 1, f"the one plot must open, not {len(opened)} files"
@@ -5509,14 +5525,14 @@ def test_a_merged_pdf_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
     "plotradfield -timestep 40-41 -o merged.pdf" stopped before it drew anything.
     """
     merged = tmp_path / "merged.pdf"
-    at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(merged))
+    at.radfield.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(merged))
 
     assert merged.is_file(), f"the merged pdf must keep its name, but {list(tmp_path.iterdir())}"
     assert not list(tmp_path.glob("plotradfield_*.pdf")), "the merge takes the frames away"
 
     # a -o path that names a folder still gives the merged pdf the name of its frames
     outfolder = tmp_path / "rf"
-    at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(outfolder))
+    at.radfield.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(outfolder))
     assert list(outfolder.glob("plotradfield_*-plotradfield_*.pdf")), f"no merged pdf in {list(outfolder.iterdir())}"
 
 
@@ -5529,12 +5545,12 @@ def test_the_product_keeps_its_name_when_one_frame_holds_data(tmp_path: Path) ->
     """
     # the test model holds no radiation field data before timestep 10, thus one frame comes of the two
     merged = tmp_path / "merged.pdf"
-    at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", outputfile=str(merged))
+    at.radfield.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="9-10", outputfile=str(merged))
     assert merged.is_file(), f"the product must keep its name, but {list(tmp_path.iterdir())}"
 
     # the name of the product can be the name that a frame would take
     likeaframe = tmp_path / "plotradfield_cell00000_ts040.pdf"
-    at.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(likeaframe))
+    at.radfield.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(likeaframe))
     assert likeaframe.is_file(), f"the merge must not remove its own product: {list(tmp_path.iterdir())}"
 
 
@@ -7451,7 +7467,7 @@ def test_describe_finds_the_light_curve_in_a_run_folder(tmp_path: Path) -> None:
 def test_radfield_first_timestep_takes_each_name_of_the_option(tmp_path: Path, optionname: str) -> None:
     """ARTIS renamed the option two times on 2026-10-16, thus a current model gave no first timestep of the bin fits."""
     (tmp_path / "artisoptions.h").write_text(f"constexpr int {optionname} = 6;\n", encoding="utf-8")
-    assert at.plotradfield.get_multibin_radfield_first_timestep(tmp_path) == (6, optionname)
+    assert at.radfield.core.get_multibin_radfield_first_timestep(tmp_path) == (6, optionname)
 
 
 def test_hidden_values_of_a_line_give_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
@@ -8072,7 +8088,7 @@ def test_plotopacity_writes_the_drawn_values(
 def test_plotradfield_table_follows_the_sole_frame_to_the_product(tmp_path: Path) -> None:
     """Two timesteps with data for one timestep alone gave one figure, and the table kept the name of the frame."""
     # the test model has no radiation field data before timestep 10
-    at.plotradfield.main(
+    at.radfield.plotradfield.main(
         argsraw=[],
         modelpath=modelpath,
         modelgridindex=[0],
@@ -8091,7 +8107,7 @@ def test_plotradfield_writes_the_drawn_values(
     mockplot: mock.MagicMock, mockstep: mock.MagicMock, tmp_path: Path
 ) -> None:
     """--write_data gives the drawn points of each series in one long table, because each series has its own grid."""
-    at.plotradfield.main(
+    at.radfield.plotradfield.main(
         argsraw=[], modelpath=modelpath, modelgridindex=0, timestep=40, outputfile=tmp_path / "rf.pdf", write_data=True
     )
     dftable = read_data_file(tmp_path / "rf.txt")
