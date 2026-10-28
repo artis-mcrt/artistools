@@ -2,6 +2,7 @@
 
 from artistools.misc.argparser import arggroup as arggroup
 from artistools.misc.argparser import CustomArgHelpFormatter as CustomArgHelpFormatter
+from artistools.misc.argparser import get_first_sentence as get_first_sentence
 from artistools.misc.argparser import get_shown_flags as get_shown_flags
 from artistools.misc.argparser import get_standard_flag as get_standard_flag
 from artistools.misc.argparser import KeepGivenPaths as KeepGivenPaths

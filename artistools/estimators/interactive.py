@@ -68,6 +68,7 @@ from artistools.inputmodel import get_modelmeta
 from artistools.misc import call_in_child_process
 from artistools.misc import exit_with_error
 from artistools.misc import format_range_list
+from artistools.misc import get_first_sentence
 from artistools.misc import get_runfolder_timesteps
 from artistools.misc import get_runfolders
 from artistools.misc import get_time_range
@@ -124,7 +125,6 @@ from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import get_accent_colour
 from artistools.viewertools.widgets import get_changed_arguments
-from artistools.viewertools.widgets import get_first_sentence
 from artistools.viewertools.widgets import get_python_call
 from artistools.viewertools.widgets import make_completer
 from artistools.viewertools.widgets import make_drag_header

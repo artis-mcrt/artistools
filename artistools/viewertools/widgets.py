@@ -4,7 +4,6 @@ import argparse
 import html
 import json
 import math
-import re
 import shlex
 import sys
 import typing as t
@@ -1845,11 +1844,6 @@ def show_note_text(label: "QtWidgets.QLabel") -> None:
         label.setText(html.escape(detail).replace("\n", "<br>") + ' <a href="less">Less</a>')
     else:
         label.setText(html.escape(summary) + ' <a href="more">More…</a>')
-
-
-def get_first_sentence(text: str) -> str:
-    """Return the first sentence of a text, or all the text if it has one sentence."""
-    return re.split(r"(?<=[.:])\s+(?=[A-Z])", text, maxsplit=1)[0]
 
 
 def align_section_labels(window: "QtCore.QObject") -> None:
