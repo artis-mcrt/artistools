@@ -1,5 +1,7 @@
 """Tests of the Rust extension artistools.rustext."""
 
+import ast
+import inspect
 import math
 import re
 from collections.abc import Callable
@@ -440,3 +442,41 @@ def test_rust_bin_indices_match_the_bins_of_the_sums() -> None:
     assert np.array_equal(np.bincount(bins[bins >= 0], minlength=len(edges) - 1), counts)
     # each edge starts its bin, the last edge is in the last bin, and NaN is in no bin
     assert bins[-5:].tolist() == [0, 1, 2, 2, -1]
+
+
+def test_rustext_stub_gives_the_parameters_of_each_function() -> None:
+    """The stub rustext.pyi gives the type checkers the same functions, parameters, and defaults as the extension.
+
+    No tool compares the stub with the Rust code, thus a change of a Rust signature gave a stub that was incorrect.
+    """
+    stubtree = ast.parse((Path(at.__file__).parent / "rustext.pyi").read_text(encoding="utf-8"))
+    stubfunctions = {node.name: node.args for node in stubtree.body if isinstance(node, ast.FunctionDef)}
+    assert set(stubfunctions) == {name for name in dir(at.rustext) if not name.startswith("_")}
+
+    for name, stubargs in stubfunctions.items():
+        positionalargs = [*stubargs.posonlyargs, *stubargs.args]
+        positionaldefaults = [inspect.Parameter.empty] * (len(positionalargs) - len(stubargs.defaults)) + [
+            ast.literal_eval(default) for default in stubargs.defaults
+        ]
+        stubparameters = [
+            (
+                arg.arg,
+                inspect.Parameter.POSITIONAL_ONLY
+                if arg in stubargs.posonlyargs
+                else inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default,
+            )
+            for arg, default in zip(positionalargs, positionaldefaults, strict=True)
+        ] + [
+            (
+                arg.arg,
+                inspect.Parameter.KEYWORD_ONLY,
+                inspect.Parameter.empty if default is None else ast.literal_eval(default),
+            )
+            for arg, default in zip(stubargs.kwonlyargs, stubargs.kw_defaults, strict=True)
+        ]
+        extensionparameters = [
+            (parameter.name, parameter.kind, parameter.default)
+            for parameter in inspect.signature(getattr(at.rustext, name)).parameters.values()
+        ]
+        assert stubparameters == extensionparameters, name
