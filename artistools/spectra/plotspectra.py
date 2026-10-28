@@ -88,6 +88,7 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.packets import addarg_maxpacketfiles
 from artistools.paths import get_path
+from artistools.plottools import add_residual_series
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
@@ -542,16 +543,7 @@ def plot_reference_spectrum(
     (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=label, **plotkwargs)
     print_spectrum_summary(label, specdata, (xmin, xmax), xunit, yvariable, summaryrows=summaryrows)
 
-    if residualseries is not None:
-        residualseries.append(
-            ResidualSeries(
-                label,
-                np.asarray(specdata["x"].to_numpy(), dtype=np.float64),
-                np.asarray(specdata["y"].to_numpy(), dtype=np.float64),
-                lineplot.get_color(),
-                line=lineplot,
-            )
-        )
+    add_residual_series(residualseries, label, lineplot, specdata["x"].to_numpy(), specdata["y"].to_numpy())
 
     return lineplot, label, ymax
 
@@ -611,16 +603,7 @@ def plot_filter_functions(
         yvalues = filter_data["flux_normalised"].to_numpy()
         (filterline,) = axis.plot(xvalues, yvalues, label=filter_name, color=colours[index], alpha=0.3)
         filterlines.append(filterline)
-        if residualseries is not None:
-            residualseries.append(
-                ResidualSeries(
-                    filter_name,
-                    np.asarray(xvalues, dtype=np.float64),
-                    np.asarray(yvalues, dtype=np.float64),
-                    filterline.get_color(),
-                    line=filterline,
-                )
-            )
+        add_residual_series(residualseries, filter_name, filterline, xvalues, yvalues)
     return filterlines
 
 
@@ -1044,16 +1027,13 @@ def draw_dirbin_spectra(
         if args.shownoise:
             print_method_line(get_noise_method_text(yvariable))
             plot_noise_band(axis, dfspectrum, modelline.get_color(), binedges)
-        if residualseries is not None:
-            residualseries.append(
-                ResidualSeries(
-                    linelabel_withdirbin or "",
-                    np.asarray(dfspectrum["x"].to_numpy(), dtype=np.float64),
-                    np.asarray(dfspectrum["y"].to_numpy(), dtype=np.float64),
-                    modelline.get_color(),
-                    line=modelline,
-                )
-            )
+        add_residual_series(
+            residualseries,
+            linelabel_withdirbin or "",
+            modelline,
+            dfspectrum["x"].to_numpy(),
+            dfspectrum["y"].to_numpy(),
+        )
 
     return drawnseries
 
@@ -1858,8 +1838,6 @@ def draw_plot(
     - "_residuals" gives the statistics of the residuals, and "_residualcurves" gives the drawn residual curves;
     - "_summary" gives the fields of the summary line of each drawn spectrum, see print_spectrum_summary.
     """
-    dfresidualstats = pl.DataFrame()
-    dfresidualcurves: list[pl.DataFrame] = []
     filterfunc = get_filterfunc(args)
 
     scale_to_peak = 1.0 if args.normalised else None
@@ -1950,10 +1928,7 @@ def draw_plot(
         axes[-1].set_xlabel(xlabel)
 
     # the panel shows a ratio below a log y axis, thus it follows the choice of -yscale auto
-    if residualaxis is not None and residualseries is not None:
-        dfresidualstats = draw_residual_panel(
-            residualaxis, axes[-1], residualseries, args, plottedpoints=dfresidualcurves
-        )
+    residualtables = draw_residual_panel(residualaxis, axes[-1], residualseries, args)
 
     leg = set_legend(
         axes[-1],
@@ -1985,11 +1960,7 @@ def draw_plot(
             "_references": dfothers,
         },
         args,
-    ) | {
-        "_residuals": dfresidualstats,
-        "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
-        "_summary": get_summary_table(summaryrows),
-    }
+    ) | {**residualtables, "_summary": get_summary_table(summaryrows)}
 
 
 # the earlier names of the velocity shell groupings, which a script can hold
@@ -3061,14 +3032,5 @@ def plot_spectrum(
     arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (megaparsec_to_cm**2)
 
     (specline,) = axis.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)
-    if residualseries is not None:
-        residualseries.append(
-            ResidualSeries(
-                label,
-                np.asarray(dfspectra["lambda"].to_numpy(), dtype=np.float64),
-                np.asarray(arr_flux.to_numpy(), dtype=np.float64),
-                specline.get_color(),
-                line=specline,
-            )
-        )
+    add_residual_series(residualseries, label, specline, dfspectra["lambda"].to_numpy(), arr_flux.to_numpy())
     return specline

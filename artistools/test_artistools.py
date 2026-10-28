@@ -443,7 +443,7 @@ def test_residual_panel_uses_the_selected_baseline(
             logscaley=ratio,
             residualtype="relative" if ratio else "absolute",
         ),
-    )
+    )["_residuals"]
     otherindices = [
         index
         for index in range(len(series))
@@ -650,7 +650,7 @@ def test_residual_type_sets_the_calculation_and_scale(modelfactor: float, logsca
     mainaxis.plot(x, series[0].y)
     mainaxis.set_yscale("log" if logscaley else "linear")
     mainaxis.set_ylabel("Flux [erg]")
-    stats = at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)
+    stats = at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args)["_residuals"]
     expected = yreference * (factors - 1.0) if residualtype == "absolute" else factors
     assert residualaxis.get_yscale() == ("log" if residualtype == "relativelog" else "linear")
     assert residualaxis.get_ylabel() == (
@@ -712,7 +712,7 @@ def test_magnitude_residuals_keep_differences(residualtype: str, zeropoint: floa
     mainaxis.set_xlim(1.0, 2.0)
     mainaxis.set_ylabel("Magnitude [mag]")
     with mock.patch.object(residualaxis, "errorbar", wraps=residualaxis.errorbar) as mockerrorbar:
-        stats = at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args, ismagnitude=True)
+        stats = at.plottools.draw_residual_panel(residualaxis, mainaxis, series, args, ismagnitude=True)["_residuals"]
     assert np.allclose(residualaxis.lines[0].get_ydata(), 2.0)
     assert np.allclose(residualaxis.lines[-1].get_ydata(), 0.0)
     assert np.allclose(mockerrorbar.call_args.kwargs["yerr"], yerr)

@@ -1009,6 +1009,22 @@ class ResidualSeries(t.NamedTuple):
     unbounded: "npt.NDArray[np.bool_] | None" = None
 
 
+def add_residual_series(
+    residualseries: list[ResidualSeries] | None,
+    label: str,
+    line: mpllines.Line2D,
+    x: "npt.ArrayLike",
+    y: "npt.ArrayLike",
+) -> None:
+    """Add a drawn line and its points to the series of a residual panel. A residualseries of None shows no panel."""
+    if residualseries is not None:
+        residualseries.append(
+            ResidualSeries(
+                label, np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64), line.get_color(), line=line
+            )
+        )
+
+
 def get_residuals(
     reference: ResidualSeries, model: ResidualSeries, xmin: float, xmax: float
 ) -> "tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64], npt.NDArray[np.float64]]":
@@ -1192,22 +1208,24 @@ def plot_residual_panel(
 
 
 def draw_residual_panel(
-    residualaxis: mplax.Axes,
+    residualaxis: mplax.Axes | None,
     mainaxis: mplax.Axes,
-    series: Sequence[ResidualSeries],
+    series: Sequence[ResidualSeries] | None,
     args: argparse.Namespace,
     *,
     ismagnitude: bool = False,
-    plottedpoints: list[pl.DataFrame] | None = None,
-) -> pl.DataFrame:
-    """Draw the selected residual type below the main frame and return the statistics.
+) -> dict[str, pl.DataFrame]:
+    """Draw the selected residual type below the main frame, and return the tables for output_data.
 
-    plottedpoints takes the points of each residual curve in the x range of the main frame, see plot_residual_panel.
-
-    The residual type sets the calculation and the y scale of the panel.
-    Call it after the main frame has its labels and its x range.
-    The panel takes both.
+    The table "_residuals" holds the statistics. The table "_residualcurves" holds the points of each residual curve
+    in the x range of the main frame, see plot_residual_panel. Both tables are empty if the figure has no residual
+    panel. The residual type sets the calculation and the y scale of the panel. Call the function after the main
+    frame has its labels and its x range. The panel takes both.
     """
+    if residualaxis is None or series is None:
+        return {"_residuals": pl.DataFrame(), "_residualcurves": pl.DataFrame()}
+
+    plottedpoints: list[pl.DataFrame] = []
     logscaley = bool(getattr(args, "logscaley", False))
     isratio = not ismagnitude and args.residualtype != "absolute"
     # the shared x axis otherwise takes a new range with the default margin of the residual axis
@@ -1257,7 +1275,10 @@ def draw_residual_panel(
         residualaxis.tick_params(axis="y", which="both", labelleft=False)
         residualaxis.set_ylabel("")
 
-    return dfresidualstats
+    return {
+        "_residuals": dfresidualstats,
+        "_residualcurves": pl.concat(plottedpoints) if plottedpoints else pl.DataFrame(),
+    }
 
 
 def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:

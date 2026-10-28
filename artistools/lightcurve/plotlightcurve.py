@@ -102,6 +102,7 @@ from artistools.misc import scan_deposition
 from artistools.misc import trim_or_pad
 from artistools.packets import addarg_maxpacketfiles
 from artistools.paths import get_path
+from artistools.plottools import add_residual_series
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import get_next_color
@@ -609,16 +610,7 @@ def plot_energy_rates(
             (rateline,) = axis.plot(
                 depdata["tmid_days"], yvalues, linewidth=linewidth, label=label, linestyle=linestyle, color=colour
             )
-            if residualseries is not None:
-                residualseries.append(
-                    ResidualSeries(
-                        label,
-                        np.asarray(depdata["tmid_days"].to_numpy(), dtype=np.float64),
-                        np.asarray(yvalues, dtype=np.float64),
-                        rateline.get_color(),
-                        line=rateline,
-                    )
-                )
+            add_residual_series(residualseries, label, rateline, depdata["tmid_days"].to_numpy(), yvalues)
             dfcurves.append(get_curve_table(column, lumunit, depdata["tmid_days"], yvalues))
             drewrate = True
 
@@ -1041,16 +1033,13 @@ def draw_artis_lightcurve(
                     " time range"
                 )
         print_series_summary(summaryname, summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows)
-        if residualseries is not None:
-            residualseries.append(
-                ResidualSeries(
-                    label_with_tags or f"direction bin {dirbin}",
-                    np.asarray(lcdata_valid["time_days"].to_numpy(), dtype=np.float64),
-                    np.asarray(lcdata_valid[ycolumn].to_numpy(), dtype=np.float64),
-                    modelline.get_color(),
-                    line=modelline,
-                )
-            )
+        add_residual_series(
+            residualseries,
+            label_with_tags or f"direction bin {dirbin}",
+            modelline,
+            lcdata_valid["time_days"].to_numpy(),
+            lcdata_valid[ycolumn].to_numpy(),
+        )
         if args.plotcmf and cmfcolumn not in lcdata.columns:
             print_warning(
                 f"The light curve of {linelabel} has no comoving frame luminosity, thus --plotcmf draws no curve"
@@ -1065,16 +1054,13 @@ def draw_artis_lightcurve(
                 else label_with_tags
             )
             (cmfline,) = axis.plot(lcdata["time_days"], lcdata[cmfcolumn], label=label_cmf, **plotkwargs_cmf)
-            if residualseries is not None:
-                residualseries.append(
-                    ResidualSeries(
-                        label_cmf or f"direction bin {dirbin} (cmf)",
-                        np.asarray(lcdata["time_days"].to_numpy(), dtype=np.float64),
-                        np.asarray(lcdata[cmfcolumn].to_numpy(), dtype=np.float64),
-                        cmfline.get_color(),
-                        line=cmfline,
-                    )
-                )
+            add_residual_series(
+                residualseries,
+                label_cmf or f"direction bin {dirbin} (cmf)",
+                cmfline,
+                lcdata["time_days"].to_numpy(),
+                lcdata[cmfcolumn].to_numpy(),
+            )
 
     return plotteddataframes
 
@@ -1313,12 +1299,7 @@ def draw_plot(
         # applied before a one-sided limit is lost
         invert_magnitude_yaxis(axis)
 
-    dfresidualstats = pl.DataFrame()
-    dfresidualcurves: list[pl.DataFrame] = []
-    if residualaxis is not None and residualseries is not None:
-        dfresidualstats = draw_residual_panel(
-            residualaxis, axis, residualseries, args, ismagnitude=lumunit == "mag", plottedpoints=dfresidualcurves
-        )
+    residualtables = draw_residual_panel(residualaxis, axis, residualseries, args, ismagnitude=lumunit == "mag")
 
     if thermaxis is not None:
         set_axis_properties(thermaxis, args, setyaxis=False)
@@ -1333,8 +1314,7 @@ def draw_plot(
     return {
         "": get_table_in_time_range(dflightcurves, args),
         "_energyrates": get_table_in_time_range(dfenergyrates, args),
-        "_residuals": dfresidualstats,
-        "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
+        **residualtables,
         "_summary": get_summary_table(summaryrows),
     }
 
@@ -1518,16 +1498,9 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
                 print_series_summary(
                     summaryname, summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows
                 )
-                if residualseries is not None:
-                    residualseries.append(
-                        ResidualSeries(
-                            plotkwargs["label"] or f"direction bin {dirbin}",
-                            np.asarray(time, dtype=np.float64),
-                            np.asarray(brightness_in_mag, dtype=np.float64),
-                            modelline.get_color(),
-                            line=modelline,
-                        )
-                    )
+                add_residual_series(
+                    residualseries, plotkwargs["label"] or f"direction bin {dirbin}", modelline, time, brightness_in_mag
+                )
 
     # once for the whole figure: the helper draws every band of a reference file onto its own panel, so
     # calling it per band drew each reference curve once per band and re-read the file each time. It also
@@ -1561,20 +1534,14 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
 
     invert_magnitude_yaxis(ax)
 
-    dfresidualstats = pl.DataFrame()
-    dfresidualcurves: list[pl.DataFrame] = []
-    if residualaxis is not None and residualseries is not None:
-        assert isinstance(ax, mplax.Axes)
-        dfresidualstats = draw_residual_panel(
-            residualaxis, ax, residualseries, args, ismagnitude=True, plottedpoints=dfresidualcurves
-        )
+    # a figure with a residual panel has one band, thus its first axis is the main frame
+    residualtables = draw_residual_panel(residualaxis, axes[0], residualseries, args, ismagnitude=True)
 
     output_data(
         args,
         {
             "": get_table_in_time_range([*dfbands, *dfrefbands, *dfhesmabands], args),
-            "_residuals": dfresidualstats,
-            "_residualcurves": pl.concat(dfresidualcurves) if dfresidualcurves else pl.DataFrame(),
+            **residualtables,
             "_summary": get_summary_table(summaryrows),
         },
         args.outputfile,
@@ -1621,16 +1588,9 @@ def plot_hesma_lightcurve(
                         label, None, label, None, ("band", band_name), dfinrange[timecolumn], dfinrange[band_name]
                     )
                 )
-            if residualseries is not None:
-                residualseries.append(
-                    ResidualSeries(
-                        label,
-                        np.asarray(hesma_model[timecolumn].to_numpy(), dtype=np.float64),
-                        np.asarray(hesma_model[band_name].to_numpy(), dtype=np.float64),
-                        hesmaline.get_color(),
-                        line=hesmaline,
-                    )
-                )
+            add_residual_series(
+                residualseries, label, hesmaline, hesma_model[timecolumn].to_numpy(), hesma_model[band_name].to_numpy()
+            )
 
 
 def get_dirbin_palette(seriescolors: Sequence[str | None]) -> list["mplt.ColorType"]:
@@ -1838,16 +1798,13 @@ def plot_lightcurve_from_refdata(
                     dfband["magnitude"],
                 )
             )
-        if residualseries is not None:
-            residualseries.append(
-                ResidualSeries(
-                    linename or str(lightcurvefilename),
-                    np.asarray(dfband["time"].to_numpy(), dtype=np.float64),
-                    np.asarray(dfband["magnitude"].to_numpy(), dtype=np.float64),
-                    refline.get_color(),
-                    line=refline,
-                )
-            )
+        add_residual_series(
+            residualseries,
+            linename or str(lightcurvefilename),
+            refline,
+            dfband["time"].to_numpy(),
+            dfband["magnitude"].to_numpy(),
+        )
     return linename
 
 
