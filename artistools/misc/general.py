@@ -388,8 +388,6 @@ def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.N
 
     The function is a partial of a module function, thus pickle can send it to the server of a remote model.
     """
-    import functools
-
     filterfunc = None
     dictargs = vars(args)
 

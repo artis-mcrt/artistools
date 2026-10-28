@@ -114,8 +114,6 @@ SHORT_HELP_POSITION = 32
 
 def get_first_sentence(text: str) -> str:
     """Return the first sentence of a help text. An abbreviation such as e.g. does not end a sentence."""
-    import re
-
     return re.split(r"(?<!\be\.g)(?<!\bi\.e)\.\s+(?=\S)", text, maxsplit=1)[0].removesuffix(".")
 
 
@@ -288,8 +286,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
         The help goes to the standard output, as print_help sends it. _print_message alone takes the standard error.
         """
-        import sys
-
         self._print_message(self.make_help(short=True), file or sys.stdout)
 
     def make_help(self, *, short: bool) -> str:
@@ -370,7 +366,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
         For example, the message gives --timedays/--time/-t for -timedays/-time/-t.
         """
-        import re
 
         def replace(match: re.Match[str]) -> str:
             flags = match.group(0).split("/")
@@ -391,8 +386,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         place of the error method. The exit status of 2 is the one that argparse gives. With no help
         text, the help line names the --help of the command.
         """
-        import sys
-
         self.print_usage(sys.stderr)
         print_error(message, helptext or f"Run `{self.prog} --help` to see every argument")
         raise SystemExit(2)
@@ -550,8 +543,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         positional arguments hides the second group, thus "plotestimators Te -t 300 mymodel" failed.
         parse_known_intermixed_args reads both groups. Commands that accept this order set wantsintermixed.
         """
-        import sys
-
         argstrings = self.split_joined_flags(sys.argv[1:] if args is None else args)
         if self.wantsintermixed:
             return self.parse_known_intermixed_args(argstrings, namespace)
@@ -604,8 +595,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
         argparse starts its messages with a lower-case letter, e.g. "argument -t: ...", thus the first letter changes.
         """
-        import re
-
         # argparse reads -timeday as -t with a joined value, thus its ambiguity list names -t as a
         # match. A suggestion from the real flags says what the user meant
         ambiguous = re.match(r"ambiguous option: (\S+) could match", message)
