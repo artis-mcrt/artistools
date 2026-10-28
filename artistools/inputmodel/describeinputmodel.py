@@ -19,7 +19,7 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
-from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import get_artis_option
@@ -63,7 +63,7 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
 def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     """Describe the ARTIS input model, such as the mass, velocity structure, and abundances."""
     print_heading(str(modelpath))
-    dfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=not args.noabund, printwarningsonly=False)
+    dfmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=not args.noabund, printwarningsonly=False)
 
     # the collect below puts the dataframe in memory. Thus the select keeps only the derived columns that the steps read
     dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(

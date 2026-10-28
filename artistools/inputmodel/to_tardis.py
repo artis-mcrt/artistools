@@ -11,7 +11,7 @@ import polars.selectors as cs
 
 from artistools.atomic import get_atomic_number
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
-from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -62,7 +62,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # the file has the name of the model, thus the check needs no data and comes before the work
     confirm_overwrite([args.outputfile], (f"{get_model_name(modelpath)}.csvy",), force=args.force)
 
-    pldfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
+    pldfmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=(args.abundtype == "elemental"))
     if modelmeta["dimensions"] != 1:
         # a TARDIS model holds one radial velocity for each shell, which only a 1D model gives
         exit_with_error(

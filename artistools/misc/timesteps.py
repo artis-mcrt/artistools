@@ -39,7 +39,7 @@ def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
 
 @modelpath_cache(maxsize=16)
 @on_model_host
-def get_deposition(modelpath: Path) -> pl.LazyFrame:
+def scan_deposition(modelpath: Path) -> pl.LazyFrame:
     """Return a polars LazyFrame containing the deposition data.
 
     The file is read and its times checked against the timesteps on every call, and a light curve plot asks
@@ -87,7 +87,7 @@ def get_deposition(modelpath: Path) -> pl.LazyFrame:
 
 
 @on_model_host
-def get_timesteps(modelpath: Path) -> pl.LazyFrame:
+def scan_timesteps(modelpath: Path) -> pl.LazyFrame:
     """Return a LazyFrame containing the timestep indices, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
@@ -152,7 +152,7 @@ def get_timestep_times(modelpath: Path, loc: t.Literal["mid", "start", "end", "d
     colname_of_loc = {"mid": "tmid_days", "start": "tstart_days", "end": "tend_days", "delta": "twidth_days"}
 
     if colname := colname_of_loc.get(loc):
-        return get_timesteps(modelpath).select(colname).collect().get_column(colname).to_list()
+        return scan_timesteps(modelpath).select(colname).collect().get_column(colname).to_list()
 
     msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
     raise ValueError(msg)
@@ -518,9 +518,9 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
 def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, float | int | None]:
     """Return the time range for which the entire model can send light signals the observer."""
     # artistools.inputmodel imports artistools.misc, thus this import runs at call time
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel import scan_modeldata
 
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     vmax = modelmeta["vmax_cmps"]  # max velocity component for a single axis [cm/s]
 
     # find the earliest possible escape time and add the largest possible travel time
@@ -541,8 +541,8 @@ def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, 
     # find the last escape time, then subtract the longest travel time from the origin. This is the
     # correction of the observer time
     try:
-        depdata = get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
-        # get_deposition() always provides a timestep column, adding a row index if the file has no such column
+        depdata = scan_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
+        # scan_deposition() always provides a timestep column, adding a row index if the file has no such column
         nts_last = depdata.select(pl.col("timestep").max()).collect().item()
     except (FileNotFoundError, ValueError) as exc:
         # only the energy rates need deposition.out, thus a missing file or a file of a different model stops no plot

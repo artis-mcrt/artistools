@@ -193,7 +193,7 @@ def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_pat
     lambda_bin_edges = np.arange(3000.0, 8000.0, 100.0)
 
     def get_flambda(modelpath: Path) -> npt.NDArray[np.floating]:
-        dfspectrum = at.spectra.get_from_packets(
+        dfspectrum = at.spectra.scan_spectra_from_packets(
             modelpath,
             timelowdays=131.0,
             timehighdays=139.0,
@@ -214,7 +214,7 @@ def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_pat
     assert not flambda_ranges[outsideranges].any()
 
     with pytest.raises(ValueError, match="outside the virtual packets, which cover 130"):
-        at.spectra.get_from_packets(
+        at.spectra.scan_spectra_from_packets(
             rangesmodel,
             timelowdays=125.0,
             timehighdays=135.0,

@@ -14,7 +14,7 @@ import polars.selectors as cs
 from artistools.constants import C_cm_per_s
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
-from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -163,7 +163,7 @@ def plot_density_profiles(
     max_vmax_on_c = float("-inf")
     for color, label, modelpath in zip(args.color, args.label, args.modelpath, strict=True):
         print(f"Plotting {label}")
-        lzdfmodel, modelmeta = get_modeldata(modelpath)
+        lzdfmodel, modelmeta = scan_modeldata(modelpath)
         lzdfmodel = add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
 
         vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s

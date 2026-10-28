@@ -73,14 +73,14 @@ command `artistools plotradfield` plots the field of a cell.
 - `at.atomic.get_levels(modelpath, get_transitions=True)` reads `adata.txt` and `transitiondata.txt`. It gives one row
   for each ion, with a DataFrame of the levels (`energy_ev`, `g`) and a LazyFrame of the transitions (`A` in s^-1).
 - `at.get_composition_data(modelpath)` reads `compositiondata.txt`: the ions of each element.
-- `at.atomic.get_linelist_pldf(modelpath)` reads `linelist.out`, the list of the lines. The row number of a line is the
+- `at.atomic.scan_linelist(modelpath)` reads `linelist.out`, the list of the lines. The row number of a line is the
   code of that line in the packets.
-- `at.atomic.get_bflist(modelpath)` reads `bflist.out`, the list of the bound-free continua.
-- `at.atomic.get_nuclides(modelpath)` reads `nuclides.out`, the radioactive nuclides of the pellets.
+- `at.atomic.scan_bflist(modelpath)` reads `bflist.out`, the list of the bound-free continua.
+- `at.atomic.scan_nuclides(modelpath)` reads `nuclides.out`, the radioactive nuclides of the pellets.
 
 ## Packets: the last interaction of each packet
 
-`at.packets.get_packets(modelpath, escape_type="TYPE_RPKT")` gives `(number of ranks that it read, LazyFrame)`. The
+`at.packets.scan_packets(modelpath, escape_type="TYPE_RPKT")` gives `(number of ranks that it read, LazyFrame)`. The
 main columns of an escaped packet are:
 
 - `e_rf` (erg), `nu_rf` (Hz), and `t_arrive_d` (days), the energy, the frequency, and the arrival time at the observer;
@@ -94,7 +94,7 @@ main columns of an escaped packet are:
 - `em_posx`, `em_posy`, `em_posz` (cm), and `em_time` (s), the place and the time of the last emission or scattering.
 
 `artistools plotspectra --frompackets --groupby ion` and `artistools plotlastpacketinteraction` use these columns.
-`at.packets.get_virtual_packets(modelpath)` reads the virtual packets of `vpackets/`.
+`at.packets.scan_virtual_packets(modelpath)` reads the virtual packets of `vpackets/`.
 
 ## Spectra by the ion that emits or absorbs
 
@@ -120,12 +120,12 @@ main columns of an escaped packet are:
 
 SKILL.md gives the light curves and `deposition.out`. Other readers:
 
-- `at.misc.get_timesteps(modelpath)` gives the start, the mid time, the end, and the width of each time step.
-- `at.lightcurve.get_from_packets(modelpath, pellet_nucname=...)` gives the light curve of the energy of one nuclide.
+- `at.misc.scan_timesteps(modelpath)` gives the start, the mid time, the end, and the width of each time step.
+- `at.lightcurve.scan_lightcurve_from_packets(modelpath, pellet_nucname=...)` gives the light curve of the energy of one nuclide.
 
 ## Model input
 
-- `at.get_modeldata(modelpath)` reads `model.txt`. Give `get_elemabundances=True` to also read `abundances.txt`, which
+- `at.scan_modeldata(modelpath)` reads `model.txt`. Give `get_elemabundances=True` to also read `abundances.txt`, which
   gives the mass fraction of each element, e.g. `X_Fe`. `at.add_derived_cols_to_modeldata(...)` adds derived columns,
   e.g. the mass of each cell.
 - `at.get_inputparams(modelpath)` reads `input.txt`: e.g. `tmin`, `tmax` (days), and `ntstep`.

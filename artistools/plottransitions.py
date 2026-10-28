@@ -23,7 +23,7 @@ from artistools.constants import hc_in_ev_cm
 from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -418,7 +418,7 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
     """Read the time, the velocity, and the estimators of the selected cell and timestep."""
     timestep = get_selected_timestep(modelpath, args.timestep, args.timedays, defaulttimestep="last")
 
-    dfmodel, modelmeta = get_modeldata(modelpath)
+    dfmodel, modelmeta = scan_modeldata(modelpath)
     # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
     modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
     modelgridindex = get_single_modelgridindex(args.modelgridindex)

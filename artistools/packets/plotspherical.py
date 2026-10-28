@@ -45,7 +45,7 @@ from artistools.misc import resolve_frameset_paths
 from artistools.packets.core import add_derived_columns_lazy
 from artistools.packets.core import addarg_maxpacketfiles
 from artistools.packets.core import bin_packet_directions_polars
-from artistools.packets.core import get_packets
+from artistools.packets.core import scan_packets
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import FIGWIDTH_INCHES
 from artistools.plottools import save_figure
@@ -592,7 +592,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         else None
     )
 
-    nprocs_read, dfpackets = get_packets(
+    nprocs_read, dfpackets = scan_packets(
         args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = add_derived_columns_lazy(dfpackets, modelpath=args.modelpath)

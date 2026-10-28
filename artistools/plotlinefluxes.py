@@ -19,12 +19,12 @@ from matplotlib.typing import MarkerType
 
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
-from artistools.atomic import get_linelist_pldf
+from artistools.atomic import scan_linelist
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -55,7 +55,7 @@ from artistools.misc import trim_or_pad
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import addarg_maxpacketfiles
-from artistools.packets import get_packets
+from artistools.packets import scan_packets
 from artistools.packets.core import get_relative_error_expr
 from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.plottools import make_frame_figure
@@ -190,7 +190,7 @@ def get_line_luminosities_from_packets(
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
-    nprocs_read, dfpackets = get_packets(
+    nprocs_read, dfpackets = scan_packets(
         modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
@@ -242,7 +242,7 @@ def get_line_luminosities_from_pops(
 
     # the volume column holds the volume of each cell at the model time for a model of any dimension. A 1D model
     # also has shell velocities, but a 2D or 3D model has none
-    lzmodel, modelmeta = get_modeldata(modelpath)
+    lzmodel, modelmeta = scan_modeldata(modelpath)
     modeldata = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .select("modelgridindex", "volume")
@@ -414,7 +414,7 @@ def get_closelines(
     applies no limit.
     """
     lzdflinelistclosematches = (
-        get_linelist_pldf(modelpath)
+        scan_linelist(modelpath)
         .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
         .filter(pl.col("atomic_number") == atomic_number, pl.col("ion_stage") == ion_stage)
     )
@@ -823,7 +823,7 @@ def get_emitting_regions_data(
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
-    _nprocs_read, dfpackets = get_packets(
+    _nprocs_read, dfpackets = scan_packets(
         modelpath=modelpath, maxpacketfiles=args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 

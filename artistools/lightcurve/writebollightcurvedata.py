@@ -20,12 +20,12 @@ from artistools.misc import get_model_name
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
-from artistools.spectra import read_spec_res
+from artistools.spectra import scan_spec_res
 
 
 def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
     """Return log10(bolometric luminosity) per direction bin at each timestep, integrated from the spectra."""
-    res_specdata = read_spec_res(modelpath)
+    res_specdata = scan_spec_res(modelpath)
     timearray = res_specdata[0].collect_schema().names()[1:]
     # the light_curve.out mode writes every time, thus this mode does too. A fixed range of 5 to 80 days
     # dropped every time of a kilonova below 5 days and gave an empty file for a nebular model

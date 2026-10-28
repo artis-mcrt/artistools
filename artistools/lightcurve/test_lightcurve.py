@@ -93,15 +93,15 @@ def test_lightcurve_of_a_virtual_observer_holds_the_energy_of_its_packets() -> N
     4 pi, give a different energy.
     """
     modelpath = at.get_path("testdata") / "vpktcontrib"
-    nprocs_read, dfvpackets = at.packets.get_virtual_packets(modelpath)
+    nprocs_read, dfvpackets = at.packets.scan_virtual_packets(modelpath)
     # observer 1 with opacity choice 1
     dirbin = at.misc.get_vpkt_config(modelpath)["nspectraperobs"] + 1
 
-    dflightcurve = at.lightcurve.get_from_packets(
+    dflightcurve = at.lightcurve.scan_lightcurve_from_packets(
         modelpath, directionbins=[dirbin], directionbins_are_vpkt_observers=True
     )[dirbin].collect()
 
-    dftimesteps = at.misc.get_timesteps(modelpath).collect()
+    dftimesteps = at.misc.scan_timesteps(modelpath).collect()
     assert dflightcurve["timestep"].to_list() == dftimesteps["timestep"].to_list()
     dfinrange = dfvpackets.filter(
         pl.col("dir1_t_arrive_d").is_between(dftimesteps["tstart_days"].min(), dftimesteps["tend_days"].max())
@@ -132,16 +132,16 @@ def test_lightcurve_of_a_virtual_observer_keeps_the_vpkt_window_and_ranges(
     # the fifth line is the time window override, and the sixth line is the custom wavelength range flag
     vpktlines[4:6] = ["1 130 140", "1 2 3500 6000 6400 7200"]
     (tmp_path / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
-    nprocs_read, dfvpackets = at.packets.get_virtual_packets(tmp_path)
+    nprocs_read, dfvpackets = at.packets.scan_virtual_packets(tmp_path)
     dirbin = 4
 
-    dflightcurve = at.lightcurve.get_from_packets(
+    dflightcurve = at.lightcurve.scan_lightcurve_from_packets(
         tmp_path, directionbins=[dirbin], directionbins_are_vpkt_observers=True
     )[dirbin].collect()
 
     assert "leaves out" in capsys.readouterr().err
     dftimesteps = (
-        at.misc.get_timesteps(tmp_path).filter(pl.col("timestep").is_in(dflightcurve["timestep"].implode())).collect()
+        at.misc.scan_timesteps(tmp_path).filter(pl.col("timestep").is_in(dflightcurve["timestep"].implode())).collect()
     )
     windowstart, windowend = (
         float(dftimesteps["tstart_days"].to_numpy().min()),
@@ -149,7 +149,7 @@ def test_lightcurve_of_a_virtual_observer_keeps_the_vpkt_window_and_ranges(
     )
     assert windowstart >= 130.0
     assert windowend <= 140.0
-    assert 0 < dftimesteps.height < at.misc.get_timesteps(tmp_path).collect().height
+    assert 0 < dftimesteps.height < at.misc.scan_timesteps(tmp_path).collect().height
 
     c = at.constants.c_ang_per_s
     lambda_rf = c / pl.col("dir1_nu_rf")
@@ -170,7 +170,9 @@ def test_lightcurve_of_a_virtual_observer_keeps_the_vpkt_window_and_ranges(
     vpktlines[4] = "1 100 110"
     (tmp_path / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="No selected timestep lies fully inside the time window"):
-        at.lightcurve.get_from_packets(tmp_path, directionbins=[dirbin], directionbins_are_vpkt_observers=True)
+        at.lightcurve.scan_lightcurve_from_packets(
+            tmp_path, directionbins=[dirbin], directionbins_are_vpkt_observers=True
+        )
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
@@ -1224,7 +1226,7 @@ def test_plotdeposition(mockplot: mock.MagicMock, lumunit: str) -> None:
             **plotkwargs,
         )
 
-    gammadep_lsun = at.get_deposition(modelpath_classic_3d).collect()["gammadep_Lsun"].to_numpy()
+    gammadep_lsun = at.scan_deposition(modelpath_classic_3d).collect()["gammadep_Lsun"].to_numpy()
     with np.errstate(divide="ignore"):
         expected = {
             "erg/s": gammadep_lsun * Lsun_to_erg_per_s,
@@ -1255,7 +1257,7 @@ def test_plotthermalisation(mockplot: mock.MagicMock, tmp_path: Path) -> None:
         outputfile=tmp_path / "lc_thermalisation.pdf",
     )
 
-    depdata = at.get_deposition(modelpath_classic_3d).collect()
+    depdata = at.scan_deposition(modelpath_classic_3d).collect()
     ratiocalls = {
         callargs.kwargs["label"]: callargs
         for callargs in mockplot.call_args_list
@@ -2476,7 +2478,7 @@ def test_residual_baseline_counts_energy_rate_curves(
     reffile = tmp_path / "reference.txt"
     reffile.write_text("#time_days luminosity_erg/s\n5 1e40\n6 2e40\n7 3e40\n", encoding="utf-8")
     with (
-        mock.patch.object(at.lightcurve.plotlightcurve, "get_deposition", return_value=depdata.lazy()),
+        mock.patch.object(at.lightcurve.plotlightcurve, "scan_deposition", return_value=depdata.lazy()),
         mock.patch.object(
             at.lightcurve.plotlightcurve, "draw_residual_panel", wraps=at.lightcurve.plotlightcurve.draw_residual_panel
         ) as mockdraw,
@@ -2953,7 +2955,7 @@ def test_topnucs_with_virtual_packet_observers_stops_with_a_message(
 ) -> None:
     """The virtual packets hold no pellet. Thus -topnucs or --use_pellet_decay_time with -plotvspecpol gives a message.
 
-    get_from_packets stopped with a bare AssertionError, which the viewer showed as its reason.
+    scan_lightcurve_from_packets stopped with a bare AssertionError, which the viewer showed as its reason.
     """
     vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
     with pytest.raises(SystemExit):
@@ -2970,7 +2972,7 @@ def test_topnucs_with_virtual_packet_observers_stops_with_a_message(
         )
     assert "hold no pellet" in capsys.readouterr().err
     with pytest.raises(ValueError, match="hold no pellet"):
-        at.lightcurve.get_from_packets(
+        at.lightcurve.scan_lightcurve_from_packets(
             vpktmodelpath, directionbins=[0], directionbins_are_vpkt_observers=True, pellet_nucname="Ni56"
         )
 
@@ -2988,7 +2990,7 @@ def test_nuclide_light_curve_label_keeps_the_model_name(mockplot: mock.MagicMock
     fig = mplfig.Figure()
     axis = fig.add_subplot()
     lcdataframes = at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")
-    with mock.patch.object(plotlightcurve, "get_from_packets", return_value=lcdataframes):
+    with mock.patch.object(plotlightcurve, "scan_lightcurve_from_packets", return_value=lcdataframes):
         plotlightcurve.plot_artis_lightcurve(
             modelpath, axis, escape_type="TYPE_GAMMA", frompackets=True, args=args, pellet_nucname="Ni56"
         )
@@ -3465,7 +3467,7 @@ def test_band_outside_a_virtual_packet_spectrum_gives_a_warning(capsys: pytest.C
 def test_band_light_curve_of_a_model_with_only_specpol_out() -> None:
     """A model with POL_ON can hold specpol.out and no spec.out. Its Stokes I spectrum gives the angle average.
 
-    The band light curve of bin -1 stopped with FileNotFoundError, because get_spectra read spec.out only.
+    The band light curve of bin -1 stopped with FileNotFoundError, because scan_spectra read spec.out only.
     """
     from artistools.lightcurve.core import generate_band_lightcurve_data
 

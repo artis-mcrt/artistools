@@ -19,7 +19,7 @@ import polars.selectors as cs
 
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
-from artistools.atomic import get_nuclides
+from artistools.atomic import scan_nuclides
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import H0_km_per_s_per_mpc
@@ -37,7 +37,6 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_metadata
 from artistools.misc import get_metadata_path
-from artistools.misc import get_timesteps
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import on_model_host
@@ -48,17 +47,18 @@ from artistools.misc import print_warning
 from artistools.misc import read_complete_lines
 from artistools.misc import read_wsv
 from artistools.misc import require_reference_data_file
+from artistools.misc import scan_timesteps
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import zopen
-from artistools.packets import get_packets
-from artistools.packets import get_virtual_packets
+from artistools.packets import scan_packets
+from artistools.packets import scan_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
 from artistools.paths import get_path
 from artistools.spectra import get_escape_surface_gamma
-from artistools.spectra import get_spectra
-from artistools.spectra import get_spectrum_at_time
-from artistools.spectra import get_vspecpol_data
+from artistools.spectra import scan_spectra
+from artistools.spectra import scan_spectrum_at_time
+from artistools.spectra import scan_vspecpol_data
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
@@ -207,7 +207,7 @@ def select_timesteps_inside_vpkt_window(dftimesteps: pl.DataFrame, vpkt_config: 
 
 
 @on_model_host
-def get_from_packets(
+def scan_lightcurve_from_packets(
     modelpath: str | Path,
     escape_type: str = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
@@ -231,7 +231,7 @@ def get_from_packets(
         raise ValueError(msg)
 
     dftimesteps_selected = df_filter_minmax_bracketed(
-        get_timesteps(Path(modelpath)), "tmid_days", timedaysmin, timedaysmax
+        scan_timesteps(Path(modelpath)), "tmid_days", timedaysmin, timedaysmax
     ).collect()
 
     vpkt_config = get_vpkt_config(Path(modelpath)) if directionbins_are_vpkt_observers else None
@@ -244,9 +244,9 @@ def get_from_packets(
     ]
 
     if directionbins_are_vpkt_observers:
-        nprocs_read, dfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = scan_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = get_packets(
+        nprocs_read, dfpackets = scan_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
         # the comoving frame needs the velocity of the model surface. A copy of a model folder can leave out a large
@@ -268,7 +268,7 @@ def get_from_packets(
             expr = pl.col("nucname") == pellet_nucname
         dfpackets = dfpackets.filter(
             pl.col("pellet_nucindex").is_in(
-                get_nuclides(modelpath=Path(modelpath))
+                scan_nuclides(modelpath=Path(modelpath))
                 .filter(expr)
                 .select("pellet_nucindex")
                 .collect()
@@ -370,8 +370,8 @@ def get_top_nuclides(
 
     The host of a remote model reads the packets, and only the table of the nuclides comes back.
     """
-    dfnuclides = get_nuclides(modelpath=modelpath)
-    _, dfpackets = get_packets(modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type)
+    dfnuclides = scan_nuclides(modelpath=modelpath)
+    _, dfpackets = scan_packets(modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type)
     return (
         df_filter_minmax_bracketed(
             dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
@@ -412,12 +412,12 @@ def generate_band_lightcurve_data(
         average_over_phi_angle=False,
         average_over_theta_angle=False,
     )
-    # get_spectrum_at_time reads the angle average of bin -1 from spec.out, thus its times come from there too.
+    # scan_spectrum_at_time reads the angle average of bin -1 from spec.out, thus its times come from there too.
     # A model with virtual packets can have no specpol.out
     isvpktobserver = bool(args.plotvspecpol) and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file()
     if isvpktobserver:
         print("Found vpkt.txt, using virtual packets")
-        vspecdata = get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)["I"]
+        vspecdata = scan_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)["I"]
         timearray = vspecdata.collect_schema().names()[1:]
     else:
         specfilename = (
@@ -452,7 +452,7 @@ def generate_band_lightcurve_data(
 
     # one collect_all call evaluates the spectra of all the times together, and every band reads them
     spectra = pl.collect_all([
-        get_spectrum_at_time(
+        scan_spectrum_at_time(
             Path(modelpath),
             timestep=timestep,
             time=time,
@@ -554,11 +554,11 @@ def get_bolometric_luminosities(
     """Return the bolometric luminosity in erg/s of each direction bin at each given timestep.
 
     The luminosity comes from an integral of the emergent spectrum at a distance of 1 Mpc. One
-    get_spectra call builds the queries of every timestep, and one collect_all call then evaluates
+    scan_spectra call builds the queries of every timestep, and one collect_all call then evaluates
     the timesteps of one direction bin. Thus the frames of every bin do not stay in memory together.
     """
     lazyspectra = [
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=dirbins)
+        scan_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=dirbins)
         for timestep in timesteps
     ]
 

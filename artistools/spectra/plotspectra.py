@@ -95,8 +95,8 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import resolve_outputfile
 from artistools.packets import addarg_maxpacketfiles
-from artistools.packets import get_packets
 from artistools.packets import get_packets_column_names
+from artistools.packets import scan_packets
 from artistools.paths import get_path
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
@@ -133,15 +133,10 @@ from artistools.spectra.core import get_default_radialvelocity_shells
 from artistools.spectra.core import get_dfspectrum_x_y_with_units
 from artistools.spectra.core import get_flux_contributions
 from artistools.spectra.core import get_flux_contributions_from_packets
-from artistools.spectra.core import get_from_packets
 from artistools.spectra.core import get_lambda_bin_edges
 from artistools.spectra.core import get_no_sampled_emission_message
 from artistools.spectra.core import get_reference_spectrum
 from artistools.spectra.core import get_shell_labels
-from artistools.spectra.core import get_specpol_data
-from artistools.spectra.core import get_spectra
-from artistools.spectra.core import get_vspecpol_data
-from artistools.spectra.core import get_vspecpol_spectrum
 from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import make_averaged_vspecfiles
 from artistools.spectra.core import make_virtual_spectra_summed_file
@@ -149,6 +144,11 @@ from artistools.spectra.core import NO_SAMPLED_EMISSION_HELP
 from artistools.spectra.core import print_contribution_table
 from artistools.spectra.core import print_integrated_flux
 from artistools.spectra.core import rank_flux_series_names
+from artistools.spectra.core import scan_specpol_data
+from artistools.spectra.core import scan_spectra
+from artistools.spectra.core import scan_spectra_from_packets
+from artistools.spectra.core import scan_vspecpol_data
+from artistools.spectra.core import scan_vspecpol_spectrum
 from artistools.spectra.core import SHELLCOLUMNS
 from artistools.spectra.core import timeshift_fluxscale_co56law
 from artistools.spectra.writespectra import write_flambda_spectra_of_models
@@ -257,10 +257,10 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     """Plot the Stokes parameter selected by args.stokesparam against wavelength."""
     if args.plotvspecpol:
         angle = args.plotvspecpol[0]
-        stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=modelpath)
+        stokes_params = scan_vspecpol_data(vspecindex=angle, modelpath=modelpath)
     else:
         angle = args.plotviewingangle[0] if args.plotviewingangle else -1
-        stokes_params = get_specpol_data(dirbin=angle, modelpath=modelpath)
+        stokes_params = scan_specpol_data(dirbin=angle, modelpath=modelpath)
 
     dfspectrum = stokes_params[args.stokesparam].with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu")).collect()
 
@@ -940,7 +940,7 @@ def plot_artis_spectrum(
         else []
     )
     if timeranges:
-        nprocs_read, dfpackets = get_packets(
+        nprocs_read, dfpackets = scan_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
             packet_type="TYPE_ESCAPE",
@@ -948,8 +948,8 @@ def plot_artis_spectrum(
         )
         timelow = min(timerange[2] for timerange in timeranges)
         timehigh = max(timerange[3] for timerange in timeranges)
-        # get_from_packets reads only the time, the frequency, the energy, and the direction bin of each packet. The
-        # packets files hold about 40 columns, thus a frame of every column needs about ten times the memory
+        # scan_spectra_from_packets reads only the time, the frequency, the energy, and the direction bin of each
+        # packet. The packets files hold about 40 columns, thus a frame of every column needs about ten times the memory
         nprocs_read_dfpackets = (
             nprocs_read,
             dfpackets
@@ -1015,7 +1015,7 @@ def plot_artis_spectrum(
         if from_packets:
             lambda_bin_edges = get_packet_lambda_bin_edges(args, xmin, xmax, modelpath)
 
-            viewinganglespectra = get_from_packets(
+            viewinganglespectra = scan_spectra_from_packets(
                 modelpath,
                 timelowdays=timemin,
                 timehighdays=timemax,
@@ -1038,14 +1038,14 @@ def plot_artis_spectrum(
         elif args.plotvspecpol is not None:
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
             viewinganglespectra = {
-                dirbin: get_vspecpol_spectrum(
+                dirbin: scan_vspecpol_spectrum(
                     modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc, timemin=timemin, timemax=timemax
                 )
                 for dirbin in directionbins
                 if dirbin >= 0
             }
         else:
-            viewinganglespectra = get_spectra(
+            viewinganglespectra = scan_spectra(
                 modelpath=modelpath,
                 timestepmin=timestepmin,
                 timestepmax=timestepmax,

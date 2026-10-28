@@ -1688,7 +1688,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (10, "3be77fa4fa06a1ac"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (10, "b22d0f6a5bee488c"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1735,7 +1735,7 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
         try:
             assert at.misc.path_is_dir(remotepath)
             assert not at.misc.path_is_file(remotepath)
-            remotespectra = at.spectra.get_spectra(remotepath, timestepmin=40, fluxfilterfunc=filterfunc)
+            remotespectra = at.spectra.scan_spectra(remotepath, timestepmin=40, fluxfilterfunc=filterfunc)
             remotelightcurve = at.lightcurve.scan_lightcurve(remotepath / "light_curve.out")
             # a caller skips a model on FileNotFoundError, thus the server must give back the same type
             with pytest.raises(FileNotFoundError, match="nosuchfile"):
@@ -1828,7 +1828,7 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
     assert dflocalcell.height == 1
     pltest.assert_frame_equal(dfremotecell, dflocalcell, abs_tol=0.0)
     assert (tmp_path / "plotBlightcurves.pdf").is_file()
-    localspectra = at.spectra.get_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
+    localspectra = at.spectra.scan_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
     # the fluxes are far below the default absolute tolerance, thus the comparison has none
     pltest.assert_frame_equal(remotespectra[-1].collect(), localspectra[-1].collect(), abs_tol=0.0)
     pltest.assert_frame_equal(
@@ -1871,11 +1871,11 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
         process, _ = remote.get_server("testhost")
         try:
             # a str path stayed on this host, and check_local_path then stopped the read
-            dfremotemodel, remotemodelmeta = at.get_modeldata(str(remotepath))
+            dfremotemodel, remotemodelmeta = at.scan_modeldata(str(remotepath))
             dfremotemodel = dfremotemodel.collect()
             # the host collected the full frame, thus a select of one column sent each column through ssh
             with mock.patch.object(remote, "call_on_host", wraps=remote.call_on_host) as mockcall:
-                at.get_modeldata(remotepath)[0].select("inputcellid").collect()
+                at.scan_modeldata(remotepath)[0].select("inputcellid").collect()
             rowcalls = [call for call in mockcall.call_args_list if call.args[2] == "read_modeldata_rows_on_host"]
             assert [call.args[3][2] for call in rowcalls] == [["inputcellid"]]
             remoteinputparams = at.get_inputparams(remotepath)
@@ -1901,7 +1901,7 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
             assert process.wait(timeout=30) == 0
             remote.forget_server("testhost")
 
-    dflocalmodel, localmodelmeta = at.get_modeldata(modelpath)
+    dflocalmodel, localmodelmeta = at.scan_modeldata(modelpath)
     pltest.assert_frame_equal(dfremotemodel, dflocalmodel.collect(), abs_tol=0.0)
     assert remotemodelmeta == localmodelmeta
     assert remoteinputparams == at.get_inputparams(modelpath)
@@ -1911,7 +1911,7 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     assert dfremotenltepops.height > 0
     assert remoteoptions == {"MINTEMP": "3500."}
     assert remotemintemp == "3500."
-    # get_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
+    # scan_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
     assert remotesummary == get_model_summary(modelpath)
     pltest.assert_frame_equal(dfremotechecks, get_check_results(modellink))
     assert remotelogfiles == [Path(f"testhost:{logfolder / 'output_0-0.txt'}")]
@@ -2125,7 +2125,7 @@ def test_get_deposition(tmp_path: Path) -> None:
         deplines.append(f"{tmid} {ts + 1.0} {(ts + 1) * 0.1} {(ts + 1) * 1.1}")
     (tmp_path / "deposition.out").write_text("\n".join(deplines) + "\n")
 
-    dep = at.get_deposition(tmp_path).collect()
+    dep = at.scan_deposition(tmp_path).collect()
 
     assert dep.height == 5
     assert {"timestep", "tmid_days", "gammadep_Lsun", "positrondep_Lsun", "total_dep_Lsun"} <= set(dep.columns)
@@ -2142,7 +2142,7 @@ def test_get_deposition(tmp_path: Path) -> None:
     (baddir / "deposition.out").write_text("\n".join(badlines) + "\n")
 
     with pytest.raises(ValueError, match="Deposition times do not match"):
-        at.get_deposition(baddir).collect()
+        at.scan_deposition(baddir).collect()
 
     # a file with more rows than the model has timesteps gets the same message, not a broadcast error
     longdir = tmp_path / "long"
@@ -2152,7 +2152,7 @@ def test_get_deposition(tmp_path: Path) -> None:
     (longdir / "deposition.out").write_text("\n".join(longlines) + "\n")
 
     with pytest.raises(ValueError, match="Deposition times do not match"):
-        at.get_deposition(longdir).collect()
+        at.scan_deposition(longdir).collect()
 
 
 def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_different_model(
@@ -3546,15 +3546,15 @@ def test_the_dispatcher_shows_the_context_notes_of_an_error(
     import artistools.__main__
 
     monkeypatch.delenv("ARTISTOOLS_TRACEBACK", raising=False)
-    error = OSError("The artistools server on vae26 stopped during a call of get_spectra")
+    error = OSError("The artistools server on vae26 stopped during a call of scan_spectra")
     error.add_note("The traceback on the server:\nTraceback (most recent call last)")
-    error.add_note("The error came from get_spectra on the artistools server of vae26")
+    error.add_note("The error came from scan_spectra on the artistools server of vae26")
     with mock.patch("artistools.commands.show_version", side_effect=error), pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["version"])
 
     message = capsys.readouterr().err
-    assert "stopped during a call of get_spectra" in message
-    assert "The error came from get_spectra on the artistools server of vae26" in message
+    assert "stopped during a call of scan_spectra" in message
+    assert "The error came from scan_spectra on the artistools server of vae26" in message
     assert "Traceback" not in message
 
     # a panic of polars that has a different cause keeps its traceback

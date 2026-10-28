@@ -78,13 +78,13 @@ from artistools.atomic import get_ionstring as get_ionstring
 from artistools.atomic import get_z_a_nucname as get_z_a_nucname
 from artistools.estimators import scan_estimators as scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata as get_modeldata
+from artistools.inputmodel import scan_modeldata as scan_modeldata
 from artistools.misc import firstexisting as firstexisting
-from artistools.misc import get_deposition as get_deposition
 from artistools.misc import get_inputparams as get_inputparams
 from artistools.misc import get_model_name as get_model_name
 from artistools.misc import get_nprocs as get_nprocs
 from artistools.misc import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc import get_timestep_times as get_timestep_times
+from artistools.misc import scan_deposition as scan_deposition
 from artistools.misc import zopen as zopen
 from artistools.paths import get_path as get_path

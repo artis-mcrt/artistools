@@ -182,7 +182,7 @@ def test_comparetogsinetwork_plots_the_global_qdot_with_no_cell(mockplot: mock.M
     assert (tmp_path / "gsiout" / "gsinetwork_global-qdot.pdf").is_file()
     labels = [callargs.kwargs.get("label") for callargs in mockplot.call_args_list]
     assert labels == [r"$\dot{Q}_\beta$ ARTIS", r"$\dot{Q}_\alpha$ ARTIS"]
-    depdata = at.misc.get_deposition(modelpath_classic_3d).collect()
+    depdata = at.misc.scan_deposition(modelpath_classic_3d).collect()
     assert np.allclose(np.asarray(mockplot.call_args_list[0][0][2]), depdata["Qdot_betaminus_ana_erg/s/g"].to_numpy())
 
 
@@ -495,7 +495,7 @@ def test_abundance_correction_factors_need_the_grid_file_of_a_1d_model(
     """
     get_abundance_correction_factors = at.gsinetwork.comparetogsinetwork.get_abundance_correction_factors
     modelpath_1d = at.get_path("testdata") / "test-classicmode_1d"
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath_1d)
+    lzdfmodel, modelmeta = at.scan_modeldata(modelpath_1d)
     with pytest.raises(SystemExit):
         get_abundance_correction_factors(lzdfmodel, [0], ["Fe"], modelpath_1d, modelmeta)
     assert "grid.out does not exist" in capsys.readouterr().err
@@ -503,5 +503,5 @@ def test_abundance_correction_factors_need_the_grid_file_of_a_1d_model(
     for filepath in modelpath_classic_3d.iterdir():
         if filepath.name != "grid.out":
             (tmp_path / filepath.name).symlink_to(filepath)
-    lzdfmodel, modelmeta = at.get_modeldata(tmp_path)
+    lzdfmodel, modelmeta = at.scan_modeldata(tmp_path)
     assert get_abundance_correction_factors(lzdfmodel, [211], ["Fe"], tmp_path, modelmeta) == {}

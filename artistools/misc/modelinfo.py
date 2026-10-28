@@ -108,9 +108,9 @@ def get_wid_init_at_tmodel(
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         assert modelpath is not None
         # artistools.inputmodel imports artistools.misc, thus this import runs at call time
-        from artistools.inputmodel import get_modeldata
+        from artistools.inputmodel import scan_modeldata
 
-        _, modelmeta = get_modeldata(modelpath)
+        _, modelmeta = scan_modeldata(modelpath)
         assert modelmeta["dimensions"] == 3
         ngridpoints = modelmeta["npts_model"]
         xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
@@ -763,7 +763,7 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
 
 
 @modelpath_cache(maxsize=16)
-def get_dfrankassignments(modelpath: Path) -> pl.LazyFrame | None:
+def scan_rankassignments(modelpath: Path) -> pl.LazyFrame | None:
     """Return the cell-to-MPI-rank assignments, or None when modelgridrankassignments.out is absent."""
     filerankassignments = firstexisting_or_none(
         "modelgridrankassignments.out", folder=modelpath, tryzipped=True, search_subfolders=False
@@ -794,7 +794,7 @@ def get_rankassignments_cached(modelpath: Path) -> pl.DataFrame | None:
     get_mpirankofcell asks for one cell at a time, thus a scan that each call collects reads the file
     again for each cell. Do not change the frame that this function returns.
     """
-    lzrankassignments = get_dfrankassignments(modelpath)
+    lzrankassignments = scan_rankassignments(modelpath)
 
     return lzrankassignments.collect() if lzrankassignments is not None else None
 

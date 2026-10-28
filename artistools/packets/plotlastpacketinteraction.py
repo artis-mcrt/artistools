@@ -56,12 +56,12 @@ from artistools.packets.core import addarg_velocitykind
 from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_last_interaction_velocity_expr
-from artistools.packets.core import get_packets
 from artistools.packets.core import get_relative_error_expr
 from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.packets.core import print_arrival_time_method
 from artistools.packets.core import print_last_interaction_convention
 from artistools.packets.core import print_velocity_method
+from artistools.packets.core import scan_packets
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -97,7 +97,7 @@ def get_required_packets(
     Each item of ions is (Z, ion_stage), and a None in it selects each element or each ion stage. The Sr II triplet
     takes the place of ions.
     """
-    nprocs_read, dfpackets = get_packets(
+    nprocs_read, dfpackets = scan_packets(
         modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 

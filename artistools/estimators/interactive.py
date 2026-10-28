@@ -63,8 +63,8 @@ from artistools.estimators.plotestimators import time_is_given
 from artistools.estimators.plotestimators import TIME_XVARIABLES
 from artistools.estimators.plotestimators import VARIABLE_ALIASES
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
 from artistools.inputmodel import get_modelmeta
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import call_in_child_process
 from artistools.misc import exit_with_error
 from artistools.misc import format_range_list
@@ -502,7 +502,7 @@ def read_model_data(modelpath: Path, args: argparse.Namespace, ntimesteps: int) 
     # a run that stopped early has no estimators for the last timesteps, and a plot of those timesteps fails
     validtimesteps = get_estimator_timesteps(modelpath, estimators) or list(range(ntimesteps))
     # ARTIS writes the estimators of each cell that holds matter
-    lzmodel, modelmeta = get_modeldata(modelpath)
+    lzmodel, modelmeta = scan_modeldata(modelpath)
     dfcells = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .filter(pl.col("rho") > 0.0)

@@ -20,14 +20,14 @@ import polars.selectors as cs
 
 from artistools import constants
 from artistools.atomic import add_ion_str_column
-from artistools.atomic import get_bflist
 from artistools.atomic import get_composition_data
 from artistools.atomic import get_composition_data_from_outputfile
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbols_df
 from artistools.atomic import get_ionstring
-from artistools.atomic import get_linelist_pldf
-from artistools.atomic import get_nuclides
+from artistools.atomic import scan_bflist
+from artistools.atomic import scan_linelist
+from artistools.atomic import scan_nuclides
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -73,10 +73,10 @@ from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
 from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
-from artistools.packets import get_packets
-from artistools.packets import get_virtual_packets
 from artistools.packets import get_vpkt_in_spectrum_range_expr
 from artistools.packets import has_emission_record_expr
+from artistools.packets import scan_packets
+from artistools.packets import scan_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
 
@@ -200,7 +200,7 @@ def get_dfspectrum_x_y_with_units(
 def get_exspec_lambda_bin_edges(modelpath: Path, gamma: bool = False) -> npt.NDArray[np.floating]:
     """Get the wavelength bins for the emergent spectrum."""
     try:
-        dfspec = read_spec(modelpath, gamma=gamma).collect()
+        dfspec = scan_spec(modelpath, gamma=gamma).collect()
     except FileNotFoundError:
         mnubins = 1000
         if gamma:
@@ -393,7 +393,7 @@ def bin_spectrum(dfspectrum: pl.DataFrame, nbins: int, xcol: str, ycols: str | S
     )
 
 
-def get_spectrum_at_time(
+def scan_spectrum_at_time(
     modelpath: Path,
     timestep: int,
     time: float,
@@ -405,14 +405,14 @@ def get_spectrum_at_time(
     """Return the spectrum of one direction bin at a single timestep."""
     if dirbin >= 0:
         if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return get_vspecpol_spectrum(modelpath, time, dirbin, args)
+            return scan_vspecpol_spectrum(modelpath, time, dirbin, args)
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
         average_over_phi = False
         average_over_theta = False
 
-    return get_spectra(
+    return scan_spectra(
         modelpath=modelpath,
         timestepmin=timestep,
         timestepmax=timestep,
@@ -463,9 +463,9 @@ def get_escape_surface_gamma(modelpath: Path) -> float:
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
     """
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel import scan_modeldata
 
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
     return math.sqrt(1 - vmax_beta**2)
 
@@ -517,7 +517,7 @@ def check_time_range_inside_vpkt_window(
 
 
 @on_model_host
-def get_from_packets(
+def scan_spectra_from_packets(
     modelpath: Path | str,
     timelowdays: float,
     timehighdays: float,
@@ -556,9 +556,9 @@ def get_from_packets(
         nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
         assert not gamma
-        nprocs_read, dfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = scan_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = get_packets(
+        nprocs_read, dfpackets = scan_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
             packet_type="TYPE_ESCAPE",
@@ -647,7 +647,7 @@ def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
 # scan would hold only the query plan, thus each collect by a caller would parse the file again.
 @modelpath_cache(maxsize=2)
-def read_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
+def scan_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
@@ -662,7 +662,7 @@ def read_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     # sn3d writes the whole file again at each timestep, thus the file can be empty or end with a cut line
     specbytes = read_complete_lines(specfilename, content="spectrum")
     with polars_error_note(specfilename):
-        # get_spectra counts the time columns, thus the column of a trailing space on each line must go
+        # scan_spectra counts the time columns, thus the column of a trailing space on each line must go
         dfspec = drop_trailing_null_column(
             pl.read_csv(io.BytesIO(specbytes), separator=" ", infer_schema=False, truncate_ragged_lines=True)
         )
@@ -688,7 +688,7 @@ def read_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
 
 # every cached entry holds a whole spec_res file, because each frame of a direction bin is a slice of one frame
 @modelpath_cache(maxsize=2)
-def read_spec_res(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
+def scan_spec_res(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
     """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
@@ -700,7 +700,7 @@ def read_spec_res(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFram
         modelpath if Path(modelpath).is_file() else firstexisting(resfilenames, folder=modelpath, tryzipped=True)
     )
 
-    print(f"Reading {specfilename} (in read_spec_res)")
+    print(f"Reading {specfilename} (in scan_spec_res)")
     res_specdata_in = drop_trailing_null_column(
         pl.read_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
     )
@@ -758,7 +758,7 @@ def read_emission_absorption_file_cached(emabsfilename: Path, filestate: tuple[i
 
 
 @on_model_host
-def get_spectra(
+def scan_spectra(
     modelpath: Path,
     timestepmin: int,
     timestepmax: int | None = None,
@@ -785,7 +785,7 @@ def get_spectra(
         with suppress(FileNotFoundError):
             # the direction-resolved file must match the packet type of the spherically averaged one below,
             # otherwise the dirbins would silently hold UVOIR spectra while dirbin -1 holds gamma spectra
-            res_specdata = read_spec_res(modelpath, gamma=gamma)
+            res_specdata = scan_spec_res(modelpath, gamma=gamma)
             if average_over_theta:
                 res_specdata = average_direction_bins(res_specdata, overangle="theta")
             if average_over_phi:
@@ -794,7 +794,7 @@ def get_spectra(
 
     # spherically averaged spectra
     try:
-        specdata_alltimesteps[-1] = read_spec(modelpath=modelpath, gamma=gamma)
+        specdata_alltimesteps[-1] = scan_spec(modelpath=modelpath, gamma=gamma)
 
     except FileNotFoundError as e:
         if gamma:
@@ -945,7 +945,7 @@ def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
 # maxsize is small because each entry holds a whole specpol_res.out file. A caller reads one direction
 # bin at a time, thus a cache miss on each call would parse the file again for every bin.
 @modelpath_cache(maxsize=2)
-def read_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
+def scan_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
     """Return the table of each direction bin of specpol_res.out, with the times as the column names.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
@@ -976,7 +976,7 @@ def read_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
 
 
 @on_model_host
-def get_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[str, pl.LazyFrame]:
+def scan_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U spectra of one direction bin.
 
     specpol.out holds the spherically averaged spectra, which dirbin -1 selects. specpol_res.out holds
@@ -992,7 +992,7 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[st
 
         return split_dataframe_stokesparams(specdata)
 
-    tables = read_specpol_res(modelpath)
+    tables = scan_specpol_res(modelpath)
     if dirbin not in tables:
         msg = f"specpol_res.out of {modelpath} holds {len(tables)} direction bins, and not bin {dirbin}"
         raise ValueError(msg)
@@ -1025,7 +1025,7 @@ def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.L
     return split_dataframe_stokesparams(specdata)
 
 
-def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
+def scan_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model. Every caller
@@ -1097,7 +1097,7 @@ def check_time_range_overlaps_time_bins(
         )
 
 
-def get_vspecpol_spectrum(
+def scan_vspecpol_spectrum(
     modelpath: Path | str,
     timeavg: float,
     angle: int,
@@ -1112,7 +1112,7 @@ def get_vspecpol_spectrum(
     caller that needs the spectrum at one time must leave them out. One point of a light curve is
     such a case.
     """
-    stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
+    stokes_params = scan_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
     if "stokesparam" not in args:
         args.stokesparam = "I"
     vspecdata = stokes_params[args.stokesparam]
@@ -1515,7 +1515,7 @@ def get_linelist_label_columns(modelpath: Path | str, groupby: str) -> pl.DataFr
     if groupby not in {"element", "ion"}:
         linecolumns += ["lambda_angstroms_air", "upperlevelindex", "lowerlevelindex"]
 
-    return get_linelist_pldf(modelpath=modelpath).select(linecolumns).collect()
+    return scan_linelist(modelpath=modelpath).select(linecolumns).collect()
 
 
 def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str, labelcolumn: str) -> pl.LazyFrame:
@@ -1562,23 +1562,23 @@ def get_emission_type_labels(
     emissiontype, trueemissiontype, or pellet_nucindex. A code with no label is not in the frame.
     """
     if groupby == "nuc":
-        emtypelabels = get_nuclides(modelpath=Path(modelpath)).rename({"nucname": "emissiontype_str"})
+        emtypelabels = scan_nuclides(modelpath=Path(modelpath)).rename({"nucname": "emissiontype_str"})
     elif groupby == "nucmass":
-        emtypelabels = get_nuclides(modelpath=Path(modelpath)).with_columns(
+        emtypelabels = scan_nuclides(modelpath=Path(modelpath)).with_columns(
             (pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))).alias(
                 "emissiontype_str"
             )
         )
     elif emtypecolumn == "pellet_nucindex":
         # the nuclide table gives "initial energy" as the element of the initial energy
-        emtypelabels = get_nuclides(modelpath=Path(modelpath)).rename({"elsymbol": "emissiontype_str"})
+        emtypelabels = scan_nuclides(modelpath=Path(modelpath)).rename({"elsymbol": "emissiontype_str"})
     else:
         bflabels = {
             "element": pl.col("elsymbol") + " bound-free",
             "ion": pl.col("ion_str") + " bound-free",
             "line": pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel")),
         }
-        bflist = get_bflist(modelpath)
+        bflist = scan_bflist(modelpath)
         if groupby == "element":
             bflist = bflist.join(get_elsymbols_df(), on="atomic_number", how="left", maintain_order="left")
 
@@ -1662,9 +1662,9 @@ def get_default_radialvelocity_shells(
     packets from these cells. The labels take the unit of get_auto_velocity_unit(), e.g. c for a kilonova and km/s for a
     supernova.
     """
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel import scan_modeldata
 
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     vmax_kmps = modelmeta["vmax_cmps"] / km_to_cm
     edges = [vmax_kmps * i / nshells for i in range(nshells + 1)]
     if modelmeta["dimensions"] > 1:
@@ -1822,14 +1822,14 @@ def add_ye_columns(
     thermalfromvelocity: bool,
 ) -> pl.LazyFrame:
     """Add a column of the initial electron fraction of the model cell that holds each position."""
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel import scan_modeldata
 
-    dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    dfmodel, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     if "Ye" not in dfmodel.collect_schema().names():
         msg = "The model has no Ye column, thus no Ye shell can hold a packet"
         raise ValueError(msg)
 
-    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of get_modeldata gives the cell. A
+    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of scan_modeldata gives the cell. A
     # gather by the cell index keeps the order of the packets, and it is faster than a join over all the packets
     dfcellye = dfmodel.select("modelgridindex", "Ye").collect()
     cellcount = dfcellye.select(pl.col("modelgridindex").max() + 1).item()
@@ -2022,7 +2022,7 @@ def get_flux_contributions_from_packets(
         vpkt_config = get_vpkt_config(modelpath)
         check_time_range_inside_vpkt_window(vpkt_config, timelowdays, timehighdays)
         obsdirindex, opacchoiceindex = divmod(directionbin, vpkt_config["nspectraperobs"])
-        nprocs_read, lzdfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, lzdfpackets = scan_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
         # ARTIS keeps a row with nu_rf outside the ranges out of vspecpol, thus the row gives no emission. The row
         # stays for the absorption, because ARTIS writes it for a real packet with an absorption inside a range
@@ -2036,7 +2036,7 @@ def get_flux_contributions_from_packets(
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
 
     else:
-        nprocs_read, lzdfpackets = get_packets(
+        nprocs_read, lzdfpackets = scan_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
             packet_type="TYPE_ESCAPE",
@@ -2145,8 +2145,8 @@ def get_flux_contributions_from_packets(
         if noutside > 0:
             print_warning(f"{noutside} packets lie outside every shell, thus no series holds them")
 
-    # get_from_packets gives the same factors: a virtual packet has its own direction, and a real packet needs the
-    # solid angle of its direction bin
+    # scan_spectra_from_packets gives the same factors: a virtual packet has its own direction, and a real packet
+    # needs the solid angle of its direction bin
     delta_time_s = (timehighdays - timelowdays) * day_to_s
     fluxfactor = (
         1.0 / (delta_time_s * constants.megaparsec_to_cm**2 * nprocs_read)
@@ -2325,7 +2325,7 @@ def get_flux_contributions_from_packets(
         get_series_spectra(labelframes["absorption"], drawnnames) if "absorption" in labelframes else {}
     )
 
-    # a filter applies to the spectrum of each series, as get_from_packets applies it to one spectrum
+    # a filter applies to the spectrum of each series, as scan_spectra_from_packets applies it to one spectrum
     if filterfunc is not None:
         for spectra in (emission_spectra, absorption_spectra):
             for groupname, spectrum in spectra.items():

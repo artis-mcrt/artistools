@@ -155,7 +155,7 @@ def test_a_direction_along_the_z_axis_gets_the_bin_of_artis(
 
 
 def test_get_virtual_packets() -> None:
-    nprocs_read, dfvpkt = at.packets.get_virtual_packets(
+    nprocs_read, dfvpkt = at.packets.scan_virtual_packets(
         modelpath=at.get_path("testdata") / "vpktcontrib", maxpacketfiles=2
     )
     dfvpkt = dfvpkt.collect()
@@ -506,7 +506,7 @@ def test_emission_expressions_give_no_value_for_a_packet_with_no_record() -> Non
     An older ARTIS gives that packet a position of zero, and the current ARTIS gives it a position of NaN.
     """
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
-    dfmodel, modelmeta = at.get_modeldata(modelpath, printwarningsonly=True)
+    dfmodel, modelmeta = at.scan_modeldata(modelpath, printwarningsonly=True)
     emtime_s = 5.0 * at.constants.day_to_s
     dfpackets = pl.DataFrame({
         "trueem_posx": [1.0e9 * emtime_s, 0.0, 0.0, math.nan],
@@ -535,7 +535,7 @@ def test_emission_expressions_give_no_value_for_a_packet_with_no_record() -> Non
 
 def test_get_packets_gives_nan_to_the_thermal_velocity_of_a_packet_with_no_record() -> None:
     """An old packets file holds a thermal emission velocity of zero for a packet with no thermal emission record."""
-    _, lzdfpackets = at.packets.get_packets(
+    _, lzdfpackets = at.packets.scan_packets(
         at.get_path("testdata") / "test-classicmode_3d", packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = lzdfpackets.select("trueem_time", "true_emission_velocity").collect()
@@ -713,7 +713,7 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
         "costhetabin": [9] * 6,
         "dirbin": [90] * 6,
     })
-    with mock.patch.object(plotlastinteractionvelocity, "get_packets", return_value=(1, dfpackets.lazy())):
+    with mock.patch.object(plotlastinteractionvelocity, "scan_packets", return_value=(1, dfpackets.lazy())):
         plotlastinteractionvelocity.main(
             argsraw=[],
             plotinvalidpart=True,
@@ -765,7 +765,7 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
     )
     dfsummary = pl.read_csv(tmp_path / "groups_summary.txt", separator=" ", null_values="nan", comment_prefix="#")
 
-    nprocs, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    nprocs, lzpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfwindow = (
         lzpackets
         .filter(
@@ -809,7 +809,7 @@ def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path:
     assert len(edges) == 11
     assert np.isclose(edges[0], -edges[-1], rtol=1e-9, atol=0.0)
 
-    nprocs, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    nprocs, lzpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfwindow = (
         lzpackets
         .filter(pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"))
@@ -953,11 +953,11 @@ def test_get_packets_stops_for_a_model_with_no_escaped_gamma_packets(tmp_path: P
     ).write_parquet(cachepath)
 
     with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
-        _, dfrpkt = at.packets.get_packets(tmp_path, escape_type="TYPE_RPKT")
+        _, dfrpkt = at.packets.scan_packets(tmp_path, escape_type="TYPE_RPKT")
         assert dfrpkt.collect().height == 2
 
         with pytest.raises(ValueError, match="KEEP_ESCAPED_GAMMAS"):
-            at.packets.get_packets(tmp_path, escape_type="TYPE_GAMMA")
+            at.packets.scan_packets(tmp_path, escape_type="TYPE_GAMMA")
 
 
 @pytest.mark.parametrize(
@@ -975,7 +975,7 @@ def test_get_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(
     pl.DataFrame({"type_id": [32, 32], columnname: values}).write_parquet(cachepath)
 
     with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
-        _, dfpackets = at.packets.get_packets(tmp_path)
+        _, dfpackets = at.packets.scan_packets(tmp_path)
 
     dfflag = dfpackets.select("originated_from_particlenotgamma").collect()
     pltest.assert_frame_equal(dfflag, pl.DataFrame({"originated_from_particlenotgamma": [True, False]}))
@@ -1119,7 +1119,7 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
     timestep = at.get_timestep_of_timedays(modelpath, timedays)
     tstart = at.get_timestep_times(modelpath, loc="start")[timestep]
     tend = at.get_timestep_times(modelpath, loc="end")[timestep]
-    _, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    _, lzpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfarrived = lzpackets.filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="left")).collect()
     assert dfarrived.filter(pl.col("absorption_type") < 0).height > 0
 
@@ -1176,7 +1176,7 @@ def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(
     timestep = at.misc.get_timestep_of_timedays(modelpath, 6.5)
     t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
     t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
-    _, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    _, lzpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfarrived = (
         lzpackets
         .filter(pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"))

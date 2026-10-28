@@ -21,7 +21,7 @@ from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
@@ -285,7 +285,7 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
     """
     args.timestep = get_selected_timestep(modelpath, args.timestep, args.timedays)
 
-    dfmodel, modelmeta = get_modeldata(modelpath)
+    dfmodel, modelmeta = scan_modeldata(modelpath)
     # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
     modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
     if args.velocity_kmps is not None:

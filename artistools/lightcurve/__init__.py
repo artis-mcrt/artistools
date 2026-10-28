@@ -10,13 +10,13 @@ from artistools.lightcurve.core import generate_band_lightcurve_data as generate
 from artistools.lightcurve.core import get_band_lightcurve as get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag as get_colour_delta_mag
 from artistools.lightcurve.core import get_filter_data as get_filter_data
-from artistools.lightcurve.core import get_from_packets as get_from_packets
 from artistools.lightcurve.core import get_katz_integral as get_katz_integral
 from artistools.lightcurve.core import luminosity_distance as luminosity_distance
 from artistools.lightcurve.core import path_is_reference_lightcurve as path_is_reference_lightcurve
 from artistools.lightcurve.core import read_bol_reflightcurve_data as read_bol_reflightcurve_data
 from artistools.lightcurve.core import read_hesma_lightcurve_file as read_hesma_lightcurve_file
 from artistools.lightcurve.core import scan_lightcurve as scan_lightcurve
+from artistools.lightcurve.core import scan_lightcurve_from_packets as scan_lightcurve_from_packets
 
 # isort: split
 from artistools.lightcurve import plotlightcurve

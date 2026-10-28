@@ -33,7 +33,7 @@ from artistools.atomic import get_ion_levels
 from artistools.atomic import roman_numerals
 from artistools.codecomparison import read_reference_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import COMPRESSED_EXTENSIONS
 from artistools.misc import contiguous_runs
 from artistools.misc import firstexisting_or_none
@@ -46,7 +46,6 @@ from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_rank_outputfiles
 from artistools.misc import get_runfolder_timesteps
 from artistools.misc import get_runfolders
-from artistools.misc import get_timesteps
 from artistools.misc import is_remote_path
 from artistools.misc import mtime_matches_stamp
 from artistools.misc import MTIME_TOLERANCE_S
@@ -55,6 +54,7 @@ from artistools.misc import parquet_is_readable
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import rankbatch_parquet_staleness
+from artistools.misc import scan_timesteps
 from artistools.misc import temporary_parts_folder
 from artistools.misc import write_parquet_atomic
 from artistools.rustext import estimparse_allranks_textbatches
@@ -1062,7 +1062,7 @@ def get_levelpop_modeldata(modelpath: Path) -> tuple[pl.DataFrame, float]:
     A level population plot reads only these columns of the model, thus the host of a remote model sends no other.
     Only a 1D model gives the shell velocities.
     """
-    lzmodel, modelmeta = get_modeldata(modelpath)
+    lzmodel, modelmeta = scan_modeldata(modelpath)
     modeldata = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .select(cs.by_name("vel_r_min_kmps", "vel_r_max_kmps", "volume", require_all=False))
@@ -1193,14 +1193,14 @@ def join_cell_modeldata(
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
     assert estimators is not None
     estimators = estimators.join(
-        get_timesteps(Path(modelpath))
+        scan_timesteps(Path(modelpath))
         .select("timestep", "tstart_days", "tmid_days", "twidth_days")
         .with_columns(tmid_days_prevtimestep=pl.col("tmid_days").shift(1)),
         on="timestep",
         how="left",
         maintain_order="left",
     )
-    dfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=True, printwarningsonly=not verbose)
+    dfmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=True, printwarningsonly=not verbose)
     dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
 
     dfmodel = dfmodel.rename({
@@ -1722,9 +1722,9 @@ def scan_artis_estimators(
             f"No run folders found in {modelpath}. Enabling fallback to cross join of all model data and timesteps."
         )
         pldflazy = (
-            get_timesteps(modelpath)
+            scan_timesteps(modelpath)
             .select("timestep", "tmid_days", "twidth_days")
-            .join(get_modeldata(modelpath)[0].select("modelgridindex"), how="cross", maintain_order="left")
+            .join(scan_modeldata(modelpath)[0].select("modelgridindex"), how="cross", maintain_order="left")
         )
 
     return pldflazy

@@ -94,7 +94,7 @@ def test_deltalogx_largestscale_is_the_diagonal_of_a_cell() -> None:
 def test_histogram_steps_are_on_the_packet_bin_edges() -> None:
     """The steps of --histogram lie on the edges of the packet bins, also for a frequency, which reverses the order."""
     lambda_bin_edges = np.geomspace(3000.0, 10000.0, 30)
-    dfspectrum = atspectra.get_from_packets(
+    dfspectrum = atspectra.scan_spectra_from_packets(
         modelpath, 290.0, 330.0, lambda_bin_edges=lambda_bin_edges, directionbins=[-1]
     )[-1]
     for xunit in ("angstrom", "hz"):
@@ -111,11 +111,11 @@ def test_get_from_packets_relnoise_is_the_noise_of_the_packet_energies() -> None
     """The relative noise of a bin is sqrt(sum(e^2)) / sum(e) of the packets that arrive in it."""
     timelowdays, timehighdays = 290.0, 330.0
     lambda_bin_edges = np.geomspace(3000.0, 10000.0, 60)
-    dfspectrum = atspectra.get_from_packets(
+    dfspectrum = atspectra.scan_spectra_from_packets(
         modelpath, timelowdays, timehighdays, lambda_bin_edges=lambda_bin_edges, directionbins=[-1], relnoise=True
     )[-1].collect()
 
-    _, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    _, dfpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfarrived = dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays)).collect()
     lambda_angstroms = at.constants.c_ang_per_s / dfarrived["nu_rf"].to_numpy()
     energies = dfarrived["e_rf"].cast(pl.Float64).to_numpy()
@@ -221,7 +221,7 @@ def test_spectra_get_spectrum() -> None:
         assert isinstance(flambdamean, float)
         assert math.isclose(flambdamean, expectedmean, rel_tol=1e-4)
 
-    dfspectrum = at.spectra.get_spectra(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
+    dfspectrum = at.spectra.scan_spectra(modelpath, 55, 65, fluxfilterfunc=None)[-1].collect()
 
     assert len(dfspectrum["lambda_angstroms"]) == 1000
     assert len(dfspectrum["f_lambda"]) == 1000
@@ -233,9 +233,9 @@ def test_spectra_get_spectrum() -> None:
     timelowdays = at.get_timestep_times(modelpath)[55]
     timehighdays = at.get_timestep_times(modelpath)[65]
 
-    dfspectrumpkts = at.spectra.get_from_packets(modelpath, timelowdays=timelowdays, timehighdays=timehighdays)[
-        -1
-    ].collect()
+    dfspectrumpkts = at.spectra.scan_spectra_from_packets(
+        modelpath, timelowdays=timelowdays, timehighdays=timehighdays
+    )[-1].collect()
 
     # the packets file of the test model holds a part of the packets of the model, thus its flux is
     # below the flux of spec.out. test_spectra_get_flux_contributions compares spec.out with the sum
@@ -245,7 +245,7 @@ def test_spectra_get_spectrum() -> None:
 
 @pytest.mark.benchmark
 def test_spectra_get_spectrum_polar_angles() -> None:
-    spectra = at.spectra.get_spectra(
+    spectra = at.spectra.scan_spectra(
         modelpath=modelpath_classic_3d, average_over_phi=True, timestepmin=20, timestepmax=25
     )
 
@@ -295,7 +295,7 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
     lambda_bin_edges = np.arange(100.0, 50000.0 + 100.0, 100.0)
 
     spectrafrompkts = benchmark(
-        lambda: at.spectra.get_from_packets(
+        lambda: at.spectra.scan_spectra_from_packets(
             modelpath=modelpath_classic_3d,
             average_over_phi=True,
             timelowdays=timelowdays,
@@ -452,10 +452,10 @@ def test_spectra_gamma_element_contributions(monkeypatch: pytest.MonkeyPatch) ->
         "nu_rf": [at.constants.c_ang_per_s / 5000.0] * 4,
     })
 
-    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
         return 1, dfpackets.lazy()
 
-    def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+    def scan_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         del modelpath
         return pl.LazyFrame({
             "pellet_nucindex": [-1, 0, 1, 2],
@@ -463,8 +463,8 @@ def test_spectra_gamma_element_contributions(monkeypatch: pytest.MonkeyPatch) ->
             "nucname": ["initial energy", "Ni56", "Co56", "Ni57"],
         })
 
-    monkeypatch.setattr(atspectra, "get_packets", get_packets)
-    monkeypatch.setattr(atspectra, "get_nuclides", get_nuclides)
+    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
+    monkeypatch.setattr(atspectra, "scan_nuclides", scan_nuclides)
     contributions, array_flambda_emission_total, _ = atspectra.get_flux_contributions_from_packets(
         modelpath=Path(),
         timelowdays=1.5,
@@ -609,10 +609,10 @@ def test_spectra_sampled_emission_replaces_the_emission_type_and_the_absorption(
     columns of the last absorption to null. Thus only a plot that reads the sampled columns equals the plot of the last
     thermal emission.
     """
-    get_packets = atspectra.get_packets
+    scan_packets = atspectra.scan_packets
 
     def get_packets_with_sample(*args: t.Any, **kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
-        nprocs_read, lzdfpackets = get_packets(*args, **kwargs)
+        nprocs_read, lzdfpackets = scan_packets(*args, **kwargs)
         return nprocs_read, lzdfpackets.with_columns(
             sampled_emissiontype=pl.col("trueemissiontype"),
             sampled_absorption_type=pl.col("absorption_type"),
@@ -622,7 +622,7 @@ def test_spectra_sampled_emission_replaces_the_emission_type_and_the_absorption(
             absorption_freq=pl.lit(None, dtype=pl.Float32),
         )
 
-    with mock.patch.object(atspectra, "get_packets", side_effect=get_packets_with_sample):
+    with mock.patch.object(atspectra, "scan_packets", side_effect=get_packets_with_sample):
         sampledcontributions, sampledtotal, _ = get_contributions_classic_3d(emissionevent="sampled")
     thermalcontributions, thermaltotal, _ = get_contributions_classic_3d(emissionevent="thermal")
 
@@ -761,7 +761,7 @@ def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> N
     assert np.isclose(edges[10], 28920.2, rtol=1e-4)
 
     fastmeta = {"vmax_cmps": 0.3 * 2.99792458e10, "dimensions": 1}
-    with mock.patch("artistools.inputmodel.get_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
+    with mock.patch("artistools.inputmodel.scan_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
         edges, unit = atspectra.get_default_radialvelocity_shells("fastmodel", nshells=3)
     assert unit == "c"
     assert atspectra.get_shell_labels(edges, unit) == ["[0, 0.1) c", "[0.1, 0.2) c", "[0.2, 0.3) c"]
@@ -786,14 +786,14 @@ def test_spectra_ye_shell_contributions() -> None:
     """A Ye shell holds the packets by the initial electron fraction of the cell of the last interaction."""
     import artistools.inputmodel
 
-    realgetmodeldata = artistools.inputmodel.get_modeldata
+    realgetmodeldata = artistools.inputmodel.scan_modeldata
 
     def get_modeldata_with_ye(*args: t.Any, **kwargs: t.Any) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
         # the test model has no Ye column, thus the odd cells get 0.2 and the even cells get 0.4
         dfmodel, modelmeta = realgetmodeldata(*args, **kwargs)
         return dfmodel.with_columns(Ye=0.2 + 0.2 * (pl.col("inputcellid") % 2 == 0).cast(pl.Float32)), modelmeta
 
-    with mock.patch("artistools.inputmodel.get_modeldata", side_effect=get_modeldata_with_ye):
+    with mock.patch("artistools.inputmodel.scan_modeldata", side_effect=get_modeldata_with_ye):
         contributions, array_flambda_emission_total, array_lambda = get_contributions_classic_3d(
             groupby="ye", shelledges=[0.0, 0.3, 0.6]
         )
@@ -1108,10 +1108,10 @@ def test_spectra_gamma_packets_group_by_emission_velocity(monkeypatch: pytest.Mo
         "dirz": [0.0] * 3,
     })
 
-    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
         return 1, dfpackets.lazy()
 
-    monkeypatch.setattr(atspectra, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
     lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
     expected = {
         "radialvelocity": {"[0, 10000) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
@@ -1173,7 +1173,7 @@ def test_spectraemissionplot_velocity_shells_reject_an_empty_selection(tmp_path:
 def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     timestepmin = 40
     timestepmax = 80
-    dfspectrum = at.spectra.get_spectra(
+    dfspectrum = at.spectra.scan_spectra(
         modelpath=modelpath, timestepmin=timestepmin, timestepmax=timestepmax, fluxfilterfunc=None
     )[-1].collect()
 
@@ -1267,7 +1267,7 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
     timelowdays = 4.0
     timehighdays = 7.0
     lambda_bin_edges = np.arange(lambdamin, lambdamax + deltalambda, deltalambda)
-    dfspectrum = at.spectra.get_from_packets(
+    dfspectrum = at.spectra.scan_spectra_from_packets(
         modelpath=modelpath_classic_3d,
         timelowdays=timelowdays,
         timehighdays=timehighdays,
@@ -1298,10 +1298,11 @@ def test_spectra_get_flux_contributions_from_packets(benchmark: BenchmarkFixture
 def test_spectra_packet_contributions_of_a_direction_bin(directionbin: int, average_over_phi: bool) -> None:
     """Check that the emission contributions of a direction bin have the same sum as the packet spectrum of that bin.
 
-    get_flux_contributions_from_packets does not call get_from_packets, thus it must apply the solid angle of the bin.
+    get_flux_contributions_from_packets does not call scan_spectra_from_packets, thus it must apply the solid angle of
+    the bin.
     """
     lambda_bin_edges = np.arange(3000.0, 9020.0, 20.0)
-    dfspectrum = at.spectra.get_from_packets(
+    dfspectrum = at.spectra.scan_spectra_from_packets(
         modelpath=modelpath_classic_3d,
         timelowdays=4.0,
         timehighdays=7.0,
@@ -1361,11 +1362,11 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
         "nu_rf": [at.constants.c_ang_per_s / 5000.0] * 2,
     })
 
-    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
         return 1, dfpackets.lazy()
 
-    monkeypatch.setattr(atspectra, "get_packets", get_packets)
-    dfspectrum = atspectra.get_from_packets(
+    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
+    dfspectrum = atspectra.scan_spectra_from_packets(
         modelpath=Path(),
         timelowdays=0.5,
         timehighdays=1.5,
@@ -1399,21 +1400,21 @@ def test_spectra_contributions_use_escape_time(
     })
     lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
 
-    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
         return 1, dfpackets.lazy()
 
     def get_escape_surface_gamma(_modelpath: Path | str) -> float:
         return math.sqrt(1.0 - beta**2)
 
-    def get_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+    def scan_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         del modelpath
         return pl.LazyFrame({"pellet_nucindex": [0], "nucname": ["Ni56"]})
 
-    monkeypatch.setattr(atspectra, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
     monkeypatch.setattr(atspectra, "get_escape_surface_gamma", get_escape_surface_gamma)
-    monkeypatch.setattr(atspectra, "get_nuclides", get_nuclides)
+    monkeypatch.setattr(atspectra, "scan_nuclides", scan_nuclides)
 
-    dfspectrum = atspectra.get_from_packets(
+    dfspectrum = atspectra.scan_spectra_from_packets(
         modelpath=Path(),
         timelowdays=1.0,
         timehighdays=2.0,
@@ -1442,7 +1443,7 @@ def test_spectra_contributions_use_escape_time(
 
 def test_spectra_escape_time_with_3d_model() -> None:
     """Escape-time spectra must get the outer velocity from metadata for a 3D model."""
-    dfspectrum = atspectra.get_from_packets(
+    dfspectrum = atspectra.scan_spectra_from_packets(
         modelpath=modelpath_classic_3d,
         timelowdays=3.0,
         timehighdays=8.0,
@@ -1782,11 +1783,11 @@ def test_get_spectra_gamma_does_not_mix_in_uvoir_dirbins() -> None:
     test-classicmode_3d has spec_res.out but no gamma_spec_res.out, so a gamma request must return only the
     spherically averaged bin rather than silently pairing gamma_spec.out with the UVOIR direction bins.
     """
-    dirbin_spectra_uvoir = atspectra.get_spectra(modelpath=modelpath_classic_3d, timestepmin=10, timestepmax=10)
+    dirbin_spectra_uvoir = atspectra.scan_spectra(modelpath=modelpath_classic_3d, timestepmin=10, timestepmax=10)
     assert -1 in dirbin_spectra_uvoir
     assert len(dirbin_spectra_uvoir) > 1, "expected direction-resolved UVOIR spectra in this test model"
 
-    dirbin_spectra_gamma = atspectra.get_spectra(
+    dirbin_spectra_gamma = atspectra.scan_spectra(
         modelpath=modelpath_classic_3d, timestepmin=10, timestepmax=10, gamma=True
     )
     assert set(dirbin_spectra_gamma) == {-1}
@@ -1800,7 +1801,7 @@ def test_get_spectra_gamma_does_not_mix_in_uvoir_dirbins() -> None:
 def test_get_spectra_rejects_averaging_over_both_angles() -> None:
     """Averaging over phi and theta at once leaves too few bins, so it must be rejected up front."""
     with pytest.raises(ValueError, match="both the phi and theta"):
-        atspectra.get_spectra(
+        atspectra.scan_spectra(
             modelpath=modelpath_classic_3d,
             timestepmin=10,
             timestepmax=10,
@@ -1901,7 +1902,7 @@ def test_spectraplot_falls_back_to_the_angle_averaged_spectrum(mockplot: mock.Ma
 
     # the drawn series is the spectrum of bin -1 at that time
     timestep = at.get_timestep_of_timedays(modelpath, 290)
-    dfexpected = at.spectra.get_spectra(modelpath, timestep, timestep, directionbins=[-1])[-1].collect()
+    dfexpected = at.spectra.scan_spectra(modelpath, timestep, timestep, directionbins=[-1])[-1].collect()
     drawnx = np.asarray(call.args[1], dtype=np.float64)
     drawny = np.asarray(call.args[2], dtype=np.float64)
     expectedy = np.interp(drawnx, dfexpected["lambda_angstroms"].to_numpy(), dfexpected["f_lambda"].to_numpy())
@@ -2157,7 +2158,7 @@ def test_plotspectra_multispecplot_needs_an_epoch_list(tmp_path: Path, capsys: p
 
 def write_fake_observed_spectrum(folder: Path) -> Path:
     """Write a reference spectrum of 1.1 times the model of timestep 54."""
-    dfmodel = at.spectra.get_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect()
+    dfmodel = at.spectra.scan_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect()
     obsfile = folder / "fakeobs.txt"
     dfmodel.select("lambda_angstroms", (pl.col("f_lambda") * 1.1).alias("flux")).sort("lambda_angstroms").write_csv(
         obsfile, separator=" ", include_header=False
@@ -2442,8 +2443,8 @@ def test_get_specpol_data_reads_one_direction_bin() -> None:
     The reader asked for specpol_res_<dirbin>.out, which no model folder holds, thus every direction bin
     raised FileNotFoundError.
     """
-    dfdirbin = at.spectra.get_specpol_data(dirbin=0, modelpath=modelpath_classic_3d)["I"].collect()
-    dfaveraged = at.spectra.get_specpol_data(dirbin=-1, modelpath=modelpath_classic_3d)["I"].collect()
+    dfdirbin = at.spectra.scan_specpol_data(dirbin=0, modelpath=modelpath_classic_3d)["I"].collect()
+    dfaveraged = at.spectra.scan_specpol_data(dirbin=-1, modelpath=modelpath_classic_3d)["I"].collect()
 
     assert dfdirbin.columns == dfaveraged.columns
     assert dfdirbin.columns[0] == "nu"
@@ -2539,14 +2540,14 @@ def test_vpkt_exclusion_removes_the_absorption_of_an_excluded_packet() -> None:
     }
     bflist = pl.LazyFrame({"bfindex": [], "ion_str": []}, schema={"bfindex": pl.Int32, "ion_str": pl.String})
     with (
-        mock.patch.object(atspectra, "get_virtual_packets", return_value=(1, packets)),
+        mock.patch.object(atspectra, "scan_virtual_packets", return_value=(1, packets)),
         mock.patch.object(atspectra, "get_vpkt_config", return_value=vpktconfig),
         mock.patch.object(
             atspectra,
             "get_linelist_label_columns",
             return_value=pl.DataFrame({"atomic_number": [26, 27], "ion_stage": [2, 2]}),
         ),
-        mock.patch.object(atspectra, "get_bflist", return_value=bflist),
+        mock.patch.object(atspectra, "scan_bflist", return_value=bflist),
     ):
         contributions, _, array_lambda = atspectra.get_flux_contributions_from_packets(
             Path(),
@@ -2605,14 +2606,14 @@ def test_vpkt_contributions_leave_out_the_emission_outside_the_vpkt_ranges() -> 
     }
     bflist = pl.LazyFrame({"bfindex": [], "ion_str": []}, schema={"bfindex": pl.Int32, "ion_str": pl.String})
     with (
-        mock.patch.object(atspectra, "get_virtual_packets", return_value=(1, packets)),
+        mock.patch.object(atspectra, "scan_virtual_packets", return_value=(1, packets)),
         mock.patch.object(atspectra, "get_vpkt_config", return_value=vpktconfig),
         mock.patch.object(
             atspectra,
             "get_linelist_label_columns",
             return_value=pl.DataFrame({"atomic_number": [26, 27], "ion_stage": [2, 2]}),
         ),
-        mock.patch.object(atspectra, "get_bflist", return_value=bflist),
+        mock.patch.object(atspectra, "scan_bflist", return_value=bflist),
     ):
         contributions, _, array_lambda = atspectra.get_flux_contributions_from_packets(
             Path(),
@@ -2635,7 +2636,7 @@ def test_vpkt_contributions_leave_out_the_emission_outside_the_vpkt_ranges() -> 
 
     vpktconfig |= {"time_limits_enabled": 1, "initial_time": 4.5, "final_time": 10.0}
     with (
-        mock.patch.object(atspectra, "get_virtual_packets", return_value=(1, packets)),
+        mock.patch.object(atspectra, "scan_virtual_packets", return_value=(1, packets)),
         mock.patch.object(atspectra, "get_vpkt_config", return_value=vpktconfig),
         pytest.raises(ValueError, match=r"outside the virtual packets, which cover 4\.5 to 10\.0 days"),
     ):
@@ -2718,10 +2719,10 @@ def test_read_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytes
         (tmp_path / foldername / "spec.out").write_text(f"0 10.0\n1e15 {flux}\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path / "modelA")
-    assert atspectra.read_spec(Path()).collect()["10.0"].item() == pytest.approx(1.0)
+    assert atspectra.scan_spec(Path()).collect()["10.0"].item() == pytest.approx(1.0)
 
     monkeypatch.chdir(tmp_path / "modelB")
-    assert atspectra.read_spec(Path()).collect()["10.0"].item() == pytest.approx(2.0)
+    assert atspectra.scan_spec(Path()).collect()["10.0"].item() == pytest.approx(2.0)
 
 
 def test_read_spec_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -2733,26 +2734,26 @@ def test_read_spec_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.Capture
     specpath = tmp_path / "spec.out"
     specpath.write_text("", encoding="utf-8")
     with pytest.raises(ValueError, match="holds no spectrum"):
-        atspectra.read_spec(tmp_path)
+        atspectra.scan_spec(tmp_path)
 
     specpath.write_text("0 10.0 11.0\n1e15 1.0 2.0\n2e15 3.0 4.", encoding="utf-8")
-    atspectra.read_spec.cache_clear()
-    assert atspectra.read_spec(tmp_path).collect()["nu"].to_list() == [1e15]
+    atspectra.scan_spec.cache_clear()
+    assert atspectra.scan_spec(tmp_path).collect()["nu"].to_list() == [1e15]
     assert "ends with a cut line" in capsys.readouterr().err
 
     specpath.write_text("0 10.0 11.0\n1e15 1.0 2.0\n2e15 3.0\n", encoding="utf-8")
-    atspectra.read_spec.cache_clear()
+    atspectra.scan_spec.cache_clear()
     with pytest.raises(ValueError, match="a line with fewer values than the header"):
-        atspectra.read_spec(tmp_path)
+        atspectra.scan_spec(tmp_path)
 
     fulltext = (modelpath / "spec.out").read_bytes()
     specpath.unlink()
     for compressedname, compress in (("spec.out.gz", gzip.compress), ("spec.out.xz", lzma.compress)):
         compressedpath = tmp_path / compressedname
         compressedpath.write_bytes(compress(fulltext)[:3000])
-        atspectra.read_spec.cache_clear()
+        atspectra.scan_spec.cache_clear()
         with pytest.raises(OSError, match="ends before the end") as excinfo:
-            atspectra.read_spec(tmp_path)
+            atspectra.scan_spec(tmp_path)
         assert any(compressedname in note for note in [str(excinfo.value), *getattr(excinfo.value, "__notes__", [])])
         compressedpath.unlink()
 
@@ -2925,12 +2926,12 @@ def test_get_spectra_names_the_last_timestep_of_a_run_that_stopped_early(tmp_pat
     cuttext = "".join(" ".join(line.split()[:60]) + "\n" for line in lines)
     earlymodel = make_model_with_a_new_spec_out(tmp_path / "early", modelpath, cuttext)
 
-    dfspectrum = at.spectra.get_spectra(earlymodel, 58, 58, directionbins=[-1])[-1].collect()
+    dfspectrum = at.spectra.scan_spectra(earlymodel, 58, 58, directionbins=[-1])[-1].collect()
     assert dfspectrum.height == len(lines) - 1
     with pytest.raises(
         ValueError, match=r"spec\.out holds the timesteps 0 to 58, thus it has no spectrum of timestep 82"
     ):
-        at.spectra.get_spectra(earlymodel, 82, 82, directionbins=[-1])
+        at.spectra.scan_spectra(earlymodel, 82, 82, directionbins=[-1])
 
 
 def test_get_spectra_reads_specpol_out_of_a_model_without_spec_out() -> None:
@@ -2938,9 +2939,9 @@ def test_get_spectra_reads_specpol_out_of_a_model_without_spec_out() -> None:
     vspecpolmodel = at.get_path("testdata") / "vspecpolmodel"
     assert not (vspecpolmodel / "spec.out").exists()
     timestep = 120
-    dfspectrum = at.spectra.get_spectra(vspecpolmodel, timestep, timestep, directionbins=[-1])[-1].collect()
+    dfspectrum = at.spectra.scan_spectra(vspecpolmodel, timestep, timestep, directionbins=[-1])[-1].collect()
 
-    stokes_i = at.spectra.get_specpol_data(dirbin=-1, modelpath=vspecpolmodel)["I"].collect()
+    stokes_i = at.spectra.scan_specpol_data(dirbin=-1, modelpath=vspecpolmodel)["I"].collect()
     expected = stokes_i.select("nu", pl.nth(timestep + 1).alias("f_nu")).sort("nu", descending=True)
     assert np.allclose(dfspectrum["nu"].to_numpy(), expected["nu"].to_numpy(), rtol=1e-12, atol=0.0)
     assert np.allclose(dfspectrum["f_nu"].to_numpy(), expected["f_nu"].to_numpy(), rtol=1e-12, atol=0.0)
@@ -2953,11 +2954,11 @@ def test_vspecpol_spectrum_refuses_a_time_outside_the_time_bins() -> None:
     args = argparse.Namespace(stokesparam="I")
     # the first time bin of vspecpol_total-0.out has its middle at 1.06 days
     with pytest.raises(ValueError, match=r"thus no bin holds 0\.30 days"):
-        atspectra.get_vspecpol_spectrum(vspecpolmodel, 0.3, 0, args)
+        atspectra.scan_vspecpol_spectrum(vspecpolmodel, 0.3, 0, args)
     with pytest.raises(ValueError, match="no bin holds"):
-        atspectra.get_vspecpol_spectrum(vspecpolmodel, 50.0, 0, args, timemin=40.0, timemax=60.0)
+        atspectra.scan_vspecpol_spectrum(vspecpolmodel, 50.0, 0, args, timemin=40.0, timemax=60.0)
 
-    dfspectrum = atspectra.get_vspecpol_spectrum(vspecpolmodel, 11.5, 0, args).collect()
+    dfspectrum = atspectra.scan_vspecpol_spectrum(vspecpolmodel, 11.5, 0, args).collect()
     assert dfspectrum["f_nu"].sum() > 0.0
 
 
@@ -2982,13 +2983,13 @@ def test_absorption_from_packets_skips_free_free_and_bound_free(monkeypatch: pyt
         schema_overrides={"absorption_type": pl.Int32, "emissiontype": pl.Int32},
     )
 
-    def get_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
         return 1, dfpackets.lazy()
 
     def get_linelist_label_columns(*_args: t.Any, **_kwargs: t.Any) -> pl.DataFrame:
         return pl.DataFrame({"atomic_number": [26], "ion_stage": [2]})
 
-    monkeypatch.setattr(atspectra, "get_packets", get_packets)
+    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
     monkeypatch.setattr(atspectra, "get_linelist_label_columns", get_linelist_label_columns)
     contributions, _, array_lambda = atspectra.get_flux_contributions_from_packets(
         modelpath=Path(),
@@ -3032,14 +3033,14 @@ def test_vpkt_exclusion_of_bound_bound_keeps_the_continuum_emission() -> None:
     }
     bflist = pl.LazyFrame({"bfindex": [0], "ion_str": ["Fe II"]}, schema={"bfindex": pl.Int32, "ion_str": pl.String})
     with (
-        mock.patch.object(atspectra, "get_virtual_packets", return_value=(1, packets)),
+        mock.patch.object(atspectra, "scan_virtual_packets", return_value=(1, packets)),
         mock.patch.object(atspectra, "get_vpkt_config", return_value=vpktconfig),
         mock.patch.object(
             atspectra,
             "get_linelist_label_columns",
             return_value=pl.DataFrame({"atomic_number": [26], "ion_stage": [2]}),
         ),
-        mock.patch.object(atspectra, "get_bflist", return_value=bflist),
+        mock.patch.object(atspectra, "scan_bflist", return_value=bflist),
     ):
         contributions, _, _ = atspectra.get_flux_contributions_from_packets(
             Path(),

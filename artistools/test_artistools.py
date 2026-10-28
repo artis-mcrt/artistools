@@ -218,8 +218,8 @@ def test_external_packages_find_their_names() -> None:
 
 TOPLEVEL_API: t.Final[frozenset[str]] = frozenset({
     "add_derived_cols_to_modeldata", "decode_roman_numeral", "firstexisting", "get_atomic_number",
-    "get_composition_data", "get_deposition", "get_elsymbol", "get_inputparams", "get_ion_tuple", "get_ionstring",
-    "get_model_name", "get_modeldata", "get_nprocs", "get_path", "get_timestep_of_timedays", "get_timestep_times",
+    "get_composition_data", "scan_deposition", "get_elsymbol", "get_inputparams", "get_ion_tuple", "get_ionstring",
+    "get_model_name", "scan_modeldata", "get_nprocs", "get_path", "get_timestep_of_timedays", "get_timestep_times",
     "get_z_a_nucname", "scan_estimators", "zopen",
 })  # fmt: skip
 
@@ -249,6 +249,27 @@ def test_top_level_api_is_the_documented_list() -> None:
             if not isinstance(getattr(at, name, None), types.ModuleType)
         }
         assert readmenames <= TOPLEVEL_API, f"the README names {sorted(readmenames - TOPLEVEL_API)} at the top level"
+
+
+def test_reader_prefix_tells_lazy_from_eager() -> None:
+    """A reader with the prefix scan_ returns a LazyFrame, and a reader with the prefix read_ returns eager data.
+
+    The README gives this rule to the users. read_spec returned a LazyFrame, and get_spectra returned a dictionary of
+    them, thus the name did not tell a user when the data was read.
+    """
+    import ast
+
+    packagefolder = Path(at.__file__).parent
+    modules = [*packagefolder.glob("*/core.py"), *(packagefolder / "misc").glob("*.py")]
+    wrongnames = []
+    for module in modules:
+        for node in ast.parse(module.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.FunctionDef) and node.returns is not None:
+                islazy = "LazyFrame" in ast.unparse(node.returns)
+                if (node.name.startswith("read_") and islazy) or (node.name.startswith("scan_") and not islazy):
+                    wrongnames.append(f"{module.relative_to(packagefolder)}:{node.name}")
+
+    assert not wrongnames
 
 
 def test_each_package_command_is_named_plot() -> None:
@@ -1251,7 +1272,7 @@ def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
     """The direction maps of several time ranges in one pass must equal the map of each range on its own."""
     from artistools.packets.plotspherical import bin_packets_by_direction
 
-    nprocs_read, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    nprocs_read, dfpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
     tstarts = at.get_timestep_times(modelpath, loc="start")
     tends = at.get_timestep_times(modelpath, loc="end")
@@ -1519,10 +1540,10 @@ def test_writecomparisondata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         "spectra_testmodel_artisnebular.txt",
     ]
 
-    from artistools.spectra.core import read_spec
+    from artistools.spectra.core import scan_spec
 
     # the spectra give L_lambda, and spec.out gives F_nu at 1 Mpc
-    dfspecout = read_spec(modelpath).collect()
+    dfspecout = scan_spec(modelpath).collect()
     arr_specout_nu = dfspecout["nu"].to_numpy()
     arr_written = np.loadtxt(tmp_path / "spectra_testmodel_artisnebular.txt", comments="#")
     assert arr_written.shape == (len(arr_specout_nu), 1 + 99)
@@ -2273,7 +2294,7 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
     dfalllines = dfdrawn.filter(pl.col("ion").is_null())
     dfdrawn = dfdrawn.filter(pl.col("ion").is_not_null())
 
-    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_classic_3d)
     dfdirections = (
         at
         .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
@@ -3286,7 +3307,7 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
     Each velocity needs a unit. The count of the cells in the range and the title give each velocity in the unit
     of the user.
     """
-    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_classic_3d)
     dfvelocities = (
         at.inputmodel
         .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
@@ -3335,7 +3356,7 @@ def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
 
     The command stopped with "cannot concat empty list" before.
     """
-    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_classic_3d)
     emptycell = (
         at.inputmodel
         .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
@@ -3540,7 +3561,7 @@ def test_linefluxes_feature_includes_a_line_at_a_wavelength_bound() -> None:
 
     linelambda = (
         at.atomic
-        .get_linelist_pldf(modelpath_classic_3d)
+        .scan_linelist(modelpath_classic_3d)
         .filter(pl.col("atomic_number") == 26, pl.col("ion_stage") == 2)
         .select(pl.col("lambda_angstroms").first())
         .collect()
@@ -7433,7 +7454,7 @@ def test_describe_counts_the_direction_bins_of_the_file(tmp_path: Path) -> None:
 def test_describe_finds_the_light_curve_in_a_run_folder(tmp_path: Path) -> None:
     """A run on a cluster writes light_curve.out into its run folder, and the summary searched only the model folder.
 
-    The light curve reader searches the run folders, and get_deposition reads only the model folder.
+    The light curve reader searches the run folders, and scan_deposition reads only the model folder.
     """
     from artistools.describemodel import get_output_lines
 
@@ -7587,7 +7608,7 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
 
     # the luminosity is 4 pi (1 Mpc)^2 times the integrated flux at 1 Mpc of the drawn line, which reaches each axis
     # limit. The integral left out the segments between each axis limit and the nearest row inside it
-    dfspec = at.spectra.get_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect().sort("lambda_angstroms")
+    dfspec = at.spectra.scan_spectra(modelpath, timestepmin=54, timestepmax=54)[-1].collect().sort("lambda_angstroms")
     lambdas, flambdas = dfspec["lambda_angstroms"].to_numpy(), dfspec["f_lambda"].to_numpy()
 
     def get_expected_luminosity(lambdamin: float, lambdamax: float) -> float:
@@ -8475,7 +8496,7 @@ def test_check_complete_timesteps_finds_a_missing_row() -> None:
     from artistools.check import check_complete_timesteps
 
     dfdeposition = pl.LazyFrame({"timestep": [0, 2]})
-    with mock.patch("artistools.check.get_deposition", return_value=dfdeposition):
+    with mock.patch("artistools.check.scan_deposition", return_value=dfdeposition):
         status, detail = check_complete_timesteps(modelpath_classic_3d)
     assert status == "warning"
     assert "deposition.out has no row for the time steps 1" in detail
@@ -8483,7 +8504,7 @@ def test_check_complete_timesteps_finds_a_missing_row() -> None:
     # each row through one time step past the model gave the status ok, and more complete time steps than the model
     ntimesteps = len(at.get_timestep_times(modelpath_classic_3d))
     with mock.patch(
-        "artistools.check.get_deposition", return_value=pl.LazyFrame({"timestep": list(range(ntimesteps + 1))})
+        "artistools.check.scan_deposition", return_value=pl.LazyFrame({"timestep": list(range(ntimesteps + 1))})
     ):
         status, detail = check_complete_timesteps(modelpath_classic_3d)
     assert status == "warning"
@@ -8672,7 +8693,9 @@ def test_check_from_packets_gives_the_largest_noise(capsys: pytest.CaptureFixtur
     """--frompackets gives the largest relative noise of the light curve and its time, with a warning."""
     from artistools.check import main
 
-    dflightcurve = at.lightcurve.get_from_packets(modelpath)[-1].collect().filter(pl.col("relnoise").is_not_null())
+    dflightcurve = (
+        at.lightcurve.scan_lightcurve_from_packets(modelpath)[-1].collect().filter(pl.col("relnoise").is_not_null())
+    )
     worst = dflightcurve.sort("relnoise", descending=True).row(0, named=True)
     # a check with a warning gives the exit status 1, as ruff check does for a finding
     with pytest.raises(SystemExit) as exitinfo:
@@ -8703,7 +8726,7 @@ def test_check_packet_noise_names_a_timestep_with_no_escaped_packet() -> None:
         "luminosity_Lsun": [1e8, 0.0, 1e8],
         "relnoise": [0.01, None, 0.01],
     })
-    with mock.patch("artistools.check.get_from_packets", return_value={-1: dflightcurve}):
+    with mock.patch("artistools.check.scan_lightcurve_from_packets", return_value={-1: dflightcurve}):
         status, detail = check_packet_noise(modelpath_classic_3d, frompackets=True)
     assert status == "warning"
     assert "the time steps 1 have no escaped r-packet" in detail
@@ -9003,7 +9026,7 @@ def test_linefluxes_ratio_noise_adds_the_noise_of_the_two_features_in_quadrature
         "e_rf": [1.0, 2.0, 3.0, 4.0, 4.0],
         "t_arrive_d": [1.5, 1.5, 1.5, 1.5, 2.5],
     })
-    with mock.patch.object(at.plotlinefluxes, "get_packets", return_value=(1, dfpackets)):
+    with mock.patch.object(at.plotlinefluxes, "scan_packets", return_value=(1, dfpackets)):
         dflcdata = get_line_luminosities_from_packets(
             "trueemissiontype", features, modelpath_classic_3d, arr_tstart=[1.0, 2.0], arr_tend=[2.0, 3.0]
         )

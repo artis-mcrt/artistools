@@ -408,14 +408,14 @@ def test_get_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> 
     shutil.copy(modelpath_classic_3d / "compositiondata.txt", tmp_path)
     (tmp_path / "bflist.out").write_text(bflistcontents, encoding="utf-8")
 
-    dfbflist = at.atomic.get_bflist(tmp_path).collect()
+    dfbflist = at.atomic.scan_bflist(tmp_path).collect()
     assert dfbflist.is_empty()
     assert {"bfindex", "lowerlevel", "upperionlevel", "atomic_number", "ion_stage", "ion_str"} <= set(dfbflist.columns)
 
 
 def test_get_bflist_reads_transitions() -> None:
     """The populated case must be unaffected by the empty-file handling."""
-    dfbflist = at.atomic.get_bflist(modelpath_classic_3d).collect()
+    dfbflist = at.atomic.scan_bflist(modelpath_classic_3d).collect()
 
     assert len(dfbflist) == 10780
     assert dfbflist["atomic_number"].sum() == 289060
@@ -631,7 +631,7 @@ def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, suffix: str,
     (tmp_path / "linestat").mkdir()
     write_linestatfile(tmp_path / "linestat" / f"linestat.out{suffix}", lines)
 
-    dflinelist = at.atomic.get_linelist_pldf(tmp_path / "linelist").collect()
+    dflinelist = at.atomic.scan_linelist(tmp_path / "linelist").collect()
     assert dflinelist.height == nlines
     # the float32 step is approximately 0.001 Angstroms at 14000 Angstroms. 6 significant digits gave errors of up to
     # 0.05 Angstroms
@@ -640,7 +640,7 @@ def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, suffix: str,
     assert dflinelist["ion_stage"].to_list() == [line[2] for line in lines]
     assert dflinelist["upperlevelindex"].to_list() == [line[3] for line in lines]
     assert dflinelist["lowerlevelindex"].to_list() == [line[4] for line in lines]
-    pltest.assert_frame_equal(dflinelist, at.atomic.get_linelist_pldf(tmp_path / "linestat").collect())
+    pltest.assert_frame_equal(dflinelist, at.atomic.scan_linelist(tmp_path / "linestat").collect())
 
 
 def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
@@ -651,7 +651,7 @@ def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    dflinelist = at.atomic.get_linelist_pldf(tmp_path).collect()
+    dflinelist = at.atomic.scan_linelist(tmp_path).collect()
     assert dflinelist.select("atomic_number", "upperlevelindex", "lowerlevelindex").row(0) == (57, 1, 0)
 
 
@@ -659,7 +659,7 @@ def test_get_linelist_pldf_ignores_a_row_without_values(tmp_path: Path) -> None:
     """An edit can add an empty line. It holds no line, thus it must not give the error for a cut line."""
     write_text_rows(tmp_path / "linelist.out", [LINELIST_HEADER, "13898.2958 57 3 1 0", "", "4216.708 38 2 2 0", ""])
 
-    assert at.atomic.get_linelist_pldf(tmp_path).collect()["atomic_number"].to_list() == [57, 38]
+    assert at.atomic.scan_linelist(tmp_path).collect()["atomic_number"].to_list() == [57, 38]
 
 
 @pytest.mark.parametrize("nlines", [0, 3])
@@ -671,7 +671,7 @@ def test_get_linelist_pldf_reads_linestat_with_rows_of_counts(nlines: int, tmp_p
     with (tmp_path / "linestat.out").open("a", encoding="utf-8") as linestatfile:
         linestatfile.write(("".join(f"{count} " for count in range(nlines)) + "\n") * 4)
 
-    dflinelist = at.atomic.get_linelist_pldf(tmp_path).collect()
+    dflinelist = at.atomic.scan_linelist(tmp_path).collect()
     assert dflinelist["upperlevelindex"].to_list() == [line[3] for line in TEST_LINES[:nlines]]
 
 
@@ -682,7 +682,7 @@ def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp
     """
     write_linelistfile(tmp_path / "linelist.out", [*([(6500, 26, 2, 4, 0)] * 200), (6500.5, 26, 2, 4, 0)])
 
-    dflinelist = at.atomic.get_linelist_pldf(tmp_path).collect()
+    dflinelist = at.atomic.scan_linelist(tmp_path).collect()
     assert dflinelist.height == 201
     assert np.isclose(dflinelist["lambda_angstroms"][-1], 6500.5)
 
@@ -692,22 +692,22 @@ def test_get_linelist_pldf_reads_only_the_model_folder(tmp_path: Path) -> None:
     (tmp_path / "123.slurm").mkdir()
     write_linelistfile(tmp_path / "123.slurm" / "linelist.out", TEST_LINES)
     with pytest.raises(FileNotFoundError, match="in the model folder"):
-        at.atomic.get_linelist_pldf(tmp_path)
+        at.atomic.scan_linelist(tmp_path)
 
     write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
-    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 1
+    assert at.atomic.scan_linelist(tmp_path).collect().height == 1
 
 
 def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(tmp_path: Path) -> None:
     """A cache of one text file is not current for a different file, also if the two files have the same time stamp."""
     write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
-    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 1
+    assert at.atomic.scan_linelist(tmp_path).collect().height == 1
     firstmtime = (tmp_path / "linestat.out").stat().st_mtime
     (tmp_path / "linestat.out").unlink()
     write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
     os.utime(tmp_path / "linelist.out", (firstmtime, firstmtime))
 
-    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 3
+    assert at.atomic.scan_linelist(tmp_path).collect().height == 3
 
 
 def test_get_linelist_pldf_keeps_the_cache_after_a_compression(
@@ -715,14 +715,14 @@ def test_get_linelist_pldf_keeps_the_cache_after_a_compression(
 ) -> None:
     """A compression with zstd keeps the modification time, thus the cache of the text must stay current."""
     write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
-    at.atomic.get_linelist_pldf(tmp_path).collect()
+    at.atomic.scan_linelist(tmp_path).collect()
     mtime = (tmp_path / "linelist.out").stat().st_mtime
     (tmp_path / "linelist.out").unlink()
     write_linelistfile(tmp_path / "linelist.out.zst", TEST_LINES)
     os.utime(tmp_path / "linelist.out.zst", (mtime, mtime))
     capsys.readouterr()
 
-    assert at.atomic.get_linelist_pldf(tmp_path).collect().height == 3
+    assert at.atomic.scan_linelist(tmp_path).collect().height == 3
     assert "linelist.out.zst" not in capsys.readouterr().out
 
 
@@ -772,7 +772,7 @@ def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
     (tmp_path / filename).write_bytes(content)
 
     with pytest.raises(ValueError, match=expectedmessage):
-        at.atomic.get_linelist_pldf(tmp_path)
+        at.atomic.scan_linelist(tmp_path)
     assert not (tmp_path / "linelist.out.parquet.tmp").exists()
 
 
@@ -783,7 +783,7 @@ def test_get_linelist_pldf_refuses_a_compressed_file_that_ends_inside_a_row(tmp_
         fout.write(b"4216.708 38 2 2 0")
 
     with pytest.raises(ValueError, match=NO_LINE_END_MESSAGE):
-        at.atomic.get_linelist_pldf(tmp_path)
+        at.atomic.scan_linelist(tmp_path)
 
 
 def test_polars_error_note_names_a_damaged_xz_file(tmp_path: Path) -> None:
@@ -791,7 +791,7 @@ def test_polars_error_note_names_a_damaged_xz_file(tmp_path: Path) -> None:
     (tmp_path / "linelist.out.xz").write_bytes(b"data that is not xz")
 
     with pytest.raises(lzma.LZMAError) as excinfo:
-        at.atomic.get_linelist_pldf(tmp_path)
+        at.atomic.scan_linelist(tmp_path)
     assert any("linelist.out.xz" in note for note in excinfo.value.__notes__)
 
 
@@ -804,7 +804,7 @@ def test_get_linelist_pldf_reads_a_folder_name_with_glob_characters(tmp_path: Pa
 
     for _ in range(2):
         # the first call writes the cache, and the second call reads it
-        assert at.atomic.get_linelist_pldf(tmp_path / "model[1]").collect().height == 3
+        assert at.atomic.scan_linelist(tmp_path / "model[1]").collect().height == 3
 
 
 def make_zero_based_atomic_data(folder: Path, atomic_number: int, ion_stage: int) -> None:

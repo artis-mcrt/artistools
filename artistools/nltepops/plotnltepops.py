@@ -27,7 +27,7 @@ from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -239,7 +239,7 @@ def get_floers_data(
         if floersmultizonepath is not None:
             # the reference file names the outer velocity of each shell. vel_r_max is in cm/s, and
             # add_derived_cols_to_modeldata gives it for a model of any dimension
-            dfmodel, modelmeta = get_modeldata(modelpath)
+            dfmodel, modelmeta = scan_modeldata(modelpath)
             modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_max").collect()
             vel_outer = modeldata["vel_r_max"].item(modelgridindex) / km_to_cm
             print(f"  Reading {floersmultizonepath} for vel_outer {vel_outer} and Te {T_e}")
@@ -752,7 +752,7 @@ def plot_populations_with_time_or_velocity(
 
     if args.x == "velocity":
         # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
-        dfmodel, modelmeta = get_modeldata(modelpaths[0])
+        dfmodel, modelmeta = scan_modeldata(modelpaths[0])
         modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
         velocity = modeldata["vel_r_mid"] / km_to_cm
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
@@ -962,7 +962,7 @@ def make_singletimestep_plot(
 
     # invariant to the cell loop, so read the estimators and the model once instead of once per cell
     estimators = read_estimators(modelpath, timestep=timestep, modelgridindex=list(mgilist))
-    lzmodeldata, modelmeta = get_modeldata(modelpath)
+    lzmodeldata, modelmeta = scan_modeldata(modelpath)
     lzmodeldata = add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
     velocity_kmps_of_mgi = {
         mgi: vel_r_mid / km_to_cm

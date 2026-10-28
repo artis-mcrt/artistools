@@ -36,7 +36,7 @@ from artistools.misc import split_multitable_dataframe
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
-from artistools.spectra import get_vspecpol_data
+from artistools.spectra import scan_vspecpol_data
 
 
 def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:
@@ -118,7 +118,7 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
 
         for vspecindex, angle_name in zip(vspecindexes, angle_names, strict=True):
             print(angle_name)
-            vspecdata = get_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect()
+            vspecdata = scan_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect()
 
             timearray = vspecdata.columns[1:]
             vspecdata = (

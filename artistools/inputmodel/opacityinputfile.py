@@ -9,8 +9,8 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import RHO_FROM_LOGRHO
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
@@ -111,7 +111,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.action == "uniform":
         confirm_overwrite([args.outputfile], ("opacity.txt",), force=args.force)
-        _, modelmeta = get_modeldata(modelpath)
+        _, modelmeta = scan_modeldata(modelpath)
         all_cells_same_opacity(Path(args.outputfile), modelmeta["npts_model"], kappa=args.kappa)
     else:
         opacities = get_opacity_from_file(modelpath)

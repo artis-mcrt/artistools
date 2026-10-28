@@ -6,15 +6,15 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata as add_deri
 from artistools.inputmodel.core import dimension_reduce_model as dimension_reduce_model
 from artistools.inputmodel.core import get_cell_selection as get_cell_selection
 from artistools.inputmodel.core import get_costheta_selection as get_costheta_selection
-from artistools.inputmodel.core import get_initelemabundances as get_initelemabundances
 from artistools.inputmodel.core import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
-from artistools.inputmodel.core import get_modeldata as get_modeldata
 from artistools.inputmodel.core import get_modelmeta as get_modelmeta
 from artistools.inputmodel.core import get_spatial_scales as get_spatial_scales
 from artistools.inputmodel.core import save_empty_abundance_file as save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel.core import save_modeldata as save_modeldata
 from artistools.inputmodel.core import scale_model_to_time as scale_model_to_time
+from artistools.inputmodel.core import scan_initelemabundances as scan_initelemabundances
+from artistools.inputmodel.core import scan_modeldata as scan_modeldata
 
 # isort: split
 from artistools.inputmodel import core as core

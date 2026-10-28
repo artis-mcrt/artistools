@@ -2008,9 +2008,9 @@ def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps",
         return "kmps"
     if choice == "c":
         return "c"
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel import scan_modeldata
 
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     unit = get_auto_velocity_unit(modelmeta["vmax_cmps"])
     print_detail(
         f"The velocity axis takes units of {VELOCITYUNIT_LABELS[unit]}, because the vmax of the model is"
@@ -2056,9 +2056,9 @@ def get_velocity_bin_edges_kmps(
                 "Give a velocity of 1c or less",
             )
     else:
-        from artistools.inputmodel import get_modeldata
+        from artistools.inputmodel import scan_modeldata
 
-        _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+        _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
         velocitymax_kmps = get_grid_corner_velocity_kmps(modelmeta)
         print_detail(
             f"The velocity bins end at {format_velocity(velocitymax_kmps, unit)}, the corner of the model grid. This"

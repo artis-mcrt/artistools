@@ -36,7 +36,6 @@ from artistools.lightcurve.plotlightcurve import RefusedOption
 from artistools.lightcurve.plotlightcurve import resolve_plot_args
 from artistools.misc import exit_with_error
 from artistools.misc import get_artis_model_folders
-from artistools.misc import get_deposition
 from artistools.misc import get_file_metadata
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
@@ -44,6 +43,7 @@ from artistools.misc import is_remote_path
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_modelpath
+from artistools.misc import scan_deposition
 from artistools.paths import get_path
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
@@ -283,7 +283,7 @@ def get_energy_rate_columns(modelfolders: "Sequence[Path]") -> frozenset[str]:
     columns: set[str] = set()
     for modelfolder in modelfolders:
         with contextlib.suppress(FileNotFoundError, ValueError):
-            columns |= set(get_deposition(modelfolder).collect_schema().names())
+            columns |= set(scan_deposition(modelfolder).collect_schema().names())
     return frozenset(columns)
 
 

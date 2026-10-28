@@ -17,7 +17,7 @@ from artistools.estimators.core import get_units
 from artistools.estimators.core import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_costheta_selection
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
@@ -233,7 +233,7 @@ def get_cells_in_costheta_range(modelpath: Path, cells: Sequence[int], costhetar
     A cell of the list outside the range has no row, and it can hold estimators. Thus warn_missing_rows must not
     name it.
     """
-    lzmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    lzmodel, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     dfcells = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
     return (
         dfcells

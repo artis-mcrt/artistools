@@ -114,10 +114,10 @@ A remote model path has the form `host:path`. Give it as `Path("host:path")`. So
 computer and not on the host. These readers read a remote model on its host:
 
 - `at.scan_estimators`, `at.get_timestep_times`, `at.get_timestep_of_timedays`, and `at.misc.get_time_range`;
-- `at.get_modeldata`, `at.get_inputparams`, `at.get_composition_data`, and `at.get_deposition`;
+- `at.scan_modeldata`, `at.get_inputparams`, `at.get_composition_data`, and `at.scan_deposition`;
 - `at.nltepops.read_nltepops`, which needs a `timestep` or a `modelgridindex` for a remote model;
-- `at.spectra.get_spectra` and `at.spectra.get_from_packets`;
-- `at.lightcurve.find_lightcurve_file`, `at.lightcurve.scan_lightcurve`, and `at.lightcurve.get_from_packets`;
+- `at.spectra.scan_spectra` and `at.spectra.scan_spectra_from_packets`;
+- `at.lightcurve.find_lightcurve_file`, `at.lightcurve.scan_lightcurve`, and `at.lightcurve.scan_lightcurve_from_packets`;
 - `at.packets.get_packets_column_names`, `at.misc.get_artis_options`, and `at.misc.get_artis_option`.
 
 The other readers stop with an error. For these readers, run the script on the host.
@@ -381,7 +381,7 @@ Possible errors:
 
 ## Model data: the cells of `model.txt`
 
-`at.get_modeldata(modelpath, get_elemabundances=False)` gives a tuple. The first item is a LazyFrame with one row for
+`at.scan_modeldata(modelpath, get_elemabundances=False)` gives a tuple. The first item is a LazyFrame with one row for
 each cell. The second item is a dict of the model parameters. Each value of `model.txt` is at the start time of the
 model, `t_model_init_days`. The columns are:
 
@@ -413,7 +413,7 @@ import polars as pl
 from artistools.constants import Msun_to_g
 
 modelpath = "."
-dfmodel, modelmeta = at.get_modeldata(modelpath)
+dfmodel, modelmeta = at.scan_modeldata(modelpath)
 dfmodel = at.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
 print(
     dfmodel.select(
@@ -427,7 +427,7 @@ print("t_model_init_days:", modelmeta["t_model_init_days"], "dimensions:", model
 
 ## Deposition: the energy that the ejecta absorb
 
-`at.get_deposition(modelpath)` reads `deposition.out`. It gives a LazyFrame with one row for each time step. The
+`at.scan_deposition(modelpath)` reads `deposition.out`. It gives a LazyFrame with one row for each time step. The
 LazyFrame always has the columns `timestep` and `tmid_days`. The other columns come from the header of the file, and
 they change with the version of ARTIS. Examples are:
 
@@ -454,7 +454,7 @@ from artistools.constants import Lsun_to_erg_per_s
 
 modelpath = "."
 timestep = at.get_timestep_of_timedays(modelpath, 10)
-dfdep = at.get_deposition(modelpath).filter(pl.col("timestep") == timestep).collect()
+dfdep = at.scan_deposition(modelpath).filter(pl.col("timestep") == timestep).collect()
 print(
     dfdep.select(
         "timestep",
@@ -477,7 +477,7 @@ each direction bin, with these columns:
 - `luminosity_cmf_erg/s` and `luminosity_cmf_Lsun` (the luminosity in the comoving frame);
 - `mag` (the absolute bolometric magnitude).
 
-`at.lightcurve.get_from_packets(modelpath, escape_type="TYPE_RPKT", timedaysmin=..., timedaysmax=...)` makes the light
+`at.lightcurve.scan_lightcurve_from_packets(modelpath, escape_type="TYPE_RPKT", timedaysmin=..., timedaysmax=...)` makes the light
 curve from the packets files. Use it for a time range or a type of packet that the light curve files do not give. It is
 slower than `scan_lightcurve`.
 
@@ -531,7 +531,7 @@ elif firstluminosity > 0.9 * peakluminosity:
 
 ## Spectra
 
-`at.spectra.get_spectra(Path(modelpath), timestepmin, timestepmax, directionbins=[-1])` reads `spec.out`. It gives a
+`at.spectra.scan_spectra(Path(modelpath), timestepmin, timestepmax, directionbins=[-1])` reads `spec.out`. It gives a
 dict with one LazyFrame for each direction bin. Each spectrum is the mean over the time steps from `timestepmin` to
 `timestepmax`, with the width of each time step as the weight. The columns are:
 
@@ -543,12 +543,12 @@ dict with one LazyFrame for each direction bin. Each spectrum is the mean over t
 The flux is at a distance of 1 Mpc. Give `gamma=True` for the gamma-ray spectrum. Give only the direction bins that you
 need. For a bin of 0 or more, artistools reads the large file `spec_res.out`.
 
-`at.spectra.get_from_packets(modelpath, timelowdays, timehighdays, directionbins=[-1])` makes the spectrum from the
-packets files for a time range in days. It is slower than `get_spectra`.
+`at.spectra.scan_spectra_from_packets(modelpath, timelowdays, timehighdays, directionbins=[-1])` makes the spectrum from the
+packets files for a time range in days. It is slower than `scan_spectra`.
 
 Possible errors:
 
-- `get_spectra` takes time steps and not days. Change a range of days to time steps with
+- `scan_spectra` takes time steps and not days. Change a range of days to time steps with
   `at.misc.get_time_range(modelpath, timemin=..., timemax=...)`. It keeps the time steps whose mid time is in the range,
   as `artistools plotspectra --timedays` does. For a range after the end of the model, it gives the time step -1.
 - A maximum in a range of wavelengths can be at an edge of that range. Compare it with the maximum of the full spectrum.
@@ -571,7 +571,7 @@ from artistools.constants import megaparsec_to_cm
 
 modelpath = "."
 timestepmin, timestepmax, daysmin, daysmax = at.misc.get_time_range(modelpath, timemin=10, timemax=12)
-dfspec = at.spectra.get_spectra(Path(modelpath), timestepmin, timestepmax, directionbins=[-1])[-1].collect()
+dfspec = at.spectra.scan_spectra(Path(modelpath), timestepmin, timestepmax, directionbins=[-1])[-1].collect()
 print(f"time steps {timestepmin} to {timestepmax}, {daysmin:.2f} to {daysmax:.2f} days")
 print(dfspec.filter(pl.col("lambda_angstroms").is_between(3000, 10000)).top_k(1, by="f_lambda"))
 lambdapeak = dfspec.top_k(1, by="f_lambda")["lambda_angstroms"].item()
@@ -585,7 +585,7 @@ print(f"luminosity in the spectrum: {luminosity:.3e} erg/s")
 
 ## Other data
 
-- `at.packets.get_packets(modelpath)` gives `(number of ranks that it read, LazyFrame of the packets)`. artistools
+- `at.packets.scan_packets(modelpath)` gives `(number of ranks that it read, LazyFrame of the packets)`. artistools
   divides a sum of the packet energies by that number, e.g. for a luminosity. Do the same. Before it returns, the first
   call writes a parquet cache for each batch of 100 packets files. On a large model this takes many minutes. To prevent
   a slow step:

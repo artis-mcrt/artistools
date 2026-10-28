@@ -89,7 +89,7 @@ modelpath_classic_3d = testdatapath / "test-classicmode_3d"
 
 def get_derived_modeldata(modelpath: Path, **kwargs: t.Any) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Return the model with the derived columns, e.g. the mass of each cell, and the metadata."""
-    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, **kwargs)
+    lzdfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath, **kwargs)
     return at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta), modelmeta
 
 
@@ -370,14 +370,14 @@ def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: 
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
     cachefilepath.write_bytes(cachecontents)
 
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    lzdfmodel, modelmeta = at.scan_modeldata(modelpath=tmp_path)
     assert modelmeta["npts_model"] == 1
 
     # the rebuilt cache is written even though the text model is far under the 2 MiB threshold
     cachemetadata = pl.read_parquet_metadata(cachefilepath)
     assert cachemetadata["cacheversion"] == str(CACHEVERSION)
     assert cachemetadata["textsource_mtime"] == str((tmp_path / "model.txt").stat().st_mtime)
-    pltest.assert_frame_equal(lzdfmodel.collect(), at.get_modeldata(modelpath=tmp_path)[0].collect())
+    pltest.assert_frame_equal(lzdfmodel.collect(), at.scan_modeldata(modelpath=tmp_path)[0].collect())
 
 
 def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
@@ -392,7 +392,7 @@ def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
         metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(textfilepath.stat().st_mtime)},
     )
 
-    _, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    _, modelmeta = at.scan_modeldata(modelpath=tmp_path)
     assert modelmeta["npts_model"] == 1
     assert "modelmeta_json" in pl.read_parquet_metadata(cachefilepath)
 
@@ -402,7 +402,7 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     shutil.copy(modelpath / "model.txt", tmp_path)
     textfilepath = tmp_path / "model.txt"
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    lzdfmodel, modelmeta = at.scan_modeldata(modelpath=tmp_path)
     # the version matches, thus the reader rejects the cache for the stale mtime alone
     at.misc.write_parquet_atomic(
         lzdfmodel.collect(),
@@ -410,7 +410,7 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
         metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)},
     )
 
-    assert at.get_modeldata(modelpath=tmp_path)[1]["npts_model"] == 1
+    assert at.scan_modeldata(modelpath=tmp_path)[1]["npts_model"] == 1
     assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
 
 
@@ -603,7 +603,7 @@ def test_makeartismodelfrom_fortrangriddat(tmp_path: Path) -> None:
     )
 
     # grid.dat gives 8 cells, and the command expands the grid to the time of the snapshot
-    _, modelmeta = at.inputmodel.get_modeldata(outpath_kn, printwarningsonly=True)
+    _, modelmeta = at.inputmodel.scan_modeldata(outpath_kn, printwarningsonly=True)
     assert modelmeta["dimensions"] == 3
     assert modelmeta["npts_model"] == 8
     assert np.isclose(modelmeta["t_model_init_days"], 0.1)
@@ -620,7 +620,7 @@ def test_make1dmodelfromcone(tmp_path: Path) -> None:
         coneangle=60,
     )
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)
     assert modelmeta["dimensions"] == 1
     assert 1 <= modelmeta["npts_model"] <= 4
     assert dfmodel.select(pl.col("logrho").max()).collect().item() > -90.0
@@ -697,7 +697,7 @@ def test_makemodel_dimensionreduce_writes_the_gridcontributions(tmp_path: Path) 
     modelfolder.mkdir()
     for filename in ("model.txt.xz", "abundances.txt.xz"):
         shutil.copy(modelpath_3d / filename, modelfolder)
-    dfmodel = at.inputmodel.get_modeldata(modelfolder, printwarningsonly=True)[0].collect()
+    dfmodel = at.inputmodel.scan_modeldata(modelfolder, printwarningsonly=True)[0].collect()
     nonemptyids = dfmodel.filter(pl.col("rho") > 0)["inputcellid"].to_list()
     (modelfolder / "gridcontributions.txt").write_text(
         "particleid cellindex frac_of_cellmass\n" + "".join(f"7 {cellid} 1.0\n" for cellid in nonemptyids),
@@ -709,7 +709,7 @@ def test_makemodel_dimensionreduce_writes_the_gridcontributions(tmp_path: Path) 
 
     reducedfolder = outfolder / "model3d_dimreduce_1d"
     dfcontribs = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(reducedfolder)
-    _, modelmeta = at.inputmodel.get_modeldata(reducedfolder, printwarningsonly=True)
+    _, modelmeta = at.inputmodel.scan_modeldata(reducedfolder, printwarningsonly=True)
     assert set(dfcontribs["particleid"].to_list()) == {7}
     assert dfcontribs["cellindex"].max() <= modelmeta["npts_model"]
 
@@ -733,7 +733,7 @@ def test_maketardismodel(tmp_path: Path) -> None:
 def test_make_empty_abundance_file(tmp_path: Path) -> None:
     at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=tmp_path)
 
-    dfabund = at.inputmodel.get_initelemabundances(tmp_path, printwarningsonly=True).collect()
+    dfabund = at.inputmodel.scan_initelemabundances(tmp_path, printwarningsonly=True).collect()
     assert dfabund["inputcellid"].to_list() == list(range(1, 51))
     assert dfabund.select(cs.starts_with("X_").abs().max()).max_horizontal().item() == 0.0
 
@@ -2127,7 +2127,7 @@ def test_plotdensity_nbins_covers_the_model_below_xmax(mockplot: mock.MagicMock,
     The bins ended at -xmax, thus get_binned_profile dropped each cell above it. The profile then gave
     no mass above -xmax, which a reader takes for an empty outer model.
     """
-    _, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    _, modelmeta = at.inputmodel.scan_modeldata(modelpath_3d, printwarningsonly=True)
     vmax_on_c = modelmeta["vmax_cmps"] / at.constants.C_cm_per_s
     xmax = vmax_on_c / 2.0
 
@@ -2332,7 +2332,7 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     for loadnumber in (0, 1):
         assert cachefilepath.is_file() == (loadnumber == 1)
         capsys.readouterr()
-        dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata(modelpath=outpath)
+        dfmodel_loaded, modelmeta_loaded = at.inputmodel.scan_modeldata(modelpath=outpath)
         output = capsys.readouterr().out
         assert (f"Reading table from {cachefilepath}" in output) == (loadnumber == 1)
         assert (f"Saving {cachefilepath}" in output) == (loadnumber == 0)
@@ -2342,7 +2342,7 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         )
         assert modelmeta == modelmeta_loaded
 
-        dfelemabundances_loaded = at.inputmodel.get_initelemabundances(outpath)
+        dfelemabundances_loaded = at.inputmodel.scan_initelemabundances(outpath)
         pltest.assert_frame_equal(
             dfelemabundances,
             dfelemabundances_loaded.select(
@@ -2470,7 +2470,7 @@ def test_vel_on_c_excludes_kmps_columns() -> None:
 
 
 def test_scale_model_to_time() -> None:
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath)
     t_model_init_days = modelmeta["t_model_init_days"]
 
     dfmodel_collected = dfmodel.collect()
@@ -2510,7 +2510,7 @@ def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> 
     onespacefolder = tmp_path / "onespace"
     at.inputmodel.save_initelemabundances(dfelabundances, outpath=onespacefolder)
     with mock.patch("artistools.inputmodel.core.read_wsv", side_effect=AssertionError("the slow reader ran")):
-        dfonespace = at.inputmodel.get_initelemabundances(onespacefolder).collect()
+        dfonespace = at.inputmodel.scan_initelemabundances(onespacefolder).collect()
 
     morespacesfolder = tmp_path / "morespaces"
     morespacesfolder.mkdir()
@@ -2520,14 +2520,14 @@ def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> 
         "\n".join(line if line.startswith("#") else "   " + line.replace(" ", "   ") for line in lines) + "\n",
         encoding="utf-8",
     )
-    pltest.assert_frame_equal(dfonespace, at.inputmodel.get_initelemabundances(morespacesfolder).collect())
+    pltest.assert_frame_equal(dfonespace, at.inputmodel.scan_initelemabundances(morespacesfolder).collect())
     pltest.assert_frame_equal(dfonespace, dfelabundances.with_columns(pl.col("inputcellid").cast(pl.Int32)))
 
     # read_wsv gives null and not NaN for a nan token, and the fast reader must not change that
     nanfolder = tmp_path / "nan"
     nanfolder.mkdir()
     (nanfolder / "abundances.txt").write_text("1 nan 0.5\n2 0.25 0.75\n", encoding="utf-8")
-    assert at.inputmodel.get_initelemabundances(nanfolder).collect()["X_H"].to_list() == [None, 0.25]
+    assert at.inputmodel.scan_initelemabundances(nanfolder).collect()["X_H"].to_list() == [None, 0.25]
 
 
 def test_slice_abundance_file_renumbers_the_cells(tmp_path: Path) -> None:
@@ -2545,7 +2545,7 @@ def test_slice_abundance_file_renumbers_the_cells(tmp_path: Path) -> None:
 
     slice_abundance_file(inputfolder, outputfolder, {1: 1, 3: 2})
 
-    dfelabundances = at.inputmodel.get_initelemabundances(outputfolder).collect()
+    dfelabundances = at.inputmodel.scan_initelemabundances(outputfolder).collect()
     assert dfelabundances["inputcellid"].to_list() == [1, 2]
     assert np.allclose(dfelabundances["X_H"], [0.001, 0.003], rtol=1e-6)
 
@@ -2577,7 +2577,7 @@ def test_slice_3dmodel_takes_the_cells_that_hold_the_axis(
     wid_init_kmps = 2 * vmax_cmps / ncoordgrid / at.constants.km_to_cm
     vel_r_max_first = wid_init_kmps / 2 if ncoordgrid % 2 else wid_init_kmps
     assert xlist == pytest.approx([vel_r_max_first, vel_r_max_first + wid_init_kmps], rel=1e-5)
-    dfmodel1d, modelmeta1d = at.inputmodel.get_modeldata(outputfolder)
+    dfmodel1d, modelmeta1d = at.inputmodel.scan_modeldata(outputfolder)
     assert modelmeta1d["dimensions"] == 1
     assert dfmodel1d.collect()["vel_r_max_kmps"].to_list() == pytest.approx(xlist, rel=1e-5)
 
@@ -2705,7 +2705,7 @@ def test_get_modeldata_2d(tmp_path: Path) -> None:
     vmax_cmps, t_model_days = 1.0e9, 1.0
     modelfile = write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days)
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelfile)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfile)
 
     assert modelmeta["dimensions"] == 2
     assert modelmeta["ncoordgridrcyl"] == ncoordgridrcyl
@@ -2736,14 +2736,14 @@ def test_model_header_comments_round_trip(tmp_path: Path) -> None:
     sourcefolder = tmp_path / "source"
     sourcefolder.mkdir()
     modelfile = write_2d_model(sourcefolder, ncoordgridrcyl, ncoordgridz, vmax_cmps=1.0e9, t_model_days=1.0)
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelfile)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfile)
     # a comment of a user can start with the same words as a line of the writer
     usercomments = ["created: by hand from a test model", "column units: calibrated by hand"]
     modelmeta["headercommentlines"] = usercomments.copy()
 
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
 
-    _, modelmeta_saved = at.inputmodel.get_modeldata(tmp_path)
+    _, modelmeta_saved = at.inputmodel.scan_modeldata(tmp_path)
     assert modelmeta_saved["headercommentlines"] == usercomments
     assert modelmeta_saved["ncoordgridrcyl"] == ncoordgridrcyl
     assert modelmeta_saved["ncoordgridz"] == ncoordgridz
@@ -2760,7 +2760,7 @@ def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
     modelfile = write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days, zshift=1.5 * wid_init_z)
 
     with pytest.raises(AssertionError, match="pos_z_mid"):
-        at.inputmodel.get_modeldata(modelfile)
+        at.inputmodel.scan_modeldata(modelfile)
 
 
 def test_fromcmfgen_writes_named_columns(tmp_path: Path) -> None:
@@ -2794,7 +2794,7 @@ def test_fromcmfgen_writes_named_columns(tmp_path: Path) -> None:
     with mock.patch.object(cmfgen, "rd_sn_hydro_data", return_value=snapshot):
         cmfgen.main(argsraw=["-snapshot", "unused", "-o", str(tmp_path)])
 
-    dfmodel, modelmeta = at.get_modeldata(tmp_path)
+    dfmodel, modelmeta = at.scan_modeldata(tmp_path)
     dfmodel = dfmodel.collect()
 
     assert modelmeta["npts_model"] == nd
@@ -2809,7 +2809,7 @@ def test_fromcmfgen_writes_named_columns(tmp_path: Path) -> None:
     # Cr, Fe, Co, Ni and Ba are all Z > 20, so the iron-group fraction is their sum
     assert np.allclose(dfmodel["X_Fegroup"].to_numpy(), 0.1 + 0.2 + 0.05 + 0.1 + 0.05, rtol=1e-4)
 
-    dfabund = at.inputmodel.get_initelemabundances(tmp_path).collect()
+    dfabund = at.inputmodel.scan_initelemabundances(tmp_path).collect()
     assert np.allclose(dfabund["X_O"].to_numpy(), 0.5, rtol=1e-4)
     assert np.allclose(dfabund["X_Fe"].to_numpy(), 0.2, rtol=1e-4)
     # Ba is folded into X_Fegroup and gets no element column
@@ -2860,9 +2860,9 @@ def test_make1dmodelfromaxis(tmp_path: Path) -> None:
 
     The positive-axis branch renamed the inner cell edge to vel_r_max_kmps and dropped the cell
     with pos_min == 0. Thus the velocity of each shell was low by one cell width. The branch also
-    read args.t_model, which only the cone branch set, and passed a list of paths to get_modeldata.
+    read args.t_model, which only the cone branch set, and passed a list of paths to scan_modeldata.
     """
-    _, modelmeta3d = at.inputmodel.get_modeldata(modelpath_3d)
+    _, modelmeta3d = at.inputmodel.scan_modeldata(modelpath_3d)
     outdirs = {}
     for axis in ("+z", "-z"):
         outdir = tmp_path / f"axis_{axis[1]}_{'pos' if axis[0] == '+' else 'neg'}"
@@ -2872,8 +2872,8 @@ def test_make1dmodelfromaxis(tmp_path: Path) -> None:
         )
         outdirs[axis] = outdir
 
-    dfpos = at.inputmodel.get_modeldata(outdirs["+z"] / "model_1d.txt")[0].collect()
-    dfneg = at.inputmodel.get_modeldata(outdirs["-z"] / "model_1d.txt")[0].collect()
+    dfpos = at.inputmodel.scan_modeldata(outdirs["+z"] / "model_1d.txt")[0].collect()
+    dfneg = at.inputmodel.scan_modeldata(outdirs["-z"] / "model_1d.txt")[0].collect()
 
     ncells_along_axis = int(modelmeta3d["ncoordgrid"]) // 2
     assert dfpos.height == ncells_along_axis
@@ -3070,12 +3070,12 @@ def test_an_unreadable_model_cache_is_not_deleted(tmp_path: Path) -> None:
     The reader deleted an unreadable file with a bare unlink, outside the identity rule of
     write_parquet_atomic. That unlink can remove the fresh cache that a rival process installed.
     """
-    from artistools.inputmodel.core import read_parquet_cache
+    from artistools.inputmodel.core import scan_parquet_cache
 
     parquetfilepath = tmp_path / "model.txt.parquet.tmp"
     parquetfilepath.write_bytes(b"not parquet")
 
-    assert read_parquet_cache(parquetfilepath, textsource_mtime=1.0) is None
+    assert scan_parquet_cache(parquetfilepath, textsource_mtime=1.0) is None
     assert parquetfilepath.is_file(), "the unreadable cache must stay for the identity-checked rewrite"
 
 
@@ -3157,7 +3157,7 @@ def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Pat
     modelfile = tmp_path / "model.txt"
     shutil.copy(at.firstexisting("model.txt", folder=modelpath, tryzipped=True), modelfile)
 
-    dfmodel_expected, modelmeta_expected = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel_expected, modelmeta_expected = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
     # a cache whose stamps are current, thus only the malformed json can reject it
     parquetfile = tmp_path / "model.txt.parquet.tmp"
@@ -3172,7 +3172,7 @@ def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Pat
     )
     assert parquetfile.is_file()
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
     assert modelmeta == modelmeta_expected
     pltest.assert_frame_equal(dfmodel.collect(), dfmodel_expected.collect())
@@ -3250,7 +3250,7 @@ def test_plotinitialcomposition_log_scale_takes_a_linear_floor_value(tmp_path: P
 
 
 def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) -> None:
-    """An old model.txt names the electron fraction cellYe, and get_modeldata returns the column as Ye."""
+    """An old model.txt names the electron fraction cellYe, and scan_modeldata returns the column as Ye."""
     dfmodel = pl.DataFrame({
         "inputcellid": [1, 2],
         "vel_r_max_kmps": [1000.0, 2000.0],
@@ -3268,7 +3268,7 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
     assert " Ye\n" in modeltext
     modelfile.write_text(modeltext.replace(" Ye\n", " cellYe\n"), encoding="utf-8")
 
-    lzdfmodel, _modelmeta = at.inputmodel.get_modeldata(tmp_path)
+    lzdfmodel, _modelmeta = at.inputmodel.scan_modeldata(tmp_path)
 
     columns = lzdfmodel.collect_schema().names()
     assert "Ye" in columns
@@ -3279,8 +3279,8 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
 @pytest.mark.parametrize("sourcemodelpath", [modelpath, modelpath_3d])
 def test_get_modeldata_gives_only_the_file_columns(sourcemodelpath: Path) -> None:
     """Give only the file columns. A change to a file column then keeps each derived column current."""
-    lzdfmodel_file, _ = at.inputmodel.core.read_modelfile_text(sourcemodelpath / "model.txt")
-    lzdfmodel, _ = at.inputmodel.get_modeldata(sourcemodelpath)
+    lzdfmodel_file, _ = at.inputmodel.core.scan_modelfile_text(sourcemodelpath / "model.txt")
+    lzdfmodel, _ = at.inputmodel.scan_modeldata(sourcemodelpath)
     assert lzdfmodel.collect_schema().names() == [*lzdfmodel_file.collect_schema().names(), "modelgridindex"]
 
 
@@ -3337,7 +3337,7 @@ def test_dimension_reduce_takes_a_model_with_a_volume_column() -> None:
     lzdfmodel, modelmeta = get_derived_modeldata(modelpath_3d)
     dfmodel_out, _, _, _ = at.inputmodel.dimension_reduce_model(
         dfmodel=lzdfmodel.select(
-            cs.by_name(at.inputmodel.get_modeldata(modelpath_3d)[0].collect_schema().names()) | cs.by_name("volume")
+            cs.by_name(at.inputmodel.scan_modeldata(modelpath_3d)[0].collect_schema().names()) | cs.by_name("volume")
         ),
         outputdimensions=1,
         modelmeta=modelmeta.copy(),
@@ -3351,7 +3351,7 @@ def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcem
 
     The dataframe also holds rho and logrho, and pos_ and vel_ columns of other dimensions.
     """
-    lzdfmodel_file, _ = at.inputmodel.core.read_modelfile_text(sourcemodelpath / "model.txt")
+    lzdfmodel_file, _ = at.inputmodel.core.scan_modelfile_text(sourcemodelpath / "model.txt")
     lzdfmodel, modelmeta = get_derived_modeldata(sourcemodelpath)
     lzdfmodel_allderived = lzdfmodel.with_columns(
         pl.lit(1.0).alias(col) for col in ("pos_rcyl_mid", "pos_x_mid", "vel_x_mid_on_c", "kinetic_en_erg_x")
@@ -3363,7 +3363,7 @@ def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcem
         outpath = tmp_path / label
         outpath.mkdir()
         at.inputmodel.save_modeldata(dfmodel.collect(), outpath=outpath, modelmeta=modelmeta.copy())
-        dfmodel_written[label] = at.inputmodel.core.read_modelfile_text(outpath / "model.txt.zst")[0].collect()
+        dfmodel_written[label] = at.inputmodel.core.scan_modelfile_text(outpath / "model.txt.zst")[0].collect()
 
     pltest.assert_frame_equal(dfmodel_written["filecolumns"], dfmodel_written["allderived"])
 
@@ -3395,7 +3395,7 @@ def test_save_modeldata_writes_the_extra_columns(
         dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, **extracolsarg
     )
 
-    lzdfmodel_written, _ = at.inputmodel.core.read_modelfile_text(tmp_path / "model.txt.zst")
+    lzdfmodel_written, _ = at.inputmodel.core.scan_modelfile_text(tmp_path / "model.txt.zst")
     standardcols = at.inputmodel.core.get_standard_columns(1)
     assert lzdfmodel_written.collect_schema().names() == [*standardcols, "X_Sr89", *expectedcustomcols]
 
@@ -3403,7 +3403,7 @@ def test_save_modeldata_writes_the_extra_columns(
 @pytest.mark.parametrize(("sourcemodelpath", "outputdimensions"), [(modelpath_3d, 1), (modelpath, 0)])
 def test_dimension_reduce_takes_the_other_density_column(sourcemodelpath: Path, outputdimensions: int) -> None:
     """A model can give rho in place of logrho, or logrho in place of rho, and the reduction makes the other one."""
-    lzdfmodel, modelmeta = at.inputmodel.core.read_modelfile_text(sourcemodelpath / "model.txt")
+    lzdfmodel, modelmeta = at.inputmodel.core.scan_modelfile_text(sourcemodelpath / "model.txt")
     dfmodel = lzdfmodel.collect()
     densitycol, otherdensitycol = ("rho", "logrho") if modelmeta["dimensions"] == 3 else ("logrho", "rho")
     dfmodel_otherdensity = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
@@ -3466,8 +3466,8 @@ def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> N
         # a cache file that exists makes the reader write a new cache, whatever the size of the model
         (tmp_path / f"model_a.{variant}.txt.parquet.tmp").touch()
 
-    lzdfmodel1, _meta1 = at.inputmodel.get_modeldata(tmp_path / "model_a.1.txt")
-    lzdfmodel2, _meta2 = at.inputmodel.get_modeldata(tmp_path / "model_a.2.txt")
+    lzdfmodel1, _meta1 = at.inputmodel.scan_modeldata(tmp_path / "model_a.1.txt")
+    lzdfmodel2, _meta2 = at.inputmodel.scan_modeldata(tmp_path / "model_a.2.txt")
 
     assert lzdfmodel1.select("logrho").collect().to_series().to_list() == pytest.approx([-10.0, -10.0])
     assert lzdfmodel2.select("logrho").collect().to_series().to_list() == pytest.approx([-12.0, -12.0])
@@ -3498,7 +3498,7 @@ def test_save_modeldata_deletes_an_old_uncompressed_file(tmp_path: Path) -> None
         "abundances.txt.zst",
         "model.txt.zst",
     ]
-    lzdfmodel, _ = at.inputmodel.get_modeldata(tmp_path, get_elemabundances=True)
+    lzdfmodel, _ = at.inputmodel.scan_modeldata(tmp_path, get_elemabundances=True)
     assert lzdfmodel.select("logrho").collect().item() == pytest.approx(-12.0)
 
     # a name with a different compression extension gave model.txt.gz.zst, and the writer deleted model.txt.gz
@@ -3810,7 +3810,7 @@ def test_get_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, pr
         encoding="utf-8",
     )
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
     dfmodel = dfmodel.collect()
 
     assert dfmodel["inputcellid"].to_list() == [1, 2, 3]
@@ -3828,7 +3828,7 @@ def test_get_modeldata_1d_with_one_cell_uses_the_fast_reader(
     """
     (tmp_path / "model.txt").write_text("1\n1.0\n1 1000.0 -5.0 1.0 0.5 0.0 0.0 0.0\n", encoding="utf-8")
 
-    dfmodel, _ = at.inputmodel.get_modeldata(tmp_path)
+    dfmodel, _ = at.inputmodel.scan_modeldata(tmp_path)
 
     assert "Using fast method" in capsys.readouterr().out
     assert dfmodel.collect()["vel_r_max_kmps"].to_list() == pytest.approx([1000.0])
@@ -4018,7 +4018,7 @@ def test_save_modeldata_1d_keeps_a_negative_custom_value(tmp_path: Path) -> None
         dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, extracols=["mycolumn"]
     )
 
-    dfwritten = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfwritten = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfwritten["mycolumn"].to_list() == pytest.approx([-3.2e4, 6.0, 0.0])
     assert dfwritten["X_Ni56"].to_list() == pytest.approx([0.5, 0.0, 0.3])
@@ -4175,8 +4175,8 @@ def test_dimension_reduce_keeps_abundances_of_empty_shells(tmp_path: Path, zero_
         argsraw=[], modelpath=[modelfolder], dimensionreduce=1, outputpath=tmp_path / "output"
     )
     reducedfolder = tmp_path / "output" / "model2d_dimreduce_1d"
-    dfmodel_read, modelmeta_read = at.inputmodel.get_modeldata(reducedfolder)
-    dfabundances_read = at.inputmodel.get_initelemabundances(reducedfolder)
+    dfmodel_read, modelmeta_read = at.inputmodel.scan_modeldata(reducedfolder)
+    dfabundances_read = at.inputmodel.scan_initelemabundances(reducedfolder)
     assert modelmeta_read["npts_model"] == 4
     pltest.assert_frame_equal(
         dfmodel_read.select("inputcellid").collect(), expected_abundances.select("inputcellid"), check_dtypes=False
@@ -4204,13 +4204,13 @@ def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Pa
     The reader took the quotation mark as the start of a quoted field. Thus it skipped the cells after the
     header, and it gave an error for an empty file. save_modeldata writes such a comment again.
     """
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath_3d, printwarningsonly=True)
     dfmodel = dfmodel.collect()
     at.inputmodel.save_modeldata(
         dfmodel, outpath=tmp_path, modelmeta=modelmeta | {"headercommentlines": ['DDT "N100 model']}
     )
 
-    dfmodel_read, modelmeta_read = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel_read, modelmeta_read = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
     assert modelmeta_read["headercommentlines"] == ['DDT "N100 model']
     pltest.assert_frame_equal(dfmodel_read.collect(), dfmodel, rel_tol=1e-6)
@@ -4232,7 +4232,7 @@ def test_get_modeldata_1d_cell_ids_can_start_at_zero(tmp_path: Path, modeltext: 
     """
     (tmp_path / "model.txt").write_text(modeltext, encoding="utf-8")
 
-    dfmodel = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfmodel = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfmodel["inputcellid"].to_list() == [0, 1, 2]
     assert dfmodel["modelgridindex"].to_list() == [0, 1, 2]
@@ -4251,7 +4251,7 @@ def test_get_modeldata_2d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
         lines.append(f"{mgi} {pos_rcyl_mid:.7e} {pos_z_mid:.7e} 1e-10 0 0 0 0 0")
     (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    dfmodel = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfmodel = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfmodel["modelgridindex"].to_list() == list(range(8))
 
@@ -4262,7 +4262,7 @@ def test_get_modeldata_3d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
     dfmodel = lzdfmodel.collect().with_columns(pl.col("inputcellid") - 1, rho=pl.lit(1e-10))
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
 
-    dfmodel_read = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfmodel_read = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfmodel_read["inputcellid"].to_list() == list(range(8))
     assert dfmodel_read["modelgridindex"].to_list() == list(range(8))
@@ -4287,7 +4287,7 @@ def test_get_modeldata_rejects_a_model_with_missing_cells(tmp_path: Path, modelt
     (tmp_path / "model.txt").write_text(modeltext, encoding="utf-8")
 
     with pytest.raises(ValueError, match=match):
-        at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+        at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
 
 @pytest.mark.parametrize("skippedline", ["# time of the snapshot [days]\n", "\n", "   # an indented comment\n"])
@@ -4297,7 +4297,7 @@ def test_get_modeldata_skips_a_comment_before_the_time(tmp_path: Path, skippedli
         f"3\n{skippedline}2.5\n1 1000 -10 0 0 0 0 0\n2 2000 -10 0 0 0 0 0\n3 3000 -10 0 0 0 0 0\n", encoding="utf-8"
     )
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
     assert modelmeta["t_model_init_days"] == pytest.approx(2.5)
     assert dfmodel.collect()["vel_r_max_kmps"].to_list() == pytest.approx([1000.0, 2000.0, 3000.0])
@@ -4320,7 +4320,7 @@ def test_get_modeldata_3d_header_with_mid_point_positions(tmp_path: Path) -> Non
     lines.extend(f"{cellid} {x:.7e} {y:.7e} {z:.7e} {rho} 0 0 0 0 0" for cellid, x, y, z, rho in dfmid.iter_rows())
     (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    dfmodel_read = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfmodel_read = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     for ax in "xyz":
         np.testing.assert_allclose(
@@ -4341,7 +4341,7 @@ def test_save_modeldata_1d_writes_zero_for_a_null(tmp_path: Path) -> None:
     })
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"t_model_init_days": 1.0})
 
-    dfwritten = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfwritten = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfwritten["X_Ni56"].to_list() == pytest.approx([0.5, 0.0])
 
@@ -4407,7 +4407,7 @@ def test_make1dmodelfromcone_keeps_ye_q_and_tracercount(tmp_path: Path) -> None:
 
     The cone took only the X_ columns. A kilonova model then had no initial energy and no Ye.
     """
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath_3d, printwarningsonly=True)
     dfmodel = dfmodel.collect().with_columns(Ye=pl.lit(0.25), q=pl.lit(1e12), tracercount=pl.lit(2, dtype=pl.Int32))
     modelfolder = tmp_path / "model3d"
     at.inputmodel.save_modeldata(dfmodel, outpath=modelfolder, modelmeta=modelmeta)
@@ -4417,7 +4417,7 @@ def test_make1dmodelfromcone_keeps_ye_q_and_tracercount(tmp_path: Path) -> None:
         argsraw=[], modelpath=[modelfolder], outputpath=tmp_path, axis="-z", nshells=4, coneangle=60
     )
 
-    dfcone = at.inputmodel.get_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)[0].collect()
+    dfcone = at.inputmodel.scan_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)[0].collect()
     assert dfcone["Ye"].to_list() == pytest.approx([0.25] * dfcone.height)
     assert dfcone["q"].to_list() == pytest.approx([1e12] * dfcone.height, rel=1e-6)
     # each 3D cell gives 2 tracers, thus a shell has an even sum above zero
@@ -4453,7 +4453,7 @@ def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(
             dimensions=dimensions,
             timedays=0.1,
         )
-        dfmodel = at.inputmodel.get_modeldata(outpath, printwarningsonly=True)[0].collect()
+        dfmodel = at.inputmodel.scan_modeldata(outpath, printwarningsonly=True)[0].collect()
         qvalues = dfmodel.filter(pl.col("q") > 0)["q"].to_numpy()
         assert qvalues.size > 0
         assert not np.allclose(qvalues, 1e10, rtol=1e-3), "the model holds the q of grid.dat"
@@ -4552,7 +4552,7 @@ def test_make1dslicefrom3dmodel(tmp_path: Path) -> None:
     outfolder = tmp_path / "slice"
     make1dslicefrom3d.main(argsraw=[str(modelpath_3d), "-o", str(outfolder), "-opdf", str(tmp_path / "slice.pdf")])
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(outfolder, get_elemabundances=True, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(outfolder, get_elemabundances=True, printwarningsonly=True)
     # the 10 x 10 x 10 grid has 5 cells on each side of the origin
     assert modelmeta["dimensions"] == 1
     assert dfmodel.collect().height == 5
@@ -4581,7 +4581,7 @@ def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.
         argsraw=["-trajectoryroot", str(tmp_path / "trajectories"), "-particleid", str(particleid), "-o", "out"]
     )
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path / "out", get_elemabundances=True, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "out", get_elemabundances=True, printwarningsonly=True)
     dfmodel = dfmodel.collect()
     assert modelmeta["t_model_init_days"] == pytest.approx(1.0)
     assert dfmodel["X_Ni56"].to_list() == pytest.approx([0.5], rel=1e-4)
@@ -4631,7 +4631,7 @@ def test_from_e2e_model_main(
 
     gridargs = ["-npz", str(datpath), "-vmax_on_c", "0.4", "-ngridrcyl", "4", "-ngridz", "8"]
     at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-o", str(tmp_path / "model2d")])
-    _, modelmeta2d = at.inputmodel.get_modeldata(tmp_path / "model2d", printwarningsonly=True)
+    _, modelmeta2d = at.inputmodel.scan_modeldata(tmp_path / "model2d", printwarningsonly=True)
     assert modelmeta2d["dimensions"] == 2
     assert modelmeta2d["npts_model"] == 32
 
@@ -4648,7 +4648,7 @@ def test_from_e2e_model_main(
         ]
     )
 
-    _, modelmeta3d = at.inputmodel.get_modeldata(tmp_path / "interpolated", printwarningsonly=True)
+    _, modelmeta3d = at.inputmodel.scan_modeldata(tmp_path / "interpolated", printwarningsonly=True)
     assert modelmeta3d["npts_model"] == 64
     for filename in ("dyn_abunds.txt.zst", "dyn_model_notrescaled.txt.zst", "dyn_model_rescaled.txt.zst"):
         assert (tmp_path / "interpolated" / filename).is_file(), filename

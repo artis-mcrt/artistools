@@ -22,7 +22,7 @@ import polars as pl
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import arggroup
 from artistools.misc import check_local_path
 from artistools.misc import COMPRESSED_EXTENSIONS
@@ -185,7 +185,7 @@ def get_emission_velocity_of_columns_expr(position: t.Literal["em", "trueem"], p
     """Return the radial velocity [cm/s] of get_emission_velocity_expr() from the columns that the packets hold.
 
     An old packets file holds true_emission_velocity and no position of the thermal emission. For a packet with no
-    record, get_packets gives that velocity a value of NaN, as get_emission_velocity_expr() does.
+    record, scan_packets gives that velocity a value of NaN, as get_emission_velocity_expr() does.
     """
     if position == "trueem" and "trueem_posx" not in packetcolumns:
         if "true_emission_velocity" not in packetcolumns:
@@ -387,7 +387,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
 
     The function adds all the columns, because a LazyFrame calculates a column only when a query uses it.
     """
-    dfmodel, modelmeta = get_modeldata(modelpath=modelpath)
+    dfmodel, modelmeta = scan_modeldata(modelpath=modelpath)
     timebins = [tstart * day_to_s for tstart in get_timestep_times(modelpath, loc="start")] + [
         get_timestep_times(modelpath, loc="end")[-1] * day_to_s
     ]
@@ -587,7 +587,7 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 
 # The version of the packets parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type. A cache keeps the
-# names of the Stokes columns of its text file, e.g. stokes1/2/3 of an older ARTIS, and get_packets renames them
+# names of the Stokes columns of its text file, e.g. stokes1/2/3 of an older ARTIS, and scan_packets renames them
 CACHEVERSION = 1
 
 # the number of ranks in each parquet cache of the packets
@@ -696,7 +696,7 @@ def get_first_packets_file(modelpath: Path) -> Path | None:
     """Return the packets text file of the first rank, or the parquet cache of the first batch, or None.
 
     The name of a cache holds the ranks of its batch. A cache of an earlier run with a different number of ranks is
-    not the cache that get_packets reads. If only such a cache exists, the function returns None.
+    not the cache that scan_packets reads. If only such a cache exists, the function returns None.
     """
     textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=modelpath)
     if textfile is not None:
@@ -1017,7 +1017,7 @@ def print_parquet_size(parquetfiles: Sequence[Path]) -> None:
     print(f"  Total parquet size is {packetsdatasize_gb:.1f} GB (from {len(parquetfiles)} batches)")
 
 
-def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
+def scan_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
     """Return the number of MPI ranks read and a lazy frame of all of the model's virtual packets."""
     nprocs_read, vpacketparquetfiles = get_packets_batch_parquet_paths(
         modelpath, maxpacketfiles=maxpacketfiles, virtual=True
@@ -1036,7 +1036,7 @@ def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None
     return nprocs_read, dfpackets
 
 
-def get_packets(
+def scan_packets(
     modelpath: str | Path,
     maxpacketfiles: int | None = None,
     packet_type: str | None = None,

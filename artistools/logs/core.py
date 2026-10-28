@@ -13,13 +13,13 @@ import polars as pl
 from artistools.misc import firstexisting_or_none
 from artistools.misc import format_range_list
 from artistools.misc import get_decompress_errors
-from artistools.misc import get_dfrankassignments
 from artistools.misc import get_npts_model
 from artistools.misc import get_ranks_of_cells_in_layout
 from artistools.misc import get_run_subfolders
 from artistools.misc import on_model_host
 from artistools.misc import parallel_map
 from artistools.misc import print_warning
+from artistools.misc import scan_rankassignments
 from artistools.misc import without_compressed_extension
 from artistools.misc import zopen
 
@@ -164,7 +164,7 @@ def get_folder_ranks(
     """
     if cells is None:
         return get_folder_log_ranks(folder) if ranks is None else ranks
-    lzrankassignments = get_dfrankassignments(folder)
+    lzrankassignments = scan_rankassignments(folder)
     nprocs = get_logged_rank_count(folder)
     if lzrankassignments is None and nprocs is None:
         # the logs of the highest ranks can be missing, thus the names of the logs do not give the number of ranks

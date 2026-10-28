@@ -20,7 +20,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
-from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
@@ -225,7 +225,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     """Plot each of args.plotvars as a 2D slice through the model and save the figure."""
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
-    lzdfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=get_elemabundances)
+    lzdfmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=get_elemabundances)
     if modelmeta["dimensions"] not in {2, 3}:
         msg = f"plotinitialcomposition plots a 2D or a 3D model, but the model in {modelpath} is 1D"
         raise ValueError(msg)
@@ -353,7 +353,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # choose what surface will be coloured by
     plotvar = "rho" if "rho" in args.plotvars else "Ye" if "Ye" in args.plotvars else args.plotvars[0]
     # an element such as Sr needs the element abundances, and an isotope such as Sr92 is a column of the model
-    plmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=plotvar[-1] not in string.digits)
+    plmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=plotvar[-1] not in string.digits)
     # a column such as tracercount keeps its name, and an element or an isotope names its mass fraction, as in 2D
     coloursurfaceby = plotvar if plotvar in {*plmodel.collect_schema().names(), "Ye"} else f"X_{plotvar.title()}"
     print(f"Colours set by {coloursurfaceby}")

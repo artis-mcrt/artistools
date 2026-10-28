@@ -24,7 +24,7 @@ from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Msun_to_g
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.lightcurve.core import FILTERNAME_ALIASES
 from artistools.lightcurve.core import find_lightcurve_file
 from artistools.lightcurve.core import generate_band_lightcurve_data
@@ -33,7 +33,6 @@ from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag
 from artistools.lightcurve.core import get_filename_part
 from artistools.lightcurve.core import get_filter_data
-from artistools.lightcurve.core import get_from_packets
 from artistools.lightcurve.core import get_katz_integral
 from artistools.lightcurve.core import get_top_nuclides
 from artistools.lightcurve.core import lum_lsun_to_mag
@@ -42,6 +41,7 @@ from artistools.lightcurve.core import read_bol_reflightcurve_data
 from artistools.lightcurve.core import read_hesma_lightcurve
 from artistools.lightcurve.core import read_reflightcurve_band_data
 from artistools.lightcurve.core import scan_lightcurve
+from artistools.lightcurve.core import scan_lightcurve_from_packets
 from artistools.lightcurve.viewingangleanalysis import make_peak_colour_viewing_angle_plot
 from artistools.lightcurve.viewingangleanalysis import parse_directionbin_args
 from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_declinerate_init
@@ -74,7 +74,6 @@ from artistools.misc import color_arg
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
-from artistools.misc import get_deposition
 from artistools.misc import get_dirbins
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_filterfunc
@@ -97,6 +96,7 @@ from artistools.misc import print_heading
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
+from artistools.misc import scan_deposition
 from artistools.misc import trim_or_pad
 from artistools.packets import addarg_maxpacketfiles
 from artistools.paths import get_path
@@ -552,10 +552,10 @@ def plot_bol_reflightcurve(
 @on_model_host
 def get_model_mass_and_kinetic_energy(modelpath: Path) -> tuple[float, float]:
     """Return the mass [g] and the kinetic energy [erg] of the ejecta. The host of a remote model reads the model."""
-    dfmodel, modelmeta = get_modeldata(modelpath)
+    dfmodel, modelmeta = scan_modeldata(modelpath)
     dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
 
-    # one collect for both sums: get_modeldata returns a plan, so a second one reads the model again
+    # one collect for both sums: scan_modeldata returns a plan, so a second one reads the model again
     model_mass_grams, ejecta_ke_erg = dfmodel.select(pl.sum("mass_g"), pl.sum("kinetic_en_erg")).collect().row(0)
     return float(model_mass_grams), float(ejecta_ke_erg)
 
@@ -580,7 +580,7 @@ def plot_energy_rates(
     line width is the only style that the caller sets.
     """
     lumunit = get_plot_lum_unit(args)
-    depdata = get_deposition(modelpath).collect()
+    depdata = scan_deposition(modelpath).collect()
     modellogname = get_model_logname(modelpath)
 
     get_next_color(axis)  # skip a colour, thus the energy rates have a different colour from the light curve
@@ -847,7 +847,7 @@ def plot_artis_lightcurve(
     directionresolved = list(dirbins) != [-1]
 
     if frompackets:
-        lcdataframes = get_from_packets(
+        lcdataframes = scan_lightcurve_from_packets(
             modelpath,
             escape_type=escape_type,
             maxpacketfiles=maxpacketfiles,

@@ -34,9 +34,9 @@ from artistools.describemodel import get_run_versions
 from artistools.estimators import get_temperature_limits
 from artistools.estimators import scan_estimators
 from artistools.lightcurve import find_lightcurve_file
-from artistools.lightcurve import get_from_packets
 from artistools.lightcurve import get_katz_integral
 from artistools.lightcurve import scan_lightcurve
+from artistools.lightcurve import scan_lightcurve_from_packets
 from artistools.logs import get_folder_log_ranks
 from artistools.logs import get_log_summary
 from artistools.logs import get_logfiles
@@ -46,7 +46,6 @@ from artistools.misc import addarg_table_output
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import format_range_list
-from artistools.misc import get_deposition
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_folder
 from artistools.misc import get_run_subfolders
@@ -59,6 +58,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
+from artistools.misc import scan_deposition
 
 STATUSES: t.Final = ("ok", "warning", "error", "not checked")
 
@@ -206,7 +206,7 @@ def check_complete_timesteps(modelpath: Path) -> tuple[str, str]:
     step, as in get_escaped_arrivalrange.
     """
     try:
-        dfdeposition = get_deposition(modelpath).select("timestep").collect()
+        dfdeposition = scan_deposition(modelpath).select("timestep").collect()
     except FileNotFoundError:
         return (
             "not checked",
@@ -370,7 +370,7 @@ def check_energy(modelpath: Path) -> tuple[str, str]:
     except FileNotFoundError:
         return "not checked", "the Katz test needs light_curve.out, and the model folder holds no light_curve.out"
     try:
-        dfdeposition = get_deposition(modelpath).collect()
+        dfdeposition = scan_deposition(modelpath).collect()
     except FileNotFoundError:
         return "not checked", "the Katz test needs deposition.out, and the model folder holds no deposition.out"
     if DEPOSITIONCOLUMN not in dfdeposition.columns:
@@ -458,7 +458,7 @@ def check_packet_noise(modelpath: Path, frompackets: bool) -> tuple[str, str]:
         " r-packets, for the angle average"
     )
     dfalltimesteps = (
-        get_from_packets(modelpath)[-1]
+        scan_lightcurve_from_packets(modelpath)[-1]
         .select("timestep", "time_days", "packetcount", "luminosity_Lsun", "relnoise")
         .collect()
     )

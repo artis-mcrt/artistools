@@ -2940,7 +2940,7 @@ def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
     assert len(xvalues) > 0
 
     # a cone that takes every cell, or one cell, shows nothing about the angle
-    ncells_model = at.inputmodel.get_modeldata(modelpath_classic_3d)[1]["npts_model"]
+    ncells_model = at.inputmodel.scan_modeldata(modelpath_classic_3d)[1]["npts_model"]
     ncells_wide = get_cone_cellcount(60.0)
     assert 1 < ncells_wide < ncells_model
 
@@ -3035,7 +3035,7 @@ def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_
     assert np.isclose(edges2[0], -edges2[-1])
 
     # each cell of the test model has the same volume, thus the weighted mean is the plain mean of the ring
-    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_classic_3d)
     lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
     ringwidth = modelmeta["vmax_cmps"] / 5
     dfexpected = (
@@ -3139,7 +3139,7 @@ def test_estimator_plot_of_2_dimensions_gives_each_point_the_shell_of_a_1d_model
     tegrid = tegrid.filled(np.nan)
     assert tegrid.shape == (len(edges2) - 1, len(edges1) - 1)
 
-    lzmodel, modelmeta = at.get_modeldata(CLASSIC1DPATH)
+    lzmodel, modelmeta = at.scan_modeldata(CLASSIC1DPATH)
     dfshells = (
         at
         .scan_estimators(CLASSIC1DPATH, timestep=24, classicartis=True)
@@ -3256,7 +3256,7 @@ def make_model_with_deposition(tmp_path: Path, cellye: Sequence[float] | None = 
 
     ncells = 1 if cellye is None else len(cellye)
     if cellye is not None:
-        dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
+        dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath, printwarningsonly=True)
         cellnumber = pl.int_range(1, ncells + 1, dtype=pl.Int32)
         dfcells = pl.concat([dfmodel.collect()] * ncells).with_columns(
             inputcellid=cellnumber,
@@ -5694,7 +5694,7 @@ def test_interactive_initial_abundance_of_an_isotope() -> None:
     assert {"Fe52", "Fe"} <= set(interactive.get_species_choices("initabundances", viewer.modeldata.estimatorcolumns))
     assert viewer.change(dc.replace(viewer.values, subplots=(("initabundances", "Fe52", "Fe"),))) is None
     ydata = {line.get_label(): np.asarray(line.get_ydata()) for ax in viewer.fig.axes for line in ax.get_lines()}
-    fe52 = at.inputmodel.get_modeldata(modelpath)[0].select("X_Fe52").collect().item()
+    fe52 = at.inputmodel.scan_modeldata(modelpath)[0].select("X_Fe52").collect().item()
     assert np.allclose(ydata["Fe52"], fe52, rtol=1e-6, atol=1e-30)
     assert not np.allclose(ydata["Fe52"], ydata["Fe"], rtol=1e-6, atol=1e-30)
 
@@ -6204,7 +6204,7 @@ def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(tmp_
     (summaryfile,) = tmp_path.glob("*_summary.txt")
     dfsummary = pl.read_csv(summaryfile, separator=" ", null_values="nan", comment_prefix="#")
 
-    _, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    _, modelmeta = at.scan_modeldata(modelpath_classic_3d)
     dfcells = (
         at.estimators
         .scan_estimators(modelpath_classic_3d, timestep=(timestep,), join_modeldata=True)

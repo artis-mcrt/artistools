@@ -53,7 +53,7 @@ from artistools.estimators.core import summarise_columns
 from artistools.estimators.core import VARIABLES
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_costheta_selection
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import addarg_axislimits
@@ -92,7 +92,6 @@ from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
-from artistools.misc import get_timesteps
 from artistools.misc import is_plain_value
 from artistools.misc import item_names_a_folder
 from artistools.misc import LINESTYLE_ALIASES
@@ -110,6 +109,7 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import resolve_slice_axis
+from artistools.misc import scan_timesteps
 from artistools.misc import SERIES_STYLE_KEYS
 from artistools.misc import suggest_names
 from artistools.nltepops import has_nlte_populations
@@ -2126,7 +2126,7 @@ def get_snapshot_timestrings(
 
     strtimestep = f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
     timelow_days, timehigh_days = (
-        get_timesteps(Path(modelpath))
+        scan_timesteps(Path(modelpath))
         .select(
             pl.col("tstart_days").filter(pl.col("timestep") == timestepmin).first(),
             pl.col("tend_days").filter(pl.col("timestep") == timestepmax).first(),
@@ -3516,7 +3516,7 @@ def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, s
 
     The host of a remote model reads it.
     """
-    lzmodel, modelmeta = get_modeldata(modelpath)
+    lzmodel, modelmeta = scan_modeldata(modelpath)
     if modelmeta["dimensions"] != 3:
         exit_with_error(
             f"--slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
@@ -3559,7 +3559,7 @@ def select_cells_along_axis(args: argparse.Namespace, modelpath: Path) -> None:
 @on_model_host
 def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]:
     """Return the cells with matter on an axis or in a cone of a 3D model. The host of a remote model reads it."""
-    lzmodel, modelmeta = get_modeldata(modelpath)
+    lzmodel, modelmeta = scan_modeldata(modelpath)
     # the selection reads the positions of the cells on three axes, which only a 3D model gives
     if modelmeta["dimensions"] != 3:
         exit_with_error(

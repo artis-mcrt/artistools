@@ -9,7 +9,7 @@ import matplotlib.colors as mplcolors
 import numpy as np
 import polars as pl
 
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.lines.core import addarg_excitationtemperature
 from artistools.lines.linecontributions import addarg_lineselection
 from artistools.lines.linecontributions import addarg_taumin
@@ -225,7 +225,7 @@ def plot_trough_estimate(
     dirbin, photospherevelocity_kmps = troughsettings
     dopplershift = get_artis_option(modelpath, "USE_RELATIVISTIC_DOPPLER_SHIFT")
     relativisticdoppler = dopplershift == "true"
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     dfdepths, dfblend = get_sobolev_trough(
         profiles,
         inputs,
@@ -347,7 +347,7 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
             exit_with_error("--photospherevelocity applies only to the trough estimate", "Give --troughdirbin too")
         return None
     check_dirbin(args.troughdirbin, "-troughdirbin", averageoverphi=args.average_over_phi_angle, allowall=False)
-    _, modelmeta = get_modeldata(args.modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(args.modelpath, printwarningsonly=True)
     if modelmeta["dimensions"] != 3:
         # a cell of a 2D model is a ring, and a cell of a 1D model is a shell
         exit_with_error(

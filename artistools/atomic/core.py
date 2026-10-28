@@ -1062,7 +1062,7 @@ def get_ionstring(
 
 
 @on_model_host
-def get_nuclides(modelpath: Path) -> pl.LazyFrame:
+def scan_nuclides(modelpath: Path) -> pl.LazyFrame:
     """Return the nuclides of nuclides.out, and a row with the pellet_nucindex -1 for the initial energy.
 
     The LazyFrame has the columns pellet_nucindex, atomic_number, A, elsymbol, and nucname.
@@ -1098,7 +1098,7 @@ def get_nuclides(modelpath: Path) -> pl.LazyFrame:
     ).lazy()
 
 
-def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
+def scan_bflist(modelpath: Path | str) -> pl.LazyFrame:
     """Return a LazyFrame of the bound-free transitions in bflist.out. The frame includes an ion_str column."""
     compositiondata = get_composition_data(modelpath)
     bflistpath = firstexisting(["bflist.out", "bflist.dat"], folder=modelpath, tryzipped=True)
@@ -1311,7 +1311,7 @@ def vacuum_to_air_angstroms(lambda_vacuum_angstroms: pl.Expr) -> pl.Expr:
     )
 
 
-def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
+def scan_linelist(modelpath: Path | str) -> pl.LazyFrame:
     """Return the transition list. Each row is one line. The rows are in lineindex order.
 
     Keep the rows in lineindex order. A caller finds a line by its row position in this frame.
@@ -1380,7 +1380,7 @@ def get_lineindices(
 
     linefilter selects a part of those lines, e.g. by the levels of each line.
     """
-    dflinelist = get_linelist_pldf(modelpath)
+    dflinelist = scan_linelist(modelpath)
     if atomic_numbers is not None:
         dflinelist = dflinelist.filter(pl.col("atomic_number").is_in(atomic_numbers))
     if ion_stages is not None:

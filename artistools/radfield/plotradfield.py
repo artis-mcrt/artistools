@@ -18,7 +18,7 @@ from artistools.constants import km_to_cm
 from artistools.constants import megaparsec_to_cm
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -58,7 +58,7 @@ from artistools.radfield.core import get_fullspecfittedfield
 from artistools.radfield.core import get_multibin_radfield_first_timestep
 from artistools.radfield.core import read_radfield
 from artistools.radfield.core import select_radfield_subset
-from artistools.spectra import get_spectra
+from artistools.spectra import scan_spectra
 
 
 def plot_line_estimators(
@@ -105,7 +105,7 @@ def plot_specout(
     The caller gives the model path, because a run on a cluster writes spec.out to a subfolder of the
     model folder. The parent folder of that file is then the run folder and not the model folder.
     """
-    dfspectrum = get_spectra(modelpath=modelpath, timestepmin=timestep, directionbins=[-1])[-1].collect()
+    dfspectrum = scan_spectra(modelpath=modelpath, timestepmin=timestep, directionbins=[-1])[-1].collect()
     label = "Emergent spectrum"
     if scale_factor is not None:
         label += " (scaled)"
@@ -372,7 +372,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # one query of the model gives the velocity of every cell. A query in each frame ran the derivation
     # of the model columns again for each cell and timestep
-    dfmodel, modelmeta = get_modeldata(modelpath)
+    dfmodel, modelmeta = scan_modeldata(modelpath)
     dfcellvelocities = (
         add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
         .filter(pl.col("modelgridindex").is_in(modelgridindexlist))

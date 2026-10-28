@@ -18,7 +18,7 @@ import polars as pl
 from artistools.describemodel import get_run_versions
 from artistools.describemodel import returns_only
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_table_output
@@ -107,7 +107,7 @@ def find_model_folders(folder: Path) -> list[Path]:
 
 def get_cell_columns(modelfolder: Path) -> dict[str, t.Any]:
     """Return the dimensions of model.txt, its number of cells, and the number of cells with matter."""
-    dfmodel, modelmeta = get_modeldata(modelfolder, printwarningsonly=True)
+    dfmodel, modelmeta = scan_modeldata(modelfolder, printwarningsonly=True)
     cellswithmatter = (
         add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select((pl.col("rho") > 0).sum()).collect().item()
     )

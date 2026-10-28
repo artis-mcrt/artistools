@@ -15,10 +15,10 @@ from pathlib import Path
 
 import polars as pl
 
-from artistools.atomic import get_linelist_pldf
+from artistools.atomic import scan_linelist
 from artistools.estimators import scan_estimators
-from artistools.inputmodel import get_initelemabundances
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_initelemabundances
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_table_output
@@ -102,9 +102,9 @@ def make_inputmodel_caches(modelfolder: Path) -> str | None:
     """
     if firstexisting_or_none("model.txt", folder=modelfolder, search_subfolders=False) is None:
         return None
-    get_modeldata(modelfolder, printwarningsonly=True)
+    scan_modeldata(modelfolder, printwarningsonly=True)
     if firstexisting_or_none("abundances.txt", folder=modelfolder, search_subfolders=False) is not None:
-        get_initelemabundances(modelfolder, printwarningsonly=True)
+        scan_initelemabundances(modelfolder, printwarningsonly=True)
     return "the reader keeps a cache of each input file larger than 2 MiB"
 
 
@@ -112,7 +112,7 @@ def make_linelist_cache(modelfolder: Path) -> str | None:
     """Read the line list. The reader then writes its cache. Return None for a model with no line list."""
     if firstexisting_or_none(["linelist.out", "linestat.out"], folder=modelfolder, search_subfolders=False) is None:
         return None
-    get_linelist_pldf(modelfolder)
+    scan_linelist(modelfolder)
     return "linelist.out.parquet"
 
 
