@@ -45,6 +45,8 @@ from artistools.misc import print_warning
 from artistools.misc import trim_or_pad
 from artistools.misc.argparser import get_standard_flag
 from artistools.misc.cliutils import positive_int_arg
+from artistools.misc.units import AUTO_VELOCITYUNIT_C_MIN_ON_C
+from artistools.misc.units import get_auto_velocity_unit
 from artistools.paths import get_path
 
 # the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
@@ -1967,8 +1969,6 @@ def make_colorbar_viewingangles(
 
 # the number of km/s in each unit of the velocity axis
 KMPS_PER_VELOCITYUNIT: t.Final = MappingProxyType({"kmps": 1.0, "c": C_cm_per_s / km_to_cm})
-# -velocityunit auto takes c for a model with a vmax of this fraction of c or more, e.g. a kilonova
-AUTO_VELOCITYUNIT_C_MIN_ON_C: t.Final = 0.2
 VELOCITYUNIT_LABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "c"})
 # the axis labels of a velocity and of the inverse of a velocity, as matplotlib text
 VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "$c$"})
@@ -2018,11 +2018,6 @@ def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps",
         f" {AUTO_VELOCITYUNIT_C_MIN_ON_C:g} c or more)"
     )
     return unit
-
-
-def get_auto_velocity_unit(vmax_cmps: float) -> t.Literal["kmps", "c"]:
-    """Return c for a model with a vmax of AUTO_VELOCITYUNIT_C_MIN_ON_C c or more, e.g. a kilonova, else km/s."""
-    return "c" if vmax_cmps / C_cm_per_s >= AUTO_VELOCITYUNIT_C_MIN_ON_C else "kmps"
 
 
 def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:

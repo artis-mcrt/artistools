@@ -23,6 +23,7 @@ from matplotlib import ticker
 from matplotlib.artist import Artist
 from matplotlib.lines import Line2D
 
+from artistools.codecomparison import read_reference_spectra
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
@@ -101,6 +102,7 @@ from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
 from artistools.plottools import get_summary_table
+from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import label_dirbin_series
 from artistools.plottools import make_frame_figure
 from artistools.plottools import make_frame_figure_with_residuals
@@ -108,6 +110,7 @@ from artistools.plottools import parse_velocity_argument
 from artistools.plottools import plain_label
 from artistools.plottools import print_dirbin_summary
 from artistools.plottools import print_series_summary
+from artistools.plottools import remove_greys
 from artistools.plottools import ResidualSeries
 from artistools.plottools import resolve_series_styles
 from artistools.plottools import save_figure
@@ -143,13 +146,15 @@ from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import make_averaged_vspecfiles
 from artistools.spectra.core import make_virtual_spectra_summed_file
 from artistools.spectra.core import NO_SAMPLED_EMISSION_HELP
+from artistools.spectra.core import print_contribution_table
 from artistools.spectra.core import print_integrated_flux
+from artistools.spectra.core import rank_flux_series_names
 from artistools.spectra.core import SHELLCOLUMNS
-from artistools.spectra.core import sort_and_reduce_flux_contribution_list
 from artistools.spectra.core import timeshift_fluxscale_co56law
 from artistools.spectra.writespectra import write_flambda_spectra_of_models
 
 if t.TYPE_CHECKING:
+    import matplotlib.lines as mpllines
     import matplotlib.typing as mplt
 
 
@@ -1335,7 +1340,7 @@ def make_spectrum_plot(
             check_codecomparison_args(args)
             # resolve_plot_args gives both bounds. -timedays can hold a range such as 290-320, which is no number
             timeavg = (args.timemin + args.timemax) / 2.0
-            from artistools.codecomparison import plot_spectrum
+            from artistools.spectra.plotspectra import plot_spectrum
 
             otherlines = [
                 plot_spectrum(specpath, timedays=timeavg, axis=axes[0], residualseries=residualseries, **plotkwargs)
@@ -3237,3 +3242,99 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     check_emission_plot_args(args)
     check_yvariable_args(args)
     check_bin_drawing_args(args)
+
+
+def sort_and_reduce_flux_contribution_list(
+    contribution_list_in: list[FluxContributionTuple],
+    maxseriescount: int,
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    fixedionlist: list[str] | None = None,
+    hideother: bool = False,
+) -> list[FluxContributionTuple]:
+    """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
+    rowofname = {row.linelabel: row for row in contribution_list_in}
+    # each plot gives its contributions to this function, thus this is the one warning for a missing item. The plot
+    # shows only the first maxseriescount items, and the packet reader puts each item after them in "Other"
+    if fixedionlist and (unrecognised_items := [x for x in fixedionlist[:maxseriescount] if x not in rowofname]):
+        print_warning(f"Did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
+
+    keptnames, othernames = rank_flux_series_names(
+        {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
+    )
+    kept = [rowofname[name] for name in keptnames]
+    other = [rowofname[name] for name in othernames]
+
+    tab20_rgba = np.asarray(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
+    rgb_candidates: list[mplt.ColorType] = [(float(r), float(g), float(b)) for r, g, b, _a in tab20_rgba]
+    # the first ten glasbey colours repeat the tab10 colours that tab20 already supplies, and skipping
+    # them keeps the order of every series that a published figure already used
+    rgb_candidates.extend(glasbey_category20_nogreys[10:])
+
+    color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
+
+    print_contribution_table(kept, other, arraylambda_angstroms)
+
+    # a long -fixedionlist holds more entries than the colour list, thus the index wraps around
+    contribution_list_out = [
+        row._replace(color=color_list[(fixedionlist.index(row.linelabel) if fixedionlist else index) % len(color_list)])
+        for index, row in enumerate(kept)
+    ]
+
+    if not fixedionlist:
+        plotted_ion_list = [row.linelabel for row in kept]
+        cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
+        print(f"  --fixedionlist {cmdarg} gives this list of series again")
+
+    remainder_fluxcontrib = sum(row.fluxcontrib for row in other)
+    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
+    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
+    for row in other:
+        remainder_flambda_emission += row.array_flambda_emission
+        remainder_flambda_absorption += row.array_flambda_absorption
+
+    if remainder_fluxcontrib > 0.0 and not hideother:
+        contribution_list_out.append(
+            FluxContributionTuple(
+                fluxcontrib=remainder_fluxcontrib,
+                linelabel="Other",
+                array_flambda_emission=remainder_flambda_emission,
+                array_flambda_absorption=remainder_flambda_absorption,
+                color="grey",
+            )
+        )
+
+    return contribution_list_out
+
+
+def plot_spectrum(
+    modelpath: str | Path,
+    timedays: str | float,
+    axis: "mplax.Axes",
+    *,
+    residualseries: list[ResidualSeries] | None = None,
+    **plotkwargs: t.Any,
+) -> "mpllines.Line2D":
+    """Plot the spectrum of a code comparison model at the time closest to timedays, and return its line."""
+    dfspectra, arr_timedays = read_reference_spectra(modelpath)
+    timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())
+    timedays_found = dfspectra.columns[timeindex + 1]
+
+    print(f"{modelpath}: requested spectrum at {timedays} days. Closest matching spectrum is at {timedays_found} days")
+    assert np.isclose(arr_timedays[timeindex], float(timedays_found), rtol=0.01)  # check columns match
+    assert np.isclose(float(timedays), float(timedays_found), rtol=0.1)  # found a detect match to requested time
+    label = str(modelpath).lstrip("_") + f" {timedays_found}d"
+
+    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (megaparsec_to_cm**2)
+
+    (specline,) = axis.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)
+    if residualseries is not None:
+        residualseries.append(
+            ResidualSeries(
+                label,
+                np.asarray(dfspectra["lambda"].to_numpy(), dtype=np.float64),
+                np.asarray(arr_flux.to_numpy(), dtype=np.float64),
+                specline.get_color(),
+                line=specline,
+            )
+        )
+    return specline

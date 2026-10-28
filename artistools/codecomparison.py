@@ -16,14 +16,8 @@ import polars as pl
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
-from artistools.constants import megaparsec_to_cm
 from artistools.misc import read_wsv
 from artistools.paths import get_path
-from artistools.plottools import ResidualSeries
-
-if t.TYPE_CHECKING:
-    import matplotlib.axes as mplax
-    import matplotlib.lines as mpllines
 
 
 def split_codecomparison_path(modelpath: Path | str) -> tuple[Path, str, str]:
@@ -210,7 +204,7 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
     return estimators
 
 
-def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.floating]]:
+def read_reference_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.floating]]:
     """Return the spectra of a code comparison workshop model, and the time [days] of each spectrum."""
     inputmodelfolder, inputmodel, codename = split_codecomparison_path(modelpath)
 
@@ -231,37 +225,3 @@ def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.flo
     )
 
     return dfspectra, arr_timedays
-
-
-def plot_spectrum(
-    modelpath: str | Path,
-    timedays: str | float,
-    axis: "mplax.Axes",
-    *,
-    residualseries: list[ResidualSeries] | None = None,
-    **plotkwargs: t.Any,
-) -> "mpllines.Line2D":
-    """Plot the spectrum of a code comparison model at the time closest to timedays, and return its line."""
-    dfspectra, arr_timedays = get_spectra(modelpath)
-    timeindex = int((np.abs(arr_timedays - float(timedays))).argmin())
-    timedays_found = dfspectra.columns[timeindex + 1]
-
-    print(f"{modelpath}: requested spectrum at {timedays} days. Closest matching spectrum is at {timedays_found} days")
-    assert np.isclose(arr_timedays[timeindex], float(timedays_found), rtol=0.01)  # check columns match
-    assert np.isclose(float(timedays), float(timedays_found), rtol=0.1)  # found a detect match to requested time
-    label = str(modelpath).lstrip("_") + f" {timedays_found}d"
-
-    arr_flux = dfspectra[dfspectra.columns[timeindex + 1]] / 4 / math.pi / (megaparsec_to_cm**2)
-
-    (specline,) = axis.plot(dfspectra["lambda"], arr_flux, label=label, **plotkwargs)
-    if residualseries is not None:
-        residualseries.append(
-            ResidualSeries(
-                label,
-                np.asarray(dfspectra["lambda"].to_numpy(), dtype=np.float64),
-                np.asarray(arr_flux.to_numpy(), dtype=np.float64),
-                specline.get_color(),
-                line=specline,
-            )
-        )
-    return specline

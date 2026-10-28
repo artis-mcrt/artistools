@@ -6,6 +6,7 @@ import typing as t
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.constants import hour_to_s
@@ -174,3 +175,12 @@ def convert_xunit_aliases_to_canonical(xunit: str) -> str:
 
     msg = f"Unknown xunit {xunit}"
     raise ValueError(msg)
+
+
+# -velocityunit auto takes c for a model with a vmax of this fraction of c or more, e.g. a kilonova
+AUTO_VELOCITYUNIT_C_MIN_ON_C: t.Final = 0.2
+
+
+def get_auto_velocity_unit(vmax_cmps: float) -> t.Literal["kmps", "c"]:
+    """Return c for a model with a vmax of AUTO_VELOCITYUNIT_C_MIN_ON_C c or more, e.g. a kilonova, else km/s."""
+    return "c" if vmax_cmps / C_cm_per_s >= AUTO_VELOCITYUNIT_C_MIN_ON_C else "kmps"

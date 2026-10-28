@@ -13,7 +13,6 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -59,6 +58,7 @@ from artistools.misc.fileio import read_complete_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import on_model_host
+from artistools.misc.units import get_auto_velocity_unit
 from artistools.misc.units import get_xunit
 from artistools.misc.units import XUnit
 from artistools.packets import filter_packets_dirbin
@@ -1693,8 +1693,6 @@ def get_default_radialvelocity_shells(
     if modelmeta["dimensions"] > 1:
         edges.append(vmax_kmps * math.sqrt(modelmeta["dimensions"]))
 
-    from artistools.plottools import get_auto_velocity_unit
-
     return edges, get_auto_velocity_unit(modelmeta["vmax_cmps"])
 
 
@@ -2412,71 +2410,6 @@ def rank_flux_series_names(
     keptset = set(keptnames)
 
     return keptnames, [name for name in namesbyflux if name not in keptset]
-
-
-def sort_and_reduce_flux_contribution_list(
-    contribution_list_in: list[FluxContributionTuple],
-    maxseriescount: int,
-    arraylambda_angstroms: npt.NDArray[np.floating],
-    fixedionlist: list[str] | None = None,
-    hideother: bool = False,
-) -> list[FluxContributionTuple]:
-    """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
-    rowofname = {row.linelabel: row for row in contribution_list_in}
-    # each plot gives its contributions to this function, thus this is the one warning for a missing item. The plot
-    # shows only the first maxseriescount items, and the packet reader puts each item after them in "Other"
-    if fixedionlist and (unrecognised_items := [x for x in fixedionlist[:maxseriescount] if x not in rowofname]):
-        print_warning(f"Did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
-
-    keptnames, othernames = rank_flux_series_names(
-        {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
-    )
-    kept = [rowofname[name] for name in keptnames]
-    other = [rowofname[name] for name in othernames]
-
-    from artistools.plottools import glasbey_category20_nogreys
-    from artistools.plottools import remove_greys
-
-    tab20_rgba = np.asarray(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
-    rgb_candidates: list[mplt.ColorType] = [(float(r), float(g), float(b)) for r, g, b, _a in tab20_rgba]
-    # the first ten glasbey colours repeat the tab10 colours that tab20 already supplies, and skipping
-    # them keeps the order of every series that a published figure already used
-    rgb_candidates.extend(glasbey_category20_nogreys[10:])
-
-    color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
-
-    print_contribution_table(kept, other, arraylambda_angstroms)
-
-    # a long -fixedionlist holds more entries than the colour list, thus the index wraps around
-    contribution_list_out = [
-        row._replace(color=color_list[(fixedionlist.index(row.linelabel) if fixedionlist else index) % len(color_list)])
-        for index, row in enumerate(kept)
-    ]
-
-    if not fixedionlist:
-        plotted_ion_list = [row.linelabel for row in kept]
-        cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
-        print(f"  --fixedionlist {cmdarg} gives this list of series again")
-
-    remainder_fluxcontrib = sum(row.fluxcontrib for row in other)
-    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
-    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
-    for row in other:
-        remainder_flambda_emission += row.array_flambda_emission
-        remainder_flambda_absorption += row.array_flambda_absorption
-
-    if remainder_fluxcontrib > 0.0 and not hideother:
-        contribution_list_out.append(
-            FluxContributionTuple(
-                fluxcontrib=remainder_fluxcontrib,
-                linelabel="Other",
-                array_flambda_emission=remainder_flambda_emission,
-                array_flambda_absorption=remainder_flambda_absorption,
-                color="grey",
-            )
-        )
-
-    return contribution_list_out
 
 
 def print_contribution_table(

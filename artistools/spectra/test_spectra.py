@@ -2254,13 +2254,11 @@ def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path) -
 @pytest.mark.parametrize("baselineindex", [0, 1, 2])
 def test_residual_baseline_counts_codecomparison_spectra(tmp_path: Path, baselineindex: int) -> None:
     """Check each baseline index with a code comparison spectrum between two other spectra."""
-    from artistools import codecomparison
-
     wavelengths = np.array([3000.0, 4000.0, 5000.0, 6000.0, 7000.0, 9000.0])
     data = pl.DataFrame({"lambda": wavelengths, "300.0": np.arange(1.0, 7.0) * 1e40})
     obsfile = write_fake_observed_spectrum(tmp_path)
     with (
-        mock.patch.object(codecomparison, "get_spectra", return_value=(data, np.array([300.0]))),
+        mock.patch.object(plotspectra, "read_reference_spectra", return_value=(data, np.array([300.0]))),
         mock.patch.object(plotspectra, "draw_residual_panel", wraps=plotspectra.draw_residual_panel) as mockdraw,
     ):
         at.spectra.plot(
@@ -3858,7 +3856,7 @@ def test_fixedionlist_warning_names_only_the_items_that_the_plot_shows(capsys: p
         for fluxcontrib, label in ((2.0, "Fe II"), (1.0, "Co II"))
     ]
     for maxseriescount, haswarning in ((2, False), (3, True)):
-        atspectra.sort_and_reduce_flux_contribution_list(
+        plotspectra.sort_and_reduce_flux_contribution_list(
             contributions, maxseriescount, arraylambda, fixedionlist=["Fe II", "Co II", "Ni II"]
         )
         assert ("Did not find" in capsys.readouterr().err) is haswarning
@@ -4215,7 +4213,7 @@ def test_host_merge_of_flux_contributions_keeps_the_plot(
     for source in (series, merged):
         contributions, total = atspectra.get_flux_contribution_tuples(source, arraynu, arraylambda)
         totals.append(total)
-        reduced = atspectra.sort_and_reduce_flux_contribution_list(contributions, 4, arraylambda, fixedionlist)
+        reduced = plotspectra.sort_and_reduce_flux_contribution_list(contributions, 4, arraylambda, fixedionlist)
         reduced_of_source.append((reduced, capsys.readouterr().out))
 
     assert np.allclose(totals[1], totals[0], rtol=1e-12, atol=0.0)

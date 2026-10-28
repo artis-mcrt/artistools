@@ -9,7 +9,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import polars as pl
-from matplotlib.backends.backend_pdf import PdfPages
 
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -128,6 +127,9 @@ def make_plot(
         # the empty table replaces the file of an earlier run, thus that file cannot seem to hold the data of this run
         output_data(args, {"": get_time_taken_table([])}, outputfile)
         return
+
+    # the PDF backend loads fontTools, which only this part of the command needs
+    from matplotlib.backends.backend_pdf import PdfPages
 
     with PdfPages(outputfile) as pdf:
         for timestep in timesteps:
