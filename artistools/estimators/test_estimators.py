@@ -11,6 +11,7 @@ import subprocess  # ruff:ignore[suspicious-subprocess-import]
 import sys
 import typing as t
 from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
 from unittest import mock
 
@@ -33,6 +34,7 @@ from artistools.estimators import plotitems
 from artistools.estimators import subplotcards
 from artistools.viewertools import application as viewerapplication
 from artistools.viewertools import core as viewercore
+from artistools.viewertools import widgets as viewerwidgets
 from artistools.viewertools.window import apply_values
 from artistools.viewertools.window import draw_values
 
@@ -4927,12 +4929,13 @@ def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
     subplots = (("Te", "TR", "yscale=linear", "ymin=1000"), ("Fe II", "Fe III"), ("populations", "Ni II"))
     newvalues = dc.replace(viewer.select_positions(viewer.values, (10, 12)), subplots=subplots, xbins="8")
     assert apply_values(viewer, newvalues) is None
-    code = interactive.get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.modeldata.estimatorcolumns)
+    code = interactive.get_plot_python_code(viewer)
     assert '["Te", "TR", ["_yscale", "linear"], ["_ymin", 1000]],' in code
     assert '[["populations", ["Fe II", "Fe III"]]],' in code
     assert 'timestep="10-12",' in code
-    onetimestepcode = interactive.get_python_code(
-        viewer.parser, ["Te", "-timestep", "11"], viewer.modeldata.estimatorcolumns
+    get_arguments = partial(interactive.get_python_arguments, viewer.parser, viewer.modeldata.estimatorcolumns)
+    onetimestepcode = viewerwidgets.get_python_code(
+        viewer.parser, ["Te", "-timestep", "11"], "plotestimators", "at.estimators.plotestimators.main", get_arguments
     )
     assert "timestep=11," in onetimestepcode
 

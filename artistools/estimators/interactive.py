@@ -122,12 +122,11 @@ from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import blocked_signals
 from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import get_changed_arguments
-from artistools.viewertools.widgets import get_python_call
+from artistools.viewertools.widgets import get_python_code
 from artistools.viewertools.widgets import make_note_label
 from artistools.viewertools.widgets import make_range_slider
 from artistools.viewertools.widgets import make_row_layout
 from artistools.viewertools.widgets import make_slider
-from artistools.viewertools.widgets import parse_command_tokens
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
 from artistools.viewertools.widgets import set_search_completion
@@ -997,16 +996,13 @@ class EstimatorViewer:
         return get_short_limits(low * self.xlimitscale, high * self.xlimitscale)
 
 
-def get_python_code(
-    parser: argparse.ArgumentParser, tokens: "Sequence[str]", estimatorcolumns: "Collection[str]"
-) -> str:
-    """Return the Python code that draws the plot of the command, with the plot list in the form of main.
+def get_python_arguments(
+    parser: argparse.ArgumentParser, estimatorcolumns: "Collection[str]", args: argparse.Namespace
+) -> dict[str, t.Any]:
+    """Return the keyword arguments of main for the arguments of a command, with the plot list in the form of main.
 
-    The code gives each argument that differs from its default, as the command does.
+    The result holds each argument that differs from its default, as the command gives it.
     """
-    args = parse_command_tokens(parser, tokens)
-    if args is None:
-        return "# plotestimators rejects the command"
     resolve_positional_args(args)
     changed = get_changed_arguments(parser, args, skip={"plotitems", "plotlist"})
     # -timestep reads text, because it also takes a range such as "10-12". main takes one timestep as an int
@@ -1014,8 +1010,14 @@ def get_python_code(
         changed["timestep"] = int(timestep)
     modelpath = {"modelpath": changed.pop("modelpath")} if "modelpath" in changed else {}
     plotlist = [get_python_plotitems(subplot, estimatorcolumns) for subplot in args.plotlist or []]
-    return get_python_call(
-        "at.estimators.plotestimators.main", {**modelpath, **changed, **({"plotlist": plotlist} if plotlist else {})}
+    return {**modelpath, **changed, **({"plotlist": plotlist} if plotlist else {})}
+
+
+def get_plot_python_code(viewer: EstimatorViewer) -> str:
+    """Return the Python code that draws the plot of the values of the viewer."""
+    get_arguments = partial(get_python_arguments, viewer.parser, viewer.modeldata.estimatorcolumns)
+    return get_python_code(
+        viewer.parser, viewer.get_plot_tokens(), "plotestimators", "at.estimators.plotestimators.main", get_arguments
     )
 
 
@@ -1567,10 +1569,7 @@ def open_window(
         colorbyioncheck.setText(FLAG_LABELS["--colorbyion"] + colorbyionnote)
         show_subplot_section()
         show_command_sections(
-            commandsections,
-            viewer,
-            get_table_rows(values.otheroptions),
-            get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.modeldata.estimatorcolumns),
+            commandsections, viewer, get_table_rows(values.otheroptions), get_plot_python_code(viewer)
         )
 
     def after_draw(message: str | None) -> None:
@@ -1902,9 +1901,7 @@ def open_window(
         name="plotestimators",
         main=plotestimators_main,
         parser=viewer.parser,
-        get_python_code=lambda: get_python_code(
-            viewer.parser, viewer.get_plot_tokens(), viewer.modeldata.estimatorcolumns
-        ),
+        get_python_code=lambda: get_plot_python_code(viewer),
     )
 
     def on_export_animation() -> None:

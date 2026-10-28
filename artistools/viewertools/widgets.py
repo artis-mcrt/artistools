@@ -1496,17 +1496,23 @@ def get_python_call(functionname: str, kwargs: "Mapping[str, t.Any]") -> str:
 
 
 def get_python_code(
-    parser: argparse.ArgumentParser, tokens: "Sequence[str]", commandname: str, functionname: str
+    parser: argparse.ArgumentParser,
+    tokens: "Sequence[str]",
+    commandname: str,
+    functionname: str,
+    get_keyword_arguments: "Callable[[argparse.Namespace], Mapping[str, t.Any]] | None" = None,
 ) -> str:
     """Return the Python code that draws the plot of the command, with each argument that differs from its default.
 
     commandname names the command in the comment of a rejection. functionname is the function that the code calls,
-    e.g. "at.lightcurve.plot".
+    e.g. "at.lightcurve.plot". get_keyword_arguments gives the arguments of the call from the parsed arguments, e.g.
+    with the plot list in the form of main. The default gives each argument that differs from its default.
     """
     args = parse_command_tokens(parser, tokens)
     if args is None:
         return f"# {commandname} rejects the command"
-    return get_python_call(functionname, get_changed_arguments(parser, args))
+    kwargs = get_changed_arguments(parser, args) if get_keyword_arguments is None else get_keyword_arguments(args)
+    return get_python_call(functionname, kwargs)
 
 
 # a box of text shows at least this number of lines
