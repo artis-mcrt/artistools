@@ -32,6 +32,8 @@ from artistools.constants import Mbol_sun
 from artistools.lightcurve import interactive
 from artistools.lightcurve import viewingangleanalysis
 from artistools.lightcurve.core import bracket_spectrum_to_band
+from artistools.viewertools.window import apply_values
+from artistools.viewertools.window import draw_values
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -2720,7 +2722,7 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
         ("betaminus", "alpha"),
         ("alpha",),
     )
-    assert viewer.draw() is None
+    assert draw_values(viewer) is None
     # the deposition.out of this model is older than the fission columns, and ARTIS writes no emission rate of positrons
     assert viewer.get_energy_rate_reason("deposition", "fission") is not None
     assert viewer.get_energy_rate_reason("emission", "betaplus") is not None
@@ -2734,7 +2736,7 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
         deposition=("gamma", "total"),
         thermalisation=("gamma", "betaplus"),
     )
-    assert viewer.change(newvalues) is None
+    assert apply_values(viewer, newvalues) is None
     command = viewer.get_command()
     assert command.endswith(" --timemin 3.5 --timemax 7 --Lsun --deposition gamma total --emission betaminus alpha"
                             " --analyticemission alpha --thermalisation gamma betaplus")  # fmt: skip
@@ -3039,7 +3041,7 @@ def test_viewer_drops_the_options_that_the_command_refuses_together() -> None:
     FigureCanvasAgg(fig)
     viewer = interactive.LightCurveViewer([str(modelpath), "--magnitude", "--plotcmf", "--interactive"], fig)
     assert (viewer.values.lumunit, viewer.values.plotcmf) == ("mag", False)
-    assert viewer.draw() is None
+    assert draw_values(viewer) is None
 
     vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
     fig = mplfig.Figure()
@@ -3049,7 +3051,7 @@ def test_viewer_drops_the_options_that_the_command_refuses_together() -> None:
     )
     assert viewer.values.directionkind == "vpkt"
     assert (viewer.values.frompackets, viewer.values.topnucs, viewer.values.usepelletdecaytime) == (True, 0, False)
-    assert viewer.draw() is None
+    assert draw_values(viewer) is None
     assert "--frompackets --plotvspecpol 0" in viewer.get_command()
 
 
@@ -3119,7 +3121,7 @@ def test_pellet_decay_time_without_packets_stops_with_a_message(
     FigureCanvasAgg(fig)
     viewer = interactive.LightCurveViewer([str(modelpath), "--use-pellet-decay-time", "--interactive"], fig)
     assert not viewer.values.usepelletdecaytime
-    assert viewer.draw() is None
+    assert draw_values(viewer) is None
     reasons = interactive.get_refused_reasons(viewer, viewer.values)
     assert "decay time of a pellet" in reasons["--use-pellet-decay-time"]
     assert "--use-pellet-decay-time" not in interactive.get_refused_reasons(
@@ -3373,7 +3375,7 @@ def test_average_over_an_angle_needs_the_first_bin_of_each_group(
         [str(modelpath_classic_3d), "-plotviewingangle", "5", "--average_over_phi_angle", "--interactive"], fig
     )
     assert viewer.values.directionkind == "bin"
-    assert viewer.draw() is None
+    assert draw_values(viewer) is None
 
 
 def test_brightness_at_time_takes_the_output_folder_and_one_time(

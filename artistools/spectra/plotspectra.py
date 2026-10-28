@@ -3016,10 +3016,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.interactive:
-        from artistools.spectra.interactive import run_viewer
-        from artistools.viewertools.core import get_command_tokens
+        from artistools.spectra import interactive
+        from artistools.viewertools.application import run_viewer
 
-        run_viewer(get_command_tokens(args, argsraw, kwargs, fromdispatcher=fromdispatcher))
+        run_viewer(interactive, args, argsraw, kwargs, fromdispatcher=fromdispatcher)
         return
 
     resolve_plot_args(args)

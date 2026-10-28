@@ -80,14 +80,15 @@ from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools.application import open_model_folder
-from artistools.viewertools.application import run_viewer_application
 from artistools.viewertools.application import set_drop_handler
 from artistools.viewertools.core import exit_for_other_actions
 from artistools.viewertools.core import get_actions_by_flag
 from artistools.viewertools.core import get_centred_range
 from artistools.viewertools.core import get_clamped_range
 from artistools.viewertools.core import get_end_range
+from artistools.viewertools.core import get_figure_option_tokens
 from artistools.viewertools.core import get_fitted_figwidthscale
+from artistools.viewertools.core import get_given_dpi
 from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
@@ -118,6 +119,7 @@ from artistools.viewertools.sections import WAIT_FOR_PLOT_MESSAGE
 from artistools.viewertools.series import get_dash_pattern
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
+from artistools.viewertools.widgets import blocked_signals
 from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import get_changed_arguments
 from artistools.viewertools.widgets import get_python_call
@@ -126,7 +128,6 @@ from artistools.viewertools.widgets import make_range_slider
 from artistools.viewertools.widgets import make_row_layout
 from artistools.viewertools.widgets import make_slider
 from artistools.viewertools.widgets import parse_command_tokens
-from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
 from artistools.viewertools.widgets import set_search_completion
@@ -140,6 +141,7 @@ from artistools.viewertools.window import get_line_readouts
 from artistools.viewertools.window import make_readout_tag
 from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
+from artistools.viewertools.window import show_command_sections
 from artistools.viewertools.window import start_viewer_window
 
 if t.TYPE_CHECKING:
@@ -230,6 +232,9 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
 XVARIABLES: t.Final = ("velocity", "beta", "time", "timestep", "modelgridindex")
 
 APPLICATION_NAME: t.Final = "artistools plotestimators"
+
+# the items that the Dock icon takes: a model folder opens in a new window
+DOCUMENT_TYPES: t.Final = ("public.folder",)
 
 # matplotlib gives this label to the axes of a colour bar
 COLORBAR_LABEL: t.Final = "<colorbar>"
@@ -744,7 +749,7 @@ class EstimatorViewer:
             xbins="" if args.xbins is None else str(args.xbins),
             colorbyion=bool(args.colorbyion),
             figwidthscale=args.figwidthscale,
-            dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
+            dpi=get_given_dpi(args, parser),
             otheroptions=otheroptions,
         )
 
@@ -824,10 +829,7 @@ class EstimatorViewer:
             tokens.append("--histogram")
         if values.colorbyion:
             tokens.append("--colorbyion")
-        if values.figwidthscale != 1.0:
-            tokens += ["--figwidthscale", format(values.figwidthscale, "g")]
-        if values.dpi is not None:
-            tokens += ["--dpi", str(values.dpi)]
+        tokens += get_figure_option_tokens(values)
         tokens += get_option_row_tokens(values.otheroptions)
         for subplot in subplots[1:] if firstpositional else subplots:
             tokens += ["--plot", *subplot]
@@ -926,13 +928,6 @@ class EstimatorViewer:
             return self.select_positions(dc.replace(values, cells=""), (middle, middle))
         return values
 
-    def draw(self, *, quiet: bool = True) -> str | None:
-        """Draw the plot of the values, and return the reason for the status line if plotestimators rejects it.
-
-        The terminal shows the whole error, and the status line shows its first line.
-        """
-        return self.render(self.values, quiet=quiet)()
-
     def render(self, values: ControlValues, *, quiet: bool = True) -> "Callable[[], str | None]":
         """Draw the plot of the values on a new figure, and return the function that shows it in the canvas.
 
@@ -983,13 +978,6 @@ class EstimatorViewer:
                 self.datawarning = self.warning
 
         return render_command(self, values, draw, keep, quiet=quiet)
-
-    def change(self, values: ControlValues) -> str | None:
-        """Draw the plot of the new values, and keep the old values and the old plot if plotestimators rejects them."""
-        message = self.render(values)()
-        if message is None:
-            self.values = values
-        return message
 
     def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
         """Return the --figwidthscale that gives the figure the shape of the plot area.
@@ -1161,11 +1149,6 @@ KEYBOARD_HELP_ROWS: t.Final = (
 )
 
 
-def run_viewer(tokens: "Sequence[str]") -> None:
-    """Open the window of the viewer, and print the command of the last plot when the window closes."""
-    run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens)
-
-
 def open_window(
     tokens: "Sequence[str]", windows: "list[QtWidgets.QMainWindow]", *, newwindow: bool = True
 ) -> str | None:
@@ -1180,7 +1163,7 @@ def open_window(
         add_default_options(make_parser(addargs), tokens) if newwindow else tokens, mplfig.Figure()
     )
     viewerwindow = start_viewer_window(
-        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.modelpath, resolve_modelpath(viewer.modelpath).name)
+        APPLICATION_NAME, viewer, windows, (viewer.modelpath, resolve_modelpath(viewer.modelpath).name)
     )
     if isinstance(viewerwindow, str):
         return viewerwindow
@@ -1384,7 +1367,12 @@ def open_window(
     fontsizebox.setDecimals(2)
     fontsizebox.setSpecialValueText("default")
     fontsizebox.setToolTip(helptexts.get("labelfontsize", ""))
-    figscalebox = make_figscale_box(helptexts)
+    figscalebox, show_figscale = make_figscale_box(
+        viewer.parser,
+        helptexts,
+        lambda: viewer.values.otheroptions,
+        lambda rows: apply(replace_option_rows(viewer, viewer.values, rows)),
+    )
     subplotsperrowbox = QtWidgets.QSpinBox()
     subplotsperrowbox.setRange(1, 12)
     subplotsperrowbox.setToolTip(helptexts.get("subplotsperrow", ""))
@@ -1412,7 +1400,6 @@ def open_window(
         ],
     )
 
-    defaultdpi: int = viewer.parser.get_default("dpi")
     # the table offers each option that a section sets too, as the table of plotspectra does, thus the user can edit
     # each option of the command there. A section and the table show the same rows
     tablehiddendests = CONTROLLED_DESTS | OUTPUT_DESTS | TABLE_EXCLUDED_DESTS | MODELFORMAT_DESTS
@@ -1425,14 +1412,13 @@ def open_window(
         modelformatrows = tuple(row for row in viewer.values.otheroptions if row[0] in viewer.modelformatflags)
         queue.apply(replace_option_rows(viewer, viewer.values, (*rows, *modelformatrows)))
 
-    figuresection, set_option_rows, commandtext, pythontext, (copybutton, pythoncopybutton), statusbar = (
-        add_command_sections(
-            viewerwindow,
-            viewer,
-            viewer.parser,
-            (tablehiddendests, get_table_rows(viewer.values.otheroptions), on_option_rows),
-        )
+    commandsections = add_command_sections(
+        viewerwindow,
+        viewer,
+        viewer.parser,
+        (tablehiddendests, get_table_rows(viewer.values.otheroptions), on_option_rows),
     )
+    figuresection, statusbar = commandsections.figuresection, commandsections.statusbar
 
     signalwidgets: list[QtWidgets.QWidget] = [
         figuresection.dpibox,
@@ -1466,26 +1452,18 @@ def open_window(
         viewer then, and show_values gives each slider its value.
         """
         nvalid = len(viewer.modeldata.validtimesteps)
-        blockers = [QtCore.QSignalBlocker(slider) for slider in (timeslider, widthslider, cellslider)]
-        try:
+        with blocked_signals([timeslider, widthslider, cellslider]):
             timeslider.setRange(0, nvalid - 1)
             widthslider.setRange(1, nvalid)
             cellslider.setRange(0, max(len(viewer.modeldata.cells) - 1, 0))
-        finally:
-            for blocker in blockers:
-                blocker.unblock()
         set_trange_steps(max(nvalid - 1, 1))
 
     set_ranges()
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
-        blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
-        try:
+        with blocked_signals(signalwidgets):
             show_blocked_values()
-        finally:
-            for blocker in blockers:
-                blocker.unblock()
         fit_canvas(canvas, viewer.figsize, plotarea)
 
     def show_blocked_values() -> None:
@@ -1551,9 +1529,7 @@ def open_window(
             check.setChecked(get_row_values(rows, flag) is not None)
         with contextlib.suppress(ValueError):
             set_spin_value(fontsizebox, float((get_row_values(rows, "--labelfontsize") or ("0",))[0]))
-        with contextlib.suppress(ValueError):
-            figscale = get_row_values(rows, "--figscale") or (str(viewer.parser.get_default("figscale")),)
-            set_spin_value(figscalebox, float(figscale[0]))
+        show_figscale(rows)
         set_spin_value(subplotsperrowbox, get_subplots_per_row(rows))
         set_spin_value(linewidthscalebox, get_linewidthscale(viewer.parser, rows))
         timeslider.setValue((firstpos + lastpos) // 2)
@@ -1590,11 +1566,11 @@ def open_window(
         colorbyionnote = " (on for bins)" if viewer.plotcolorbyion and not values.colorbyion else ""
         colorbyioncheck.setText(FLAG_LABELS["--colorbyion"] + colorbyionnote)
         show_subplot_section()
-        set_option_rows(get_table_rows(values.otheroptions))
-        set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
-        set_command_text(commandtext, viewer.get_command())
-        set_command_text(
-            pythontext, get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.modeldata.estimatorcolumns)
+        show_command_sections(
+            commandsections,
+            viewer,
+            get_table_rows(values.otheroptions),
+            get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.modeldata.estimatorcolumns),
         )
 
     def after_draw(message: str | None) -> None:
@@ -1750,10 +1726,6 @@ def open_window(
 
     def on_fontsize(fontsize: float) -> None:
         apply_rows({"--labelfontsize": (format(fontsize, "g"),) if fontsize > 0.0 else None})
-
-    def on_figscale(figscale: float) -> None:
-        isdefault = math.isclose(figscale, viewer.parser.get_default("figscale"))
-        apply_rows({"--figscale": None if isdefault else (format(figscale, "g"),)})
 
     def on_linewidthscale(scale: float) -> None:
         isdefault = math.isclose(scale, viewer.parser.get_default("linewidthscale"))
@@ -1959,7 +1931,7 @@ def open_window(
         queue,
         command,
         figuresection,
-        (copybutton, pythoncopybutton),
+        commandsections.copybuttons,
         KEYBOARD_HELP_ROWS,
         playbutton,
         extracallbacks={
@@ -1999,7 +1971,6 @@ def open_window(
     for flag, check in appearancechecks.items():
         check.toggled.connect(partial(on_appearance_check, flag))
     fontsizebox.valueChanged.connect(on_fontsize)
-    figscalebox.valueChanged.connect(on_figscale)
     subplotsperrowbox.valueChanged.connect(on_subplotsperrow)
     linewidthscalebox.valueChanged.connect(on_linewidthscale)
     xbox.activated.connect(on_xvariable)
@@ -2037,6 +2008,8 @@ def open_window(
         ),
     )
 
-    finish_viewer_window(viewerwindow, windows, viewer, queue, get_session_tokens, on_closed)
+    finish_viewer_window(
+        viewerwindow, windows, viewer, queue, get_session_tokens, on_closed, viewer.get_fitted_figwidthscale
+    )
     show_values()
     return None

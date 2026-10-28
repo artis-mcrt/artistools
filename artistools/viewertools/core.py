@@ -835,6 +835,37 @@ class PlotValues(t.Protocol):
         """The --dpi of the values, or None for the default of the command."""
 
 
+class YAxisValues(PlotValues, t.Protocol):
+    """The values of a viewer with the --yscale, the --ymin, and the --ymax of one frame, e.g. of the spectra."""
+
+    @property
+    def yscale(self) -> str:
+        """The --yscale of the values."""
+
+    @property
+    def ymin(self) -> str:
+        """The text of --ymin, or "" for the automatic limit."""
+
+    @property
+    def ymax(self) -> str:
+        """The text of --ymax, or "" for the automatic limit."""
+
+
+def get_given_dpi(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int | None:
+    """Return the --dpi of the arguments, or None for the default of the command."""
+    return None if args.dpi == parser.get_default("dpi") else args.dpi
+
+
+def get_figure_option_tokens(values: PlotValues) -> list[str]:
+    """Return the tokens of the --figwidthscale and the --dpi of the values. A default gives no tokens."""
+    tokens: list[str] = []
+    if values.figwidthscale != 1.0:
+        tokens += ["--figwidthscale", format(values.figwidthscale, "g")]
+    if values.dpi is not None:
+        tokens += ["--dpi", str(values.dpi)]
+    return tokens
+
+
 def keep_figwidthscale[ValuesT: PlotValues](restored: ValuesT, current: ValuesT) -> ValuesT:
     """Return the values that Undo restores, with the current --figwidthscale, which the window sets."""
     return dc.replace(restored, figwidthscale=current.figwidthscale)

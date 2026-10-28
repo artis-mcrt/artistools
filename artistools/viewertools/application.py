@@ -15,6 +15,7 @@ from artistools.misc import get_standard_flag
 from artistools.misc import import_optional
 from artistools.misc import print_error
 from artistools.misc import resolve_modelpath
+from artistools.viewertools.core import get_command_tokens
 from artistools.viewertools.core import is_flag
 from artistools.viewertools.core import MACOS_BUNDLE_VARIABLE
 from artistools.viewertools.core import run_command_step
@@ -22,9 +23,11 @@ from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import ThreadOutput
 
 if t.TYPE_CHECKING:
+    import argparse
     from collections.abc import Callable
     from collections.abc import Mapping
     from collections.abc import Sequence
+    from types import ModuleType
 
     import numpy.typing as npt
     from PySide6 import QtCore
@@ -665,7 +668,7 @@ def run_viewer_application(
     iconcurve: "npt.NDArray[np.float64]",
     open_window: OpenWindow,
     tokens: "Sequence[str]",
-    documenttypes: "Sequence[str]" = ("public.folder",),
+    documenttypes: "Sequence[str]",
 ) -> None:
     """Open a viewer window for the tokens and the windows of the last session, then run until the user quits.
 
@@ -683,6 +686,31 @@ def run_viewer_application(
     open_window(tokens, windows)
     reopen_session_windows(open_window, windows)
     app.exec()
+
+
+def run_viewer(
+    viewermodule: "ModuleType",
+    args: "argparse.Namespace",
+    argsraw: "Sequence[str] | None",
+    kwargs: "Mapping[str, t.Any]",
+    *,
+    fromdispatcher: bool,
+) -> None:
+    """Open the window of a viewer for the arguments of its command, e.g. for --interactive.
+
+    viewermodule is the module of the viewer, e.g. artistools.spectra.interactive. It holds APPLICATION_NAME,
+    DOCUMENT_TYPES, get_icon_curve, and open_window. The Dock icon takes the items of DOCUMENT_TYPES, e.g. a folder.
+    The command imports the module only for a window, because the module of the viewer imports the module of the
+    command.
+    """
+    tokens = get_command_tokens(args, argsraw, kwargs, fromdispatcher=fromdispatcher)
+    run_viewer_application(
+        viewermodule.APPLICATION_NAME,
+        viewermodule.get_icon_curve(),
+        viewermodule.open_window,
+        tokens,
+        viewermodule.DOCUMENT_TYPES,
+    )
 
 
 def remove_figwidthscale(tokens: "Sequence[str]") -> list[str]:

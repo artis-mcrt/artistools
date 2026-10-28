@@ -1,6 +1,7 @@
 """Make the widgets of a viewer window, e.g. the sections, the option table, the sliders, and the status bar."""
 
 import argparse
+import contextlib
 import html
 import json
 import math
@@ -28,6 +29,7 @@ from artistools.viewertools.core import OptionRows
 if t.TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Collection
+    from collections.abc import Generator
     from collections.abc import Mapping
     from collections.abc import Sequence
 
@@ -1824,6 +1826,22 @@ def set_spin_value(box: "QtWidgets.QSpinBox | QtWidgets.QDoubleSpinBox", value: 
         box.setValue(round(value))
     else:
         box.setValue(value)
+
+
+@contextlib.contextmanager
+def blocked_signals(widgets: "Sequence[QtCore.QObject]") -> "Generator[None]":
+    """Block the signals of the widgets inside the block, thus a widget that shows a value does not apply it again.
+
+    An error inside the block, e.g. a bad colour in the option table, must not leave the signals blocked.
+    """
+    from PySide6 import QtCore
+
+    blockers = [QtCore.QSignalBlocker(widget) for widget in widgets]
+    try:
+        yield
+    finally:
+        for blocker in blockers:
+            blocker.unblock()
 
 
 def make_note_label() -> "QtWidgets.QLabel":

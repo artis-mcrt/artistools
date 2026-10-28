@@ -15,8 +15,10 @@ from artistools.misc import on_model_host
 from artistools.misc import print_error
 from artistools.plottools import apply_dark_colours
 from artistools.plottools import DARKMODE_COLOURS
+from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
+from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools.application import add_recent_model
 from artistools.viewertools.application import clear_field_error
 from artistools.viewertools.application import get_edited_field
@@ -31,6 +33,7 @@ from artistools.viewertools.core import FIT_MILLISECONDS
 from artistools.viewertools.core import FIT_TOLERANCE
 from artistools.viewertools.core import fix_title_position
 from artistools.viewertools.core import get_first_line
+from artistools.viewertools.core import get_fitted_figwidthscale
 from artistools.viewertools.core import model_has_direction_data
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import run_command_step_with_warning
@@ -53,7 +56,9 @@ from artistools.viewertools.widgets import make_plot_area
 from artistools.viewertools.widgets import make_sidebar
 from artistools.viewertools.widgets import make_status_bar
 from artistools.viewertools.widgets import make_timer
+from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_plot_busy
+from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import show_plot_area_state
 from artistools.viewertools.widgets import show_plot_banner
 from artistools.viewertools.widgets import show_status_message
@@ -205,15 +210,14 @@ class ViewerWindow(t.NamedTuple):
 def start_viewer_window(
     applicationname: str,
     viewer: "PlotViewer[t.Any]",
-    draw: "Callable[..., str | None]",
     windows: "list[QtWidgets.QMainWindow]",
     document: tuple[Path, str],
 ) -> ViewerWindow | str:
     """Make the window of a viewer with its first plot, the plot area, and the sidebar.
 
-    draw is the draw method of the viewer. document gives the folder of the model and the title of the window. A first
-    plot that the command rejects gives its reason and no window. The terminal shows the whole error, and the first
-    window of a start then stops the process.
+    document gives the folder of the model and the title of the window. A first plot that the command rejects gives
+    its reason and no window. The terminal shows the whole error, and the first window of a start then stops the
+    process.
     """
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
@@ -221,7 +225,7 @@ def start_viewer_window(
     set_window_document(window, *document)
     canvas = FigureCanvasQTAgg(viewer.fig)
     viewer.darkcolours = get_dark_plot_colours()
-    if (message := draw(quiet=False)) is not None:
+    if (message := draw_values(viewer, quiet=False)) is not None:
         if not windows:
             raise SystemExit(1)
         return message
@@ -286,6 +290,31 @@ def add_command_sections(
     )
 
 
+def show_command_sections[ValuesT: PlotValues](
+    sections: CommandSections, viewer: "PlotViewer[ValuesT]", tablerows: "OptionRows", pythoncode: str
+) -> None:
+    """Show the values of the viewer in the sections of add_command_sections.
+
+    tablerows gives the rows of the table of the other options, and pythoncode the code that draws the plot.
+    """
+    sections.set_option_rows(tablerows)
+    defaultdpi: int = viewer.parser.get_default("dpi")
+    set_spin_value(sections.figuresection.dpibox, viewer.values.dpi or defaultdpi)
+    set_command_text(sections.commandtext, viewer.get_command())
+    set_command_text(sections.pythontext, pythoncode)
+
+
+def fit_one_frame_column[ValuesT: PlotValues](
+    viewer: "PlotViewer[ValuesT]", areawidth: float, areaheight: float
+) -> float:
+    """Return the --figwidthscale that gives a figure of one column of frames the shape of the plot area.
+
+    The column has the label of one y axis and the right margin beside its frames, e.g. the spectra and the residuals.
+    """
+    marginwidth = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
+    return get_fitted_figwidthscale(viewer.figsize, viewer.values.figwidthscale, marginwidth, areawidth, areaheight)
+
+
 def finish_viewer_window[ValuesT: PlotValues](
     viewerwindow: ViewerWindow,
     windows: "list[QtWidgets.QMainWindow]",
@@ -293,19 +322,20 @@ def finish_viewer_window[ValuesT: PlotValues](
     queue: "DrawQueue[ValuesT]",
     get_session_tokens: "Callable[[], list[str]]",
     on_closed: "Callable[[], None] | None" = None,
+    get_fitted_scale: "Callable[[float, float], float] | None" = None,
 ) -> None:
     """Connect the parts that each window of a viewer has, then show the window.
 
     get_session_tokens gives the command that opens the window again at the next start. on_closed runs when the window
-    closes, e.g. to clear the caches of a model.
+    closes, e.g. to clear the caches of a model. get_fitted_scale gives the --figwidthscale that fills a plot area of
+    a width and a height, and the default is fit_one_frame_column.
     """
     window, canvas, plotarea = viewerwindow.window, viewerwindow.canvas, viewerwindow.plotarea
+    get_fitted = get_fitted_scale or partial(fit_one_frame_column, viewer)
 
     def fit_figwidthscale() -> None:
         values = viewer.values
-        figwidthscale = get_new_figwidthscale(
-            plotarea, viewer.figsize, values.figwidthscale, viewer.get_fitted_figwidthscale
-        )
+        figwidthscale = get_new_figwidthscale(plotarea, viewer.figsize, values.figwidthscale, get_fitted)
         # the window sets the width, thus the change is not undoable, and Undo does not return to an old width
         if figwidthscale is not None:
             queue.apply(dc.replace(values, figwidthscale=figwidthscale), undoable=False)
@@ -366,8 +396,27 @@ class PlotViewer[ValuesT](t.Protocol):
     def get_command(self) -> str:
         """Return the command that draws the plot of the current values."""
 
-    def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the --figwidthscale that gives the figure the shape of a plot area of this width and height."""
+    def render(self, values: ValuesT, *, quiet: bool = True) -> "Callable[[], str | None]":
+        """Draw the plot of the values on a new figure, and return the function that shows it, see render_command."""
+
+
+def draw_values(viewer: "PlotViewer[t.Any]", *, quiet: bool = True) -> str | None:
+    """Draw the plot of the values of the viewer, and return the reason for the status line if the command rejects it.
+
+    The terminal shows the whole error, and the status line shows its first line.
+    """
+    return viewer.render(viewer.values, quiet=quiet)()
+
+
+def apply_values[ValuesT](viewer: "PlotViewer[ValuesT]", values: ValuesT) -> str | None:
+    """Draw the plot of new values, and keep the old values and the old plot if the command rejects them.
+
+    A test applies values with this function, because the queue of a window draws the plot in a worker thread.
+    """
+    message = viewer.render(values)()
+    if message is None:
+        viewer.values = values
+    return message
 
 
 def render_command[PlotT, ValuesT](
@@ -769,6 +818,20 @@ class DrawQueue[ValuesT]:
             mark_field_error(rejectedfield, message)
             self.errorfield = rejectedfield
         self.show_values()
+
+
+def get_plot_mouse_help_rows(xrange: str, defaultxrange: str) -> tuple[tuple[str, str], ...]:
+    """Return the help rows of the mouse actions of connect_plot_mouse on a plot with one frame of --ymin and --ymax.
+
+    xrange names the range that a drag selects, e.g. "time range". defaultxrange names the range that a double-click
+    gives, e.g. "full time range".
+    """
+    return (
+        ("<b>Drag</b> across the plot", f"Select the {xrange}"),
+        ("<b>Shift-drag</b> up or down the plot", "Select the y range (--ymin and --ymax)"),
+        ("<b>Double-click</b> the plot", f"Get the {defaultxrange}"),
+        ("<b>Right-click</b> the plot", "Change the y scale, get the automatic y range, or copy or save the figure"),
+    )
 
 
 def connect_plot_mouse(

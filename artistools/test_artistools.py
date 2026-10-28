@@ -48,6 +48,8 @@ from artistools.viewertools import menus as viewermenus
 from artistools.viewertools import sections as viewersections
 from artistools.viewertools import widgets as viewerwidgets
 from artistools.viewertools import window as viewerwindow
+from artistools.viewertools.window import apply_values
+from artistools.viewertools.window import draw_values
 
 modelpath = at.get_path("testdata") / "testmodel"
 # each retired top-level name, with the module that its inputmodel command runs
@@ -6969,7 +6971,7 @@ def make_viewer(kind: str, tokens: "Sequence[str]") -> t.Any:
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
     viewer = viewerclass(tokens, fig)
-    assert viewer.draw() is None
+    assert draw_values(viewer) is None
     return viewer
 
 
@@ -7004,7 +7006,7 @@ def test_viewer_keeps_its_plot_after_a_rejected_change(kind: str, tokens: list[s
     viewer = make_viewer(kind, tokens)
     oldvalues, oldfig = viewer.values, viewer.fig
     badvalues = dc.replace(oldvalues, otheroptions=(*oldvalues.otheroptions, ("-figscale", ("abc",))))
-    message = viewer.change(badvalues)
+    message = apply_values(viewer, badvalues)
     assert message is not None
     assert "-figscale" in message
     assert viewer.values == oldvalues

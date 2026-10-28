@@ -18,6 +18,8 @@ from artistools.viewertools import application as viewerapplication
 from artistools.viewertools import core as viewercore
 from artistools.viewertools import sections as viewersections
 from artistools.viewertools import series as viewerseries
+from artistools.viewertools.window import apply_values
+from artistools.viewertools.window import draw_values
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -35,7 +37,7 @@ def make_viewer(kind: str, tokens: list[str]) -> t.Any:
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
     viewer = viewerclass(tokens, fig)
-    assert viewer.draw() is None
+    assert draw_values(viewer) is None
     return viewer
 
 
@@ -65,12 +67,12 @@ def test_viewer_changes_the_residual_baseline(kind: str) -> None:
     viewer = make_viewer(kind, [str(modelpath), str(modelpath), *timetokens, "--residualbaselineseries"])
     assert viewer.values.otheroptions == (("--residualbaselineseries", ()),)
     assert viewer.residualaxis is not None
-    assert viewer.change(dc.replace(viewer.values, otheroptions=(("--residualbaselineseries", ("1",)),))) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=(("--residualbaselineseries", ("1",)),))) is None
     assert viewer.values.otheroptions == (("--residualbaselineseries", ("1",)),)
     assert viewer.residualaxis is not None
     tokens = viewer.get_plot_tokens()
     assert tokens[tokens.index("--residualbaselineseries") + 1] == "1"
-    assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=())) is None
     assert viewer.residualaxis is None
 
 
@@ -97,7 +99,7 @@ def test_viewer_selects_the_residual_series(kind: str) -> None:
     assert viewer.residualaxis is not None
     assert len(viewer.residualaxis.lines) == 3
     options = (("-residual", ("0",)), ("-residualbaselineseries", ("2",)))
-    assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=options)) is None
     assert viewer.residualaxis is not None
     assert len(viewer.residualaxis.lines) == 2
     parser = viewercore.make_parser(
@@ -106,9 +108,9 @@ def test_viewer_selects_the_residual_series(kind: str) -> None:
     args = parser.parse_args(viewer.get_plot_tokens())
     assert args.residuals == [0]
     assert args.residualbaselineseries == 2
-    assert viewer.change(dc.replace(viewer.values, otheroptions=(("-residual", ()),))) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=(("-residual", ()),))) is None
     assert len(viewer.residualaxis.lines) == 3
-    assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=())) is None
     assert viewer.residualaxis is None
 
 
@@ -125,7 +127,7 @@ def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
     assert np.isfinite(initialvalues).any()
     assert np.allclose(initialvalues[np.isfinite(initialvalues)], 1.0)
     options = (("--residual", ()), ("--residualtype", (residualtype,)))
-    assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=options)) is None
     assert viewer.residualaxis is not None
     assert viewer.residualaxis.get_yscale() == ("log" if residualtype == "relativelog" else "linear")
     line = viewer.residualaxis.lines[0]
@@ -150,7 +152,7 @@ def test_viewer_sets_the_residual_y_maximum(kind: str, residualtype: str) -> Non
     timetokens = ["-t", "300"] if kind == "spectra" else []
     viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual", "-residualtype", residualtype])
     options = (("-residual", ()), ("-residualtype", (residualtype,)), ("-residualymax", ("2.5",)))
-    assert viewer.change(dc.replace(viewer.values, otheroptions=options)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=options)) is None
     assert viewer.residualaxis is not None
     assert np.isclose(viewer.residualaxis.get_ylim()[1], 2.5)
     parser = viewercore.make_parser(

@@ -28,8 +28,12 @@ import artistools as at
 from artistools.spectra import core as atspectra
 from artistools.spectra import interactive
 from artistools.spectra import plotspectra
+from artistools.viewertools import application as viewerapplication
 from artistools.viewertools import core as viewercore
 from artistools.viewertools import series as viewerseries
+from artistools.viewertools.window import apply_values
+from artistools.viewertools.window import draw_values
+from artistools.viewertools.window import fit_one_frame_column
 
 modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
@@ -3385,15 +3389,18 @@ def test_interactive_continuous_width_is_never_zero() -> None:
     viewer = make_headless_viewer([str(modelpath), "-t", "299-301", "--notimeclamp", "--interactive"])
     assert (viewer.values.widthmode, viewer.values.width) == ("days", 2.0)
     # a width of 0 in days changes to Δ ln t, which starts with the Δ ln t of each timestep of the logarithmic grid
-    assert viewer.change(dc.replace(viewer.values, width=0.0)) is None
+    assert apply_values(viewer, viewer.clamp_time(dc.replace(viewer.values, width=0.0))) is None
     assert viewer.values.widthmode == "dlogt"
     assert viewer.values.dlogt == pytest.approx(math.log(viewer.grid.tends[0] / viewer.grid.tstarts[0]), rel=1e-3)
     # the width follows the time
-    assert viewer.change(dc.replace(viewer.values, widthmode="dlogt", dlogt=0.01, centre=290.0)) is None
+    assert (
+        apply_values(viewer, viewer.clamp_time(dc.replace(viewer.values, widthmode="dlogt", dlogt=0.01, centre=290.0)))
+        is None
+    )
     low, high = (viewer.values.centre + sign * viewer.values.width / 2.0 for sign in (-1.0, 1.0))
     assert math.log(high / low) == pytest.approx(0.01, rel=1e-3)
     # the Down key never gives a width of 0 or less, and it gives a width in days
-    assert viewer.change(dc.replace(viewer.values, widthmode="days", width=0.001)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, widthmode="days", width=0.001)) is None
     assert viewer.step_width(-1).width == 0.001
     assert viewer.step_width(1).widthmode == "days"
 
@@ -3408,18 +3415,18 @@ def test_interactive_valid_timesteps() -> None:
     lasttimestep = viewer.grid.validtimesteps[-1]
     assert interactive.get_grid_selection(viewer.grid, viewer.values) == (lasttimestep, lasttimestep)
     assert viewer.step_time(1) is None
-    assert viewer.draw() is None
+    assert draw_values(viewer) is None
 
     # a continuous range at each end of the valid times keeps its Δ ln t, and plotspectra accepts it
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
     # each end starts from the values of the command, thus it does not keep the width mode of the other end
     base = viewer.values
     for bound in (validstart, validend):
-        assert viewer.change(dc.replace(base, centre=bound)) is None
+        assert apply_values(viewer, viewer.clamp_time(dc.replace(base, centre=bound))) is None
         assert viewer.values.centre == bound
         low, high = (bound + sign * viewer.values.width / 2.0 for sign in (-1.0, 1.0))
         assert math.log(high / low) == pytest.approx(viewer.values.dlogt, rel=1e-3)
-        assert viewer.change(dc.replace(viewer.values, centre=bound, widthmode="days", width=1.0)) is None
+        assert apply_values(viewer, dc.replace(viewer.values, centre=bound, widthmode="days", width=1.0)) is None
 
 
 def test_interactive_up_key_at_the_last_timestep_widens_the_range_backwards() -> None:
@@ -3439,7 +3446,7 @@ def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:
     fig = mplfig.Figure()
     FigureCanvasAgg(fig)
     viewer = interactive.SpectrumViewer(tokens, fig)
-    assert viewer.draw() is None
+    assert draw_values(viewer) is None
     return viewer
 
 
@@ -3451,11 +3458,11 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
     continuous = dc.replace(
         viewer.values, notimeclamp=True, widthmode="days", centre=306.4, width=5.0, xmin="3000", xmax="9000"
     )
-    assert viewer.change(continuous) is None
+    assert apply_values(viewer, continuous) is None
     assert viewer.get_command().endswith(" -t 303.9-308.9 --xmin 3000 --xmax 9000 --notimeclamp")
     # a continuous range reads the packets that arrive inside it, and not whole timesteps
     assert viewer.get_time_range_text() == "Packets from 303.90 to 308.90 d (Δt = 5.00 d)"
-    assert viewer.change(viewer.snap(viewer.values, 58, 62)) is None
+    assert apply_values(viewer, viewer.snap(viewer.values, 58, 62)) is None
     assert "Timesteps 58 to 62" in viewer.get_time_range_text()
     command = viewer.get_command()
 
@@ -3476,7 +3483,7 @@ def test_interactive_emission_options() -> None:
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     oldvalues, command = viewer.values, viewer.get_command()
     # the status line gives the first line of the error, which names the missing files
-    message = viewer.change(dc.replace(viewer.values, showemission=True))
+    message = apply_values(viewer, dc.replace(viewer.values, showemission=True))
     assert message is not None
     assert message.startswith("None of these files exist")
     assert viewer.values == oldvalues
@@ -3487,7 +3494,7 @@ def test_interactive_emission_options() -> None:
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--groupby", "ion", "--interactive"])
     assert viewer.values.groupby is None
     figheight = viewer.fig.get_figheight()
-    assert viewer.change(dc.replace(viewer.values, showabsorption=True, maxseriescount=5, nostack=True)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, showabsorption=True, maxseriescount=5, nostack=True)) is None
     assert viewer.get_command().endswith(" --showabsorption --maxseriescount 5 --nostack")
     assert viewer.fig.get_figheight() > figheight
 
@@ -3508,7 +3515,7 @@ def test_interactive_xunit_and_references() -> None:
     assert np.isclose(float(back.xmax), 19000.0, rtol=1e-3, atol=0.0)
 
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
-    assert viewer.change(dc.replace(inhertz, spectra=(*inhertz.spectra, reference))) is None
+    assert apply_values(viewer, dc.replace(inhertz, spectra=(*inhertz.spectra, reference))) is None
     tokens = shlex.split(viewer.get_command())[2:]
     assert tokens[:4] == [str(modelpath), reference, "-t", "300"]
     assert "--xunit" in tokens
@@ -3530,7 +3537,7 @@ def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pyt
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
     # the second model is the same model folder, because the other test models do not cover 300 days
     spectra = (*viewer.values.spectra, str(modelpath), reference)
-    assert viewer.change(dc.replace(viewer.values, spectra=spectra)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, spectra=spectra)) is None
     assert shlex.split(viewer.get_command())[2:5] == [".", str(modelpath), reference]
     assert len(viewer.axes[0].get_lines()) == 3
     assert viewerseries.get_series_item_text(interactive.REFERENCE_DATA, reference).startswith("Reference: /")
@@ -3617,7 +3624,7 @@ def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     )
     labelled = dc.replace(viewer.values, otheroptions=labelledrows)
     assert viewercore.get_row_values(labelled.otheroptions, "--label") == ("default", "Observed")
-    assert viewer.change(labelled) is None
+    assert apply_values(viewer, labelled) is None
     legendlabels = [line.get_label() for line in viewer.axes[0].get_lines()]
     assert legendlabels[1] == "Observed"
     assert legendlabels[0].startswith("TEST MODEL +300")
@@ -3673,7 +3680,7 @@ def test_interactive_paths_keep_their_place() -> None:
     viewer = make_headless_viewer(["-t", "300", "--notitle", str(modelpath), "--interactive"])
     assert viewer.modelpathtokens == [str(modelpath)]
     # the command without the option starts with the path, and the viewer still reads the time of the command
-    assert viewer.change(dc.replace(viewer.values, otheroptions=())) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=())) is None
     assert "Timestep 54" in viewer.get_time_range_text()
 
     # -fixedionlist reads each word that follows it, but a folder at the end of the command is a path
@@ -3706,10 +3713,10 @@ def test_interactive_command_gives_the_series_count_of_the_box() -> None:
 def test_interactive_fixed_y_axis() -> None:
     """A fixed y axis keeps a negative --ymin through the command, and the limits stay when the time changes."""
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
-    assert viewer.change(dc.replace(viewer.values, ymin="-1e-13", ymax="3e-13")) is None
+    assert apply_values(viewer, dc.replace(viewer.values, ymin="-1e-13", ymax="3e-13")) is None
     # Python 3.13 reads a separate -1e-13 as an option, thus the value joins its flag
     assert " --ymin=-1e-13 --ymax 3e-13" in viewer.get_command()
-    assert viewer.change(dc.replace(viewer.values, centre=305.0)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, centre=305.0)) is None
     assert np.allclose(viewer.axes[0].get_ylim(), (-1e-13, 3e-13), rtol=1e-9, atol=0.0)
 
 
@@ -3717,8 +3724,8 @@ def test_interactive_figwidthscale_fills_the_plot_area() -> None:
     """The viewer sets --figwidthscale to give the figure the shape of the plot area, and the command shows it."""
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--figwidthscale", "1.5", "--interactive"])
     for areawidth, areaheight in ((1600.0, 500.0), (600.0, 500.0)):
-        figwidthscale = viewer.get_fitted_figwidthscale(areawidth, areaheight)
-        assert viewer.change(dc.replace(viewer.values, figwidthscale=figwidthscale)) is None
+        figwidthscale = fit_one_frame_column(viewer, areawidth, areaheight)
+        assert apply_values(viewer, dc.replace(viewer.values, figwidthscale=figwidthscale)) is None
         figwidth, figheight = viewer.fig.get_size_inches()
         # the scale has 2 decimals, thus the shape of the figure differs a little from the shape of the area
         assert np.isclose(figwidth / figheight, areawidth / areaheight, rtol=0.01)
@@ -3734,7 +3741,7 @@ def test_maxseriescount_cuts_the_fixedionlist() -> None:
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
     series = viewer.get_drawn_series()
     assert len(series) > 2
-    assert viewer.change(dc.replace(viewer.values, fixedionlist=series[::-1], maxseriescount=2)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, fixedionlist=series[::-1], maxseriescount=2)) is None
     assert viewer.get_drawn_series() == series[::-1][:2]
 
     for extraargs, maxseriescount in (("", 20), ("-maxseriescount 5", 5)):
@@ -3774,7 +3781,7 @@ def test_interactive_assertion_of_plotspectra_is_a_rejection() -> None:
     # resolve_plot_args asserts that the command does not give both kinds of viewing angle
     newvalues = dc.replace(oldvalues, otheroptions=(("-plotvspecpol", ("0",)), ("-plotviewingangle", ("0",))))
     assert viewer.get_rejection(newvalues) is not None
-    assert viewer.change(newvalues) is not None
+    assert apply_values(viewer, newvalues) is not None
     assert viewer.values == oldvalues
 
 
@@ -3784,8 +3791,8 @@ def test_interactive_rejected_frames_leave_a_plot_on_the_figure() -> None:
     The viewer kept the key of the old frames, thus each later plot went to axes that the figure did not hold.
     """
     viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
-    assert viewer.change(dc.replace(viewer.values, otheroptions=(("-figscale", ("-10",)),))) is not None
-    assert viewer.change(viewer.step_time(1) or viewer.values) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=(("-figscale", ("-10",)),))) is not None
+    assert apply_values(viewer, viewer.step_time(1) or viewer.values) is None
     assert viewer.fig.axes, "the figure must hold the frames of the plot"
 
 
@@ -3802,7 +3809,7 @@ def test_interactive_redraw_matches_a_new_plot() -> None:
         dc.replace(viewer.values, showemission=True),
         dc.replace(later, showemission=True, maxseriescount=4),
     ):
-        assert viewer.change(values) is None
+        assert apply_values(viewer, values) is None
     newviewer = make_headless_viewer([*shlex.split(viewer.get_command())[2:], "--interactive"])
     canvases = [viewer.fig.canvas, newviewer.fig.canvas]
     pixels = []
@@ -3820,7 +3827,7 @@ def test_interactive_tick_labels_come_back_after_hidexticklabels() -> None:
     """
     viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
     for otheroptions, labelsvisible in (((("--hidexticklabels", ()),), False), ((), True)):
-        assert viewer.change(dc.replace(viewer.values, otheroptions=otheroptions)) is None
+        assert apply_values(viewer, dc.replace(viewer.values, otheroptions=otheroptions)) is None
         viewer.fig.canvas.draw()
         assert viewer.axes[0].xaxis.get_major_ticks()[0].label1.get_visible() is labelsvisible
 
@@ -3909,11 +3916,16 @@ def test_interactive_command_of_a_dispatcher_call() -> None:
     from artistools.__main__ import main as dispatcher_main
 
     with (
-        mock.patch.object(interactive, "run_viewer") as mockrunviewer,
+        mock.patch.object(viewerapplication, "run_viewer_application") as mockrunviewer,
         mock.patch.object(sys, "argv", ["myscript.py", "--flag", "x"]),
     ):
         dispatcher_main(argsraw=["plotspectra", str(modelpath), "-t", "300", "--interactive"])
-    mockrunviewer.assert_called_once_with([str(modelpath), "-t", "300", "--interactive"])
+    mockrunviewer.assert_called_once()
+    assert mockrunviewer.call_args.args[2:] == (
+        interactive.open_window,
+        [str(modelpath), "-t", "300", "--interactive"],
+        interactive.DOCUMENT_TYPES,
+    )
 
 
 def test_interactive_unlock_gives_the_default_count() -> None:
@@ -3935,16 +3947,16 @@ def test_interactive_data_source() -> None:
     assert not viewer.values.otheroptions
     assert "--frompackets" in shlex.split(viewer.get_command())
 
-    assert viewer.change(dc.replace(viewer.values, datasource="auto")) is None
+    assert apply_values(viewer, dc.replace(viewer.values, datasource="auto")) is None
     assert "--frompackets" not in shlex.split(viewer.get_command())
     assert interactive.get_packets_reason(viewer.get_plot_tokens()) is None
     elementvalues = dc.replace(viewer.values, showemission=True, groupby="element")
     assert interactive.get_packets_reason(viewer.get_plot_tokens(elementvalues)) == "--groupby element"
 
-    assert viewer.change(dc.replace(viewer.values, datasource="text")) is None
+    assert apply_values(viewer, dc.replace(viewer.values, datasource="text")) is None
     textelement = dc.replace(elementvalues, datasource="text")
     oldvalues = viewer.values
-    for message in (viewer.get_rejection(textelement), viewer.change(textelement)):
+    for message in (viewer.get_rejection(textelement), apply_values(viewer, textelement)):
         assert message is not None
         assert message.startswith("--groupby element needs the packets files")
     assert viewer.values == oldvalues
@@ -3980,19 +3992,19 @@ def test_interactive_direction_and_bin_controls() -> None:
 
     choices = viewercore.get_direction_choices(modelpath_classic_3d, "theta", usedegrees=False)
     assert [dirbin for dirbin, _ in choices] == list(range(10))
-    assert viewer.change(dc.replace(values, directionkind="theta", directionbins=(3,), deltalogx="")) is None
+    assert apply_values(viewer, dc.replace(values, directionkind="theta", directionbins=(3,), deltalogx="")) is None
     command = shlex.split(viewer.get_command())
     assert "--average-over-theta-angle" in command
     assert not {"--average-over-phi-angle", "--deltalogx"} & set(command)
 
     # the legend gives the angles of the direction, and the command keeps --usedegrees only with a direction
-    assert viewer.change(dc.replace(viewer.values, usedegrees=True)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, usedegrees=True)) is None
     assert "--usedegrees" in shlex.split(viewer.get_command())
     legend = viewer.axes[0].get_legend()
     assert legend is not None
     assert any("°" in text.get_text() for text in legend.get_texts())
 
-    assert viewer.change(dc.replace(viewer.values, directionkind="", directionbins=())) is None
+    assert apply_values(viewer, dc.replace(viewer.values, directionkind="", directionbins=())) is None
     command = set(shlex.split(viewer.get_command()))
     assert not {"--plotviewingangle", "--average-over-theta-angle", "--usedegrees"} & command
 
@@ -4057,13 +4069,13 @@ def test_interactive_other_options_reach_the_command() -> None:
     assert viewer.values.otheroptions == (("--filtermovingavg", ("3",)),)
 
     otheroptions = (("--filtermovingavg", ("5",)), ("--title", ("A title",)))
-    assert viewer.change(dc.replace(viewer.values, otheroptions=otheroptions)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=otheroptions)) is None
     command = viewer.get_command()
     assert " --filtermovingavg 5 --title 'A title'" in command
     assert viewer.axes[0].get_title() == "A title"
 
     # a ratio of Stokes parameters is a different plot from the one that the window shows
-    message = viewer.change(dc.replace(viewer.values, otheroptions=(("--stokesparam", ("Q/I",)),)))
+    message = apply_values(viewer, dc.replace(viewer.values, otheroptions=(("--stokesparam", ("Q/I",)),)))
     assert message is not None
     assert "--stokesparam Q/I" in message
     assert viewer.values.otheroptions == otheroptions
@@ -4104,14 +4116,14 @@ def test_interactive_lock_series() -> None:
 
     locked = viewer.get_drawn_series()
     assert len(locked) > 1
-    assert viewer.change(dc.replace(viewer.values, fixedionlist=locked)) is None
+    assert apply_values(viewer, dc.replace(viewer.values, fixedionlist=locked)) is None
     tokens = shlex.split(viewer.get_command())
     assert tokens[tokens.index("--fixedionlist") + 1 :] == list(locked)
     colours = get_series_colours()
 
     later = viewer.step_time(3)
     assert later is not None
-    assert viewer.change(later) is None
+    assert apply_values(viewer, later) is None
     latercolours = get_series_colours()
     shared = set(colours) & set(latercolours)
     assert shared
@@ -4140,7 +4152,7 @@ def test_interactive_time_stays_inside_the_models_of_the_list(tmp_path: Path) ->
     viewer.load_models((str(widemodel), str(modelpath)))
     assert viewer.grid.timebounds[0] > widestart
     firsttime = viewer.move_to_end(last=False)
-    assert viewer.change(dc.replace(firsttime, spectra=(str(widemodel), str(modelpath)))) is None
+    assert apply_values(viewer, dc.replace(firsttime, spectra=(str(widemodel), str(modelpath)))) is None
 
 
 def test_interactive_spectrum_path_is_the_same_for_each_spelling(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4165,12 +4177,12 @@ def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
     """
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
     assert not viewer.values.gamma
-    assert viewer.change(interactive.set_packet_type(viewer.values, gamma=True)) is None
+    assert apply_values(viewer, interactive.set_packet_type(viewer.values, gamma=True)) is None
     tokens = viewer.get_plot_tokens()
     assert "--gamma" in tokens
     assert "-xunit" not in tokens, "keV is the default x unit of a gamma-ray spectrum"
     assert viewer.values.xunit == "kev"
-    assert viewer.change(interactive.set_packet_type(viewer.values, gamma=False)) is None
+    assert apply_values(viewer, interactive.set_packet_type(viewer.values, gamma=False)) is None
     assert "--gamma" not in viewer.get_plot_tokens()
     assert viewer.values.xunit == "angstrom"
     # a command with --gamma starts in the mode of the gamma packets, and the option table does not show --gamma
@@ -4186,8 +4198,8 @@ def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
     assert (
         interactive.get_packets_reason(packetsviewer.get_plot_tokens(gammavalues)) == "--gamma with no gamma_spec.out"
     )
-    assert packetsviewer.change(gammavalues) is None
-    assert packetsviewer.change(interactive.set_packet_type(packetsviewer.values, gamma=False)) is None
+    assert apply_values(packetsviewer, gammavalues) is None
+    assert apply_values(packetsviewer, interactive.set_packet_type(packetsviewer.values, gamma=False)) is None
     assert packetsviewer.values.datasource == "auto"
     assert "--frompackets" not in packetsviewer.get_plot_tokens()
     # a model folder with neither file has no gamma-ray spectrum, thus the window disables the gamma packets

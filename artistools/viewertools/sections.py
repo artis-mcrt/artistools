@@ -1,13 +1,17 @@
 """Make the sections of a viewer window for the viewing direction, the axes, and the time."""
 
+import contextlib
 import typing as t
 from functools import partial
 from pathlib import Path
 
 from artistools.viewertools.core import get_direction_choices
 from artistools.viewertools.core import get_direction_kinds
+from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_short_limits
 from artistools.viewertools.core import get_yscale_choices
+from artistools.viewertools.core import OptionRows
+from artistools.viewertools.core import set_figscale_row
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import make_fps_box
@@ -17,6 +21,7 @@ from artistools.viewertools.widgets import make_slider
 from artistools.viewertools.widgets import make_step_button
 from artistools.viewertools.widgets import make_timer
 from artistools.viewertools.widgets import set_edit_text
+from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import start_play_timer
 
 if t.TYPE_CHECKING:
@@ -466,17 +471,37 @@ def add_y_limits_row(
     return show_limits
 
 
-def make_figscale_box(helptexts: "Mapping[str, str]") -> "QtWidgets.QDoubleSpinBox":
-    """Return the box of --figscale. A typed number applies when the user presses Return or leaves the box."""
+def make_figscale_box(
+    parser: "argparse.ArgumentParser",
+    helptexts: "Mapping[str, str]",
+    get_rows: "Callable[[], OptionRows]",
+    apply_rows: "Callable[[OptionRows], None]",
+) -> "tuple[QtWidgets.QDoubleSpinBox, Callable[[OptionRows], None]]":
+    """Return the box of --figscale, and the function that shows the --figscale of the option rows in the box.
+
+    The box changes the row of --figscale in the option table. get_rows gives the current rows of the table, and
+    apply_rows receives the new rows. A typed number applies when the user presses Return or leaves the box.
+    """
     from PySide6 import QtWidgets
 
+    defaultfigscale: float = parser.get_default("figscale")
     figscalebox = QtWidgets.QDoubleSpinBox()
     figscalebox.setRange(0.1, 10.0)
     figscalebox.setSingleStep(0.1)
     figscalebox.setDecimals(2)
     figscalebox.setKeyboardTracking(False)
     figscalebox.setToolTip(helptexts.get("figscale", ""))
-    return figscalebox
+
+    def on_figscale(figscale: float) -> None:
+        apply_rows(set_figscale_row(get_rows(), figscale, defaultfigscale))
+
+    def show_figscale(rows: OptionRows) -> None:
+        # the box keeps its value for a row with a value that is not a number, and the plot then gives the error
+        with contextlib.suppress(ValueError):
+            set_spin_value(figscalebox, float((get_row_values(rows, "--figscale") or (str(defaultfigscale),))[0]))
+
+    figscalebox.valueChanged.connect(on_figscale)
+    return figscalebox, show_figscale
 
 
 def make_xscale_box(helptexts: "Mapping[str, str]") -> "QtWidgets.QComboBox":

@@ -41,17 +41,14 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_modelpath
 from artistools.misc import scan_deposition
 from artistools.paths import get_path
-from artistools.plottools import LABELWIDTH_INCHES
-from artistools.plottools import RIGHTMARGIN_INCHES
-from artistools.viewertools.application import run_viewer_application
 from artistools.viewertools.core import exit_for_other_actions
 from artistools.viewertools.core import get_direction_choices
 from artistools.viewertools.core import get_direction_kind
 from artistools.viewertools.core import get_direction_kinds
-from artistools.viewertools.core import get_fitted_figwidthscale
+from artistools.viewertools.core import get_figure_option_tokens
+from artistools.viewertools.core import get_given_dpi
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
-from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
@@ -59,13 +56,12 @@ from artistools.viewertools.core import model_has_direction_data
 from artistools.viewertools.core import move_series_styles
 from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
-from artistools.viewertools.core import set_figscale_row
 from artistools.viewertools.core import SLIDER_STEPS
 from artistools.viewertools.menus import add_default_options
 from artistools.viewertools.menus import add_window_actions
+from artistools.viewertools.menus import show_plot_menu
 from artistools.viewertools.menus import ViewerCommand
 from artistools.viewertools.sections import add_direction_section
-from artistools.viewertools.sections import add_y_axis_actions
 from artistools.viewertools.sections import add_y_limits_row
 from artistools.viewertools.sections import DirectionChoice
 from artistools.viewertools.sections import make_figscale_box
@@ -82,24 +78,25 @@ from artistools.viewertools.series import ReferenceData
 from artistools.viewertools.series import SeriesListActions
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
+from artistools.viewertools.widgets import blocked_signals
 from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import get_python_code
 from artistools.viewertools.widgets import make_note_label
 from artistools.viewertools.widgets import make_range_slider
 from artistools.viewertools.widgets import parse_command_tokens
-from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
-from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import show_status_note
 from artistools.viewertools.window import add_command_sections
 from artistools.viewertools.window import connect_plot_mouse
 from artistools.viewertools.window import DrawQueue
 from artistools.viewertools.window import finish_viewer_window
 from artistools.viewertools.window import get_line_readouts
+from artistools.viewertools.window import get_plot_mouse_help_rows
 from artistools.viewertools.window import make_readout_tag
 from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
+from artistools.viewertools.window import show_command_sections
 from artistools.viewertools.window import start_viewer_window
 
 if t.TYPE_CHECKING:
@@ -152,6 +149,10 @@ CONTROLLED_DESTS: t.Final = frozenset({
 })
 
 APPLICATION_NAME: t.Final = "artistools plotlightcurves"
+
+# the items that the Dock icon takes: a model folder, or a file, e.g. a reference light curve, which the active window
+# adds to its light curves
+DOCUMENT_TYPES: t.Final = ("public.folder", "public.data")
 
 # these options give a different action from one plot of the bolometric light curves, thus the table of the window
 # does not offer them
@@ -473,7 +474,7 @@ class LightCurveViewer:
             usedegrees=bool(args.usedegrees),
             lightcurves=tuple(startpaths) or DEFAULT_SERIES_PATHS,
             figwidthscale=args.figwidthscale,
-            dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
+            dpi=get_given_dpi(args, parser),
             otheroptions=otheroptions,
         )
 
@@ -530,10 +531,7 @@ class LightCurveViewer:
         if values.directionkind:
             directionflag = "--plotvspecpol" if values.directionkind == "vpkt" else "--plotviewingangle"
             options += [directionflag, *(str(dirbin) for dirbin in values.directionbins)]
-        if values.figwidthscale != 1.0:
-            options += ["--figwidthscale", format(values.figwidthscale, "g")]
-        if values.dpi is not None:
-            options += ["--dpi", str(values.dpi)]
+        options += get_figure_option_tokens(values)
         # the curves go in the thermalisation panel, thus the flag has no effect without the panel
         if values.showbarnes and values.thermalisation:
             options.append("--showbarnes")
@@ -591,13 +589,6 @@ class LightCurveViewer:
             return f"No model of the plot gives {' or '.join(missing)} in deposition.out"
         return None
 
-    def draw(self, *, quiet: bool = True) -> str | None:
-        """Draw the plot of the values, and return the reason for the status line if plotlightcurves rejects it.
-
-        The terminal shows the whole error, and the status line shows its first line.
-        """
-        return self.render(self.values, quiet=quiet)()
-
     def render(self, values: ControlValues, *, quiet: bool = True) -> "Callable[[], str | None]":
         """Draw the plot of the values on a new figure, and return the function that shows it in the canvas.
 
@@ -623,18 +614,6 @@ class LightCurveViewer:
         """Return the frames of the plot on the screen, from the top to the bottom."""
         return [axis for axis in (self.axis, self.residualaxis, self.thermaxis) if axis is not None]
 
-    def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the --figwidthscale that gives the figure the shape of the plot area."""
-        marginwidth = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
-        return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
-
-    def change(self, values: ControlValues) -> str | None:
-        """Draw the plot of the new values, and keep the old values and the old plot if plotlightcurves rejects them."""
-        message = self.render(values)()
-        if message is None:
-            self.values = values
-        return message
-
 
 def get_readout(x: float, frame: "mplax.Axes") -> str:
     """Return the time and the value of each drawn series of the frame at the time x."""
@@ -653,19 +632,8 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Alt-Up</b>, <b>Alt-Down</b> in the list of light curves", "Move the light curve up or down (Option on a Mac)"),
     ("<b>Double-click</b> a light curve", "Set the label and the line style of the light curve"),
     ("<b>Right-click</b> a light curve", "Move it, set its style, copy its path, or open its folder"),
-    ("<b>Drag</b> across the plot", "Select the time range"),
-    ("<b>Shift-drag</b> up or down the plot", "Select the y range (--ymin and --ymax)"),
-    ("<b>Double-click</b> the plot", "Get the full time range"),
-    ("<b>Right-click</b> the plot", "Change the y scale, get the automatic y range, or copy or save the figure"),
+    *get_plot_mouse_help_rows("time range", "full time range"),
 )
-
-
-def run_viewer(tokens: "Sequence[str]") -> None:
-    """Open the window of the viewer, and print the command of the last plot when the window closes.
-
-    The Dock icon also takes a file, e.g. a reference light curve, which the active window adds to its light curves.
-    """
-    run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens, ("public.folder", "public.data"))
 
 
 def open_window(
@@ -673,7 +641,6 @@ def open_window(
 ) -> str | None:
     """Open a window of the viewer for the plotlightcurves arguments in tokens, or return the reason for no window."""
     from PySide6 import QtCore
-    from PySide6 import QtGui
     from PySide6 import QtWidgets
 
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
@@ -686,7 +653,7 @@ def open_window(
         resolve_modelpath(path).name for path in viewer.values.lightcurves if not path_is_reference_lightcurve(path)
     ] or [resolve_modelpath(viewer.models.modelfolders[0]).name]
     viewerwindow = start_viewer_window(
-        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.models.modelfolders[0], ", ".join(modelnames))
+        APPLICATION_NAME, viewer, windows, (viewer.models.modelfolders[0], ", ".join(modelnames))
     )
     if isinstance(viewerwindow, str):
         return viewerwindow
@@ -841,25 +808,20 @@ def open_window(
     unavailablenote = make_note_label()
     energygrid.addWidget(unavailablenote, len(DEPOSITIONCHOICES) + 3, 0, 1, -1)
 
-    # the box edits the row of -figscale in the other options, as the box of the other viewers does
-    figscalebox = make_figscale_box(helptexts)
-    defaultfigscale: float = viewer.parser.get_default("figscale")
-    defaultdpi: int = viewer.parser.get_default("dpi")
-
     def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
         apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
 
-    def on_figscale(figscale: float) -> None:
-        on_option_rows(set_figscale_row(viewer.values.otheroptions, figscale, defaultfigscale))
-
-    figuresection, set_option_rows, commandtext, pythontext, (copybutton, pythoncopybutton), statusbar = (
-        add_command_sections(
-            viewerwindow,
-            viewer,
-            viewer.parser,
-            (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
-        )
+    # the box edits the row of -figscale in the other options, as the box of each viewer does
+    figscalebox, show_figscale = make_figscale_box(
+        viewer.parser, helptexts, lambda: viewer.values.otheroptions, on_option_rows
     )
+    commandsections = add_command_sections(
+        viewerwindow,
+        viewer,
+        viewer.parser,
+        (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
+    )
+    figuresection, statusbar = commandsections.figuresection, commandsections.statusbar
     # the figure scale is a property of the figure, thus it goes in the Figure section, as in the spectrum viewer
     add_row(figuresection.grid, 1, [QtWidgets.QLabel("--figscale"), figscalebox])
 
@@ -902,9 +864,7 @@ def open_window(
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
-        blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
-        # an error in a widget value, e.g. a bad colour of the option table, must not leave the signals blocked
-        try:
+        with blocked_signals(signalwidgets):
             values = viewer.values
             # Undo or a rejected change can give a different list of light curves, and its models have different times
             if values.lightcurves != viewer.models.lightcurves:
@@ -986,16 +946,8 @@ def open_window(
             yscalebox.setEnabled(values.lumunit != "mag")
             show_y_limits(values.ymin, values.ymax)
             show_direction()
-            set_option_rows(values.otheroptions)
-            set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
-            set_spin_value(
-                figscalebox, float((get_row_values(values.otheroptions, "--figscale") or (str(defaultfigscale),))[0])
-            )
-            set_command_text(commandtext, viewer.get_command())
-            set_command_text(pythontext, get_plot_python_code(viewer))
-        finally:
-            for blocker in blockers:
-                blocker.unblock()
+            show_figscale(values.otheroptions)
+            show_command_sections(commandsections, viewer, values.otheroptions, get_plot_python_code(viewer))
         fit_canvas(canvas, viewer.figsize, plotarea)
 
     def after_draw(message: str | None) -> None:
@@ -1149,7 +1101,7 @@ def open_window(
         queue,
         command,
         figuresection,
-        (copybutton, pythoncopybutton),
+        commandsections.copybuttons,
         KEYBOARD_HELP_ROWS,
         None,
         extracallbacks={"Reload Data": on_reload},
@@ -1160,21 +1112,10 @@ def open_window(
     )
 
     def on_plot_menu(frameindex: int, _event: t.Any) -> None:
-        """Show the actions on the frame and the figure under the pointer, as the context menu of a Mac app does."""
-        menu = QtWidgets.QMenu(window)
-        if frameindex == 0 and plot_shows_values() and viewer.axis is not None:
-            add_y_axis_actions(
-                menu,
-                # a magnitude is a logarithm already, thus its axis has no choice of scale
-                None if viewer.values.lumunit == "mag" else viewer.axis.get_yscale() == "log",
-                bool(viewer.values.ymin or viewer.values.ymax),
-                lambda yscale: apply(dc.replace(viewer.values, yscale=yscale)),
-                lambda: apply(dc.replace(viewer.values, ymin="", ymax="")),
-            )
-        add_figure_actions(menu)
-        menu.exec(QtGui.QCursor.pos())
-        # the window is the parent of the menu, thus without this the window keeps each menu until it closes
-        menu.deleteLater()
+        drawn = frameindex == 0 and plot_shows_values()
+        # a magnitude is a logarithm already, thus its axis has no choice of scale
+        hasyscale = viewer.values.lumunit != "mag"
+        show_plot_menu(window, queue, viewer.axis if drawn else None, add_figure_actions, hasyscale=hasyscale)
 
     for checkbox in (pelletcheck, cmfcheck, invalidcheck):
         checkbox.toggled.connect(on_series)
@@ -1190,7 +1131,6 @@ def open_window(
     xscalebox.currentIndexChanged.connect(on_axes)
     lumunitbox.currentIndexChanged.connect(on_axes)
     yscalebox.currentIndexChanged.connect(on_axes)
-    figscalebox.valueChanged.connect(on_figscale)
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
         get_frames=viewer.get_frames,

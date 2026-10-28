@@ -29,8 +29,6 @@ from artistools.misc import resolve_modelpath
 from artistools.misc import XUNITS
 from artistools.packets.core import has_packets_files
 from artistools.paths import get_path
-from artistools.plottools import LABELWIDTH_INCHES
-from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import EmissionEvent
@@ -48,7 +46,6 @@ from artistools.spectra.plotspectra import main as plotspectra_main
 from artistools.spectra.plotspectra import make_plot_figure
 from artistools.spectra.plotspectra import path_is_reference_spectrum
 from artistools.spectra.plotspectra import resolve_plot_args
-from artistools.viewertools.application import run_viewer_application
 from artistools.viewertools.core import exit_for_other_actions
 from artistools.viewertools.core import get_actions_by_flag
 from artistools.viewertools.core import get_centred_range
@@ -56,12 +53,12 @@ from artistools.viewertools.core import get_clamped_range
 from artistools.viewertools.core import get_direction_kind
 from artistools.viewertools.core import get_direction_kinds
 from artistools.viewertools.core import get_end_range
-from artistools.viewertools.core import get_fitted_figwidthscale
+from artistools.viewertools.core import get_figure_option_tokens
+from artistools.viewertools.core import get_given_dpi
 from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
 from artistools.viewertools.core import get_resized_range
-from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_stepped_range
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
@@ -72,15 +69,14 @@ from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
-from artistools.viewertools.core import set_figscale_row
 from artistools.viewertools.core import SLIDER_STEPS
 from artistools.viewertools.menus import add_default_options
 from artistools.viewertools.menus import add_window_actions
 from artistools.viewertools.menus import export_animation
+from artistools.viewertools.menus import show_plot_menu
 from artistools.viewertools.menus import ViewerCommand
 from artistools.viewertools.sections import add_direction_section
 from artistools.viewertools.sections import add_time_controls
-from artistools.viewertools.sections import add_y_axis_actions
 from artistools.viewertools.sections import add_y_limits_row
 from artistools.viewertools.sections import connect_play
 from artistools.viewertools.sections import connect_time_keys
@@ -102,24 +98,25 @@ from artistools.viewertools.series import SeriesListActions
 from artistools.viewertools.series import SeriesRow
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
+from artistools.viewertools.widgets import blocked_signals
 from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import get_python_code
 from artistools.viewertools.widgets import make_range_slider
 from artistools.viewertools.widgets import make_row_layout
 from artistools.viewertools.widgets import make_segmented_control
 from artistools.viewertools.widgets import ROW_SPACING
-from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
-from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import show_status_note
 from artistools.viewertools.window import add_command_sections
 from artistools.viewertools.window import connect_plot_mouse
 from artistools.viewertools.window import DrawQueue
 from artistools.viewertools.window import finish_viewer_window
 from artistools.viewertools.window import get_line_readouts
+from artistools.viewertools.window import get_plot_mouse_help_rows
 from artistools.viewertools.window import make_readout_tag
 from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
+from artistools.viewertools.window import show_command_sections
 from artistools.viewertools.window import start_viewer_window
 
 if t.TYPE_CHECKING:
@@ -176,6 +173,10 @@ CONTROLLED_DESTS: t.Final = frozenset({
 })
 
 APPLICATION_NAME: t.Final = "artistools plotspectra"
+
+# the items that the Dock icon takes: a model folder, or a file, e.g. a reference spectrum, which the active window adds
+# to its spectra
+DOCUMENT_TYPES: t.Final = ("public.folder", "public.data")
 
 # the number of decimals of a time in days in the command
 DAYS_DECIMALS: t.Final = 6
@@ -782,7 +783,7 @@ class SpectrumViewer:
             spectra=tuple(startpaths) or DEFAULT_SERIES_PATHS,
             timegrid="",
             figwidthscale=args.figwidthscale,
-            dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
+            dpi=get_given_dpi(args, parser),
             otheroptions=otheroptions,
         )
         values = drop_hidden_emission_event(values)
@@ -896,10 +897,7 @@ class SpectrumViewer:
         if values.directionkind:
             directionflag = "--plotvspecpol" if values.directionkind == "vpkt" else "--plotviewingangle"
             options += [directionflag, *(str(dirbin) for dirbin in values.directionbins)]
-        if values.figwidthscale != 1.0:
-            options += ["--figwidthscale", format(values.figwidthscale, "g")]
-        if values.dpi is not None:
-            options += ["--dpi", str(values.dpi)]
+        options += get_figure_option_tokens(values)
         # a list option takes each word that follows it, thus it comes after every other option
         if values.fixedionlist and (values.showemission or values.showabsorption):
             options += ["--fixedionlist", *values.fixedionlist]
@@ -992,13 +990,6 @@ class SpectrumViewer:
 
         return run_command_step(check, echo=False)
 
-    def draw(self, *, quiet: bool = True) -> str | None:
-        """Draw the plot of the values, and return the reason for the status line if plotspectra rejects it.
-
-        The terminal shows the whole error, and the status line shows its first line.
-        """
-        return self.render(self.values, quiet=quiet)()
-
     def render(self, values: ControlValues, *, quiet: bool = True) -> "Callable[[], str | None]":
         """Draw the plot of the values on a new figure, and return the function that shows it in the canvas.
 
@@ -1030,11 +1021,6 @@ class SpectrumViewer:
 
         return render_command(self, values, draw, keep, quiet=quiet)
 
-    def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the --figwidthscale that gives the figure the shape of the plot area."""
-        marginwidth = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
-        return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
-
     def clamp_time(self, values: ControlValues) -> ControlValues:
         """Return the values with a continuous time inside the valid times, and the width that its width mode gives.
 
@@ -1055,14 +1041,6 @@ class SpectrumViewer:
         if (centre, width, widthmode) == (values.centre, values.width, values.widthmode):
             return values
         return dc.replace(values, centre=centre, width=width, widthmode=widthmode)
-
-    def change(self, values: ControlValues) -> str | None:
-        """Draw the plot of the new values, and keep the old values and the old plot if plotspectra rejects them."""
-        values = self.clamp_time(values)
-        message = self.render(values)()
-        if message is None:
-            self.values = values
-        return message
 
     def get_drawn_series(self) -> tuple[str, ...]:
         """Return the contribution series of the emission plot in the order of the plot, without "Other"."""
@@ -1309,19 +1287,8 @@ KEYBOARD_HELP_ROWS: t.Final = (
     ("<b>Alt-Up</b>, <b>Alt-Down</b> in the list of spectra", "Move the spectrum up or down (Option on a Mac)"),
     ("<b>Double-click</b> a spectrum", "Set the label and the line style of the spectrum"),
     ("<b>Right-click</b> a spectrum", "Move it, use its timesteps, copy its path, or open its folder"),
-    ("<b>Drag</b> across the plot", "Select the x range"),
-    ("<b>Shift-drag</b> up or down the plot", "Select the y range (--ymin and --ymax)"),
-    ("<b>Double-click</b> the plot", "Get the default x range"),
-    ("<b>Right-click</b> the plot", "Change the y scale, get the automatic y range, or copy or save the figure"),
+    *get_plot_mouse_help_rows("x range", "default x range"),
 )
-
-
-def run_viewer(tokens: "Sequence[str]") -> None:
-    """Open the window of the viewer, and print the command of the last plot when the window closes.
-
-    The Dock icon also takes a file, e.g. a reference spectrum, which the active window adds to its spectra.
-    """
-    run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens, ("public.folder", "public.data"))
 
 
 def open_window(
@@ -1343,7 +1310,7 @@ def open_window(
         resolve_modelpath(viewer.grid.modelfolders[0]).name
     ]
     viewerwindow = start_viewer_window(
-        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.grid.modelfolders[0], ", ".join(modelnames))
+        APPLICATION_NAME, viewer, windows, (viewer.grid.modelfolders[0], ", ".join(modelnames))
     )
     if isinstance(viewerwindow, str):
         return viewerwindow
@@ -1614,25 +1581,21 @@ def open_window(
     assert isinstance(datasourcemodel, QtGui.QStandardItemModel)
     autoitem, textitem = datasourcemodel.item(0), datasourcemodel.item(1)
     add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox])
-    # the box edits the row of -figscale in the other options, as the box of the estimator viewer does
-    figscalebox = make_figscale_box(helptexts)
-    defaultfigscale: float = viewer.parser.get_default("figscale")
-    defaultdpi: int = viewer.parser.get_default("dpi")
 
     def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
         apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
 
-    def on_figscale(figscale: float) -> None:
-        on_option_rows(set_figscale_row(viewer.values.otheroptions, figscale, defaultfigscale))
-
-    figuresection, set_option_rows, commandtext, pythontext, (copybutton, pythoncopybutton), statusbar = (
-        add_command_sections(
-            viewerwindow,
-            viewer,
-            viewer.parser,
-            (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
-        )
+    # the box edits the row of -figscale in the other options, as the box of each viewer does
+    figscalebox, show_figscale = make_figscale_box(
+        viewer.parser, helptexts, lambda: viewer.values.otheroptions, on_option_rows
     )
+    commandsections = add_command_sections(
+        viewerwindow,
+        viewer,
+        viewer.parser,
+        (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
+    )
+    figuresection, statusbar = commandsections.figuresection, commandsections.statusbar
     # the figure scale is a property of the figure, thus it goes in the Figure section with the format and the
     # resolution
     add_row(figuresection.grid, 1, [QtWidgets.QLabel("--figscale"), figscalebox])
@@ -1832,9 +1795,7 @@ def open_window(
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
-        blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
-        # an error in a widget value, e.g. a bad colour of the option table, must not leave the signals blocked
-        try:
+        with blocked_signals(signalwidgets):
             values = viewer.values
             # Undo or a rejected change can give a different list of spectra, and its models have different times
             if (values.spectra, values.timegrid) != viewer.grid.loadkey:
@@ -1912,17 +1873,9 @@ def open_window(
             emissioneventbox.setCurrentIndex(emissioneventbox.findData(values.emissionevent))
             show_direction()
             show_series_rows()
-            set_option_rows(values.otheroptions)
-            set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
-            set_spin_value(
-                figscalebox, float((get_row_values(values.otheroptions, "--figscale") or (str(defaultfigscale),))[0])
-            )
-            set_command_text(commandtext, viewer.get_command())
-            set_command_text(pythontext, get_plot_python_code(viewer))
+            show_figscale(values.otheroptions)
+            show_command_sections(commandsections, viewer, values.otheroptions, get_plot_python_code(viewer))
             show_rejections()
-        finally:
-            for blocker in blockers:
-                blocker.unblock()
         fit_canvas(canvas, viewer.figsize, plotarea)
 
     def after_draw(message: str | None) -> None:
@@ -2252,7 +2205,7 @@ def open_window(
         queue,
         command,
         figuresection,
-        (copybutton, pythoncopybutton),
+        commandsections.copybuttons,
         KEYBOARD_HELP_ROWS,
         playbutton,
         extracallbacks={"Reload Data": on_reload, "Export Animation…": on_export_animation},
@@ -2263,20 +2216,8 @@ def open_window(
     )
 
     def on_plot_menu(frameindex: int, _event: t.Any) -> None:
-        """Show the actions on the frame and the figure under the pointer, as the context menu of a Mac app does."""
-        menu = QtWidgets.QMenu(window)
-        if frameindex == 0 and plot_shows_values() and len(viewer.axes):
-            add_y_axis_actions(
-                menu,
-                viewer.axes[0].get_yscale() == "log",
-                bool(viewer.values.ymin or viewer.values.ymax),
-                lambda yscale: apply(dc.replace(viewer.values, yscale=yscale)),
-                lambda: apply(dc.replace(viewer.values, ymin="", ymax="")),
-            )
-        add_figure_actions(menu)
-        menu.exec(QtGui.QCursor.pos())
-        # the window is the parent of the menu, thus without this the window keeps each menu until it closes
-        menu.deleteLater()
+        drawn = frameindex == 0 and plot_shows_values() and len(viewer.axes) > 0
+        show_plot_menu(window, queue, viewer.axes[0] if drawn else None, add_figure_actions)
 
     modesegments.currentChanged.connect(on_time_mode)
     packetbox.currentIndexChanged.connect(on_packet_type)
@@ -2285,7 +2226,6 @@ def open_window(
     widthmodebox.currentIndexChanged.connect(on_widthmode)
     timeedit.editingFinished.connect(on_timeedit)
     widthedit.editingFinished.connect(on_timeedit)
-    figscalebox.valueChanged.connect(on_figscale)
     connect_xrange(on_xrange)
     xminedit.editingFinished.connect(on_xedit)
     xmaxedit.editingFinished.connect(on_xedit)
