@@ -16,8 +16,8 @@ import polars as pl
 
 from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
-from artistools.misc.cliutils import print_detail
-from artistools.misc.cliutils import print_warning
+from artistools.misc.console import print_detail
+from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none

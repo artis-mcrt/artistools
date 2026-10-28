@@ -25,6 +25,8 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
+from artistools.misc.console import exit_with_error
+from artistools.misc.console import print_warning
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
@@ -403,8 +405,6 @@ def read_complete_lines(filename: Path | str, content: str) -> bytes:
     names what the file holds in that error, e.g. "light curve". The named file wins over a compressed sibling, as
     in zopen. The caller gives the bytes to polars, thus the function decompresses the file one time only.
     """
-    from artistools.misc.cliutils import print_warning
-
     check_local_path(filename)
     filepath = Path(filename)
     if not filepath.is_file() and (found := find_compressed(filename)):
@@ -776,8 +776,6 @@ def require_reference_data_file(filename: Path | str, bundledsubfolder: str, des
     The description names the kind of the file, e.g. "Kurucz line list". The message of the error
     gives that name to the user.
     """
-    from artistools.misc.cliutils import exit_with_error
-
     found = find_reference_data_file(filename, bundledsubfolder)
     if found is None:
         exit_with_error(

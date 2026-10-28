@@ -23,6 +23,10 @@ from pathlib import Path
 
 import polars as pl
 
+from artistools.misc.console import exit_with_error
+from artistools.misc.console import print_detail
+from artistools.misc.console import print_warning
+
 if t.TYPE_CHECKING:
     import subprocess
 
@@ -729,10 +733,6 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     import atexit
     import shlex
     from importlib.metadata import version
-
-    from artistools.misc.cliutils import exit_with_error
-    from artistools.misc.cliutils import print_detail
-    from artistools.misc.cliutils import print_warning
 
     localversion = version("artistools")
     givencommand = os.environ.get(SERVER_COMMAND_ENVVAR) or None

@@ -11,6 +11,8 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
+from artistools.misc.console import exit_with_error
+from artistools.misc.console import print_detail
 from artistools.misc.modelinfo import get_vpkt_config
 
 
@@ -393,7 +395,6 @@ def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall
     bin.
     """
     from artistools.commands import get_standard_flag
-    from artistools.misc.cliutils import exit_with_error
 
     # the caller can give the declared spelling, and the message gives the spelling of the help
     optionname = get_standard_flag(optionname)
@@ -410,7 +411,6 @@ def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall
 def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> None:
     """Exit with an error if dirbin is not the first direction bin of a costheta bin, or -1 when allowall is true."""
     from artistools.commands import get_standard_flag
-    from artistools.misc.cliutils import exit_with_error
 
     optionname = get_standard_flag(optionname)
     nphibins = get_viewingdirection_phibincount()
@@ -459,9 +459,6 @@ def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[f
     The range of --dirbin includes both edges, as the range of --costhetamin and --costhetamax does. Thus a cell with
     its centre on an edge is in two adjacent bins. With quiet, the function does not log the range of --dirbin.
     """
-    from artistools.misc.cliutils import exit_with_error
-    from artistools.misc.cliutils import print_detail
-
     if args.dirbin is not None:
         if args.costhetamin is not None or args.costhetamax is not None:
             exit_with_error(

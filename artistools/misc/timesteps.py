@@ -13,10 +13,10 @@ import numpy as np
 import polars as pl
 
 from artistools.constants import C_cm_per_s
-from artistools.misc.cliutils import exit_with_error
 from artistools.misc.cliutils import parse_float_range
 from artistools.misc.cliutils import parse_range_list
-from artistools.misc.cliutils import print_warning
+from artistools.misc.console import exit_with_error
+from artistools.misc.console import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import get_artis_model_folders
