@@ -111,7 +111,7 @@ dftemperature = at.scan_estimators(modelpath).filter(pl.col("timestep") == 40).s
 dfspectrum = at.spectra.scan_spectra(modelpath, timestepmin=40, timestepmax=45)[-1].collect()
 ```
 
-A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame for each direction bin. Call `.collect()` to get the data. A function with the prefix `read_` returns the data at once, e.g. a DataFrame or a dictionary. A function with the prefix `get_` returns a value that it calculates. The direction bin -1 is the average over all directions.
+A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame for each direction bin. Call `.collect()` to get the data. A function with the prefix `read_` returns the data at once, e.g. a DataFrame or a dictionary. Each function with the prefix `get_` in the tables below returns its value at once, e.g. a number, a dictionary, or a DataFrame. The direction bin -1 is the average over all directions.
 
 ### Names at the top level
 
@@ -121,10 +121,10 @@ A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame 
 | `at.add_derived_cols_to_modeldata` | Add columns that follow from the model file, e.g. the volume and the mass of each cell. |
 | `at.get_inputparams` | Return the parameters of `input.txt`. |
 | `at.get_model_name` | Return the name of the model that holds a path. |
-| `at.get_nprocs` | Return the number of MPI processes of the run. |
+| `at.get_nprocs` | Return the number of MPI processes of the model. |
 | `at.get_timestep_times` | Return the time in days of each timestep (`loc` is `"start"`, `"mid"`, `"end"`, or `"delta"`). |
 | `at.get_timestep_of_timedays` | Return the timestep that holds a time in days. |
-| `at.scan_estimators` | Read the estimators of a full run as a LazyFrame, with a row for each timestep and cell. |
+| `at.scan_estimators` | Read the estimators of all the run folders of a model as a LazyFrame, with a row for each timestep and cell. |
 | `at.scan_deposition` | Return `deposition.out` as a LazyFrame. |
 | `at.get_composition_data` | Return the elements and the ion stages of `compositiondata.txt` as a DataFrame. |
 | `at.get_ionstring` | Return a text such as `Fe II` for an atomic number and an ion stage. |
@@ -146,7 +146,7 @@ A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame 
 | `at.spectra.scan_spectra_from_packets` | Return a dictionary with a LazyFrame of the spectrum of each direction bin from the packets files, for a range of arrival times. |
 | `at.lightcurve.scan_lightcurve` | Read a light curve file. Return one LazyFrame for each direction bin. |
 | `at.lightcurve.scan_lightcurve_from_packets` | Return a dictionary with a LazyFrame of the luminosity against time of each direction bin, from the packets files. |
-| `at.packets.scan_packets` | Return the number of ranks and a LazyFrame of the packets of a run. |
+| `at.packets.scan_packets` | Return the number of ranks and a LazyFrame of the packets of a model. |
 | `at.nltepops.read_nltepops` | Read the NLTE populations of a timestep and of one or more cells. |
 | `at.atomic.get_levels` | Return the energy levels of each ion, with the transitions as an option. |
 | `at.inputmodel.save_modeldata` | Write `model.txt.zst` from a dataframe of the cells. |
@@ -154,7 +154,19 @@ A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame 
 
 ### The command of a package
 
-A package that has a plot command gives it as `plot`, e.g. `at.spectra.plot`, `at.lightcurve.plot`, `at.estimators.plot`, `at.nltepops.plot`, `at.packets.plot`, `at.nonthermal.plot`, `at.gsinetwork.plot`, `at.radfield.plot`, and `at.logs.plot`. This function is the command itself. Each keyword is one command-line argument, and `argsraw` gives more arguments as text, e.g. `argsraw=["-t", "300"]`:
+A package that has a plot command gives it as the function `plot`. This function is the command itself. These packages have a `plot` function:
+
+- `at.spectra`;
+- `at.lightcurve`;
+- `at.estimators`;
+- `at.nltepops`;
+- `at.packets`;
+- `at.nonthermal`;
+- `at.gsinetwork`;
+- `at.radfield`;
+- `at.logs`.
+
+Each keyword is one command-line argument, and `argsraw` gives more arguments as text, e.g. `argsraw=["-t", "300"]`:
 
 ```python
 at.spectra.plot(argsraw=[], specpath=[modelpath], timedays="300", outputfile="spectrum.pdf")

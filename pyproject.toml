@@ -140,7 +140,7 @@ omit = ["*/test_*.py", "*/conftest.py"]
 branch = true
 
 [tool.coverage.report]
-# the code in a TYPE_CHECKING block runs only in a type checker
+# only a type checker reads the code in a TYPE_CHECKING block, thus the tests never run it
 exclude_also = ["if t.TYPE_CHECKING:"]
 
 [tool.uv]
@@ -398,7 +398,8 @@ force-single-line = true
 order-by-type = false
 
 [tool.ty.analysis]
-# the same list as ignore-missing-imports of pyrefly: a plain `uv sync` installs none of these packages
+# the same list as ignore-missing-imports of pyrefly. A plain `uv sync` installs none of these packages,
+# except zstandard on Python 3.13
 allowed-unresolved-imports = ["george.**", "PySide6.**", "shiboken6.**", "zstandard.**"]
 
 [tool.ty.rules]

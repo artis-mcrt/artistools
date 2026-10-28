@@ -447,7 +447,7 @@ def test_rust_bin_indices_match_the_bins_of_the_sums() -> None:
 def test_rustext_stub_gives_the_parameters_of_each_function() -> None:
     """The stub rustext.pyi gives the type checkers the same functions, parameters, and defaults as the extension.
 
-    No tool compares the stub with the Rust code, thus a change of a Rust signature gave a stub that was incorrect.
+    No other tool compares the stub with the Rust code, thus a change of a Rust signature can make the stub incorrect.
     """
     stubtree = ast.parse((Path(at.__file__).parent / "rustext.pyi").read_text(encoding="utf-8"))
     stubfunctions = {node.name: node.args for node in stubtree.body if isinstance(node, ast.FunctionDef)}

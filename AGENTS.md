@@ -241,7 +241,7 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
   - "Other options".
 - Give a label or a check box the text of its flag, e.g. `--logscalex`. `FLAG_LABELS` gives the readable text that the window shows. When you add a label that shows a new flag, add the flag to `FLAG_LABELS`.
 - Give each control the help text of its option as its tooltip. `get_helptexts(parser)` gives these texts.
-- Test a viewer without Qt: make its viewer class with a `FigureCanvasAgg`, and call `draw_values` and `apply_values` from `artistools/viewertools/window.py`. Add each new viewer to `VIEWER_CASES` in `artistools/viewertools/test_viewertools.py`. The tests there check the rules of all the viewers.
+- Test a viewer without Qt. Make an instance of its viewer class with a `FigureCanvasAgg`. Then call `draw_values` and `apply_values` from `artistools/viewertools/window.py`. Add each new viewer to `VIEWER_CASES` in `artistools/viewertools/test_viewertools.py`. The tests there check the rules of all the viewers.
 - To check a change of a window without a display, do these steps:
   1. Call `QSettings.setDefaultFormat` and `QSettings.setPath`. Then the check writes no settings of the user.
   2. Set `QT_QPA_PLATFORM=offscreen` and `ARTISTOOLS_VIEWER_IN_BUNDLE=1`.
@@ -251,7 +251,8 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
 ## Tests
 
 - Put a test in the same directory as the code that it tests: `artistools/<area>/test_<area>.py`. Give each test function a `test_` prefix. pytest collects only a function whose name starts with `test`.
-- The root `conftest.py` is outside the wheel. Its fixtures give the helpers that more than one test module uses, e.g. `read_data_file` and `write_trajectory_archive`. Do not import a name from a different test module.
+- Put a helper that two or more test modules use in the root `conftest.py` as a fixture. Examples are `read_data_file` and `write_trajectory_archive`. The root `conftest.py` is outside the wheel, thus the helpers stay out of the installed package.
+- Do not import a name from a different test module. Such an import also runs the module-level code of that module.
 - Find the data with `at.get_path("testdata")` or `at.get_path("testoutput")`. As an alternative, use the pytest `tmp_path` fixture. Do not write a file outside the test output directory of the repository.
 - Compare a number with `np.isclose` or an `rtol` value. Do not compare two floats for exact equality. A physics result changes by a small quantity on a different platform or with a different version of a library.
 - You can test a plot without an image. Patch the axes method and examine the arguments of the call:
