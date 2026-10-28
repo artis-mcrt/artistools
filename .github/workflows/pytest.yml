@@ -83,6 +83,10 @@ jobs:
               if: always()
               run: uv run -- pyrefly check --output-format github
 
+            - name: Run ty
+              if: always()
+              run: uv run -- ty check --output-format github
+
             # informational only: vulture reports possibly-unused code at 60% confidence, which
             # includes false positives, so it must not gate the build
             - name: Run vulture (informational)
@@ -90,13 +94,13 @@ jobs:
               continue-on-error: true
               run: uv run -- vulture
 
-            # the Ruff steps above run the version in uv.lock, and --no-fix makes them report each error.
+            # the Ruff and ty steps above run the version in uv.lock, and --no-fix makes Ruff report each error.
             # The hooks correct the errors and show only the files that they change, thus this step skips them
             - name: Run prek pre-commit checks
               if: always()
               uses: j178/prek-action@v3.1.0
               env:
-                  SKIP: ruff-check,ruff-format
+                  SKIP: ruff-check,ruff-format,ty
 
             - name: Run rust format check
               if: always()
@@ -119,10 +123,12 @@ jobs:
             matrix:
                 python-version: ['3.13', '3.14', '3.15', 3.15t]
                 # one entry installs the optional packages, thus the pyvista and the plotly paths run.
-                # Every entry would take minutes more for the same coverage
+                # Every entry would take minutes more for the same coverage. The same entry measures the
+                # coverage, because only its report goes to the upload
                 include:
                     - python-version: '3.14'
                       syncextras: --all-extras
+                      covargs: --cov --cov-report=xml
         runs-on: ubuntu-26.04-arm
         name: pytest python ${{ matrix.python-version }}
         steps:
@@ -166,9 +172,10 @@ jobs:
               run: uv sync --compile-bytecode ${{ matrix.syncextras }}
 
             - name: Test with pytest
-              run: uv run --no-sync -- python -m pytest --cov --cov-report=xml
+              run: uv run --no-sync -- python -m pytest ${{ matrix.covargs }}
 
             - name: Report coverage
+              if: matrix.covargs
               run: uv run -- python -m coverage report
 
             - name: Upload coverage artifact
