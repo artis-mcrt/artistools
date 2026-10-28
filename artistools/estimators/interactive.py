@@ -33,35 +33,42 @@ from artistools.estimators.core import scan_parquet_file
 from artistools.estimators.core import split_species_suffix
 from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
-from artistools.estimators.plotestimators import DIRECTIVES
 from artistools.estimators.plotestimators import draw_plot
 from artistools.estimators.plotestimators import get_default_colours
 from artistools.estimators.plotestimators import get_default_x
 from artistools.estimators.plotestimators import get_gid_series_name
-from artistools.estimators.plotestimators import get_iontuple
-from artistools.estimators.plotestimators import get_iontuple_sortkey
 from artistools.estimators.plotestimators import get_layer_index
 from artistools.estimators.plotestimators import get_model_default_plotlist
 from artistools.estimators.plotestimators import get_panel_axes_label
 from artistools.estimators.plotestimators import get_styled_series
-from artistools.estimators.plotestimators import get_styles_of_subplots
 from artistools.estimators.plotestimators import get_subplot_grid
 from artistools.estimators.plotestimators import get_ylabel
-from artistools.estimators.plotestimators import is_ionseriestype
-from artistools.estimators.plotestimators import is_seriestype
-from artistools.estimators.plotestimators import is_valid_ion
-from artistools.estimators.plotestimators import join_series_style
 from artistools.estimators.plotestimators import LineFigureData
 from artistools.estimators.plotestimators import main as plotestimators_main
 from artistools.estimators.plotestimators import POPTYPE_YLABELS
-from artistools.estimators.plotestimators import read_series_style
 from artistools.estimators.plotestimators import require_artis_folder
 from artistools.estimators.plotestimators import resolve_positional_args
 from artistools.estimators.plotestimators import resolve_snapshot_arguments
-from artistools.estimators.plotestimators import SERIES_STYLE_MARK
 from artistools.estimators.plotestimators import time_is_given
 from artistools.estimators.plotestimators import TIME_XVARIABLES
-from artistools.estimators.plotestimators import VARIABLE_ALIASES
+from artistools.estimators.plotitems import get_directive_value
+from artistools.estimators.plotitems import get_iontuple
+from artistools.estimators.plotitems import get_iontuple_sortkey
+from artistools.estimators.plotitems import get_item_directive
+from artistools.estimators.plotitems import get_item_style
+from artistools.estimators.plotitems import get_plotitem_tokens
+from artistools.estimators.plotitems import get_python_plotitems
+from artistools.estimators.plotitems import get_series_items
+from artistools.estimators.plotitems import get_series_name
+from artistools.estimators.plotitems import get_styles_of_subplots
+from artistools.estimators.plotitems import get_subplot_names
+from artistools.estimators.plotitems import get_subplot_seriestype
+from artistools.estimators.plotitems import is_seriestype
+from artistools.estimators.plotitems import is_valid_ion
+from artistools.estimators.plotitems import remove_item_styles
+from artistools.estimators.plotitems import replace_directives
+from artistools.estimators.plotitems import resolve_item_alias
+from artistools.estimators.plotitems import set_item_style
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modelmeta
 from artistools.inputmodel import scan_modeldata
@@ -392,23 +399,6 @@ def check_viewer_args(args: argparse.Namespace) -> None:
             "--listnuclides": args.listnuclides,
         },
     )
-
-
-def get_plotitem_tokens(plotitems: "Sequence[t.Any]") -> tuple[str, ...]:
-    """Return the --plot tokens of the items of one subplot of the default plot list.
-
-    A directive has the form ["_yscale", "log"], and it becomes "yscale=log". A type of series has the form
-    ["populations", ["Fe II", "Fe III"]], and its names follow it.
-    """
-    tokens: list[str] = []
-    for plotitem in plotitems:
-        if isinstance(plotitem, str):
-            tokens.append(plotitem)
-        elif str(plotitem[0]).startswith("_"):
-            tokens.append(f"{str(plotitem[0]).removeprefix('_')}={plotitem[1]}")
-        else:
-            tokens.extend([str(plotitem[0]), *(str(name) for name in plotitem[1])])
-    return tuple(tokens)
 
 
 def get_estimator_timesteps(modelpath: Path, estimators: pl.LazyFrame) -> list[int]:
@@ -1239,13 +1229,6 @@ class EstimatorViewer:
         return get_short_limits(low * self.xlimitscale, high * self.xlimitscale)
 
 
-def get_item_directive(item: str) -> str | None:
-    """Return the name of the directive that an item of a subplot gives, e.g. "ymin" for "ymin=1e-16", or None."""
-    name, equals, _ = item.partition("=")
-    directive = name.removeprefix("_").lower()
-    return directive if equals and directive in DIRECTIVES else None
-
-
 def get_python_code(
     parser: argparse.ArgumentParser, tokens: "Sequence[str]", estimatorcolumns: "Collection[str]"
 ) -> str:
@@ -1266,55 +1249,6 @@ def get_python_code(
     return get_python_call(
         "at.estimators.plotestimators.main", {**modelpath, **changed, **({"plotlist": plotlist} if plotlist else {})}
     )
-
-
-def get_python_number(text: str) -> float | str:
-    """Return the number that a directive value gives, e.g. 1e-16 for "1e-16", or the text if it gives none."""
-    with contextlib.suppress(ValueError):
-        return int(text)
-    with contextlib.suppress(ValueError):
-        if math.isfinite(number := float(text)):
-            return number
-    return text
-
-
-def get_python_plotitems(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> list[t.Any]:
-    """Return a subplot in the form of an item of the plotlist of main.
-
-    A type of series groups its names, e.g. [["populations", ["Fe II", "Fe III"]]], and a directive follows the
-    names, e.g. ["_ymin", 1e-16].
-    """
-    # main reads the style of a series in its name, e.g. "Fe II@color=C3", as the command does
-    items = get_series_items(subplot)
-    seriestype = get_subplot_seriestype(subplot, estimatorcolumns)
-    # a list of ions with no type is a populations subplot, and its names hold no type
-    series: list[t.Any] = (
-        items if seriestype is None else [[seriestype, items[1:] if items[0] == seriestype else items]]
-    )
-    directives = [
-        [
-            f"_{directive}",
-            get_python_number(item.partition("=")[2]) if directive in {"ymin", "ymax"} else item.partition("=")[2],
-        ]
-        for item in subplot
-        if (directive := get_item_directive(item)) is not None
-    ]
-    return [*series, *directives]
-
-
-def replace_directives(subplot: "Sequence[str]", directives: "Mapping[str, str | None]") -> tuple[str, ...]:
-    """Return the items of a subplot with these directives in place of their old values. None removes a directive."""
-    kept = [item for item in subplot if get_item_directive(item) not in directives]
-    return (*kept, *(f"{name}={value}" for name, value in directives.items() if value is not None))
-
-
-def resolve_item_alias(item: str) -> str:
-    """Return an item with the variable in place of an alias, and with its style, e.g. nne@color=C3 for n_e@color=C3.
-
-    plotestimators reads the alias as the variable, and the controls of the window follow the variable.
-    """
-    name = get_series_name(item)
-    return VARIABLE_ALIASES.get(name, name) + item.removeprefix(name)
 
 
 # the variables that suit a new subplot, in the order of the suggestions
@@ -1358,57 +1292,6 @@ NLTE_SERIESTYPES: t.Final = frozenset({"averageexcitation", "levelpopulation", "
 # the number of suggestions of the card of a subplot, and of the new subplots
 SERIES_SUGGESTION_COUNT: t.Final = 4
 NEW_SUBPLOT_SUGGESTION_COUNT: t.Final = 5
-
-
-def get_series_items(subplot: "Sequence[str]") -> list[str]:
-    """Return the items of a subplot that are not a directive, with the style of each series, e.g. "Fe II@color=C3"."""
-    return [item for item in subplot if get_item_directive(item) is None]
-
-
-def get_series_name(item: str) -> str:
-    """Return the name of a series item without its style, e.g. "Fe II" for "Fe II@color=C3"."""
-    return item.partition(SERIES_STYLE_MARK)[0]
-
-
-def get_item_style(item: str) -> dict[str, str]:
-    """Return the style of a series item, e.g. {"color": "C3"} for "Fe II@color=C3".
-
-    A style that is not valid gives no style here. plotestimators rejects it, and the status line gives the reason.
-    """
-    try:
-        return read_series_style(item)[1]
-    except ValueError:
-        return {}
-
-
-def get_subplot_names(subplot: "Sequence[str]") -> list[str]:
-    """Return the names of a subplot without the directives and the styles.
-
-    The names are e.g. the variables, or a series type and its ions.
-    """
-    return [get_series_name(item) for item in get_series_items(subplot)]
-
-
-def set_item_style(subplot: "Sequence[str]", position: int, style: "Mapping[str, str | None]") -> tuple[str, ...]:
-    """Return the subplot with a new style for the series item at position. A value of None removes its key."""
-    item = subplot[position]
-    newitem = join_series_style(get_series_name(item), style)
-    return (*subplot[:position], newitem, *subplot[position + 1 :])
-
-
-def get_subplot_seriestype(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> str | None:
-    """Return the type of series of a subplot, e.g. "populations", or None for a subplot of variables.
-
-    plotestimators reads a list of ions with no type as a plot of populations, thus this function does the same.
-    """
-    names = get_subplot_names(subplot)
-    if not names:
-        return None
-    if is_seriestype(names[0], estimatorcolumns) or is_ionseriestype(names[0], estimatorcolumns, names[1:]):
-        return names[0]
-    if names[0] not in estimatorcolumns and all(is_valid_ion(name) for name in names):
-        return "populations"
-    return None
 
 
 def get_species_sortkey(species: str) -> tuple[int, int, int, str]:
@@ -1698,11 +1581,6 @@ def get_chip_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]"
     ]
 
 
-def get_directive_value(subplot: "Sequence[str]", directive: str) -> str | None:
-    """Return the value of a directive of a subplot, e.g. "log" for yscale=log, or None if the subplot has none."""
-    return next((item.partition("=")[2] for item in reversed(subplot) if get_item_directive(item) == directive), None)
-
-
 # the quantity of the ions of a populations subplot with no ionpoptype=, which is the default of -ionpoptype
 DEFAULT_POPTYPE: t.Final = "absolute"
 
@@ -1775,11 +1653,6 @@ def move_series_item(
         )
     newtarget = (*target[:insertat], item, *target[insertat:])
     return (*removed[:targetrow], newtarget, *removed[targetrow + 1 :])
-
-
-def remove_item_styles(subplot: "Sequence[str]") -> tuple[str, ...]:
-    """Return the subplot with no style on its series items, e.g. "Fe II" for "Fe II@color=C3"."""
-    return tuple(get_series_name(item) if get_item_directive(item) is None else item for item in subplot)
 
 
 def get_command_items(subplot: "Sequence[str]", estimatorcolumns: "Collection[str]") -> tuple[str, ...]:

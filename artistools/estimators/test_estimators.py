@@ -29,6 +29,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import artistools as at
 from artistools.estimators import interactive
 from artistools.estimators import plotestimators
+from artistools.estimators import plotitems
 from artistools.viewertools import core as viewercore
 
 if t.TYPE_CHECKING:
@@ -2234,10 +2235,10 @@ def test_estimator_unknown_directive_names_the_valid_ones(
 def test_estimator_valid_ion_accepts_an_ion_and_rejects_a_variable_typo() -> None:
     """The ion test must accept the ion spellings that get_iontuple reads, and reject a variable typo."""
     for good in ("Fe", "Fe II", "FeII", "26", "Fe56"):
-        assert at.estimators.plotestimators.is_valid_ion(good), good
+        assert plotitems.is_valid_ion(good), good
 
     for bad in ("te", "notanion", "zz"):
-        assert not at.estimators.plotestimators.is_valid_ion(bad), bad
+        assert not plotitems.is_valid_ion(bad), bad
 
 
 def test_estimator_listvariables_collapses_the_species_families(capsys: pytest.CaptureFixture[str]) -> None:
@@ -2874,8 +2875,8 @@ def test_a_compact_ion_name_reads_the_ion_stage_in_upper_case() -> None:
     from a set, which holds no order, thus "SiII" took S and read "iII" as the ion stage 3. The order
     of a set of strings also changes with the hash seed, thus one run gave Ni II and another N III.
     """
-    from artistools.estimators.plotestimators import get_iontuple
-    from artistools.estimators.plotestimators import is_valid_ion
+    from artistools.estimators.plotitems import get_iontuple
+    from artistools.estimators.plotitems import is_valid_ion
 
     for ionstr, elsymbol, ion_stage in (
         # the lower case letter of a symbol never reads as a roman numeral
@@ -3900,7 +3901,7 @@ def test_plot_argument_takes_a_grouped_series_type() -> None:
     Only the keyword API took the grouped form. Thus "-plot populations Fe II" gave the error that
     'populations' is not an estimator variable, and the CLI reached no such plot.
     """
-    from artistools.estimators.plotestimators import normalise_plotitems
+    from artistools.estimators.plotitems import normalise_plotitems
 
     estimatorcolumns = ["Te", "TR", "nne", "nnion_Fe_II", "nnelement_Fe", "gammaestimator_Fe_II"]
 
@@ -3935,7 +3936,7 @@ def test_plot_argument_takes_ions_of_a_variable_that_is_also_a_total() -> None:
     "-plot cooling_coll 'Fe II'" gave the error that 'Fe II' is not an estimator variable, because
     the test for an ion series rejected every name that is a column.
     """
-    from artistools.estimators.plotestimators import normalise_plotitems
+    from artistools.estimators.plotitems import normalise_plotitems
 
     estimatorcolumns = [
         "Te",
@@ -3966,10 +3967,28 @@ def test_plot_argument_takes_ions_of_a_variable_that_is_also_a_total() -> None:
 
 def test_plot_argument_rejects_a_series_type_with_no_names() -> None:
     """A type of series covers the names after it, thus it must not stand alone."""
-    from artistools.estimators.plotestimators import normalise_plotitems
+    from artistools.estimators.plotitems import normalise_plotitems
 
     with pytest.raises(SystemExit):
         normalise_plotitems(["populations"], ["Te", "nnion_Fe_II"])
+
+
+def test_viewer_reads_the_type_of_a_subplot_as_the_command_does(capsys: pytest.CaptureFixture[str]) -> None:
+    """The viewer must give a subplot the type that the command reads.
+
+    The viewer had its own copy of the reading. It tested a list of ions with is_valid_ion, and the command tested
+    could_be_ion. Thus the card of ("Fe II", "te") became a subplot of variables, but the command read a plot of
+    populations and gave the message for that plot. The copy also read an alias as an ion, e.g. n_e as nitrogen.
+    """
+    estimatorcolumns = ["Te", "nne", "nnion_Fe_II"]
+
+    assert plotitems.get_subplot_seriestype(("Fe II", "te"), estimatorcolumns) == "populations"
+    with pytest.raises(SystemExit):
+        plotitems.normalise_plotitems(["Fe II", "te"], estimatorcolumns)
+    assert "'te' is neither an estimator variable nor an ion" in capsys.readouterr().err
+
+    assert plotitems.get_subplot_seriestype(("n_e",), estimatorcolumns) is None
+    assert plotitems.normalise_plotitems(["n_e"], estimatorcolumns) == ["nne"]
 
 
 def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None:
@@ -4377,11 +4396,11 @@ def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
 
 def test_series_style_reads_commas_in_its_values() -> None:
     """A part of a series style with no known key continues the value before it, e.g. a dash pattern or a label."""
-    assert plotestimators.read_series_style("Te@dashes=5,2,linewidth=2,label=T, electrons") == (
+    assert plotitems.read_series_style("Te@dashes=5,2,linewidth=2,label=T, electrons") == (
         "Te",
         {"dashes": "5,2", "linewidth": "2", "label": "T, electrons"},
     )
-    assert plotestimators.read_series_style("Fe II") == ("Fe II", {})
+    assert plotitems.read_series_style("Fe II") == ("Fe II", {})
     # matplotlib refuses a negative dash and a pattern with no length above 0 only at the time of the plot
     for item in (
         "Te@colour=red",
@@ -4393,7 +4412,7 @@ def test_series_style_reads_commas_in_its_values() -> None:
         "Te@linealpha=2",
     ):
         with pytest.raises(ValueError, match="Te"):
-            plotestimators.read_series_style(item)
+            plotitems.read_series_style(item)
     for scale in ("-1", "0", "nan", "inf"):
         with pytest.raises(SystemExit):
             at.misc.parse_cli_args(plotestimators.addargs, None, None, ["Te", f"-linewidthscale={scale}"])
@@ -5179,22 +5198,22 @@ def test_interactive_keeps_the_last_warning_of_a_plot() -> None:
 
 def test_interactive_directives_of_a_subplot() -> None:
     """A directive replaces its old value, None removes it, and an ion or a variable is not a directive."""
-    assert interactive.get_item_directive("ymin=1e-16") == "ymin"
-    assert interactive.get_item_directive("_yscale=log") == "yscale"
-    assert interactive.get_item_directive("Fe II") is None
-    assert interactive.get_item_directive("Te") is None
+    assert plotitems.get_item_directive("ymin=1e-16") == "ymin"
+    assert plotitems.get_item_directive("_yscale=log") == "yscale"
+    assert plotitems.get_item_directive("Fe II") is None
+    assert plotitems.get_item_directive("Te") is None
     # plotestimators reads a directive in any case
-    assert interactive.get_item_directive("YMIN=100") == "ymin"
-    assert interactive.replace_directives(("TR", "YMIN=100"), {"ymin": None}) == ("TR",)
+    assert plotitems.get_item_directive("YMIN=100") == "ymin"
+    assert plotitems.replace_directives(("TR", "YMIN=100"), {"ymin": None}) == ("TR",)
     subplot = ("rho", "yscale=log", "ymin=1e-16")
-    assert interactive.replace_directives(subplot, {"ymin": "2", "ymax": "3"}) == (
+    assert plotitems.replace_directives(subplot, {"ymin": "2", "ymax": "3"}) == (
         "rho",
         "yscale=log",
         "ymin=2",
         "ymax=3",
     )
-    assert interactive.replace_directives(subplot, {"ymin": None, "ymax": None}) == ("rho", "yscale=log")
-    assert interactive.replace_directives(subplot, {"yscale": "linear"}) == ("rho", "ymin=1e-16", "yscale=linear")
+    assert plotitems.replace_directives(subplot, {"ymin": None, "ymax": None}) == ("rho", "yscale=log")
+    assert plotitems.replace_directives(subplot, {"yscale": "linear"}) == ("rho", "ymin=1e-16", "yscale=linear")
     assert interactive.get_short_limits(12345.678, 23456.7) == ("12300", "23500")
     assert interactive.get_short_limits(1.23456e-5, 2.3456e-5) == ("1.23e-05", "2.35e-05")
 
@@ -5311,8 +5330,8 @@ def test_interactive_subplot_types_and_suggestions() -> None:
     # the families of the populations and of the initial abundances are no type of their own
     assert not {"nnion", "nnelement", "init_X"} & set(types)
 
-    assert interactive.get_subplot_seriestype(("Fe II", "Fe III"), columns) == "populations"
-    assert interactive.get_subplot_seriestype(("Te", "yscale=log"), columns) is None
+    assert plotitems.get_subplot_seriestype(("Fe II", "Fe III"), columns) == "populations"
+    assert plotitems.get_subplot_seriestype(("Te", "yscale=log"), columns) is None
     assert interactive.get_series_suggestions(("Te",), columns) == ["TJ", "TR"]
     # the other ions of the element come first, and the total of the element after its ions
     assert interactive.get_series_suggestions(("populations", "Fe II", "Fe III"), columns)[:2] == ["Fe I", "Fe IV"]
@@ -5577,7 +5596,7 @@ def test_interactive_level_populations() -> None:
     assert not classicviewer.nltetypes
     assert "averageexcitation" not in interactive.get_subplot_types(classicviewer.modeldata.estimatorcolumns)
     # each series type of plotestimators has a family of columns, or it reads the NLTE populations
-    assert set(plotestimators.SERIESTYPES) <= {*interactive.SPECIES_FAMILIES, *interactive.NLTE_SERIESTYPES}
+    assert set(plotitems.SERIESTYPES) <= {*interactive.SPECIES_FAMILIES, *interactive.NLTE_SERIESTYPES}
 
 
 def test_subplots_per_row_fill_each_row() -> None:
