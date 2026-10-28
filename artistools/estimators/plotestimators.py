@@ -57,6 +57,7 @@ from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
 from artistools.estimators.plotitems import get_iontuple
 from artistools.estimators.plotitems import get_iontuple_sortkey
+from artistools.estimators.plotitems import get_series_name
 from artistools.estimators.plotitems import get_styles_of_subplots
 from artistools.estimators.plotitems import is_ionseriestype
 from artistools.estimators.plotitems import normalise_plotitems
@@ -3421,6 +3422,47 @@ def get_plot_columns(modelpath: Path, args: argparse.Namespace, timesteps_includ
 
 # the data of each figure of the arguments, and the arguments that the data code changed
 type FiguresData = tuple[list[LineFigureData | ImageFigureData], dict[str, t.Any]]
+
+
+# the arguments that only the functions that draw a figure read, e.g. draw_line_figure and draw_image_figure.
+# get_figures_data reads none of them, thus a change of get_figures_data can change this set
+DRAW_DESTS: t.Final = frozenset({
+    "darkmode",
+    "dpi",
+    "figscale",
+    "figwidthscale",
+    "format",
+    "hidexlabel",
+    "labelfontsize",
+    "legend_above",
+    "legendcols",
+    "legendframe",
+    "linewidthscale",
+    "nolegend",
+    "notitle",
+    "outputfile",
+    "show",
+    "subplotsperrow",
+})
+
+
+def get_data_key(args: argparse.Namespace) -> str:
+    """Return a key of the arguments that select the data of a plot, without the series styles and DRAW_DESTS.
+
+    The data has no style, thus two commands with the same key read the same data. The window then draws the new style
+    with the data of the last plot. A new width of the figure, e.g. --figwidthscale, also reads no data.
+    """
+
+    # the positional items also hold the folder, which can contain the mark, e.g. user@host:path. The window has one
+    # folder, thus the cut at the mark cannot make the keys of two different data sets equal
+    def get_names(items: Sequence[t.Any]) -> list[t.Any]:
+        return [get_series_name(item) if isinstance(item, str) else item for item in items]
+
+    keyargs = {key: value for key, value in vars(args).items() if key not in DRAW_DESTS} | {
+        "plotitems": get_names(args.plotitems or []),
+        "plotlist": [get_names(plotitems) for plotitems in args.plotlist or []],
+    }
+    return repr(sorted(keyargs.items()))
 
 
 @on_model_host

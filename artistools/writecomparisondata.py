@@ -18,6 +18,7 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import megaparsec_to_cm
+from artistools.estimators import get_estimator_timesteps
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
@@ -28,8 +29,6 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite_matches
 from artistools.misc import exit_with_error
-from artistools.misc import get_runfolder_timesteps
-from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
@@ -135,9 +134,7 @@ def write_edep(
     timestep n. Thus the value of a selected timestep comes from the next timestep, as in deposition.py.
     """
     # scan_estimators refuses a request of timesteps that ARTIS did not write, e.g. the one after the last
-    writtentimesteps = {
-        timestep for folder in get_runfolders(modelpath) for timestep in get_runfolder_timesteps(folder)
-    }
+    writtentimesteps = set(get_estimator_timesteps(Path(modelpath)))
     nexttimesteps = tuple(timestep + 1 for timestep in selected_timesteps if timestep + 1 in writtentimesteps)
     dfnext = dfestimators.select("modelgridindex", "timestep", total_dep=pl.lit(0.0)).clear()
     if nexttimesteps:

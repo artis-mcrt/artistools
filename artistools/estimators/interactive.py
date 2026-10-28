@@ -25,6 +25,7 @@ from artistools.estimators.core import convert_estimator_batch_caches
 from artistools.estimators.core import format_units
 from artistools.estimators.core import get_cell_selection_description
 from artistools.estimators.core import get_estimator_batch_states
+from artistools.estimators.core import get_estimator_timesteps
 from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
@@ -35,6 +36,7 @@ from artistools.estimators.core import split_species_suffix
 from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
 from artistools.estimators.plotestimators import draw_plot
+from artistools.estimators.plotestimators import get_data_key
 from artistools.estimators.plotestimators import get_default_colours
 from artistools.estimators.plotestimators import get_default_x
 from artistools.estimators.plotestimators import get_gid_series_name
@@ -349,44 +351,6 @@ def get_series_swatches(
     return swatches
 
 
-# the arguments that only the functions that draw a figure read, e.g. draw_line_figure and draw_image_figure
-DRAW_DESTS: t.Final = OUTPUT_DESTS | frozenset({
-    "darkmode",
-    "dpi",
-    "figscale",
-    "figwidthscale",
-    "hidexlabel",
-    "labelfontsize",
-    "legend_above",
-    "legendcols",
-    "legendframe",
-    "linewidthscale",
-    "nolegend",
-    "notitle",
-    "show",
-    "subplotsperrow",
-})
-
-
-def get_data_key(args: argparse.Namespace) -> str:
-    """Return a key of the arguments that select the data of a plot, without the series styles and DRAW_DESTS.
-
-    The data has no style, thus two commands with the same key read the same data. The window then draws the new style
-    with the data of the last plot. A new width of the figure, e.g. --figwidthscale, also reads no data.
-    """
-
-    # the positional items also hold the folder, which can contain the mark, e.g. user@host:path. The window has one
-    # folder, thus the cut at the mark cannot make the keys of two different data sets equal
-    def get_names(items: "Sequence[t.Any]") -> list[t.Any]:
-        return [get_series_name(item) if isinstance(item, str) else item for item in items]
-
-    keyargs = {key: value for key, value in vars(args).items() if key not in DRAW_DESTS} | {
-        "plotitems": get_names(args.plotitems or []),
-        "plotlist": [get_names(plotitems) for plotitems in args.plotlist or []],
-    }
-    return repr(sorted(keyargs.items()))
-
-
 def check_viewer_args(args: argparse.Namespace) -> None:
     """Stop when args selects an action that is not one plot of estimators. The window shows one plot only."""
     exit_for_other_actions(
@@ -398,20 +362,6 @@ def check_viewer_args(args: argparse.Namespace) -> None:
             "--listnuclides": args.listnuclides,
         },
     )
-
-
-def get_estimator_timesteps(modelpath: Path, estimators: pl.LazyFrame) -> list[int]:
-    """Return the timesteps that the estimators of the model hold.
-
-    The first parquet cache of each run folder gives its timesteps, thus a large model needs no scan of all its rows. A
-    model with no such cache, e.g. a model of classic ARTIS, reads the timestep column of the estimators.
-    """
-    # a codecomparison path names a reference file and not a folder, thus it has no run folders
-    runfolders: Sequence[Path] = () if path_is_codecomparison(modelpath) else get_runfolders(modelpath)
-    timesteps = {timestep for runfolder in runfolders for timestep in get_runfolder_timesteps(runfolder)}
-    if not timesteps:
-        timesteps = set(estimators.select(pl.col("timestep").unique()).collect().to_series().to_list())
-    return sorted(timesteps)
 
 
 def get_default_xvariable(tokens: "Sequence[str]") -> str:

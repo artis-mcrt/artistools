@@ -2057,3 +2057,20 @@ def get_cell_selection_description(
         f"The cells whose centre has √(x_c² + y_c² + z_c²) ≤ v_max = {vmaxtext}. The plot leaves out the cells in"
         " the corners of the grid."
     )
+
+
+def get_estimator_timesteps(modelpath: Path, estimators: pl.LazyFrame | None = None) -> list[int]:
+    """Return the timesteps that the estimators of the model hold.
+
+    The first parquet cache of each run folder gives its timesteps, thus a large model needs no scan of all its rows. A
+    model with no such cache, e.g. a model of classic ARTIS, reads the timestep column of estimators. With no
+    estimators, the function scans the estimators of the model.
+    """
+    # a codecomparison path names a reference file and not a folder, thus it has no run folders
+    runfolders: Sequence[Path] = () if path_is_codecomparison(modelpath) else get_runfolders(modelpath)
+    timesteps = {timestep for runfolder in runfolders for timestep in get_runfolder_timesteps(runfolder)}
+    if not timesteps:
+        if estimators is None:
+            estimators = scan_estimators(modelpath=modelpath)
+        timesteps = set(estimators.select(pl.col("timestep").unique()).collect().to_series().to_list())
+    return sorted(timesteps)
