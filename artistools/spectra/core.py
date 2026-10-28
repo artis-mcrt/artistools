@@ -36,6 +36,7 @@ from artistools.constants import h_ev_s
 from artistools.constants import km_to_cm
 from artistools.constants import megaparsec_to_cm
 from artistools.constants import MEV_to_erg
+from artistools.inputmodel import get_spatial_scales
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
 from artistools.misc import clear_at_reload
@@ -43,12 +44,15 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_auto_velocity_unit
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbins
 from artistools.misc import get_file_metadata
 from artistools.misc import get_file_state
 from artistools.misc import get_metadata_path
+from artistools.misc import get_model_logname
+from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times
@@ -60,6 +64,7 @@ from artistools.misc import match_closest_time
 from artistools.misc import modelpath_cache
 from artistools.misc import on_model_host
 from artistools.misc import parse_metadata_redshift
+from artistools.misc import parse_timedays_range
 from artistools.misc import polars_error_note
 from artistools.misc import polars_source
 from artistools.misc import print_detail
@@ -76,6 +81,7 @@ from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
 from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
+from artistools.packets import get_packets_column_names
 from artistools.packets import get_vpkt_in_spectrum_range_expr
 from artistools.packets import has_emission_record_expr
 from artistools.packets import scan_packets
@@ -2544,3 +2550,268 @@ def get_reference_spectrum(filepath: Path | str, metadata: dict[str, t.Any]) -> 
         print(f"Correcting for redshift z = {z}")
 
     return specdata
+
+
+def get_spatial_scale_deltalogx(
+    modelfolders: Sequence[Path], scale: t.Literal["smallest", "largest"]
+) -> tuple[float, str, list[str]]:
+    """Return the value of --deltalogx for the smallest or the largest spatial scale, a note, and the method lines.
+
+    In a homologous flow, each spatial scale of the model grid is a constant width Δv in velocity. A feature narrower
+    than the Doppler shift across the smallest spatial scale comes from the grid. One bin width applies to all the
+    models. The smallest spatial scale of all the models gives bins that lose no detail of the grid. The largest
+    spatial scale of all the models gives bins that show no detail that is finer than the grid.
+    """
+    spatialscales = {modelfolder: get_spatial_scales(modelfolder) for modelfolder in modelfolders}
+    smallestmodel = min(spatialscales, key=lambda modelfolder: spatialscales[modelfolder][0])
+    largestmodel = max(spatialscales, key=lambda modelfolder: spatialscales[modelfolder][1])
+    choices = {
+        "smallest": (spatialscales[smallestmodel][0], smallestmodel, "lose no detail of the grid"),
+        "largest": (
+            spatialscales[largestmodel][1],
+            largestmodel,
+            (
+                "are at least as wide as each spatial scale of all the models. Thus the bins show no detail that is"
+                " finer than the grid"
+            ),
+        ),
+    }
+    velocity, scalemodelfolder, _ = choices[scale]
+    otherscale = "largest" if scale == "smallest" else "smallest"
+    note = (
+        f"--deltalogx {scale}scale = Δv/c = {velocity / C_cm_per_s:.3g}, where Δv = {velocity / km_to_cm:.0f} km/s is"
+        f" the {scale} spatial scale in {get_model_name(scalemodelfolder)}. The resolving power is λ/Δλ = c/Δv ="
+        f" {C_cm_per_s / velocity:.0f}. --deltalogx {otherscale}scale gives {choices[otherscale][0] / C_cm_per_s:.3g}"
+    )
+    method = [
+        (
+            "Δv is a spatial scale of the model grid in velocity. In a homologous flow, Δv stays constant with time. A"
+            " spectral feature with Δλ/λ less than the smallest Δv/c comes from the grid and not from the physics."
+        ),
+        *(
+            f"The {name} spatial scale of the models: Δv = {width / km_to_cm:.0f} km/s in"
+            f" {resolve_modelpath(widthmodel)}. Δv/c = {width / C_cm_per_s:.3g}, and λ/Δλ = c/Δv ="
+            f" {C_cm_per_s / width:.0f}. Bins of this width {effect}."
+            for name, (width, widthmodel, effect) in choices.items()
+        ),
+        f"--deltalogx {scale}scale selects the {scale} spatial scale.",
+        *(
+            f"{resolve_modelpath(modelfolder)}: {description}."
+            for modelfolder, (_, _, description) in spatialscales.items()
+        ),
+        (
+            "The Monte Carlo noise of the packets can make the resolution worse than this estimate. The estimate does"
+            " not include this noise."
+        ),
+    ]
+    return velocity / C_cm_per_s, note, method
+
+
+def model_covers_timedays(modelpath: Path | str, timedays: str | float | None, *, quiet: bool = False) -> bool:
+    """Return False if timedays names one time outside the timesteps of the model, and print a warning unless quiet.
+
+    A --timemin and --timemax range outside a model skips that model with a warning, thus one time does the same. A
+    range of --timedays and a text that is no number give True, because get_time_range gives their messages.
+    """
+    if timedays is None or parse_timedays_range(timedays) is not None:
+        return True
+    try:
+        timedays_float = float(str(timedays).rstrip("d"))
+    except ValueError:
+        return True
+
+    tstart_first = get_timestep_times(modelpath, loc="start")[0]
+    tend_last = get_timestep_times(modelpath, loc="end")[-1]
+    if tstart_first <= timedays_float <= tend_last:
+        return True
+
+    if not quiet:
+        print_warning(
+            f"{get_model_logname(modelpath)}: no timestep covers {timedays_float:g} days, because the timesteps cover"
+            f" {tstart_first:.2f} to {tend_last:.2f} days. The plot skips this model at this time"
+        )
+    return False
+
+
+def get_xy_spectrum(
+    flambda_array: npt.NDArray[np.floating],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    *,
+    xunit: str,
+    yvariable: str,
+    fluxdistance_mpc: float,
+) -> pl.LazyFrame:
+    """Return the x series and the y series of one flux array, in the given units."""
+    return get_dfspectrum_x_y_with_units(
+        pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms}),
+        xunit=xunit,
+        yvariable=yvariable,
+        fluxdistance_mpc=fluxdistance_mpc,
+    )
+
+
+def get_emission_contributions(
+    modelpath: Path,
+    *,
+    frompackets: bool,
+    showemission: bool,
+    showabsorption: bool,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    xmin: float,
+    xmax: float,
+    xunit: str,
+    timestepmin: int,
+    timestepmax: int,
+    timemin: float,
+    timemax: float,
+    dirbin: int | None,
+    average_over_phi: bool,
+    average_over_theta: bool,
+    maxseriescount: int,
+    fixedionlist: list[str] | None,
+    emissionevent: EmissionEvent,
+    deltax: float | None,
+    deltalogx: float | None,
+    deltalambda: float | None,
+    maxpacketfiles: int | None,
+    groupby: str,
+    use_time: t.Literal["escape", "emission", "arrival"],
+    gamma: bool,
+    directionbins_are_vpkt_observers: bool,
+    vpkt_match_emission_exclusion_to_opac: bool,
+    shelledges: Sequence[float] | None,
+    shellunit: t.Literal["kmps", "c", "ye"],
+    velocityranges: Mapping[str, tuple[float, float]] | None,
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
+
+    With frompackets, the function reads the packets files. Without it, the function reads the emission file and the
+    absorption file that ARTIS writes for each timestep. The total emitted flux is the net spectrum, thus a plot of the
+    absorption alone also reads the emission.
+    """
+
+    def read_contributions(
+        getemission: bool, getabsorption: bool
+    ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+        """Return the contributions, the total emitted flux, and the wavelength grid of the selected processes."""
+        if not frompackets:
+            assert not vpkt_match_emission_exclusion_to_opac
+            # the emission files of exspec hold no sampled emission, thus resolve_frompackets selects the packets
+            assert emissionevent != "sampled"
+            lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, xunit)
+
+            return get_flux_contributions(
+                modelpath,
+                timestepmin,
+                timestepmax,
+                filterfunc=filterfunc,
+                getemission=getemission,
+                getabsorption=getabsorption,
+                use_lastemissiontype=emissionevent == "last",
+                directionbin=dirbin,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+                lambda_min=lambda_min,
+                lambda_max=lambda_max,
+                maxseriescount=maxseriescount,
+                fixedionlist=fixedionlist,
+            )
+
+        return get_flux_contributions_from_packets(
+            modelpath,
+            timelowdays=timemin,
+            timehighdays=timemax,
+            lambda_bin_edges=get_lambda_bin_edges(
+                xmin,
+                xmax,
+                deltax=deltax,
+                deltalogx=deltalogx,
+                deltalambda=deltalambda,
+                xunit=xunit,
+                modelpath=modelpath,
+                gamma=gamma,
+            ),
+            getemission=getemission,
+            getabsorption=getabsorption,
+            maxpacketfiles=maxpacketfiles,
+            filterfunc=filterfunc,
+            groupby=groupby,
+            use_time=use_time,
+            fixedionlist=fixedionlist,
+            maxseriescount=maxseriescount + 20,
+            gamma=gamma,
+            emissionevent=emissionevent,
+            directionbin=dirbin,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+            vpkt_match_emission_exclusion_to_opac=vpkt_match_emission_exclusion_to_opac,
+            shelledges=shelledges,
+            shellunit=shellunit,
+            velocityranges=velocityranges,
+        )
+
+    contribution_list, array_flambda_emission_total, arraylambda_angstroms = read_contributions(
+        showemission, showabsorption
+    )
+    if not showemission:
+        # the emission of each series would change the ranking of the absorption series, thus only the total
+        # comes from this call
+        _, array_flambda_emission_total, _ = read_contributions(getemission=True, getabsorption=False)
+
+    return contribution_list, array_flambda_emission_total, arraylambda_angstroms
+
+
+def collect_emission_and_absorption(
+    contributions: Sequence[FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    *,
+    showemission: bool,
+    showabsorption: bool,
+    xunit: str,
+    yvariable: str,
+    fluxdistance_mpc: float,
+) -> tuple[list[pl.DataFrame], list[pl.DataFrame]]:
+    """Return the emission spectra and the absorption spectra of every contribution.
+
+    One call runs every query together. A collect for each contribution runs them one after the other,
+    which costs about four times as much for the default series count. The emission queries and the
+    absorption queries are independent, thus one call takes both sets.
+    """
+    emissionarrays = [contribution.array_flambda_emission for contribution in contributions] if showemission else []
+    absorptionarrays = (
+        [contribution.array_flambda_absorption for contribution in contributions] if showabsorption else []
+    )
+    collected = pl.collect_all(
+        get_xy_spectrum(
+            flambda_array, arraylambda_angstroms, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=fluxdistance_mpc
+        )
+        for flambda_array in [*emissionarrays, *absorptionarrays]
+    )
+
+    return collected[: len(emissionarrays)], collected[len(emissionarrays) :]
+
+
+@clear_at_reload("output")
+@lru_cache(maxsize=64)
+def has_gamma_spec_file(modelfolder: Path) -> bool:
+    """Return True if the model folder has gamma_spec.out.
+
+    The spectrum viewer resolves the arguments at each change, and the search of the subfolders is slow on a network
+    drive. Thus a file that exspec writes later stays unknown until Reload Data clears the cache, and until then the
+    plot reads the packets.
+    """
+    return firstexisting_or_none("gamma_spec.out", folder=modelfolder) is not None
+
+
+@clear_at_reload("output")
+@modelpath_cache(maxsize=64)
+def get_no_sampled_emission_reason(modelfolder: Path) -> str | None:
+    """Return why the packets of the model hold no sampled emission, or None if they hold it.
+
+    A model folder with no packets also gives None, and the packets reader gives its error later. The spectrum viewer
+    resolves the arguments at each change. Thus the cache keeps the result until Reload Data clears it, also after a
+    new run of ARTIS in the folder.
+    """
+    columnnames = get_packets_column_names(modelfolder)
+    return None if columnnames is None else get_no_sampled_emission_message(modelfolder, columnnames)

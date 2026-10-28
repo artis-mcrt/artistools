@@ -6,7 +6,6 @@ import typing as t
 from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
-from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
@@ -25,10 +24,7 @@ from matplotlib.lines import Line2D
 
 from artistools.codecomparison import read_reference_spectra
 from artistools.constants import c_ang_per_s
-from artistools.constants import C_cm_per_s
-from artistools.constants import km_to_cm
 from artistools.constants import megaparsec_to_cm
-from artistools.inputmodel import get_spatial_scales
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -52,12 +48,10 @@ from artistools.misc import addarg_yscale
 from artistools.misc import apply_time_range_args
 from artistools.misc import arggroup
 from artistools.misc import check_time_range_is_valid
-from artistools.misc import clear_at_reload
 from artistools.misc import convert_xunit_aliases_to_canonical
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
-from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_model_folders
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -68,7 +62,6 @@ from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
-from artistools.misc import get_timestep_times
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_xunit
 from artistools.misc import is_in_range
@@ -77,11 +70,9 @@ from artistools.misc import KeepGivenPaths
 from artistools.misc import make_output_folder
 from artistools.misc import makelist
 from artistools.misc import model_path_from_text
-from artistools.misc import modelpath_cache
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
-from artistools.misc import parse_timedays_range
 from artistools.misc import parse_velocity_argument
 from artistools.misc import parse_xunit_argument
 from artistools.misc import path_is_artis_model
@@ -94,10 +85,8 @@ from artistools.misc import print_heading
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
-from artistools.misc import resolve_modelpath
 from artistools.misc import resolve_outputfile
 from artistools.packets import addarg_maxpacketfiles
-from artistools.packets import get_packets_column_names
 from artistools.packets import scan_packets
 from artistools.paths import get_path
 from artistools.plottools import draw_residual_panel
@@ -124,6 +113,7 @@ from artistools.plottools import set_prop_cycle_unusedcolors
 from artistools.plottools import warn_direction_bin_noise
 from artistools.spectra.core import bin_spectrum
 from artistools.spectra.core import check_time_range_overlaps_time_bins
+from artistools.spectra.core import collect_emission_and_absorption
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_xlimits_to_lambda_range
 from artistools.spectra.core import DEFAULT_YE_SHELLS
@@ -132,16 +122,19 @@ from artistools.spectra.core import FluxContributionTuple
 from artistools.spectra.core import get_default_lineofsightvelocity_shells
 from artistools.spectra.core import get_default_radialvelocity_shells
 from artistools.spectra.core import get_dfspectrum_x_y_with_units
-from artistools.spectra.core import get_flux_contributions
-from artistools.spectra.core import get_flux_contributions_from_packets
+from artistools.spectra.core import get_emission_contributions
 from artistools.spectra.core import get_lambda_bin_edges
-from artistools.spectra.core import get_no_sampled_emission_message
+from artistools.spectra.core import get_no_sampled_emission_reason
 from artistools.spectra.core import get_reference_label
 from artistools.spectra.core import get_reference_spectrum
 from artistools.spectra.core import get_shell_labels
+from artistools.spectra.core import get_spatial_scale_deltalogx
 from artistools.spectra.core import get_x_quantity_label
+from artistools.spectra.core import get_xy_spectrum
+from artistools.spectra.core import has_gamma_spec_file
 from artistools.spectra.core import make_averaged_vspecfiles
 from artistools.spectra.core import make_virtual_spectra_summed_file
+from artistools.spectra.core import model_covers_timedays
 from artistools.spectra.core import NO_SAMPLED_EMISSION_HELP
 from artistools.spectra.core import print_contribution_table
 from artistools.spectra.core import print_integrated_flux
@@ -649,61 +642,6 @@ def parse_deltalogx_argument(value: str) -> float | str:
         raise argparse.ArgumentTypeError(msg) from None
 
 
-def get_spatial_scale_deltalogx(
-    modelfolders: Sequence[Path], scale: t.Literal["smallest", "largest"]
-) -> tuple[float, str, list[str]]:
-    """Return the value of --deltalogx for the smallest or the largest spatial scale, a note, and the method lines.
-
-    In a homologous flow, each spatial scale of the model grid is a constant width Δv in velocity. A feature narrower
-    than the Doppler shift across the smallest spatial scale comes from the grid. One bin width applies to all the
-    models. The smallest spatial scale of all the models gives bins that lose no detail of the grid. The largest
-    spatial scale of all the models gives bins that show no detail that is finer than the grid.
-    """
-    spatialscales = {modelfolder: get_spatial_scales(modelfolder) for modelfolder in modelfolders}
-    smallestmodel = min(spatialscales, key=lambda modelfolder: spatialscales[modelfolder][0])
-    largestmodel = max(spatialscales, key=lambda modelfolder: spatialscales[modelfolder][1])
-    choices = {
-        "smallest": (spatialscales[smallestmodel][0], smallestmodel, "lose no detail of the grid"),
-        "largest": (
-            spatialscales[largestmodel][1],
-            largestmodel,
-            (
-                "are at least as wide as each spatial scale of all the models. Thus the bins show no detail that is"
-                " finer than the grid"
-            ),
-        ),
-    }
-    velocity, scalemodelfolder, _ = choices[scale]
-    otherscale = "largest" if scale == "smallest" else "smallest"
-    note = (
-        f"--deltalogx {scale}scale = Δv/c = {velocity / C_cm_per_s:.3g}, where Δv = {velocity / km_to_cm:.0f} km/s is"
-        f" the {scale} spatial scale in {get_model_name(scalemodelfolder)}. The resolving power is λ/Δλ = c/Δv ="
-        f" {C_cm_per_s / velocity:.0f}. --deltalogx {otherscale}scale gives {choices[otherscale][0] / C_cm_per_s:.3g}"
-    )
-    method = [
-        (
-            "Δv is a spatial scale of the model grid in velocity. In a homologous flow, Δv stays constant with time. A"
-            " spectral feature with Δλ/λ less than the smallest Δv/c comes from the grid and not from the physics."
-        ),
-        *(
-            f"The {name} spatial scale of the models: Δv = {width / km_to_cm:.0f} km/s in"
-            f" {resolve_modelpath(widthmodel)}. Δv/c = {width / C_cm_per_s:.3g}, and λ/Δλ = c/Δv ="
-            f" {C_cm_per_s / width:.0f}. Bins of this width {effect}."
-            for name, (width, widthmodel, effect) in choices.items()
-        ),
-        f"--deltalogx {scale}scale selects the {scale} spatial scale.",
-        *(
-            f"{resolve_modelpath(modelfolder)}: {description}."
-            for modelfolder, (_, _, description) in spatialscales.items()
-        ),
-        (
-            "The Monte Carlo noise of the packets can make the resolution worse than this estimate. The estimate does"
-            " not include this noise."
-        ),
-    ]
-    return velocity / C_cm_per_s, note, method
-
-
 def resolve_deltalogx_scale(args: argparse.Namespace) -> None:
     """Replace a keyword of --deltalogx with the bin width factor of the spatial scale of the models, and log it.
 
@@ -732,22 +670,6 @@ def get_packet_use_time(args: argparse.Namespace) -> t.Literal["escape", "emissi
     if args.use_emissiontime:
         return "emission"
     return "arrival"
-
-
-def get_packet_lambda_bin_edges(
-    args: argparse.Namespace, xmin: float, xmax: float, modelpath: Path
-) -> npt.NDArray[np.floating]:
-    """Return the wavelength bin edges of a spectrum from packets, from the bin width that the arguments give."""
-    return get_lambda_bin_edges(
-        xmin,
-        xmax,
-        deltax=args.deltax,
-        deltalogx=args.deltalogx,
-        deltalambda=args.deltalambda,
-        xunit=args.xunit,
-        modelpath=modelpath,
-        gamma=args.gamma,
-    )
 
 
 def get_bin_x_edges(
@@ -842,32 +764,6 @@ def plot_noise_band(
         f" {percentnoise.max():.3g}%, and the median is {np.median(percentnoise):.3g}%. {(~hasnoise).sum()} of"
         f" {len(hasnoise)} bins have y = 0. These bins have no estimate of r, thus their band has zero width"
     )
-
-
-def model_covers_timedays(modelpath: Path | str, timedays: str | float | None, *, quiet: bool = False) -> bool:
-    """Return False if timedays names one time outside the timesteps of the model, and print a warning unless quiet.
-
-    A --timemin and --timemax range outside a model skips that model with a warning, thus one time does the same. A
-    range of --timedays and a text that is no number give True, because get_time_range gives their messages.
-    """
-    if timedays is None or parse_timedays_range(timedays) is not None:
-        return True
-    try:
-        timedays_float = float(str(timedays).rstrip("d"))
-    except ValueError:
-        return True
-
-    tstart_first = get_timestep_times(modelpath, loc="start")[0]
-    tend_last = get_timestep_times(modelpath, loc="end")[-1]
-    if tstart_first <= timedays_float <= tend_last:
-        return True
-
-    if not quiet:
-        print_warning(
-            f"{get_model_logname(modelpath)}: no timestep covers {timedays_float:g} days, because the timesteps cover"
-            f" {tstart_first:.2f} to {tend_last:.2f} days. The plot skips this model at this time"
-        )
-    return False
 
 
 def plot_artis_spectrum(
@@ -1016,7 +912,16 @@ def plot_artis_spectrum(
 
         xmin, xmax = axis.get_xlim()
         if from_packets:
-            lambda_bin_edges = get_packet_lambda_bin_edges(args, xmin, xmax, modelpath)
+            lambda_bin_edges = get_lambda_bin_edges(
+                xmin,
+                xmax,
+                deltax=args.deltax,
+                deltalogx=args.deltalogx,
+                deltalambda=args.deltalambda,
+                xunit=args.xunit,
+                modelpath=modelpath,
+                gamma=args.gamma,
+            )
 
             viewinganglespectra = scan_spectra_from_packets(
                 modelpath,
@@ -1442,100 +1347,6 @@ def split_series_column(colname: str, yvariable: str) -> tuple[str, str]:
     return prefix, colname.removeprefix(prefix)
 
 
-def get_xy_spectrum(
-    flambda_array: npt.NDArray[np.floating], arraylambda_angstroms: npt.NDArray[np.floating], args: argparse.Namespace
-) -> pl.LazyFrame:
-    """Return the x series and the y series of one flux array, in the units that the arguments name."""
-    return get_dfspectrum_x_y_with_units(
-        pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms}),
-        xunit=args.xunit,
-        yvariable=args.yvariable,
-        fluxdistance_mpc=args.distmpc,
-    )
-
-
-def get_emission_contributions(
-    modelpath: Path,
-    args: argparse.Namespace,
-    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
-    xmin: float,
-    xmax: float,
-    timestepmin: int,
-    timestepmax: int,
-    timemin: float,
-    timemax: float,
-    dirbin: int | None,
-) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
-
-    A run with --frompackets reads the packets files. A run without it reads the emission file and the
-    absorption file that ARTIS writes for each timestep. The total emitted flux is the net spectrum, thus a plot
-    with --showabsorption alone also reads the emission.
-    """
-
-    def read_contributions(
-        getemission: bool, getabsorption: bool
-    ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-        """Return the contributions, the total emitted flux, and the wavelength grid of the selected processes."""
-        if not args.frompackets:
-            assert not args.vpkt_match_emission_exclusion_to_opac
-            # the emission files of exspec hold no sampled emission, thus resolve_frompackets selects the packets
-            assert not args.use_sampledemissiontype
-            lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, args.xunit)
-
-            return get_flux_contributions(
-                modelpath,
-                timestepmin,
-                timestepmax,
-                filterfunc=filterfunc,
-                getemission=getemission,
-                getabsorption=getabsorption,
-                use_lastemissiontype=not args.use_thermalemissiontype,
-                directionbin=dirbin,
-                average_over_phi=args.average_over_phi_angle,
-                average_over_theta=args.average_over_theta_angle,
-                lambda_min=lambda_min,
-                lambda_max=lambda_max,
-                maxseriescount=args.maxseriescount,
-                fixedionlist=args.fixedionlist,
-            )
-
-        return get_flux_contributions_from_packets(
-            modelpath,
-            timelowdays=timemin,
-            timehighdays=timemax,
-            lambda_bin_edges=get_packet_lambda_bin_edges(args, xmin, xmax, modelpath),
-            getemission=getemission,
-            getabsorption=getabsorption,
-            maxpacketfiles=args.maxpacketfiles,
-            filterfunc=filterfunc,
-            groupby=args.groupby,
-            use_time=get_packet_use_time(args),
-            fixedionlist=args.fixedionlist,
-            maxseriescount=args.maxseriescount + 20,
-            gamma=args.gamma,
-            emissionevent=get_emission_event(args),
-            directionbin=dirbin,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
-            directionbins_are_vpkt_observers=args.plotvspecpol is not None,
-            vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
-            shelledges=args.shelledges,
-            shellunit=args.shellunit,
-            velocityranges=args.velocityranges_kmps,
-        )
-
-    contribution_list, array_flambda_emission_total, arraylambda_angstroms = read_contributions(
-        args.showemission, args.showabsorption
-    )
-    if not args.showemission:
-        # the emission of each series would change the ranking of the absorption series, thus only the total
-        # comes from this call
-        _, array_flambda_emission_total, _ = read_contributions(getemission=True, getabsorption=False)
-
-    return contribution_list, array_flambda_emission_total, arraylambda_angstroms
-
-
 def order_and_color_shells(
     contributions: list[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
@@ -1582,43 +1393,12 @@ def order_and_color_shells(
     ]
 
 
-def collect_emission_and_absorption(
-    contributions: "Sequence[FluxContributionTuple]",
-    arraylambda_angstroms: "npt.NDArray[np.floating]",
-    args: argparse.Namespace,
-) -> tuple[list[pl.DataFrame], list[pl.DataFrame]]:
-    """Return the emission spectra and the absorption spectra of every contribution.
-
-    One call runs every query together. A collect for each contribution runs them one after the other,
-    which costs about four times as much for the default series count. The emission queries and the
-    absorption queries are independent, thus one call takes both sets.
-    """
-    emissionqueries = (
-        [
-            get_xy_spectrum(contribution.array_flambda_emission, arraylambda_angstroms, args)
-            for contribution in contributions
-        ]
-        if args.showemission
-        else []
-    )
-    absorptionqueries = (
-        [
-            get_xy_spectrum(contribution.array_flambda_absorption, arraylambda_angstroms, args)
-            for contribution in contributions
-        ]
-        if args.showabsorption
-        else []
-    )
-    collected = pl.collect_all([*emissionqueries, *absorptionqueries])
-
-    return collected[: len(emissionqueries)], collected[len(emissionqueries) :]
-
-
 def add_drawn_emission_columns(
     dfaxisdata: pl.DataFrame,
     dfspectotal: pl.DataFrame,
     contributions: Sequence[FluxContributionTuple],
-    arraylambda_angstroms: npt.NDArray[np.floating],
+    emissionspectra: Sequence[pl.DataFrame],
+    absorptionspectra: Sequence[pl.DataFrame],
     args: argparse.Namespace,
     scalefactor: float,
 ) -> pl.DataFrame:
@@ -1627,7 +1407,6 @@ def add_drawn_emission_columns(
     The figure scales each value for --normalised, and it draws each absorption below zero. A stack draws the sum of
     the contributions, and the table gives the height of each contribution in the stack.
     """
-    emissionspectra, absorptionspectra = collect_emission_and_absorption(contributions, arraylambda_angstroms, args)
     yplotted = f"{args.yvariable}_plotted"
     return dfaxisdata.with_columns(
         dfspectotal["x"].alias(f"x_plotted_{args.xunit}"),
@@ -1646,7 +1425,8 @@ def add_drawn_emission_columns(
 def plot_contributions_unstacked(
     axis: mplax.Axes,
     contributions: Sequence[FluxContributionTuple],
-    arraylambda_angstroms: npt.NDArray[np.floating],
+    emissionspectra: Sequence[pl.DataFrame],
+    absorptionspectra: Sequence[pl.DataFrame],
     args: argparse.Namespace,
     scalefactor: float,
     xmin: float,
@@ -1658,8 +1438,6 @@ def plot_contributions_unstacked(
     """
     plotobjects: list[Artist] = []
     max_absorption = 0.0
-
-    emissionspectra, absorptionspectra = collect_emission_and_absorption(contributions, arraylambda_angstroms, args)
 
     for index, contribution in enumerate(contributions):
         if args.showemission:
@@ -1693,7 +1471,8 @@ def plot_contributions_unstacked(
 def plot_contributions_stacked(
     axis: mplax.Axes,
     contributions: Sequence[FluxContributionTuple],
-    arraylambda_angstroms: npt.NDArray[np.floating],
+    emissionspectra: Sequence[pl.DataFrame],
+    absorptionspectra: Sequence[pl.DataFrame],
     args: argparse.Namespace,
     scalefactor: float,
     xmin: float,
@@ -1709,14 +1488,11 @@ def plot_contributions_stacked(
         None if any(c is None for c in contribcolors) else [c for c in contribcolors if c is not None]
     )
 
-    # the collect comes before either stackplot, thus the draw order stays the same
-    dfemissionspectra, dfabsorptionspectra = collect_emission_and_absorption(contributions, arraylambda_angstroms, args)
-
     facecolors: list[mplt.ColorType] | None
     if args.showemission:
         stackplot = axis.stackplot(
-            dfemissionspectra[0]["x"],
-            [dfspec["y"] * scalefactor for dfspec in dfemissionspectra],
+            emissionspectra[0]["x"],
+            [dfspec["y"] * scalefactor for dfspec in emissionspectra],
             colors=stackcolors,
             linewidth=0,
         )
@@ -1728,8 +1504,8 @@ def plot_contributions_stacked(
 
     if args.showabsorption:
         absstackplot = axis.stackplot(
-            dfabsorptionspectra[0]["x"],
-            [-dfspec["y"] * scalefactor for dfspec in dfabsorptionspectra],
+            absorptionspectra[0]["x"],
+            [-dfspec["y"] * scalefactor for dfspec in absorptionspectra],
             colors=facecolors,
             linewidth=0,
         )
@@ -1740,7 +1516,7 @@ def plot_contributions_stacked(
             pl
             .DataFrame({
                 f"y{i}": df_filter_minmax_bracketed(df, "x", xmin, xmax).collect().get_column("y")
-                for i, df in enumerate(dfabsorptionspectra)
+                for i, df in enumerate(absorptionspectra)
             })
             .select(pl.sum_horizontal(pl.all()).max())
             .item()
@@ -1916,7 +1692,36 @@ def make_emissionabsorption_plot(
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
 
     contribution_list, array_flambda_emission_total, arraylambda_angstroms = get_emission_contributions(
-        modelpath, args, filterfunc, xmin, xmax, timestepmin, timestepmax, timemin, timemax, dirbin
+        modelpath,
+        frompackets=args.frompackets,
+        showemission=args.showemission,
+        showabsorption=args.showabsorption,
+        filterfunc=filterfunc,
+        xmin=xmin,
+        xmax=xmax,
+        xunit=args.xunit,
+        timestepmin=timestepmin,
+        timestepmax=timestepmax,
+        timemin=timemin,
+        timemax=timemax,
+        dirbin=dirbin,
+        average_over_phi=args.average_over_phi_angle,
+        average_over_theta=args.average_over_theta_angle,
+        maxseriescount=args.maxseriescount,
+        fixedionlist=args.fixedionlist,
+        emissionevent=get_emission_event(args),
+        deltax=args.deltax,
+        deltalogx=args.deltalogx,
+        deltalambda=args.deltalambda,
+        maxpacketfiles=args.maxpacketfiles,
+        groupby=args.groupby,
+        use_time=get_packet_use_time(args),
+        gamma=args.gamma,
+        directionbins_are_vpkt_observers=args.plotvspecpol is not None,
+        vpkt_match_emission_exclusion_to_opac=args.vpkt_match_emission_exclusion_to_opac,
+        shelledges=args.shelledges,
+        shellunit=args.shellunit,
+        velocityranges=args.velocityranges_kmps,
     )
     if arraylambda_angstroms.size == 0:
         # every sum and every maximum below reads the bins of the x range. The limits use the unit of the x axis,
@@ -1942,7 +1747,16 @@ def make_emissionabsorption_plot(
     plotobjectlabels: list[str] = []
     plotobjects: list[Artist] = []
 
-    dfspectotal = get_xy_spectrum(array_flambda_emission_total, arraylambda_angstroms, args).collect()
+    spectrumunits = {"xunit": args.xunit, "yvariable": args.yvariable, "fluxdistance_mpc": args.distmpc}
+    dfspectotal = get_xy_spectrum(array_flambda_emission_total, arraylambda_angstroms, **spectrumunits).collect()
+    # one collect runs the queries of all the contributions together, and the drawing and the table share the result
+    emissionspectra, absorptionspectra = collect_emission_and_absorption(
+        contributions_sorted_reduced,
+        arraylambda_angstroms,
+        showemission=args.showemission,
+        showabsorption=args.showabsorption,
+        **spectrumunits,
+    )
 
     # a narrow x range can hold no centre of a bin, and the drawn line then runs between the bins beyond its edges
     max_f_emission_total = df_filter_minmax_bracketed(dfspectotal, "x", xmin, xmax).collect()["y"].max()
@@ -1991,18 +1805,18 @@ def make_emissionabsorption_plot(
             )
     if args.print_data or args.write_data:
         dfaxisdata = add_drawn_emission_columns(
-            dfaxisdata, dfspectotal, contributions_sorted_reduced, arraylambda_angstroms, args, scalefactor
+            dfaxisdata, dfspectotal, contributions_sorted_reduced, emissionspectra, absorptionspectra, args, scalefactor
         )
 
     max_absorption = 0.0
     if args.nostack:
         newobjects, max_absorption = plot_contributions_unstacked(
-            axis, contributions_sorted_reduced, arraylambda_angstroms, args, scalefactor, xmin, xmax
+            axis, contributions_sorted_reduced, emissionspectra, absorptionspectra, args, scalefactor, xmin, xmax
         )
         plotobjects.extend(newobjects)
     elif contributions_sorted_reduced:
         newobjects, max_absorption = plot_contributions_stacked(
-            axis, contributions_sorted_reduced, arraylambda_angstroms, args, scalefactor, xmin, xmax
+            axis, contributions_sorted_reduced, emissionspectra, absorptionspectra, args, scalefactor, xmin, xmax
         )
         plotobjects.extend(newobjects)
 
@@ -2768,31 +2582,6 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
             args.shelledges, args.shellunit = getdefault(args.modelspecpaths[0])
     elif args.velocityshells is not None:
         args.shelledges, args.shellunit = parse_velocity_values(args.velocityshells)
-
-
-@clear_at_reload("output")
-@lru_cache(maxsize=64)
-def has_gamma_spec_file(modelfolder: Path) -> bool:
-    """Return True if the model folder has gamma_spec.out.
-
-    The spectrum viewer resolves the arguments at each change, and the search of the subfolders is slow on a network
-    drive. Thus a file that exspec writes later stays unknown until Reload Data clears the cache, and until then the
-    plot reads the packets.
-    """
-    return firstexisting_or_none("gamma_spec.out", folder=modelfolder) is not None
-
-
-@clear_at_reload("output")
-@modelpath_cache(maxsize=64)
-def get_no_sampled_emission_reason(modelfolder: Path) -> str | None:
-    """Return why the packets of the model hold no sampled emission, or None if they hold it.
-
-    A model folder with no packets also gives None, and the packets reader gives its error later. The spectrum viewer
-    resolves the arguments at each change. Thus the cache keeps the result until Reload Data clears it, also after a
-    new run of ARTIS in the folder.
-    """
-    columnnames = get_packets_column_names(modelfolder)
-    return None if columnnames is None else get_no_sampled_emission_message(modelfolder, columnnames)
 
 
 def resolve_frompackets(args: argparse.Namespace) -> None:

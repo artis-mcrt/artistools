@@ -650,7 +650,7 @@ def test_spectraemissionplot_of_a_model_with_no_sampled_emission_gives_a_message
     Each preset of ARTIS sets SAMPLE_RPKT_EMISSION to false.
     """
     with (
-        mock.patch.object(plotspectra, "get_flux_contributions_from_packets") as mockcontributions,
+        mock.patch.object(atspectra, "get_flux_contributions_from_packets") as mockcontributions,
         pytest.raises(SystemExit),
     ):
         at.spectra.plot(
@@ -1330,7 +1330,7 @@ def test_spectra_packet_contributions_of_a_direction_bin(directionbin: int, aver
 @pytest.mark.parametrize(
     ("use_emissiontime", "use_escapetime", "expected_use_time"), [(True, False, "emission"), (False, True, "escape")]
 )
-@mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
+@mock.patch("artistools.spectra.core.get_flux_contributions_from_packets")
 def test_spectra_contribution_plot_forwards_packet_time(
     mockgetcontributions: mock.MagicMock,
     tmp_path: Path,
@@ -1979,7 +1979,7 @@ def test_plotspectra_emission_draws_the_bins_around_a_narrow_x_range(tmp_path: P
     assert outputfile.is_file()
 
 
-@mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
+@mock.patch("artistools.spectra.core.get_flux_contributions_from_packets")
 def test_plotspectra_emission_takes_an_x_unit_other_than_angstroms(
     mockgetcontributions: mock.MagicMock, tmp_path: Path
 ) -> None:
@@ -2688,7 +2688,7 @@ def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
     plt.close(fig)
 
 
-@mock.patch("artistools.spectra.plotspectra.get_flux_contributions_from_packets")
+@mock.patch("artistools.spectra.core.get_flux_contributions_from_packets")
 def test_spectraemissionplot_forwards_the_velocity_ranges(mockgetcontributions: mock.MagicMock, tmp_path: Path) -> None:
     """The velocity range arguments must reach the packet reader that selects the contributions."""
     contribution_list: list[atspectra.FluxContributionTuple] = []
