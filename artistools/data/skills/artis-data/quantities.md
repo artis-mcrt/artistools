@@ -145,7 +145,7 @@ These options and commands describe a run:
   does not exist, it reads `artis/artisoptions.h`. ARTIS renamed some options on 2026-10-16, e.g.
   `MULTIBIN_RADFIELD_FIRST_TIMESTEP` was `FIRST_BINNED_RADFIELD_TIMESTEP` and, before that,
   `FIRST_NLTE_RADFIELD_TIMESTEP`. For an older model, also try each older name.
-- `at.plotlogfiles.read_time_taken(at.plotlogfiles.get_model_logfiles(modelpath))` gives the time of each part of
+- `at.logs.read_time_taken(at.logs.get_logfiles(Path(modelpath), None))` gives the time of each part of
   each time step, from the logs `output_*.txt`.
 - `artistools logsummary <modelpath>` counts the warnings and the errors of the logs by kind, with their time steps and
   the number of cells. Each rank logs the cells that it updates, thus `--ranks all` or `--modelgridindex <cell>` reads

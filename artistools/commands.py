@@ -267,7 +267,7 @@ subcommandtree: CommandTree = {
         examples=(("zsh", "the code of tab completion for zsh"),),
     ),
     "corehours": CommandSpec(
-        "corehours",
+        "logs.corehours",
         helptext="Sum the core hours of the runs of ARTIS models from the rank-0 logs of sn3d.",
         note=(
             "A run that stopped early gets an estimate from the timestamps of its log. The sum counts a copy of a log"
@@ -473,7 +473,7 @@ subcommandtree: CommandTree = {
         ),
     ),
     "logsummary": CommandSpec(
-        "logsummary",
+        "logs.logsummary",
         helptext="Count the warnings and the errors in the logs of an ARTIS model, by kind of message.",
         note="Each rank logs the cells that it updates, thus --ranks and --modelgridindex select the logs to read.",
         examples=((". --ranks all", "the warnings and the errors in the logs of all the ranks"),),
@@ -581,7 +581,7 @@ subcommandtree: CommandTree = {
         exampletestfolder="test-classicmode_3d",
     ),
     "plotlogfiles": CommandSpec(
-        "plotlogfiles",
+        "logs.plotlogfiles",
         helptext="Plot the time that each rank took.",
         note="The times come from the log files of each run of a model.",
         examples=(("--modelpath .", "the time that each rank took in each timestep"),),

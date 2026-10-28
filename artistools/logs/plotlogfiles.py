@@ -1,15 +1,15 @@
 """Plot per-rank stage durations from ARTIS log files."""
 
 import argparse
-import re
 import typing as t
-from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import polars as pl
 
+from artistools.logs.core import get_logfiles
+from artistools.logs.core import read_time_taken
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_legend
@@ -24,71 +24,11 @@ from artistools.misc import open_file
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
-from artistools.misc import zopen
 from artistools.plottools import apply_darkmode
 from artistools.plottools import make_frame_figure
 from artistools.plottools import set_legend
 
 defaultoutputfile = "plotlogfiles_{modelname}.pdf"
-
-
-def get_model_logfiles(modelpath: Path | str) -> list[Path]:
-    """Return the log of each rank of each run of a model, including compressed ones.
-
-    get_logfiles of logsummary also finds the log of a run that stopped before it wrote an estimator file, and a
-    restart with a different number of ranks.
-    """
-    from artistools.logsummary import get_logfiles
-
-    return get_logfiles(Path(modelpath), None)
-
-
-# ARTIS writes two forms of each line. The old form holds a Unix time and whole seconds:
-# "timestep 3: time after update grid for all processes 1699974033 (rank 0 took 1s, waited 0s, total 1s)".
-# The current form holds decimal seconds, and the grid line says "on" in place of "for":
-# "timestep 3: time after update grid on all processes (rank 0 took 1.2s, waited 0.3s, total 1.5s)"
-RE_STAGE_PERRANK = re.compile(
-    r"timestep (?P<timestep>\d+): time after (?P<stage>update grid|update packets) (?:for|on) all processes "
-    r"(?:\d+ )?\(rank (?P<rank>\d+) took (?P<seconds>\d+(?:\.\d*)?)s"
-)
-
-# "timestep 3: time after estimators have been communicated 1699974033 (took 0 seconds)" in the old form, and
-# "timestep 3: time after estimators have been communicated (took 0.4 seconds)" in the current form
-RE_ESTIMATORS = re.compile(
-    r"timestep (?P<timestep>\d+): time after estimators have been communicated (?:\d+ )?"
-    r"\(took (?P<seconds>\d+(?:\.\d*)?) seconds\)"
-)
-
-
-def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, dict[int, float]]]:
-    """Return {stage: {timestep: {mpi rank: seconds taken}}} parsed from ARTIS log files.
-
-    The stage communicate_estimators is the time of the MPI reduction of the estimators.
-    """
-    timetaken: dict[str, dict[int, dict[int, float]]] = {
-        "update_grid": {},
-        "update_packets": {},
-        "communicate_estimators": {},
-    }
-
-    for logfilepath in logfilepaths:
-        # the rank that wrote the file, e.g. output_12-0.txt -> 12
-        filerank = int(Path(logfilepath).name.split("-")[0].split("_")[-1])
-        with zopen(logfilepath, encoding="utf-8") as logfile:
-            for line in logfile:
-                if "took" not in line:
-                    continue
-                if match := RE_STAGE_PERRANK.search(line):
-                    stage = match["stage"].replace(" ", "_")
-                    rank = int(match["rank"])
-                elif match := RE_ESTIMATORS.search(line):
-                    stage = "communicate_estimators"
-                    rank = filerank
-                else:
-                    continue
-                timetaken[stage].setdefault(int(match["timestep"]), {}).setdefault(rank, float(match["seconds"]))
-
-    return timetaken
 
 
 def get_time_taken_table(dfdrawnlines: Sequence[pl.DataFrame]) -> pl.DataFrame:
@@ -198,7 +138,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     for modelpath in modelpaths:
         modelname = get_model_name(modelpath)
-        logfiledict = read_time_taken(get_model_logfiles(modelpath))
+        logfiledict = read_time_taken(get_logfiles(Path(modelpath), None))
         make_plot(
             logfiledict,
             # {0} is the field of the earlier default name

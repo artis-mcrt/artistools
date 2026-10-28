@@ -14,8 +14,8 @@ from itertools import starmap
 from operator import itemgetter
 from pathlib import Path
 
-from artistools.logsummary import get_folder_log_ranks
-from artistools.logsummary import get_unique_logfiles
+from artistools.logs.core import get_folder_log_ranks
+from artistools.logs.core import get_unique_logfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_decompress_errors

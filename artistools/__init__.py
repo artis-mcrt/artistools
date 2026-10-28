@@ -54,13 +54,13 @@ from artistools import hesma_scripts as hesma_scripts
 from artistools import inputmodel as inputmodel
 from artistools import lightcurve as lightcurve
 from artistools import lines as lines
+from artistools import logs as logs
 from artistools import make_vpkt_input as make_vpkt_input
 from artistools import misc as misc
 from artistools import nltepops as nltepops
 from artistools import nonthermal as nonthermal
 from artistools import packets as packets
 from artistools import plotlinefluxes as plotlinefluxes
-from artistools import plotlogfiles as plotlogfiles
 from artistools import plotradfield as plotradfield
 from artistools import plotspherical as plotspherical
 from artistools import plottools as plottools

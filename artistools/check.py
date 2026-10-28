@@ -37,10 +37,10 @@ from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import get_from_packets
 from artistools.lightcurve import get_katz_integral
 from artistools.lightcurve import scan_lightcurve
-from artistools.logsummary import get_folder_log_ranks
-from artistools.logsummary import get_log_summary
-from artistools.logsummary import get_logfiles
-from artistools.logsummary import get_logged_rank_count
+from artistools.logs import get_folder_log_ranks
+from artistools.logs import get_log_summary
+from artistools.logs import get_logfiles
+from artistools.logs import get_logged_rank_count
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_table_output
 from artistools.misc import exit_with_error

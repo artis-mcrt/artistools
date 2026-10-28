@@ -1,49 +1,46 @@
-"""Count the warnings and the errors in the logs of an ARTIS model, by kind of message.
+"""Read the log files of the ranks of an ARTIS run: the messages, the ranks, and the time that each stage took."""
 
-Each MPI rank writes its own log, e.g. output_12-0.txt, and it logs the cells that it updates. The command reads the log
-of rank 0 of each run folder. --ranks or --modelgridindex selects the logs of other ranks. A kind of message is its text
-with each number replaced by N, thus the same warning for different cells and timesteps is one kind.
-"""
-
-import argparse
 import filecmp
 import itertools
 import re
-import typing as t
+from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 
-from artistools.misc import addarg_modelgridindex
-from artistools.misc import addarg_modelpath
-from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import format_range_list
 from artistools.misc import get_decompress_errors
 from artistools.misc import get_dfrankassignments
-from artistools.misc import get_model_folder
 from artistools.misc import get_npts_model
 from artistools.misc import get_ranks_of_cells_in_layout
 from artistools.misc import get_run_subfolders
 from artistools.misc import on_model_host
 from artistools.misc import parallel_map
-from artistools.misc import parse_cli_args
-from artistools.misc import parse_range_list
-from artistools.misc import print_detail
-from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import without_compressed_extension
 from artistools.misc import zopen
 
 # the current ARTIS tags a message with [warning] or [error], and an older ARTIS writes WARNING or ERROR
 RE_LEVEL = re.compile(r"\[(warning|error)\]|\b(WARNING|ERROR)\b")
+
+
 RE_TIMESTEP = re.compile(r"timestep (\d+): time before update grid")
+
+
 RE_CELL = re.compile(r"\b(?:modelcell|modelgridindex|cell) (\d+)")
+
+
 RE_MPIRANKS = re.compile(r"rank \d+ of \[0\.\.(\d+)\] in MPI_COMM_WORLD")
+
+
 RE_LOGFILENAME = re.compile(r"output_(\d+)-0\.txt(?:\.gz|\.xz|\.zst)?")
+
+
 RE_NUMBER = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+
 
 MESSAGESCHEMA = {
     "level": pl.String,
@@ -265,37 +262,50 @@ def get_log_summary(logfiles: list[Path]) -> pl.DataFrame:
     return combine_log_summaries(parallel_map(read_log_summary, logfiles, desc="logs", unit="log"))
 
 
-def addargs(parser: argparse.ArgumentParser) -> None:
-    """Add arguments to an argparse parser object."""
-    addarg_modelpath(parser, positional=True, default=Path())
-    parser.add_argument(
-        "-ranks", default="0", help='The MPI ranks of the logs to read, e.g. 0-3,8 or "all". The default is 0'
-    )
-    addarg_modelgridindex(parser, helptext="Read the logs of the ranks that update these cells, in place of --ranks")
+# ARTIS writes two forms of each line. The old form holds a Unix time and whole seconds:
+# "timestep 3: time after update grid for all processes 1699974033 (rank 0 took 1s, waited 0s, total 1s)".
+# The current form holds decimal seconds, and the grid line says "on" in place of "for":
+# "timestep 3: time after update grid on all processes (rank 0 took 1.2s, waited 0.3s, total 1.5s)"
+RE_STAGE_PERRANK = re.compile(
+    r"timestep (?P<timestep>\d+): time after (?P<stage>update grid|update packets) (?:for|on) all processes "
+    r"(?:\d+ )?\(rank (?P<rank>\d+) took (?P<seconds>\d+(?:\.\d*)?)s"
+)
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Count the warnings and the errors in the logs of an ARTIS model, by kind of message."""
-    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    modelpath = get_model_folder(args.modelpath)
-    ranks: list[int] | None
-    cells: list[int] | None = None
-    if args.modelgridindex:
-        ranks, cells = None, list(args.modelgridindex)
-    elif args.ranks == "all":
-        ranks = None
-    else:
-        ranks = parse_range_list(args.ranks)
+# "timestep 3: time after estimators have been communicated 1699974033 (took 0 seconds)" in the old form, and
+# "timestep 3: time after estimators have been communicated (took 0.4 seconds)" in the current form
+RE_ESTIMATORS = re.compile(
+    r"timestep (?P<timestep>\d+): time after estimators have been communicated (?:\d+ )?"
+    r"\(took (?P<seconds>\d+(?:\.\d*)?) seconds\)"
+)
 
-    logfiles = get_logfiles(modelpath, ranks, cells)
-    if not logfiles:
-        exit_with_error(f"{modelpath} has no log of the ranks {args.ranks}", "Give --ranks with ranks that ran")
-    if cells is not None:
-        rankstext = f"the ranks that update the cells {', '.join(str(cell) for cell in cells)} in each run folder"
-    elif ranks is None:
-        rankstext = "each rank that has a log in each run folder"
-    else:
-        rankstext = f"the ranks {', '.join(str(rank) for rank in ranks)}"
-    print_detail(f"Reading {len(logfiles)} logs of {rankstext}")
 
-    print_product(args, get_log_summary(logfiles))
+def read_time_taken(logfilepaths: Iterable[Path | str]) -> dict[str, dict[int, dict[int, float]]]:
+    """Return {stage: {timestep: {mpi rank: seconds taken}}} parsed from ARTIS log files.
+
+    The stage communicate_estimators is the time of the MPI reduction of the estimators.
+    """
+    timetaken: dict[str, dict[int, dict[int, float]]] = {
+        "update_grid": {},
+        "update_packets": {},
+        "communicate_estimators": {},
+    }
+
+    for logfilepath in logfilepaths:
+        # the rank that wrote the file, e.g. output_12-0.txt -> 12
+        filerank = int(Path(logfilepath).name.split("-")[0].split("_")[-1])
+        with zopen(logfilepath, encoding="utf-8") as logfile:
+            for line in logfile:
+                if "took" not in line:
+                    continue
+                if match := RE_STAGE_PERRANK.search(line):
+                    stage = match["stage"].replace(" ", "_")
+                    rank = int(match["rank"])
+                elif match := RE_ESTIMATORS.search(line):
+                    stage = "communicate_estimators"
+                    rank = filerank
+                else:
+                    continue
+                timetaken[stage].setdefault(int(match["timestep"]), {}).setdefault(rank, float(match["seconds"]))
+
+    return timetaken

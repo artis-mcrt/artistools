@@ -166,8 +166,8 @@ def get_log_summary_table(modelfolder: Path) -> "tuple[list[str], pl.DataFrame |
     The table is None if the model has no log of rank 0. The host of a remote model gives the names, because it
     expands "~" in the model folder and in the paths of the logs.
     """
-    from artistools.logsummary import get_log_summary
-    from artistools.logsummary import get_logfiles
+    from artistools.logs import get_log_summary
+    from artistools.logs import get_logfiles
 
     logfiles = get_logfiles(modelfolder, [0])
     lognames = [str(logfile.relative_to(modelfolder)) for logfile in logfiles]

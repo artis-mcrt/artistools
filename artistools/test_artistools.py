@@ -1352,7 +1352,7 @@ def test_plotspherical_gif(tmp_path: Path) -> None:
 @pytest.mark.benchmark
 def test_logfiles(mockplot: mock.MagicMock) -> None:
     """Log file timings are parsed for every stage and rank, and plotted one page per timestep."""
-    logfilepaths = at.plotlogfiles.get_model_logfiles(modelpath_classic_3d)
+    logfilepaths = at.logs.get_logfiles(Path(modelpath_classic_3d), None)
     # compressed log files must be read too, not skipped
     assert sorted(path.name for path in logfilepaths) == [
         "output_0-0.txt",
@@ -1361,7 +1361,7 @@ def test_logfiles(mockplot: mock.MagicMock) -> None:
         "output_1-0.txt.zst",
     ]
 
-    timetaken = at.plotlogfiles.read_time_taken(logfilepaths)
+    timetaken = at.logs.core.read_time_taken(logfilepaths)
     assert set(timetaken) == {"update_grid", "update_packets", "communicate_estimators"}
     for stage, bytimestep in timetaken.items():
         assert len(bytimestep) == 30, f"expected 30 timesteps of {stage} timings"
@@ -1373,7 +1373,7 @@ def test_logfiles(mockplot: mock.MagicMock) -> None:
 
     funcoutpath = outputpath / funcname()
     funcoutpath.mkdir(exist_ok=True, parents=True)
-    at.plotlogfiles.main(argsraw=[], modelpath=[modelpath_classic_3d], outputfile=funcoutpath / "logfiles.pdf")
+    at.logs.plotlogfiles.main(argsraw=[], modelpath=[modelpath_classic_3d], outputfile=funcoutpath / "logfiles.pdf")
 
     # one line per stage on each of the 30 per-timestep pages
     assert len(mockplot.call_args_list) == 3 * 30
@@ -1399,7 +1399,7 @@ def test_logfiles_read_the_old_and_the_current_log_format(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    timetaken = at.plotlogfiles.read_time_taken([tmp_path / "output_0-0.txt"])
+    timetaken = at.logs.core.read_time_taken([tmp_path / "output_0-0.txt"])
 
     assert timetaken["update_grid"] == {3: {0: pytest.approx(1.2)}, 2: {0: pytest.approx(2.0)}}
     assert timetaken["update_packets"] == {3: {0: pytest.approx(3.5)}, 2: {0: pytest.approx(7.0)}}
@@ -7772,7 +7772,7 @@ def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
 
 def test_logsummary_log_that_cannot_be_read_is_not_a_copy(tmp_path: Path) -> None:
     """A log with no read permission stopped the search for a copy, and the reader of that log reports the problem."""
-    from artistools.logsummary import are_copies
+    from artistools.logs.core import are_copies
 
     modellog = tmp_path / "output_0-0.txt"
     modellog.write_text("sn3d launched\n", encoding="utf-8")
@@ -7812,10 +7812,10 @@ def test_logsummary_combines_the_summary_of_each_log() -> None:
 
     The combination must give the summary of all the messages: the sums, the bounds, the cells, and the first example.
     """
-    from artistools.logsummary import get_log_summary
-    from artistools.logsummary import get_logfiles
-    from artistools.logsummary import read_log_messages
-    from artistools.logsummary import summarise_log_messages
+    from artistools.logs.core import get_log_summary
+    from artistools.logs.core import get_logfiles
+    from artistools.logs.core import read_log_messages
+    from artistools.logs.core import summarise_log_messages
 
     logfiles = get_logfiles(modelpath_classic_3d, None)
     assert len(logfiles) > 2
@@ -7847,7 +7847,7 @@ def test_logsummary_reads_two_gzip_copies_of_a_log_once(tmp_path: Path, capsys: 
 
 def test_log_reader_finds_a_message_on_the_line_of_a_timestep(tmp_path: Path) -> None:
     """The reader took the timestep from the line and went on to the next line, thus it left out the message."""
-    from artistools.logsummary import read_log_messages
+    from artistools.logs.core import read_log_messages
 
     logfile = tmp_path / "output_0-0.txt"
     logfile.write_text(
@@ -7911,7 +7911,7 @@ def read_data_file(path: Path) -> pl.DataFrame:
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_logfiles_write_data_holds_the_plotted_times(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """The table of --write_data must give each line of each page: the mpi ranks and the seconds of each stage."""
-    at.plotlogfiles.main(
+    at.logs.plotlogfiles.main(
         argsraw=[], modelpath=[modelpath_classic_3d], outputfile=tmp_path / "logfiles.pdf", write_data=True
     )
 
@@ -7931,7 +7931,7 @@ def test_logfiles_with_no_timing_data_replace_the_table_of_an_earlier_run(tmp_pa
     tablefile = tmp_path / "logfiles.txt"
     tablefile.write_text("timestep mpirank update_grid_s\n5 0 1.0\n", encoding="utf-8")
     args = argparse.Namespace(print_data=False, write_data=True)
-    at.plotlogfiles.make_plot({}, tmp_path / "logfiles.pdf", args=args)
+    at.logs.plotlogfiles.make_plot({}, tmp_path / "logfiles.pdf", args=args)
     assert "the table has no rows" in tablefile.read_text(encoding="utf-8")
 
 

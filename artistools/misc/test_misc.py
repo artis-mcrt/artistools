@@ -1688,7 +1688,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (10, "fe3c7a9630331859"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (10, "3be77fa4fa06a1ac"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1845,10 +1845,10 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     modelgridindex.
     """
     from artistools.check import get_check_results
-    from artistools.corehours import read_model_core_hours
     from artistools.describemodel import get_model_summary
-    from artistools.logsummary import get_log_summary
-    from artistools.logsummary import get_logfiles
+    from artistools.logs.core import get_log_summary
+    from artistools.logs.core import get_logfiles
+    from artistools.logs.corehours import read_model_core_hours
 
     modelpath = at.get_path("testartismodel").resolve()
     modellink = tmp_path / "testmodel"

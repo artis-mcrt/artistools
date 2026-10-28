@@ -22,8 +22,8 @@ from artistools.atomic import get_ionstring
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_modeldata
 from artistools.lightcurve import scan_lightcurve
-from artistools.logsummary import get_logfiles
-from artistools.logsummary import RE_TIMESTEP
+from artistools.logs import get_logfiles
+from artistools.logs import RE_TIMESTEP
 from artistools.misc import addarg_modelpath
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_options
