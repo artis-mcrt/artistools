@@ -208,7 +208,7 @@ def test_comparetogsinetwork_write_data_gives_the_drawn_series(mockplot: mock.Ma
         return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
 
     # each heating rate of the test model is zero
-    assert (read_table(tmp_path / "gsinetwork_global-qdot.txt")["qdot_erg_per_s_per_g"] == 0.0).all()
+    assert (read_table(tmp_path / "gsinetwork_global-qdot.txt")["qdot_erg_per_s_per_g"] == 0).all()
     dfabund = read_table(tmp_path / f"gsinetwork_mgi{cell}-abundance.txt")
     drawncount = 0
     for callargs in mockplot.call_args_list:

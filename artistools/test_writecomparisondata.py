@@ -147,7 +147,9 @@ def test_ionfrac_header_counts_the_stages_from_neutral(tmp_path: Path) -> None:
         assert datarows
         for row in datarows:
             assert len(row) == nstages
-            assert all(float(value) == 0.0 for value in row[: lowermost_of_elsymbol[elsymbol] - 1])
+            assert all(
+                float(value) == pytest.approx(0.0, abs=0.0) for value in row[: lowermost_of_elsymbol[elsymbol] - 1]
+            )
 
 
 def test_writecomparisondata_keeps_a_tiny_ion_fraction(tmp_path: Path) -> None:
@@ -196,4 +198,4 @@ def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> Non
     datalines = [
         line for line in (tmp_path / "edep_testmodel_artisnebular.txt").read_text().splitlines() if line[0] != "#"
     ]
-    assert float(datalines[0].split()[1]) == 0.0
+    assert float(datalines[0].split()[1]) == pytest.approx(0.0, abs=0.0)

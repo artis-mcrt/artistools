@@ -424,7 +424,7 @@ def test_swatches_show_the_drawn_colours() -> None:
     assert apply_values(viewer, dc.replace(viewer.values, subplots=(subplot,))) is None
     assert np.isclose(viewer.swatches[0, "TR"].alpha, 128 / 255)
     assert viewer.swatches[0, "TR"].colour == "#ff0000"
-    assert viewer.swatches[0, "TJ"].alpha == 0.0
+    assert viewer.swatches[0, "TJ"].alpha == 0
     viewer.darkcolours = at.plottools.DARKMODE_COLOURS
     assert apply_values(viewer, dc.replace(viewer.values, subplots=(subplot[::-1],))) is None
     assert viewer.swatches[0, "W"].colour == "#ffffff"

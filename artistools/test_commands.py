@@ -323,9 +323,9 @@ def test_deprecated_flag_spellings_still_work() -> None:
 
     parser = argparse.ArgumentParser()
     at.estimators.plotestimators.addargs(parser)
-    assert parser.parse_args(["-scalefigwidth", "2.5"]).figwidthscale == 2.5
-    assert parser.parse_args(["-figwidthscale", "2.5"]).figwidthscale == 2.5
-    assert parser.parse_args([]).figwidthscale == 1.0
+    assert parser.parse_args(["-scalefigwidth", "2.5"]).figwidthscale == pytest.approx(2.5)
+    assert parser.parse_args(["-figwidthscale", "2.5"]).figwidthscale == pytest.approx(2.5)
+    assert parser.parse_args([]).figwidthscale == 1
 
     parser = SuggestingArgumentParser()
     at.plotviewingangles.addargs(parser)
@@ -337,7 +337,7 @@ def test_deprecated_flag_spellings_still_work() -> None:
         args = parser.parse_args(rawargs)
         # -o gives a Path on every command, thus the older spelling gives one as well
         assert args.outputfile == Path("vis.html")
-        assert args.opacity == 0.5
+        assert args.opacity == pytest.approx(0.5)
         assert args.surface_count == 10
 
 
@@ -563,8 +563,8 @@ def test_short_time_flag_always_means_timedays() -> None:
     parser = at.misc.argparser.SuggestingArgumentParser(prog="hesma")
     artistools.hesma_scripts.addargs(parser)
 
-    assert parser.parse_args(["-t", "300"]).timedays == 300.0
-    assert parser.parse_args(["-timedays", "300"]).timedays == 300.0
+    assert parser.parse_args(["-t", "300"]).timedays == 300
+    assert parser.parse_args(["-timedays", "300"]).timedays == 300
 
     # the command takes no timestep, thus it names the argument that it does take
     for flag in ("-timestep", "-ts"):

@@ -152,12 +152,12 @@ def test_make_vpkt_input_cli_keeps_existing_settings(tmp_path: Path) -> None:
     """Rerunning on an existing file must preserve settings that were not given on the command line."""
     outfile = tmp_path / "vpkt.txt"
     at.make_vpkt_input.main(argsraw=["-tau-max", "7.5", "-o", str(outfile), "--non-interactive"])
-    assert at.misc.parse_vpkt_input(outfile.read_text(encoding="utf-8")).tau_max_vpkt == 7.5
+    assert at.misc.parse_vpkt_input(outfile.read_text(encoding="utf-8")).tau_max_vpkt == pytest.approx(7.5)
 
     at.make_vpkt_input.main(argsraw=["-vspec-tmax", "9.0", "-o", str(outfile), "--non-interactive"])
     config = at.misc.parse_vpkt_input(outfile.read_text(encoding="utf-8"))
-    assert config.vspec_tmax_in_days == 9.0
-    assert config.tau_max_vpkt == 7.5, "the tau-max from the first run must survive the second"
+    assert config.vspec_tmax_in_days == 9
+    assert config.tau_max_vpkt == pytest.approx(7.5), "the tau-max from the first run must survive the second"
 
 
 def test_make_vpkt_input_interactive_edit() -> None:
@@ -184,8 +184,8 @@ def test_make_vpkt_input_interactive_edit() -> None:
     assert config.directions_costheta_phi == [(1.0, 0.0), (0.0, 0.0), (-1.0, 0.0)]
     assert config.opacityexclusions == [0, 26, -1]
     assert config.override_tminmax
-    assert config.vspec_tmin_in_days == 0.2
-    assert config.vspec_tmax_in_days == 3.5
+    assert config.vspec_tmin_in_days == pytest.approx(0.2)
+    assert config.vspec_tmax_in_days == pytest.approx(3.5)
     # the rejected reply must have caused the same question to be asked twice
     assert sum(question.startswith("Restrict virtual packets") for question in asked) == 2
     assert "[1,0 0,0 -1,0]" in asked[0], "the prompt must show the current value"

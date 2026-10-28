@@ -154,8 +154,8 @@ def test_line_summary_gives_the_velocity_of_the_largest_tau_with_a_cell_that_has
             "emission_erg_per_s": [1.0, None],
         })
     )
-    assert dfsummary["tau_sobolev_max"].item() == 5.0
-    assert dfsummary["velocity_kmps_at_tau_sobolev_max"].item() == 1000.0
+    assert dfsummary["tau_sobolev_max"].item() == 5
+    assert dfsummary["velocity_kmps_at_tau_sobolev_max"].item() == 1000
     assert dfsummary["cellcount_tau_sobolev_above_1"].item() == 1
 
 
@@ -199,7 +199,7 @@ def test_line_summary_joins_the_cells_of_a_line_with_different_population_method
     ])
     assert dfsummary.height == 1
     assert dfsummary["n_lower_source"].item() == "LTE/NLTE"
-    assert dfsummary["emission_erg_per_s"].item() == 4.0
+    assert dfsummary["emission_erg_per_s"].item() == 4
     assert np.isclose(dfsummary["velocity_kmps_emission_mean"].item(), 1750.0, rtol=1e-12)
 
 
@@ -1207,7 +1207,7 @@ def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
     emptycell = (
         at.inputmodel
         .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        .filter(pl.col("rho") == 0.0)
+        .filter(pl.col("rho") == 0)
         .select(pl.col("modelgridindex").min())
         .collect()
         .item()

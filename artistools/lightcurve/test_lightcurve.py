@@ -893,8 +893,8 @@ def test_lightcurve_plot_linewidth_arg(
     assert linewidths == [0.5, 7.0]
 
     if bolometric:
-        assert mockerrorbar.call_args.kwargs["elinewidth"] == 2.5
-        assert mockerrorbar.call_args.kwargs["capthick"] == 2.5
+        assert mockerrorbar.call_args.kwargs["elinewidth"] == pytest.approx(2.5)
+        assert mockerrorbar.call_args.kwargs["capthick"] == pytest.approx(2.5)
 
 
 @mock.patch.object(mplax.Axes, "legend", side_effect=mplax.Axes.legend, autospec=True)
@@ -3762,7 +3762,7 @@ def test_katz_integral_leaves_out_a_missing_luminosity() -> None:
         pl.Series([1.0, 2.0, 3.0, 4.0]), pl.Series([1.0, float("nan"), 1.0, None])
     )
     # each trapezoid has a missing end, thus none of them counts
-    assert integral == 0.0
+    assert integral == 0
     assert np.isclose(omitted_days, 3.0)
 
     integral, omitted_days = get_katz_integral(

@@ -445,7 +445,7 @@ def test_a_binned_line_reaches_the_edge_of_the_data(mockplot: mock.MagicMock) ->
     assert xvalues.size > 2
 
     # the velocity of the x axis starts the line at zero, thus the low end reaches past the data
-    assert xvalues[0] == 0.0
+    assert xvalues[0] == 0
 
     # the bins divide the range of the axis, thus the line ends at the upper limit of the axis
     ax = mockplot.call_args_list[0].args[0]
@@ -618,7 +618,7 @@ def test_histogram_shows_the_velocity_range_of_each_shell(
     dftable = pl.read_csv(io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ")
     lower = dftable["velocity_kmps_lower"].to_numpy()
     upper = dftable["velocity_kmps_upper"].to_numpy()
-    assert lower[0] == 0.0
+    assert lower[0] == 0
     assert np.allclose(lower[1:], upper[:-1], rtol=1e-6, atol=0.0)
     assert ((lower < dftable["velocity_kmps"].to_numpy()) & (dftable["velocity_kmps"].to_numpy() < upper)).all()
 

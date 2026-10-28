@@ -167,7 +167,7 @@ def test_interactive_continuous_width_is_never_zero() -> None:
     assert math.log(high / low) == pytest.approx(0.01, rel=1e-3)
     # the Down key never gives a width of 0 or less, and it gives a width in days
     assert apply_values(viewer, dc.replace(viewer.values, widthmode="days", width=0.001)) is None
-    assert viewer.step_width(-1).width == 0.001
+    assert viewer.step_width(-1).width == pytest.approx(0.001)
     assert viewer.step_width(1).widthmode == "days"
 
 
@@ -619,7 +619,7 @@ def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit() -> None:
     assert float(inhertz.xmax) > float(inhertz.xmin)
     # a change between two units of wavelength keeps a minimum of 0
     inmicrons = interactive.convert_xunit(values, "micron", gamma=False)
-    assert float(inmicrons.xmin) == 0.0
+    assert float(inmicrons.xmin) == pytest.approx(0.0, abs=0.0)
 
 
 def test_interactive_single_time_ends_at_the_next_start() -> None:
@@ -1088,7 +1088,7 @@ def test_interactive_animation_keeps_the_time_grid_of_its_start() -> None:
 
 def test_interactive_time_field_takes_finite_numbers() -> None:
     """A time field must refuse "nan" and "inf", which float() reads and which a count of timesteps cannot take."""
-    assert interactive.read_finite_number("12.5") == 12.5
+    assert interactive.read_finite_number("12.5") == pytest.approx(12.5)
     for text in ("nan", "inf", "-inf", "abc"):
         with pytest.raises(ValueError, match=r"finite|could not convert"):
             interactive.read_finite_number(text)

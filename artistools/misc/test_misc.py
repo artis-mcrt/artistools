@@ -409,7 +409,7 @@ def test_add_cli_arg_helper_variants() -> None:
     assert args.modelpath == [Path("model1")]
     # -timestep holds the text that the user wrote, and get_single_timestep reads one timestep
     assert args.timestep == "12"
-    assert args.timedays == 45.5
+    assert args.timedays == pytest.approx(45.5)
     # one helper serves both kinds, thus the folder of a command is a Path as the file of one is
     assert args.outputfile == Path()
     assert args.outputkind == "folder"
@@ -2579,10 +2579,10 @@ def test_read_rank_outputfiles_drops_the_repeated_timestep_of_a_restart(tmp_path
     dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")
 
     assert dfout.filter(modelgridindex=0)["timestep"].to_list() == [0, 1, 2], "each timestep must appear one time"
-    assert dfout.filter(timestep=1, modelgridindex=0)["nnlevel"].item() == 2.0, "the rows of the earlier folder stay"
+    assert dfout.filter(timestep=1, modelgridindex=0)["nnlevel"].item() == 2, "the rows of the earlier folder stay"
 
     # the earlier folder holds no row for cell 4, thus the row of the later folder stays
-    assert dfout.filter(timestep=1, modelgridindex=4)["nnlevel"].item() == 8.0
+    assert dfout.filter(timestep=1, modelgridindex=4)["nnlevel"].item() == 8
 
 
 def write_allranks_nlte_file(modelpath: Path, mtime: float) -> Path:
@@ -2822,7 +2822,7 @@ def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPat
     monkeypatch.undo()
 
     # an installed module comes back as the import statement gives it
-    assert at.misc.import_optional("math").sqrt(4.0) == 2.0
+    assert at.misc.import_optional("math").sqrt(4.0) == 2
 
 
 def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:

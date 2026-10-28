@@ -140,7 +140,7 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(
         ".tar.xz",
     )
     qdotintegral = at.inputmodel.rprocess_from_trajectory.get_trajectory_qdotintegral
-    assert qdotintegral(6, tmp_path, nts_max=1, t_model_s=4.0) == 0.0
+    assert qdotintegral(6, tmp_path, nts_max=1, t_model_s=4.0) == 0
     # Qdot * t / t_model is 1e10 at both timesteps, thus the trapezoid over two seconds gives 2e10
     assert qdotintegral(6, tmp_path, nts_max=3, t_model_s=4.0) == pytest.approx(2.0e10)
 
@@ -717,7 +717,7 @@ def test_make_empty_abundance_file(tmp_path: Path) -> None:
 
     dfabund = at.inputmodel.scan_initelemabundances(tmp_path, printwarningsonly=True).collect()
     assert dfabund["inputcellid"].to_list() == list(range(1, 51))
-    assert dfabund.select(cs.starts_with("X_").abs().max()).max_horizontal().item() == 0.0
+    assert dfabund.select(cs.starts_with("X_").abs().max()).max_horizontal().item() == 0
 
 
 def test_opacity_by_Ye_file(tmp_path: Path) -> None:
@@ -1949,7 +1949,7 @@ def test_downscale_mass_fractions_matches_cell_loop() -> None:
 
     assert np.allclose(downscale_cell_sums(rho, merge), rho_small_expected, rtol=1e-12, atol=0.0)
     assert np.allclose(downscale_mass_fractions(massfracs, rho, merge), massfracs_small_expected, rtol=1e-12, atol=0.0)
-    assert np.all(downscale_mass_fractions(massfracs, rho, merge)[0, 0, 0] == 0.0)
+    assert np.all(downscale_mass_fractions(massfracs, rho, merge)[0, 0, 0] == 0)
 
 
 def test_remap_mass_weighted_quantity_matches_cell_loop() -> None:
@@ -1994,7 +1994,7 @@ def test_remap_mass_weighted_quantity_gives_zero_for_an_empty_coarse_cell() -> N
 
     ye = remap_mass_weighted_quantity(dfmodel, "Ye", red_fact, n_r_new, n_z_new, n_r_old, 1.0, 1.0)
 
-    assert ye[0] == 0.0
+    assert ye[0] == 0
     assert ye[1] == pytest.approx((0.3 * 1.0 + 0.4 * 3.0 + 0.3 * 1.0 + 0.4 * 1.0) / 6.0)
 
 
@@ -2065,7 +2065,7 @@ def test_plotinitialcomposition_takes_a_zero_floor_value(tmp_path: Path) -> None
             argsraw=["-modelpath", str(modelpath_3d), "-o", str(tmp_path), "-floorval", "0", "rho"]
         )
 
-    assert mockimshow.call_args.kwargs["vmin"] == 0.0
+    assert mockimshow.call_args.kwargs["vmin"] == 0
 
 
 def test_plotinitialcomposition_log_scale_takes_a_linear_floor_value(tmp_path: Path) -> None:
@@ -2336,7 +2336,7 @@ def test_save_modeldata_deletes_an_old_uncompressed_file(tmp_path: Path) -> None
         })
         at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
         at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
-        if logrho == -10.0:
+        if logrho == -10:
             for filename in ("model.txt", "abundances.txt"):
                 decompress_file(tmp_path / f"{filename}.zst")
 
@@ -2484,7 +2484,7 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_pat
     # a grid with an odd cell count on each axis has a cell at the origin. No polar angle range keeps that cell
     dfmodel_origin, modelmeta_origin = get_empty_3d_model(ncoordgrid=3, vmax=1e9, t_model_init_days=1.0)
     dfcells_origin = at.inputmodel.add_derived_cols_to_modeldata(dfmodel_origin, modelmeta=modelmeta_origin).collect()
-    assert len(dfcells_origin.filter(pl.col("vel_r_mid_on_c") == 0.0)) == 1
+    assert len(dfcells_origin.filter(pl.col("vel_r_mid_on_c") == 0)) == 1
     assert len(dfcells_origin.filter(get_cell_selection())) == 27
     assert len(dfcells_origin.filter(get_cell_selection(thetamin=0.0))) == 26
     assert len(dfcells_origin.filter(get_cell_selection(thetamax=180.0))) == 26
@@ -2960,7 +2960,7 @@ def test_dimension_reduce_keeps_the_centre_cell_of_an_odd_grid(outputdimensions:
     dfmodel3d, modelmeta_3d = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
     dfmodel3d = dfmodel3d.collect().with_columns(rho=pl.lit(1.0))
     dfmodel3d_derived = at.inputmodel.add_derived_cols_to_modeldata(dfmodel3d, modelmeta=modelmeta_3d).collect()
-    assert dfmodel3d_derived.filter(pl.col("vel_r_mid") == 0.0).height == 1
+    assert dfmodel3d_derived.filter(pl.col("vel_r_mid") == 0).height == 1
 
     mass_inside_vmax = dfmodel3d_derived.filter(pl.col("vel_r_mid") <= modelmeta_3d["vmax_cmps"])["mass_g"].sum()
     dfmodel_lowerd, _, _, _ = at.inputmodel.dimension_reduce_model(

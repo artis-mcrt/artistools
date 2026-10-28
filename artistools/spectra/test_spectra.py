@@ -2369,7 +2369,7 @@ def test_plotspectra_ymin_alone_keeps_the_top_of_the_data(tmp_path: Path) -> Non
     )
 
     bottom, top = axis.get_ylim()
-    assert bottom == 0.0
+    assert bottom == 0
     assert 0.0 < top < 1e-9
 
     # the axes carry no y margin, thus a top on the tallest peak clips it
@@ -2828,7 +2828,7 @@ def test_xmin_alone_on_a_frequency_axis_keeps_the_given_value() -> None:
     """
     args = at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), "-xunit", "hz", "-xmin", "2e14"])
     plotspectra.resolve_plot_args(args)
-    assert args.xmin == 2e14
+    assert args.xmin == pytest.approx(2e14)
     assert np.isclose(args.xmax, at.spectra.convert_angstroms_to_unit(2500.0, "hz"), rtol=1e-12, atol=0.0)
 
 

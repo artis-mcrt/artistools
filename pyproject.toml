@@ -332,7 +332,6 @@ ignore = [
     "too-many-arguments",
     "too-many-statements",
     "magic-value-comparison",
-    "float-equality-comparison",
     "assert",
     "print",
 ]
@@ -354,6 +353,8 @@ unfixable = [
     "banned-api",
 ]
 "**/conftest.py" = ["undocumented-public-module", "undocumented-public-function"]
+# a test compares floats with a tolerance, thus the rule applies to the tests alone
+"!**/test_*.py" = ["float-equality-comparison"]
 "tests/__init__.py" = ["undocumented-public-package"]
 "artistools/misc/test_commandoutput.py" = ["suspicious-subprocess-import"]
 "artistools/misc/test_misc.py" = ["suspicious-subprocess-import"]
