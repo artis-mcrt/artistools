@@ -29,12 +29,12 @@ from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite_matches
 from artistools.misc import exit_with_error
 from artistools.misc import get_deposition
+from artistools.misc import get_runfolder_timesteps
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.spectra import read_spec
 
 

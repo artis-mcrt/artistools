@@ -17,9 +17,11 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import CommaJoinAction
 from artistools.misc import get_artis_options
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
+from artistools.misc import get_provenance_lines
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
@@ -30,8 +32,6 @@ from artistools.misc import print_product
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
-from artistools.misc.cliutils import CommaJoinAction
-from artistools.misc.commandoutput import get_provenance_lines
 
 DEPOSITIONPREFIX = "deposition_"
 DEFAULTOUTPUTNAME = "deposition.txt"

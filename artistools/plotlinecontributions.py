@@ -27,10 +27,12 @@ from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
+from artistools.misc import check_dirbin
 from artistools.misc import exit_with_error
 from artistools.misc import format_costheta_range
 from artistools.misc import get_artis_option
 from artistools.misc import get_costheta_range
+from artistools.misc import get_dirbin_labels
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_selected_timestep
@@ -39,12 +41,10 @@ from artistools.misc import get_timestep_times
 from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import positive_int_arg
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.dirbins import check_dirbin
-from artistools.misc.dirbins import get_dirbin_labels
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity

@@ -28,17 +28,17 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_options
 from artistools.misc import get_model_folder
+from artistools.misc import get_rank_outputfiles
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
+from artistools.misc import get_viewingdirection_costhetabincount
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import get_vpkt_config
+from artistools.misc import on_model_host
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
 from artistools.misc import zopen
-from artistools.misc.dirbins import get_viewingdirection_costhetabincount
-from artistools.misc.dirbins import get_viewingdirection_phibincount
-from artistools.misc.dirbins import get_viewingdirectionbincount
-from artistools.misc.modelinfo import get_rank_outputfiles
-from artistools.misc.modelinfo import get_vpkt_config
-from artistools.misc.remote import on_model_host
 from artistools.packets import count_packets_textfiles
 from artistools.packets import has_packets_files
 

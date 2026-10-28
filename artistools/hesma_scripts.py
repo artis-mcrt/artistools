@@ -24,6 +24,7 @@ from artistools.misc import addarg_unsupported
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
+from artistools.misc import get_standard_flag
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
@@ -32,7 +33,6 @@ from artistools.misc import read_wsv
 from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
 from artistools.misc import split_multitable_dataframe
-from artistools.misc.argparser import get_standard_flag
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend

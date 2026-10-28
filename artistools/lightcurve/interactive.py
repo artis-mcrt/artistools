@@ -40,10 +40,10 @@ from artistools.misc import get_deposition
 from artistools.misc import get_file_metadata
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
+from artistools.misc import is_remote_path
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc.modelpaths import resolve_modelpath
-from artistools.misc.remote import is_remote_path
+from artistools.misc import resolve_modelpath
 from artistools.paths import get_path
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES

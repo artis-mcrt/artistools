@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     from artistools.commands import get_epilog
     from artistools.commands import subcommandtree
     from artistools.commands import VersionAction
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
 
     parserkwargs: dict[str, t.Any] = {
         "formatter_class": CommandListFormatter,
@@ -53,7 +53,7 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     """
     import time
 
-    from artistools.misc.commandoutput import print_collected_data
+    from artistools.misc import print_collected_data
 
     quiet = getattr(args, "quiet", False)
     starttime = time.monotonic()
@@ -87,8 +87,8 @@ def resolve_or_explain(
     argparser: argparse.ArgumentParser, args: argparse.Namespace, argsraw: Sequence[str] | None
 ) -> bool:
     """Check and complete the arguments of the command, and return True when --explain printed the plan in its place."""
-    from artistools.misc.cliutils import print_explanation
-    from artistools.misc.cliutils import resolve_args
+    from artistools.misc import print_explanation
+    from artistools.misc import resolve_args
 
     parsedargs = copy.copy(args)
     resolve_args(argparser, args, argsraw)

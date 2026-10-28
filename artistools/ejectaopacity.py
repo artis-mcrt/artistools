@@ -28,6 +28,7 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import get_artis_option
 from artistools.misc import get_artis_source_text
+from artistools.misc import get_bin_index_expr
 from artistools.misc import get_model_logname
 from artistools.misc import get_npts_model
 from artistools.misc import get_selected_timestep
@@ -38,9 +39,8 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
-from artistools.misc.general import get_bin_index_expr
-from artistools.misc.units import wavelength_angstroms_arg
-from artistools.misc.units import WAVELENGTH_UNIT_HELP
+from artistools.misc import wavelength_angstroms_arg
+from artistools.misc import WAVELENGTH_UNIT_HELP
 from artistools.rustext import sum_binned_line_opacities
 
 HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi

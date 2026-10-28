@@ -13,11 +13,11 @@ import polars as pl
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_kept_levels
 from artistools.constants import K_B_ev_per_K
+from artistools.misc import folder_holds_match
+from artistools.misc import is_remote_path
+from artistools.misc import on_model_host
 from artistools.misc import read_rank_outputfiles
-from artistools.misc.modelpaths import folder_holds_match
-from artistools.misc.modelpaths import resolve_modelpath
-from artistools.misc.remote import is_remote_path
-from artistools.misc.remote import on_model_host
+from artistools.misc import resolve_modelpath
 
 
 def texifyterm(strterm: str) -> str:

@@ -37,12 +37,14 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
+from artistools.misc import get_bin_index_expr
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import is_in_range
+from artistools.misc import modelpath_cache
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -50,8 +52,6 @@ from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
-from artistools.misc.general import get_bin_index_expr
-from artistools.misc.modelpaths import modelpath_cache
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import addarg_maxpacketfiles

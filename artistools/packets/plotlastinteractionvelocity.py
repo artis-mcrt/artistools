@@ -20,7 +20,10 @@ from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_wavelengthrange
+from artistools.misc import check_dirbin
 from artistools.misc import exit_with_error
+from artistools.misc import get_bin_index_expr
+from artistools.misc import get_dirbin_labels
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
@@ -32,9 +35,6 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc.dirbins import check_dirbin
-from artistools.misc.dirbins import get_dirbin_labels
-from artistools.misc.general import get_bin_index_expr
 from artistools.packets.core import addarg_maxpacketfiles
 from artistools.packets.core import addarg_velocitykind
 from artistools.packets.core import get_last_interaction_velocity_expr

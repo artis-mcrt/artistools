@@ -22,8 +22,8 @@ from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
-from artistools.misc.seriesstyles import SERIES_DEFAULT
-from artistools.misc.seriesstyles import SERIES_STYLE_KEYS
+from artistools.misc import SERIES_DEFAULT
+from artistools.misc import SERIES_STYLE_KEYS
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import get_series_colors
 
@@ -36,7 +36,7 @@ if t.TYPE_CHECKING:
 
     import matplotlib.axes as mplax
 
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
 
 
 # each option of the table with its values, in the order of the command
@@ -118,7 +118,7 @@ def make_parser(addargs: "Callable[[argparse.ArgumentParser], None]") -> "Sugges
 
     The parser also takes the standard spelling of each flag, e.g. --timedays, as the command does.
     """
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     addargs(parser)
@@ -142,7 +142,7 @@ class ViewerTokens(t.NamedTuple):
 
 def get_path_option_flags(parser: "SuggestingArgumentParser") -> set[str]:
     """Return the first flag of each option that gives the paths of the positional argument, e.g. --modelpath."""
-    from artistools.misc.argparser import KeepGivenPaths
+    from artistools.misc import KeepGivenPaths
 
     actions = parser._actions  # ruff:ignore[private-member-access]
     pathdests = {action.dest for action in actions if isinstance(action, KeepGivenPaths)}
@@ -186,7 +186,7 @@ def take_back_folders(
     "--label 'My model' mymodel -t 300". The list of the series must then hold the folders, and the row of the option
     must not hold them. A command with no such folders gives no paths and the same rows.
     """
-    from artistools.misc.argparser import KeepGivenPaths
+    from artistools.misc import KeepGivenPaths
 
     actions = parser._actions  # ruff:ignore[private-member-access]
     pathaction = next((action for action in actions if isinstance(action, KeepGivenPaths)), None)
@@ -250,7 +250,7 @@ def model_has_direction_data(
     vpkt.txt and a file of vpktpattern, e.g. vspecpol_total-0.out, or the virtual packets with --frompackets. An empty
     vpktpattern gives the observers only from the virtual packets. Reload Data clears the cache.
     """
-    from artistools.misc.modelpaths import folder_holds_match
+    from artistools.misc import folder_holds_match
     from artistools.packets.core import get_packets_textfilename
     from artistools.packets.core import has_packets_files
 

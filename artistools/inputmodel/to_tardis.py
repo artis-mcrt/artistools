@@ -18,9 +18,9 @@ from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
+from artistools.misc import model_path_from_text
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
-from artistools.misc.remote import model_path_from_text
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

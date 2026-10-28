@@ -9,11 +9,11 @@ from collections.abc import Mapping
 from functools import lru_cache
 from types import MappingProxyType
 
+from artistools.misc import addarg_common
+from artistools.misc import CustomArgHelpFormatter
+from artistools.misc import get_shown_flags
 from artistools.misc import print_product
-from artistools.misc.argparser import CustomArgHelpFormatter
-from artistools.misc.argparser import get_shown_flags
-from artistools.misc.argparser import SuggestingArgumentParser
-from artistools.misc.cliutils import addarg_common
+from artistools.misc import SuggestingArgumentParser
 from artistools.paths import get_path
 
 if t.TYPE_CHECKING:

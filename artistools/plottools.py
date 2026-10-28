@@ -34,19 +34,19 @@ from matplotlib.text import Text
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import AUTO_VELOCITYUNIT_C_MIN_ON_C
 from artistools.misc import exit_with_error
+from artistools.misc import get_auto_velocity_unit
 from artistools.misc import get_phibin_rank_ascending
+from artistools.misc import get_standard_flag
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import makelist
+from artistools.misc import positive_int_arg
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import trim_or_pad
-from artistools.misc.argparser import get_standard_flag
-from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.units import AUTO_VELOCITYUNIT_C_MIN_ON_C
-from artistools.misc.units import get_auto_velocity_unit
 from artistools.paths import get_path
 
 # the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
@@ -1483,7 +1483,7 @@ def save_figure(
     plt.close(fig)
 
     if openfile:
-        from artistools.misc.commandoutput import open_file
+        from artistools.misc import open_file
 
         open_file(outpath)
 

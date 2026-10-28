@@ -34,6 +34,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_phi_bin_edges_ascending
 from artistools.misc import get_timestep_times
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -41,7 +42,6 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import resolve_frameset_paths
-from artistools.misc.dirbins import get_phi_bin_edges_ascending
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import addarg_maxpacketfiles
 from artistools.packets import bin_packet_directions_polars

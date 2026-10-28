@@ -28,13 +28,13 @@ from artistools.misc import get_artis_options
 from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
 from artistools.misc import get_timestep_times
+from artistools.misc import natural_sort_key
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_or_write_table
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
-from artistools.misc.fileio import natural_sort_key
 
 CATALOGSCHEMA: t.Final = pl.Schema({
     "modelname": pl.String,

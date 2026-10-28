@@ -9,8 +9,8 @@ from pathlib import Path
 from types import MappingProxyType
 
 from artistools.misc import import_optional
+from artistools.misc import is_remote_path
 from artistools.misc import write_gif
-from artistools.misc.remote import is_remote_path
 from artistools.viewertools.application import activate_window
 from artistools.viewertools.application import APPEARANCES
 from artistools.viewertools.application import apply_appearance
@@ -48,7 +48,7 @@ if t.TYPE_CHECKING:
     import matplotlib.figure as mplfig
     from PySide6 import QtWidgets
 
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
     from artistools.viewertools.core import PlotValues
     from artistools.viewertools.window import DrawQueue
     from artistools.viewertools.window import PlotViewer

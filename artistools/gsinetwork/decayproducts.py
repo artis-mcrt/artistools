@@ -35,9 +35,9 @@ from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
+from artistools.misc import time_days_arg
+from artistools.misc import TIME_UNIT_HELP
 from artistools.misc import write_parquet_atomic
-from artistools.misc.units import time_days_arg
-from artistools.misc.units import TIME_UNIT_HELP
 from artistools.paths import get_path
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure

@@ -11,8 +11,8 @@ from types import MappingProxyType
 
 import numpy as np
 
+from artistools.misc import on_model_host
 from artistools.misc import print_error
-from artistools.misc.remote import on_model_host
 from artistools.plottools import apply_dark_colours
 from artistools.plottools import DARKMODE_COLOURS
 from artistools.plottools import make_room_for_title
@@ -72,7 +72,7 @@ if t.TYPE_CHECKING:
     from PySide6 import QtCore
     from PySide6 import QtWidgets
 
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
     from artistools.viewertools.core import OptionRows
     from artistools.viewertools.core import PlotValues
 
@@ -84,7 +84,7 @@ def clear_estimator_caches() -> None:
     """
     from artistools.estimators.core import scan_parquet_file
     from artistools.estimators.estimators_classic import read_classic_estimators_cached
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
     from artistools.nltepops.core import read_nltepops_cached
 
     for cachedfunction in (
@@ -102,10 +102,10 @@ def clear_output_caches() -> None:
 
     The files of the input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay.
     """
-    from artistools.misc.modelinfo import get_nu_grid
-    from artistools.misc.timesteps import get_deposition
-    from artistools.misc.timesteps import get_escaped_arrivalrange
-    from artistools.misc.timesteps import get_timestep_times
+    from artistools.misc import get_deposition
+    from artistools.misc import get_escaped_arrivalrange
+    from artistools.misc import get_nu_grid
+    from artistools.misc import get_timestep_times
     from artistools.packets.core import check_packets_batch_parquet_paths
     from artistools.packets.core import find_first_rank_textfiles
     from artistools.spectra.core import get_flux_contributions_cached

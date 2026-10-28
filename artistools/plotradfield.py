@@ -38,6 +38,7 @@ from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import format_frame_path
+from artistools.misc import format_range_list
 from artistools.misc import get_artis_option
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
@@ -49,7 +50,6 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_saved
 from artistools.misc import read_rank_outputfiles
 from artistools.misc import resolve_frameset_paths
-from artistools.misc.general import format_range_list
 from artistools.plottools import addarg_cellvelocity
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure

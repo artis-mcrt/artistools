@@ -22,6 +22,7 @@ from artistools.inputmodel import get_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_table_output
+from artistools.misc import check_local_path
 from artistools.misc import confirm_deletion
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
@@ -34,7 +35,6 @@ from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import require_action
 from artistools.misc import resolve_table_outputfile
-from artistools.misc.remote import check_local_path
 from artistools.packets import get_packets_batch_parquet_paths
 
 if t.TYPE_CHECKING:

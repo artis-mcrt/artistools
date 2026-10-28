@@ -36,6 +36,7 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
+from artistools.misc import make_cache_folder
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import polars_source
@@ -44,7 +45,6 @@ from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
-from artistools.misc.parquetcache import make_cache_folder
 
 TRAJECTORY_CACHEVERSION = 2
 # the columns of energy_thermo.dat and heating.dat that the readers use. The cache holds these alone

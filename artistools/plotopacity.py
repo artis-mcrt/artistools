@@ -48,6 +48,7 @@ from artistools.misc import format_costheta_range
 from artistools.misc import get_costheta_range
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
+from artistools.misc import get_progress_class
 from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
@@ -58,7 +59,6 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc.general import get_progress_class
 from artistools.plottools import get_velocity_label
 from artistools.plottools import make_frame_figure
 from artistools.plottools import parse_velocity_argument

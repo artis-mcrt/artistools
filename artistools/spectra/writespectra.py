@@ -19,7 +19,7 @@ from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
 from artistools.misc import print_warning
-from artistools.misc.remote import split_remote_path
+from artistools.misc import split_remote_path
 from artistools.spectra.core import get_spectra
 
 

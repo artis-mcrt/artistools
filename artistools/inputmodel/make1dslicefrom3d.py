@@ -21,8 +21,8 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
+from artistools.misc import model_path_from_text
 from artistools.misc import parse_cli_args
-from artistools.misc.remote import model_path_from_text
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
