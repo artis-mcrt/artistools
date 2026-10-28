@@ -21,7 +21,7 @@ from artistools.misc import print_saved
 from artistools.misc import require_action
 
 
-def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
+def opacity_by_ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
     """Opacities from Table 1 Tanaka 2020."""
     print("Getting opacity kappa from Ye")
 
@@ -54,7 +54,7 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
         )
 
 
-def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
+def write_ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
     """Write the per-cell electron fraction to Ye.txt in the given folder."""
     assert griddata.schema["inputcellid"].is_integer()
 

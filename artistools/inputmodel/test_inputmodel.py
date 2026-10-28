@@ -720,22 +720,22 @@ def test_make_empty_abundance_file(tmp_path: Path) -> None:
     assert dfabund.select(cs.starts_with("X_").abs().max()).max_horizontal().item() == 0
 
 
-def test_opacity_by_Ye_file(tmp_path: Path) -> None:
+def test_opacity_by_ye_file(tmp_path: Path) -> None:
     griddata = pl.DataFrame({
         "Ye": [0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
         "rho": [0.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0],
         "inputcellid": range(1, 9),
     })
-    at.inputmodel.opacityinputfile.opacity_by_Ye(tmp_path, griddata=griddata)
+    at.inputmodel.opacityinputfile.opacity_by_ye(tmp_path, griddata=griddata)
 
     # Table 1 of Tanaka et al. (2020), and zero for the empty cell
     opacities = np.loadtxt(tmp_path / "opacity.txt", skiprows=1)[:, 1]
     assert np.allclose(opacities, [0.0, 19.5, 32.2, 22.3, 5.6, 5.36, 3.3, 0.96])
 
 
-def test_opacity_by_integer_Ye(tmp_path: Path) -> None:
+def test_opacity_by_integer_ye(tmp_path: Path) -> None:
     griddata = pl.DataFrame({"Ye": [0, 1], "rho": [1.0, 1.0], "inputcellid": [1, 2]})
-    at.inputmodel.opacityinputfile.opacity_by_Ye(tmp_path, griddata=griddata)
+    at.inputmodel.opacityinputfile.opacity_by_ye(tmp_path, griddata=griddata)
     assert np.allclose(np.loadtxt(tmp_path / "opacity.txt", skiprows=1)[:, 1], [19.5, 0.96])
 
 
@@ -1060,7 +1060,7 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_pat
     The values are the values of the images, thus they have the log10 of the colour scale, and a hidden empty cell
     has a null value.
     """
-    from artistools.inputmodel.plotinitialcomposition import get_2D_slice_through_3d_model
+    from artistools.inputmodel.plotinitialcomposition import get_2d_slice_through_3d_model
 
     with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
         at.inputmodel.plotinitialcomposition.main(
@@ -1079,7 +1079,7 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_pat
 
     # the default slice is the layer above the origin along z, which shows x against y
     dfmodel, modelmeta = get_derived_modeldata(modelpath_3d)
-    dfslice = get_2D_slice_through_3d_model(dfmodel.collect(), "z")
+    dfslice = get_2d_slice_through_3d_model(dfmodel.collect(), "z")
     t_model_s = modelmeta["t_model_init_days"] * day_to_s
     for axis in ("x", "y"):
         vel_mid_on_c = (
@@ -2812,13 +2812,13 @@ def test_get_2d_slice_takes_the_side_of_the_axis(ncoordgrid: int, positive_axis:
     The parser read the sign of -axis, but the slice ignored it. Thus both signs gave the layer with pos_z_min == 0.
     The centre layer of an odd grid holds the origin, thus both signs give that layer.
     """
-    from artistools.inputmodel.plotinitialcomposition import get_2D_slice_through_3d_model
+    from artistools.inputmodel.plotinitialcomposition import get_2d_slice_through_3d_model
 
     dfmodel, modelmeta = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
     dfmodel = dfmodel.collect()
     wid = modelmeta["wid_init_z"]
 
-    dfslice = get_2D_slice_through_3d_model(dfmodel, "z", modelmeta, "x", "y", positive_axis=positive_axis)
+    dfslice = get_2d_slice_through_3d_model(dfmodel, "z", modelmeta, "x", "y", positive_axis=positive_axis)
 
     assert dfslice.height == ncoordgrid**2
     assert dfslice["pos_z_min"].to_numpy() == pytest.approx(-modelmeta["vmax_cmps"] * day_to_s + expectedlayer * wid)
@@ -3341,7 +3341,7 @@ def test_plotinitialcomposition_2d_slice_reads_ye_from_the_ye_file(tmp_path: Pat
         shutil.copy(modelpath_3d / filename, modelfolder)
     dfmodel = get_derived_modeldata(modelfolder)[0].collect()
     dfmodel = dfmodel.with_columns(Ye=(0.1 + 0.4 * pl.col("modelgridindex") / pl.len()).cast(pl.Float32))
-    at.inputmodel.opacityinputfile.write_Ye_file(modelfolder, dfmodel)
+    at.inputmodel.opacityinputfile.write_ye_file(modelfolder, dfmodel)
 
     with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
         at.inputmodel.plotinitialcomposition.main(argsraw=["Ye", str(modelfolder), "-o", str(tmp_path)])

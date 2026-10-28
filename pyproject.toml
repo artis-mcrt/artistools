@@ -319,7 +319,6 @@ ignore = [
     "commented-out-code",
     "boolean-type-hint-positional-argument",
     "boolean-default-value-positional-argument",
-    "invalid-function-name",
     "invalid-argument-name",
     "non-lowercase-variable-in-function",
     "import-outside-top-level",

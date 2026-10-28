@@ -40,7 +40,7 @@ from artistools.plottools import save_figure
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
 
 
-def get_2D_slice_through_3d_model(
+def get_2d_slice_through_3d_model(
     dfmodel: pl.DataFrame,
     sliceaxis: AxisType,
     modelmeta: dict[str, t.Any] | None = None,
@@ -256,7 +256,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         plotaxis2: AxisType = next(ax for ax in axeschars if ax not in {sliceaxis, plotaxis1})
         print(f"Plotting slice through {sliceaxis}=0, plotting {plotaxis1} vs {plotaxis2}")
 
-        df2dslice = get_2D_slice_through_3d_model(
+        df2dslice = get_2d_slice_through_3d_model(
             dfmodel=dfmodel,
             modelmeta=modelmeta,
             sliceaxis=sliceaxis,
