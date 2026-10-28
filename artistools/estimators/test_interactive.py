@@ -4,7 +4,7 @@ import dataclasses as dc
 import json
 import os
 import shlex
-import subprocess  # ruff:ignore[suspicious-subprocess-import]
+import subprocess
 import sys
 import typing as t
 from collections.abc import Callable

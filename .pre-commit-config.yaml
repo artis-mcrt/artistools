@@ -30,8 +30,6 @@ repos:
           - id: forbid-new-submodules
           - id: mixed-line-ending
             args: [--fix=lf]
-          - id: name-tests-test
-            args: [--pytest-test-first]
           - id: trailing-whitespace
 
     - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt

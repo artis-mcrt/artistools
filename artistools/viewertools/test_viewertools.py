@@ -5,7 +5,7 @@ import io
 import json
 import os
 import shlex
-import subprocess  # ruff:ignore[suspicious-subprocess-import]
+import subprocess
 import sys
 import threading
 import time

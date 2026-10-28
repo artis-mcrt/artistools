@@ -250,7 +250,8 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
 
 ## Tests
 
-- Put a test in the same directory as the code that it tests: `artistools/<area>/test_<area>.py`. Give each test function a `test_` prefix. The `name-tests-test` hook makes this necessary.
+- Put a test in the same directory as the code that it tests: `artistools/<area>/test_<area>.py`. Give each test function a `test_` prefix. pytest collects only a function whose name starts with `test`.
+- The root `conftest.py` is outside the wheel. Its fixtures give the helpers that more than one test module uses, e.g. `read_data_file` and `write_trajectory_archive`. Do not import a name from a different test module.
 - Find the data with `at.get_path("testdata")` or `at.get_path("testoutput")`. As an alternative, use the pytest `tmp_path` fixture. Do not write a file outside the test output directory of the repository.
 - Compare a number with `np.isclose` or an `rtol` value. Do not compare two floats for exact equality. A physics result changes by a small quantity on a different platform or with a different version of a library.
 - You can test a plot without an image. Patch the axes method and examine the arguments of the call:
