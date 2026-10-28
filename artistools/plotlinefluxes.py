@@ -1158,10 +1158,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot line flux ratios for comparisons to Floers."""
-    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-
+def resolve_plot_args(args: argparse.Namespace) -> None:
+    """Give args the values that the plot reads: the paths, the styles, the emission features, and the time bins."""
     args.modelpath = normalize_path_list(args.modelpath)
 
     args.color = resolve_series_styles(
@@ -1196,6 +1194,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.label = [
         get_series_label(args.label, index, get_model_name(modelpath)) for index, modelpath in enumerate(args.modelpath)
     ]
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot line flux ratios for comparisons to Floers."""
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    resolve_plot_args(args)
 
     if args.plotemittingregions:
         make_emitting_regions_plot(args)

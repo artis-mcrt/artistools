@@ -19,7 +19,6 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
-from artistools import misc
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
@@ -2244,20 +2243,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if args.brightnessattime:
-        if args.timedays is None:
-            misc.exit_with_error("Specify a single time with --timedays")
-        # this plot takes one time rather than a range
-        try:
-            args.timedays = float(args.timedays)
-        except ValueError:
-            exit_with_error(
-                f"--brightnessattime takes one time, and --timedays gives {args.timedays}",
-                "Give one time in days, e.g. --timedays 5",
-            )
-        if not args.plotviewingangle:
-            args.plotviewingangle = [-1]
-        if not args.colorbarcostheta and not args.colorbarphi:
-            args.colorbarphi = True
+        resolve_brightnessattime_args(args)
         plot_viewanglebrightness_at_fixed_time(Path(modelpaths[0]), args)
         return
 
@@ -2270,6 +2256,28 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         fig, axis, thermaxis, residualaxis = make_plot_figure(args)
         output_data(args, draw_plot(args, axis, thermaxis, residualaxis), args.outputfile)
         save_figure(fig, args.outputfile, args=args, dpi=args.dpi)
+
+
+def resolve_brightnessattime_args(args: argparse.Namespace) -> None:
+    """Give args the one time, the direction bins, and the colour bar of --brightnessattime.
+
+    main draws one plot only, and a plot of the peak magnitudes comes before this plot. Thus main calls this function
+    only for the plot of --brightnessattime, and a different plot does not need one time.
+    """
+    if args.timedays is None:
+        exit_with_error("Specify a single time with --timedays")
+    # this plot takes one time rather than a range
+    try:
+        args.timedays = float(args.timedays)
+    except ValueError:
+        exit_with_error(
+            f"--brightnessattime takes one time, and --timedays gives {args.timedays}",
+            "Give one time in days, e.g. --timedays 5",
+        )
+    if not args.plotviewingangle:
+        args.plotviewingangle = [-1]
+    if not args.colorbarcostheta and not args.colorbarphi:
+        args.colorbarphi = True
 
 
 class RefusedOption(t.NamedTuple):

@@ -909,10 +909,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_maxpacketfiles(parser)
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot last packet interaction properties versus ejecta velocity for selected packets."""
-    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-
+def resolve_plot_args(args: argparse.Namespace) -> None:
+    """Check the options, and give args the wavelength range and the time of the selected timestep."""
     if (args.wavelen is None) != (args.binwidth is None):
         exit_with_error("--wavelen and --binwidth give a range together", "Give --lambdamin and --lambdamax")
     if args.wavelen is not None:
@@ -942,13 +940,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     check_dirbin(args.dirbin, "-dirbin", averageoverphi=args.average_over_phi_angle, allowall=True)
 
-    ions = get_selected_ions(args)
-
     if args.groupby is None and args.velocitykind != "radial":
         exit_with_error(
             "--velocitykind applies only with --groupby. The 2D image always gives v_cyl and v_z",
             "Remove --velocitykind, or give --groupby",
         )
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot last packet interaction properties versus ejecta velocity for selected packets."""
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    resolve_plot_args(args)
+    ions = get_selected_ions(args)
     if args.groupby is not None:
         plot_velocity_profiles_from_args(args, ions)
         return

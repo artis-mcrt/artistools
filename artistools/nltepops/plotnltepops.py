@@ -1173,9 +1173,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_data_output(parser)
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot ARTIS non-LTE populations."""
-    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+def resolve_plot_args(args: argparse.Namespace) -> list[int]:
+    """Give args the values that the plot reads, and return the timesteps of a plot against the level index.
+
+    The values are the elements, the ion stages, the range of the timesteps, the cells, and the output file.
+    """
     # the parser gives text such as "1-3", and a keyword argument of main() can also give a number or a list
     args.ion_stages = get_cell_list(args.ion_stages) if args.ion_stages else None
     # the ARTIS folder is the last positional argument, thus "plotnltepops Fe mymodel" reads mymodel
@@ -1246,15 +1248,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if outofrange := [mgi for mgi in mgilist if not 0 <= mgi < npts_model]:
         exit_with_error(f"Model grid cell {outofrange[0]} is outside the range 0 to {npts_model - 1}")
 
+    return timesteps_selected if timesteps_selected is not None else list(range(args.timestepmin, args.timestepmax + 1))
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot ARTIS non-LTE populations."""
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    timesteps_included = resolve_plot_args(args)
+
     if args.x in {"time", "velocity"}:
         # each element takes a figure of its own, as in a plot against the level index
         for atomic_number in get_atomic_numbers(args.elements):
             make_plot_populations_with_time_or_velocity(args.modelpath, atomic_number, args)
         return
 
-    timesteps_included = (
-        timesteps_selected if timesteps_selected is not None else list(range(args.timestepmin, args.timestepmax + 1))
-    )
     for atomic_number in get_atomic_numbers(args.elements):
         for timestep in timesteps_included:
-            make_singletimestep_plot(modelpath, atomic_number, args.ion_stages, mgilist, timestep, args)
+            make_singletimestep_plot(
+                args.modelpath, atomic_number, args.ion_stages, args.modelgridindex, timestep, args
+            )

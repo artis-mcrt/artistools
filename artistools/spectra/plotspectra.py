@@ -1789,15 +1789,36 @@ def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.o
     """
     fig, axes, residualaxis = make_plot_figure(args)
     tables = draw_plot(args, axes, residualaxis)
+    return fig, axes, tables
 
+
+def get_plot_outputfile(args: argparse.Namespace) -> str:
+    """Return the path of the figure, with the time range and the direction bins in the fields of its template.
+
+    -o can name a folder, and the default name of the figure then goes in that folder. The function makes the folder
+    if it does not exist. Thus the viewer does not call this function at each change of the command.
+    """
     defaultoutputfile = (
         "plotspectra_emission_{timemin:.2f}d-{timemax:.2f}d{directionbins}.pdf"
         if args.showemission or args.showabsorption
         else "plotspectra_{timemin:.2f}d-{timemax:.2f}d.pdf"
     )
-    args.outputfile = resolve_outputfile(args.outputfile, defaultoutputfile)
+    outputfile = str(resolve_outputfile(args.outputfile, defaultoutputfile))
 
-    return fig, axes, tables
+    # the observers of the virtual packets also name the file, thus the plots of two observers keep both files
+    if args.plotviewingangle:
+        strdirectionbins = "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
+    elif args.plotvspecpol:
+        strdirectionbins = "_vspecpol" + "_".join([f"{observer:02d}" for observer in args.plotvspecpol])
+    else:
+        strdirectionbins = ""
+
+    if args.timemin is not None and args.timemax is not None:
+        return outputfile.format(timemin=args.timemin, timemax=args.timemax, directionbins=strdirectionbins)
+    if "{" in outputfile:
+        # no model resolved both bounds, thus the time placeholders get no values
+        return str(Path(outputfile).with_name("plotspectra.pdf"))
+    return outputfile
 
 
 def make_plot_figure(
@@ -2753,22 +2774,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     else:
         fig, _axes, tables = make_plot(args)
-
-        # the observers of the virtual packets also name the file, thus the plots of two observers keep both files
-        if args.plotviewingangle:
-            strdirectionbins = "_direction" + "_".join([f"{angle:02d}" for angle in args.plotviewingangle])
-        elif args.plotvspecpol:
-            strdirectionbins = "_vspecpol" + "_".join([f"{observer:02d}" for observer in args.plotvspecpol])
-        else:
-            strdirectionbins = ""
-
-        filenameout = str(args.outputfile)
-        if args.timemin is not None and args.timemax is not None:
-            filenameout = filenameout.format(timemin=args.timemin, timemax=args.timemax, directionbins=strdirectionbins)
-        elif "{" in filenameout:
-            # no model resolved both bounds, thus the time placeholders get no values
-            filenameout = str(Path(filenameout).with_name("plotspectra.pdf"))
-
+        filenameout = get_plot_outputfile(args)
         output_data(args, tables, filenameout)
 
         save_figure(fig, filenameout, args=args, dpi=args.dpi)
