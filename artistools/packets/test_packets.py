@@ -5,12 +5,20 @@ from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import polars.testing as pltest
 import pytest
 
 import artistools as at
+
+modelpath = at.get_path("testdata") / "testmodel"
+
+
+def read_data_file(path: Path) -> pl.DataFrame:
+    """Read a table that --write_data wrote."""
+    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
 
 
 def get_reference_dirbin(dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int) -> int:
@@ -1283,3 +1291,236 @@ def test_filterpackets_keeps_a_file_with_no_escaped_rpkt(tmp_path: Path, capsys:
 
     assert packetsfile.read_bytes() == contents_before
     assert f"{packetsfile}: no escaped r-packets, thus the filter keeps the file" in capsys.readouterr().out
+
+
+@pytest.mark.benchmark
+def test_plotspherical(tmp_path: Path) -> None:
+    at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
+
+    assert [path.name for path in tmp_path.glob("plotspherical_*.pdf")] == ["plotspherical_256.67-333.82d.pdf"]
+
+
+def test_plotspherical_gaussian_filter(tmp_path: Path) -> None:
+    """-gaussian_sigma must reach smooth_direction_map, which takes the width in phi bins and not in degrees."""
+    from artistools.packets.plotspherical import smooth_direction_map
+
+    with mock.patch.object(
+        at.packets.plotspherical, "smooth_direction_map", side_effect=smooth_direction_map
+    ) as mocksmooth:
+        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, gaussian_sigma=20, outputfile=tmp_path)
+
+    # one map for each of the three default plot variables, on the default grid of 64 phi bins
+    assert mocksmooth.call_count == 3
+    for callargs in mocksmooth.call_args_list:
+        _, sigma_bins, nphibins = callargs.args
+        assert nphibins == 64
+        assert np.isclose(sigma_bins, 20 / 360 * 64)
+
+
+def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
+    """The direction maps of several time ranges in one pass must equal the map of each range on its own."""
+    from artistools.packets.plotspherical import bin_packets_by_direction
+
+    nprocs_read, dfpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
+    tstarts = at.get_timestep_times(modelpath, loc="start")
+    tends = at.get_timestep_times(modelpath, loc="end")
+    # the last range repeats the first one, as every frame does when the observer never gets light from the full ejecta
+    timeranges = [(tstarts[ts], tends[ts]) for ts in (60, 61, 62, 60)]
+    plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc", "emvelocityoverc_sigma"]
+
+    dfonepass, _ = bin_packets_by_direction(
+        modelpath, dfpackets, nprocs_read, timeranges, 8, 4, plotvars, dfestimators=None
+    )
+    assert dfonepass.height == 4 * 8 * 4
+    assert dfonepass["count"].sum() > 0
+
+    for timebin, timerange in enumerate(timeranges):
+        dfsingle, _ = bin_packets_by_direction(
+            modelpath, dfpackets, nprocs_read, [timerange], 8, 4, plotvars, dfestimators=None
+        )
+        pltest.assert_frame_equal(
+            dfonepass.filter(pl.col("timebin") == timebin).with_columns(timebin=pl.lit(0, dtype=pl.Int32)), dfsingle
+        )
+
+
+def test_plotspherical_smoothing_wraps_phi_and_crosses_each_pole() -> None:
+    """The smoothing must blend no pole with the opposite pole.
+
+    The filter wrapped the cos theta axis as it wraps phi. Thus the row at the south pole took the light of
+    the row at the north pole.
+    """
+    from artistools.packets.plotspherical import smooth_direction_map
+
+    ncosthetabins, nphibins = 8, 16
+    data = np.zeros((ncosthetabins, nphibins))
+    data[-1, 0] = 1.0  # the north polar cap, at phi bin 0
+
+    smoothed = smooth_direction_map(data, 1.0, nphibins)
+
+    assert np.allclose(smoothed[0], 0.0), "the south polar cap must stay dark"
+    # phi wraps, thus the last phi bin is a neighbour of phi bin 0
+    assert smoothed[-1, -1] > 0.0
+    # the bin on the other side of the north pole is at phi + pi in the same row
+    assert smoothed[-1, nphibins // 2] > smoothed[-1, nphibins // 4]
+
+
+@mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
+def test_plotspherical_puts_phi_zero_at_the_centre(mockpcolormesh: mock.MagicMock) -> None:
+    """The direction phi = 0 (+X) must be at the longitude zero, which is the centre of the map.
+
+    The longitude of the map started at -pi with phi bin 0, thus +X was at the edge and -X at the centre.
+    """
+    from artistools.packets.plotspherical import plot_spherical
+
+    ncosthetabins, nphibins = 4, 8
+    isphibinzero = [phibin == 0 for _ in range(ncosthetabins) for phibin in range(nphibins)]
+    dirbins = pl.DataFrame({"count": [1] * len(isphibinzero), "luminosity": [float(x) for x in isphibinzero]})
+
+    fig, _ = plot_spherical(dirbins, ["luminosity"], nphibins=nphibins, ncosthetabins=ncosthetabins)
+    plt.close(fig)
+
+    # the colour bar draws a mesh of its own after the map
+    _, meshgrid_phi, _, data = mockpcolormesh.call_args_list[0].args
+    (litcolumn,) = np.flatnonzero(np.asarray(data)[0])
+    assert np.allclose(meshgrid_phi[0, litcolumn : litcolumn + 2], [0.0, 2 * np.pi / nphibins])
+
+
+@pytest.mark.parametrize("nphibins", [1, 5, 8])
+def test_plotspherical_map_columns_cover_each_longitude_with_the_correct_phi_bin(nphibins: int) -> None:
+    """Each column of the map must show the phi bin that holds its longitude, from -pi to +pi.
+
+    For an odd -nphibins, the map ran from -0.8 pi to 1.2 pi for five bins, thus a strip at -pi stayed blank.
+    """
+    from artistools.packets.plotspherical import get_map_columns
+
+    longitude_edges, column_phibins = get_map_columns(nphibins)
+
+    assert len(longitude_edges) == len(column_phibins) + 1
+    assert np.isclose(longitude_edges[0], -np.pi)
+    assert np.isclose(longitude_edges[-1], np.pi)
+    assert np.all(np.diff(longitude_edges) > 0.0)
+    assert np.any(np.isclose(longitude_edges, 0.0)), "phi = 0 must be an edge at the centre of the map"
+    column_centre_phi = np.mod(0.5 * (longitude_edges[:-1] + longitude_edges[1:]), 2 * np.pi)
+    assert np.array_equal(np.floor(column_centre_phi / (2 * np.pi) * nphibins).astype(int), column_phibins)
+
+
+def test_plotspherical_smoothing_with_odd_phi_bins_crosses_the_pole_at_phi_plus_pi() -> None:
+    """For an odd -nphibins, the row beyond a pole must take the two bins on each side of phi + pi."""
+    from artistools.packets.plotspherical import get_rows_across_pole
+
+    rows = np.arange(5, dtype=np.float64).reshape((1, 5))
+
+    # the centre of bin 0 is at 0.2 pi, thus phi + pi is at 1.2 pi, which is the edge of bins 2 and 3
+    assert np.allclose(get_rows_across_pole(rows, 5)[0], [2.5, 3.5, 2.0, 0.5, 1.5])
+
+
+def test_plotspherical_gif(tmp_path: Path) -> None:
+    """The gif holds one frame for each timestep in the time range, in the order of time.
+
+    The frames and the gif go in a folder of this test alone. A pytest run clears the test output folder when it
+    starts. Thus a second run deleted the frames of this test before the gif read them.
+    """
+    from PIL import Image
+
+    # the timesteps 0, 1, and 2 end before 253 d. Three frames cover the code of the gif
+    at.packets.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=tmp_path
+    )
+
+    framenames = sorted(path.name for path in tmp_path.glob("plotspherical_*.png"))
+    assert framenames == [
+        "plotspherical_250.00-250.84d.png",
+        "plotspherical_250.84-251.69d.png",
+        "plotspherical_251.69-252.54d.png",
+    ]
+    with Image.open(tmp_path / "sphericalplot.gif") as gif:
+        assert getattr(gif, "n_frames", 1) == 3
+
+
+def test_plotspherical_element_arguments_give_messages(capsys: pytest.CaptureFixture[str]) -> None:
+    """-elem with -atomic_number, or an -elem that is no element symbol, gives a message.
+
+    The first stopped with a bare AssertionError, and the second plotted the packets of "Z=-1".
+    """
+    with pytest.raises(SystemExit):
+        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Fe", atomic_number=26)
+    assert "Give one of --elem and --atomic-number" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Xx")
+    assert "-elem Xx is not an element symbol" in capsys.readouterr().err
+
+
+def test_plotspherical_makes_the_output_folder(tmp_path: Path) -> None:
+    """A -o path that has no file extension names a folder, which the command makes.
+
+    The command wrote a file that had the name of the folder and no extension, and a run with
+    --makegif stopped, because it built the path of each frame below a folder that did not exist.
+    """
+    outfolder = tmp_path / "frames"
+    at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=str(outfolder), timemin=250, timemax=300)
+
+    assert outfolder.is_dir(), "the command must make the folder that -o names"
+    assert list(outfolder.glob("plotspherical_*.pdf")), f"no plot in {list(outfolder.iterdir())}"
+
+
+def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
+    """A -o path that has a file extension names the gif, and its folder then holds the frames.
+
+    A path such as movie.gif became a folder, thus the file that the user asked for was never written.
+    """
+    gifpath = tmp_path / "movie.gif"
+    at.packets.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(gifpath)
+    )
+
+    assert gifpath.is_file(), f"the gif must keep its name, but {list(tmp_path.iterdir())}"
+    assert list(gifpath.parent.glob("plotspherical_*.png")), "the frames go in the folder of the gif"
+
+    # a path with no file extension still names a folder that holds the gif and the frames
+    outfolder = tmp_path / "movie"
+    at.packets.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(outfolder)
+    )
+    assert (outfolder / "sphericalplot.gif").is_file(), f"no gif in {list(outfolder.iterdir())}"
+
+
+@mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
+def test_plotspherical_write_data_holds_the_drawn_maps(mockpcolormesh: mock.MagicMock, tmp_path: Path) -> None:
+    """The table of --write_data must give each pixel of each map after the smoothing, at the drawn coordinates.
+
+    The longitude of the map does not follow the ascending phi bins, and --phireverse changes its sign. Thus the
+    table must give the edges that the axes received, and not the edges of the phi bins.
+    """
+    ncosthetabins, nphibins = 4, 5
+    plotvars = ["luminosity", "emvelocityoverc"]
+    at.packets.plotspherical.main(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=tmp_path / "map.pdf",
+        nphibins=nphibins,
+        ncosthetabins=ncosthetabins,
+        plotvars=plotvars,
+        gaussian_sigma=40,
+        phireverse=True,
+        write_data=True,
+    )
+
+    dftable = read_data_file(tmp_path / "map.txt")
+    assert dftable.columns[-2:] == ["luminosity_erg_per_s", "emvelocityoverc"]
+    # the colour bar draws a mesh of its own after each map
+    mapcalls = [call for call in mockpcolormesh.call_args_list if call.args[0].name == "mollweide"]
+    assert len(mapcalls) == len(plotvars)
+    for call, colname in zip(mapcalls, ["luminosity_erg_per_s", "emvelocityoverc"], strict=True):
+        _, meshgrid_phi, meshgrid_theta, data = call.args
+        drawn = np.asarray(data, dtype=np.float64)
+        assert drawn.shape == (ncosthetabins, nphibins + 1)
+        assert np.allclose(dftable[colname].to_numpy().reshape(drawn.shape), drawn, rtol=1e-6, atol=0, equal_nan=True)
+
+    longitude_edges = np.sort(meshgrid_phi[0])
+    assert np.allclose(dftable["longitude_lower_rad"].to_numpy()[: nphibins + 1], longitude_edges[:-1][::-1])
+    assert np.allclose(dftable["longitude_upper_rad"].to_numpy()[: nphibins + 1], longitude_edges[1:][::-1])
+    assert np.allclose(
+        dftable["costheta_lower"].to_numpy()[:: nphibins + 1], np.sin(meshgrid_theta[:-1, 0]), rtol=1e-12, atol=1e-15
+    )
