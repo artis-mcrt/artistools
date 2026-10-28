@@ -30,6 +30,7 @@ from artistools.misc.argparser import get_standard_flag
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.packets.core import has_packets_files
+from artistools.paths import get_path
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
@@ -1368,8 +1369,6 @@ def open_window(
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
-
-    from artistools.commands import get_path
 
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
     viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens) if newwindow else tokens, mplfig.Figure())

@@ -31,7 +31,6 @@ from matplotlib.collections import Collection
 from matplotlib.patches import Patch
 from matplotlib.text import Text
 
-from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
@@ -44,6 +43,7 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc.argparser import get_standard_flag
 from artistools.misc.cliutils import positive_int_arg
+from artistools.paths import get_path
 
 # the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
 # the wavelength range, the spectra of a kilonova are above 0.026 of the top at each time. The light curve of a

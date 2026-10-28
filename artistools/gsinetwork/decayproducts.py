@@ -15,7 +15,6 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.atomic import get_elsymbol
-from artistools.commands import get_path
 from artistools.constants import amu_g
 from artistools.constants import day_to_s
 from artistools.constants import MEV_to_erg
@@ -39,6 +38,7 @@ from artistools.misc import read_wsv
 from artistools.misc import write_parquet_atomic
 from artistools.misc.cliutils import time_days_arg
 from artistools.misc.cliutils import TIME_UNIT_HELP
+from artistools.paths import get_path
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend

@@ -7,7 +7,6 @@ import sys
 import typing as t
 from collections.abc import Mapping
 from functools import lru_cache
-from pathlib import Path
 from types import MappingProxyType
 
 from artistools.misc import print_product
@@ -15,6 +14,7 @@ from artistools.misc.argparser import CustomArgHelpFormatter
 from artistools.misc.argparser import get_shown_flags
 from artistools.misc.argparser import SuggestingArgumentParser
 from artistools.misc.cliutils import addarg_common
+from artistools.paths import get_path
 
 if t.TYPE_CHECKING:
     from collections.abc import Generator
@@ -980,30 +980,6 @@ def show_python(args: argparse.Namespace | None = None, **kwargs: t.Any) -> None
     --user, thus the folder of the command does not give the interpreter.
     """
     print_product(args or argparse.Namespace(), sys.executable)
-
-
-def get_path(key: str) -> Path:
-    """Return a well-known path by name, such as the package folder or the code comparison data folder."""
-    match key:
-        case "codecomparisondata1path":
-            return Path(Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/GitHub/sn-rad-trans/data1")
-        case "codecomparisonmodelartismodelpath":
-            return Path(Path.home() / "Google Drive/My Drive/artis_runs/weizmann/")
-        case "artistools_repository":
-            return Path(__file__).absolute().parent.parent
-        case "artistools_dir":
-            return Path(__file__).absolute().parent  # the package path
-        case "datadir":
-            return Path(__file__).absolute().parent / "data"
-        case "testartismodel":
-            return Path(get_path("artistools_repository"), "tests", "data", "testmodel")
-        case "testdata":
-            return Path(get_path("artistools_repository"), "tests", "data")
-        case "testoutput":
-            return Path(get_path("artistools_repository"), "tests", "output")
-        case _:
-            msg = f"Unknown path key: {key}"
-            raise KeyError(msg)
 
 
 def get_artistools_path(args: argparse.Namespace | None = None, **kwargs: t.Any) -> None:  # ruff:ignore[unused-function-argument]

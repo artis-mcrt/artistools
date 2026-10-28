@@ -20,7 +20,6 @@ import polars.selectors as cs
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_nuclides
-from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import H0_km_per_s_per_mpc
@@ -55,6 +54,7 @@ from artistools.packets import get_packets
 from artistools.packets import get_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
+from artistools.paths import get_path
 from artistools.spectra import get_escape_surface_gamma
 from artistools.spectra import get_spectra
 from artistools.spectra import get_spectrum_at_time

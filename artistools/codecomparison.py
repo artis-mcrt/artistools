@@ -16,9 +16,9 @@ import polars as pl
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
-from artistools.commands import get_path
 from artistools.constants import megaparsec_to_cm
 from artistools.misc import read_wsv
+from artistools.paths import get_path
 from artistools.plottools import ResidualSeries
 
 if t.TYPE_CHECKING:

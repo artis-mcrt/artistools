@@ -30,6 +30,7 @@ from artistools.misc.console import print_warning
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
+from artistools.paths import get_path
 
 COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
 
@@ -746,8 +747,6 @@ def folder_holds_match(folder: Path, pattern: str) -> bool:
 @cache
 def find_bundled_data_file(filename: Path | str, bundledsubfolder: str) -> Path | None:
     """Return the path of a file in the named data folder of the package, or None when the folder holds none."""
-    from artistools.commands import get_path
-
     return firstexisting_or_none(
         filename, folder=Path(get_path("artistools_dir"), bundledsubfolder), tryzipped=True, search_subfolders=False
     )

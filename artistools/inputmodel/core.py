@@ -19,7 +19,6 @@ import polars.selectors as cs
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_z_a_nucname
-from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
@@ -48,6 +47,7 @@ from artistools.misc.general import get_bin_index_expr
 from artistools.misc.modelinfo import parse_npts_line
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
+from artistools.paths import get_path
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterator

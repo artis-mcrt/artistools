@@ -8,7 +8,7 @@ def pytest_configure(config: t.Any) -> None:
     """Clear the test output of previous runs."""
     import shutil
 
-    from artistools.commands import get_path
+    from artistools.paths import get_path
 
     # pytest-xdist runs this function in the controller and in each worker. A worker that starts
     # after another worker starts its tests would delete the output of those tests. Thus the
@@ -50,7 +50,7 @@ def trajectory_copy(tmp_path: Path) -> Path:
     """
     import shutil
 
-    from artistools.commands import get_path
+    from artistools.paths import get_path
 
     testdatapath = get_path("testdata")
     assert isinstance(testdatapath, Path)

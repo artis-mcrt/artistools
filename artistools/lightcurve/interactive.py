@@ -44,6 +44,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
+from artistools.paths import get_path
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools.application import run_viewer_application
@@ -695,8 +696,6 @@ def open_window(
     from PySide6 import QtCore
     from PySide6 import QtGui
     from PySide6 import QtWidgets
-
-    from artistools.commands import get_path
 
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
     # a window of the last session keeps its command, and a new window takes the options of the Settings window

@@ -20,7 +20,6 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools import misc
-from artistools.commands import get_path
 from artistools.constants import angstroms_per_cm
 from artistools.constants import angstroms_per_micron
 from artistools.constants import hc_in_ev_angstrom
@@ -43,6 +42,7 @@ from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
 from artistools.misc.remote import on_model_host
+from artistools.paths import get_path
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable

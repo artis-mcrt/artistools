@@ -23,7 +23,6 @@ from matplotlib import ticker
 from matplotlib.artist import Artist
 from matplotlib.lines import Line2D
 
-from artistools.commands import get_path
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
@@ -95,6 +94,7 @@ from artistools.misc.remote import model_path_from_text
 from artistools.misc.timesteps import parse_timedays_range
 from artistools.packets import get_packets
 from artistools.packets import get_packets_column_names
+from artistools.paths import get_path
 from artistools.plottools import draw_residual_panel
 from artistools.plottools import FRAMEHEIGHT_INCHES
 from artistools.plottools import FRAMEWIDTH_INCHES
