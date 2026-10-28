@@ -174,7 +174,7 @@ def test_sum_binned_line_opacities_gives_no_opacity_for_a_temperature_of_zero_or
     dfsums = sum_binned_line_opacities(
         dflevels, dflines, dfcells, ["nnion_0"], [("linebinned_cap1", 1.0)], 1, at.constants.K_B_ev_per_K
     )
-    for column in at.ejectaopacity.get_opacity_columns([1.0]):
+    for column in at.lines.core.get_opacity_columns([1.0]):
         sums = dfsums[column].to_numpy()
         assert np.all(np.isfinite(sums))
         assert sums[0] == pytest.approx(0.0)
@@ -186,18 +186,18 @@ def test_expansion_opacities_give_zero_for_a_cell_with_no_temperature() -> None:
     """A null T_exc and a T_exc of zero give a zero expansion opacity, and a positive T_exc gives a finite value."""
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
     assert dfcell.height == 1
-    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
-    lines = at.ejectaopacity.get_opacity_lines(
-        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
+    edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
+    lines = at.lines.core.get_opacity_lines(
+        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
     )
     dfcells = pl.concat([dfcell, dfcell, dfcell]).with_columns(
         modelgridindex=pl.Series([0, 1, 2], dtype=dfcell["modelgridindex"].dtype),
         T_exc=pl.Series([None, 0.0, dfcell["T_exc"].item()], dtype=pl.Float64),
     )
-    dfbins = at.ejectaopacity.get_expansion_opacities(lines, dfcells, edges, time_days)
-    for column in at.ejectaopacity.get_opacity_columns(at.ejectaopacity.DEFAULT_TAUCAPS):
+    dfbins = at.lines.core.get_expansion_opacities(lines, dfcells, edges, time_days)
+    for column in at.lines.core.get_opacity_columns(at.lines.core.DEFAULT_TAUCAPS):
         values = dfbins.group_by("modelgridindex", maintain_order=True).agg(pl.col(column).abs().sum())[column]
         assert values[0] == pytest.approx(0.0)
         assert values[1] == pytest.approx(0.0)
@@ -323,7 +323,7 @@ def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
     model, and the sum of all the levels is 1.97 times the sum of the kept levels at 20000 K.
     """
     classicmodelpath = at.get_path("testdata") / "test-classicmode_3d"
-    adata = at.ejectaopacity.get_opacity_atomic_data(classicmodelpath)
+    adata = at.lines.core.get_opacity_atomic_data(classicmodelpath)
     keptlevelcount_of_element = at.atomic.get_kept_level_counts(classicmodelpath)
     alllevels = at.atomic.get_levels(classicmodelpath)
     for Z, ion_stage, dflevels in adata.select("Z", "ion_stage", "levels").iter_rows():
@@ -334,7 +334,7 @@ def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
 
     # the test model keeps all the levels, because its compositiondata.txt gives -1
     assert at.get_composition_data(modelpath)["nlevelsmax_readin"].to_list() == [-1, -1]
-    testmodeladata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    testmodeladata = at.lines.core.get_opacity_atomic_data(modelpath)
     pltest.assert_series_equal(
         testmodeladata.select(pl.col("levels").map_elements(len, return_dtype=pl.Int64)).to_series(),
         at.atomic.get_levels(modelpath).select(pl.col("levels").map_elements(len, return_dtype=pl.Int64)).to_series(),
@@ -343,7 +343,7 @@ def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
 
 def test_opacity_lines_name_an_ion_with_no_transition_table() -> None:
     """An ion with no table in transitiondata.txt gives a clear error and not ColumnNotFoundError."""
-    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    adata = at.lines.core.get_opacity_atomic_data(modelpath)
     adata = adata.with_columns(pl.Series("transitions", [pl.LazyFrame() for _ in range(adata.height)], dtype=pl.Object))
     with pytest.raises(ValueError, match=r"transitiondata\.txt holds no table for Fe_II"):
-        at.ejectaopacity.get_opacity_lines(adata, ["nnion_Fe_II"], [3000.0, 4000.0], 10.0)
+        at.lines.core.get_opacity_lines(adata, ["nnion_Fe_II"], [3000.0, 4000.0], 10.0)

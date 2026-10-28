@@ -302,7 +302,7 @@ subcommandtree: CommandTree = {
     # the help lists this name under "inputmodel describe", thus the top level hides it
     "describeinputmodel": dc.replace(DESCRIBEINPUTMODEL, aliases=(), hidden=True),
     "ejectaopacity": CommandSpec(
-        "ejectaopacity",
+        "lines.ejectaopacity",
         helptext="Compute the opacities of the ejecta.",
         note="This gives the binned expansion opacities and the Planck-mean opacities.",
         examples=(("--modelpath . -t 300", "the opacities of the ejecta at 300 days"),),
@@ -459,7 +459,7 @@ subcommandtree: CommandTree = {
         exampletestfolder=None,
     ),
     "linecontributions": CommandSpec(
-        "linecontributions",
+        "lines.linecontributions",
         helptext="Give the Sobolev optical depth and the emission of each line in a wavelength range.",
         note=(
             "The level populations of each cell follow calculate_levelpop() of ARTIS. --percell gives one row for each"
@@ -548,7 +548,7 @@ subcommandtree: CommandTree = {
         aliases=("lc", "plotlightcurve"),
     ),
     "plotlinecontributions": CommandSpec(
-        "plotlinecontributions",
+        "lines.plotlinecontributions",
         helptext="Plot the Sobolev emission and the Sobolev optical depth of the strongest lines against velocity.",
         note=(
             "The values come from the estimators and the level populations, as in linecontributions."
@@ -597,7 +597,7 @@ subcommandtree: CommandTree = {
         ),
     ),
     "plotopacity": CommandSpec(
-        "plotopacity",
+        "lines.plotopacity",
         helptext="Plot the binned opacities of the ejecta against wavelength.",
         note=(
             "The plot shows the expansion opacity, the line-binned opacity, and the line-binned opacity with"

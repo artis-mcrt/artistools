@@ -2049,7 +2049,7 @@ def test_ejectaopacity(capsys: pytest.CaptureFixture[str]) -> None:
 
     The opacities need the statistical weights of the levels. A sum without them gives 13.90 cm^2/g.
     """
-    at.ejectaopacity.main(
+    at.lines.ejectaopacity.main(
         argsraw=[], modelpath=modelpath, timestep=40, lambdamin=3000.0, lambdamax=4000.0, deltalambda=10.0
     )
 
@@ -2065,7 +2065,7 @@ def test_line_contributions_follow_the_level_populations_of_artis() -> None:
     The test model has NLTE levels and a superlevel for Fe II and Fe III, and LTE populations for Ni II.
     """
     timestep = 10
-    dfcells = at.linecontributions.get_line_contributions(
+    dfcells = at.lines.linecontributions.get_line_contributions(
         modelpath, timestep, 3000.0, 30000.0, [(26, 2), (26, 3), (28, 2)], percell=True
     )
     time_s = at.get_timestep_times(modelpath, loc="mid")[timestep] * at.constants.day_to_s
@@ -2141,7 +2141,7 @@ def test_line_populations_take_the_boltzmann_factor_of_the_ground_level_with_no_
     dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 10000.0]})
     levels = pl.DataFrame({"level": [0, 1, 2], "g": [2.0, 4.0, 6.0], "energy_ev": [0.0, 1.0, 2.0]})
     dfnltepops = pl.DataFrame({"modelgridindex": [0, 1, 0, 1], "level": [0, 0, 1, 1], "n_NLTE": [10.0, 20.0, 3.0, 4.0]})
-    dfpops = at.linecontributions.get_ion_populations(dfcells, levels, [1, 2], dfnltepops, "nnion_X_II")
+    dfpops = at.lines.linecontributions.get_ion_populations(dfcells, levels, [1, 2], dfnltepops, "nnion_X_II")
     dflevel2 = dfpops.filter(pl.col("level") == 2).sort("modelgridindex")
     assert dflevel2["population_source"].unique().to_list() == ["Boltzmann from the ground level"]
     expected = np.array([10.0, 20.0]) * 3.0 * np.exp(-2.0 / at.constants.K_B_ev_per_K / np.array([5000.0, 10000.0]))
@@ -2151,7 +2151,7 @@ def test_line_populations_take_the_boltzmann_factor_of_the_ground_level_with_no_
 
 def test_line_summary_gives_the_velocity_of_the_largest_tau_with_a_cell_that_has_no_superlevel_row() -> None:
     """A cell with no superlevel row gave a NaN population, and the summary took the velocity of that NaN tau."""
-    from artistools.linecontributions import get_line_summary
+    from artistools.lines.linecontributions import get_line_summary
 
     dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 5000.0]})
     levels = pl.DataFrame({"level": [0, 1, 2], "g": [2.0, 4.0, 6.0], "energy_ev": [0.0, 1.0, 2.0]})
@@ -2160,7 +2160,7 @@ def test_line_summary_gives_the_velocity_of_the_largest_tau_with_a_cell_that_has
         "level": [0, 0, 1, 1, -1],
         "n_NLTE": [10.0, 20.0, 3.0, 4.0, 1.0],
     })
-    dfpops = at.linecontributions.get_ion_populations(dfcells, levels, [2], dfnltepops, "nnion_X_II")
+    dfpops = at.lines.linecontributions.get_ion_populations(dfcells, levels, [2], dfnltepops, "nnion_X_II")
     assert dfpops.filter(pl.col("modelgridindex") == 1)["population"].to_list() == [None]
 
     dfsummary = get_line_summary(
@@ -2189,7 +2189,7 @@ def test_line_populations_of_a_cell_with_no_nlte_row_take_the_lte_populations() 
     dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 8000.0], "nnion_X_II": [100.0, 200.0]})
     levels = pl.DataFrame({"level": [0, 1], "g": [2.0, 4.0], "energy_ev": [0.0, 1.0]})
     dfnltepops = pl.DataFrame({"modelgridindex": [0, 0], "level": [0, 1], "n_NLTE": [90.0, 10.0]})
-    dfpops = at.linecontributions.get_ion_populations(dfcells, levels, [0, 1], dfnltepops, "nnion_X_II")
+    dfpops = at.lines.linecontributions.get_ion_populations(dfcells, levels, [0, 1], dfnltepops, "nnion_X_II")
     dfcell1 = dfpops.filter(pl.col("modelgridindex") == 1).sort("level")
     assert dfcell1["population_source"].to_list() == ["LTE", "LTE"]
     boltzmann = np.array([2.0, 4.0 * np.exp(-1.0 / at.constants.K_B_ev_per_K / 8000.0)])
@@ -2199,8 +2199,8 @@ def test_line_populations_of_a_cell_with_no_nlte_row_take_the_lte_populations() 
 
 def test_line_summary_joins_the_cells_of_a_line_with_different_population_methods() -> None:
     """A line with NLTE populations in one cell and LTE populations in another gave two rows of the summary."""
-    from artistools.linecontributions import get_line_summary
-    from artistools.linecontributions import get_line_summary_of_batches
+    from artistools.lines.linecontributions import get_line_summary
+    from artistools.lines.linecontributions import get_line_summary_of_batches
 
     def get_cell_table(modelgridindex: int, source: str, emission: float) -> pl.DataFrame:
         return pl.DataFrame({
@@ -2237,7 +2237,7 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
     commonargs: dict[str, t.Any] = {"modelpath": modelpath_classic_3d, "lambdamin": 6000.0, "lambdamax": 6400.0}
     nbins = 6
     costhetamin = 0.3
-    at.plotlinecontributions.main(
+    at.lines.plotlinecontributions.main(
         argsraw=[],
         timestep=25,
         nvelocitybins=nbins,
@@ -2261,12 +2261,12 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
         .collect()
     )
     dfcells = (
-        at.linecontributions
+        at.lines.linecontributions
         .get_line_contributions(timestep=25, percell=True, **commonargs)
         .join(dfdirections, on="modelgridindex", how="left")
         .filter(pl.col("costheta") >= costhetamin)
     )
-    linekeys = list(at.linecontributions.LINEKEYS)
+    linekeys = list(at.lines.linecontributions.LINEKEYS)
     dfranked = (
         dfcells
         .group_by(linekeys)
@@ -2337,7 +2337,7 @@ def test_plotlinecontributions_stops_for_a_photosphere_velocity_with_no_unit_or_
     0.05 km/s.
     """
     with pytest.raises(SystemExit):
-        at.plotlinecontributions.main(
+        at.lines.plotlinecontributions.main(
             argsraw=[
                 *("-modelpath", str(modelpath_classic_3d), "-timestep", "25"),
                 *("-lambdamin", "6000", "-lambdamax", "6400", "-velocityunit", "kmps"),
@@ -2356,7 +2356,7 @@ def test_plotlinecontributions_reports_an_arrival_time_outside_the_timesteps(
 
     The log clipped such a time to the first or the last timestep, but the packet commands keep no packet there.
     """
-    from artistools.linecontributions import LineVelocityProfiles
+    from artistools.lines.linecontributions import LineVelocityProfiles
 
     tstarts = at.get_timestep_times(modelpath_classic_3d, loc="start")
     tends = at.get_timestep_times(modelpath_classic_3d, loc="end")
@@ -2368,9 +2368,9 @@ def test_plotlinecontributions_reports_an_arrival_time_outside_the_timesteps(
         pl.DataFrame(),
         dfrankedcells.with_columns(emission_erg_per_s=pl.lit(1.0)),
     )
-    at.plotlinecontributions.print_arrival_times(modelpath_classic_3d, profiles, tstarts[0] * 1.01, "kmps")
+    at.lines.plotlinecontributions.print_arrival_times(modelpath_classic_3d, profiles, tstarts[0] * 1.01, "kmps")
     assert "the first time in no timestep, because it is before the start" in capsys.readouterr().out
-    at.plotlinecontributions.print_arrival_times(modelpath_classic_3d, profiles, tends[-1] * 0.99, "kmps")
+    at.lines.plotlinecontributions.print_arrival_times(modelpath_classic_3d, profiles, tends[-1] * 0.99, "kmps")
     assert "the last time in no timestep, because it is after the end" in capsys.readouterr().out
 
 
@@ -2387,9 +2387,9 @@ def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
     only one wavelength, because the blend went to zero at the centre of the outer bins. The wavelength grid of the
     blend went to the fastest part of a cell, although the bins above the shell had no depth.
     """
-    from artistools.linecontributions import CellLineInputs
-    from artistools.linecontributions import get_sobolev_trough
-    from artistools.linecontributions import LineVelocityProfiles
+    from artistools.lines.linecontributions import CellLineInputs
+    from artistools.lines.linecontributions import get_sobolev_trough
+    from artistools.lines.linecontributions import LineVelocityProfiles
 
     vmax_kmps, vph_kmps, tau, time_days = 1.0e4, 4000.0, 2.0, 1.0
     line = {"ion": "X I", "lambda_angstroms": 5000.0, "lower": 0, "upper": 1, "A_per_s": 1.0}
@@ -2477,9 +2477,9 @@ def get_trough_of_box_grid(
 
     tauofcell gives the tau_sobolev of each cell from the velocities of the cell centres [km/s].
     """
-    from artistools.linecontributions import CellLineInputs
-    from artistools.linecontributions import get_sobolev_trough
-    from artistools.linecontributions import LineVelocityProfiles
+    from artistools.lines.linecontributions import CellLineInputs
+    from artistools.lines.linecontributions import get_sobolev_trough
+    from artistools.lines.linecontributions import LineVelocityProfiles
 
     vmax_kmps = 1.0e4
     widths = (2 * vmax_kmps / gridshape[0], 2 * vmax_kmps / gridshape[1], 2 * vmax_kmps / gridshape[2])
@@ -2545,9 +2545,9 @@ def test_linecontributions_taumin_keeps_each_line_that_reaches_it() -> None:
     it.
     """
     commonargs: dict[str, t.Any] = {"modelpath": modelpath_classic_3d, "lambdamin": 3000.0, "lambdamax": 5000.0}
-    linekeys = list(at.linecontributions.LINEKEYS)
-    dfall = at.linecontributions.get_line_contributions(timestep=25, **commonargs)
-    dfkept = at.linecontributions.get_line_contributions(timestep=25, taumin=1.0, **commonargs)
+    linekeys = list(at.lines.linecontributions.LINEKEYS)
+    dfall = at.lines.linecontributions.get_line_contributions(timestep=25, **commonargs)
+    dfkept = at.lines.linecontributions.get_line_contributions(timestep=25, taumin=1.0, **commonargs)
     reachingkeys = set(dfall.filter(pl.col("tau_sobolev_max") >= 1.0).select(linekeys).iter_rows())
     keptkeys = set(dfkept.select(linekeys).iter_rows())
     assert reachingkeys
@@ -2561,9 +2561,9 @@ def test_taumin_keeps_a_line_whose_lower_level_is_above_the_nlte_levels() -> Non
     A level above the NLTE levels of an ion with no superlevel takes n_0 (g_l / g_0) exp(-(E_l - E_0) / k T_exc), which
     can be above n_ion. The earlier bound n_l <= n_ion left out such a line, although its tau_sobolev reached -taumin.
     """
-    from artistools.linecontributions import get_cell_line_table
-    from artistools.linecontributions import get_lines_that_can_reach_tau
-    from artistools.linecontributions import NLTEPOPS_SCHEMA
+    from artistools.lines.linecontributions import get_cell_line_table
+    from artistools.lines.linecontributions import get_lines_that_can_reach_tau
+    from artistools.lines.linecontributions import NLTEPOPS_SCHEMA
 
     dfcells = pl.DataFrame({
         "modelgridindex": [0],
@@ -2617,8 +2617,8 @@ def test_linecontributions_takes_the_nlte_levels_of_each_cell() -> None:
     The highest NLTE level was the maximum over all the cells. A cell that resolves fewer levels then got a null
     population for a level of its superlevel, and the line had no tau_sobolev in that cell.
     """
-    from artistools.linecontributions import get_cell_line_table
-    from artistools.linecontributions import NLTEPOPS_SCHEMA
+    from artistools.lines.linecontributions import get_cell_line_table
+    from artistools.lines.linecontributions import NLTEPOPS_SCHEMA
 
     dfcells = pl.DataFrame({
         "modelgridindex": [0, 1],
@@ -2674,15 +2674,17 @@ def test_linecontributions_writes_a_file_only_with_the_output_option(
     """The command wrote linecontributions.txt into the working folder with no -o, because -o had a default name."""
     monkeypatch.chdir(tmp_path)
     commonargs: dict[str, t.Any] = {"modelpath": modelpath, "timestep": 10, "lambdamin": 4600.0, "lambdamax": 4700.0}
-    at.linecontributions.main(argsraw=[], **commonargs)
+    at.lines.linecontributions.main(argsraw=[], **commonargs)
     assert not list(tmp_path.iterdir())
     assert '"Fe III" 4659.' in capsys.readouterr().out
     # the skill gives the model path as the last positional argument, and the parser rejected it
-    at.linecontributions.main(argsraw=["-timestep", "10", "-lambdamin", "4600", "-lambdamax", "4700", str(modelpath)])
+    at.lines.linecontributions.main(
+        argsraw=["-timestep", "10", "-lambdamin", "4600", "-lambdamax", "4700", str(modelpath)]
+    )
     assert '"Fe III" 4659.' in capsys.readouterr().out
 
     outputfile = tmp_path / "lines.txt"
-    at.linecontributions.main(argsraw=[], outputfile=outputfile, **commonargs)
+    at.lines.linecontributions.main(argsraw=[], outputfile=outputfile, **commonargs)
     filetext = outputfile.read_text(encoding="utf-8")
     assert "# column tau_sobolev_max: the maximum Sobolev optical depth of the line in the cells" in filetext
 
@@ -2697,7 +2699,7 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
     The Planck mean takes the bins of the x range, with the Planck function at the temperature of the cell. Only
     --showplanckmean draws it.
     """
-    at.plotopacity.main(
+    at.lines.plotopacity.main(
         argsraw=[
             "-modelpath",
             str(modelpath),
@@ -2720,12 +2722,12 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
 
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
-    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
-    lines = at.ejectaopacity.get_opacity_lines(
-        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
+    lines = at.lines.core.get_opacity_lines(
+        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
     )
-    dfbins = at.ejectaopacity.get_expansion_opacities(lines, dfcell, edges, time_days)
+    dfbins = at.lines.core.get_expansion_opacities(lines, dfcell, edges, time_days)
     lambda_cm = dfbins["lambda_angstroms_bin_mid"].to_numpy() * 1e-8
     temperature = dfcell["T_exc"].item()
     planck = lambda_cm**-5 / np.expm1(
@@ -2736,7 +2738,7 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
     assert np.isclose(mockaxhline.call_args.args[1], expected, rtol=1e-9, atol=0.0)
 
     # the line and its calculation need --showplanckmean
-    at.plotopacity.main(
+    at.lines.plotopacity.main(
         argsraw=[
             "-modelpath",
             str(modelpath),
@@ -2760,7 +2762,7 @@ def test_plotopacity_draws_each_cap_and_the_line_count(mockplot: mock.MagicMock,
     The panel counts each line that the opacities sum. A cap that is given two times gives one opacity. The :g format
     gave 1.0000001 the column name of 1, thus the kernel stopped with an error.
     """
-    at.plotopacity.main(
+    at.lines.plotopacity.main(
         argsraw=[
             "-modelpath",
             str(modelpath),
@@ -2795,10 +2797,10 @@ def test_plotopacity_draws_each_cap_and_the_line_count(mockplot: mock.MagicMock,
     (linecountplot,) = [call for call in mockplot.call_args_list if call.args[0] is axes[2]]
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
-    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
-    lines = at.ejectaopacity.get_opacity_lines(
-        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
+    lines = at.lines.core.get_opacity_lines(
+        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
     )
     # each bin draws its count at its lower edge and at its upper edge
     assert np.nansum(linecountplot.args[2]) == 2 * lines.dflines.height
@@ -2809,10 +2811,10 @@ def test_plotopacity_average_cell_takes_the_mean_composition(capsys: pytest.Capt
 
     A model of one cell gives the same cell. A cell with no temperature does not count in the mean temperature.
     """
-    dfone = at.ejectaopacity.get_cell_estimators(modelpath, 40, None, "Te")
+    dfone = at.lines.core.get_cell_estimators(modelpath, 40, None, "Te")
     pltest.assert_frame_equal(
-        at.plotopacity.get_average_cell(dfone),
-        dfone.select(at.plotopacity.get_average_cell(dfone).columns),
+        at.lines.plotopacity.get_average_cell(dfone),
+        dfone.select(at.lines.plotopacity.get_average_cell(dfone).columns),
         check_dtypes=False,
         rel_tol=1e-12,
     )
@@ -2826,14 +2828,15 @@ def test_plotopacity_average_cell_takes_the_mean_composition(capsys: pytest.Capt
         "nnion_Fe_II": [2.0, 4.0, 8.0],
     })
     capsys.readouterr()
-    dfmean = at.plotopacity.get_average_cell(dfcells)
+    dfmean = at.lines.plotopacity.get_average_cell(dfcells)
     assert np.isclose(dfmean["T_exc"].item(), (1000.0 + 3 * 3000.0) / 4, rtol=1e-12, atol=0.0)
     meanrho = (1.0 + 3 * 2.0 + 4 * 4.0) / 8
     assert np.isclose(dfmean["rho"].item(), meanrho, rtol=1e-12, atol=0.0)
     assert np.isclose(dfmean["nnion_Fe_II"].item(), meanrho * (2.0 + 3 * 2.0 + 4 * 2.0) / 8, rtol=1e-12, atol=0.0)
     assert "T_exc = 2500 K" in capsys.readouterr().out
     assert (
-        at.plotopacity.get_cells_text(None, None, None, "TJ = 2500 K") == "mean composition of all cells at TJ = 2500 K"
+        at.lines.plotopacity.get_cells_text(None, None, None, "TJ = 2500 K")
+        == "mean composition of all cells at TJ = 2500 K"
     )
 
 
@@ -2845,7 +2848,7 @@ def test_excitation_temperature_is_the_temperature_that_artis_used(
     The kernel took Te before. A classic model sets LTEPOP_EXCITATION_USE_TJ = true, and after the LTE timesteps its Te
     differs from TJ, thus the level populations did not match ARTIS. A commented line does not count.
     """
-    get_column = at.ejectaopacity.get_excitation_temperature_column
+    get_column = at.lines.core.get_excitation_temperature_column
     capsys.readouterr()
     assert get_column(tmp_path, "auto") == "Te"
     assert "gives no LTEPOP_EXCITATION_USE_TJ" in capsys.readouterr().err
@@ -2872,13 +2875,13 @@ def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
-    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
-    opacitylines = at.ejectaopacity.get_opacity_lines(
-        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    lambda_bin_edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.lines.core.get_opacity_lines(
+        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
     )
 
-    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+    dfopacities = at.lines.core.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
 
     assert dfopacities.height == 100
     for column, expectedsum in {
@@ -2897,17 +2900,17 @@ def test_expansion_opacities_give_each_cap_its_own_column() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
-    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
-    opacitylines = at.ejectaopacity.get_opacity_lines(
-        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    lambda_bin_edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.lines.core.get_opacity_lines(
+        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
     )
 
     taucaps = (10.0, 1e300, 0.1, 1.0)
-    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days, taucaps)
+    dfopacities = at.lines.core.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days, taucaps)
 
-    sums = {taucap: dfopacities[at.ejectaopacity.get_capped_column(taucap)].sum() for taucap in sorted(taucaps)}
-    assert at.ejectaopacity.get_capped_column(1234567.0) != at.ejectaopacity.get_capped_column(1234568.0)
+    sums = {taucap: dfopacities[at.lines.core.get_capped_column(taucap)].sum() for taucap in sorted(taucaps)}
+    assert at.lines.core.get_capped_column(1234567.0) != at.lines.core.get_capped_column(1234568.0)
     assert math.isclose(sums[1.0], 1652.4668052744682, rel_tol=1e-12)
     assert math.isclose(sums[1e300], dfopacities["linebinned"].sum(), rel_tol=1e-12)
     assert list(sums.values()) == sorted(sums.values())
@@ -2921,16 +2924,16 @@ def test_expansion_opacities_of_a_null_population_are_zero() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
-    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
-    opacitylines = at.ejectaopacity.get_opacity_lines(
-        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    lambda_bin_edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.lines.core.get_opacity_lines(
+        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
     )
     ionstr = opacitylines.ionstrs[0]
 
     def get_opacities(dfcells: pl.DataFrame) -> pl.DataFrame:
-        return at.ejectaopacity.get_expansion_opacities(opacitylines, dfcells, lambda_bin_edges, time_days).select(
-            at.ejectaopacity.get_opacity_columns(at.ejectaopacity.DEFAULT_TAUCAPS)
+        return at.lines.core.get_expansion_opacities(opacitylines, dfcells, lambda_bin_edges, time_days).select(
+            at.lines.core.get_opacity_columns(at.lines.core.DEFAULT_TAUCAPS)
         )
 
     pltest.assert_frame_equal(
@@ -2949,18 +2952,18 @@ def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te").with_columns(
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te").with_columns(
         pl.lit(float("nan"), dtype=pl.Float32).alias("T_exc")
     )
-    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
-    opacitylines = at.ejectaopacity.get_opacity_lines(
-        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
+    lambda_bin_edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    opacitylines = at.lines.core.get_opacity_lines(
+        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
     )
 
     taucaps = (0.1, 1.0)
-    dfopacities = at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days, taucaps)
+    dfopacities = at.lines.core.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days, taucaps)
 
-    opacitycolumns = at.ejectaopacity.get_opacity_columns(taucaps)
+    opacitycolumns = at.lines.core.get_opacity_columns(taucaps)
     isnan = dfopacities.select(pl.col(opacitycolumns).is_nan())
     assert isnan["linebinned"].any()
     for column in opacitycolumns:
@@ -2974,15 +2977,15 @@ def test_expansion_opacities_skip_a_line_with_a_null_constant() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
-    lambda_bin_edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
-    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    lambda_bin_edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    adata = at.lines.core.get_opacity_atomic_data(modelpath)
     isfirstline = pl.int_range(pl.len()) == 0
 
     def get_opacities(transitions: list[pl.LazyFrame]) -> pl.DataFrame:
         adatachanged = adata.with_columns(pl.Series("transitions", transitions, dtype=pl.Object))
-        opacitylines = at.ejectaopacity.get_opacity_lines(adatachanged, dfcell.columns, lambda_bin_edges, time_days)
-        return at.ejectaopacity.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
+        opacitylines = at.lines.core.get_opacity_lines(adatachanged, dfcell.columns, lambda_bin_edges, time_days)
+        return at.lines.core.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
 
     dfnullconstant = get_opacities([
         dftransitions.lazy().with_columns(A=pl.when(~isfirstline).then(pl.col("A")))
@@ -2996,7 +2999,7 @@ def test_expansion_opacities_skip_a_line_with_a_null_constant() -> None:
 def test_lambda_bin_edges_reject_a_range_with_no_bin() -> None:
     """A range with no bin stops with a message, not with an IndexError in get_expansion_opacities()."""
     with pytest.raises(ValueError, match="holds no bin"):
-        at.ejectaopacity.get_lambda_bin_edges(5000.0, 4000.0, 10.0)
+        at.lines.core.get_lambda_bin_edges(5000.0, 4000.0, 10.0)
 
 
 def test_lambda_bin_edges_cover_the_full_range() -> None:
@@ -3005,11 +3008,11 @@ def test_lambda_bin_edges_cover_the_full_range() -> None:
     (4000 - 3000) / 0.1 is 9999.999999999998, and int() of it gave 9999 bins. Thus the last bin was missing.
     A range that does not hold a whole number of bins lost the part after the last whole bin.
     """
-    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 0.1)
+    edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 0.1)
     assert len(edges) == 10001
     assert math.isclose(edges[-1], 4000.0, rel_tol=1e-12)
 
-    edges = at.ejectaopacity.get_lambda_bin_edges(1000.0, 25010.0, 20.0)
+    edges = at.lines.core.get_lambda_bin_edges(1000.0, 25010.0, 20.0)
     assert len(edges) == 1202
     assert math.isclose(edges[-1], 25020.0, rel_tol=1e-12)
 
@@ -3024,11 +3027,11 @@ def test_plotopacity_weights_the_cells_by_mass() -> None:
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
+    adata = at.lines.core.get_opacity_atomic_data(modelpath)
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
     assert dfcell.height == 1
 
-    cellcount = at.ejectaopacity.CELLSPERBATCH + 8
+    cellcount = at.lines.core.CELLSPERBATCH + 8
     dfcells = pl.concat([
         dfcell.with_columns(
             pl.lit(k - 1, dtype=dfcell.schema["modelgridindex"]).alias("modelgridindex"),
@@ -3040,8 +3043,8 @@ def test_plotopacity_weights_the_cells_by_mass() -> None:
     ])
 
     def get_linebinned(dfestimators: pl.DataFrame) -> npt.NDArray[np.float64]:
-        dfopacities, _ = at.plotopacity.get_massweighted_opacities(
-            adata, time_days, dfestimators, at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+        dfopacities, _ = at.lines.plotopacity.get_massweighted_opacities(
+            adata, time_days, dfestimators, at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
         )
         return dfopacities["linebinned"].to_numpy()
 
@@ -3064,33 +3067,33 @@ def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys
         "constexpr double expopac_deltalambda = 10.;\n",
         encoding="utf-8",
     )
-    assert at.ejectaopacity.get_expopac_grid(tmp_path) == (3000.0, 4000.0, 10.0)
-    assert at.ejectaopacity.get_expopac_grid(modelpath) is None
+    assert at.lines.core.get_expopac_grid(tmp_path) == (3000.0, 4000.0, 10.0)
+    assert at.lines.core.get_expopac_grid(modelpath) is None
 
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
-    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
-    dffull, _ = at.plotopacity.get_massweighted_opacities(
-        adata, time_days, dfcell, at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
+    adata = at.lines.core.get_opacity_atomic_data(modelpath)
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    dffull, _ = at.lines.plotopacity.get_massweighted_opacities(
+        adata, time_days, dfcell, at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
     )
     xmin, xmax, width = 3213.0, 3517.0, 50.0
     capsys.readouterr()
-    edges, deltalambda = at.plotopacity.get_computed_bin_edges(tmp_path, xmin, xmax, None, width)
+    edges, deltalambda = at.lines.plotopacity.get_computed_bin_edges(tmp_path, xmin, xmax, None, width)
     assert deltalambda == pytest.approx(10.0, rel=1e-12, abs=0.0)
     assert len(edges) - 1 < 50 < dffull.height
     assert (
         f"{len(edges) - 1} wavelength bins of 10 Angstroms from {edges[0]:g} to {edges[-1]:g} Angstroms of the 100 bins"
         " of rpkt.h from 3000 to 4000 Angstroms"
     ) in capsys.readouterr().out
-    dfpart, _ = at.plotopacity.get_massweighted_opacities(adata, time_days, dfcell, edges)
+    dfpart, _ = at.lines.plotopacity.get_massweighted_opacities(adata, time_days, dfcell, edges)
 
-    windowbins = at.plotopacity.get_window_bins(width, deltalambda)
+    windowbins = at.lines.plotopacity.get_window_bins(width, deltalambda)
     plotted = [
         (
             df.filter(pl.col("lambda_angstroms_upper") > xmin, pl.col("lambda_angstroms_lower") < xmax),
             at.misc.df_filter_minmax_bracketed(
-                at.plotopacity.get_moving_averages(df, windowbins, ["exopac", "linebinned", "linebinned_cap1"]),
+                at.lines.plotopacity.get_moving_averages(df, windowbins, ["exopac", "linebinned", "linebinned_cap1"]),
                 "lambda_angstroms_bin_mid",
                 xmin,
                 xmax,
@@ -3107,11 +3110,13 @@ def test_plotopacity_window_holds_the_nearest_odd_number_of_bins() -> None:
 
     2 * round(n / 2) + 1 gave the odd number nearest to n + 1, e.g. 5 bins for a width of 3 bins.
     """
-    windowbins = {width: at.plotopacity.get_window_bins(width, 20.0) for width in (20.0, 60.0, 62.0, 140.0, 220.0)}
+    windowbins = {
+        width: at.lines.plotopacity.get_window_bins(width, 20.0) for width in (20.0, 60.0, 62.0, 140.0, 220.0)
+    }
     assert windowbins == {20.0: 1, 60.0: 3, 62.0: 3, 140.0: 7, 220.0: 11}
     # a width of an even number of bins is one bin from two odd numbers, and it takes the larger one
-    assert at.plotopacity.get_window_bins(200.0, 20.0) == 11
-    assert at.plotopacity.get_window_bins(1.2, 0.2) == 7
+    assert at.lines.plotopacity.get_window_bins(200.0, 20.0) == 11
+    assert at.lines.plotopacity.get_window_bins(1.2, 0.2) == 7
 
 
 def test_expansion_opacity_keeps_a_weak_line() -> None:
@@ -3208,9 +3213,9 @@ def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
     """
     dfcells = pl.DataFrame({"modelgridindex": range(10000)})
     for numbins in (100, 1200, 4998, 49980):
-        batches = at.ejectaopacity.get_cell_batches(dfcells, numbins)
+        batches = at.lines.core.get_cell_batches(dfcells, numbins)
         assert sum(batch.height for batch in batches) == dfcells.height
-        assert max(batch.height for batch in batches) * numbins <= at.ejectaopacity.ROWSPERBATCH, numbins
+        assert max(batch.height for batch in batches) * numbins <= at.lines.core.ROWSPERBATCH, numbins
 
 
 def test_plotopacity_median_of_the_cells_agrees_with_the_median_of_each_bin() -> None:
@@ -3219,15 +3224,15 @@ def test_plotopacity_median_of_the_cells_agrees_with_the_median_of_each_bin() ->
     The median of each wavelength bin agrees with the exact mass-weighted median within half a step of the histogram.
     A NaN opacity stopped the median with an error of the strict cast of its bin. It now gives NaN, as in the mean.
     """
-    from artistools.ejectaopacity import get_expansion_opacities
-    from artistools.ejectaopacity import get_opacity_lines
+    from artistools.lines.core import get_expansion_opacities
+    from artistools.lines.core import get_opacity_lines
 
     timestep = 25
     time_days = at.get_timestep_times(modelpath_classic_3d, loc="mid")[timestep]
-    dfestimators = at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, timestep, None, "TJ").head(60)
-    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath_classic_3d)
+    dfestimators = at.lines.core.get_cell_estimators(modelpath_classic_3d, timestep, None, "TJ").head(60)
+    adata = at.lines.core.get_opacity_atomic_data(modelpath_classic_3d)
     edges = [4000.0 + 100.0 * index for index in range(11)]
-    dfmedian, _ = at.plotopacity.get_massweighted_opacities(
+    dfmedian, _ = at.lines.plotopacity.get_massweighted_opacities(
         adata, time_days, dfestimators, edges, taucaps=[], cellaverage="median"
     )
     dfcells = get_expansion_opacities(
@@ -3240,7 +3245,7 @@ def test_plotopacity_median_of_the_cells_agrees_with_the_median_of_each_bin() ->
         .sort("lambda_angstroms_binindex")
     )
     ratio = dfmedian["exopac"].to_numpy() / dfexact["exact"].to_numpy()
-    assert np.all(np.abs(np.log10(ratio)) <= 0.5 * at.plotopacity.OPACITYMEDIAN_LOGSTEP + 1e-9)
+    assert np.all(np.abs(np.log10(ratio)) <= 0.5 * at.lines.plotopacity.OPACITYMEDIAN_LOGSTEP + 1e-9)
 
     dfnancell = dfestimators.with_columns(
         T_exc=pl
@@ -3249,7 +3254,7 @@ def test_plotopacity_median_of_the_cells_agrees_with_the_median_of_each_bin() ->
         .otherwise(pl.col("T_exc"))
     )
     for cellaverage in ("mean", "median"):
-        dfnan, _ = at.plotopacity.get_massweighted_opacities(
+        dfnan, _ = at.lines.plotopacity.get_massweighted_opacities(
             adata, time_days, dfnancell, edges, taucaps=[], cellaverage=cellaverage
         )
         assert dfnan["exopac"].is_nan().all(), cellaverage
@@ -3272,10 +3277,10 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
     expectedcells = set(dfvelocities.filter(pl.col("vel_r_mid_on_c").is_between(0.1, 0.2))["modelgridindex"])
     assert 0 < len(expectedcells) < dfvelocities.height
 
-    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "0.2c"])
-    dfestimators = at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, None, "Te")
+    args = at.misc.parse_cli_args(at.lines.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "0.2c"])
+    dfestimators = at.lines.core.get_cell_estimators(modelpath_classic_3d, 5, None, "Te")
     capsys.readouterr()
-    dfcells = at.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax)
+    dfcells = at.lines.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax)
     assert set(dfcells["modelgridindex"]) == expectedcells
     assert (
         f"{len(expectedcells)} of {dfestimators.height} cells with estimators are in the range"
@@ -3288,21 +3293,21 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
     )
     assert 0 < len(expectedpolar) < len(set(dfestimators["modelgridindex"]))
     for selectionargs in (["-costhetamin", "0.8"], ["-dirbin", "90"]):
-        args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", *selectionargs])
+        args = at.misc.parse_cli_args(at.lines.plotopacity.addargs, None, None, ["-vmin", "0.1c", *selectionargs])
         costhetarange = at.misc.get_costheta_range(args)
-        dfpolarcells = at.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, costhetarange)
+        dfpolarcells = at.lines.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, costhetarange)
         assert set(dfpolarcells["modelgridindex"]) == expectedpolar & set(dfestimators["modelgridindex"])
 
-    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
-    assert at.plotopacity.get_cells_text(None, args.vmin, args.vmax) == (
+    args = at.misc.parse_cli_args(at.lines.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
+    assert at.lines.plotopacity.get_cells_text(None, args.vmin, args.vmax) == (
         "mass-weighted mean of the cells with vmin = 0.1c and vmax = 60000 km/s"
     )
     with pytest.raises(SystemExit):
-        at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "0.1"])
+        at.misc.parse_cli_args(at.lines.plotopacity.addargs, None, None, ["-vmin", "0.1"])
 
-    args = at.misc.parse_cli_args(at.plotopacity.addargs, None, None, ["-vmin", "150000km/s"])
+    args = at.misc.parse_cli_args(at.lines.plotopacity.addargs, None, None, ["-vmin", "150000km/s"])
     with pytest.raises(ValueError, match=re.escape("No cell with estimators is in the range with vmin = 150000 km/s")):
-        at.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax)
+        at.lines.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax)
 
 
 def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
@@ -3322,7 +3327,7 @@ def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
     estimatorcells = at.scan_estimators(modelpath_classic_3d, timestep=5).select("modelgridindex").collect()
     nextcell = estimatorcells.filter(pl.col("modelgridindex") > emptycell)["modelgridindex"].min()
     with pytest.raises(ValueError, match=rf"hold no values for cell {emptycell} .* is cell {nextcell}$"):
-        at.ejectaopacity.get_cell_estimators(modelpath_classic_3d, 5, emptycell, "Te")
+        at.lines.core.get_cell_estimators(modelpath_classic_3d, 5, emptycell, "Te")
 
 
 def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -8013,7 +8018,9 @@ def test_plotopacity_writes_the_drawn_values(
     average, the ratios go in the table of the bins, with one value for each bin.
     """
     commonargs = ["-modelpath", str(modelpath), "-timestep", "40", "-xmin", "3000", "-xmax", "4000", "--write_data"]
-    at.plotopacity.main(argsraw=[*commonargs, "--showplanckmean", "--showlinecount", "-o", str(tmp_path / "opac.pdf")])
+    at.lines.plotopacity.main(
+        argsraw=[*commonargs, "--showplanckmean", "--showlinecount", "-o", str(tmp_path / "opac.pdf")]
+    )
     dfbins = read_data_file(tmp_path / "opac.txt")
     dfaverages = read_data_file(tmp_path / "opac_movingaverage.txt")
 
@@ -8045,7 +8052,7 @@ def test_plotopacity_writes_the_drawn_values(
     assert np.allclose(dfbins["planckmean_exopac_cm2_per_g"], mockaxhline.call_args.args[1], rtol=1e-12, atol=0.0)
 
     mockplot.reset_mock()
-    at.plotopacity.main(argsraw=[*commonargs, "-movingaveragewidth", "0", "-o", str(tmp_path / "noaverage.pdf")])
+    at.lines.plotopacity.main(argsraw=[*commonargs, "-movingaveragewidth", "0", "-o", str(tmp_path / "noaverage.pdf")])
     assert not (tmp_path / "noaverage_movingaverage.txt").exists()
     dfbins = read_data_file(tmp_path / "noaverage.txt")
     assert "planckmean_exopac_cm2_per_g" not in dfbins.columns

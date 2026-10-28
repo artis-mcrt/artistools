@@ -21,11 +21,11 @@ from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_ev_per_K
 from artistools.constants import km_to_cm
-from artistools.ejectaopacity import addarg_excitationtemperature
-from artistools.ejectaopacity import get_excitation_temperature_column
-from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import get_costheta_selection
+from artistools.lines.core import addarg_excitationtemperature
+from artistools.lines.core import get_excitation_temperature_column
+from artistools.lines.core import get_opacity_atomic_data
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_table_output
 from artistools.misc import addarg_timedays

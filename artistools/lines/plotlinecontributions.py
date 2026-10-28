@@ -9,17 +9,17 @@ import matplotlib.colors as mplcolors
 import numpy as np
 import polars as pl
 
-from artistools.ejectaopacity import addarg_excitationtemperature
 from artistools.inputmodel import get_modeldata
-from artistools.linecontributions import addarg_lineselection
-from artistools.linecontributions import addarg_taumin
-from artistools.linecontributions import get_cell_line_inputs
-from artistools.linecontributions import get_line_velocity_profiles
-from artistools.linecontributions import get_ranked_line_summary
-from artistools.linecontributions import get_sobolev_trough
-from artistools.linecontributions import LINEKEYS
-from artistools.linecontributions import parse_ions
-from artistools.linecontributions import TROUGHSAMPLESPERCELL
+from artistools.lines.core import addarg_excitationtemperature
+from artistools.lines.linecontributions import addarg_lineselection
+from artistools.lines.linecontributions import addarg_taumin
+from artistools.lines.linecontributions import get_cell_line_inputs
+from artistools.lines.linecontributions import get_line_velocity_profiles
+from artistools.lines.linecontributions import get_ranked_line_summary
+from artistools.lines.linecontributions import get_sobolev_trough
+from artistools.lines.linecontributions import LINEKEYS
+from artistools.lines.linecontributions import parse_ions
+from artistools.lines.linecontributions import TROUGHSAMPLESPERCELL
 from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_darkmode
@@ -66,8 +66,8 @@ if t.TYPE_CHECKING:
     import matplotlib.axes as mplax
     import numpy.typing as npt
 
-    from artistools.linecontributions import CellLineInputs
-    from artistools.linecontributions import LineVelocityProfiles
+    from artistools.lines.linecontributions import CellLineInputs
+    from artistools.lines.linecontributions import LineVelocityProfiles
 
 DEFAULTOUTPUTNAME = "plotlinecontributions.pdf"
 

@@ -108,7 +108,7 @@ main columns of an escaped packet are:
 - `artistools linecontributions -t <days> --lambdamin <Å> --lambdamax <Å> <modelpath>` gives each line in the range
   with its maximum Sobolev optical depth in the cells and its emission n_u A h nu beta, summed over the cells. `--percell` gives
   one row for each cell and line, with the level populations and the method of each one.
-  `at.linecontributions.get_line_contributions(modelpath, timestep, lambdamin, lambdamax)` gives the same table.
+  `at.lines.linecontributions.get_line_contributions(modelpath, timestep, lambdamin, lambdamax)` gives the same table.
   `artistools plotlinecontributions` plots the emission and the tau_sobolev of each line against velocity.
   `--costhetamin` and `--costhetamax` select the cells of one direction, and `--troughdirbin` adds a Sobolev estimate of
   the absorption trough for one viewing direction.
