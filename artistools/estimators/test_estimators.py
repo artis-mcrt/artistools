@@ -30,6 +30,7 @@ import artistools as at
 from artistools.estimators import interactive
 from artistools.estimators import plotestimators
 from artistools.estimators import plotitems
+from artistools.estimators import subplotcards
 from artistools.viewertools import core as viewercore
 
 if t.TYPE_CHECKING:
@@ -4504,26 +4505,26 @@ def test_move_series_item_keeps_the_type_and_the_directives() -> None:
     """
     columns = ("Te", "TR", "nne", "nnion_Fe_II", "nnion_Fe_III", "nnion_Co_II", "nnelement_Fe", "nnelement_Co")
     subplots = (("Te", "TR@color=C3", "yscale=log"), ("populations", "Fe II", "Fe III", "ymin=1e-5"))
-    assert interactive.move_series_item(subplots, (0, 1), 0, 0, columns) == (
+    assert subplotcards.move_series_item(subplots, (0, 1), 0, 0, columns) == (
         ("TR@color=C3", "Te", "yscale=log"),
         subplots[1],
     )
     # the place after the last chip of the same subplot
-    assert interactive.move_series_item(subplots, (0, 0), 0, 2, columns) == (
+    assert subplotcards.move_series_item(subplots, (0, 0), 0, 2, columns) == (
         ("TR@color=C3", "Te", "yscale=log"),
         subplots[1],
     )
-    assert interactive.move_series_item(subplots, (1, 1), 1, 2, columns) == (
+    assert subplotcards.move_series_item(subplots, (1, 1), 1, 2, columns) == (
         subplots[0],
         ("populations", "Fe III", "Fe II", "ymin=1e-5"),
     )
     # a subplot with no chip takes the item after its type and in front of its directives
     emptied = (("Te",), ("populations", "ymin=1e-5"))
-    assert interactive.move_series_item((("Te",), ("populations", "Fe II", "ymin=1e-5")), (1, 1), 0, 0, columns) == (
+    assert subplotcards.move_series_item((("Te",), ("populations", "Fe II", "ymin=1e-5")), (1, 1), 0, 0, columns) == (
         ("Fe II", "Te"),
         emptied[1],
     )
-    assert interactive.move_series_item(((("Te", "TR"), ("TR",))), (0, 1), 1, 0, columns) is None
+    assert subplotcards.move_series_item(((("Te", "TR"), ("TR",))), (0, 1), 1, 0, columns) is None
 
 
 # the code that drives the keys, the mouse, and the line properties popup of an estimator window on the offscreen
@@ -5324,68 +5325,69 @@ def test_interactive_subplot_types_and_suggestions() -> None:
     """The type of a subplot sets its choices and its suggestions, and each result draws with plotestimators."""
     viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
     columns = viewer.modeldata.estimatorcolumns
-    types = interactive.get_subplot_types(columns)
-    assert types[:2] == [interactive.VARIABLES_TYPE, "populations"]
+    types = subplotcards.get_subplot_types(columns)
+    assert types[:2] == [subplotcards.VARIABLES_TYPE, "populations"]
     assert "gamma_NT" in types
     # the families of the populations and of the initial abundances are no type of their own
     assert not {"nnion", "nnelement", "init_X"} & set(types)
 
     assert plotitems.get_subplot_seriestype(("Fe II", "Fe III"), columns) == "populations"
     assert plotitems.get_subplot_seriestype(("Te", "yscale=log"), columns) is None
-    assert interactive.get_series_suggestions(("Te",), columns) == ["TJ", "TR"]
+    assert subplotcards.get_series_suggestions(("Te",), columns) == ["TJ", "TR"]
     # the other ions of the element come first, and the total of the element after its ions
-    assert interactive.get_series_suggestions(("populations", "Fe II", "Fe III"), columns)[:2] == ["Fe I", "Fe IV"]
+    assert subplotcards.get_series_suggestions(("populations", "Fe II", "Fe III"), columns)[:2] == ["Fe I", "Fe IV"]
     # a control of the card sets each directive, thus only the names show as chips
-    assert interactive.get_chip_items(("populations", "Fe II", "yscale=log", "ymin=1"), columns) == [(1, "Fe II")]
+    assert subplotcards.get_chip_items(("populations", "Fe II", "yscale=log", "ymin=1"), columns) == [(1, "Fe II")]
 
-    newsubplots = interactive.get_new_subplot_suggestions(
+    newsubplots = subplotcards.get_new_subplot_suggestions(
         viewer.values.subplots, viewer.modeldata.defaultsubplots, columns
     )
     assert ("populations", "Fe I", "Fe II") in newsubplots
     # the + button of a card needs no text: it adds the first suggestion, or else a common variable
     assert (
-        interactive.get_new_subplot(viewer.values.subplots, viewer.modeldata.defaultsubplots, columns) == newsubplots[0]
+        subplotcards.get_new_subplot(viewer.values.subplots, viewer.modeldata.defaultsubplots, columns)
+        == newsubplots[0]
     )
     allsuggested = [*viewer.values.subplots, *newsubplots]
-    remaining = interactive.get_new_subplot_suggestions(allsuggested, viewer.modeldata.defaultsubplots, columns)
+    remaining = subplotcards.get_new_subplot_suggestions(allsuggested, viewer.modeldata.defaultsubplots, columns)
     while remaining:
         allsuggested += remaining
-        remaining = interactive.get_new_subplot_suggestions(allsuggested, viewer.modeldata.defaultsubplots, columns)
-    assert interactive.get_new_subplot(allsuggested, viewer.modeldata.defaultsubplots, columns) == ("Te",)
+        remaining = subplotcards.get_new_subplot_suggestions(allsuggested, viewer.modeldata.defaultsubplots, columns)
+    assert subplotcards.get_new_subplot(allsuggested, viewer.modeldata.defaultsubplots, columns) == ("Te",)
     aliasviewer = make_headless_viewer(["n_e", str(modelpath), "-timestep", "50", "--interactive"])
     assert aliasviewer.values.subplots == (("nne",),)
     # a colour image gives the card the controls of a colour scale, thus the card of an image is a new card
-    assert interactive.get_card_key(0, (("Te",),), columns, isimage=True) != interactive.get_card_key(
+    assert subplotcards.get_card_key(0, (("Te",),), columns, isimage=True) != subplotcards.get_card_key(
         0, (("Te",),), columns
     )
     # a directive changes only a control of the card, thus the card stays with the keyboard focus in it
-    assert interactive.get_card_key(0, (("Te", "ymin=1000"),), columns) == interactive.get_card_key(
+    assert subplotcards.get_card_key(0, (("Te", "ymin=1000"),), columns) == subplotcards.get_card_key(
         0, (("Te",),), columns
     )
     # a chip removes the item at its position, thus a name at a new position needs a new card
-    assert interactive.get_card_key(0, (("Te", "ymin=1", "TR"),), columns) != interactive.get_card_key(
+    assert subplotcards.get_card_key(0, (("Te", "ymin=1", "TR"),), columns) != subplotcards.get_card_key(
         0, (("Te", "TR", "ymin=1"),), columns
     )
 
     populations = ("populations", "Fe II", "Fe III", "ionpoptype=elpop", "yscale=log", "ymin=1e-5")
     # only a plot of the populations takes ionpoptype=, and the names that apply to the new type stay
-    assert interactive.change_subplot_type(populations, "gamma_NT", columns) == (
+    assert subplotcards.change_subplot_type(populations, "gamma_NT", columns) == (
         "gamma_NT",
         "Fe II",
         "Fe III",
         "yscale=log",
     )
-    assert interactive.change_subplot_type(populations, interactive.VARIABLES_TYPE, columns) == ("Te", "yscale=log")
+    assert subplotcards.change_subplot_type(populations, subplotcards.VARIABLES_TYPE, columns) == ("Te", "yscale=log")
     # the type selector removed ymin= and ymax= when the user selected the type that the subplot already had
-    assert interactive.change_subplot_type(populations, "populations", columns) == populations
+    assert subplotcards.change_subplot_type(populations, "populations", columns) == populations
     # a subplot with no series left stays, and the command gives it with no item, which draws an empty frame
-    assert interactive.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1) == (("Te",), ("gamma_NT",))
-    assert interactive.remove_subplot_item((("Te", "TR"),), 0, 0) == (("TR",),)
-    assert interactive.get_command_items(("gamma_NT", "yscale=log"), columns) == ("yscale=log",)
+    assert subplotcards.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1) == (("Te",), ("gamma_NT",))
+    assert subplotcards.remove_subplot_item((("Te", "TR"),), 0, 0) == (("TR",),)
+    assert subplotcards.get_command_items(("gamma_NT", "yscale=log"), columns) == ("yscale=log",)
 
     for subplot in (
-        interactive.change_subplot_type(populations, "gamma_NT", columns),
-        interactive.change_subplot_type(("Te",), "averageionisation", columns),
+        subplotcards.change_subplot_type(populations, "gamma_NT", columns),
+        subplotcards.change_subplot_type(("Te",), "averageionisation", columns),
         *newsubplots,
     ):
         assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None, subplot
@@ -5409,14 +5411,14 @@ def test_interactive_ionpoptype_belongs_to_each_populations_subplot() -> None:
     assert viewer.values.subplots == (("Te",), ("populations", "Fe II", "Fe III", "ionpoptype=elpop"))
     assert "--ionpoptype" not in viewer.get_plot_tokens()
     # the default quantity needs no directive, and each subplot keeps its own
-    assert viewer.parser.get_default("poptype") == interactive.DEFAULT_POPTYPE
+    assert viewer.parser.get_default("poptype") == subplotcards.DEFAULT_POPTYPE
     subplots = (("populations", "Fe II"), ("populations", "Fe III", "ionpoptype=totalpop"))
-    assert interactive.move_poptype_to_subplots(
+    assert subplotcards.move_poptype_to_subplots(
         subplots, (("--ionpoptype", ("elpop",)),), viewer.modeldata.estimatorcolumns
     ) == ((("populations", "Fe II", "ionpoptype=elpop"), ("populations", "Fe III", "ionpoptype=totalpop")), ())
     # with no populations subplot the option stays, thus a populations subplot that the user adds later takes it
     rows = (("--ionpoptype", ("elpop",)),)
-    assert interactive.move_poptype_to_subplots((("Te",),), rows, viewer.modeldata.estimatorcolumns) == (
+    assert subplotcards.move_poptype_to_subplots((("Te",),), rows, viewer.modeldata.estimatorcolumns) == (
         (("Te",),),
         rows,
     )
@@ -5579,26 +5581,26 @@ def test_interactive_level_populations() -> None:
     viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
     assert viewer.nltetypes == ("averageexcitation", "levelpopulation", "levelpopulation_dn_on_dvel")
     columns = viewer.modeldata.estimatorcolumns
-    assert "levelpopulation" in interactive.get_subplot_types(columns, viewer.nltetypes)
-    levelnames = interactive.get_level_names(viewer.modelpath, 50, viewer.modeldata.cells[0])
+    assert "levelpopulation" in subplotcards.get_subplot_types(columns, viewer.nltetypes)
+    levelnames = subplotcards.get_level_names(viewer.modelpath, 50, viewer.modeldata.cells[0])
     assert levelnames[:2] == ["Fe I 0", "Fe I 1"]
     # the NLTE populations hold only the ground level of the top ion, and no level of Ni
     assert "Fe V 0" in levelnames
     assert "Fe V 1" not in levelnames
     assert not any(name.startswith("Ni") for name in levelnames)
     # timestep 0 comes before the first NLTE timestep, and the other timesteps of the cell then give the levels
-    assert interactive.get_level_names(viewer.modelpath, 0, viewer.modeldata.cells[0]) == levelnames
-    subplot = interactive.change_subplot_type(("Te",), "levelpopulation", columns, levelnames)
+    assert subplotcards.get_level_names(viewer.modelpath, 0, viewer.modeldata.cells[0]) == levelnames
+    subplot = subplotcards.change_subplot_type(("Te",), "levelpopulation", columns, levelnames)
     assert subplot == ("levelpopulation", "Fe I 0")
-    assert interactive.get_series_suggestions(subplot, columns, levelnames)[:2] == ["Fe I 1", "Fe I 2"]
+    assert subplotcards.get_series_suggestions(subplot, columns, levelnames)[:2] == ["Fe I 1", "Fe I 2"]
     for name in (subplot[1], "Fe V 0", levelnames[-1]):
         assert viewer.change(dc.replace(viewer.values, subplots=(("levelpopulation", name),))) is None, name
 
     classicviewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     assert not classicviewer.nltetypes
-    assert "averageexcitation" not in interactive.get_subplot_types(classicviewer.modeldata.estimatorcolumns)
+    assert "averageexcitation" not in subplotcards.get_subplot_types(classicviewer.modeldata.estimatorcolumns)
     # each series type of plotestimators has a family of columns, or it reads the NLTE populations
-    assert set(plotitems.SERIESTYPES) <= {*interactive.SPECIES_FAMILIES, *interactive.NLTE_SERIESTYPES}
+    assert set(plotitems.SERIESTYPES) <= {*subplotcards.SPECIES_FAMILIES, *subplotcards.NLTE_SERIESTYPES}
 
 
 def test_subplots_per_row_fill_each_row() -> None:
@@ -5712,7 +5714,7 @@ def test_interactive_initial_abundance_of_an_isotope() -> None:
     plotestimators removed the mass number and plotted the abundance of Fe with the label Fe52.
     """
     viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
-    assert {"Fe52", "Fe"} <= set(interactive.get_species_choices("initabundances", viewer.modeldata.estimatorcolumns))
+    assert {"Fe52", "Fe"} <= set(subplotcards.get_species_choices("initabundances", viewer.modeldata.estimatorcolumns))
     assert viewer.change(dc.replace(viewer.values, subplots=(("initabundances", "Fe52", "Fe"),))) is None
     ydata = {line.get_label(): np.asarray(line.get_ydata()) for ax in viewer.fig.axes for line in ax.get_lines()}
     fe52 = at.inputmodel.scan_modeldata(modelpath)[0].select("X_Fe52").collect().item()
@@ -5738,7 +5740,7 @@ def test_variable_menu_groups_the_columns() -> None:
     A species column belongs to a subplot of its series type, and a column of the grid is not a variable.
     """
     columns = ("timestep", "modelgridindex", "Te", "TR", "nne", "rho", "heating_ff", "heating_bf", "nnion_Fe_II")
-    groups = interactive.get_variable_menu_groups(columns)
+    groups = subplotcards.get_variable_menu_groups(columns)
     assert groups[:2] == (("", ("Te", "TR")), ("", ("nne", "rho")))
     assert len(groups) == 3
     assert groups[2][0].endswith("(heating_…)")
@@ -5753,14 +5755,14 @@ def test_card_state_follows_its_subplot() -> None:
     """
     before = (("Te",), ("TR",), ("nne",))
     # a delete of the first subplot, then Undo of the delete
-    assert interactive.get_moved_rows(before, before[1:], {2}) == {1}
-    assert interactive.get_moved_rows(before[1:], before, {1}) == {2}
+    assert subplotcards.get_moved_rows(before, before[1:], {2}) == {1}
+    assert subplotcards.get_moved_rows(before[1:], before, {1}) == {2}
     # a move of the last subplot to the top
-    assert interactive.get_moved_rows(before, (("nne",), ("Te",), ("TR",)), {0, 2}) == {0, 1}
+    assert subplotcards.get_moved_rows(before, (("nne",), ("Te",), ("TR",)), {0, 2}) == {0, 1}
     # a new y scale changes the items of the subplot, and the subplot keeps its row
-    assert interactive.get_moved_rows(before, (("Te",), ("TR", "yscale=log"), ("nne",)), {1}) == {1}
+    assert subplotcards.get_moved_rows(before, (("Te",), ("TR", "yscale=log"), ("nne",)), {1}) == {1}
     # the change removes the subplot of the row
-    assert not interactive.get_moved_rows(before, before[1:], {0})
+    assert not subplotcards.get_moved_rows(before, before[1:], {0})
 
 
 def test_time_axis_takes_no_automatic_bins() -> None:
