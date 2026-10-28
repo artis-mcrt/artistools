@@ -120,55 +120,97 @@ def test_estimator_ymin_does_not_hide_the_whole_series(
     assert ydata.max() <= yhi, f"the highest point {ydata.max():.2e} is above the axis at {yhi:.2e}"
 
 
+# the order of the keys is the order of the plot calls
+@pytest.mark.parametrize(
+    ("timeselection", "expectedvals"),
+    [
+        pytest.param(
+            {"timedays": 300},
+            {
+                "init_fe": 0.10000000149011612,
+                "init_nistable": 0.0,
+                "init_ni56": 0.8999999761581421,
+                "nne": 794211.0,
+                "TR": 6932.45,
+                "Te": 5776.620000000001,
+                "averageionisation_Fe": 1.9453616269532485,
+                "averageionisation_Ni": 1.970637712188408,
+                "populations_FeI": 4.801001667392128e-05,
+                "populations_FeII": 0.350781150587666,
+                "populations_FeIII": 0.3951266859004141,
+                "populations_FeIV": 0.21184950941623004,
+                "populations_FeV": 0.042194644079016,
+                # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
+                "populations_CoII": 2792.0,
+                "populations_CoIII": 12700.0,
+                "populations_CoIV": 11170.0,
+                "gamma_NT_FeI": 7.571e-06,
+                "gamma_NT_FeII": 3.711e-06,
+                "gamma_NT_FeIII": 2.762e-06,
+                "gamma_NT_FeIV": 1.702e-06,
+                "heating_dep": 6.56117e-10,
+                "heating_coll": 2.37823e-09,
+                "heating_bf": 1.27067e-13,
+                "heating_ff": 1.86474e-16,
+                "cooling_adiabatic": 9.72392e-13,
+                "cooling_coll": 3.02786e-09,
+                "cooling_fb": 4.82714e-12,
+                "cooling_ff": 1.62999e-13,
+                "collisional heating - cooling": -6.4962990e-10,
+            },
+            id="timedays_300",
+        ),
+        # each value is the mean with the weight of the cell volume times the timestep duration
+        pytest.param(
+            {"timestep": "50-54"},
+            {
+                "init_fe": 0.10000000149011612,
+                "init_nistable": 0.0,
+                "init_ni56": 0.8999999761581421,
+                "nne": 810901.0995481587,
+                "TR": 6932.335907807973,
+                "Te": 5784.328531336313,
+                "averageionisation_Fe": 1.9466081771665944,
+                "averageionisation_Ni": 1.967397635974239,
+                "populations_FeI": 4.6736117137644576e-05,
+                "populations_FeII": 0.35028115839743507,
+                "populations_FeIII": 0.39508757474300094,
+                "populations_FeIV": 0.2122008455814273,
+                "populations_FeV": 0.0423836836337351,
+                # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
+                "populations_CoII": 2891.245944314228,
+                "populations_CoIII": 13177.379472537568,
+                "populations_CoIV": 11617.863948679813,
+                "gamma_NT_FeI": 7.739288324723703e-06,
+                "gamma_NT_FeII": 3.7938615704223145e-06,
+                "gamma_NT_FeIII": 2.823952204401649e-06,
+                "gamma_NT_FeIV": 1.7402778791153345e-06,
+                "heating_dep": 6.845760482077562e-10,
+                "heating_coll": 2.476640488323009e-09,
+                "heating_bf": 1.290929935905223e-13,
+                "heating_ff": 2.1215573636698912e-16,
+                "cooling_adiabatic": 1.0000753320736445e-12,
+                "cooling_coll": 3.154455767453852e-09,
+                "cooling_fb": 5.03282598302689e-12,
+                "cooling_ff": 1.701755526024579e-13,
+                "collisional heating - cooling": -6.77815279130843e-10,
+            },
+            id="timesteps_50_54_averaged",
+        ),
+    ],
+)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_estimator_snapshot(mockplot: mock.MagicMock) -> None:
+def test_estimator_snapshot(
+    mockplot: mock.MagicMock, tmp_path: Path, timeselection: dict[str, t.Any], expectedvals: dict[str, float]
+) -> None:
     plotlist = PLOTLIST_FULL
 
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        plotlist=plotlist,
-        outputfile=outputpath / "test_estimator_snapshot",
-        timedays=300,
-    )
+    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=tmp_path, **timeselection)
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
         assert np.allclose(xarr, x[0][1], rtol=1e-3, atol=1e-3)
 
-    # order of keys is important
-    expectedvals = {
-        "init_fe": 0.10000000149011612,
-        "init_nistable": 0.0,
-        "init_ni56": 0.8999999761581421,
-        "nne": 794211.0,
-        "TR": 6932.45,
-        "Te": 5776.620000000001,
-        "averageionisation_Fe": 1.9453616269532485,
-        "averageionisation_Ni": 1.970637712188408,
-        "populations_FeI": 4.801001667392128e-05,
-        "populations_FeII": 0.350781150587666,
-        "populations_FeIII": 0.3951266859004141,
-        "populations_FeIV": 0.21184950941623004,
-        "populations_FeV": 0.042194644079016,
-        # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
-        "populations_CoII": 2792.0,
-        "populations_CoIII": 12700.0,
-        "populations_CoIV": 11170.0,
-        "gamma_NT_FeI": 7.571e-06,
-        "gamma_NT_FeII": 3.711e-06,
-        "gamma_NT_FeIII": 2.762e-06,
-        "gamma_NT_FeIV": 1.702e-06,
-        "heating_dep": 6.56117e-10,
-        "heating_coll": 2.37823e-09,
-        "heating_bf": 1.27067e-13,
-        "heating_ff": 1.86474e-16,
-        "cooling_adiabatic": 9.72392e-13,
-        "cooling_coll": 3.02786e-09,
-        "cooling_fb": 4.82714e-12,
-        "cooling_ff": 1.62999e-13,
-        "collisional heating - cooling": -6.4962990e-10,
-    }
     assert len(expectedvals) == len(mockplot.call_args_list)
     yvals = {
         varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
@@ -182,68 +224,6 @@ def test_estimator_snapshot(mockplot: mock.MagicMock) -> None:
             expectedval,
             yvals[varname][1],
         )
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-@pytest.mark.benchmark
-def test_estimator_averaging(mockplot: mock.MagicMock) -> None:
-    plotlist = PLOTLIST_FULL
-
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        plotlist=plotlist,
-        outputfile=outputpath / "test_estimator_averaging",
-        timestep="50-54",
-    )
-
-    xarr = [0.0, 4000.0]
-    for x in mockplot.call_args_list:
-        assert np.allclose(xarr, x[0][1], rtol=1e-3, atol=1e-3)
-
-    # order of keys is important. Each value is the mean with the weight of the cell volume times the
-    # timestep duration
-    expectedvals = {
-        "init_fe": 0.10000000149011612,
-        "init_nistable": 0.0,
-        "init_ni56": 0.8999999761581421,
-        "nne": 810901.0995481587,
-        "TR": 6932.335907807973,
-        "Te": 5784.328531336313,
-        "averageionisation_Fe": 1.9466081771665944,
-        "averageionisation_Ni": 1.967397635974239,
-        "populations_FeI": 4.6736117137644576e-05,
-        "populations_FeII": 0.35028115839743507,
-        "populations_FeIII": 0.39508757474300094,
-        "populations_FeIV": 0.2122008455814273,
-        "populations_FeV": 0.0423836836337351,
-        # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
-        "populations_CoII": 2891.245944314228,
-        "populations_CoIII": 13177.379472537568,
-        "populations_CoIV": 11617.863948679813,
-        "gamma_NT_FeI": 7.739288324723703e-06,
-        "gamma_NT_FeII": 3.7938615704223145e-06,
-        "gamma_NT_FeIII": 2.823952204401649e-06,
-        "gamma_NT_FeIV": 1.7402778791153345e-06,
-        "heating_dep": 6.845760482077562e-10,
-        "heating_coll": 2.476640488323009e-09,
-        "heating_bf": 1.290929935905223e-13,
-        "heating_ff": 2.1215573636698912e-16,
-        "cooling_adiabatic": 1.0000753320736445e-12,
-        "cooling_coll": 3.154455767453852e-09,
-        "cooling_fb": 5.03282598302689e-12,
-        "cooling_ff": 1.701755526024579e-13,
-        "collisional heating - cooling": -6.77815279130843e-10,
-    }
-    assert len(expectedvals) == len(mockplot.call_args_list)
-    yvals = {
-        varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
-    }
-
-    print({key: yarr[1] for key, yarr in yvals.items()})
-
-    for varname, expectedval in expectedvals.items():
-        assert np.allclose([expectedval, expectedval], yvals[varname], rtol=0.001, atol=0.0, equal_nan=True)
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

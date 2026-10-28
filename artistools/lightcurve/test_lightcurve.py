@@ -40,34 +40,47 @@ modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
 
 
+@pytest.mark.parametrize(
+    ("frompackets", "modelpathargument", "expected"),
+    [
+        pytest.param(
+            False,
+            [modelpath],
+            {
+                "time_max": 333.334,
+                "time_std": 22.2348791,
+                "integral": 2.4189054554e42,
+                "lum_mean": 3.231155e40,
+                "lum_std": 7.2115e39,
+            },
+            id="lightcurve_out",
+        ),
+        pytest.param(
+            True,
+            modelpath,
+            {
+                "time_max": 333.33389,
+                "time_std": 22.23483,
+                "integral": 9.0323767e40,
+                "lum_mean": 1.2039713396033405e39,
+                "lum_std": 3.614004402353378e38,
+            },
+            id="packets",
+        ),
+    ],
+)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot(mockplot: mock.MagicMock, benchmark: BenchmarkFixture, tmp_path: Path) -> None:
-    benchmark(lambda: at.lightcurve.plot(argsraw=[], modelpath=[modelpath], outputfile=tmp_path, frompackets=False))
-
-    arr_time_d = np.array(mockplot.call_args[0][1])
-    arr_lum = np.array(mockplot.call_args[0][2])
-
-    assert np.isclose(arr_time_d.min(), 257.253, rtol=1e-4)
-    assert np.isclose(arr_time_d.max(), 333.334, rtol=1e-4)
-
-    assert np.isclose(arr_time_d.mean(), 293.67411, rtol=1e-4)
-    assert np.isclose(arr_time_d.std(), 22.2348791, rtol=1e-4)
-
-    integral = np.trapezoid(arr_lum, arr_time_d)
-    assert np.isclose(integral, 2.4189054554e42, rtol=1e-2)
-
-    assert np.isclose(arr_lum.mean(), 3.231155e40, rtol=1e-4)
-    assert np.isclose(arr_lum.std(), 7.2115e39, rtol=1e-4)
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_lightcurve_plot_frompackets(mockplot: mock.MagicMock, benchmark: BenchmarkFixture) -> None:
+def test_lightcurve_plot(
+    mockplot: mock.MagicMock,
+    benchmark: BenchmarkFixture,
+    tmp_path: Path,
+    frompackets: bool,
+    modelpathargument: Path | list[Path],
+    expected: dict[str, float],
+) -> None:
     benchmark(
         lambda: at.lightcurve.plot(
-            argsraw=[],
-            modelpath=modelpath,
-            frompackets=True,
-            outputfile=Path(outputpath, "lightcurve_from_packets.pdf"),
+            argsraw=[], modelpath=modelpathargument, outputfile=tmp_path, frompackets=frompackets
         )
     )
 
@@ -75,17 +88,16 @@ def test_lightcurve_plot_frompackets(mockplot: mock.MagicMock, benchmark: Benchm
     arr_lum = np.array(mockplot.call_args[0][2])
 
     assert np.isclose(arr_time_d.min(), 257.253, rtol=1e-4)
-    assert np.isclose(arr_time_d.max(), 333.33389, rtol=1e-4)
+    assert np.isclose(arr_time_d.max(), expected["time_max"], rtol=1e-4)
 
     assert np.isclose(arr_time_d.mean(), 293.67411, rtol=1e-4)
-    assert np.isclose(arr_time_d.std(), 22.23483, rtol=1e-4)
+    assert np.isclose(arr_time_d.std(), expected["time_std"], rtol=1e-4)
 
     integral = np.trapezoid(arr_lum, arr_time_d)
+    assert np.isclose(integral, expected["integral"], rtol=1e-2)
 
-    assert np.isclose(integral, 9.0323767e40, rtol=1e-2)
-
-    assert np.isclose(arr_lum.mean(), 1.2039713396033405e39, rtol=1e-4)
-    assert np.isclose(arr_lum.std(), 3.614004402353378e38, rtol=1e-4)
+    assert np.isclose(arr_lum.mean(), expected["lum_mean"], rtol=1e-4)
+    assert np.isclose(arr_lum.std(), expected["lum_std"], rtol=1e-4)
 
 
 def test_lightcurve_of_a_virtual_observer_holds_the_energy_of_its_packets() -> None:

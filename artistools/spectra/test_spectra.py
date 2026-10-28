@@ -1001,66 +1001,89 @@ def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
     assert len(mockstackplot.call_args_list[0].args[2]) == 4
 
 
+# the outputfile of each case is the same, because the command stops before it writes a file
 @pytest.mark.parametrize(
-    ("packetargs", "message"),
+    ("plotargs", "messages"),
     [
-        ({"gamma": True, "use_thermalemissiontype": True}, "has no thermal emission"),
-        ({"plotvspecpol": [0]}, "does not accept"),
+        pytest.param(
+            {"specpath": [modelpath, modelpath_classic_3d], "timemin": 290, "timemax": 320, "emissionabsorption": True},
+            ["one ARTIS model"],
+            id="two_models",
+        ),
+        pytest.param(
+            {
+                "specpath": modelpath_classic_3d,
+                "timemin": 4,
+                "timemax": 6.5,
+                "showemission": True,
+                "plotviewingangle": [0, 5],
+            },
+            ["one direction bin"],
+            id="two_direction_bins",
+        ),
+        # --vpkt_match_emission_exclusion_to_opac names the options that it needs, and does not fail an assert
+        pytest.param(
+            {"specpath": modelpath, "timemin": 290, "timemax": 320, "vpkt_match_emission_exclusion_to_opac": True},
+            ["--showemission", "-plotvspecpol"],
+            id="vpkt_exclusion_without_its_options",
+        ),
+        # a gamma packet has no ion. The spectrum viewer offered these choices in the mode of the gamma packets, and
+        # the plot then failed
+        *(
+            pytest.param(
+                {
+                    "specpath": modelpath_classic_3d,
+                    "timemin": 4,
+                    "timemax": 6.5,
+                    "showemission": True,
+                    "gamma": True,
+                    "groupby": groupby,
+                },
+                [f"does not accept --groupby {groupby}"],
+                id=f"gamma_groupby_{groupby}",
+            )
+            for groupby in ("ion", "line")
+        ),
+        # a virtual packet holds no emission position, and a gamma packet holds no thermal emission position
+        *(
+            pytest.param(
+                {
+                    "specpath": modelpath_classic_3d,
+                    "timemin": 4,
+                    "timemax": 6.5,
+                    "showemission": True,
+                    **optionargs,
+                    **packetargs,
+                },
+                [message],
+                id=f"{packetid}_{optionid}",
+            )
+            for packetid, packetargs, message in (
+                ("gamma_thermal", {"gamma": True, "use_thermalemissiontype": True}, "has no thermal emission"),
+                ("vpkt", {"plotvspecpol": [0]}, "does not accept"),
+            )
+            for optionid, optionargs in (
+                ("groupby_radialvelocity", {"groupby": "radialvelocity"}),
+                ("radialvelocityrange", {"emissionradialvelocityrange": [5000, 10000]}),
+                ("lineofsightvelocityrange", {"emissionlineofsightvelocityrange": [-5000, 5000]}),
+            )
+        ),
     ],
 )
-@pytest.mark.parametrize(
-    "optionargs",
-    [
-        {"groupby": "radialvelocity"},
-        {"emissionradialvelocityrange": [5000, 10000]},
-        {"emissionlineofsightvelocityrange": [-5000, 5000]},
-    ],
-)
-def test_spectraemissionplot_refuses_packets_with_no_emission_position(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    optionargs: dict[str, t.Any],
-    packetargs: dict[str, t.Any],
-    message: str,
+def test_emission_plot_refuses_a_request_that_it_cannot_draw(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], plotargs: dict[str, t.Any], messages: list[str]
 ) -> None:
-    """A shell grouping and a velocity range stop with a message for a position that the packets do not hold.
+    """An emission plot stops with a message for a request that it cannot draw, and not with a silent choice.
 
-    A virtual packet holds no emission position. A gamma packet holds no thermal emission position.
+    An emission plot draws one ARTIS model and one direction bin. A shell grouping and a velocity range need the
+    emission position of each packet.
     """
     with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=modelpath_classic_3d,
-            timemin=4,
-            timemax=6.5,
-            showemission=True,
-            outputfile=tmp_path / "noposition.pdf",
-            **optionargs,
-            **packetargs,
-        )
-    assert message in capsys.readouterr().err
+        at.spectra.plot(argsraw=[], outputfile=tmp_path / "refused.pdf", **plotargs)
 
-
-@pytest.mark.parametrize("groupby", ["ion", "line"])
-def test_spectraemissionplot_refuses_ion_groups_of_gamma_packets(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], groupby: str
-) -> None:
-    """A gamma-ray spectrum stops with a message for -groupby ion and line, because a gamma packet has no ion.
-
-    The spectrum viewer offered these choices in the mode of the gamma packets, and the plot then failed.
-    """
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=modelpath_classic_3d,
-            timemin=4,
-            timemax=6.5,
-            showemission=True,
-            gamma=True,
-            groupby=groupby,
-            outputfile=tmp_path / "gammaions.pdf",
-        )
-    assert f"does not accept --groupby {groupby}" in capsys.readouterr().err
+    captured = capsys.readouterr().err
+    for message in messages:
+        assert message in captured
 
 
 def test_spectra_gamma_packets_group_by_emission_velocity(patch_scan_packets: Callable[[pl.DataFrame], None]) -> None:
@@ -2422,56 +2445,6 @@ def test_get_specpol_data_reads_one_direction_bin() -> None:
     assert dfdirbin.columns[0] == "nu"
     assert dfdirbin.height == dfaveraged.height
     assert not dfdirbin.equals(dfaveraged)
-
-
-def test_plotspectra_emission_refuses_two_models(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """An emission plot draws one ARTIS model, thus two of them give a message and not a silent choice."""
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=[modelpath, modelpath_classic_3d],
-            outputfile=tmp_path / "twomodels.pdf",
-            timemin=290,
-            timemax=320,
-            emissionabsorption=True,
-        )
-
-    assert "one ARTIS model" in capsys.readouterr().err
-
-
-def test_plotspectra_emission_refuses_two_direction_bins(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """An emission plot draws one direction bin, and the name of its file gives every requested bin."""
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=modelpath_classic_3d,
-            outputfile=tmp_path / "twobins.pdf",
-            timemin=4,
-            timemax=6.5,
-            showemission=True,
-            plotviewingangle=[0, 5],
-        )
-
-    assert "one direction bin" in capsys.readouterr().err
-
-
-def test_plotspectra_vpkt_exclusion_names_the_missing_options(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """--vpkt_match_emission_exclusion_to_opac names the options that it needs, and does not fail an assert."""
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=modelpath,
-            outputfile=tmp_path / "vpktexclusion.pdf",
-            timemin=290,
-            timemax=320,
-            vpkt_match_emission_exclusion_to_opac=True,
-        )
-
-    captured = capsys.readouterr().err
-    assert "--showemission" in captured
-    assert "-plotvspecpol" in captured
 
 
 def test_vpkt_exclusion_removes_the_absorption_of_an_excluded_packet() -> None:
