@@ -4643,11 +4643,15 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
     )
 
 
-def test_packet_spectrum_table_gives_the_noise_without_shownoise(capsys: pytest.CaptureFixture[str]) -> None:
+def test_packet_spectrum_table_gives_the_noise_without_shownoise(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Give the relative Monte Carlo noise of each bin in the table of a spectrum from packets.
 
     The column came only with --shownoise, thus a reader of the table could not see that a feature was noise.
     """
+    # the command saves its plot in the working folder
+    monkeypatch.chdir(tmp_path)
     at.spectra.plotspectra.main(argsraw=[str(modelpath), "--frompackets", "-t", "300", "--print_data"])
     header = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("lambda_angstroms "))
     assert "flux_relnoise" in header
