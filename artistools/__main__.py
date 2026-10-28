@@ -10,6 +10,7 @@ import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
+from time import monotonic
 
 import polars as pl
 
@@ -51,12 +52,10 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     redirect then gets the product with no progress message around it, as for ruff and uv. An error message
     also goes to the standard error, thus --quiet keeps it.
     """
-    import time
-
     from artistools.misc import print_collected_data
 
     quiet = getattr(args, "quiet", False)
-    starttime = time.monotonic()
+    starttime = monotonic()
     with contextlib.ExitStack() as stack:
         args.productstream = sys.stdout
         # a JSON or a CSV document of --print-data holds the tables of all the figures, thus output_data collects them
@@ -77,7 +76,7 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     # nothing, and the line goes to the standard error beside the progress bars. --quiet takes it away,
     # because it reports the progress and not a fault. A window of --show or --interactive waits for the
     # user, thus the time of such a run is not the time of the data
-    elapsed = time.monotonic() - starttime
+    elapsed = monotonic() - starttime
     waitsforuser = getattr(args, "show", False) or getattr(args, "interactive", False)
     if elapsed >= SLOW_COMMAND_SECONDS and not quiet and not waitsforuser:
         print(f"The command took {elapsed:.1f} seconds", file=sys.stderr)

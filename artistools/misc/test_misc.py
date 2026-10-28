@@ -3617,7 +3617,7 @@ def test_a_window_time_is_not_the_time_of_the_command(capsys: pytest.CaptureFixt
     def run_nothing(args: argparse.Namespace) -> None:
         """Do nothing."""
 
-    with mock.patch("time.monotonic", side_effect=[0.0, 100.0, 0.0, 100.0, 0.0, 100.0]):
+    with mock.patch("artistools.__main__.monotonic", side_effect=[0.0, 100.0, 0.0, 100.0, 0.0, 100.0]):
         run_command(run_nothing, argparse.Namespace(show=True))
         run_command(run_nothing, argparse.Namespace(interactive=True))
         assert "took" not in capsys.readouterr().err
