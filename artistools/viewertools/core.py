@@ -251,7 +251,7 @@ def model_has_direction_data(
     vpktpattern gives the observers only from the virtual packets. Reload Data clears the cache.
     """
     from artistools.misc import firstexisting_or_none
-    from artistools.misc.fileio import folder_holds_match
+    from artistools.misc.modelpaths import folder_holds_match
     from artistools.packets.core import get_packets_textfilename
     from artistools.packets.core import has_packets_files
 

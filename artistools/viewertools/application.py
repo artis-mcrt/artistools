@@ -14,7 +14,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import import_optional
 from artistools.misc import print_error
 from artistools.misc.argparser import get_standard_flag
-from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.modelpaths import resolve_modelpath
 from artistools.viewertools.core import is_flag
 from artistools.viewertools.core import MACOS_BUNDLE_VARIABLE
 from artistools.viewertools.core import run_command_step

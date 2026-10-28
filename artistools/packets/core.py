@@ -42,14 +42,14 @@ from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.argparser import arggroup
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
-from artistools.misc.fileio import make_cache_folder
-from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import natural_sort_key
-from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
-from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.general import get_bin_index_expr
+from artistools.misc.modelpaths import modelpath_cache
+from artistools.misc.parquetcache import make_cache_folder
+from artistools.misc.parquetcache import parquet_is_readable
+from artistools.misc.parquetcache import rankbatch_parquet_staleness
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import on_model_host
 

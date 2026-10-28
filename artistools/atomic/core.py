@@ -29,18 +29,18 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import polars_source
 from artistools.misc.fileio import firstexisting
-from artistools.misc.fileio import get_file_identity
-from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import raise_if_no_final_line_end
-from artistools.misc.fileio import read_parquet_cache_metadata
 from artistools.misc.fileio import readnoncommentline
-from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import without_compressed_extension
-from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import zopen
+from artistools.misc.modelpaths import modelpath_cache
+from artistools.misc.modelpaths import resolve_modelpath
+from artistools.misc.parquetcache import get_file_identity
+from artistools.misc.parquetcache import read_parquet_cache_metadata
+from artistools.misc.parquetcache import write_parquet_atomic
 from artistools.misc.remote import on_model_host
 from artistools.paths import get_path
 

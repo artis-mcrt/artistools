@@ -29,8 +29,8 @@ import artistools as at
 from artistools.estimators import plotestimators
 from artistools.estimators.core import join_cell_modeldata
 from artistools.misc import dirbins
-from artistools.misc import fileio
 from artistools.misc import modelinfo
+from artistools.misc import parquetcache
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
 from artistools.misc.columns import get_column_description_lines
@@ -245,7 +245,7 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     The message said only that the cache was not current. Thus a user could not see whether a new
     cache format version, a rewritten text file, or a damaged file caused the conversion.
     """
-    from artistools.misc.fileio import MTIME_TOLERANCE_S
+    from artistools.misc.parquetcache import MTIME_TOLERANCE_S
 
     cacheversion = 3
     mtime = 1000.0
@@ -502,7 +502,7 @@ def test_set_args_from_dict_does_not_mutate_caller() -> None:
         at.misc.set_args_from_dict(parser, {"badargname": 1})
 
 
-# --- fileio.py (print_saved) -------------------------------------------------------------------
+# --- commandoutput.py (print_saved) ------------------------------------------------------------
 
 
 def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -531,7 +531,7 @@ def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeyp
         ("win32", "start", 'start "" out.pdf'),
     ):
         monkeypatch.setattr(sys, "platform", platform)
-        assert at.misc.fileio.get_open_command() == verb
+        assert at.misc.commandoutput.get_open_command() == verb
         at.misc.print_saved("out.pdf")
         assert capsys.readouterr().out == f"{line}\n"
 
@@ -1104,13 +1104,13 @@ def test_replace_outdated_file_keeps_a_rivals_fresh_replacement(tmp_path: Path) 
     # the first writer replaces the out-of-date file, changing its identity
     first = tmp_path / "first"
     first.write_text("first replacement", encoding="utf-8")
-    fileio.replace_outdated_file(first, destpath, outdated)
+    parquetcache.replace_outdated_file(first, destpath, outdated)
     assert destpath.read_text(encoding="utf-8") == "first replacement"
 
     # the second writer still holds the identity of the file both of them found out of date
     second = tmp_path / "second"
     second.write_text("second replacement", encoding="utf-8")
-    fileio.replace_outdated_file(second, destpath, outdated)
+    parquetcache.replace_outdated_file(second, destpath, outdated)
     assert destpath.read_text(encoding="utf-8") == "first replacement"
 
 
@@ -1133,7 +1133,7 @@ def test_replace_outdated_file_waits_for_the_lock_holder(tmp_path: Path) -> None
     replacement = tmp_path / "replacement"
     replacement.write_text("replacement", encoding="utf-8")
     with mock.patch("fcntl.flock", side_effect=holder_finishes_first) as mockflock:
-        fileio.replace_outdated_file(replacement, destpath, outdated)
+        parquetcache.replace_outdated_file(replacement, destpath, outdated)
 
     assert mockflock.call_count == 1
     assert destpath.read_text(encoding="utf-8") == "holders replacement"
@@ -1145,14 +1145,14 @@ def test_replace_outdated_file_installs_at_an_empty_destination(tmp_path: Path) 
     replacement = tmp_path / "replacement"
     replacement.write_text("replacement", encoding="utf-8")
 
-    fileio.replace_outdated_file(replacement, destpath, None)
+    parquetcache.replace_outdated_file(replacement, destpath, None)
 
     assert destpath.read_text(encoding="utf-8") == "replacement"
 
     # a file that is already there is kept when this write does not claim to replace anything
     another = tmp_path / "another"
     another.write_text("another", encoding="utf-8")
-    fileio.replace_outdated_file(another, destpath, None)
+    parquetcache.replace_outdated_file(another, destpath, None)
     assert destpath.read_text(encoding="utf-8") == "replacement"
 
 
@@ -1168,7 +1168,7 @@ def test_write_parquet_atomic_applies_the_identity_rule_without_hard_links(tmp_p
         return result
 
     with (
-        mock.patch.object(fileio.os, "link", side_effect=OSError),
+        mock.patch.object(parquetcache.os, "link", side_effect=OSError),
         mock.patch.object(pl.LazyFrame, "sink_parquet", sink_parquet_after_another_process_finished),
     ):
         at.misc.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
@@ -1176,7 +1176,7 @@ def test_write_parquet_atomic_applies_the_identity_rule_without_hard_links(tmp_p
     assert pl.read_parquet(parquetpath)["a"].to_list() == [1, 2, 3], "the file a reader may hold was replaced"
 
     # the fallback still replaces the file the caller found out of date
-    with mock.patch.object(fileio.os, "link", side_effect=OSError):
+    with mock.patch.object(parquetcache.os, "link", side_effect=OSError):
         at.misc.write_parquet_atomic(
             pl.DataFrame({"a": [7, 8, 9]}), parquetpath, replaces=at.misc.get_file_identity(parquetpath)
         )
@@ -1198,7 +1198,7 @@ def test_replace_outdated_file_ignores_a_leftover_lock_file(tmp_path: Path) -> N
 
     replacement = tmp_path / "replacement"
     replacement.write_text("replacement", encoding="utf-8")
-    fileio.replace_outdated_file(replacement, destpath, outdated)
+    parquetcache.replace_outdated_file(replacement, destpath, outdated)
 
     assert destpath.read_text(encoding="utf-8") == "replacement"
     assert lockpath.exists()
@@ -1688,7 +1688,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (9, "f30458288a268b78"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (10, "e97d6637f68b67ce"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2965,7 +2965,7 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
 
     # one frame alone is the product of the run, and it takes the name that -o gave that product
     named = tmp_path / "named.pdf"
-    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+    with mock.patch("artistools.misc.commandoutput.open_file") as mockopen:
         product = at.misc.combine_frames(framepaths[:1], named, openfile=True)
     assert product == named
     assert named.is_file(), "the one frame must carry the name of the product"
@@ -2974,14 +2974,14 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
 
     # without such a name, that frame is the product as it stands
     framepaths[0].write_bytes(b"")
-    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+    with mock.patch("artistools.misc.commandoutput.open_file") as mockopen:
         product = at.misc.combine_frames(framepaths[:1], None, openfile=True)
     assert product == framepaths[0]
     assert mockopen.call_args.args[0] == framepaths[0]
 
     # a gif of one frame is still the gif that the caller asked for
     gifpath = tmp_path / "movie.gif"
-    with mock.patch("artistools.misc.fileio.write_gif") as mockgif:
+    with mock.patch("artistools.misc.commandoutput.write_gif") as mockgif:
         product = at.misc.combine_frames(framepaths[:1], gifpath, openfile=False, gifduration=1000.0)
     assert product == gifpath
     assert mockgif.call_args.args[0] == gifpath, "one frame must still make the gif"
@@ -2990,7 +2990,7 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
     assert at.misc.combine_frames([], None, openfile=True) is None
 
     # --open takes nothing when the caller does not ask for it
-    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+    with mock.patch("artistools.misc.commandoutput.open_file") as mockopen:
         at.misc.combine_frames(framepaths[:1], None, openfile=False)
     assert not mockopen.called
 
@@ -3159,7 +3159,7 @@ def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
     no longer hold. A reader that does not give accept_unstamped keeps the strict rule, because a
     cache that a few seconds rebuild gives a wrong number for no gain.
     """
-    from artistools.misc.fileio import mtime_matches_stamp
+    from artistools.misc.parquetcache import mtime_matches_stamp
 
     # a cache that holds no stamp dates its text source in no way, thus the stamp matches no time
     assert not mtime_matches_stamp(None, 1000.0)
@@ -3216,7 +3216,7 @@ def test_remote_path_is_not_reference_data_and_needs_no_connection() -> None:
     The menu of the recent models tested each remote model in the window thread, and each ssh call stopped the window.
     """
     with mock.patch("artistools.misc.remote.call_on_host", side_effect=AssertionError("ssh started")):
-        assert not at.misc.fileio.path_is_reference_data("nohost.invalid:/models/model", "data/refspectra")
+        assert not at.misc.modelpaths.path_is_reference_data("nohost.invalid:/models/model", "data/refspectra")
 
 
 def test_a_windows_drive_letter_is_no_remote_host(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3630,8 +3630,8 @@ def test_the_server_answers_each_request_in_this_process(tmp_path: Path, monkeyp
     modelpath = at.get_path("testdata") / "testmodel"
     requests = io.BytesIO()
     for request in (
-        ("artistools.misc.fileio", "get_remote_path_kind", (modelpath,), dict[str, t.Any](), False),
-        ("artistools.misc.fileio", "nosuchfunction", (), dict[str, t.Any](), False),
+        ("artistools.misc.modelpaths", "get_remote_path_kind", (modelpath,), dict[str, t.Any](), False),
+        ("artistools.misc.modelpaths", "nosuchfunction", (), dict[str, t.Any](), False),
     ):
         remote.write_message(requests, remote.dump_message(request))
     requests.seek(0)
@@ -3782,14 +3782,14 @@ def test_replace_outdated_file_locks_a_descriptor_that_can_write(tmp_path: Path)
         destpath.write_text("outdated", encoding="utf-8")
         replacement = tmp_path / "replacement"
         replacement.write_text(text, encoding="utf-8")
-        fileio.replace_outdated_file(replacement, destpath, at.misc.get_file_identity(destpath))
+        parquetcache.replace_outdated_file(replacement, destpath, at.misc.get_file_identity(destpath))
         assert destpath.read_text(encoding="utf-8") == text
 
     destpath = tmp_path / "cache"
     with mock.patch("fcntl.flock", side_effect=record_access_mode):
         replace("first")
         # a test can run as root, and root can write a file of any mode, thus a mock refuses the write access
-        with mock.patch.object(fileio.os, "open", side_effect=open_without_write_access):
+        with mock.patch.object(parquetcache.os, "open", side_effect=open_without_write_access):
             replace("second")
 
     assert accessmodes == [os.O_RDWR, os.O_RDONLY]

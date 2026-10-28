@@ -12,7 +12,7 @@ from artistools.misc.console import print_error
 from artistools.misc.console import print_warning
 from artistools.misc.console import suggest_flags
 from artistools.misc.console import suggest_names
-from artistools.misc.fileio import folder_is_artis_model
+from artistools.misc.modelpaths import folder_is_artis_model
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import names_a_remote_folder
 

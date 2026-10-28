@@ -72,11 +72,11 @@ from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
-from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.general import call_in_child_process
 from artistools.misc.general import format_range_list
 from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 from artistools.nltepops import has_nlte_populations

@@ -85,8 +85,8 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc.argparser import arggroup
-from artistools.misc.fileio import modelpath_cache
-from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.modelpaths import modelpath_cache
+from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import model_path_from_text
 from artistools.misc.timesteps import parse_timedays_range

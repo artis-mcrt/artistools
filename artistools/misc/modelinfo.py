@@ -21,14 +21,14 @@ from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import natural_sort_key
-from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
-from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import zopen
+from artistools.misc.modelpaths import modelpath_cache
+from artistools.misc.modelpaths import path_is_codecomparison
+from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host

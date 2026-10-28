@@ -1481,7 +1481,7 @@ def save_figure(
     plt.close(fig)
 
     if openfile:
-        from artistools.misc.fileio import open_file
+        from artistools.misc.commandoutput import open_file
 
         open_file(outpath)
 

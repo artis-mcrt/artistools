@@ -37,14 +37,14 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 from artistools.misc.fileio import get_file_copies
-from artistools.misc.fileio import modelpath_cache
-from artistools.misc.fileio import MTIME_TOLERANCE_S
-from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import with_compressed_extension
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_zstd_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.modelinfo import parse_npts_line
+from artistools.misc.modelpaths import modelpath_cache
+from artistools.misc.modelpaths import resolve_modelpath
+from artistools.misc.parquetcache import MTIME_TOLERANCE_S
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 from artistools.paths import get_path

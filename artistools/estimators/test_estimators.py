@@ -1915,8 +1915,8 @@ def test_the_stamp_of_a_batch_cache_decides_the_conversion(tmp_path: Path) -> No
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import get_rankbatch_parquetpath
     from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc.fileio import MTIME_TOLERANCE_S
-    from artistools.misc.fileio import rankbatch_parquet_staleness
+    from artistools.misc.parquetcache import MTIME_TOLERANCE_S
+    from artistools.misc.parquetcache import rankbatch_parquet_staleness
 
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
     assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet"
@@ -3796,7 +3796,7 @@ def test_an_archived_run_folder_keeps_a_cache_of_an_old_version(tmp_path: Path) 
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import rankbatch_cache_cannot_be_rebuilt
     from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc.fileio import rankbatch_parquet_staleness
+    from artistools.misc.parquetcache import rankbatch_parquet_staleness
 
     oldversion = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
     at.misc.write_parquet_atomic(
@@ -3887,7 +3887,7 @@ def test_a_batch_that_keeps_only_rank_zero_keeps_its_cache(tmp_path: Path) -> No
     os.utime(tmp_path / "estimators_0000.out", (1400.0, 1400.0))
     mtime_rewritten, complete_rewritten = get_batch_textsource_state(get_textsource_mtimes(tmp_path), 0, 2)
     from artistools.estimators.core import CACHEVERSION
-    from artistools.misc.fileio import rankbatch_parquet_staleness
+    from artistools.misc.parquetcache import rankbatch_parquet_staleness
 
     assert "after the cache stamp" in str(
         rankbatch_parquet_staleness(
@@ -3983,8 +3983,8 @@ def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     """
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc.fileio import rankbatch_parquet_staleness
     from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc.parquetcache import rankbatch_parquet_staleness
 
     runfolder = tmp_path / "job1.slurm"
     runfolder.mkdir()

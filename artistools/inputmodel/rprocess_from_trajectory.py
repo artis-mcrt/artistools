@@ -44,7 +44,7 @@ from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
-from artistools.misc.fileio import make_cache_folder
+from artistools.misc.parquetcache import make_cache_folder
 
 TRAJECTORY_CACHEVERSION = 2
 # the columns of energy_thermo.dat and heating.dat that the readers use. The cache holds these alone

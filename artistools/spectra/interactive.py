@@ -27,7 +27,7 @@ from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc.argparser import get_standard_flag
-from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.misc.units import get_xunit
 from artistools.misc.units import XUNITS

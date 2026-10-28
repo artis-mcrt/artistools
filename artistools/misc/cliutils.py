@@ -28,12 +28,12 @@ from artistools.misc.console import print_detail
 from artistools.misc.console import print_heading
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.misc.dirbins import get_viewingdirectionbincount
-from artistools.misc.fileio import folder_is_artis_model
-from artistools.misc.fileio import get_model_folder
-from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.general import flatten_list
 from artistools.misc.general import format_range_list
 from artistools.misc.general import parse_range_list
+from artistools.misc.modelpaths import folder_is_artis_model
+from artistools.misc.modelpaths import get_model_folder
+from artistools.misc.modelpaths import path_is_codecomparison
 from artistools.misc.remote import get_canonical_path
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import model_path_from_text

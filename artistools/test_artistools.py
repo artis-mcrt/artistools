@@ -4235,7 +4235,7 @@ def test_print_saved_gives_the_shorter_path(capsys: pytest.CaptureFixture[str], 
     faraway = tmp_path / "figure.pdf"
     faraway.touch()
 
-    opencommand = at.misc.fileio.get_open_command()
+    opencommand = at.misc.commandoutput.get_open_command()
     at.misc.print_saved(faraway)
     reported = capsys.readouterr().out.removeprefix(f"{opencommand} ").strip().strip("'")
 

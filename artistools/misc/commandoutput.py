@@ -1,8 +1,10 @@
 """Give the product of a command: a table on the standard output, a data file, or a set of numbered frames."""
 
 import argparse
+import contextlib
 import dataclasses as dc
 import os
+import shlex
 import sys
 import typing as t
 from collections.abc import Iterable
@@ -11,14 +13,15 @@ from collections.abc import Sequence
 from pathlib import Path
 from types import MappingProxyType
 
+import numpy as np
+
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.console import confirm_overwrite_of_files
 from artistools.misc.console import print_warning
-from artistools.misc.fileio import combine_frames
 from artistools.misc.fileio import get_file_copies
-from artistools.misc.fileio import print_saved
-from artistools.misc.fileio import write_parquet_atomic
 from artistools.misc.fileio import write_text_file_atomic
+from artistools.misc.general import import_optional
+from artistools.misc.parquetcache import write_parquet_atomic
 
 if t.TYPE_CHECKING:
     import polars as pl
@@ -402,3 +405,160 @@ def resolve_frameset_paths(
     productpath = frametemplate.parent / productname if productname is not None else None
 
     return FrameSet(frametemplate, productpath, combines, gifduration)
+
+
+def open_file(filepath: Path | str) -> None:
+    """Open a file in the application that the platform gives it."""
+    if sys.platform == "win32":
+        # Windows has no opener command that takes a path as an argument, thus it takes its own call
+        os.startfile(filepath)  # ruff:ignore[start-process-with-no-shell]
+        return
+
+    import subprocess  # ruff:ignore[suspicious-subprocess-import]
+
+    # the command is our own platform opener and a path that the caller has written
+    subprocess.run([get_open_command(), str(filepath)], check=False)  # ruff:ignore[subprocess-without-shell-equals-true]
+
+
+def get_open_command() -> str:
+    """Return the command that opens a file with its default application on this platform."""
+    if sys.platform == "darwin":
+        return "open"
+
+    return "start" if sys.platform == "win32" else "xdg-open"
+
+
+def print_saved(filepath: Path | str) -> None:
+    """Report a saved output file as an 'open <relativepath>' command that can be run on macOS to view the file."""
+    from rich.console import Console
+    from rich.text import Text
+
+    fullpath = Path(filepath).resolve()
+    filepath = fullpath
+    with contextlib.suppress(ValueError):
+        relativepath = fullpath.relative_to(Path.cwd(), walk_up=True)
+        # a file outside the working folder gives a chain of "..", which is longer than the full path
+        if len(str(relativepath)) < len(str(fullpath)):
+            filepath = relativepath
+
+    # the verb of the platform, thus the line runs as a command there. A terminal that shows links also
+    # makes the path one, and a pipe gets the plain text
+    opencommand = get_open_command()
+    if sys.platform == "win32":
+        # cmd.exe takes the double quotation mark alone, and it reads the first quoted argument of
+        # start as the title of a window. Thus an empty title stands in front of the path
+        verb = f'{opencommand} "" '
+        quotedpath = f'"{filepath}"' if " " in str(filepath) else str(filepath)
+    else:
+        verb = f"{opencommand} "
+        quotedpath = shlex.quote(str(filepath))
+
+    line = Text(verb) + Text(quotedpath, style=f"link {fullpath.as_uri()}")
+    Console(highlight=False, soft_wrap=True).print(line)
+
+
+def merge_pdf_files(pdf_files: list[str], outputpath: Path | str | None = None) -> str:
+    """Merge a list of PDF files into one, and return its path. The inputs go once the merged file exists.
+
+    outputpath names the merged file. Without it, the name comes from the first file and the last one.
+    """
+    PdfWriter = import_optional("pypdf").PdfWriter
+
+    merger = PdfWriter()
+
+    for pdfpath in pdf_files:
+        with Path(pdfpath).open("rb") as pdffile:
+            merger.append(pdffile)
+
+    resultfilename = (
+        str(outputpath)
+        if outputpath is not None
+        else f"{Path(pdf_files[0]).with_suffix('')}-{Path(pdf_files[-1]).with_suffix('').name}.pdf"
+    )
+    with Path(resultfilename).open("wb") as resultfile:
+        merger.write(resultfile)
+
+    # only remove the inputs once the merged file exists, so a failed write cannot destroy them. The
+    # merged file can carry the name of one of them, and that one holds the merge now. A relative name
+    # and an absolute name of one file differ as text, thus the test reads the paths that they resolve to
+    resultpath = Path(resultfilename).resolve()
+    for pdfpath in pdf_files:
+        if Path(pdfpath).resolve() != resultpath:
+            Path(pdfpath).unlink()
+
+    print_saved(resultfilename)
+
+    return resultfilename
+
+
+def write_gif(giffile: Path | str, imagefiles: Sequence[Path | str], duration: float) -> None:
+    """Combine image files into an animated gif, showing each frame for duration milliseconds."""
+    iio = import_optional("imageio.v2")
+
+    from PIL import Image
+
+    # a gif holds one canvas, thus pad every frame to the largest size or lose what lies outside.
+    # Image.open reads the header alone, thus this decodes no image
+    sizes = [Image.open(imagefile).size for imagefile in imagefiles]
+    width, height = max(size[0] for size in sizes), max(size[1] for size in sizes)
+
+    # bind the writer outside the with, because __enter__ is typed as returning the reader/writer base class
+    writer = iio.get_writer(giffile, mode="I", duration=duration)
+    with writer:
+        for imagefile in imagefiles:
+            frame = iio.imread(imagefile)
+            padtop = (height - frame.shape[0]) // 2
+            padleft = (width - frame.shape[1]) // 2
+            padding = [
+                (padtop, height - frame.shape[0] - padtop),
+                (padleft, width - frame.shape[1] - padleft),
+                *[(0, 0)] * (frame.ndim - 2),
+            ]
+            writer.append_data(np.pad(frame, padding, constant_values=255))
+
+    print(f"Created gif: {giffile}")
+
+
+def combine_frames(
+    framepaths: "Sequence[str | Path]",
+    productpath: Path | str | None,
+    *,
+    openfile: bool = False,
+    gifduration: float | None = None,
+) -> Path | str | None:
+    """Combine the frames of a run into one product, and return the path of that product.
+
+    A gifduration makes a gif at productpath, and no gifduration merges the pdf files. One frame alone
+    is the product of the run. Call this for a run that combines its frames: the frames of such a run
+    do not open one at a time, thus this opens the product when --open asks for it.
+    """
+    if not framepaths:
+        return None
+
+    product: Path | str
+    if gifduration is not None:
+        # a gif of one frame is still the gif that the caller asked for
+        assert productpath is not None
+        write_gif(productpath, framepaths, duration=gifduration)
+        product = productpath
+    elif len(framepaths) == 1:
+        # a run that holds data for one frame alone makes one figure, and that figure is the product.
+        # It takes the name that -o gave the product, because no merge comes to give it that name
+        product = framepaths[0]
+        if productpath is not None and Path(product).resolve() != Path(productpath).resolve():
+            import shutil
+
+            Path(productpath).parent.mkdir(parents=True, exist_ok=True)
+            # shutil.move takes a frame and a product that sit on two file systems, which rename cannot
+            shutil.move(str(product), str(productpath))
+            product = productpath
+
+        # a frame takes no line from save_figure, thus the product of this run needs one here
+        print_saved(product)
+    else:
+        product = merge_pdf_files([str(framepath) for framepath in framepaths], productpath)
+
+    if openfile:
+        open_file(product)
+
+    return product

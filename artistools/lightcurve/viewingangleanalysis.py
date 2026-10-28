@@ -35,8 +35,8 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
-from artistools.misc.fileio import folder_holds_match
-from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.modelpaths import folder_holds_match
+from artistools.misc.modelpaths import resolve_modelpath
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
 from artistools.plottools import make_colorbar_viewingangles

@@ -50,8 +50,8 @@ from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import trim_or_pad
-from artistools.misc.fileio import modelpath_cache
 from artistools.misc.general import get_bin_index_expr
+from artistools.misc.modelpaths import modelpath_cache
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import addarg_maxpacketfiles

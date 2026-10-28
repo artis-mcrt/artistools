@@ -13,7 +13,7 @@ from artistools.misc import print_warning
 from artistools.misc import zopen
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
-from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.modelpaths import resolve_modelpath
 
 
 def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, list[int]]) -> None:

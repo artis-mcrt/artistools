@@ -56,8 +56,8 @@ from artistools.misc.fileio import parse_metadata_redshift
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import read_complete_lines
-from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.general import get_bin_index_expr
+from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import on_model_host
 from artistools.misc.units import get_xunit
 from artistools.misc.units import XUnit
