@@ -134,12 +134,14 @@ select = "cp315t-manylinux_*"
 audit-command = ""
 
 [tool.coverage.run]
-# --cov=./ also measured conftest.py, set_version.py and tests/__init__.py. Test modules are
-# ~100% covered by definition, so counting them inflated the project figure; dropping them is a
-# one-off baseline reset of about 4.5 points, not a regression.
+# a test module runs almost all of its own lines, thus the coverage of the package omits the test modules
 source = ["artistools"]
 omit = ["*/test_*.py", "*/conftest.py"]
 branch = true
+
+[tool.coverage.report]
+# the code in a TYPE_CHECKING block runs only in a type checker
+exclude_also = ["if t.TYPE_CHECKING:"]
 
 [tool.uv]
 required-version = ">=0.12.9"
@@ -177,7 +179,6 @@ project-excludes = [
     '**/build/**',
     '**/dist/**',
     '**/target/**',
-    '**/.venv/**',
 ]
 python-interpreter-path = ".venv/bin/python3"
 # missing-import is left enabled so a renamed or mistyped first-party module is an error (no other
@@ -187,7 +188,6 @@ python-interpreter-path = ".venv/bin/python3"
 ignore-missing-imports = [
     "george",
     "george.*",
-    "pypdf",
     "PySide6",
     "PySide6.*",
     "shiboken6",
@@ -300,7 +300,6 @@ preview = true
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
-preview = true
 docstring-code-format = true
 
 [tool.ruff.lint]
@@ -413,9 +412,6 @@ possibly-missing-attribute = "error"
 possibly-missing-import = "error"
 unsupported-dynamic-base = "error"
 
-[tool.ty.src]
-exclude = [".venv/**"]
-
 [tool.vulture]
 exclude = [".*", "build/", ".eggs/", ".venv", "venv"]
 paths = ["artistools"]
@@ -423,11 +419,10 @@ sort_by_size = true
 ignore_names = [
     # reached by name from subcommandtree in commands.py, so there is no textual call site
     "get_artistools_path",
+    "show_python",
     "show_version",
     # NamedTuple field
     "ion_pot",
-    # run by the CodSpeed benchmark fixture rather than called directly
-    "run_dimension_reduce",
     # attributes set on pyvista plotters and matplotlib axis objects
     "camera_position",
     "azimuth",
@@ -443,10 +438,14 @@ ignore_names = [
     "paintEvent",
     "_check_value",
     "find_class",
+    # attributes that argparse and importlib read
+    "_max_help_position",
+    "__loader__",
     # keys of the TypedDict SubplotSettings, which the code reads with a string
     "ylim",
     "exponentlabel",
     "cliplogbottom",
+    "elementcolours",
     # names that only a quoted annotation uses. Python 3.13 evaluates an annotation with no quotes at import time
     "FigureCanvasBase",
     "mpllegendhandler",
