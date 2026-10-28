@@ -31,8 +31,8 @@ from artistools.misc import is_in_range
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
-from artistools.misc import trim_or_pad
 from artistools.plottools import make_frame_figure
+from artistools.plottools import resolve_series_styles
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
@@ -235,7 +235,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     args.modelpath = normalize_path_list(args.modelpath)
 
-    args.color, args.label = trim_or_pad(len(args.modelpath), args.color, args.label)
+    args.color = resolve_series_styles(args, [False] * len(args.modelpath), args.color, "label")
     args.label = [
         get_series_label(args.label, index, get_model_name(modelpath)) for index, modelpath in enumerate(args.modelpath)
     ]

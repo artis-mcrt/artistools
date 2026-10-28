@@ -2767,6 +2767,20 @@ def test_band_lightcurve_alpha_stays_on_its_model(mockplot: mock.MagicMock, tmp_
     assert alphas[:2] == [0.3, None]
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_band_and_colour_plots_take_the_dashes_arg(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """-dashes gives the dash pattern of a model on the band plot and on the colour plot, as on the bolometric plot.
+
+    The band plot and the colour plot read -color, -linestyle, -linewidth, and -linealpha, but not -dashes.
+    """
+    for options in (["-filter", "B"], ["-colour_evolution", "B-V"]):
+        mockplot.reset_mock()
+        at.lightcurve.plot(argsraw=[str(modelpath), *options, "-dashes", "5,2", "-o", str(tmp_path / "lc.pdf")])
+        modelcalls = [callargs for callargs in mockplot.call_args_list if callargs.kwargs.get("label")]
+        assert modelcalls
+        assert all(callargs.kwargs.get("dashes") == (5.0, 2.0) for callargs in modelcalls)
+
+
 def test_thermalisation_panel_follows_the_time_range_of_the_light_curves() -> None:
     """The panel of the thermalisation ratios must not widen the shared time axis, and -ymax must not fix its legend.
 

@@ -213,6 +213,7 @@ from artistools.misc.seriesstyles import addarg_seriesstyle as addarg_seriesstyl
 from artistools.misc.seriesstyles import color_arg as color_arg
 from artistools.misc.seriesstyles import dashes_arg as dashes_arg
 from artistools.misc.seriesstyles import get_series_label as get_series_label
+from artistools.misc.seriesstyles import get_series_plotkwargs as get_series_plotkwargs
 from artistools.misc.seriesstyles import LINESTYLE_ALIASES as LINESTYLE_ALIASES
 from artistools.misc.seriesstyles import LINESTYLE_NAMES as LINESTYLE_NAMES
 from artistools.misc.seriesstyles import SERIES_DEFAULT as SERIES_DEFAULT

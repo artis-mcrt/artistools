@@ -59,6 +59,7 @@ from artistools.misc import get_filterfunc
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
+from artistools.misc import get_series_plotkwargs
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_vpkt_config
@@ -1172,16 +1173,6 @@ def make_spectrum_plot(
         axis.margins(x=0.0, y=YMARGIN)
 
     for seriesindex, specpath in enumerate(speclist):
-        plotkwargs: dict[str, t.Any] = {
-            "alpha": args.linealpha[seriesindex],
-            "linestyle": args.linestyle[seriesindex],
-            "color": args.color[seriesindex],
-        }
-
-        if args.dashes[seriesindex]:
-            plotkwargs["dashes"] = args.dashes[seriesindex]
-        if args.linewidth[seriesindex]:
-            plotkwargs["linewidth"] = args.linewidth[seriesindex]
         seriesname = "UNKNOWN"
 
         # only an ARTIS spectrum produces writable series data. Reset it every iteration, so that a reference
@@ -1189,15 +1180,10 @@ def make_spectrum_plot(
         seriesdata: list[pl.DataFrame] | None = None
         otherlines: list[Line2D] = []
         if path_is_reference_spectrum(specpath):
-            # reference spectrum
-            if "linewidth" not in plotkwargs:
-                plotkwargs["linewidth"] = 1.1
-
+            plotkwargs = get_series_plotkwargs(args, seriesindex, defaultlinewidth=1.1)
             if args.multispecplot:
                 # each panel shows one epoch of the models, and the reference spectrum goes on all of them
                 plotkwargs["color"] = "k"
-            if args.label[seriesindex]:
-                plotkwargs["label"] = args.label[seriesindex]
             # each panel of --multispecplot gets the same line, thus the table takes the line of the first panel
             otherlines = [
                 plot_reference_spectrum_for_args(
@@ -1215,6 +1201,9 @@ def make_spectrum_plot(
             nseriesplotted += 1
         elif path_is_codecomparison(specpath):
             check_codecomparison_args(args)
+            plotkwargs = get_series_plotkwargs(args, seriesindex)
+            # plot_spectrum names the series after the model and the time
+            plotkwargs.pop("label", None)
             # resolve_plot_args gives both bounds. -timedays can hold a range such as 290-320, which is no number
             timeavg = (args.timemin + args.timemax) / 2.0
             otherlines = [
@@ -1223,11 +1212,8 @@ def make_spectrum_plot(
             nseriesplotted += 1
         else:
             # ARTIS model spectrum
-            if "linewidth" not in plotkwargs:
-                plotkwargs["linewidth"] = 1.3
-
-            plotkwargs["linelabel"] = args.label[seriesindex]
-
+            plotkwargs = get_series_plotkwargs(args, seriesindex, defaultlinewidth=1.3)
+            linelabel = plotkwargs.pop("label", None)
             try:
                 seriesdata = plot_artis_spectrum(
                     axes,
@@ -1237,6 +1223,7 @@ def make_spectrum_plot(
                     from_packets=args.frompackets,
                     maxpacketfiles=args.maxpacketfiles,
                     filterfunc=filterfunc,
+                    linelabel=linelabel,
                     yvariable=args.yvariable,
                     directionbins=args.plotvspecpol or args.plotviewingangle,
                     average_over_phi=args.average_over_phi_angle,
@@ -1510,7 +1497,6 @@ def plot_reference_spectra(
     reflines: list[Line2D] = []
     plotobjectlabels: list[str] = []
     ymaxrefall = 0.0
-    plotkwargs: dict[str, t.Any] = {}
 
     for index, filepath in enumerate(args.specpath):
         # reference data can carry the .out suffix of ARTIS, thus the reference predicate decides.
@@ -1518,20 +1504,7 @@ def plot_reference_spectra(
         if path_is_artis_model(filepath) and not path_is_reference_spectrum(filepath):
             continue
 
-        if index < len(args.color):
-            plotkwargs["color"] = args.color[index]
-            # the loop shares one dict, thus a spectrum with no -label must not keep the label of
-            # the spectrum before it. Its own metadata names it instead
-            plotkwargs.pop("label", None)
-            if args.label[index] is not None:
-                plotkwargs["label"] = args.label[index]
-            plotkwargs["alpha"] = args.linealpha[index]
-            plotkwargs["linestyle"] = args.linestyle[index]
-            for stylename in ("linewidth", "dashes"):
-                plotkwargs.pop(stylename, None)
-                if value := getattr(args, stylename)[index]:
-                    plotkwargs[stylename] = value
-
+        # a spectrum with no -label takes the name in its metadata
         plotobj, serieslabel, ymaxref = plot_reference_spectrum_for_args(
             filepath,
             axis,
@@ -1540,7 +1513,7 @@ def plot_reference_spectra(
             scale_to_peak,
             offset=0.3 if scale_to_peak else 0.0,
             summaryrows=summaryrows,
-            **plotkwargs,
+            **get_series_plotkwargs(args, index),
         )
         ymaxrefall = max(ymaxrefall, ymaxref)
 

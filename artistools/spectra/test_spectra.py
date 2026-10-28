@@ -1659,6 +1659,26 @@ def test_obsspec_draws_the_reference_spectrum(mockplot: mock.MagicMock, tmp_path
     assert any("SN2003du" in label for label in labels), "the reference spectrum must be drawn"
 
 
+@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
+def test_empty_label_hides_a_reference_spectrum_in_the_legend(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+    """An empty -label gives a reference spectrum no legend entry, as it does for a model.
+
+    The spectrum plot read an empty label as a missing label, thus the reference spectrum took the name in its
+    metadata. The emission plot already kept the empty label.
+    """
+    refspec = "2003du_20031213_3219_8822_00.txt"
+    at.spectra.plot(
+        argsraw=["-label", "default", ""],
+        specpath=[modelpath, refspec],
+        timedays=300,
+        outputfile=tmp_path / "emptylabel.pdf",
+    )
+
+    labels = [call.kwargs.get("label") for call in mockplot.call_args_list]
+    assert len(labels) == 2
+    assert labels[1:] == [""]
+
+
 @mock.patch.object(mplax.Axes, "set_yscale", side_effect=mplax.Axes.set_yscale, autospec=True)
 def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> None:
     """The command took --logscaley alone, thus -yscale worked on the light curves and not here."""

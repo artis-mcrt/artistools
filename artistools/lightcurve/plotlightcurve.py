@@ -82,6 +82,7 @@ from artistools.misc import get_model_folder
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
+from artistools.misc import get_series_plotkwargs
 from artistools.misc import get_standard_flag
 from artistools.misc import is_in_range
 from artistools.misc import makelist
@@ -902,13 +903,6 @@ def draw_artis_lightcurve(
     lumunit = get_plot_lum_unit(args)
     ycolumn = get_plot_lum_column(lumunit)
 
-    if args.dashes[lcindex]:
-        plotkwargs["dashes"] = args.dashes[lcindex]
-    if args.linewidth[lcindex]:
-        plotkwargs["linewidth"] = args.linewidth[lcindex]
-    if args.linealpha[lcindex] is not None:
-        plotkwargs["alpha"] = args.linealpha[lcindex]
-
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = make_colorbar_viewingangles_colormap()
 
@@ -1184,6 +1178,11 @@ def draw_plot(
                         print_warning("No nuclides.out file found, skipping top nuclides")
 
                 for pellet_nucname in pellet_nucnames:
+                    seriesplotkwargs = get_series_plotkwargs(args, lcindex)
+                    linelabel = seriesplotkwargs.pop("label", None)
+                    if escape_type != "TYPE_RPKT" and len(escape_types) > 1:
+                        # the gamma curve of a model with both curves takes the colour of the model and a dotted line
+                        seriesplotkwargs["linestyle"] = ":"
                     lcdataframes = plot_artis_lightcurve(
                         modelpath=modelpath,
                         lcindex=lcindex,
@@ -1196,13 +1195,10 @@ def draw_plot(
                         args=args,
                         pellet_nucname=pellet_nucname,
                         use_pellet_decay_time=args.use_pellet_decay_time,
-                        linestyle=args.linestyle[lcindex]
-                        if (escape_type == "TYPE_RPKT" or len(escape_types) == 1)
-                        else ":",
-                        color=args.color[lcindex],
-                        linelabel=args.label[lcindex],
+                        linelabel=linelabel,
                         residualseries=residualseries,
                         summaryrows=summaryrows,
+                        **seriesplotkwargs,
                     )
                     plottedthismodel = plottedthismodel or (lcdataframes is not None)
                     # two models can have one name, thus the path names the model of each row
@@ -1437,8 +1433,6 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
     # the colours that other series were given
     set_prop_cycle_unusedcolors(axes, [*args.color, *args.refspeccolors])
 
-    plotkwargs: dict[str, t.Any] = {}
-
     if args.colorbarcostheta or args.colorbarphi:
         scaledmap = make_colorbar_viewingangles_colormap()
 
@@ -1479,7 +1473,12 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
                     )
                 )
 
+                plotkwargs = get_series_plotkwargs(args, modelnumber, defaultlinewidth=4 if args.subplots else 3.5)
                 plotkwargs["label"] = linelabel
+                # only the first direction bin can take the model's single -color entry, as on the bolometric
+                # figure; the rest take a colour each from the cycle, which set_prop_cycle_unusedcolors has
+                # kept clear of the assigned colours
+                plotkwargs["color"] = args.color[modelnumber] if dirbin == dirbins[0] else None
 
                 text_key = FILTERNAME_ALIASES.get(band_name, band_name)
 
@@ -1495,11 +1494,6 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
                         verticalalignment="top",
                     )
 
-                # only the first direction bin can take the model's single -color entry, as on the bolometric
-                # figure; the rest take a colour each from the cycle, which set_prop_cycle_unusedcolors has
-                # kept clear of the assigned colours. plotkwargs is reused, so always assign it
-                plotkwargs["color"] = args.color[modelnumber] if dirbin == dirbins[0] else None
-
                 if dirbin != -1 and (args.colorbarcostheta or args.colorbarphi):
                     # the colour bar names the direction bin, thus the legend needs no entry for it. The
                     # user gives -label to name the model, thus only the first bin keeps that label
@@ -1510,11 +1504,6 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
                     )
                     # Update plotkwargs with viewing angle colour
                     plotkwargs, _ = get_viewinganglecolor_for_colorbar(dirbin, scaledmap, plotkwargs, args)
-
-                plotkwargs["linestyle"] = args.linestyle[modelnumber]
-                plotkwargs["linewidth"] = args.linewidth[modelnumber] or (4 if args.subplots else 3.5)
-                # plotkwargs is reused for each model, thus a model with no -linealpha takes None, the default alpha
-                plotkwargs["alpha"] = args.linealpha[modelnumber]
 
                 summaryname = f"{band_name} {plotkwargs['label'] or modelname}"
                 (modelline,) = axis.plot(time, brightness_in_mag, gid=summaryname, **plotkwargs)
@@ -1707,15 +1696,10 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
                     )
                 )
 
-                axes[plotnumber].plot(
-                    plot_times,
-                    colour_delta_mag,
-                    label=linelabel,
-                    color=dirbincolor,
-                    linestyle=args.linestyle[modelnumber],
-                    linewidth=args.linewidth[modelnumber] or (4 if args.subplots else 3),
-                    alpha=args.linealpha[modelnumber],
-                )
+                plotkwargs = get_series_plotkwargs(args, modelnumber, defaultlinewidth=4 if args.subplots else 3)
+                plotkwargs["label"] = linelabel
+                plotkwargs["color"] = dirbincolor
+                axes[plotnumber].plot(plot_times, colour_delta_mag, **plotkwargs)
 
     # once for the whole figure, as on the band plot: the reference data does not depend on the models or
     # their direction bins, so drawing it inside those loops re-read each file once per model per pair

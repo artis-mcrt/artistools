@@ -177,6 +177,30 @@ def addarg_seriesstyle(
         )
 
 
+def get_series_plotkwargs(
+    args: argparse.Namespace, index: int, *, defaultlinewidth: float | None = None
+) -> dict[str, t.Any]:
+    """Return the matplotlib keywords of the series at index from the style lists of args, e.g. -color.
+
+    -linealpha gives the keyword alpha. A series with no entry in a list gets no keyword, thus matplotlib applies its
+    default. A command with no such list, e.g. with no -dashes, also gives no keyword. defaultlinewidth replaces a
+    missing -linewidth.
+    """
+    plotkwargs: dict[str, t.Any] = {}
+    for stylename in SERIES_STYLE_KEYS:
+        styles = getattr(args, stylename, None) or []
+        value = styles[index] if index < len(styles) else None
+        # a width of zero draws no line, thus it keeps the default width as a missing entry does
+        isgiven = bool(value) if stylename in {"linewidth", "dashes"} else value is not None
+        if isgiven:
+            plotkwargs["alpha" if stylename == "linealpha" else stylename] = value
+
+    if defaultlinewidth is not None:
+        plotkwargs.setdefault("linewidth", defaultlinewidth)
+
+    return plotkwargs
+
+
 def get_series_label(labels: Sequence[str | None], index: int, fallback: str) -> str:
     """Return the --label value for one series, or fallback when the user gave none for it.
 

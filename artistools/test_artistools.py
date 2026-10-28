@@ -3642,10 +3642,16 @@ def test_linefluxes_rejects_lone_timebin_argument() -> None:
         at.plotlinefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d], timebins_tstart=[200.0, 250.0])
 
 
-def test_linefluxes_rejects_emittingregions_without_enough_colours() -> None:
-    """More models than the default palette must be rejected up front, not crash inside the colour conversion."""
-    with pytest.raises(ValueError, match="needs a colour for each"):
+def test_linefluxes_gives_a_colour_to_each_model_after_the_default_palette() -> None:
+    """Each model gets a colour, also after the ten colours of the default palette.
+
+    The command gave None to each model after the tenth, thus --plotemittingregions stopped with an error.
+    """
+    with mock.patch.object(at.plotlinefluxes, "make_emitting_regions_plot") as mockplot:
         at.plotlinefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d] * 11, plotemittingregions=True)
+    colors = mockplot.call_args.args[0].color
+    assert len(colors) == 11
+    assert all(color is not None for color in colors)
 
 
 def test_linefluxes_lineflux_ratio_plot() -> None:

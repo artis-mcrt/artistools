@@ -41,6 +41,7 @@ from artistools.misc import get_bin_index_expr
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
+from artistools.misc import get_series_plotkwargs
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import is_in_range
@@ -51,7 +52,6 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
-from artistools.misc import trim_or_pad
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import addarg_maxpacketfiles
@@ -59,6 +59,7 @@ from artistools.packets import scan_packets
 from artistools.packets.core import get_relative_error_expr
 from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.plottools import make_frame_figure
+from artistools.plottools import resolve_series_styles
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
@@ -595,9 +596,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     dfcomparisons: list[pl.DataFrame] = []
     tablemodelnames: set[str] = set()
 
-    for modelindex, (modelpath, modellabel, modelcolor) in enumerate(
-        zip(args.modelpath, args.label, args.color, strict=False)
-    ):
+    for modelindex, (modelpath, modellabel) in enumerate(zip(args.modelpath, args.label, strict=True)):
         print_heading(get_model_logname(modelpath, modellabel))
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
@@ -628,22 +627,19 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         # \mathrm{\AA}
         print(dflcdata)
 
+        seriesplotkwargs = get_series_plotkwargs(args, modelindex)
+        # the legend takes the label of main, which names a series with no -label after its model
+        seriesplotkwargs.pop("label", None)
         plotkwargs: dict[str, t.Any] = {
             "marker": "x",
-            "lw": 0,
+            # the markers have no line between them unless -linestyle gives one
+            "linewidth": 1.0 if "linestyle" in seriesplotkwargs else 0,
             "markersize": 10,
             "markeredgewidth": 2,
-            "color": modelcolor,
             "alpha": 0.8,
             "fillstyle": "none",
+            **seriesplotkwargs,
         }
-        if args.linestyle[modelindex]:
-            plotkwargs["linestyle"] = args.linestyle[modelindex]
-            plotkwargs["lw"] = 1.0
-        if args.linewidth[modelindex]:
-            plotkwargs["lw"] = args.linewidth[modelindex]
-        if args.dashes[modelindex]:
-            plotkwargs["dashes"] = args.dashes[modelindex]
 
         if "fratio_relnoise" in dflcdata.columns:
             # check_ratio_features_share_no_line makes the packets of the two features differ, thus their noises add
@@ -1168,8 +1164,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     args.modelpath = normalize_path_list(args.modelpath)
 
-    args.label, args.modeltag, args.color, args.linestyle, args.linewidth, args.dashes = trim_or_pad(
-        len(args.modelpath), args.label, args.modeltag, args.color, args.linestyle, args.linewidth, args.dashes
+    args.color = resolve_series_styles(
+        args, [False] * len(args.modelpath), args.color, "label", "modeltag", "linestyle", "linewidth", "dashes"
     )
 
     args.emtypecolumn = "emissiontype" if args.use_lastemissiontype else "trueemissiontype"
@@ -1187,16 +1183,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = (
             f"timebins_tstart has {len(args.timebins_tstart)} values but timebins_tend has"
             f" {len(args.timebins_tend)}. They must match"
-        )
-        raise ValueError(msg)
-
-    if args.plotemittingregions and any(color is None for color in args.color):
-        # the emitting region markers shade their colour, so every series needs a real one. The default palette
-        # runs out past 10 models, and trim_or_pad fills the rest with None
-        ncolors = sum(color is not None for color in args.color)
-        msg = (
-            f"--plotemittingregions needs a colour for each of the {len(args.modelpath)} models,"
-            f" but only {ncolors} are set. Pass --color with one value per model"
         )
         raise ValueError(msg)
 
