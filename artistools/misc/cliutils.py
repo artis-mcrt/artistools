@@ -19,12 +19,15 @@ from types import MappingProxyType
 
 import matplotlib.colors as mplcolors
 
-from artistools.commands import CustomArgHelpFormatter
-from artistools.commands import get_shown_flags
-from artistools.commands import get_standard_flag
-from artistools.commands import SuggestingArgumentParser
 from artistools.constants import day_to_s
 from artistools.constants import hour_to_s
+from artistools.misc.argparser import CustomArgHelpFormatter
+from artistools.misc.argparser import get_shown_flags
+from artistools.misc.argparser import get_standard_flag
+from artistools.misc.argparser import KeepGivenPaths
+from artistools.misc.argparser import ReplaceGivenPaths
+from artistools.misc.argparser import separate_trailing_folders
+from artistools.misc.argparser import SuggestingArgumentParser
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.console import confirm_overwrite_of_files
 from artistools.misc.console import exit_with_error
@@ -197,200 +200,6 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
         "--average_over_theta_angle",
         action="store_true",
         help="Average over theta (polar) viewing angles to make direction bins into azimuthal angle bins",
-    )
-
-
-class KeepGivenPaths(argparse.Action):
-    """Store the paths of a positional argument, but keep the paths that the option form already gave.
-
-    argparse applies a positional after an option that shares its dest, thus a positional that the user
-    left out would otherwise hide the value of that option. argparse gives the default object itself as the
-    value in that case, thus only that object counts as no value. A path that the user writes is a new object,
-    thus it counts also when it is equal to the default.
-    """
-
-    @t.override
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: "str | Sequence[t.Any] | None",
-        option_string: str | None = None,
-    ) -> None:
-        """Set the paths of the positional argument, unless the option form already gave some."""
-        userwrote = bool(values) and values is not self.default
-        given = getattr(namespace, self.dest, None)
-        optiongave = bool(given) and given is not self.default
-        if userwrote and optiongave:
-            # the option form gives the paths in either order of the two forms
-            if given != values:
-                warn_ignored_paths(ignored=values, kept=given)
-        elif userwrote or given is None:
-            setattr(namespace, self.dest, values)
-
-        if not userwrote:
-            take_back_swallowed_folder(parser, namespace, self)
-
-
-class ReplaceGivenPaths(argparse.Action):
-    """Store the paths of the option form, and give a warning when they replace paths that the user wrote.
-
-    argparse applies an option after a positional that the user wrote in front of it. The option then
-    replaced the paths of the positional, and the user got no message.
-    """
-
-    @t.override
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: "str | Sequence[t.Any] | None",
-        option_string: str | None = None,
-    ) -> None:
-        """Set the paths of the option, and name the paths that it replaces."""
-        # the namespace holds the default object itself until KeepGivenPaths stores the paths that the user wrote
-        given = getattr(namespace, self.dest, None)
-        if bool(given) and given is not parser.get_default(self.dest) and given != values:
-            warn_ignored_paths(ignored=given, kept=values)
-        setattr(namespace, self.dest, values)
-
-
-def warn_ignored_paths(ignored: "str | Sequence[t.Any] | None", kept: "str | Sequence[t.Any] | None") -> None:
-    """Give a warning that the command reads the paths of the option form and not the other paths."""
-
-    def as_text(paths: "str | Sequence[t.Any] | None") -> str:
-        return ", ".join(f"'{path}'" for path in (paths if isinstance(paths, list) else [paths]))
-
-    print_warning(
-        f"The command ignores the path {as_text(ignored)}, because the option form gives the path {as_text(kept)}."
-        " Give the paths in one form only"
-    )
-
-
-def trailing_folder_count(values: list[t.Any], *, anypath: bool = False) -> int:
-    """Return how many values at the end of a list name an ARTIS model folder, or with anypath, a path that exists.
-
-    The text alone decides for a value of the form host:path. A test of a remote folder asks its host through ssh,
-    and a label of a list option can have that form, e.g. "W7:Kasen". An empty value is a label, and not the
-    working folder.
-    """
-    from artistools.misc.fileio import folder_is_artis_model
-    from artistools.misc.remote import is_remote_path
-    from artistools.misc.remote import names_a_remote_folder
-
-    def names_a_folder(value: str) -> bool:
-        if is_remote_path(value):
-            return names_a_remote_folder(value)
-
-        return Path(value).exists() if anypath else folder_is_artis_model(value)
-
-    count = 0
-    for value in reversed(values):
-        if not isinstance(value, str) or not value or not names_a_folder(value):
-            break
-        count += 1
-
-    return count
-
-
-def separate_trailing_folders(argsraw: "Sequence[str] | None") -> list[str]:
-    """Return the command line with a "--" in front of the ARTIS folders that end it.
-
-    argparse gives every word that follows to an option that reads a list. The separator marks the
-    end of that list, thus each folder reaches the positional path argument.
-    """
-    tokens = list(sys.argv[1:] if argsraw is None else argsraw)
-    if "--" in tokens:
-        return tokens
-
-    count = trailing_folder_count(tokens)
-    # a command line of folders alone gives the folders to the positional argument already
-    if count in {0, len(tokens)}:
-        return tokens
-
-    start = len(tokens) - count
-    # a flag in front of the folders takes them as its own values, e.g. "-modelpath mymodel". The
-    # separator would leave that option with no value at all. A negative number such as the -2 of
-    # "-plotviewingangle -2 mymodel" is a value and not a flag
-    if tokens[start - 1].startswith("-") and not re.match(r"-\.?\d", tokens[start - 1]):
-        return tokens
-
-    return [*tokens[:start], "--", *tokens[start:]]
-
-
-def take_back_swallowed_folder(
-    parser: argparse.ArgumentParser, namespace: argparse.Namespace, pathaction: argparse.Action
-) -> None:
-    """Give the ARTIS folders back to the positional path argument when an option took them.
-
-    argparse gives every word that follows to an option that reads a list. Thus
-    "plotspectra --label mylabel mymodel" left the model path empty and made "mymodel" a second
-    label. The command then plotted the working folder, and it gave no message. The folders come
-    back to the positional argument here, and the option keeps its other values.
-
-    Only the last values of an option can be folders, because the user writes the paths last. Two
-    options that each end with the name of a folder are ambiguous. The command then reads them as
-    the user wrote them.
-
-    A different file or folder stays with the option, because an option such as --reflightcurves reads files. Such a
-    value can be a reference spectrum or a model folder with no input.txt, thus the user gets a warning.
-    """
-    given = getattr(namespace, pathaction.dest, None)
-    # only the default object counts as no value, as in KeepGivenPaths
-    if given and given is not pathaction.default:
-        return
-
-    def taken_folder_count(action: argparse.Action, *, anypath: bool = False) -> int:
-        values = getattr(namespace, action.dest, None)
-        takesalist = (
-            bool(action.option_strings)
-            and action.nargs in {"*", "+"}
-            and isinstance(values, list)
-            # the default list belongs to the parser, thus the user gave no value in that list
-            and values is not action.default
-            and bool(values)
-        )
-        if not takesalist:
-            return 0
-
-        assert isinstance(values, list)
-        count = trailing_folder_count(values, anypath=anypath)
-
-        # every value of the option names a folder, thus which one is the model path is unknown
-        return 0 if count == len(values) else count
-
-    candidates = [
-        (action, count)
-        for action in parser._actions  # ruff:ignore[private-member-access]
-        if (count := taken_folder_count(action))
-    ]
-    if not candidates:
-        for action in parser._actions:  # ruff:ignore[private-member-access]
-            if count := taken_folder_count(action, anypath=True):
-                flag = get_shown_flags(action)[0]
-                paths = ", ".join(f"'{value}'" for value in getattr(namespace, action.dest)[-count:])
-                print_warning(
-                    f"{flag} read {paths} as values, and each one names a file or a folder. To read them as paths,"
-                    f" write them in front of {flag}"
-                )
-    if len(candidates) != 1:
-        return
-
-    action, count = candidates[0]
-    taken = getattr(namespace, action.dest)
-    takesalist = pathaction.nargs in {"*", "+"}
-    # a positional argument that holds one path takes the last folder alone
-    folders = taken[-count:] if takesalist else taken[-1:]
-    setattr(namespace, action.dest, taken[: len(taken) - len(folders)])
-    converter = pathaction.type
-    paths = [converter(folder) for folder in folders] if callable(converter) else list(folders)
-    setattr(namespace, pathaction.dest, paths if takesalist else paths[0])
-
-    flag = get_shown_flags(action)[0]
-    folderword = "folder" if len(folders) == 1 else "folders"
-    print_warning(
-        f"{flag} read the ARTIS {folderword} {', '.join(folders)} as a value. The model path gets "
-        f"the {folderword} back. Write the model path in front of {flag}"
     )
 
 

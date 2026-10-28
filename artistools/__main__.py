@@ -20,14 +20,14 @@ if t.TYPE_CHECKING:
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level artistools argument parser."""
     from artistools.commands import addsubparsers
-    from artistools.commands import CustomArgHelpFormatter
+    from artistools.commands import CommandListFormatter
     from artistools.commands import get_epilog
     from artistools.commands import subcommandtree
-    from artistools.commands import SuggestingArgumentParser
     from artistools.commands import VersionAction
+    from artistools.misc.argparser import SuggestingArgumentParser
 
     parserkwargs: dict[str, t.Any] = {
-        "formatter_class": CustomArgHelpFormatter,
+        "formatter_class": CommandListFormatter,
         "description": "Plotting and analysis tools for the ARTIS radiative transfer code.",
         "epilog": get_epilog(),
     }

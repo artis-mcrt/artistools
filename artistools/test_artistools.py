@@ -575,7 +575,7 @@ def test_residual_panel_rejects_an_invalid_selection(index: int) -> None:
 
 def test_residual_path_rewrite_keeps_an_ambiguous_prefix(capsys: pytest.CaptureFixture[str]) -> None:
     """The path rewrite leaves an ambiguous prefix for argparse to reject."""
-    parser = at.commands.SuggestingArgumentParser()
+    parser = at.misc.argparser.SuggestingArgumentParser()
     at.misc.addarg_residuals(parser)
     parser.add_argument("-reset", action="store_true")
     parser.add_argument("paths", nargs="*")
@@ -863,7 +863,7 @@ def test_shared_cli_args_consistent() -> None:
 
 def test_deprecated_flag_spellings_still_work() -> None:
     """Flags renamed to the single-dash-takes-a-value convention keep their old spellings as hidden aliases."""
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc.argparser import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     at.plottransitions.addargs(parser)
@@ -4258,7 +4258,7 @@ def test_short_time_flag_always_means_timedays() -> None:
     import artistools.hesma_scripts
 
     # every parser that a command gets is this class, thus the test builds the same one
-    parser = at.commands.SuggestingArgumentParser(prog="hesma")
+    parser = at.misc.argparser.SuggestingArgumentParser(prog="hesma")
     artistools.hesma_scripts.addargs(parser)
 
     assert parser.parse_args(["-t", "300"]).timedays == 300.0
@@ -4272,7 +4272,7 @@ def test_short_time_flag_always_means_timedays() -> None:
 
 def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixture[str]) -> None:
     """A declared but unsupported argument must name the argument to give in its place."""
-    parser = at.commands.SuggestingArgumentParser(prog="demo")
+    parser = at.misc.argparser.SuggestingArgumentParser(prog="demo")
     at.misc.addarg_unsupported(parser, "-timestep", "-ts", instead="-timedays")
 
     with pytest.raises(SystemExit):
@@ -4346,7 +4346,7 @@ def test_help_wraps_a_description_and_keeps_the_epilog_lines() -> None:
 
     parser = argparse.ArgumentParser(
         prog="demo",
-        formatter_class=at.commands.CustomArgHelpFormatter,
+        formatter_class=at.misc.argparser.CustomArgHelpFormatter,
         description=" ".join(["averylongword"] * 12),
         epilog="first line\n  second line kept as it is",
     )
@@ -4412,7 +4412,7 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
         ),
         artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("timemin",), ()),
     }
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc.argparser import SuggestingArgumentParser
 
     for addargs, (argsraw, dests, hidden) in cases.items():
         parser = SuggestingArgumentParser()
@@ -4446,7 +4446,7 @@ def test_short_help_gives_the_first_sentence_of_each_option(capsys: pytest.Captu
     assert "Examples" not in helptexts["-h"]
     assert "Examples" in helptexts["--help"]
     # the first sentence of a help text stays, and a later sentence goes, also after an abbreviation such as e.g.
-    assert at.commands.get_first_sentence("Give a time, e.g. 300. A unit is optional") == "Give a time, e.g. 300"
+    assert at.misc.argparser.get_first_sentence("Give a time, e.g. 300. A unit is optional") == "Give a time, e.g. 300"
 
 
 def test_each_short_flag_has_one_meaning_in_the_help() -> None:
@@ -4456,7 +4456,7 @@ def test_each_short_flag_has_one_meaning_in_the_help() -> None:
     different command.
     """
     import artistools.__main__
-    from artistools.commands import get_shown_flags
+    from artistools.misc.argparser import get_shown_flags
 
     parser = artistools.__main__.build_parser()
     subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
@@ -6750,7 +6750,7 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
         savedtokens.append(list(argsraw))
         Path(argsraw[-1]).write_text("figure", encoding="utf-8")
 
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc.argparser import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     parser.add_argument("--dpi", type=int, default=250)
@@ -6780,7 +6780,7 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
     Qt gave only a TIFF image to the clipboard of macOS, thus a copy could not give a PDF or an SVG file.
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc.argparser import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     parser.add_argument("--dpi", type=int, default=250)

@@ -1710,7 +1710,7 @@ def test_a_unit_that_no_spectrum_takes_stops_the_command(capsys: pytest.CaptureF
     """
     import artistools.spectra.plotspectra
 
-    parser = at.commands.SuggestingArgumentParser(prog="plotspectra")
+    parser = at.misc.argparser.SuggestingArgumentParser(prog="plotspectra")
     artistools.spectra.plotspectra.addargs(parser)
 
     with pytest.raises(SystemExit):

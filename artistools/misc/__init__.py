@@ -1,5 +1,7 @@
 """Miscellaneous helpers, split into focused submodules and re-exported here."""
 
+from artistools.misc.argparser import KeepGivenPaths as KeepGivenPaths
+from artistools.misc.argparser import separate_trailing_folders as separate_trailing_folders
 from artistools.misc.cliutils import addarg_action as addarg_action
 from artistools.misc.cliutils import addarg_averageoverphi as addarg_averageoverphi
 from artistools.misc.cliutils import addarg_axislimits as addarg_axislimits
@@ -46,7 +48,6 @@ from artistools.misc.cliutils import get_filterfunc as get_filterfunc
 from artistools.misc.cliutils import get_series_label as get_series_label
 from artistools.misc.cliutils import get_single_modelgridindex as get_single_modelgridindex
 from artistools.misc.cliutils import item_names_a_folder as item_names_a_folder
-from artistools.misc.cliutils import KeepGivenPaths as KeepGivenPaths
 from artistools.misc.cliutils import make_output_folder as make_output_folder
 from artistools.misc.cliutils import makelist as makelist
 from artistools.misc.cliutils import normalize_path_list as normalize_path_list
@@ -66,7 +67,6 @@ from artistools.misc.cliutils import resolve_series_styles as resolve_series_sty
 from artistools.misc.cliutils import resolve_slice_axis as resolve_slice_axis
 from artistools.misc.cliutils import resolve_table_outputfile as resolve_table_outputfile
 from artistools.misc.cliutils import resolve_yscale as resolve_yscale
-from artistools.misc.cliutils import separate_trailing_folders as separate_trailing_folders
 from artistools.misc.cliutils import set_args_from_dict as set_args_from_dict
 from artistools.misc.cliutils import trim_or_pad as trim_or_pad
 from artistools.misc.cliutils import UnsupportedArgument as UnsupportedArgument

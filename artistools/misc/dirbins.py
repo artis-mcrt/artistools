@@ -11,6 +11,7 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
+from artistools.misc.argparser import get_standard_flag
 from artistools.misc.console import exit_with_error
 from artistools.misc.console import print_detail
 from artistools.misc.modelinfo import get_vpkt_config
@@ -394,8 +395,6 @@ def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall
     With averageoverphi, as with --average-over-phi-angle of plotspectra, dirbin must be the first bin of its costheta
     bin.
     """
-    from artistools.commands import get_standard_flag
-
     # the caller can give the declared spelling, and the message gives the spelling of the help
     optionname = get_standard_flag(optionname)
     if averageoverphi:
@@ -410,8 +409,6 @@ def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall
 
 def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> None:
     """Exit with an error if dirbin is not the first direction bin of a costheta bin, or -1 when allowall is true."""
-    from artistools.commands import get_standard_flag
-
     optionname = get_standard_flag(optionname)
     nphibins = get_viewingdirection_phibincount()
     ndirbins = get_viewingdirectionbincount()

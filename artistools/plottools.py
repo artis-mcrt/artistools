@@ -32,7 +32,6 @@ from matplotlib.patches import Patch
 from matplotlib.text import Text
 
 from artistools.commands import get_path
-from artistools.commands import get_standard_flag
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
@@ -43,6 +42,7 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
+from artistools.misc.argparser import get_standard_flag
 from artistools.misc.cliutils import positive_int_arg
 
 # the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of

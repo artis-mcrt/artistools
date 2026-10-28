@@ -15,7 +15,6 @@ import polars.selectors as cs
 
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
-from artistools.commands import get_standard_flag
 from artistools.constants import angstroms_per_cm
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -46,6 +45,7 @@ from artistools.misc import print_modelpath
 from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
+from artistools.misc.argparser import get_standard_flag
 from artistools.misc.cliutils import CommaJoinAction
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.columns import get_column_description_lines

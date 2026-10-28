@@ -48,7 +48,7 @@ if t.TYPE_CHECKING:
     import matplotlib.figure as mplfig
     from PySide6 import QtWidgets
 
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc.argparser import SuggestingArgumentParser
     from artistools.viewertools.core import PlotValues
     from artistools.viewertools.window import DrawQueue
     from artistools.viewertools.window import PlotViewer

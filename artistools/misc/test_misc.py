@@ -2421,7 +2421,7 @@ def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
     """
     import artistools.spectra.plotspectra
 
-    parser = at.commands.SuggestingArgumentParser()
+    parser = at.misc.argparser.SuggestingArgumentParser()
     artistools.spectra.plotspectra.addargs(parser)
 
     for argsraw in (
@@ -2439,9 +2439,9 @@ def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
         at.misc.check_time_selection(parser, parser.parse_args(argsraw))
 
 
-def get_parser_with_a_default_timestep() -> "at.commands.SuggestingArgumentParser":
+def get_parser_with_a_default_timestep() -> "at.misc.argparser.SuggestingArgumentParser":
     """Return a parser of -timestep with the default last, and of -timedays."""
-    parser = at.commands.SuggestingArgumentParser()
+    parser = at.misc.argparser.SuggestingArgumentParser()
     at.misc.addarg_timestep(parser, default="last")
     at.misc.addarg_timedays(parser, kind="float")
     return parser
@@ -2773,8 +2773,8 @@ def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
     times and ran without a word, on a command whose -timestep holds that value as its default.
     """
 
-    def parse(argsraw: list[str]) -> tuple[at.commands.SuggestingArgumentParser, argparse.Namespace]:
-        parser = at.commands.SuggestingArgumentParser()
+    def parse(argsraw: list[str]) -> tuple[at.misc.argparser.SuggestingArgumentParser, argparse.Namespace]:
+        parser = at.misc.argparser.SuggestingArgumentParser()
         at.misc.addarg_timedays(parser, kind="str")
         at.misc.addarg_timestep(parser, default=70)
         return parser, parser.parse_args(argsraw)
@@ -3385,7 +3385,7 @@ def test_a_label_with_a_colon_is_no_remote_folder_and_starts_no_ssh() -> None:
             assert args.label == ["A", label]
 
     # an empty label at the end is a label, and not the working folder
-    assert at.misc.cliutils.trailing_folder_count(["A", ""]) == 0
+    assert at.misc.argparser.trailing_folder_count(["A", ""]) == 0
 
 
 def test_a_list_option_that_takes_a_file_or_a_folder_gives_a_warning(
@@ -3416,7 +3416,7 @@ def test_the_option_form_keeps_its_path_when_a_list_option_ends_with_a_folder() 
     The take-back compared the value with the default, thus "-modelpath ." counted as no path.
     """
     modelpath = at.get_path("testdata") / "testmodel"
-    parser = at.commands.SuggestingArgumentParser()
+    parser = at.misc.argparser.SuggestingArgumentParser()
     at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
     at.misc.addarg_seriesstyle(parser)
 
@@ -3437,7 +3437,7 @@ def test_the_remote_path_pattern_follows_this_system() -> None:
 
 def test_a_bad_cell_names_the_flag(capsys: pytest.CaptureFixture[str]) -> None:
     """A -cell value that names no cell must give an argparse error that names the flag, and no traceback."""
-    parser = at.commands.SuggestingArgumentParser(prog="demo")
+    parser = at.misc.argparser.SuggestingArgumentParser(prog="demo")
     at.misc.addarg_modelgridindex(parser)
     for value in ("abc", "3-x"):
         with pytest.raises(SystemExit) as exitinfo:

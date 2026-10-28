@@ -9,7 +9,6 @@ import matplotlib.axes as mplax
 import polars as pl
 import polars.selectors as cs
 
-from artistools.commands import get_standard_flag
 from artistools.constants import c_ang_per_s
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
@@ -33,6 +32,7 @@ from artistools.misc import read_wsv
 from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
 from artistools.misc import split_multitable_dataframe
+from artistools.misc.argparser import get_standard_flag
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend

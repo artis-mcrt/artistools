@@ -316,7 +316,7 @@ def test_viewer_save_waits_for_the_task_in_progress(tmp_path: Path) -> None:
     Save ran the command in the window thread while the worker thread drew a plot, and both changed the rcParams.
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc.argparser import SuggestingArgumentParser
     from artistools.viewertools import menus as viewermenus
 
     parser = SuggestingArgumentParser()

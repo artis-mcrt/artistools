@@ -72,7 +72,7 @@ if t.TYPE_CHECKING:
     from PySide6 import QtCore
     from PySide6 import QtWidgets
 
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc.argparser import SuggestingArgumentParser
     from artistools.viewertools.core import OptionRows
     from artistools.viewertools.core import PlotValues
 

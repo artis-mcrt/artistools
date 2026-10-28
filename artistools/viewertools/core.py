@@ -34,7 +34,7 @@ if t.TYPE_CHECKING:
 
     import matplotlib.axes as mplax
 
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc.argparser import SuggestingArgumentParser
 
 
 # each option of the table with its values, in the order of the command
@@ -116,7 +116,7 @@ def make_parser(addargs: "Callable[[argparse.ArgumentParser], None]") -> "Sugges
 
     The parser also takes the standard spelling of each flag, e.g. --timedays, as the command does.
     """
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc.argparser import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     addargs(parser)
@@ -140,7 +140,7 @@ class ViewerTokens(t.NamedTuple):
 
 def get_path_option_flags(parser: "SuggestingArgumentParser") -> set[str]:
     """Return the first flag of each option that gives the paths of the positional argument, e.g. --modelpath."""
-    from artistools.misc.cliutils import KeepGivenPaths
+    from artistools.misc.argparser import KeepGivenPaths
 
     actions = parser._actions  # ruff:ignore[private-member-access]
     pathdests = {action.dest for action in actions if isinstance(action, KeepGivenPaths)}
@@ -186,7 +186,7 @@ def take_back_folders(
     "--label 'My model' mymodel -t 300". The list of the series must then hold the folders, and the row of the option
     must not hold them. A command with no such folders gives no paths and the same rows.
     """
-    from artistools.misc.cliutils import KeepGivenPaths
+    from artistools.misc.argparser import KeepGivenPaths
 
     actions = parser._actions  # ruff:ignore[private-member-access]
     pathaction = next((action for action in actions if isinstance(action, KeepGivenPaths)), None)

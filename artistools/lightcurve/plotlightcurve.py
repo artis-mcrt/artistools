@@ -20,7 +20,6 @@ from polars import selectors as cs
 
 from artistools import misc
 from artistools.commands import get_path
-from artistools.commands import get_standard_flag
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
@@ -98,6 +97,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
+from artistools.misc.argparser import get_standard_flag
 from artistools.misc.cliutils import arggroup
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.remote import on_model_host
