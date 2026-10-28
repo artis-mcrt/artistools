@@ -56,6 +56,7 @@ from artistools.misc import get_artis_model_folders
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
+from artistools.misc import get_model_folder
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
@@ -78,7 +79,6 @@ from artistools.misc import parse_xunit_argument
 from artistools.misc import path_is_artis_model
 from artistools.misc import path_is_codecomparison
 from artistools.misc import path_is_dir
-from artistools.misc import path_is_file
 from artistools.misc import path_is_reference_data
 from artistools.misc import print_detail
 from artistools.misc import print_heading
@@ -770,10 +770,11 @@ def plot_artis_spectrum(
     takes the fields of the summary line of each drawn series. read_dirbin_spectra reads the spectra of each panel,
     and draw_dirbin_spectra draws them.
     """
-    modelpath = Path(modelpath)
-    if path_is_file(modelpath):  # handle e.g. modelpath = 'modelpath/spec.out'
-        print_warning(f"Ignoring filename of {modelpath.name}")
-        modelpath = modelpath.parent
+    # a model path can name a file of the model, e.g. spec.out
+    inputpath = Path(modelpath)
+    modelpath = get_model_folder(inputpath)
+    if modelpath != inputpath:
+        print_warning(f"Ignoring filename of {inputpath.name}")
 
     if not path_is_dir(modelpath):
         print_warning(f"Skipping because {modelpath} does not exist")

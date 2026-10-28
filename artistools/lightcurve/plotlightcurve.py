@@ -90,7 +90,6 @@ from artistools.misc import on_model_host
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_dir
-from artistools.misc import path_is_file
 from artistools.misc import positive_int_arg
 from artistools.misc import print_detail
 from artistools.misc import print_heading
@@ -806,10 +805,10 @@ def plot_artis_lightcurve(
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
 
-    # handle e.g. modelpath = 'modelpath/light_curve.out'
+    # a model path can name the file of the light curve, e.g. light_curve.out
     inputpath = Path(modelpath)
-    lcfilename = inputpath.name if path_is_file(inputpath) else None
-    modelpath = inputpath.parent if lcfilename else inputpath
+    modelpath = get_model_folder(inputpath)
+    lcfilename = inputpath.name if modelpath != inputpath else None
 
     if not path_is_dir(modelpath):
         print_warning(f"Skipping because {modelpath} does not exist")
