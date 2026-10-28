@@ -1795,7 +1795,6 @@ def open_window(
         def show_reloaded_model_data() -> None:
             reload_model_data(viewer, reloadedmodeldata[0])
             set_ranges()
-            queue.redraw()
 
         reload_models(
             queue,

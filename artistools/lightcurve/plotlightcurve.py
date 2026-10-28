@@ -34,6 +34,7 @@ from artistools.lightcurve.core import get_colour_delta_mag
 from artistools.lightcurve.core import get_filename_part
 from artistools.lightcurve.core import get_filter_data
 from artistools.lightcurve.core import get_katz_integral
+from artistools.lightcurve.core import get_reference_label
 from artistools.lightcurve.core import get_top_nuclides
 from artistools.lightcurve.core import lum_lsun_to_mag
 from artistools.lightcurve.core import path_is_reference_lightcurve
@@ -441,11 +442,11 @@ def plot_bol_reflightcurve(
     summaryrows takes the fields of the summary line. Only the points from timemin to timemax go into the figure, the
     summary, and plottedpoints.
     """
-    dflightcurve, metadata = read_bol_reflightcurve_data(lightcurvefilename)
+    dflightcurve, _ = read_bol_reflightcurve_data(lightcurvefilename)
     # the points have no line between them, thus a point outside the time range has no part in the figure
     dflightcurve = dflightcurve.filter(is_in_range("time_days", timemin, timemax))
     # an empty label is a series deliberately left out of the legend, so only a missing one takes the metadata
-    plotlabel = str(metadata.get("label", lightcurvefilename)) if label is None else label
+    plotlabel = get_reference_label(lightcurvefilename) if label is None else label
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
     time_days = dflightcurve["time_days"].to_numpy()
     yvalues = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)

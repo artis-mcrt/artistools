@@ -3524,7 +3524,7 @@ def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pyt
     monkeypatch.chdir(modelpath)
     viewer = make_headless_viewer(["-t", "300", "--interactive"])
     assert viewer.values.spectra == (".",)
-    assert interactive.get_spectrum_item_text(".") == f"Model: {modelpath.absolute()}"
+    assert viewerseries.get_series_item_text(interactive.REFERENCE_DATA, ".") == f"Model: {modelpath.absolute()}"
     assert shlex.split(viewer.get_command())[2:4] == ["-t", "300"]
 
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
@@ -3533,7 +3533,7 @@ def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pyt
     assert viewer.change(dc.replace(viewer.values, spectra=spectra)) is None
     assert shlex.split(viewer.get_command())[2:5] == [".", str(modelpath), reference]
     assert len(viewer.axes[0].get_lines()) == 3
-    assert interactive.get_spectrum_item_text(reference).startswith("Reference: /")
+    assert viewerseries.get_series_item_text(interactive.REFERENCE_DATA, reference).startswith("Reference: /")
 
 
 def test_interactive_new_first_model_gives_the_time_grid() -> None:
@@ -3612,14 +3612,31 @@ def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     assert dict(viewercore.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"--color": ("blue",)}
 
     viewer = make_headless_viewer([*oldspectra[:2], "-t", "300", "--interactive"])
-    labelled = interactive.set_series_values(viewer.values, reference, {"--label": "Observed"})
+    labelledrows = viewercore.set_series_rows(
+        viewer.values.otheroptions, oldspectra[:2], reference, {"--label": "Observed"}
+    )
+    labelled = dc.replace(viewer.values, otheroptions=labelledrows)
     assert viewercore.get_row_values(labelled.otheroptions, "--label") == ("default", "Observed")
     assert viewer.change(labelled) is None
     legendlabels = [line.get_label() for line in viewer.axes[0].get_lines()]
     assert legendlabels[1] == "Observed"
     assert legendlabels[0].startswith("TEST MODEL +300")
-    unlabelled = interactive.set_series_values(labelled, reference, {"--label": None})
-    assert viewercore.get_row_values(unlabelled.otheroptions, "--label") is None
+    unlabelledrows = viewercore.set_series_rows(labelledrows, oldspectra[:2], reference, {"--label": None})
+    assert viewercore.get_row_values(unlabelledrows, "--label") is None
+
+
+def test_interactive_list_gives_a_reference_spectrum_its_legend_label(tmp_path: Path) -> None:
+    """The list of spectra gives a reference spectrum the label of its line in the legend.
+
+    A reference file with no label in its metadata takes the path of the command as its label. The list showed the
+    name of the file, which is not the label in the legend.
+    """
+    reference = tmp_path / "myref.txt"
+    reference.write_bytes(plotspectra.find_reference_spectrum_file("sn2011fe_PTF11kly_20120822_norm.txt").read_bytes())
+    viewer = make_headless_viewer([str(modelpath), str(reference), "-t", "300", "--interactive"])
+    legendlabel = viewer.axes[0].get_lines()[1].get_label()
+    assert legendlabel == str(reference)
+    assert viewerseries.get_series_name(interactive.REFERENCE_DATA, str(reference)) == legendlabel
 
 
 def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
@@ -4132,8 +4149,12 @@ def test_interactive_spectrum_path_is_the_same_for_each_spelling(monkeypatch: py
     A drop of the working folder added it again next to ".", and the plot then drew the same model two times.
     """
     monkeypatch.chdir(modelpath)
-    assert interactive.get_spectrum_path(".") == interactive.get_spectrum_path(str(modelpath.absolute()))
-    assert interactive.get_spectrum_path(".") != interactive.get_spectrum_path(str(modelpath.parent))
+
+    def get_full_path(path: str) -> Path:
+        return viewerseries.get_series_full_path(interactive.REFERENCE_DATA, path)
+
+    assert get_full_path(".") == get_full_path(str(modelpath.absolute()))
+    assert get_full_path(".") != get_full_path(str(modelpath.parent))
 
 
 def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:

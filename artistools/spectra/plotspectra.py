@@ -135,6 +135,7 @@ from artistools.spectra.core import get_flux_contributions
 from artistools.spectra.core import get_flux_contributions_from_packets
 from artistools.spectra.core import get_lambda_bin_edges
 from artistools.spectra.core import get_no_sampled_emission_message
+from artistools.spectra.core import get_reference_label
 from artistools.spectra.core import get_reference_spectrum
 from artistools.spectra.core import get_shell_labels
 from artistools.spectra.core import get_x_quantity_label
@@ -144,6 +145,7 @@ from artistools.spectra.core import NO_SAMPLED_EMISSION_HELP
 from artistools.spectra.core import print_contribution_table
 from artistools.spectra.core import print_integrated_flux
 from artistools.spectra.core import rank_flux_series_names
+from artistools.spectra.core import REFERENCE_SPECTRA_FOLDER
 from artistools.spectra.core import scan_specpol_data
 from artistools.spectra.core import scan_spectra
 from artistools.spectra.core import scan_spectra_from_packets
@@ -169,7 +171,7 @@ def find_reference_spectrum_file_or_none(filename: Path | str) -> Path | None:
     The file is either at the given path or in the bundled data/refspectra folder, and a compressed
     file with the same name is also accepted.
     """
-    return find_reference_data_file(filename, "data/refspectra")
+    return find_reference_data_file(filename, REFERENCE_SPECTRA_FOLDER)
 
 
 def find_reference_spectrum_file(filename: Path | str) -> Path:
@@ -188,7 +190,7 @@ def path_is_reference_spectrum(filepath: str | Path) -> bool:
     A name that ends in .out belongs to ARTIS, e.g. spec.out. A user can give reference data such a
     name as well, thus the folder decides: an ARTIS model folder holds input.txt beside its output files.
     """
-    return path_is_reference_data(filepath, "data/refspectra")
+    return path_is_reference_data(filepath, REFERENCE_SPECTRA_FOLDER)
 
 
 def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
@@ -485,7 +487,7 @@ def plot_reference_spectrum(
     filepath = find_reference_spectrum_file(filename)
 
     metadata = get_file_metadata(filepath)
-    label = plotkwargs.get("label", metadata.get("label", str(filename)))
+    label = plotkwargs["label"] if "label" in plotkwargs else get_reference_label(filename)
     assert isinstance(label, str)
     plotkwargs.pop("label", None)
 

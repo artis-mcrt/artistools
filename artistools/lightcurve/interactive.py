@@ -10,12 +10,11 @@ from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
-import matplotlib as mpl
-import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import numpy as np
 
 from artistools.lightcurve.core import find_bol_reflightcurve_file
+from artistools.lightcurve.core import get_reference_label
 from artistools.lightcurve.core import path_is_reference_lightcurve
 from artistools.lightcurve.plotlightcurve import addargs
 from artistools.lightcurve.plotlightcurve import ANALYTICEMISSIONCOLUMNS
@@ -36,10 +35,7 @@ from artistools.lightcurve.plotlightcurve import RefusedOption
 from artistools.lightcurve.plotlightcurve import resolve_plot_args
 from artistools.misc import exit_with_error
 from artistools.misc import get_artis_model_folders
-from artistools.misc import get_file_metadata
-from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
-from artistools.misc import is_remote_path
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_modelpath
@@ -55,9 +51,7 @@ from artistools.viewertools.core import get_direction_kinds
 from artistools.viewertools.core import get_fitted_figwidthscale
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
-from artistools.viewertools.core import get_path_colours
 from artistools.viewertools.core import get_row_values
-from artistools.viewertools.core import get_series_style
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
@@ -65,9 +59,7 @@ from artistools.viewertools.core import model_has_direction_data
 from artistools.viewertools.core import move_series_styles
 from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
-from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import set_figscale_row
-from artistools.viewertools.core import set_series_rows
 from artistools.viewertools.core import SLIDER_STEPS
 from artistools.viewertools.menus import add_default_options
 from artistools.viewertools.menus import add_window_actions
@@ -84,11 +76,10 @@ from artistools.viewertools.sections import read_limit_fields
 from artistools.viewertools.sections import read_selected_range
 from artistools.viewertools.sections import show_auto_yscale
 from artistools.viewertools.series import add_series_list
-from artistools.viewertools.series import edit_series_properties
-from artistools.viewertools.series import make_series_swatch
+from artistools.viewertools.series import DEFAULT_SERIES_PATHS
+from artistools.viewertools.series import get_session_tokens
 from artistools.viewertools.series import ReferenceData
 from artistools.viewertools.series import SeriesListActions
-from artistools.viewertools.series import SeriesRow
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import fit_canvas
@@ -113,7 +104,6 @@ from artistools.viewertools.window import start_viewer_window
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
-    from collections.abc import Mapping
     from collections.abc import Sequence
 
     import matplotlib.axes as mplax
@@ -182,9 +172,6 @@ TABLE_EXCLUDED_DESTS: t.Final = frozenset({
     "plot_hesma_model",
     "legendsubplotnumber",
 })
-
-# plotlightcurves reads the model in the working folder when the command gives no path
-DEFAULT_LIGHTCURVES: t.Final = (".",)
 
 # the name of each column of the energy rates in a note
 ENERGYRATENAMES: t.Final = MappingProxyType({
@@ -362,25 +349,17 @@ def get_refused_reasons(viewer: "LightCurveViewer", values: ControlValues) -> di
     }
 
 
-def get_lightcurve_path(path: str) -> Path:
-    """Return the full path of the folder or the file of a light curve, e.g. of "." or of a name of a reference file.
-
-    Two spellings of one light curve, e.g. "." and the full path of the working folder, then give the same path. A
-    model on a different host keeps its path.
-    """
-    if path_is_reference_lightcurve(path):
-        return (find_bol_reflightcurve_file(path) or Path(path)).resolve()
-    return resolve_modelpath(path)
-
-
-def get_lightcurve_item_text(path: str) -> str:
-    """Return the text of a path in the list of light curves: the kind and the full path.
-
-    The list shortens a long path in the middle, thus the text keeps the start and the end of the path.
-    """
-    if path_is_reference_lightcurve(path):
-        return f"Reference: {(find_bol_reflightcurve_file(path) or Path(path)).absolute()}"
-    return f"Model: {path if is_remote_path(path) else Path(path).absolute()}"
+# the reference light curves of the list of light curves, and the rules of plotlightcurves for them. A reference light
+# curve has markers and error bars, thus it has no line style
+REFERENCE_DATA: t.Final = ReferenceData(
+    kind="reference light curve",
+    folder=get_path("artistools_dir") / "data" / "lightcurves" / "bollightcurves",
+    find=find_bol_reflightcurve_file,
+    is_reference=path_is_reference_lightcurve,
+    get_label=get_reference_label,
+    styleflags=("--label", "--color", "--linewidth", "--linealpha"),
+    example="AT2017gfo",
+)
 
 
 class RenderedLightCurve(t.NamedTuple):
@@ -492,7 +471,7 @@ class LightCurveViewer:
             directionkind=directionkind,
             directionbins=directionbins,
             usedegrees=bool(args.usedegrees),
-            lightcurves=tuple(startpaths) or DEFAULT_LIGHTCURVES,
+            lightcurves=tuple(startpaths) or DEFAULT_SERIES_PATHS,
             figwidthscale=args.figwidthscale,
             dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
             otheroptions=otheroptions,
@@ -563,7 +542,7 @@ class LightCurveViewer:
             if particles := getattr(values, dest):
                 options += [f"--{dest}", *particles]
         # a command with no path reads the model in the working folder, thus that model needs no path
-        paths = [] if values.lightcurves == DEFAULT_LIGHTCURVES else list(values.lightcurves)
+        paths = [] if values.lightcurves == DEFAULT_SERIES_PATHS else list(values.lightcurves)
         return make_command_tokens([*paths, *get_option_row_tokens(values.otheroptions)], options)
 
     def get_command(self) -> str:
@@ -867,8 +846,8 @@ def open_window(
     defaultfigscale: float = viewer.parser.get_default("figscale")
     defaultdpi: int = viewer.parser.get_default("dpi")
 
-    def on_option_rows(rows: OptionRows) -> None:
-        apply(dc.replace(viewer.values, otheroptions=rows))
+    def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
+        apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
 
     def on_figscale(figscale: float) -> None:
         on_option_rows(set_figscale_row(viewer.values.otheroptions, figscale, defaultfigscale))
@@ -921,51 +900,6 @@ def open_window(
         low, high = logtrange
         return float(10.0 ** (low + (high - low) * position / SLIDER_STEPS))
 
-    def get_lightcurves_key(values: ControlValues) -> tuple[t.Any, ...]:
-        """Return the parts of the values that the rows of the list of light curves show."""
-        return (values.lightcurves, tuple(get_row_values(values.otheroptions, flag) for flag in SERIES_STYLE_FLAGS))
-
-    def get_lightcurve_name(values: ControlValues, path: str) -> str:
-        """Return the --label of a light curve, or the legend name of its model or its reference file."""
-        if label := get_series_style(values.otheroptions, values.lightcurves, path)["--label"]:
-            return label
-        if path_is_reference_lightcurve(path):
-            # plotlightcurves takes the label of the metadata of a reference file, thus the list shows the same name
-            filepath = find_bol_reflightcurve_file(path)
-            metadata = get_file_metadata(filepath) if filepath is not None else {}
-            return str(metadata.get("label", Path(path).name))
-        return get_model_name(path)
-
-    def make_lightcurve_rows(values: ControlValues) -> list[SeriesRow]:
-        """Return a row for each light curve."""
-        lightcurves = values.lightcurves
-        models = [path for path in lightcurves if get_artis_model_folders([path])]
-        colours = get_path_colours(
-            lightcurves, [path_is_reference_lightcurve(path) for path in lightcurves], values.otheroptions
-        )
-        rows: list[SeriesRow] = []
-        for path in lightcurves:
-            style = get_series_style(values.otheroptions, lightcurves, path)
-            itemtext = get_lightcurve_item_text(path)
-            rows.append(
-                SeriesRow(
-                    path=path,
-                    name=get_lightcurve_name(values, path),
-                    labelled=style["--label"] is not None,
-                    itemtext=itemtext,
-                    tooltip=itemtext,
-                    swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
-                    removereason=(
-                        "The plot needs one ARTIS model at least. Add a different model first"
-                        if models == [path]
-                        else None
-                    ),
-                    mark=None,
-                    extraactions=(),
-                )
-            )
-        return rows
-
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
         blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
@@ -977,7 +911,7 @@ def open_window(
                 viewer.load_models(values.lightcurves)
             if viewer.models.lightcurves != shownmodels:
                 show_model_ranges()
-            show_series_rows(get_lightcurves_key(values), partial(make_lightcurve_rows, values))
+            show_series_rows()
             packetbox.setCurrentIndex(1 if values.gamma else 0)
             # -topnucs reads the packets, thus the box shows that and takes no choice
             datasourcebox.setCurrentIndex(1 if values.frompackets or values.topnucs else 0)
@@ -1175,45 +1109,6 @@ def open_window(
             values = dc.replace(values, directionkind="", directionbins=())
         apply(values)
 
-    def on_edit_properties(path: str) -> None:
-        """Ask for the label, the colour, the line style, the width, and the opacity of the series of a light curve.
-
-        A reference light curve has markers and error bars, thus it has no line style.
-        """
-        values = viewer.values
-        if path not in values.lightcurves:
-            return
-        isreference = [path_is_reference_lightcurve(other) for other in values.lightcurves]
-        # the colour of the popup for "Default" is the colour that the light curve has with no -color of its own
-        defaultrows = set_series_rows(values.otheroptions, values.lightcurves, path, {"--color": None})
-        defaultcolour = get_path_colours(values.lightcurves, isreference, defaultrows)[path]
-
-        style = get_series_style(values.otheroptions, values.lightcurves, path)
-
-        def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
-            # a change applies to the current values, because the window can change them while the popup is open,
-            # e.g. the fit of the width. A value of None for changes gives the series its style from before the popup
-            current = viewer.values
-            rows = set_series_rows(
-                current.otheroptions, current.lightcurves, path, style if changes is None else changes
-            )
-            apply(dc.replace(current, otheroptions=rows), undoable=undoable)
-
-        edit_series_properties(
-            window,
-            get_lightcurve_name(values, path),
-            style,
-            mplcolors.to_hex(defaultcolour),
-            float(mpl.rcParams["lines.linewidth"]),
-            show_changes,
-            flags=("--label", "--color", "--linewidth", "--linealpha")
-            if path_is_reference_lightcurve(path)
-            else SERIES_STYLE_FLAGS,
-        )
-
-    def is_model_folder(path: str) -> bool:
-        return bool(get_artis_model_folders([path]))
-
     show_series_rows = add_series_list(
         lightcurvegrid,
         window,
@@ -1222,18 +1117,12 @@ def open_window(
         " --label and the style of each series. Click the up or the down arrow, drag a row, or press Alt-Up or Alt-Down"
         " (Option on a Mac) to change the order. The command gives a file from the reference data of artistools by its"
         " name alone.",
-        ReferenceData(
-            kind="reference light curve",
-            folder=get_path("artistools_dir") / "data" / "lightcurves" / "bollightcurves",
-            find=find_bol_reflightcurve_file,
-            example="AT2017gfo",
-        ),
+        REFERENCE_DATA,
         SeriesListActions(
             get_paths=lambda: viewer.values.lightcurves,
+            get_rows=lambda: viewer.values.otheroptions,
             apply_paths=apply_lightcurves,
-            edit_properties=on_edit_properties,
-            get_full_path=get_lightcurve_path,
-            is_model=is_model_folder,
+            apply_rows=on_option_rows,
             show_error=show_error,
         ),
     )
@@ -1244,7 +1133,6 @@ def open_window(
         def show_reloaded_models() -> None:
             viewer.load_models(viewer.values.lightcurves)
             show_model_ranges()
-            queue.redraw()
 
         reload_models(queue, viewer.models.modelfolders, show_reloaded_models, show_error)
 
@@ -1288,12 +1176,6 @@ def open_window(
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
 
-    # the window keeps its command at a quit, and the next start opens the window again
-    def get_session_tokens() -> list[str]:
-        # a command with no path reads the working folder, and the next start can be in a different folder
-        tokens = viewer.get_plot_tokens()
-        return [str(Path.cwd()), *tokens] if viewer.values.lightcurves == DEFAULT_LIGHTCURVES else tokens
-
     for checkbox in (pelletcheck, cmfcheck, invalidcheck):
         checkbox.toggled.connect(on_series)
     packetbox.currentIndexChanged.connect(on_series)
@@ -1322,6 +1204,12 @@ def open_window(
         show_tag=make_readout_tag(canvas),
     )
 
-    finish_viewer_window(viewerwindow, windows, viewer, queue, get_session_tokens)
+    finish_viewer_window(
+        viewerwindow,
+        windows,
+        viewer,
+        queue,
+        lambda: get_session_tokens(viewer.get_plot_tokens(), viewer.values.lightcurves),
+    )
     show_values()
     return None

@@ -40,10 +40,12 @@ from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import drop_trailing_null_column
+from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting
 from artistools.misc import get_auto_velocity_unit
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbins
+from artistools.misc import get_file_metadata
 from artistools.misc import get_file_state
 from artistools.misc import get_metadata_path
 from artistools.misc import get_nprocs
@@ -2454,6 +2456,21 @@ def print_integrated_flux(
     print_detail(f"Integrated flux ({x_min:.1f} to {x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
     assert isinstance(integrated_flux, float)
     return integrated_flux
+
+
+# the folder of the reference spectra in the data of artistools
+REFERENCE_SPECTRA_FOLDER: t.Final = "data/refspectra"
+
+
+def get_reference_label(filename: Path | str) -> str:
+    """Return the legend label of a reference spectrum that has no --label.
+
+    The metadata of the file gives the label. With no label in the metadata, the label is the name or the path that
+    the command gives.
+    """
+    filepath = find_reference_data_file(filename, REFERENCE_SPECTRA_FOLDER)
+    metadata = get_file_metadata(filepath) if filepath is not None else {}
+    return str(metadata.get("label", filename))
 
 
 def get_reference_spectrum(filepath: Path | str, metadata: dict[str, t.Any]) -> pl.DataFrame:

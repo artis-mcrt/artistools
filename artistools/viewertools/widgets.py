@@ -554,6 +554,18 @@ def get_elided_label_class() -> "type[QtWidgets.QLabel]":
             fulltext = str(self.property("fulltext") or "")
             self.setText(self.fontMetrics().elidedText(fulltext, QtCore.Qt.TextElideMode.ElideMiddle, self.width()))
 
+        @t.override
+        def sizeHint(self) -> QtCore.QSize:
+            # a label with a different size policy, e.g. a name before a path, asks for the width of its full text
+            hint = super().sizeHint()
+            fontmetrics = self.fontMetrics()
+            textwidth = fontmetrics.horizontalAdvance(str(self.property("fulltext") or ""))
+            return QtCore.QSize(hint.width() - fontmetrics.horizontalAdvance(self.text()) + textwidth, hint.height())
+
+        @t.override
+        def minimumSizeHint(self) -> QtCore.QSize:
+            return QtCore.QSize(0, super().minimumSizeHint().height())
+
     return ElidedLabel
 
 

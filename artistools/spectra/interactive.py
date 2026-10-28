@@ -10,8 +10,6 @@ from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
-import matplotlib as mpl
-import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
@@ -20,14 +18,12 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_model_folders
 from artistools.misc import get_escaped_arrivalrange
-from artistools.misc import get_file_metadata
 from artistools.misc import get_model_name
 from artistools.misc import get_standard_flag
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
 from artistools.misc import get_xunit
-from artistools.misc import is_remote_path
 from artistools.misc import parse_cli_args
 from artistools.misc import resolve_modelpath
 from artistools.misc import XUNITS
@@ -38,7 +34,9 @@ from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import EmissionEvent
+from artistools.spectra.core import get_reference_label
 from artistools.spectra.core import get_x_quantity_label
+from artistools.spectra.core import REFERENCE_SPECTRA_FOLDER
 from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
 from artistools.spectra.plotspectra import DELTALOGX_SCALES
@@ -62,10 +60,8 @@ from artistools.viewertools.core import get_fitted_figwidthscale
 from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
-from artistools.viewertools.core import get_path_colours
 from artistools.viewertools.core import get_resized_range
 from artistools.viewertools.core import get_row_values
-from artistools.viewertools.core import get_series_style
 from artistools.viewertools.core import get_stepped_range
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
@@ -77,7 +73,6 @@ from artistools.viewertools.core import parse_viewer_tokens
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import set_figscale_row
-from artistools.viewertools.core import set_series_rows
 from artistools.viewertools.core import SLIDER_STEPS
 from artistools.viewertools.menus import add_default_options
 from artistools.viewertools.menus import add_window_actions
@@ -100,8 +95,8 @@ from artistools.viewertools.sections import show_auto_yscale
 from artistools.viewertools.sections import TIME_KEY_HELP_ROWS
 from artistools.viewertools.sections import WAIT_FOR_PLOT_MESSAGE
 from artistools.viewertools.series import add_series_list
-from artistools.viewertools.series import edit_series_properties
-from artistools.viewertools.series import make_series_swatch
+from artistools.viewertools.series import DEFAULT_SERIES_PATHS
+from artistools.viewertools.series import get_session_tokens
 from artistools.viewertools.series import ReferenceData
 from artistools.viewertools.series import SeriesListActions
 from artistools.viewertools.series import SeriesRow
@@ -587,29 +582,16 @@ def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlV
     return dc.replace(values, xunit=xunit, xmin=xmin, xmax=xmax, deltax="")
 
 
-# plotspectra reads the model in the working folder when the command gives no path
-DEFAULT_SPECTRA: t.Final = (".",)
-
-
-def get_spectrum_path(path: str) -> Path:
-    """Return the full path of the folder or the file of a spectrum, e.g. of "." or of a name of a reference spectrum.
-
-    Two spellings of one spectrum, e.g. "." and the full path of the working folder, then give the same path. A model
-    on a different host keeps its path.
-    """
-    if path_is_reference_spectrum(path):
-        return (find_reference_spectrum_file_or_none(path) or Path(path)).resolve()
-    return resolve_modelpath(path)
-
-
-def get_spectrum_item_text(path: str) -> str:
-    """Return the text of a path in the list of spectra: the kind and the full path.
-
-    The list shortens a long path in the middle, thus the text keeps the start and the end of the path.
-    """
-    if path_is_reference_spectrum(path):
-        return f"Reference: {(find_reference_spectrum_file_or_none(path) or Path(path)).absolute()}"
-    return f"Model: {path if is_remote_path(path) else Path(path).absolute()}"
+# the observed spectra of the list of spectra, and the rules of plotspectra for them
+REFERENCE_DATA: t.Final = ReferenceData(
+    kind="reference spectrum",
+    folder=get_path("artistools_dir") / REFERENCE_SPECTRA_FOLDER,
+    find=find_reference_spectrum_file_or_none,
+    is_reference=path_is_reference_spectrum,
+    get_label=get_reference_label,
+    styleflags=SERIES_STYLE_FLAGS,
+    example="AT2017gfo",
+)
 
 
 def get_plot_python_code(viewer: "SpectrumViewer") -> str:
@@ -732,7 +714,7 @@ class SpectrumViewer:
         # the keys of the models are the tokens of the list of spectra. A normalised path, e.g. of "mymodel/", is a
         # different key, and the window then found no model for a row
         self.grid = read_timestep_grid(
-            tuple(startpaths) or DEFAULT_SPECTRA, "", plotinvalidpart=bool(args.plotinvalidpart)
+            tuple(startpaths) or DEFAULT_SERIES_PATHS, "", plotinvalidpart=bool(args.plotinvalidpart)
         )
 
         self.modelpathtokens = [path for path in startpaths if not path_is_reference_spectrum(path)]
@@ -797,7 +779,7 @@ class SpectrumViewer:
             directionbins=tuple(args.plotvspecpol or args.plotviewingangle or ()),
             usedegrees=bool(args.usedegrees),
             fixedionlist=tuple(args.fixedionlist or ()),
-            spectra=tuple(startpaths) or DEFAULT_SPECTRA,
+            spectra=tuple(startpaths) or DEFAULT_SERIES_PATHS,
             timegrid="",
             figwidthscale=args.figwidthscale,
             dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
@@ -922,7 +904,7 @@ class SpectrumViewer:
         if values.fixedionlist and (values.showemission or values.showabsorption):
             options += ["--fixedionlist", *values.fixedionlist]
         # a command with no path reads the model in the working folder, thus that model needs no path
-        paths = [] if values.spectra == DEFAULT_SPECTRA else list(values.spectra)
+        paths = [] if values.spectra == DEFAULT_SERIES_PATHS else list(values.spectra)
         return make_command_tokens([*paths, *get_option_row_tokens(values.otheroptions)], options)
 
     def get_command(self) -> str:
@@ -1235,29 +1217,6 @@ def get_binmode(values: ControlValues) -> str:
     if values.deltalogx in DELTALOGX_SCALES:
         return values.deltalogx
     return "deltalogx" if values.deltalogx else ""
-
-
-def get_series_name(path: str) -> str:
-    """Return the legend name of a spectrum that has no --label, with no time in the name."""
-    if path_is_reference_spectrum(path):
-        filepath = find_reference_spectrum_file_or_none(path)
-        metadata = get_file_metadata(filepath) if filepath is not None else {}
-        return str(metadata.get("label", Path(path).name))
-    return get_model_name(path)
-
-
-def get_series_colours(spectra: "Sequence[str]", rows: OptionRows) -> dict[str, str]:
-    """Return the colour of the plot of each spectrum, as plotspectra gives it."""
-    return get_path_colours(spectra, [path_is_reference_spectrum(path) for path in spectra], rows)
-
-
-def set_series_values(values: ControlValues, path: str, changes: "Mapping[str, str | None]") -> ControlValues:
-    """Return the values with the value of each series style option in changes for one spectrum.
-
-    changes gives each option by its flag, e.g. --label. A value of None gives the spectrum the default of plotspectra,
-    and the other spectra keep their values.
-    """
-    return dc.replace(values, otheroptions=set_series_rows(values.otheroptions, values.spectra, path, changes))
 
 
 def get_timedays_token(viewer: SpectrumViewer, values: ControlValues) -> str:
@@ -1660,8 +1619,8 @@ def open_window(
     defaultfigscale: float = viewer.parser.get_default("figscale")
     defaultdpi: int = viewer.parser.get_default("dpi")
 
-    def on_option_rows(rows: OptionRows) -> None:
-        apply(dc.replace(viewer.values, otheroptions=rows))
+    def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
+        apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
 
     def on_figscale(figscale: float) -> None:
         on_option_rows(set_figscale_row(viewer.values.otheroptions, figscale, defaultfigscale))
@@ -1848,57 +1807,28 @@ def open_window(
             checkbox.setEnabled(reason is None)
             checkbox.setToolTip(reason or helptexts.get(dest, ""))
 
-    def get_spectra_key(values: ControlValues) -> tuple[t.Any, ...]:
-        """Return the parts of the values that the rows of the list of spectra show."""
-        styles = tuple(get_row_values(values.otheroptions, flag) for flag in SERIES_STYLE_FLAGS)
-        return (values.spectra, values.timegrid, styles)
-
-    def make_spectrum_rows(values: ControlValues) -> list[SeriesRow]:
-        """Return a row for each spectrum. The model that gives the timesteps of the time controls has a mark."""
+    def add_time_grid_parts(row: SeriesRow) -> SeriesRow:
+        """Give the row of a model the times of the model, and the mark of the model that gives the time controls."""
         modeltimes = viewer.grid.modeltimes
-        models = list(modeltimes)
-        gridpath = get_timegrid_path(values)
-        colours = get_series_colours(values.spectra, values.otheroptions)
-        rows: list[SeriesRow] = []
-        for path in values.spectra:
-            style = get_series_style(values.otheroptions, values.spectra, path)
-            itemtext = get_spectrum_item_text(path)
-            rows.append(
-                SeriesRow(
-                    path=path,
-                    name=style["--label"] or get_series_name(path),
-                    labelled=style["--label"] is not None,
-                    itemtext=itemtext,
-                    tooltip=(
-                        f"{itemtext}\n{get_model_times_text(modeltimes[path])}" if path in modeltimes else itemtext
-                    ),
-                    swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
-                    removereason=(
-                        "The plot needs one ARTIS model at least. Add a different model first"
-                        if models == [path]
-                        else None
-                    ),
-                    mark=(
-                        (
-                            "⏱",
-                            (
-                                "The time controls read the timesteps of this model. To use a different model, select"
-                                ' it in the "Timesteps of" box or in the context menu of its row'
-                            ),
-                        )
-                        if path == gridpath
-                        else None
-                    ),
-                    extraactions=(
-                        (
-                            "Use for the Time Controls",
-                            path in modeltimes and path != gridpath,
-                            partial(on_use_timegrid, path),
-                        ),
+        gridpath = get_timegrid_path(viewer.values)
+        ismodel = row.path in modeltimes
+        return row._replace(
+            tooltip=f"{row.itemtext}\n{get_model_times_text(modeltimes[row.path])}" if ismodel else row.itemtext,
+            mark=(
+                (
+                    "⏱",
+                    (
+                        "The time controls read the timesteps of this model. To use a different model, select it in"
+                        ' the "Timesteps of" box or in the context menu of its row'
                     ),
                 )
-            )
-        return rows
+                if row.path == gridpath
+                else None
+            ),
+            extraactions=(
+                ("Use for the Time Controls", ismodel and row.path != gridpath, partial(on_use_timegrid, row.path)),
+            ),
+        )
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
@@ -1981,7 +1911,7 @@ def open_window(
             hideothercheck.setChecked(values.hideother)
             emissioneventbox.setCurrentIndex(emissioneventbox.findData(values.emissionevent))
             show_direction()
-            show_series_rows(get_spectra_key(values), partial(make_spectrum_rows, values))
+            show_series_rows()
             set_option_rows(values.otheroptions)
             set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
             set_spin_value(
@@ -2276,32 +2206,6 @@ def open_window(
     def on_use_timegrid(path: str) -> None:
         apply(set_models(viewer, viewer.values.spectra, path))
 
-    def on_edit_properties(path: str) -> None:
-        """Ask for the label, the colour, the line style, the width, and the opacity of the line of a spectrum."""
-        values = viewer.values
-        if path not in values.spectra:
-            return
-        # the colour of the popup for "Default" is the colour that the spectrum has with no -color of its own
-        defaultcolours = get_series_colours(
-            values.spectra, set_series_values(values, path, {"--color": None}).otheroptions
-        )
-        style = get_series_style(values.otheroptions, values.spectra, path)
-        name = style["--label"] or get_series_name(path)
-
-        def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
-            # a change applies to the current values, because Play can move the time while the popup is open. A value
-            # of None for changes gives the series its style from before the popup
-            apply(set_series_values(viewer.values, path, style if changes is None else changes), undoable=undoable)
-
-        edit_series_properties(
-            window,
-            name,
-            style,
-            mplcolors.to_hex(defaultcolours[path]),
-            float(mpl.rcParams["lines.linewidth"]),
-            show_changes,
-        )
-
     command = ViewerCommand(
         name="plotspectra",
         main=plotspectra_main,
@@ -2312,9 +2216,6 @@ def open_window(
     def on_export_animation() -> None:
         export_animation(window, queue, command, get_animation_frames(viewer), fpsbox.value())
 
-    def is_model_folder(path: str) -> bool:
-        return bool(get_artis_model_folders([Path(path)]))
-
     show_series_rows = add_series_list(
         spectragrid,
         window,
@@ -2323,19 +2224,15 @@ def open_window(
         " --label and the style of each series. The time controls read the timesteps of the ARTIS model with ⏱."
         " Click the up or the down arrow, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the"
         " order. The command gives a file from the reference data of artistools by its name alone.",
-        ReferenceData(
-            kind="reference spectrum",
-            folder=get_path("artistools_dir") / "data" / "refspectra",
-            find=find_reference_spectrum_file_or_none,
-            example="AT2017gfo",
-        ),
+        REFERENCE_DATA,
         SeriesListActions(
             get_paths=lambda: viewer.values.spectra,
+            get_rows=lambda: viewer.values.otheroptions,
             apply_paths=apply_spectra,
-            edit_properties=on_edit_properties,
-            get_full_path=get_spectrum_path,
-            is_model=is_model_folder,
+            apply_rows=on_option_rows,
             show_error=show_error,
+            extend_row=add_time_grid_parts,
+            get_extrakey=lambda: viewer.values.timegrid,
         ),
     )
 
@@ -2345,7 +2242,6 @@ def open_window(
         def show_reloaded_models() -> None:
             viewer.load_models(viewer.values.spectra, viewer.values.timegrid)
             show_model_ranges()
-            queue.redraw()
 
         reload_models(queue, viewer.grid.modelfolders, show_reloaded_models, show_error)
 
@@ -2381,12 +2277,6 @@ def open_window(
         menu.exec(QtGui.QCursor.pos())
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
-
-    # the window keeps its command at a quit, and the next start opens the window again
-    def get_session_tokens() -> list[str]:
-        # a command with no path reads the working folder, and the next start can be in a different folder
-        tokens = viewer.get_plot_tokens()
-        return [str(Path.cwd()), *tokens] if viewer.values.spectra == DEFAULT_SPECTRA else tokens
 
     modesegments.currentChanged.connect(on_time_mode)
     packetbox.currentIndexChanged.connect(on_packet_type)
@@ -2431,6 +2321,12 @@ def open_window(
     )
     connect_time_keys(window, stepbuttons, viewer, apply)
 
-    finish_viewer_window(viewerwindow, windows, viewer, queue, get_session_tokens)
+    finish_viewer_window(
+        viewerwindow,
+        windows,
+        viewer,
+        queue,
+        lambda: get_session_tokens(viewer.get_plot_tokens(), viewer.values.spectra),
+    )
     show_values()
     return None

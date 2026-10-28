@@ -161,12 +161,12 @@ def reload_models(
     estimatorsonly: bool = False,
     read_models: "Callable[[], None] | None" = None,
 ) -> None:
-    """Clear the caches of the models in the worker thread, then call on_reloaded.
+    """Clear the caches of the models in the worker thread, then call on_reloaded and draw the plot again.
 
     The user reloads the models e.g. while ARTIS writes more timesteps. The caches of this process and of the host of
     a remote model hold old data, thus the function clears both. The reload waits for the plot in progress, and a new
     plot waits for the reload. read_models reads the models again in the worker thread, because a conversion of new
-    text files can take minutes. on_reloaded runs in the window thread.
+    text files can take minutes. on_reloaded runs in the window thread, e.g. to give the controls the new ranges.
     """
 
     def read() -> None:
@@ -184,6 +184,7 @@ def reload_models(
             show_error(f"The viewer cannot reload the models: {message}")
             return
         on_reloaded()
+        queue.redraw()
 
     if not queue.run_task(lambda: run_command_step(read, quiet=False), "Reload in progress...", on_done):
         show_error("A different task is in progress. Reload the models after it")
