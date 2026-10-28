@@ -6,7 +6,6 @@ import math
 import typing as t
 from collections.abc import Iterable
 from collections.abc import Sequence
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -24,8 +23,8 @@ from artistools.misc.general import parse_range_list
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_logname
 from artistools.misc.modelpaths import get_artis_model_folders
+from artistools.misc.modelpaths import modelpath_cache
 from artistools.misc.modelpaths import path_is_codecomparison
-from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import on_model_host
 
 
@@ -38,20 +37,15 @@ def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
     return min((float(x) for x in searchtimes), key=offset_from_reftime)
 
 
-def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
+@modelpath_cache(maxsize=16)
+@on_model_host
+def get_deposition(modelpath: Path) -> pl.LazyFrame:
     """Return a polars LazyFrame containing the deposition data.
 
     The file is read and its times checked against the timesteps on every call, and a light curve plot asks
     for it once per model and again per escape type, so the parsed frame is cached. A LazyFrame has no
     in-place operations, so a caller cannot alter what the next one gets.
     """
-    return get_deposition_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
-@on_model_host
-def get_deposition_cached(modelpath: Path) -> pl.LazyFrame:
-    """Return the deposition data of the model at an absolute path."""
     if Path(modelpath).is_file():
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
@@ -146,20 +140,15 @@ def get_timesteps(modelpath: Path) -> pl.LazyFrame:
     )
 
 
-def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
+# a list holds a few thousand floats at most, and a viewer reads 4 kinds of time for each model in turn. With 16
+# entries, 6 models evicted each entry before its next use, and a window read the timesteps more than 1000 times at
+# each change
+@modelpath_cache(maxsize=256)
+def get_timestep_times(modelpath: Path, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
     """Return a list of the times in days of each timestep.
 
     Do not change the list that this function returns. The next caller gets the same object.
     """
-    return get_timestep_times_cached(resolve_modelpath(modelpath), loc)
-
-
-# a list holds a few thousand floats at most, and a viewer reads 4 kinds of time for each model in turn. With 16
-# entries, 6 models evicted each entry before its next use, and a window read the timesteps more than 1000 times at
-# each change
-@lru_cache(maxsize=256)
-def get_timestep_times_cached(modelpath: Path, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
-    """Return the times in days of each timestep of the model at an absolute path."""
     colname_of_loc = {"mid": "tmid_days", "start": "tstart_days", "end": "tend_days", "delta": "twidth_days"}
 
     if colname := colname_of_loc.get(loc):
@@ -524,15 +513,10 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return timearray[timestep]
 
 
-def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | None, float | int | None]:
-    """Return the time range for which the entire model can send light signals the observer."""
-    return get_escaped_arrivalrange_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
+@modelpath_cache(maxsize=16)
 @on_model_host
-def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int | None, float | int | None]:
-    """Return the arrival time range of the model at an absolute path."""
+def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, float | int | None]:
+    """Return the time range for which the entire model can send light signals the observer."""
     # artistools.inputmodel imports artistools.misc, thus this import runs at call time
     from artistools.inputmodel import get_modeldata
 

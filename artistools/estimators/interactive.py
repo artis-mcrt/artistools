@@ -75,7 +75,6 @@ from artistools.misc import path_is_codecomparison
 from artistools.misc.general import call_in_child_process
 from artistools.misc.general import format_range_list
 from artistools.misc.modelinfo import get_runfolder_timesteps
-from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
@@ -862,7 +861,7 @@ def get_batch_caches(modelpath: Path) -> "list[EstimatorBatchCache]":
         batchcaches = call_in_child_process(convert, modelpath, states)
         # the conversion can drop an incomplete last timestep. The child process clears only its own copy of the
         # timesteps that get_runfolders() read from the text
-        get_runfolder_timesteps_cached.cache_clear()
+        get_runfolder_timesteps.cache_clear()
         return batchcaches
     return convert(modelpath, states)
 

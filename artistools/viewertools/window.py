@@ -84,13 +84,13 @@ def clear_estimator_caches() -> None:
     """
     from artistools.estimators.core import scan_parquet_file
     from artistools.estimators.estimators_classic import read_classic_estimators_cached
-    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+    from artistools.misc.modelinfo import get_runfolder_timesteps
     from artistools.nltepops.core import read_nltepops_cached
 
     for cachedfunction in (
         # a kept scan of a parquet cache also holds the metadata of its file, e.g. 8 MB for 5335 columns
         scan_parquet_file,
-        get_runfolder_timesteps_cached,
+        get_runfolder_timesteps,
         read_classic_estimators_cached,
         read_nltepops_cached,
     ):
@@ -102,17 +102,17 @@ def clear_output_caches() -> None:
 
     The files of the input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay.
     """
-    from artistools.misc.modelinfo import get_nu_grid_cached
-    from artistools.misc.timesteps import get_deposition_cached
-    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
-    from artistools.misc.timesteps import get_timestep_times_cached
+    from artistools.misc.modelinfo import get_nu_grid
+    from artistools.misc.timesteps import get_deposition
+    from artistools.misc.timesteps import get_escaped_arrivalrange
+    from artistools.misc.timesteps import get_timestep_times
     from artistools.packets.core import check_packets_batch_parquet_paths
     from artistools.packets.core import find_first_rank_textfiles
     from artistools.spectra.core import get_flux_contributions_cached
     from artistools.spectra.core import get_vspecpol_data_cached
-    from artistools.spectra.core import read_spec_cached
-    from artistools.spectra.core import read_spec_res_cached
-    from artistools.spectra.core import read_specpol_res_cached
+    from artistools.spectra.core import read_spec
+    from artistools.spectra.core import read_spec_res
+    from artistools.spectra.core import read_specpol_res
     from artistools.spectra.plotspectra import get_no_sampled_emission_reason
     from artistools.spectra.plotspectra import has_gamma_spec_file
 
@@ -121,17 +121,17 @@ def clear_output_caches() -> None:
         has_gamma_spec_file,
         get_no_sampled_emission_reason,
         model_has_direction_data,
-        get_nu_grid_cached,
-        get_deposition_cached,
-        get_escaped_arrivalrange_cached,
-        get_timestep_times_cached,
+        get_nu_grid,
+        get_deposition,
+        get_escaped_arrivalrange,
+        get_timestep_times,
         check_packets_batch_parquet_paths,
         find_first_rank_textfiles,
         get_flux_contributions_cached,
         get_vspecpol_data_cached,
-        read_spec_cached,
-        read_spec_res_cached,
-        read_specpol_res_cached,
+        read_spec,
+        read_spec_res,
+        read_specpol_res,
     ):
         cachedfunction.cache_clear()
     clear_estimator_caches()

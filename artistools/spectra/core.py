@@ -62,6 +62,7 @@ from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.fileio import read_complete_lines
 from artistools.misc.general import get_bin_index_expr
+from artistools.misc.modelpaths import modelpath_cache
 from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import on_model_host
 from artistools.misc.units import get_auto_velocity_unit
@@ -456,22 +457,17 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
     return list(requested)
 
 
-@lru_cache(maxsize=16)
-def get_escape_surface_gamma_cached(modelpath: Path) -> float:
-    """Return the Lorentz factor correction at the outer model boundary."""
+@modelpath_cache(maxsize=16)
+def get_escape_surface_gamma(modelpath: Path) -> float:
+    """Return the Lorentz factor correction at the outer model boundary.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    """
     from artistools.inputmodel import get_modeldata
 
     _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
     vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
     return math.sqrt(1 - vmax_beta**2)
-
-
-def get_escape_surface_gamma(modelpath: Path | str) -> float:
-    """Return the Lorentz factor correction at the outer model boundary.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    return get_escape_surface_gamma_cached(resolve_modelpath(modelpath))
 
 
 def filter_packets_by_time(
@@ -650,9 +646,11 @@ def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
 # scan would hold only the query plan, thus each collect by a caller would parse the file again.
-@lru_cache(maxsize=2)
-def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
+@modelpath_cache(maxsize=2)
+def read_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
 
     Callers must not mutate the returned frame, which is shared between calls.
     """
@@ -688,18 +686,12 @@ def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
-def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
-    """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
+# every cached entry holds a whole spec_res file, because each frame of a direction bin is a slice of one frame
+@modelpath_cache(maxsize=2)
+def read_spec_res(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
+    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    return read_spec_cached(resolve_modelpath(modelpath), gamma)
-
-
-# every cached entry holds a whole spec_res file, because each frame of a direction bin is a slice of one frame
-@lru_cache(maxsize=2)
-def read_spec_res_cached(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
-    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
 
     Callers must not mutate the returned dict, which is shared between calls.
     """
@@ -739,14 +731,6 @@ def read_spec_res_cached(modelpath: Path, gamma: bool = False) -> dict[int, pl.L
         )
 
     return res_specdata
-
-
-def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
-    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    return read_spec_res_cached(resolve_modelpath(modelpath), gamma)
 
 
 def read_emission_absorption_file(emabsfilename: Path) -> pl.DataFrame:
@@ -960,9 +944,11 @@ def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
 
 # maxsize is small because each entry holds a whole specpol_res.out file. A caller reads one direction
 # bin at a time, thus a cache miss on each call would parse the file again for every bin.
-@lru_cache(maxsize=2)
-def read_specpol_res_cached(modelpath: Path) -> dict[int, pl.LazyFrame]:
+@modelpath_cache(maxsize=2)
+def read_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
     """Return the table of each direction bin of specpol_res.out, with the times as the column names.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
 
     This function collects the scan one time, because each collect call of a lazy frame reads the
     file again. A caller collects the I, the Q, and the U frame of each direction bin. Do not change
@@ -987,14 +973,6 @@ def read_specpol_res_cached(modelpath: Path) -> dict[int, pl.LazyFrame]:
         )
 
     return dirbintables
-
-
-def read_specpol_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
-    """Return the table of each direction bin of specpol_res.out, with the times as the column names.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    return read_specpol_res_cached(resolve_modelpath(modelpath))
 
 
 @on_model_host

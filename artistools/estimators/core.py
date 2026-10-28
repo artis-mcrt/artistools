@@ -49,7 +49,7 @@ from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.general import contiguous_runs
 from artistools.misc.modelinfo import get_nonempty_cellcounts
 from artistools.misc.modelinfo import get_rank_outputfiles
-from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+from artistools.misc.modelinfo import get_runfolder_timesteps
 from artistools.misc.parquetcache import mtime_matches_stamp
 from artistools.misc.parquetcache import MTIME_TOLERANCE_S
 from artistools.misc.parquetcache import parquet_is_readable
@@ -1637,7 +1637,7 @@ def convert_estimator_batch_caches(
     if conversioncount > 0:
         # get_runfolders() read the timesteps from the text before the conversion, which can drop an incomplete last
         # timestep. The next call of get_runfolder_timesteps() then reads the timesteps of the new caches
-        get_runfolder_timesteps_cached.cache_clear()
+        get_runfolder_timesteps.cache_clear()
     return batchcaches
 
 

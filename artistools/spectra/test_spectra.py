@@ -2736,12 +2736,12 @@ def test_read_spec_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.Capture
         atspectra.read_spec(tmp_path)
 
     specpath.write_text("0 10.0 11.0\n1e15 1.0 2.0\n2e15 3.0 4.", encoding="utf-8")
-    atspectra.read_spec_cached.cache_clear()
+    atspectra.read_spec.cache_clear()
     assert atspectra.read_spec(tmp_path).collect()["nu"].to_list() == [1e15]
     assert "ends with a cut line" in capsys.readouterr().err
 
     specpath.write_text("0 10.0 11.0\n1e15 1.0 2.0\n2e15 3.0\n", encoding="utf-8")
-    atspectra.read_spec_cached.cache_clear()
+    atspectra.read_spec.cache_clear()
     with pytest.raises(ValueError, match="a line with fewer values than the header"):
         atspectra.read_spec(tmp_path)
 
@@ -2750,7 +2750,7 @@ def test_read_spec_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.Capture
     for compressedname, compress in (("spec.out.gz", gzip.compress), ("spec.out.xz", lzma.compress)):
         compressedpath = tmp_path / compressedname
         compressedpath.write_bytes(compress(fulltext)[:3000])
-        atspectra.read_spec_cached.cache_clear()
+        atspectra.read_spec.cache_clear()
         with pytest.raises(OSError, match="ends before the end") as excinfo:
             atspectra.read_spec(tmp_path)
         assert any(compressedname in note for note in [str(excinfo.value), *getattr(excinfo.value, "__notes__", [])])

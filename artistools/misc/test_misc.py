@@ -1688,7 +1688,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (10, "e97d6637f68b67ce"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (10, "fe3c7a9630331859"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2163,7 +2163,6 @@ def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_dif
     Only the energy rates need deposition.out, but the check of its times stopped every light curve plot of the model.
     """
     from artistools.misc import get_escaped_arrivalrange
-    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
 
     modelcopy = tmp_path / "model"
     modelcopy.mkdir()
@@ -2174,7 +2173,7 @@ def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_dif
     deplines.extend(f"{999 + ts} 1.0 0.1 1.1" for ts in range(ntimesteps))
     (modelcopy / "deposition.out").write_text("\n".join(deplines) + "\n")
 
-    get_escaped_arrivalrange_cached.cache_clear()
+    get_escaped_arrivalrange.cache_clear()
     nts_last, _, _ = get_escaped_arrivalrange(modelcopy)
     assert nts_last == ntimesteps - 1
     assert "Deposition times do not match the timesteps. The plot takes every timestep as complete" in (
@@ -2851,9 +2850,9 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
     # deposition.out, thus get_escaped_arrivalrange gives a warning. That function caches its
     # answer, thus this test clears the cache. An earlier test in this process would otherwise
     # keep the warning
-    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
+    from artistools.misc.timesteps import get_escaped_arrivalrange
 
-    get_escaped_arrivalrange_cached.cache_clear()
+    get_escaped_arrivalrange.cache_clear()
     artistools.__main__.main(
         argsraw=[
             "plotlightcurves",

@@ -121,15 +121,10 @@ def get_wid_init_at_tmodel(
     return 2.0 * xmax / ncoordgridx
 
 
-def get_nu_grid(modelpath: Path | str) -> npt.NDArray[np.floating]:
-    """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
-    return get_nu_grid_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
+@modelpath_cache(maxsize=16)
 @on_model_host
-def get_nu_grid_cached(modelpath: Path) -> npt.NDArray[np.floating]:
-    """Return the frequency grid of the model at an absolute path."""
+def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
+    """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specfile = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
     with polars_source_open(specfile) as source:
         specdata = pl.read_csv(
@@ -435,19 +430,14 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     return params
 
 
-def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
+# a window checks every run folder for each plot, and a model with many restarts has more than 16 of them
+@modelpath_cache(maxsize=1024)
+def get_runfolder_timesteps(folderpath: Path) -> tuple[int, ...]:
     """Return the sorted timesteps of the estimator files in an ARTIS run folder.
 
     A restarted run repeats the last timestep of the folder before it, and the result holds that timestep. Only
     get_runfolders knows the order of the folders, thus it gives such a timestep to the earlier folder.
     """
-    return get_runfolder_timesteps_cached(resolve_modelpath(folderpath))
-
-
-# a window checks every run folder for each plot, and a model with many restarts has more than 16 of them
-@lru_cache(maxsize=1024)
-def get_runfolder_timesteps_cached(folderpath: Path) -> tuple[int, ...]:
-    """Return the timesteps of the run folder at an absolute path."""
     return tuple(read_runfolder_timesteps(folderpath))
 
 
