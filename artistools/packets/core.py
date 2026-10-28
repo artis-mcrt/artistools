@@ -46,6 +46,7 @@ from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import polars_error_note
 from artistools.misc.fileio import raise_if_cut_line
 from artistools.misc.general import get_bin_index_expr
+from artistools.misc.general import get_progress_class
 from artistools.misc.modelpaths import modelpath_cache
 from artistools.misc.parquetcache import make_cache_folder
 from artistools.misc.parquetcache import parquet_is_readable
@@ -823,8 +824,6 @@ def get_packets_rankbatch_parquetfile(
         )
 
         ftextreader = read_virtual_packets_text_file if virtual else readfile_text
-
-        from artistools.misc.general import get_progress_class
 
         with get_progress_class()(total=len(text_file_paths), desc="Reading packet files", unit="file") as progressbar:
 

@@ -21,14 +21,20 @@ import polars.selectors as cs
 from artistools import constants
 from artistools.atomic import add_ion_str_column
 from artistools.atomic import get_bflist
+from artistools.atomic import get_composition_data
+from artistools.atomic import get_composition_data_from_outputfile
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbols_df
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_linelist_pldf
 from artistools.atomic import get_nuclides
+from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.constants import h_erg_s
+from artistools.constants import h_ev_s
 from artistools.constants import km_to_cm
+from artistools.constants import megaparsec_to_cm
 from artistools.constants import MEV_to_erg
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
@@ -107,11 +113,6 @@ def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
 ) -> pl.LazyFrame:
     """Add an x column in xunit and a y column for yvariable, scaled to an observer at fluxdistance_mpc."""
-    from artistools.constants import c_ang_per_s
-    from artistools.constants import h_erg_s
-    from artistools.constants import h_ev_s
-    from artistools.constants import megaparsec_to_cm
-
     dfspectrum = dfspectrum.lazy()
 
     if "nu" not in dfspectrum.collect_schema().names():
@@ -1274,14 +1275,12 @@ def get_flux_contributions_cached(
     nu_select[selectedbins] = True
     arraynu = arraynu_full[nu_select]
     arraylambda = arraylambda_full[nu_select]
-    from artistools.atomic import get_composition_data
 
     # get_composition_data also reads a compressed copy, thus only a model with no copy needs the log
     try:
         elementlist = get_composition_data(modelpath)
     except FileNotFoundError:
         print_warning("compositiondata.txt not found. Using output_0-0.txt instead")
-        from artistools.atomic import get_composition_data_from_outputfile
 
         elementlist = get_composition_data_from_outputfile(modelpath)
     nelements = len(elementlist)

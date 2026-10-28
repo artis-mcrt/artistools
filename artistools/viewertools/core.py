@@ -15,8 +15,10 @@ from pathlib import Path
 
 from artistools.misc import addarg_quiet
 from artistools.misc import exit_with_error
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
@@ -157,8 +159,6 @@ def parse_viewer_tokens(
     parse_cli_args puts "--" in front of the ARTIS folders at the end, thus an option that reads a list does not take
     a folder. The tokens that no option takes are the paths, e.g. the path of "--notitle mymodel".
     """
-    from artistools.misc import parse_cli_args
-
     parser = make_parser(addargs)
     usertokens = remove_options(parser, standardise_flags(parser, tokens), {"interactive"})
     basetokens = remove_options(parser, separate_trailing_folders(usertokens), {*controlleddests, *WINDOW_DESTS})
@@ -250,7 +250,6 @@ def model_has_direction_data(
     vpkt.txt and a file of vpktpattern, e.g. vspecpol_total-0.out, or the virtual packets with --frompackets. An empty
     vpktpattern gives the observers only from the virtual packets. Reload Data clears the cache.
     """
-    from artistools.misc import firstexisting_or_none
     from artistools.misc.modelpaths import folder_holds_match
     from artistools.packets.core import get_packets_textfilename
     from artistools.packets.core import has_packets_files

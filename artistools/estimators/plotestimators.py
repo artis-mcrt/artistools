@@ -105,6 +105,7 @@ from artistools.misc import resolve_slice_axis
 from artistools.misc import suggest_names
 from artistools.misc.cliutils import positive_float_arg
 from artistools.misc.general import get_bin_index_expr
+from artistools.misc.remote import is_plain_value
 from artistools.misc.remote import on_model_host
 from artistools.misc.seriesstyles import color_arg
 from artistools.misc.seriesstyles import dashes_arg
@@ -117,7 +118,9 @@ from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
 from artistools.plottools import get_summary_table
+from artistools.plottools import get_unused_colors
 from artistools.plottools import get_velocity_label
+from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
 from artistools.plottools import parse_velocity_argument
@@ -199,9 +202,6 @@ def get_unreserved_elemcolors() -> tuple["mplt.ColorType", ...]:
     comparison of the tuples let the rounded glasbey copies of the tab10 colours through, which gave
     nitrogen the blue of iron and oxygen the orange of nickel in one figure.
     """
-    from artistools.plottools import get_unused_colors
-    from artistools.plottools import glasbey_category20_nogreys
-
     palette = [*colors_tab10, *glasbey_category20_nogreys]
 
     return tuple(get_unused_colors(palette, [mc.to_hex(rgba) for rgba in elementcolors.values()]))
@@ -2969,8 +2969,6 @@ def complete_plotitem(prefix: str, **kwargs: t.Any) -> list[str]:
     """
     from argcomplete.completers import DirectoriesCompleter
 
-    from artistools.estimators.core import PREFIX_GROUPS
-
     names = [
         *(key for key, info in VARIABLES.items() if not info.group),
         *PREFIX_GROUPS,
@@ -3879,8 +3877,6 @@ def get_figures_data(
     for a window that draws many plots.
     """
     import copy
-
-    from artistools.misc.remote import is_plain_value
 
     # a path of the arguments comes back with the name of the host, thus only the changed values come back. The copy
     # keeps each list as it was, e.g. for a change of one item

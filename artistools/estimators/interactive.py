@@ -80,7 +80,9 @@ from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 from artistools.nltepops import has_nlte_populations
+from artistools.nltepops import read_nltepops
 from artistools.plottools import DARKMODE_COLOURS
+from artistools.plottools import get_legend_entries_in_draw_order
 from artistools.plottools import get_light_grey
 from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import parse_velocity_argument
@@ -812,8 +814,6 @@ def get_level_names(modelpath: Path, timestep: int, cell: int) -> list[str]:
     Each cell has the same NLTE levels, thus one cell gives them. A timestep before the first NLTE timestep has no
     populations, and all the timesteps of the cell then give the levels.
     """
-    from artistools.nltepops import read_nltepops
-
     dfpops = read_nltepops(modelpath, timestep=timestep, modelgridindex=cell)
     if dfpops.is_empty():
         dfpops = read_nltepops(modelpath, modelgridindex=cell)
@@ -1980,8 +1980,6 @@ def get_series_at(axis: "mplax.Axes", event: "MouseEvent", *, legendonly: bool) 
     plotestimators gives each line a gid from the name of its series, see get_series_gid. The legend holds copies of
     the lines with no gid, thus the order of the legend entries gives their series.
     """
-    from artistools.plottools import get_legend_entries_in_draw_order
-
     legend = axis.get_legend()
     # test the box of the legend first, because a mouse movement tests each entry only inside the legend
     if legend is not None and legend.get_visible() and legend.contains(event)[0]:
